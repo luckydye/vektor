@@ -25,7 +25,7 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { optionalPropertyValueToText } from "#utils/documentProperties.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
-import { spacePath } from "#utils/utils.ts";
+import { formatRelativeTime, spacePath } from "#utils/utils.ts";
 
 const props = defineProps<{
   documentSlug?: string;
@@ -202,19 +202,11 @@ const effectiveLayout = computed(() =>
     : doc.value?.properties?.layout || defaultLayout.value,
 );
 
-const updatedAtStr = computed(() => {
-  if (!doc.value?.updatedAt) return "";
-  const diffMs = now.value - new Date(doc.value.updatedAt).getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins >= 1 && diffMins < 60)
-    return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
-  if (diffHours >= 1 && diffHours < 24)
-    return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
-  if (diffDays >= 1) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
-  return "just now";
-});
+const updatedAtStr = computed(() =>
+  doc.value?.updatedAt
+    ? formatRelativeTime(doc.value.updatedAt, { now: now.value })
+    : "",
+);
 
 const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
   database: { title: "Untitled Database", content: "<p></p>" },

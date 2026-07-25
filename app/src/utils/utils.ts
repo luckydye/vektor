@@ -156,46 +156,79 @@ export function getTextColor(bgColor: string) {
   return brightness > 155 ? "#1F2937" : "#FFFFFF";
 }
 
-export function formatDate(dateString: string | number | Date) {
-  const date = normalizeTimestamp(dateString);
-  const now = new Date();
-  const diffInMs = now.getTime() - date.getTime();
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-  const locale = currentLang();
-  const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const formatRelativeDay = (days: number) => {
-    const value = relativeTime.format(-days, "day");
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  };
+export type RelativeTimeOptions = {
+  /**
+   * Wording width: "long" → "5 minutes ago", "short" → "5 min. ago",
+   * "narrow" → "5m ago". Defaults to "long".
+   */
+  style?: "long" | "short" | "narrow";
+  /**
+   * Once the timestamp is this many days old, render an absolute
+   * `toLocaleDateString()` instead of a relative one. Defaults to `Infinity`,
+   * i.e. keep counting days forever.
+   */
+  maxDays?: number;
+  /** Round to whole days ("Today", "3 days ago") instead of minutes/hours. */
+  dayOnly?: boolean;
+  /** Uppercase the first letter — for standalone labels like "Today". */
+  capitalize?: boolean;
+  /** "Now" in epoch ms. Pass a reactive clock to make the result re-compute. */
+  now?: number;
+};
 
-  if (diffInDays === 0) {
-    return formatRelativeDay(0);
-  } else if (diffInDays === 1) {
-    return formatRelativeDay(1);
-  } else if (diffInDays < 7) {
-    return formatRelativeDay(diffInDays);
-  } else {
-    return date.toLocaleDateString(locale);
+/**
+ * The single relative-time formatter: localized via `Intl.RelativeTimeFormat`
+ * and the current UI language, with an absolute-date fallback for old
+ * timestamps. Every "x ago" label in the app goes through here — see
+ * `RelativeTimeOptions` for the variants (comment stamps use `narrow`,
+ * day-granular list stamps use `formatDate` below).
+ *
+ * Invalid input degrades to the raw value rather than throwing, because most
+ * call sites render this straight into a template.
+ */
+export function formatRelativeTime(
+  value: string | number | Date,
+  options: RelativeTimeOptions = {},
+): string {
+  const {
+    style = "long",
+    maxDays = Number.POSITIVE_INFINITY,
+    dayOnly,
+    capitalize,
+  } = options;
+
+  try {
+    const date = normalizeTimestamp(value);
+    const diffMs = (options.now ?? Date.now()) - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    const locale = currentLang();
+
+    if (diffDays >= maxDays) return date.toLocaleDateString(locale);
+
+    const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style });
+    const formatted = dayOnly
+      ? relativeTime.format(-diffDays, "day")
+      : diffMins < 1
+        ? relativeTime.format(0, "second")
+        : diffMins < 60
+          ? relativeTime.format(-diffMins, "minute")
+          : diffHours < 24
+            ? relativeTime.format(-diffHours, "hour")
+            : relativeTime.format(-diffDays, "day");
+
+    return capitalize
+      ? formatted.charAt(0).toUpperCase() + formatted.slice(1)
+      : formatted;
+  } catch {
+    return String(value);
   }
 }
 
-export function formatRelativeTime(timestamp: number) {
-  const now = Date.now();
-  const diff = now - normalizeTimestamp(timestamp).getTime();
-
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  const relativeTime = new Intl.RelativeTimeFormat(currentLang(), {
-    numeric: "auto",
-    style: "short",
-  });
-
-  if (days > 0) return relativeTime.format(-days, "day");
-  if (hours > 0) return relativeTime.format(-hours, "hour");
-  if (minutes > 0) return relativeTime.format(-minutes, "minute");
-  return relativeTime.format(0, "second");
+/** Day-granular list stamp: "Today", "Yesterday", "3 days ago", then a date. */
+export function formatDate(dateString: string | number | Date): string {
+  return formatRelativeTime(dateString, { dayOnly: true, maxDays: 7, capitalize: true });
 }
 
 export function getUserInitials(userId: string) {

@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
+import { formatRelativeTime } from "#utils/utils.ts";
 import { documentIcon } from "~/src/assets/icons.ts";
 
 const activePreview = ref<{
@@ -159,16 +160,8 @@ function getDomain(url: string): string {
   }
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Updated today";
-  if (diffDays === 1) return "Updated yesterday";
-  if (diffDays < 7) return `Updated ${diffDays} days ago`;
-  return `Updated ${date.toLocaleDateString()}`;
+function formatUpdated(dateString: string): string {
+  return `Updated ${formatRelativeTime(dateString, { dayOnly: true, maxDays: 7 })}`;
 }
 
 function isInternal(url: string): boolean {
@@ -257,7 +250,7 @@ function isInternal(url: string): boolean {
               v-if="activePreview.data.updatedAt"
               class="text-size-small text-neutral-400"
             >
-              {{ formatDate(activePreview.data.updatedAt) }}
+              {{ formatUpdated(activePreview.data.updatedAt) }}
             </p>
           </div>
         </template>

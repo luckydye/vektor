@@ -289,7 +289,7 @@ Actions.register("ui:toggle:palatte", {
                       v-if="result.type === 'document' && getLastVisited(result.data)"
                       class="text-size-small text-neutral flex-none opacity-50"
                     >
-                      {{ formatRelativeTime(getLastVisited(result.data)) }}
+                      {{ formatRelativeTime(getLastVisited(result.data), { style: 'short' }) }}
                     </span>
                     <span
                       v-if="result.type === 'action' && result.data.description"

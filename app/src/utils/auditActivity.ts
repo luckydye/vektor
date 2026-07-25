@@ -5,21 +5,7 @@
 
 import type { AuditLog } from "#api/client.ts";
 import { currentLang, type TranslationKey, t } from "#utils/lang.ts";
-import {
-  addIcon,
-  commentIcon,
-  deleteEntryIcon,
-  documentIcon,
-  editDocumentIcon,
-  editEntryIcon,
-  eyeIcon,
-  infoIcon,
-  lockElementIcon,
-  publishIcon,
-  refreshIcon,
-  unlockElementIcon,
-} from "~/src/assets/icons.ts";
-import { normalizeTimestamp } from "./utils.ts";
+import { formatRelativeTime, normalizeTimestamp } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
 // Event labels
@@ -72,64 +58,6 @@ export function getAuditEventAction(event: string): string {
   return key ? t(key) : getAuditEventLabel(event).toLocaleLowerCase(currentLang());
 }
 
-/**
- * Full-sentence description used in timeline views, e.g.
- * "Tim Havlicek - Document published"
- */
-export function formatAuditEventDescription(userName: string, event: string): string {
-  const descriptions: Record<string, string> = {
-    view: `${userName} - Document viewed`,
-    comment: `${userName} - Comment created`,
-    save: `${userName} - Document saved`,
-    suggest: `${userName} - Suggested changes`,
-    publish: `${userName} - Document published`,
-    unpublish: `${userName} - Document unpublished`,
-    restore: `${userName} - Revision restored`,
-    delete: `${userName} - Document deleted`,
-    acl_grant: `${userName} - Permission granted`,
-    acl_revoke: `${userName} - Permission revoked`,
-    create: `${userName} - Document created`,
-    lock: `${userName} - Document locked`,
-    unlock: `${userName} - Document unlocked`,
-    archive: `${userName} - Document archived`,
-    property_update: `${userName} - Property updated`,
-    property_delete: `${userName} - Property deleted`,
-  };
-  return descriptions[event] ?? `${userName} - ${event}`;
-}
-
-// ---------------------------------------------------------------------------
-// Event icons
-// ---------------------------------------------------------------------------
-
-/**
- * Returns an HTML string containing the icon for a given audit event type.
- * Intended for use with `v-html`.
- */
-export function getAuditEventIcon(event: string): string {
-  const icons: Record<string, string> = {
-    revision: `<span class="svg-icon w-4 h-4 text-neutral-500">${documentIcon}</span>`,
-    view: `<span class="svg-icon w-4 h-4 text-neutral-400">${eyeIcon}</span>`,
-    comment: `<span class="svg-icon w-4 h-4 text-blue-500">${commentIcon}</span>`,
-    publish: `<span class="svg-icon w-4 h-4 text-blue-500">${publishIcon}</span>`,
-    unpublish: `<span class="svg-icon w-4 h-4 text-neutral-400">${publishIcon}</span>`,
-    suggest: `<span class="svg-icon w-4 h-4 text-amber-500">${editDocumentIcon}</span>`,
-    restore: `<span class="svg-icon w-4 h-4 text-orange-500">${refreshIcon}</span>`,
-    delete: `<span class="svg-icon w-4 h-4 text-red-500">${deleteEntryIcon}</span>`,
-    archive: `<span class="svg-icon w-4 h-4 text-neutral-400">${deleteEntryIcon}</span>`,
-    acl_grant: `<span class="svg-icon w-4 h-4 text-purple-500">${lockElementIcon}</span>`,
-    acl_revoke: `<span class="svg-icon w-4 h-4 text-purple-500">${lockElementIcon}</span>`,
-    create: `<span class="svg-icon w-4 h-4 text-green-500">${addIcon}</span>`,
-    lock: `<span class="svg-icon w-4 h-4 text-yellow-500">${lockElementIcon}</span>`,
-    unlock: `<span class="svg-icon w-4 h-4 text-green-500">${unlockElementIcon}</span>`,
-    property_update: `<span class="svg-icon w-4 h-4 text-indigo-500">${editEntryIcon}</span>`,
-    property_delete: `<span class="svg-icon w-4 h-4 text-pink-500">${deleteEntryIcon}</span>`,
-  };
-  return (
-    icons[event] ?? `<span class="svg-icon w-4 h-4 text-neutral-400">${infoIcon}</span>`
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Property changes
 // ---------------------------------------------------------------------------
@@ -159,27 +87,46 @@ export function formatPropertyKey(key?: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Formats a timestamp as a verbose relative-time string.
- * E.g. "just now", "5 minutes ago", "3 hours ago", "12 days ago".
- * Falls back to `toLocaleDateString()` for dates older than 30 days.
+ * Verbose relative time for an activity entry: "5 minutes ago", "3 hours ago",
+ * "12 days ago", falling back to an absolute date past 30 days.
  */
 export function formatActivityTime(dateString: string | Date): string {
+  return formatRelativeTime(dateString, { maxDays: 30 });
+}
+
+/** Full day heading an activity group is bucketed under. */
+export function getActivityDate(dateString: string | Date): string {
+  return normalizeTimestamp(dateString as string).toLocaleDateString(currentLang(), {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/**
+ * Label for a day bucket in an activity feed: the relative time for entries
+ * from today, then "Yesterday", the weekday within the last week, and a short
+ * date beyond that (with the year only when it is not the current one).
+ */
+export function getActivityBucketLabel(dateString: string | Date): string {
   try {
     const date = normalizeTimestamp(dateString as string);
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    const locale = currentLang();
-    const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.floor(
+      (startOfToday.getTime() - startOfDate.getTime()) / 86400000,
+    );
 
-    if (diffMins < 1) return relativeTime.format(0, "second");
-    if (diffMins < 60) return relativeTime.format(-diffMins, "minute");
-    if (diffHours < 24) return relativeTime.format(-diffHours, "hour");
-    if (diffDays < 30) return relativeTime.format(-diffDays, "day");
-
-    return date.toLocaleDateString(locale);
+    if (diffDays === 0) return formatActivityTime(date);
+    if (diffDays === 1) return t("Yesterday");
+    if (diffDays < 7) return date.toLocaleDateString(currentLang(), { weekday: "long" });
+    return date.toLocaleDateString(currentLang(), {
+      month: "short",
+      day: "numeric",
+      year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+    });
   } catch {
     return String(dateString);
   }

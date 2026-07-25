@@ -5,12 +5,13 @@ import { chevronRightThinIcon, documentIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
-  formatActivityTime,
   formatPropertyKey,
+  getActivityBucketLabel,
+  getActivityDate,
   getAuditEventAction,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
-import { currentLang, t } from "#utils/lang.ts";
+import { t } from "#utils/lang.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 
@@ -130,38 +131,6 @@ function getDocumentHref(docId: string): string | undefined {
   return spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
 }
 
-function getActivityDate(entry: AuditLog): string {
-  return normalizeTimestamp(entry.createdAt as string).toLocaleDateString(currentLang(), {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-function getActivityBucketLabel(dateString: string | Date): string {
-  try {
-    const date = normalizeTimestamp(dateString as string);
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const diffDays = Math.floor(
-      (startOfToday.getTime() - startOfDate.getTime()) / 86400000,
-    );
-
-    if (diffDays === 0) return formatActivityTime(date);
-    if (diffDays === 1) return t("Yesterday");
-    if (diffDays < 7) return date.toLocaleDateString(currentLang(), { weekday: "long" });
-    return date.toLocaleDateString(currentLang(), {
-      month: "short",
-      day: "numeric",
-      year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
-    });
-  } catch {
-    return String(dateString);
-  }
-}
-
 function getCardUser(userId: string | null): UserLike | undefined {
   return getUser(userId);
 }
@@ -246,7 +215,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
   let groupIndex = 0;
 
   for (const entry of activities.value) {
-    const date = getActivityDate(entry);
+    const date = getActivityDate(entry.createdAt as string);
     const last = groups[groups.length - 1];
     const userId = entry.userId ?? null;
     const sameUser = last && last.userId === userId;

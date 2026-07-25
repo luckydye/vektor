@@ -28,6 +28,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
+import { formatRelativeTime } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 import {
   cancelIcon,
@@ -167,19 +168,7 @@ watch(isOpen, (open) => {
 });
 
 function formatCommentTime(date: Date | string): string {
-  const commentDate = new Date(date);
-  const now = new Date();
-  const diffMs = now.getTime() - commentDate.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-
-  return commentDate.toLocaleDateString();
+  return formatRelativeTime(date, { style: "narrow", maxDays: 7 });
 }
 </script>
 

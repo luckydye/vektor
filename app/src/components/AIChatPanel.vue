@@ -9,7 +9,6 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
-import { isAIProviderConfigured } from "#utils/aiProviderPreferences.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
@@ -829,10 +828,12 @@ function scrollThinkingToBottom() {
 // The agent only works when the space has an AI provider configured, so the
 // action stays unregistered (and out of the command palette) until it is. The
 // provider lives in the space preferences the space payload already carries, so
-// this works for every role that may use the agent — viewer included.
-const isAgentConfigured = computed(() =>
-  isAIProviderConfigured(currentSpace.value?.preferences),
-);
+// this works for every role that may use the agent — viewer included. The
+// preference keys are owned by `db/aiConfig.ts`, which the client cannot import.
+const isAgentConfigured = computed(() => {
+  const preferences = currentSpace.value?.preferences;
+  return !!preferences?.["ai:provider"] && !!preferences?.["ai:model"];
+});
 
 watch(
   isAgentConfigured,

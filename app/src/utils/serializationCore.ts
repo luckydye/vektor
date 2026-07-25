@@ -5,8 +5,8 @@ import { Node } from "@tiptap/pm/model";
 import * as html5parser from "html5parser";
 import { prosemirrorToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
+import { parseCanvasContent, seedCanvasDoc } from "#canvas/canvasYjs.ts";
 import { contentExtensions } from "#editor/extensions.ts";
-import { parseCanvasContent, seedCanvasDoc } from "./canvasYjs.ts";
 
 /**
  * Pure, dependency-light document (de)serialization primitives shared by the
