@@ -159,7 +159,7 @@
         <!-- Upload Card (trailing) -->
         <label
           v-if="uploadAllowed"
-          class="flex flex-col items-center justify-center gap-2 p-4 min-h-[168px] border-2 border-dashed border-neutral-100 rounded-lg cursor-pointer text-center hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          class="flex flex-col items-center justify-center gap-2 p-4 min-h-[168px] border-2 border-dashed border-neutral-100 rounded-lg cursor-pointer text-center hover:border-neutral-400 hover:bg-neutral-50 transition-colors"
         >
           <input
             type="file"

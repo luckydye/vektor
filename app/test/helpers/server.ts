@@ -31,21 +31,54 @@ export async function waitForServer(
   throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
+/**
+ * How to launch the server under test.
+ *
+ * Jobs and workflows load a native addon and execute inside it, which behaves
+ * differently in a compiled binary — where the addon and its loader are embedded
+ * in `$bunfs` — than under `bun src/server.ts`. Setting `VEKTOR_TEST_BINARY` to a
+ * compiled `./vektor` runs the specs against the shipped form instead.
+ */
+export function testServerCommand(port: number): string[] {
+  const binary = process.env.VEKTOR_TEST_BINARY;
+  return binary
+    ? [binary, "serve", "--port", String(port)]
+    : ["bun", "./src/server.ts", "--port", String(port)];
+}
+
 export function startTestServer(
   port: number,
   env: Record<string, string | undefined>,
 ): TestServerProcess {
-  return Bun.spawn(["bun", "./src/server.ts", "--port", String(port)], {
+  // Set VEKTOR_TEST_SERVER_LOG to a path to keep the server's output; without it
+  // the specs stay quiet.
+  const logPath = process.env.VEKTOR_TEST_SERVER_LOG;
+  const sink = logPath ? Bun.file(logPath).writer() : undefined;
+
+  const child = Bun.spawn(testServerCommand(port), {
     env: {
       ...process.env,
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       ...env,
     },
-    stdout: "ignore",
-    stderr: "ignore",
+    stdout: sink ? "pipe" : "ignore",
+    stderr: sink ? "pipe" : "ignore",
     cwd: APP_DIR,
   });
+
+  if (sink) {
+    for (const stream of [child.stdout, child.stderr]) {
+      void (async () => {
+        for await (const chunk of stream as ReadableStream<Uint8Array>) {
+          sink.write(chunk);
+          sink.flush();
+        }
+      })();
+    }
+  }
+
+  return child;
 }
 
 function jsonHeaders(options: RequestInit, sessionToken?: string): Headers {

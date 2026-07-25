@@ -18,7 +18,7 @@ export interface JsExecResult {
   exitCode: number;
 }
 
-/** Synchronous JS evaluation — replaces the QuickJS sync context used by js-exec. */
+/** Synchronous JS evaluation, used by the `js-exec` CLI. Blocks the caller. */
 export function evalJsSync(
   code: string,
   globals: JsExecGlobals,
@@ -26,50 +26,61 @@ export function evalJsSync(
 ): JsExecResult;
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Workflow VM — step-driven async JS sandbox
+// JS VM — the runtime for extension jobs and workflow scripts
 // ──────────────────────────────────────────────────────────────────────────────
 
-export type WorkflowVmEventType = "done" | "error" | "log" | "pending_job" | "pending";
-
-export interface WorkflowVmEvent {
-  type: WorkflowVmEventType;
-  /** Present on "done" */
-  output?: Record<string, unknown>;
-  /** Present on "error" and "log" */
-  message?: string;
-  /** Present on "pending_job" — opaque ID for resolve/reject */
-  jobId?: string;
-  /** Present on "pending_job" */
-  extensionId?: string;
-  /** Present on "pending_job" — the jobId arg passed to runJob() */
-  workflowJobId?: string;
-  /** Present on "pending_job" */
-  inputs?: Record<string, unknown>;
+export interface VmOptions {
+  /** Wall-clock ceiling for the whole run. Default 15 minutes. */
+  timeoutMs?: number;
+  /** Loop iterations allowed per call frame; bounds runaway loops. Default 50M. */
+  loopIterationLimit?: number;
+  /** Stack for the VM thread, in MiB. Default 16. */
+  stackSizeMb?: number;
 }
 
-/** Create a workflow VM session. Returns an opaque numeric session ID. */
-export function workflowVmCreate(code: string, inputs: Record<string, unknown>): number;
+export type VmEventType = "log" | "call" | "done" | "error";
+
+export interface VmEvent {
+  type: VmEventType;
+  /** Present on "call" — pass back to vmResolve/vmReject. */
+  callId?: string;
+  /** Present on "call" — the capability name. */
+  name?: string;
+  /** Present on "call" — the positional arguments. */
+  args?: unknown[];
+  /** Present on "log" and "error". */
+  message?: string;
+  /** Present on "done" — the script's return value. */
+  output?: unknown;
+}
 
 /**
- * Advance the VM by one step.
+ * Start a VM on its own OS thread and return its session id.
  *
- * - "log"        → a log() call happened; drain message and call step() again
- * - "pending_job" → runJob() was called; resolve/reject then call step() again
- * - "pending"    → promise still pending; yield to event loop then call step() again
- * - "done"       → script completed; output contains the result
- * - "error"      → script threw; message contains the error
+ * `onEvent` fires on the JS thread for each event, in order, and exactly one
+ * terminal `done`/`error` event is delivered. Guest code never runs on the JS
+ * thread, so a CPU-bound job cannot stall the event loop.
+ *
+ * Guest code reaches the host through a single primitive, `__hostCall(name,
+ * ...args) -> Promise`; `prelude` is evaluated first at global scope and is where
+ * the capability globals are built on top of it.
  */
-export function workflowVmStep(id: number): WorkflowVmEvent;
+export function vmCreate(
+  prelude: string,
+  code: string,
+  inputs: Record<string, unknown>,
+  options: VmOptions | undefined | null,
+  onEvent: (event: VmEvent) => void,
+): number;
 
-/** Resolve a pending runJob with a successful result. */
-export function workflowVmResolveJob(
-  id: number,
-  jobId: string,
-  result: Record<string, unknown>,
-): void;
+/** Resolve a pending host call. Unknown ids are ignored. */
+export function vmResolve(id: number, callId: string, value: unknown): void;
 
-/** Reject a pending runJob with an error message. */
-export function workflowVmRejectJob(id: number, jobId: string, error: string): void;
+/** Reject a pending host call; guest code sees a thrown Error. */
+export function vmReject(id: number, callId: string, message: string): void;
 
-/** Destroy a workflow VM session and free its resources. */
-export function workflowVmDestroy(id: number): void;
+/**
+ * Ask a VM to stop. In-flight calls reject with "cancelled" so the script can
+ * unwind through its own `finally` blocks, then the run ends with an error event.
+ */
+export function vmDestroy(id: number): void;

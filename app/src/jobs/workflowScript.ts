@@ -1,6 +1,4 @@
 import { getExtension, getExtensionPackage } from "#db/extensions.ts";
-import { getNativeExec } from "#exec/native.ts";
-import type { WorkflowVmEvent } from "#native/exec/index.d.ts";
 import {
   appendRunLog,
   finalizeRun,
@@ -11,7 +9,7 @@ import {
   writeRunLogs,
   writeRunResult,
 } from "./runStore.ts";
-import { resolveJobSandbox } from "./sandbox.ts";
+import { getJobRuntime } from "./runtime/index.ts";
 import { runJob } from "./scheduler.ts";
 import {
   createStepCacheWriter,
@@ -21,15 +19,17 @@ import {
 } from "./workflowStepCache.ts";
 
 /**
- * Execute a JavaScript workflow script in a Boa (native Rust) sandbox.
+ * Execute a JavaScript workflow script.
  *
- * The script has access to:
- *   - runJob(extensionId, jobId, inputs?) → Promise<outputs>
- *   - log(message) → void
- *   - input → runtime inputs object
+ * A workflow is just a job with one extra capability: `runJob(extensionId,
+ * jobId, inputs?)`, which runs an extension job and resolves with its outputs.
+ * Everything else — `log`, `fetch`, the document helpers, the deadline, the
+ * thread it runs on — comes from the shared runtime, so there is no separate
+ * workflow execution path to keep in step.
  *
- * The return value of the script (or last expression) becomes a JSON result
- * artifact. Intermediate runJob values exist only while the script is running.
+ * The script's return value becomes a JSON result artifact. Intermediate
+ * `runJob` values exist only while the script is running, except that successful
+ * ones are recorded so a retry can resume past completed steps.
  */
 export async function executeWorkflowScript(
   spaceId: string,
@@ -78,141 +78,92 @@ export async function executeWorkflowScript(
   };
   await persistResumeState();
 
-  const sandbox = await resolveJobSandbox();
+  /**
+   * The `runJob` capability. Resolving with the job's outputs (or throwing) is
+   * all the workflow script sees; the VM turns that into the awaited promise.
+   */
+  const runWorkflowJob = async (
+    rawExtensionId: unknown,
+    rawJobId: unknown,
+    rawInputs: unknown,
+  ): Promise<Record<string, unknown>> => {
+    const extensionId = String(rawExtensionId ?? "");
+    const workflowJobId = String(rawJobId ?? "");
+    if (!extensionId || !workflowJobId) {
+      throw new Error(
+        "runJob(extensionId, jobId, inputs?) requires an extension and job id",
+      );
+    }
+    const jobInputs =
+      typeof rawInputs === "object" && rawInputs !== null && !Array.isArray(rawInputs)
+        ? (rawInputs as Record<string, unknown>)
+        : {};
 
-  let vmId: number | null = null;
-  const {
-    workflowVmCreate,
-    workflowVmDestroy,
-    workflowVmRejectJob,
-    workflowVmResolveJob,
-    workflowVmStep,
-  } = await getNativeExec();
+    const cacheKey = stepCacheKey(extensionId, workflowJobId, jobInputs);
 
-  try {
-    vmId = workflowVmCreate(code, runtimeInputs);
-
-    // Step-driven event loop: advance the VM until it's done, handling
-    // log messages and runJob calls as they appear.
-    for (;;) {
-      if (controller.signal.aborted) {
-        throw new Error("Workflow cancelled");
-      }
-
-      const event: WorkflowVmEvent = workflowVmStep(vmId);
-
-      if (event.type === "done") {
-        const output =
-          event.output && typeof event.output === "object" && !Array.isArray(event.output)
-            ? (event.output as Record<string, unknown>)
-            : {};
-        await writeRunResult(runId, output);
-        break;
-      }
-
-      if (event.type === "error") {
-        throw new Error(event.message ?? "Script error");
-      }
-
-      if (event.type === "log") {
-        appendRunLog(runId, event.message ?? "");
-        continue;
-      }
-
-      if (event.type === "pending_job") {
-        const { jobId, extensionId, workflowJobId, inputs } = event;
-        if (!jobId || !extensionId || !workflowJobId) continue;
-
-        const jobInputsForKey =
-          inputs && typeof inputs === "object" && !Array.isArray(inputs)
-            ? (inputs as Record<string, unknown>)
-            : {};
-        const cacheKey = stepCacheKey(extensionId, workflowJobId, jobInputsForKey);
-
-        // Resume: replay a prior run's successful output without re-executing.
-        const cached = seedCache[cacheKey];
-        if (cached) {
-          appendRunLog(
-            runId,
-            `[${extensionId}/${workflowJobId}] resume: replayed cached result (skipped)`,
-          );
-          if (vmId !== null) workflowVmResolveJob(vmId, jobId, cached);
-          await new Promise<void>((r) => setTimeout(r, 10));
-          continue;
-        }
-
-        // Run the job asynchronously and resolve/reject the VM promise.
-        // We do NOT await here — let the loop continue stepping while the job runs.
-        // However, since this is a sequential script (each runJob is awaited by the JS),
-        // we must await the result before the VM can proceed past the pending promise.
-        (async () => {
-          try {
-            const ext = await getExtension(spaceId, extensionId);
-            if (!ext) throw new Error(`Extension not found: ${extensionId}`);
-
-            const jobDef = ext.manifest.jobs?.find((j) => j.id === workflowJobId);
-            if (!jobDef)
-              throw new Error(
-                `Job "${workflowJobId}" not found in extension "${extensionId}"`,
-              );
-
-            const zipBuffer = await getExtensionPackage(spaceId, extensionId);
-            if (!zipBuffer)
-              throw new Error(`Extension package not found: ${extensionId}`);
-
-            const jobInputs =
-              inputs && typeof inputs === "object" && !Array.isArray(inputs)
-                ? (inputs as Record<string, unknown>)
-                : {};
-
-            if (controller.signal.aborted) throw new Error("Workflow cancelled");
-
-            const outputs = await runJob(
-              zipBuffer,
-              jobDef.entry,
-              jobInputs,
-              spaceId,
-              (msg) => appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${msg}`),
-              {
-                signal: controller.signal,
-                initiatedByUserId: run.initiatedByUserId,
-                jobType: "workflow_script_job",
-                jobId: workflowJobId,
-                trigger: "workflow",
-                sandbox,
-              },
-            );
-
-            // Unwrap JobOutputValue typed wrappers before passing back to the VM.
-            const unwrapped: Record<string, unknown> = {};
-            for (const [k, v] of Object.entries(outputs ?? {})) {
-              const t = v as { type?: string; url?: string; value?: unknown };
-              if (t.type === "file") unwrapped[k] = t.url;
-              else if (t.type === "text") unwrapped[k] = t.value;
-              else unwrapped[k] = v;
-            }
-
-            stepCache.record(cacheKey, unwrapped);
-            if (vmId !== null) workflowVmResolveJob(vmId, jobId, unwrapped);
-          } catch (err) {
-            const error = err instanceof Error ? err.message : String(err);
-            appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${error}`);
-            if (vmId !== null) workflowVmRejectJob(vmId, jobId, error);
-          }
-        })();
-
-        // Yield to the event loop so the async job above can make progress,
-        // then keep stepping the VM.
-        await new Promise<void>((r) => setTimeout(r, 10));
-        continue;
-      }
-
-      if (event.type === "pending") {
-        // Promise is still settling — yield and retry.
-        await new Promise<void>((r) => setTimeout(r, 10));
-      }
+    // Resume: replay a prior run's successful output without re-executing.
+    const cached = seedCache[cacheKey];
+    if (cached) {
+      appendRunLog(
+        runId,
+        `[${extensionId}/${workflowJobId}] resume: replayed cached result (skipped)`,
+      );
+      return cached;
     }
 
+    const extension = await getExtension(spaceId, extensionId);
+    if (!extension) throw new Error(`Extension not found: ${extensionId}`);
+
+    const jobDef = extension.manifest.jobs?.find((j) => j.id === workflowJobId);
+    if (!jobDef) {
+      throw new Error(`Job "${workflowJobId}" not found in extension "${extensionId}"`);
+    }
+
+    const zipBuffer = await getExtensionPackage(spaceId, extensionId);
+    if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
+
+    if (controller.signal.aborted) throw new Error("Workflow cancelled");
+
+    const outputs = await runJob(
+      zipBuffer,
+      jobDef.entry,
+      jobInputs,
+      spaceId,
+      (message) => appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${message}`),
+      {
+        signal: controller.signal,
+        initiatedByUserId: run.initiatedByUserId,
+        jobType: "workflow_script_job",
+        jobId: workflowJobId,
+        trigger: "workflow",
+      },
+    );
+
+    // Unwrap JobOutputValue typed wrappers before handing values to the script.
+    const unwrapped: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(outputs ?? {})) {
+      const typed = value as { type?: string; url?: string; value?: unknown };
+      if (typed.type === "file") unwrapped[key] = typed.url;
+      else if (typed.type === "text") unwrapped[key] = typed.value;
+      else unwrapped[key] = value;
+    }
+
+    stepCache.record(cacheKey, unwrapped);
+    return unwrapped;
+  };
+
+  try {
+    const output = await getJobRuntime().execute(code, {
+      spaceId,
+      jobId: `workflow:${runId}`,
+      initiatedByUserId: run.initiatedByUserId,
+      inputs: runtimeInputs,
+      onLog: (message) => appendRunLog(runId, message),
+      signal: controller.signal,
+      extraCapabilities: { runJob: runWorkflowJob as never },
+    });
+
+    await writeRunResult(runId, output);
     await persistResumeState();
     await writeRunLogs(runId);
     await finalizeRun(runId);
@@ -226,12 +177,5 @@ export async function executeWorkflowScript(
     await persistResumeState();
     await writeRunLogs(runId);
     await finalizeRun(runId);
-  } finally {
-    if (vmId !== null) {
-      const id = vmId;
-      vmId = null;
-      workflowVmDestroy(id);
-    }
-    await sandbox?.destroy();
   }
 }

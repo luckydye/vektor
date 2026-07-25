@@ -75,7 +75,8 @@
   - `list_documents`, `search_documents`, `get_document`, `upload_artifact`, `install_extension`
 
 ## Workflows & Job Execution
-- Sandboxed JavaScript workflow scripts
+- Workflow scripts and extension jobs run in a capability-sandboxed JS VM, each on
+  its own thread — no host filesystem, network or process access unless granted
 - Execute workflows and track run status and logs
 
 ## Extensions

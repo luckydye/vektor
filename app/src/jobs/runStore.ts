@@ -458,6 +458,9 @@ export function getRun(runId: string): RunState | undefined {
 export function setRunStatus(runId: string, status: RunStatus): void {
   const run = activeRuns.get(runId);
   if (!run) return;
+  // "cancelled" is the truth about why a run ended, and the executor reports the
+  // cancellation to itself as an error — so never let that overwrite it.
+  if (run.status === "cancelled" && status === "failed") return;
   run.status = status;
   if (status === "running" && !run.startedAt) run.startedAt = new Date();
   persistNow(runId, run);
@@ -522,10 +525,21 @@ export async function cancelRun(runId: string): Promise<void> {
   if (!run || (run.status !== "pending" && run.status !== "running")) return;
   run.status = "cancelled";
   run.completedAt = new Date();
-  run.abort?.();
-  await writeRunLogs(runId);
   persistNow(runId, run);
   emitRunChanged(runId, run);
+
+  // With an executor attached, cancelling is a request, not a teardown: the
+  // script still has to unwind, and the logs its `finally` blocks produce are
+  // often the most interesting part of a cancelled run. Tearing the run state
+  // down here would drop them, so the executor finishes and finalizes.
+  if (run.abort) {
+    run.abort();
+    return;
+  }
+
+  // Nothing is executing this run (it never started), so nobody else will
+  // finish it.
+  await writeRunLogs(runId);
   await writeChains.get(runId);
   activeRuns.delete(runId);
 }

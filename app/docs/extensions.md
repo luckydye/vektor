@@ -475,9 +475,64 @@ Create a ZIP file containing:
 
 Upload via the Vektor extensions management UI.
 
-## Job Disk Cache
+## Jobs
 
-Jobs now have optional disk cache helpers available as a runtime global:
+A job is a bundled JavaScript file that runs inside Vektor's sandboxed JS VM —
+not in Node. It gets its arguments from the `input` global and declares its
+result by calling `output()`:
+
+```ts
+// src/jobs/word-count.ts
+const { documentId } = input as { documentId: string };
+if (!documentId) throw new Error("Missing required input: documentId");
+
+const content = await readDocument(documentId);
+log(`Read ${content.length} bytes`);
+
+await output({
+  words: { type: "text", value: String(content.trim().split(/\s+/).length) },
+});
+```
+
+Throwing fails the job; the message lands in the run log. Ambient types for
+every global are in `extensions/job-runtime.d.ts`.
+
+### What a job can do
+
+There is no `require`, no `node:*` module, no filesystem and no network beyond
+the globals below. A capability that is not granted does not exist, so the way
+to add one is to add it to the host's capability table — not to import it.
+
+| Capability | Purpose |
+| --- | --- |
+| `input`, `output()`, `log()` | Arguments, result, run log |
+| `readDocument`, `writeDocument`, `createDocument`, `searchDocuments` | Space documents |
+| `uploadArtifact` | Persist a file and get a permanent URL |
+| `getSecret` | Space secrets |
+| `fetch` | The public internet. Loopback and private ranges are refused |
+| `apiFetch` | This instance's own API, authenticated as the run |
+| `agentPrompt` | One ACP agent turn, with progress streamed to the log |
+| `zip`, `spreadsheet`, `hash` | Archive, spreadsheet and digest helpers, run natively |
+| `scratch`, `exec` | A private directory, and the allowlisted conversion tools |
+| `jobCache` | Disk cache, isolated per job id |
+| `sleep`, `setTimeout` | Timers |
+
+Prefer the native helpers over bundling a library: `spreadsheet.toRows()` and
+`zip.read()` do the same work as `xlsx` and `fflate` without shipping a
+megabyte of JavaScript to be run by an interpreter.
+
+`exec` accepts only a fixed set of conversion tools (`pandoc`, `htmlq`,
+`rsvg-convert`, `qpdf`, `gs`, `libreoffice`), never a path, and runs without a
+shell, with the scratch directory as the working directory.
+
+### Bundling
+
+Jobs are evaluated as scripts, so a bundle must contain no `import` or `export`
+statements — inline every dependency and let the build strip the trailing export
+block (see `extensions/extensions/workflow-builder/build.ts`). Because a script
+has no top-level `return`, results go through `output()`.
+
+### Job Disk Cache
 
 ```ts
 declare const jobCache: {
@@ -492,6 +547,12 @@ declare const jobCache: {
 };
 ```
 
-- Cache files are persisted under the system temp directory (`os.tmpdir()`).
+- Cache files are persisted under the system temp directory.
 - Cache scope is isolated per job id.
 - Use `remember(...)` for cache-then-compute behavior.
+
+### Testing jobs
+
+Job globals do not exist under `bun test`. The workflow-builder extension
+preloads `test-setup.ts`, which installs equivalents backed by real libraries, so
+helpers can be unit-tested directly; copy that pattern for other extensions.

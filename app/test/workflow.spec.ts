@@ -4,7 +4,7 @@
  *   2. Converts each downloaded HTML page to markdown via the workflow-builder extension
  *   3. Asserts the output does not contain HTML tags
  *
- * The test spins up its own isolated server (noAuth + in-memory + unsandboxed jobs)
+ * The test spins up its own isolated server (noAuth + in-memory, API only)
  * so it can be run standalone without any pre-existing server or data directory.
  *
  * Requires outbound network access.
@@ -15,7 +15,12 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { createApiRequest, testBaseUrl, waitForServer } from "./helpers/server.ts";
+import {
+  createApiRequest,
+  testBaseUrl,
+  testServerCommand,
+  waitForServer,
+} from "./helpers/server.ts";
 
 const PORT = 7476;
 const BASE_URL = testBaseUrl(PORT);
@@ -135,13 +140,16 @@ async function readRunResult(run: RunState): Promise<Record<string, unknown>> {
 // ---------------------------------------------------------------------------
 
 beforeAll(async () => {
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+  serverProcess = Bun.spawn(testServerCommand(PORT), {
     env: {
       ...process.env,
       VEKTOR_NO_AUTH: "1",
       VEKTOR_IN_MEMORY_DB: "1",
       VEKTOR_API_ONLY: "1",
-      VEKTOR_JOB_ALLOW_UNSANDBOXED: "1",
+      // Jobs reach this instance's own API over loopback, which job `fetch` is
+      // not allowed to do; the capabilities they actually use go through
+      // apiFetch, but the test server itself is local.
+      VEKTOR_JOB_FETCH_ALLOW_PRIVATE: "1",
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       // Required to sign job tokens used for sub-job API calls

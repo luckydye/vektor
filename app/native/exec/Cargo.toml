@@ -12,7 +12,13 @@ napi-derive = "3"
 boa_engine = "0.21"
 boa_gc = "0.21"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order keeps object key order intact across the VM boundary; the
+# default map is a BTreeMap, which silently alphabetizes it.
+serde_json = { version = "1", features = ["preserve_order"] }
+# WHATWG-compliant URL parsing, so URL is not a hand-rolled regex.
+url = "2"
+# Real entropy for crypto.getRandomValues / randomUUID.
+getrandom = "0.3"
 
 [build-dependencies]
 napi-build = "2"

@@ -125,11 +125,21 @@ export function config() {
       YOUTRACK_OAUTH_USERINFO_URL: process.env.VEKTOR_YOUTRACK_OAUTH_USERINFO_URL,
 
       SECRETS_ENCRYPTION_KEY: process.env.VEKTOR_SECRETS_ENCRYPTION_KEY,
-      JOB_SANDBOX: process.env.VEKTOR_JOB_SANDBOX,
-      // Escape hatch to run extension jobs in-process (NO isolation). Jobs can
-      // read host files, env vars/secrets, and reach internal services, so this
-      // must only ever be enabled for trusted local development.
-      JOB_ALLOW_UNSANDBOXED: process.env.VEKTOR_JOB_ALLOW_UNSANDBOXED,
+
+      /**
+       * Which runtime executes extension jobs and workflow scripts. Only "boa"
+       * ships today; the setting names the choice so another executor can be
+       * plugged in without touching call sites. Isolation is not optional — there
+       * is no unsandboxed path.
+       */
+      JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
+      /**
+       * Allow job `fetch` to reach loopback and private address ranges. Off by
+       * default: that is where the internal API, the database and cloud metadata
+       * endpoints live, and jobs have capabilities for the space data they need.
+       * Only enable for local development against a private service.
+       */
+      JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
 
       /**
        * Comma-separated list of extension sources the server will accept.

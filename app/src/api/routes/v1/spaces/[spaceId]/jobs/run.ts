@@ -24,7 +24,6 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getExtensionPackage, listExtensions } from "#db/extensions.ts";
-import { resolveJobSandbox } from "#jobs/sandbox.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -66,8 +65,6 @@ export const POST: ApiRouteHandler = (context) =>
       if (!zipBuffer)
         return badRequestResponse(`Extension package not found for job "${jobId}"`);
 
-      const sandbox = await resolveJobSandbox();
-
       if (body.stream) {
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
@@ -88,15 +85,12 @@ export const POST: ApiRouteHandler = (context) =>
                   initiatedByUserId,
                   jobType: "single_job",
                   jobId,
-                  sandbox,
                 },
               );
               send({ type: "output", outputs });
             } catch (err) {
               const error = err instanceof Error ? err.message : "Job run failed";
               send({ type: "error", error });
-            } finally {
-              await sandbox?.destroy();
             }
 
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -115,25 +109,20 @@ export const POST: ApiRouteHandler = (context) =>
 
       // Sync mode: run inline and return outputs
       const logs: string[] = [];
-      try {
-        const outputs = await runJob(
-          zipBuffer,
-          entry,
-          inputs,
-          spaceId,
-          (msg) => logs.push(msg),
-          {
-            initiatedByUserId,
-            jobType: "single_job",
-            jobId,
-            sandbox,
-          },
-        );
+      const outputs = await runJob(
+        zipBuffer,
+        entry,
+        inputs,
+        spaceId,
+        (msg) => logs.push(msg),
+        {
+          initiatedByUserId,
+          jobType: "single_job",
+          jobId,
+        },
+      );
 
-        return jsonResponse({ outputs, logs });
-      } finally {
-        await sandbox?.destroy();
-      }
+      return jsonResponse({ outputs, logs });
     },
     {
       fallbackMessage: "Job run failed",
