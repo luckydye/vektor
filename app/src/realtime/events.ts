@@ -1,9 +1,15 @@
+/**
+ * In-process fan-out for realtime topic events: DB writes call `sendSyncEvent`,
+ * which coalesces per space over a short debounce window, and the WebSocket
+ * server (`websocket.ts`) subscribes to push them to connected clients.
+ */
+
 import {
   type RealtimeEventInput,
   type RealtimeTopic,
   type RealtimeTopicEvent,
   toRealtimeTopicEvent,
-} from "#realtime/protocol.ts";
+} from "./protocol.ts";
 
 export interface RealtimeEventEnvelope {
   spaceId: string;

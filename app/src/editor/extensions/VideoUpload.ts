@@ -2,7 +2,7 @@ import { type Editor, mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { isVideoFile } from "#utils/uploadFiles.ts";
+import { isVideoFile } from "#files/fileTypes.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
 export interface VideoUploadOptions {

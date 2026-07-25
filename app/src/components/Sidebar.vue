@@ -12,7 +12,7 @@ import {
   SIDEBAR_WIDTH_KEY,
   writeSidebarWidthCookie,
 } from "#utils/sidebarState.ts";
-import { Icon } from "./index.ts";
+import Icon from "./Icon.vue";
 import Navigation from "./Navigation.vue";
 
 const props = withDefaults(

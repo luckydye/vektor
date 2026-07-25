@@ -5,6 +5,7 @@ import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useProperties } from "#composeables/useProperties.ts";
+import type { Property } from "#documents/properties.ts";
 import {
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
@@ -22,12 +23,9 @@ import {
   gridGridIcon,
   peopleIcon,
 } from "~/src/assets/icons.ts";
-import type { Property } from "~/src/components/index.ts";
-import {
-  ButtonIconSmall,
-  PropertyChip,
-  PropertyPopover,
-} from "~/src/components/index.ts";
+import ButtonIconSmall from "./ButtonIconSmall.vue";
+import PropertyChip from "./PropertyChip.vue";
+import PropertyPopover from "./PropertyPopover.vue";
 
 const props = defineProps<{
   documentId?: string;

@@ -133,7 +133,7 @@
 import { computed, ref, watch } from "vue";
 import { type AIConfigMeta, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { ButtonPrimary } from "~/src/components/index.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
 
 const { currentSpace } = useSpace();
 

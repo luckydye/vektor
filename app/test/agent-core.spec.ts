@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Bash } from "just-bash";
 import { createAgentShell, runAgentPrompt } from "#agent/core.ts";
-import type { ChatMessage } from "#provider/types.ts";
+import type { ChatMessage } from "#api/provider/types.ts";
 
 const provider = {
   provider: "ollama" as const,

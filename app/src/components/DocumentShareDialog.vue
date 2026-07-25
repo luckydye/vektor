@@ -5,7 +5,7 @@ import { api } from "#api/client.ts";
 import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { Dialog } from "~/src/components/index.ts";
+import Dialog from "./Dialog.vue";
 import "./AvatarElement.ts";
 
 const props = defineProps<{

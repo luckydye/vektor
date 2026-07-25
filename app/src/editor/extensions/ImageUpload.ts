@@ -3,7 +3,7 @@ import Image from "@tiptap/extension-image";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { isImageFile } from "#utils/uploadFiles.ts";
+import { isImageFile } from "#files/fileTypes.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
 export interface ImageUploadOptions {

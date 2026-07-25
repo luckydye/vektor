@@ -1,7 +1,11 @@
-// Shared file classification and upload-URL helpers. Previously each upload
-// site (canvas, editor image/video, header image, AI chat) carried its own
-// copy of these checks with subtly different extension lists; centralising
-// them keeps the behaviour consistent everywhere.
+// Client-side file classification (does this `File` hold an image / video /
+// audio?) plus the upload-URL absolutiser. Previously each upload site (canvas,
+// editor image/video, header image, AI chat) carried its own copy of these
+// checks with subtly different extension lists; centralising them keeps the
+// behaviour consistent everywhere.
+//
+// Server-side upload path handling lives in `uploads.ts`; URL transform params
+// in `transformUrl.ts`.
 
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
 export const VIDEO_EXTENSIONS = ["mp4", "webm", "mov", "m4v", "avi", "mkv", "ogv", "ogg"];

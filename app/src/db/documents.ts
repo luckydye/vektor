@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
@@ -22,7 +23,6 @@ import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { createId } from "./ids.ts";
-import { extractMentionsFromHtml } from "./mentions.ts";
 import { createRevision, decompressHtml } from "./revisions.ts";
 import { document, file as fileTable, property, revision } from "./schema/space.ts";
 import {
@@ -40,7 +40,7 @@ export type {
 } from "./search.ts";
 export { rebuildSearchIndex, searchDocuments } from "./search.ts";
 
-import { sendSyncEvent } from "./ws.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
 
 const archivedDocumentCondition = sql`
   (

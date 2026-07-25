@@ -15,9 +15,10 @@ import {
   searchIcon,
   settingsIcon,
 } from "~/src/assets/icons.ts";
-import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
+import MenuLink from "./MenuLink.vue";
+import SpaceSelector from "./SpaceSelector.vue";
 import UserProfile from "./UserProfile.vue";
 
 // UI-specific Space interface for the selector component

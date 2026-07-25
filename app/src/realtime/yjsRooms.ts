@@ -6,12 +6,15 @@ import type { WebSocket } from "ws";
 import { prosemirrorJSONToYXmlFragment, updateYFragment } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
+import type { EditOperation } from "#documents/edit.ts";
+import { canvasSnapshotFromDoc, toCleanHtml } from "#documents/serialization.ts";
+import {
+  deserializeDocContent,
+  serializeDocContent,
+} from "#documents/serializationPool.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
-import { canvasSnapshotFromDoc, toCleanHtml } from "#serialization/core.ts";
-import { deserializeDocContent, serializeDocContent } from "#serialization/pool.ts";
-import type { EditOperation } from "#documents/edit.ts";
 import { stripScriptTags } from "#utils/html.ts";
 import {
   type PresenceEnvelope,

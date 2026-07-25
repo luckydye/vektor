@@ -11,6 +11,7 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
@@ -99,11 +100,6 @@ import {
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
-import {
-  CANVAS_CURSOR_COLOR_CHANGE_EVENT,
-  CANVAS_CURSOR_COLOR_STORAGE_KEY,
-  readCanvasCursorColorOverride,
-} from "#utils/userPreferences.ts";
 import {
   buildTransform,
   computeSnapGuides,
@@ -289,7 +285,7 @@ const currentUser = useUserProfile();
 const currentUserId = computed(() => currentUser.value?.id);
 // The explicit cursor-color preference overrides the automatic avatar color.
 // `null` means "automatic", so the presence color matches the user's avatar.
-const cursorColorOverride = ref<string | null>(readCanvasCursorColorOverride());
+const { cursorColorOverride } = useCanvasCursorColor();
 const cursorColor = computed<string>(
   () => cursorColorOverride.value ?? getAvatarColor(currentUser.value?.id),
 );
@@ -420,6 +416,9 @@ const remoteCanvasStrokeSelections = computed(() =>
 // pan/zoom.
 const isCameraMoving = ref(false);
 let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Presence carries the cursor color, so re-announce when the preference changes.
+watch(cursorColorOverride, () => updatePresence());
 
 watch(camera, () => {
   if (!isCameraMoving.value) {
@@ -1764,17 +1763,6 @@ function setSelectedStrokeColor(color: string) {
       stroke.set("updatedAt", Date.now());
     }
   });
-}
-
-function syncCursorColor() {
-  cursorColorOverride.value = readCanvasCursorColorOverride();
-  updatePresence();
-}
-
-function handleStorageChange(event: StorageEvent) {
-  if (event.key === CANVAS_CURSOR_COLOR_STORAGE_KEY) {
-    syncCursorColor();
-  }
 }
 
 function updateShapeFrame(id: string, patch: Partial<CanvasFrame>) {
@@ -3509,10 +3497,6 @@ onMounted(() => {
   colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
-  syncCursorColor();
-  window.addEventListener(CANVAS_CURSOR_COLOR_CHANGE_EVENT, syncCursorColor);
-  window.addEventListener("storage", handleStorageChange);
-
   updatePresence();
   isReady = true;
   if (savePrunedInvalidShapesWhenReady) {
@@ -3547,8 +3531,6 @@ onUnmounted(() => {
   window.removeEventListener("copy", handleCopy);
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
-  window.removeEventListener(CANVAS_CURSOR_COLOR_CHANGE_EVENT, syncCursorColor);
-  window.removeEventListener("storage", handleStorageChange);
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);

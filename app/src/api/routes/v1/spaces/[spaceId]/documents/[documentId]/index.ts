@@ -46,7 +46,6 @@ import {
 } from "#db/revisions.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
-import { sendSyncEvent } from "#db/ws.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
 import {
   contentIsHtml,
@@ -56,6 +55,7 @@ import {
 import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { getLiveDocumentContent } from "#realtime/yjsRooms.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";

@@ -62,3 +62,24 @@ export function propertyValueIncludes(
   const values = Array.isArray(value) ? value : value ? [value] : [];
   return values.some((item) => item === expected);
 }
+
+// ---------------------------------------------------------------------------
+// Property shapes used by the property UI
+// ---------------------------------------------------------------------------
+
+export type PropertyType = "text" | "select" | "multi-select" | "date" | "user";
+
+/** A single property on a document, as edited in the property UI. */
+export interface Property {
+  id: string;
+  name: string;
+  type: PropertyType;
+  value?: DocumentPropertyValue;
+}
+
+/** A property key known space-wide, with the values already used for it. */
+export interface SpaceProperty {
+  name: string;
+  type: string | null;
+  values: string[];
+}

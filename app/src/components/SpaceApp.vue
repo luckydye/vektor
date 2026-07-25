@@ -7,11 +7,11 @@ import {
   RouterView,
 } from "vue-router";
 import { api } from "#api/client.ts";
+import shortcuts from "#assets/shortcuts.json";
 import { useQueryClient } from "#composeables/query.ts";
 import { provideDocumentContext } from "#composeables/useDocument.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import shortcuts from "#config/shortcuts.json";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";

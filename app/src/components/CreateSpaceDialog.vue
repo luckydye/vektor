@@ -2,7 +2,10 @@
 import { ref, watch } from "vue";
 import { slugify } from "#utils/utils.ts";
 import { cancelIcon, confirmationIcon } from "~/src/assets/icons.ts";
-import { ButtonPrimary, ButtonSecondary, Dialog, Input } from "~/src/components/index.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import ButtonSecondary from "./ButtonSecondary.vue";
+import Dialog from "./Dialog.vue";
+import Input from "./Input.vue";
 
 interface Props {
   show?: boolean;

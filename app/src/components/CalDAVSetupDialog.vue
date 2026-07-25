@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref } from "vue";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
-import { Dialog } from "~/src/components/index.ts";
+import Dialog from "./Dialog.vue";
 
 const show = ref(false);
 const user = useUserProfile();

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ButtonPrimary, ButtonSecondary, Dialog } from "~/src/components/index.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import ButtonSecondary from "./ButtonSecondary.vue";
+import Dialog from "./Dialog.vue";
 
 export interface ExcelExportConfig {
   sheetNameColumn: string;

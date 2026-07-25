@@ -1,7 +1,7 @@
 import { api } from "#api/client.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { mediaTypeForFile } from "#utils/uploadFiles.ts";
+import { mediaTypeForFile } from "#files/fileTypes.ts";
 import {
   createDocumentLinkController,
   DOCUMENT_CANVAS_SERVICE,

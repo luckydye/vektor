@@ -1,5 +1,5 @@
 import "#editor/elements/file-attachment.ts";
-import { isMediaFile } from "#utils/uploadFiles.ts";
+import { isMediaFile } from "#files/fileTypes.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,

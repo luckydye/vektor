@@ -1,3 +1,9 @@
+import { proxyToAnthropic } from "#api/provider/anthropic.ts";
+import { proxyToOllama } from "#api/provider/ollama.ts";
+import {
+  getOpenAICompatibleChatCompletionsUrl,
+  getOpenAICompatibleHeaders,
+} from "#api/provider/openaiCompatible.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAIProvider } from "#db/aiConfig.ts";
 import {
@@ -9,12 +15,6 @@ import {
 } from "#db/api.ts";
 import { verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
-import { proxyToAnthropic } from "#provider/anthropic.ts";
-import { proxyToOllama } from "#provider/ollama.ts";
-import {
-  getOpenAICompatibleChatCompletionsUrl,
-  getOpenAICompatibleHeaders,
-} from "#provider/openaiCompatible.ts";
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(

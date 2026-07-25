@@ -10,7 +10,8 @@ import {
   usersGroupIcon,
   usersIcon,
 } from "~/src/assets/icons.ts";
-import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import ButtonSecondary from "./ButtonSecondary.vue";
 import "./AvatarElement.ts";
 
 const { currentSpace } = useSpace();

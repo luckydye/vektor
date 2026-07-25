@@ -3,7 +3,6 @@ import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
 import { auth } from "#auth";
 import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
-import { subscribeToSyncEvents } from "#db/ws.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import {
@@ -11,6 +10,7 @@ import {
   incrementWebSocketConnections,
 } from "#observability/metrics.ts";
 import { tracedSync } from "#observability/trace.ts";
+import { subscribeToSyncEvents } from "./events.ts";
 import { PresenceConnection } from "./presence.ts";
 import {
   isDocumentRealtimeTopic,

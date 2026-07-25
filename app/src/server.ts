@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { dev } from "astro";
 import { Hono } from "hono";
-import { stopSerializationPool } from "#serialization/pool.ts";
+import { stopSerializationPool } from "#documents/serializationPool.ts";
 import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";

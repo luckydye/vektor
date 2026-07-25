@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "#utils/lang.ts";
 import { arrowLeftIcon, lockElementIcon } from "~/src/assets/icons.ts";
-import { ButtonPrimary } from "~/src/components/index.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
 
 function goBack() {
   history.back();

@@ -7,9 +7,9 @@ import {
 } from "#db/documents.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
-import { sendSyncEvent } from "#db/ws.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { readWorkflowArtifact, writeWorkflowArtifact } from "./workflowArtifacts.ts";
 

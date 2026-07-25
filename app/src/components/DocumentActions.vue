@@ -12,15 +12,13 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
-import {
-  ButtonSecondary,
-  ContextMenu,
-  ContextMenuItem,
-  Icon,
-} from "~/src/components/index.ts";
+import ButtonSecondary from "./ButtonSecondary.vue";
+import ContextMenu from "./ContextMenu.vue";
+import ContextMenuItem from "./ContextMenuItem.vue";
 import Contributors from "./Contributors.vue";
 import DocumentShareDialog from "./DocumentShareDialog.vue";
 import HeaderImageDialog from "./HeaderImageDialog.vue";
+import Icon from "./Icon.vue";
 import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 import WorkflowRunButton from "./WorkflowRunButton.vue";
 

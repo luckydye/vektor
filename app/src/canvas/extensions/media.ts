@@ -1,11 +1,7 @@
 import { pointInRotatedShape } from "#canvas/viewport/geometry.ts";
 import { useUploads } from "#composeables/useUploads.ts";
+import { isMediaFile, mediaTypeForFile, toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
-import {
-  isMediaFile,
-  mediaTypeForFile,
-  toAbsoluteUploadUrl,
-} from "#utils/uploadFiles.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,

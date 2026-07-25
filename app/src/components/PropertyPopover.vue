@@ -4,8 +4,8 @@ import { t } from "#utils/lang.ts";
 import ButtonPrimary from "./ButtonPrimary.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";
+import type { Property, SpaceProperty } from "#documents/properties.ts";
 import { addIcon } from "~/src/assets/icons.ts";
-import type { Property, SpaceProperty } from "./property.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 
 interface Props {

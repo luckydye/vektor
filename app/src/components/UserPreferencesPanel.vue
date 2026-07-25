@@ -7,15 +7,11 @@ import {
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
-import {
-  clearCanvasCursorColor,
-  readCanvasCursorColorOverride,
-  saveCanvasCursorColor,
-} from "#utils/userPreferences.ts";
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 
@@ -25,7 +21,7 @@ const THEME_STORAGE_KEY = "user-theme-preference";
 const themePreference = ref<ThemePreference>("system");
 const currentUser = useUserProfile();
 // `null` means "automatic" — the presence color follows the user's avatar.
-const cursorColorOverride = ref<string | null>(readCanvasCursorColorOverride());
+const { cursorColorOverride, setCursorColor, clearCursorColor } = useCanvasCursorColor();
 const automaticCursorColor = computed(() => getAvatarColor(currentUser.value?.id));
 const cursorColor = computed(
   () => cursorColorOverride.value ?? automaticCursorColor.value,
@@ -84,15 +80,6 @@ const handleThemeChange = (event: Event) => {
   const preference = target.value;
   if (!isThemePreference(preference)) return;
   setThemePreference(preference);
-};
-
-const setCursorColor = (color: string) => {
-  cursorColorOverride.value = saveCanvasCursorColor(color);
-};
-
-const resetCursorColor = () => {
-  clearCanvasCursorColor();
-  cursorColorOverride.value = null;
 };
 
 const loadIntegrations = async () => {
@@ -161,8 +148,6 @@ onMounted(() => {
   } else {
     setThemePreference("system");
   }
-  cursorColorOverride.value = readCanvasCursorColorOverride();
-
   const url = new URL(window.location.href);
   const integrationStatus = url.searchParams.get("status");
   const integrationName = url.searchParams.get("integration");
@@ -228,7 +213,7 @@ watch(
           <button
             v-if="!isAutomaticCursorColor"
             type="button"
-            @click="resetCursorColor"
+            @click="clearCursorColor"
             class="text-label font-medium text-neutral-500 hover:text-neutral-900 transition-colors"
           >
             {{ t("Reset to automatic") }}

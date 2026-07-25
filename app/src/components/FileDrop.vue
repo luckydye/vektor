@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { Icon } from "~/src/components/index.ts";
+import Icon from "./Icon.vue";
 
 const props = defineProps<{
   accept?: string;

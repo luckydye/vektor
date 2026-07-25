@@ -3,12 +3,10 @@ import { ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
 import { config } from "#config";
 import { type TranslationKey, t } from "#utils/lang.ts";
-import {
-  ButtonPrimary,
-  ButtonSecondary,
-  FormField,
-  Input,
-} from "~/src/components/index.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import ButtonSecondary from "./ButtonSecondary.vue";
+import FormField from "./FormField.vue";
+import Input from "./Input.vue";
 
 const props = defineProps<{
   lang?: string;

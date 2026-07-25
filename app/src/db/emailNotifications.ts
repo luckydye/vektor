@@ -1,10 +1,10 @@
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { config } from "#config";
+import { getUniqueMentionedEmails } from "#documents/mentions.ts";
 import { DOCUMENT_CONTRIBUTION_AUDIT_EVENTS } from "./auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "./db.ts";
 import { getDocumentEmailMutedUserIds } from "./emailNotificationPreferences.ts";
 import { createId } from "./ids.ts";
-import { getUniqueMentionedEmails } from "./mentions.ts";
 import { getPublishedContent } from "./revisions.ts";
 import { user } from "./schema/auth.ts";
 import { auditLog, comment, document, emailNotificationOutbox } from "./schema/space.ts";

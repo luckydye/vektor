@@ -2,8 +2,8 @@
 import { ref, watch } from "vue";
 import "@atrium-ui/elements/popover";
 import { t } from "#utils/lang.ts";
-import { Icon } from "~/src/components/index.ts";
 import FileDrop from "./FileDrop.vue";
+import Icon from "./Icon.vue";
 
 const HEADER_IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 

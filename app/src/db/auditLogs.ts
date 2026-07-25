@@ -1,8 +1,8 @@
 import { desc, eq, sql } from "drizzle-orm";
+import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import type { getSpaceDb } from "./db.ts";
 import { type AuditLog, auditLog } from "./schema.ts";
-import { sendSyncEvent } from "./ws.ts";
 
 /**
  * Types of audit events that can be logged

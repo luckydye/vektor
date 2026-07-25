@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { twMerge } from "tailwind-merge";
 import { computed, onMounted, ref } from "vue";
+import type { Property } from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
 import Icon from "./Icon.vue";
-import type { Property } from "./property.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";

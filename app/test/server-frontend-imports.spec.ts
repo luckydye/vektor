@@ -39,9 +39,9 @@ const FRONTEND_PACKAGES = [
 /** Server-side entry points into document handling. */
 const SERVER_ROOTS = [
   "src/editor/extensions.ts",
-  "src/serialization/core.ts",
-  "src/serialization/worker.ts",
-  "src/serialization/pool.ts",
+  "src/documents/serialization.ts",
+  "src/documents/serializationWorker.ts",
+  "src/documents/serializationPool.ts",
   "src/realtime/yjsRooms.ts",
 ];
 

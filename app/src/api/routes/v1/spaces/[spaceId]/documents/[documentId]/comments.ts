@@ -25,8 +25,8 @@ import {
 import { getAuthDb, getSpaceDb } from "#db/db.ts";
 import { enqueueCommentCreatedEmails } from "#db/emailNotifications.ts";
 import { user as userTable } from "#db/schema/auth.ts";
-import { sendSyncEvent } from "#db/ws.ts";
 import { appLogger } from "#observability/logger.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 
 export const GET: ApiRouteHandler = (context) =>

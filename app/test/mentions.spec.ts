@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { generateHTML } from "@tiptap/html";
-import { extractMentionsFromHtml, getUniqueMentionedEmails } from "#db/mentions.ts";
+import {
+  extractMentionsFromHtml,
+  getUniqueMentionedEmails,
+} from "#documents/mentions.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 
 describe("Mention document schema", () => {

@@ -12,10 +12,7 @@ import * as Y from "yjs";
 import { api } from "#api/client.ts";
 import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import {
-  CANVAS_CURSOR_COLOR_CHANGE_EVENT,
-  readCanvasCursorColorOverride,
-} from "#utils/userPreferences.ts";
+import { useCanvasCursorColor } from "./useCanvasCursorColor.ts";
 import { useUserProfile } from "./useUserProfile.ts";
 
 export type CollaborationPresenceProfile<TState> = {
@@ -24,13 +21,17 @@ export type CollaborationPresenceProfile<TState> = {
   state: TState | null;
 };
 
+// Module scope: the composable holds a shared ref and installs no lifecycle
+// hooks, so presenceColor() below can read it outside a component context.
+const { cursorColorOverride } = useCanvasCursorColor();
+
 /**
  * The local user's presence color: the explicit cursor-color preference when
  * set, otherwise the automatic avatar-derived color. Shared by canvas and
  * editor presence so a user shows up in one consistent color everywhere.
  */
 function presenceColor(user: { id: string }): string {
-  return readCanvasCursorColorOverride() ?? getAvatarColor(user.id);
+  return cursorColorOverride.value ?? getAvatarColor(user.id);
 }
 
 export type CollaborationSession<TPresenceState = unknown> = ReturnType<
@@ -341,23 +342,17 @@ export function useCollaboration<TPresenceState>(options: {
     void setupPresence();
   }
 
+  watch(cursorColorOverride, handleCursorColorPreferenceChange);
+
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", clearPresence);
     window.addEventListener("beforeunload", clearPresence);
-    window.addEventListener(
-      CANVAS_CURSOR_COLOR_CHANGE_EVENT,
-      handleCursorColorPreferenceChange,
-    );
   }
 
   onUnmounted(() => {
     if (typeof window !== "undefined") {
       window.removeEventListener("pagehide", clearPresence);
       window.removeEventListener("beforeunload", clearPresence);
-      window.removeEventListener(
-        CANVAS_CURSOR_COLOR_CHANGE_EVENT,
-        handleCursorColorPreferenceChange,
-      );
     }
     leave();
   });
