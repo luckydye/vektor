@@ -5,6 +5,7 @@ import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import databasePreview from "#assets/new-document-picker/database-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?raw";
+import { type TranslationKey, t } from "#utils/lang.ts";
 import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "~/src/assets/icons.ts";
 
 const router = useRouter();
@@ -15,10 +16,10 @@ type DocumentType = "document" | "canvas" | "workflow" | "database";
 
 const documentOptions: Array<{
   type: DocumentType;
-  title: string;
-  description: string;
+  title: TranslationKey;
+  description: TranslationKey;
   icon: string;
-  illustration: string;
+  illustration?: string;
 }> = [
   {
     type: "document",
@@ -39,14 +40,12 @@ const documentOptions: Array<{
     title: "Workflow",
     description: "Map steps and automate processes with ease.",
     icon: boltIcon,
-    illustration: workflowPreview,
   },
   {
     type: "database",
     title: "Database",
     description: "Organize and manage data in structured tables.",
     icon: databaseIcon,
-    illustration: databasePreview,
   },
 ];
 
@@ -87,17 +86,14 @@ onUnmounted(() => {
       v-if="visible"
       role="dialog"
       class="relative z-10 flex justify-center pt-6 pb-8 pointer-events-none"
-      aria-label="Select document type"
+      :aria-label="t('Select document type')"
     >
       <div
         class="new-document-picker pointer-events-auto w-full max-w-[1120px] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100"
       >
         <div class="flex flex-col items-center text-center mb-8">
-          <h2 class="text-[28px] leading-tight font-semibold text-neutral-900">
-            Create your first content
-          </h2>
           <p class="mt-2 text-size-large text-neutral-500">
-            Choose a format to get started. You can always switch later.
+            {{ t("Choose a format to get started.") }}
           </p>
         </div>
 
@@ -106,28 +102,29 @@ onUnmounted(() => {
             v-for="option in documentOptions"
             :key="option.type"
             type="button"
-            class="group picker-card grid min-h-[154px] grid-cols-[minmax(0,1fr)_minmax(170px,230px)] gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
+            class="group picker-card grid min-h-[154px] gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
             @click="selectType(option.type)"
           >
             <span class="flex min-w-0 items-start gap-4">
               <span
-                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 transition-colors group-hover:bg-emerald-100"
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 transition-colors group-hover:bg-primary-100"
               >
                 <span class="svg-icon h-6 w-6" v-html="option.icon" />
               </span>
               <span class="min-w-0 pt-1">
                 <span class="block text-[21px] leading-7 font-semibold text-neutral-900">
-                  {{ option.title }}
+                  {{ t(option.title) }}
                 </span>
                 <span
                   class="mt-1 block max-w-[240px] text-size-medium leading-6 text-neutral-500"
                 >
-                  {{ option.description }}
+                  {{ t(option.description) }}
                 </span>
               </span>
             </span>
 
             <span
+              v-if="option.illustration"
               class="picker-preview"
               aria-hidden="true"
               v-html="option.illustration"

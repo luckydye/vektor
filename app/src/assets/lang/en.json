@@ -358,5 +358,15 @@
   "selected": "selected",
   "Deselect all": "Deselect all",
   "No documents": "No documents",
-  "No documents in the selected date range": "No documents in the selected date range"
+  "No documents in the selected date range": "No documents in the selected date range",
+  "Choose a format to get started.": "Choose a format to get started.",
+  "Select document type": "Select document type",
+  "Doc": "Doc",
+  "Write, organize, and collaborate in a structured document.": "Write, organize, and collaborate in a structured document.",
+  "Canvas": "Canvas",
+  "Visualize ideas and connect things on a flexible canvas.": "Visualize ideas and connect things on a flexible canvas.",
+  "Workflow": "Workflow",
+  "Map steps and automate processes with ease.": "Map steps and automate processes with ease.",
+  "Database": "Database",
+  "Organize and manage data in structured tables.": "Organize and manage data in structured tables."
 }

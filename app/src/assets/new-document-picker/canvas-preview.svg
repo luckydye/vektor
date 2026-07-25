@@ -11,7 +11,7 @@
   <path d="M1 1h228v114H1V1Z" fill="url(#canvasPreviewDots)" />
   <path
     d="M82 38c30 0 30 34 56 34M77 59c0 20 24 20 42 20M171 73v21"
-    stroke="#B9E7DE"
+    stroke="var(--color-primary-50)"
     stroke-width="2"
     stroke-linecap="round"
   />
@@ -23,11 +23,11 @@
     rx="7"
     fill="white"
     fill-opacity=".9"
-    stroke="#99F6E4"
+    stroke="var(--color-primary-200)"
     stroke-width="2"
   />
-  <rect x="48" y="32" width="39" height="5" rx="2.5" fill="#14B8A6" opacity=".25" />
-  <rect x="48" y="45" width="28" height="5" rx="2.5" fill="#14B8A6" opacity=".18" />
+  <rect x="48" y="32" width="39" height="5" rx="2.5" fill="var(--color-primary-600)" opacity=".25" />
+  <rect x="48" y="45" width="28" height="5" rx="2.5" fill="var(--color-primary-600)" opacity=".18" />
   <rect
     x="142"
     y="50"
