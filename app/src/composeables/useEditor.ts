@@ -1,4 +1,5 @@
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
+import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
 import { supportsDocumentEditor } from "#utils/documentTypes.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
@@ -24,6 +25,18 @@ export const hasChanges = ref(false);
  * (discard unsaved HTML, cancel the debounce).
  */
 export const cancelCount = ref(0);
+
+// The editor keymap handles Escape inside its shadow-DOM contenteditable, but
+// the extension that owns that keymap is also built on the server to derive the
+// document schema — so it must not import Vue. Register the behaviour from this
+// (client-only) module instead; on the server no handler is ever registered and
+// Escape simply falls through. See `#editor/editSession.ts`.
+setEditSessionCancelHandler(() => {
+  if (!editing.value) return false;
+  editing.value = false;
+  cancelCount.value += 1;
+  return true;
+});
 
 /** Called by DocumentContent on mount to clear any stale state from a previous page. */
 export function resetEditingState() {

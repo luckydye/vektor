@@ -8,7 +8,7 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { cancelCount, editing } from "#composeables/useEditor.ts";
+import { cancelEditSession } from "./editSession.ts";
 import {
   INDENT_STEP_EM,
   INDENT_TYPES,
@@ -239,12 +239,9 @@ const BaseSelectionShortcuts = Extension.create({
       // reliably while focus is inside the editor's shadow-DOM contenteditable.
       // Suggestion/mention popups register their own Escape handlers that run
       // first while open, so this only triggers when no popup is consuming it.
-      Escape: () => {
-        if (!editing.value) return false;
-        editing.value = false;
-        cancelCount.value += 1;
-        return true;
-      },
+      // Returns false when no edit session is active — and on the server, where
+      // no cancel handler is ever registered.
+      Escape: () => cancelEditSession(),
       // Publish the current draft. Runs the document:save:publish action (only
       // registered during an active editor session); handled here too so it
       // fires reliably while focus is in the editor's shadow-DOM contenteditable.
@@ -444,9 +441,13 @@ export function createBaseEditor(options: BaseEditorOptions): Editor {
   });
 }
 
+// `mentions` and `htmlBlock` default to the schema-only nodes so the server can
+// build a schema without importing lit-html; the editor passes the interactive,
+// lit-rendered variants (`MentionSuggestions`, `HtmlBlockNodeView`) instead.
 export function documentExtensions(
   context: EditorContext = {},
   mentions: Extensions[number] = Mentions,
+  htmlBlock: Extensions[number] = HtmlBlock,
 ): Extensions {
   const { spaceId = "", documentId } = context;
 
@@ -499,7 +500,7 @@ export function documentExtensions(
     TicketLink,
     ColumnLayout,
     ColumnItem,
-    HtmlBlock,
+    htmlBlock,
     DatePicker,
     FigmaEmbed,
     mentions,

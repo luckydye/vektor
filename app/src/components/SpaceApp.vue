@@ -16,6 +16,9 @@ import { Actions } from "#utils/actions.js";
 import { extensions } from "#utils/extensions.ts";
 import { history } from "#utils/history.ts";
 import { currentLang, languageInjectionKey } from "#utils/lang.ts";
+// Side effect: registers the Vue-injected locale lookup with `lang.ts`, which
+// stays framework-free so server-side document serialization does not load Vue.
+import "#utils/langVue.ts";
 import { parseSidebarWidth } from "#utils/sidebarState.ts";
 import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";

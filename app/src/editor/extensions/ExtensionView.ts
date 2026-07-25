@@ -1,6 +1,5 @@
 import type { CommandProps } from "@tiptap/core";
 import { mergeAttributes, Node } from "@tiptap/core";
-import { extensions } from "~/src/utils/extensions.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -73,17 +72,26 @@ export const ExtensionView = Node.create({
       let cleanup: (() => void) | null = null;
 
       if (extensionId && routePath) {
-        extensions.renderInlineView(extensionId, routePath, dom).then((fn) => {
-          cleanup = fn;
-          if (!fn) {
-            const placeholder = document.createElement("div");
-            placeholder.className = "extension-view-block__unavailable";
-            placeholder.textContent = "Extension view unavailable";
-            placeholder.style.cssText =
-              "padding: 1rem; color: var(--color-neutral-500); font-size: 0.875rem;";
-            dom.appendChild(placeholder);
-          }
-        });
+        // Loaded on demand: the extension manager fetches and evaluates
+        // extension frontend bundles, which only makes sense in the browser.
+        // This node is part of `contentExtensions`, which the server builds to
+        // (de)serialize documents — a static import would drag the manager (and
+        // its Vue dependencies) into the server for no reason.
+        import("~/src/utils/extensions.ts")
+          .then(({ extensions }) =>
+            extensions.renderInlineView(extensionId, routePath, dom),
+          )
+          .then((fn) => {
+            cleanup = fn;
+            if (!fn) {
+              const placeholder = document.createElement("div");
+              placeholder.className = "extension-view-block__unavailable";
+              placeholder.textContent = "Extension view unavailable";
+              placeholder.style.cssText =
+                "padding: 1rem; color: var(--color-neutral-500); font-size: 0.875rem;";
+              dom.appendChild(placeholder);
+            }
+          });
       }
 
       return {

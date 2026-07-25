@@ -3,7 +3,6 @@ import Image from "@tiptap/extension-image";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { useUploads } from "#composeables/useUploads.ts";
 import { isImageFile } from "#utils/uploadFiles.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
@@ -20,6 +19,11 @@ async function uploadImage(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
+  // Loaded on demand: uploading only ever happens in the browser, and this
+  // extension is part of `contentExtensions`, which the server builds to
+  // (de)serialize documents. A static import would pull the Vue runtime into
+  // the server (and every serialization worker) just to build a schema.
+  const { useUploads } = await import("#composeables/useUploads.ts");
   // The editor shows its own inline placeholder/error, so the manager only
   // drives the progress + success toast (errorToast disabled).
   const result = await useUploads().uploadFile(file, {

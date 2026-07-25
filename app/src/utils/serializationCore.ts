@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 import { getSchema } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
+import * as html5parser from "html5parser";
 import { prosemirrorToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { contentExtensions } from "#editor/extensions.ts";
@@ -56,14 +57,32 @@ export function toCleanHtml(
     type: string;
     content?: JSONContent[];
   };
-  return (json.content ?? [])
-    .map((node) =>
-      generateHTML({ type: json.type, content: [node] }, extensions).replaceAll(
-        ' xmlns="http://www.w3.org/1999/xhtml"',
-        "",
-      ),
-    )
-    .join("\n");
+  if (!json.content?.length) return "";
+
+  // Serialize the whole document in one pass. `generateHTML` builds a schema, a
+  // DOMSerializer and a fresh happy-dom Window on every call, so calling it once
+  // per block made serialization O(blocks) in DOM environments: a 4 MiB
+  // append-only log took ~14s and 8.8GB of RSS here, which is what OOM-killed
+  // the server (and blew past the serialization pool's request timeout, so the
+  // main thread then redid the same work in-process).
+  const html = generateHTML(json, extensions).replaceAll(
+    ' xmlns="http://www.w3.org/1999/xhtml"',
+    "",
+  );
+
+  // Re-split on top-level boundaries to restore one block per line. Slicing the
+  // serializer's own output keeps every block's markup and escaping identical to
+  // serializing that block on its own, and costs one string-level parse instead
+  // of one DOM per block. Whitespace between blocks is dropped, matching the
+  // previous per-block output (a ProseMirror doc holds only block nodes, so
+  // top-level text nodes are not expected).
+  const lines: string[] = [];
+  for (const node of html5parser.parse(html)) {
+    const source = html.slice(node.start, node.end);
+    if (node.type === html5parser.SyntaxKind.Text && !source.trim()) continue;
+    lines.push(source);
+  }
+  return lines.join("\n");
 }
 
 /** Builds a Y.Doc from persisted content (canvas snapshot JSON or HTML). */

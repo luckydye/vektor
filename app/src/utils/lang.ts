@@ -1,4 +1,4 @@
-import { hasInjectionContext, type InjectionKey, inject } from "vue";
+import type { InjectionKey } from "vue";
 import de from "#assets/lang/de.json";
 import en from "#assets/lang/en.json";
 
@@ -19,12 +19,27 @@ function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;
 }
 
+let localeResolver: (() => string | undefined) | null = null;
+
+/**
+ * Registers the Vue-injected locale lookup. Called for its side effect by
+ * `#utils/langVue.ts`, which the app root imports.
+ *
+ * This module is reached from server code (document serialization pulls in
+ * `utils.ts`, which formats relative times), and importing Vue here dragged the
+ * whole Vue runtime and compiler into the server process and into every
+ * serialization worker. Keeping the injection lookup behind this seam lets the
+ * server translate strings without a UI framework; with no resolver registered
+ * `currentLang` simply falls through to the environment locale.
+ */
+export function setLocaleResolver(resolver: (() => string | undefined) | null): void {
+  localeResolver = resolver;
+}
+
 export function currentLang(): string {
-  if (hasInjectionContext()) {
-    const injectedLang = inject(languageInjectionKey, undefined);
-    if (injectedLang) {
-      return normalizeLang(injectedLang);
-    }
+  const injectedLang = localeResolver?.();
+  if (injectedLang) {
+    return normalizeLang(injectedLang);
   }
 
   if (typeof navigator !== "undefined" && navigator.language) {
