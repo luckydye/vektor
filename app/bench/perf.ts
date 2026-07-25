@@ -491,9 +491,10 @@ async function seed(): Promise<SeedState> {
 
       // Top-level comments (need reference)
       for (let c = 0; c < topCount; c++) {
-        const res = await api(`/api/v1/spaces/${spaceId}/documents/${docId}/comments`, {
+        const res = await api(`/api/v1/spaces/${spaceId}/comments`, {
           method: "POST",
           body: JSON.stringify({
+            documentId: docId,
             content: randomItem(LOREM_SENTENCES),
             reference: `block-${randomInt(1, 20)}`,
             type: "text",
@@ -512,9 +513,10 @@ async function seed(): Promise<SeedState> {
       for (const parentId of topIds) {
         if (Math.random() > 0.3) continue;
         for (let r = 0; r < randomInt(1, 3); r++) {
-          const res = await api(`/api/v1/spaces/${spaceId}/documents/${docId}/comments`, {
+          const res = await api(`/api/v1/spaces/${spaceId}/comments`, {
             method: "POST",
             body: JSON.stringify({
+              documentId: docId,
               content: randomItem(LOREM_SENTENCES),
               parentId,
               type: "text",
@@ -796,7 +798,7 @@ async function bench(state: SeedState): Promise<BenchResult> {
 
   const commentList = await measureN("GET comments", 300, async () => {
     const id = randomItem(documentIds);
-    await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}/comments`);
+    await apiJson(`/api/v1/spaces/${spaceId}/comments?documentId=${id}`);
   });
 
   const auditLogList = await measureN("GET doc audit-logs", 300, async () => {
@@ -924,7 +926,7 @@ async function bench(state: SeedState): Promise<BenchResult> {
   );
 
   payloads.commentList = await measurePayload("GET comments", 50, async () =>
-    getBytes(`/api/v1/spaces/${spaceId}/documents/${randomItem(documentIds)}/comments`),
+    getBytes(`/api/v1/spaces/${spaceId}/comments?documentId=${randomItem(documentIds)}`),
   );
 
   payloads.searchResult = await measurePayload("GET search (limit 20)", 20, async (i) => {

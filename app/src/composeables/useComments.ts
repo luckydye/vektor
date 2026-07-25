@@ -57,21 +57,18 @@ export function useComments(options: {
       if (!options.spaceId.value || !options.documentId.value) {
         throw new Error("Space ID and Document ID are required");
       }
-      return await api.documentComments.get(
-        options.spaceId.value,
-        options.documentId.value,
-      );
+      return await api.comments.get(options.spaceId.value, options.documentId.value);
     },
     initialData: async () => {
       if (!options.spaceId.value || !options.documentId.value) return undefined;
-      return await api.documentComments.getCached(
+      return await api.comments.getCached(
         options.spaceId.value,
         options.documentId.value,
       );
     },
     subscribe: (callback) => {
       if (!options.spaceId.value || !options.documentId.value) return () => {};
-      return api.documentComments.subscribeCached(
+      return api.comments.subscribeCached(
         options.spaceId.value,
         options.documentId.value,
         callback,
@@ -120,16 +117,12 @@ export function useComments(options: {
             })
           : reference;
 
-      return await api.documentComments.post(
-        options.spaceId.value,
-        options.documentId.value,
-        {
-          content,
-          parentId: null,
-          reference: payloadReference,
-          type: "comment",
-        },
-      );
+      return await api.comments.post(options.spaceId.value, options.documentId.value, {
+        content,
+        parentId: null,
+        reference: payloadReference,
+        type: "comment",
+      });
     },
     onError: (error) => {
       console.error("Error posting comment:", error);
@@ -142,7 +135,7 @@ export function useComments(options: {
       if (!options.spaceId.value || !options.documentId.value) {
         throw new Error("Space ID and Document ID are required");
       }
-      return await api.documentComments.delete(
+      return await api.comments.delete(
         options.spaceId.value,
         options.documentId.value,
         commentId,
@@ -175,7 +168,7 @@ export function useComments(options: {
         .map((c: Comment) => c.id);
       if (commentIds.length === 0) return null;
 
-      await api.documentComments.resolve(
+      await api.comments.resolve(
         options.spaceId.value,
         options.documentId.value,
         commentIds,
@@ -207,7 +200,7 @@ export function useComments(options: {
       if (commentIds.length === 0) return null;
 
       const newReference = String(Math.round(y));
-      await api.documentComments.patch(options.spaceId.value, options.documentId.value, {
+      await api.comments.patch(options.spaceId.value, options.documentId.value, {
         commentIds,
         reference: newReference,
       });

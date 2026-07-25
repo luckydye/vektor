@@ -18,9 +18,9 @@ import * as aiChatSessions from "./routes/v1/spaces/[spaceId]/ai-chat/sessions/i
 import * as spaceAuditLogs from "./routes/v1/spaces/[spaceId]/audit-logs.ts";
 import * as category from "./routes/v1/spaces/[spaceId]/categories/[id].ts";
 import * as categories from "./routes/v1/spaces/[spaceId]/categories/index.ts";
+import * as spaceComments from "./routes/v1/spaces/[spaceId]/comments.ts";
 import * as documentBreadcrumbs from "./routes/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs.ts";
 import * as documentChildren from "./routes/v1/spaces/[spaceId]/documents/[documentId]/children.ts";
-import * as documentComments from "./routes/v1/spaces/[spaceId]/documents/[documentId]/comments.ts";
 import * as documentContributors from "./routes/v1/spaces/[spaceId]/documents/[documentId]/contributors.ts";
 import * as documentDiff from "./routes/v1/spaces/[spaceId]/documents/[documentId]/diff.ts";
 import * as documentEdit from "./routes/v1/spaces/[spaceId]/documents/[documentId]/edit.ts";
@@ -112,6 +112,8 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/categories", module: categories },
   { pattern: "/api/v1/spaces/[spaceId]/categories/[id]", module: category },
 
+  { pattern: "/api/v1/spaces/[spaceId]/comments", module: spaceComments },
+
   { pattern: "/api/v1/spaces/[spaceId]/documents", module: documents },
   { pattern: "/api/v1/spaces/[spaceId]/documents/archived", module: documentsArchived },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]", module: document },
@@ -122,10 +124,6 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/children",
     module: documentChildren,
-  },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/comments",
-    module: documentComments,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/contributors",

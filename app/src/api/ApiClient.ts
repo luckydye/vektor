@@ -584,8 +584,8 @@ export class ApiClient {
     return `/api/v1/spaces/${spaceId}/documents`;
   }
 
-  private documentCommentsPath(spaceId: string, documentId: string): string {
-    return `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`;
+  private commentsPath(spaceId: string, documentId: string): string {
+    return `/api/v1/spaces/${spaceId}/comments?documentId=${encodeURIComponent(documentId)}`;
   }
 
   private categorySlugsQuery(categorySlugs: string[]): string {
@@ -888,7 +888,8 @@ export class ApiClient {
       throw new Error(message ?? responseBody);
     }
 
-    const data = (await response.json()) as T;
+    const responseText = await response.text();
+    const data = (responseText ? JSON.parse(responseText) : undefined) as T;
     if (responseReplicaKey) {
       await this.responseReplica.replaceRemote(responseReplicaKey, data);
     }
@@ -2407,14 +2408,14 @@ export class ApiClient {
     },
   };
 
-  documentComments = {
+  comments = {
     /**
      * Get all comments for a document
      */
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{ comments: Comment[] }>(
         this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`,
+        this.commentsPath(spaceId, documentId),
       );
       return response.comments;
     },
@@ -2422,7 +2423,7 @@ export class ApiClient {
     getCached: async (spaceId: string, documentId: string) => {
       return (
         await this.readReplica<{ comments: Comment[] }>(
-          this.documentCommentsPath(spaceId, documentId),
+          this.commentsPath(spaceId, documentId),
         )
       )?.comments;
     },
@@ -2433,7 +2434,7 @@ export class ApiClient {
       callback: (comments: Comment[] | undefined) => void,
     ) => {
       return this.subscribeToReplica<{ comments: Comment[] }>(
-        this.documentCommentsPath(spaceId, documentId),
+        this.commentsPath(spaceId, documentId),
         (response) => callback(response?.comments),
       );
     },
@@ -2451,7 +2452,7 @@ export class ApiClient {
         type: string;
       },
     ) => {
-      const path = `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`;
+      const path = this.commentsPath(spaceId, documentId);
       const optimisticId =
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? `optimistic-${crypto.randomUUID()}`
@@ -2476,7 +2477,12 @@ export class ApiClient {
               ? { ...cached, comments: [...cached.comments, optimisticComment] }
               : cached,
           ),
-        () => this.apiPost<{ comment: Comment }>(this.baseUrl, path, body),
+        () =>
+          this.apiPost<{ comment: Comment }>(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/comments`,
+            { ...body, documentId },
+          ),
         async (response) => {
           await this.updateRemoteReplica<{ comments: Comment[] }>(path, (cached) => ({
             ...cached,
@@ -2501,7 +2507,7 @@ export class ApiClient {
         reference: string;
       },
     ) => {
-      const path = `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`;
+      const path = this.commentsPath(spaceId, documentId);
       await this.withOptimisticReplica(
         () =>
           this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
@@ -2516,9 +2522,14 @@ export class ApiClient {
                 }
               : cached,
           ),
-        () => this.apiPatch<{ success: boolean }>(this.baseUrl, path, body),
+        () =>
+          this.apiPatch<{ success: boolean }>(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/comments`,
+            { ...body, documentId },
+          ),
         async () => {
-          await this.documentComments.get(spaceId, documentId).catch(() => undefined);
+          await this.comments.get(spaceId, documentId).catch(() => undefined);
         },
       );
     },
@@ -2527,7 +2538,7 @@ export class ApiClient {
      * Resolve (archive) a thread — all comments sharing the same reference
      */
     resolve: async (spaceId: string, documentId: string, commentIds: string[]) => {
-      const path = `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`;
+      const path = this.commentsPath(spaceId, documentId);
       await this.withOptimisticReplica(
         () =>
           this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
@@ -2541,12 +2552,13 @@ export class ApiClient {
               : cached,
           ),
         () =>
-          this.apiPatch<{ success: boolean }>(this.baseUrl, path, {
-            commentIds,
-            archived: true,
-          }),
+          this.apiPatch<{ success: boolean }>(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/comments`,
+            { commentIds, archived: true, documentId },
+          ),
         async () => {
-          await this.documentComments.get(spaceId, documentId).catch(() => undefined);
+          await this.comments.get(spaceId, documentId).catch(() => undefined);
         },
       );
     },
@@ -2555,7 +2567,7 @@ export class ApiClient {
      * Delete a comment
      */
     delete: async (spaceId: string, documentId: string, commentId: string) => {
-      const path = `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`;
+      const path = this.commentsPath(spaceId, documentId);
       await this.withOptimisticReplica(
         () =>
           this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
@@ -2567,12 +2579,12 @@ export class ApiClient {
               : cached,
           ),
         () =>
-          this.apiFetch<void>(this.baseUrl, path, {
+          this.apiFetch<void>(this.baseUrl, `/api/v1/spaces/${spaceId}/comments`, {
             method: "DELETE",
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ commentId }),
+            body: JSON.stringify({ commentId, documentId }),
           }),
         async () => {
           await this.updateRemoteReplica<{ comments: Comment[] }>(path, (cached) => ({

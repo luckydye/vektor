@@ -59,6 +59,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET | `/spaces/:spaceId/members` | List space members with roles |
 | GET | `/spaces/:spaceId/properties` | List all document property keys/values in space |
 | GET | `/spaces/:spaceId/audit-logs` | Space-wide (or `?documentId=` scoped) audit log (paginated) |
+| GET/POST/PATCH/DELETE | `/spaces/:spaceId/comments` | List / create / update / delete comments (`documentId` scoped) |
 | GET/POST/PUT | `/spaces/:spaceId/categories` | List / create / reorder categories |
 | GET/PUT/DELETE | `/spaces/:spaceId/categories/:id` | Read / update / delete a category |
 | GET/POST | `/spaces/:spaceId/permissions` | List / grant-deny-revoke roles & features |
@@ -92,7 +93,6 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET | `/spaces/:spaceId/documents/:documentId/children` | List direct child documents |
 | GET | `/spaces/:spaceId/documents/:documentId/breadcrumbs` | Ancestor chain for a document |
 | GET | `/spaces/:spaceId/documents/:documentId/contributors` | Users who have edited the document |
-| GET/POST/PATCH/DELETE | `/spaces/:spaceId/documents/:documentId/comments` | List / create / update / delete comments |
 | GET | `/spaces/:spaceId/documents/:documentId/diff` | Unified/inline diff between a revision and its base |
 | POST | `/spaces/:spaceId/documents/:documentId/edit` | Apply structured partial edit operations (live-merge aware) |
 | GET/PATCH | `/spaces/:spaceId/documents/:documentId/email-preference` | Read / set per-user email-mute for a document |
@@ -781,38 +781,6 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
   `DOCUMENT_CONTRIBUTION_AUDIT_EVENTS`, deduplicated by user.
 - **Returns**: `200 { contributors: Array<{ id, name, email, image }> }`.
 
-### `GET /spaces/:spaceId/documents/:documentId/comments`
-
-- **Auth**: `verifyDocumentAccess` (allows public docs; `user` optional).
-- **Returns**: `200 { comments }` — each enriched with `createdByUser: {id, name,
-  email, image} | null`.
-
-### `POST /spaces/:spaceId/documents/:documentId/comments`
-
-- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(comment)`.
-- **Body**: `content` (string, required), `parentId?` (string), `type?` (string),
-  `reference?` (string — required for top-level/non-reply comments).
-- **Behavior**: audit-logged; enqueues "comment created" email notifications;
-  broadcasts a `comment_created` realtime event.
-- **Returns**: `200 { comment }`.
-
-### `PATCH /spaces/:spaceId/documents/:documentId/comments`
-
-- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(comment)`.
-- **Body**: `commentIds: string[]` (required, non-empty, filtered to ones on this
-  document), and either `archived: true` (archive them; broadcasts
-  `comment_deleted`) or `reference: string` (re-point them; broadcasts
-  `comment_updated`).
-- **Returns**: `200 { success: true }`. `404` if none of the ids belong to the doc.
-
-### `DELETE /spaces/:spaceId/documents/:documentId/comments`
-
-- **Auth**: session; `verifyDocumentAccess`. Caller must be the comment's creator
-  (else `403`).
-- **Body**: `{ commentId: string }`.
-- **Behavior**: broadcasts `comment_deleted`.
-- **Returns**: `200 { success: true }`. `404` if comment missing.
-
 ### `GET /spaces/:spaceId/documents/:documentId/diff`
 
 - **Auth**: `authenticateRequest` (session or access token); `verifyDocumentRole`/
@@ -868,6 +836,44 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Body**: `{ status: "open" | "applied" | "dismissed" }`. The target revision must
   be a suggestion (non-null `status`) — else `400`.
 - **Returns**: `200 { revision }`. `404` if revision missing.
+
+---
+
+## Comments
+
+### `GET /spaces/:spaceId/comments?documentId=:documentId`
+
+- **Auth**: `verifyDocumentAccess` (allows public docs; `user` optional).
+- **Query**: `documentId` (required).
+- **Returns**: `200 { comments }` — each enriched with `createdByUser: {id, name,
+  email, image} | null`.
+
+### `POST /spaces/:spaceId/comments`
+
+- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(comment)`.
+- **Body**: `documentId` (string, required), `content` (string, required),
+  `parentId?` (string), `type?` (string), `reference?` (string — required for
+  top-level/non-reply comments).
+- **Behavior**: audit-logged; enqueues "comment created" email notifications;
+  broadcasts a `comment_created` realtime event.
+- **Returns**: `200 { comment }`.
+
+### `PATCH /spaces/:spaceId/comments`
+
+- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(comment)`.
+- **Body**: `documentId` (string, required), `commentIds: string[]` (required,
+  non-empty, filtered to ones on this document), and either `archived: true`
+  (archive them; broadcasts `comment_deleted`) or `reference: string` (re-point
+  them; broadcasts `comment_updated`).
+- **Returns**: `200 { success: true }`. `404` if none of the ids belong to the doc.
+
+### `DELETE /spaces/:spaceId/comments`
+
+- **Auth**: session; `verifyDocumentAccess`. Caller must be the comment's creator
+  (else `403`).
+- **Body**: `{ commentId: string, documentId: string }`.
+- **Behavior**: broadcasts `comment_deleted`.
+- **Returns**: `200 { success: true }`. `404` if comment missing.
 
 ---
 

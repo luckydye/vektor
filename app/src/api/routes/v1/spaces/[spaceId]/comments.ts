@@ -33,7 +33,11 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = context.var.user;
     const spaceId = requireParam(context.var.params, "spaceId");
-    const documentId = requireParam(context.var.params, "documentId");
+    const documentId = new URL(context.req.url).searchParams.get("documentId");
+
+    if (!documentId) {
+      throw badRequestResponse("documentId is required");
+    }
 
     // Allow viewing comments if user has access to document (including public docs)
     await verifyDocumentAccess(spaceId, documentId, user?.id || null);
@@ -75,16 +79,19 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const documentId = requireParam(context.var.params, "documentId");
+
+    const body = await parseJsonBody(context.req.raw);
+    const { content, parentId, type, reference, documentId } = body;
+
+    if (!documentId || typeof documentId !== "string") {
+      throw badRequestResponse("documentId is required");
+    }
 
     // Ensure user has access to document
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
     // Verify user has commenting feature access
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
-
-    const body = await parseJsonBody(context.req.raw);
-    const { content, parentId, type, reference } = body;
 
     if (!content || typeof content !== "string") {
       throw badRequestResponse("Content is required");
@@ -162,13 +169,16 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const documentId = requireParam(context.var.params, "documentId");
+
+    const body = await parseJsonBody(context.req.raw);
+    const { commentIds, reference, archived, documentId } = body;
+
+    if (!documentId || typeof documentId !== "string") {
+      throw badRequestResponse("documentId is required");
+    }
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
-
-    const body = await parseJsonBody(context.req.raw);
-    const { commentIds, reference, archived } = body;
 
     if (
       !Array.isArray(commentIds) ||
@@ -213,10 +223,13 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const documentId = requireParam(context.var.params, "documentId");
 
     const body = await parseJsonBody(context.req.raw);
-    const { commentId } = body;
+    const { commentId, documentId } = body;
+
+    if (!documentId || typeof documentId !== "string") {
+      throw badRequestResponse("documentId is required");
+    }
 
     if (!commentId || typeof commentId !== "string") {
       throw badRequestResponse("Comment ID is required");
