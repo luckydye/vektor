@@ -4,7 +4,7 @@ import { verifyDocumentRole } from "#db/api.ts";
 import { getComment } from "#db/comments.ts";
 import { getAuthDb } from "#db/db.ts";
 import { getDocument } from "#db/documents.ts";
-import { isDocumentEmailMuted } from "#db/emailNotificationPreferences.ts";
+import { isEmailMuted } from "#db/emailNotificationPreferences.ts";
 import {
   claimDueEmailNotifications,
   markEmailNotificationSent,
@@ -38,11 +38,7 @@ async function deliver(
   notification: EmailNotificationOutbox,
 ): Promise<void> {
   if (
-    await isDocumentEmailMuted(
-      spaceId,
-      notification.documentId,
-      notification.recipientUserId,
-    )
+    await isEmailMuted(spaceId, notification.recipientUserId, notification.documentId)
   ) {
     await markEmailNotificationSkipped(spaceId, notification.id, "Document muted");
     return;

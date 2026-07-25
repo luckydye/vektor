@@ -112,6 +112,80 @@ export async function getUserGroups(userId: string): Promise<string[]> {
   return groups;
 }
 
+/**
+ * Display name of a grantee, captured when the permission change is logged so
+ * the audit entry stays readable after the account is renamed or removed.
+ */
+async function resolveGranteeName(userId?: string): Promise<string | undefined> {
+  if (!userId) return undefined;
+  const authDb = getAuthDb();
+  if (!authDb) return undefined;
+  try {
+    const record = await authDb
+      .select({ name: user.name, email: user.email })
+      .from(user)
+      .where(eq(user.id, userId))
+      .get();
+    return record?.name || record?.email || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Write an acl_grant / acl_revoke entry for a permission change.
+ *
+ * Document-scoped changes are logged against the document so they show up in
+ * that document's activity; everything else (space membership, categories,
+ * feature overrides) is logged against the space.
+ */
+async function logAclChange(
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  spaceId: string,
+  params: {
+    event: "acl_grant" | "acl_revoke";
+    resourceType: ResourceType;
+    resourceId: string;
+    userId?: string;
+    groupId?: string;
+    permission?: string;
+    previousPermission?: string;
+    actorUserId?: string;
+  },
+): Promise<void> {
+  const isDocumentScoped =
+    params.resourceType === ResourceType.DOCUMENT ||
+    params.resourceType === ResourceType.DOCUMENT_TREE;
+  const targetName = await resolveGranteeName(params.userId);
+  const target = params.userId
+    ? `user ${targetName ?? params.userId}`
+    : `group ${params.groupId}`;
+  const scope =
+    params.resourceType === ResourceType.SPACE
+      ? "the space"
+      : `${params.resourceType} ${params.resourceId}`;
+
+  await createAuditLog(db, {
+    spaceId,
+    docId: isDocumentScoped ? params.resourceId : spaceId,
+    userId: params.actorUserId,
+    event: params.event,
+    details: {
+      message:
+        params.event === "acl_grant"
+          ? `Granted ${params.permission} permission on ${scope} to ${target}`
+          : `Revoked permission on ${scope} from ${target}`,
+      permission: params.permission,
+      previousValue: params.previousPermission,
+      targetUserId: params.userId,
+      targetGroupId: params.groupId,
+      targetName,
+      resourceType: params.resourceType,
+      resourceId: params.resourceId,
+    },
+  });
+}
+
 export async function grantPermission(
   spaceId: string,
   resourceType: ResourceType,
@@ -119,6 +193,7 @@ export async function grantPermission(
   userId: string | undefined,
   permission: string,
   groupId?: string,
+  actorUserId?: string,
 ): Promise<AclEntry> {
   if (!userId && !groupId) {
     throw new Error("Either userId or groupId must be provided");
@@ -167,19 +242,17 @@ export async function grantPermission(
     });
   }
 
-  if (
-    resourceType === ResourceType.DOCUMENT ||
-    resourceType === ResourceType.DOCUMENT_TREE
-  ) {
-    await createAuditLog(db, {
-      spaceId,
-      docId: resourceId,
-      userId: undefined,
+  // Re-granting the same permission is a no-op; only log real changes.
+  if (existing?.permission !== permission) {
+    await logAclChange(db, spaceId, {
       event: "acl_grant",
-      details: {
-        message: `Granted ${permission} permission to ${userId ? `user ${userId}` : `group ${groupId}`}`,
-        permission,
-      },
+      resourceType,
+      resourceId,
+      userId,
+      groupId,
+      permission,
+      previousPermission: existing?.permission,
+      actorUserId,
     });
   }
 
@@ -200,6 +273,7 @@ export async function revokePermission(
   resourceId: string,
   userId?: string,
   groupId?: string,
+  actorUserId?: string,
 ): Promise<boolean> {
   const db = await getSpaceDb(spaceId);
 
@@ -212,20 +286,25 @@ export async function revokePermission(
     conditions.push(eq(acl.groupId, groupId));
   }
 
+  // Read first so the audit entry can record what was actually removed, and
+  // so revoking a permission that does not exist does not log anything.
+  const removed = await db
+    .select()
+    .from(acl)
+    .where(and(...conditions))
+    .all();
+
   await db.delete(acl).where(and(...conditions));
 
-  if (
-    resourceType === ResourceType.DOCUMENT ||
-    resourceType === ResourceType.DOCUMENT_TREE
-  ) {
-    await createAuditLog(db, {
-      spaceId,
-      docId: resourceId,
-      userId: undefined,
+  for (const entry of removed) {
+    await logAclChange(db, spaceId, {
       event: "acl_revoke",
-      details: {
-        message: `Revoked permission from ${userId ? `user ${userId}` : `group ${groupId}`}`,
-      },
+      resourceType,
+      resourceId,
+      userId: entry.userId ?? undefined,
+      groupId: entry.groupId ?? undefined,
+      previousPermission: entry.permission,
+      actorUserId,
     });
   }
 
@@ -811,6 +890,7 @@ export async function grantFeature(
   feature: Feature,
   userId?: string,
   groupId?: string,
+  actorUserId?: string,
 ): Promise<AclEntry> {
   return grantPermission(
     spaceId,
@@ -819,6 +899,7 @@ export async function grantFeature(
     userId,
     Permission.VIEWER,
     groupId,
+    actorUserId,
   );
 }
 
@@ -834,6 +915,7 @@ export async function denyFeature(
   feature: Feature,
   userId?: string,
   groupId?: string,
+  actorUserId?: string,
 ): Promise<AclEntry> {
   return grantPermission(
     spaceId,
@@ -842,6 +924,7 @@ export async function denyFeature(
     userId,
     "denied",
     groupId,
+    actorUserId,
   );
 }
 
@@ -856,8 +939,16 @@ export async function revokeFeature(
   feature: Feature,
   userId?: string,
   groupId?: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  return revokePermission(spaceId, ResourceType.FEATURE, feature, userId, groupId);
+  return revokePermission(
+    spaceId,
+    ResourceType.FEATURE,
+    feature,
+    userId,
+    groupId,
+    actorUserId,
+  );
 }
 
 /**

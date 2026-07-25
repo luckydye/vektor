@@ -932,7 +932,10 @@ describe("ACL API Tests - Access Control", () => {
     expect(containingSpace).toBeDefined();
 
     // And access the space directly
-    const spaceAccess = await apiRequest(`/api/v1/spaces/${testSpaceId}`, docOnlyUserToken);
+    const spaceAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}`,
+      docOnlyUserToken,
+    );
     expect(spaceAccess.status).toBe(200);
   });
 
@@ -2489,11 +2492,43 @@ describe("Permissions API - Comments Feature", () => {
   });
 });
 
-describe("Document email preferences", () => {
-  const preferencePath = () =>
-    `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/email-preference`;
+describe("Notification preferences", () => {
+  const preferencePath = (documentId?: string) =>
+    documentId
+      ? `/api/v1/spaces/${featuresTestSpaceId}/notification-preference?documentId=${documentId}`
+      : `/api/v1/spaces/${featuresTestSpaceId}/notification-preference`;
 
-  it("should mute and unmute document emails for the current user", async () => {
+  it("should mute and unmute document notifications for the current user", async () => {
+    const initial = await apiRequest(
+      preferencePath(featuresTestDocumentId),
+      session2Token,
+    );
+    expect(initial.ok).toBe(true);
+    expect((await initial.json()).muted).toBe(false);
+
+    const muted = await apiRequest(preferencePath(), session2Token, {
+      method: "PATCH",
+      body: JSON.stringify({ muted: true, documentId: featuresTestDocumentId }),
+    });
+    expect(muted.ok).toBe(true);
+    expect((await muted.json()).muted).toBe(true);
+
+    const persisted = await apiRequest(
+      preferencePath(featuresTestDocumentId),
+      session2Token,
+    );
+    expect(persisted.ok).toBe(true);
+    expect((await persisted.json()).muted).toBe(true);
+
+    const unmuted = await apiRequest(preferencePath(), session2Token, {
+      method: "PATCH",
+      body: JSON.stringify({ muted: false, documentId: featuresTestDocumentId }),
+    });
+    expect(unmuted.ok).toBe(true);
+    expect((await unmuted.json()).muted).toBe(false);
+  });
+
+  it("should mute and unmute the space-wide default for the current user", async () => {
     const initial = await apiRequest(preferencePath(), session2Token);
     expect(initial.ok).toBe(true);
     expect((await initial.json()).muted).toBe(false);
@@ -2859,6 +2894,104 @@ describe("Permissions API - Grant/Deny/Revoke Roles", () => {
     );
 
     expect(response.ok).toBe(true);
+  });
+});
+
+describe("Permissions API - Membership Audit Logs", () => {
+  async function getSpaceAuditLogs() {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs?limit=100`,
+      session1Token,
+    );
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    return data.auditLogs as Array<{
+      event: string;
+      userId?: string | null;
+      details?: Record<string, unknown> | null;
+    }>;
+  }
+
+  it("should log an acl_grant when a member is invited", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "viewer",
+          userId: testUser3.id,
+          action: "grant",
+        }),
+      },
+    );
+    expect(response.ok).toBe(true);
+
+    const entry = (await getSpaceAuditLogs()).find(
+      (log) =>
+        log.event === "acl_grant" &&
+        log.details?.targetUserId === testUser3.id &&
+        log.details?.resourceType === "space" &&
+        log.details?.permission === "viewer",
+    );
+
+    expect(entry).toBeDefined();
+    // The invite is attributed to the owner who performed it.
+    expect(entry?.userId).toBe(testUser1.id);
+    expect(entry?.details?.targetName).toBe(testUser3.name);
+  });
+
+  it("should log a role change with the previous role", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "editor",
+          userId: testUser3.id,
+          action: "grant",
+        }),
+      },
+    );
+    expect(response.ok).toBe(true);
+
+    const entry = (await getSpaceAuditLogs()).find(
+      (log) =>
+        log.event === "acl_grant" &&
+        log.details?.targetUserId === testUser3.id &&
+        log.details?.permission === "editor",
+    );
+
+    expect(entry).toBeDefined();
+    expect(entry?.details?.previousValue).toBe("viewer");
+  });
+
+  it("should log an acl_revoke when a member is removed", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "editor",
+          userId: testUser3.id,
+          action: "revoke",
+        }),
+      },
+    );
+    expect(response.ok).toBe(true);
+
+    const entry = (await getSpaceAuditLogs()).find(
+      (log) => log.event === "acl_revoke" && log.details?.targetUserId === testUser3.id,
+    );
+
+    expect(entry).toBeDefined();
+    expect(entry?.userId).toBe(testUser1.id);
+    expect(entry?.details?.previousValue).toBe("editor");
   });
 });
 

@@ -31,6 +31,8 @@ const auditEventLabels: Record<string, TranslationKey> = {
   archive: "Archived",
   property_update: "Updated",
   property_delete: "Updated",
+  acl_grant: "Access granted",
+  acl_revoke: "Access removed",
 };
 
 export function getAuditEventLabel(event: string): string {
@@ -52,6 +54,8 @@ const auditEventActionKeys: Record<string, TranslationKey> = {
   suggest: "suggested",
   property_update: "edited",
   property_delete: "edited",
+  acl_grant: "changed access",
+  acl_revoke: "changed access",
 };
 
 export function getAuditEventAction(event: string): string {
@@ -81,6 +85,61 @@ export function formatPropertyKey(key?: string): string {
     .replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// Permission changes
+// ---------------------------------------------------------------------------
+
+/** Returns true when the entry describes a permission (ACL) change. */
+export function isPermissionEvent(event: string): boolean {
+  return event === "acl_grant" || event === "acl_revoke";
+}
+
+/**
+ * Who a permission change applied to. Prefers the name captured when the
+ * change was made, so removed members still render with a name.
+ */
+export function getPermissionTargetName(activity: AuditLog): string {
+  const details = activity.details;
+  return (
+    details?.targetName ||
+    details?.targetGroupId ||
+    details?.targetUserId ||
+    t("Unknown user")
+  );
+}
+
+/**
+ * Change label for a permission entry, e.g. "Invited: Jane Doe (editor)",
+ * "Role changed: Jane Doe (viewer → editor)" or "Access removed: Jane Doe".
+ */
+export function getPermissionChangeLabel(activity: AuditLog): string | null {
+  if (!isPermissionEvent(activity.event)) return null;
+
+  const details = activity.details ?? {};
+  const name = getPermissionTargetName(activity);
+
+  if (activity.event === "acl_revoke") {
+    return `${t("Access removed")}: ${name}`;
+  }
+
+  // Feature overrides carry the feature name rather than a role.
+  if (details.resourceType === "feature") {
+    const feature = formatPropertyKey(details.resourceId);
+    const granted = details.permission !== "denied";
+    return `${granted ? t("Access granted") : t("Access denied")}: ${name} (${feature})`;
+  }
+
+  const verb = details.resourceType === "space" ? t("Invited") : t("Access granted");
+
+  if (details.previousValue) {
+    return `${t("Role changed")}: ${name} (${details.previousValue} → ${details.permission})`;
+  }
+
+  return details.permission
+    ? `${verb}: ${name} (${details.permission})`
+    : `${verb}: ${name}`;
 }
 
 // ---------------------------------------------------------------------------

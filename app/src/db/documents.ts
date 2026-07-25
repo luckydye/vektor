@@ -196,7 +196,15 @@ export async function createDocument(
     });
   }
 
-  await grantPermission(spaceId, ResourceType.DOCUMENT, id, createdBy, Permission.OWNER);
+  await grantPermission(
+    spaceId,
+    ResourceType.DOCUMENT,
+    id,
+    createdBy,
+    Permission.OWNER,
+    undefined,
+    createdBy,
+  );
 
   await updateDocumentEmbeddingBestEffort(spaceId, id);
 

@@ -8,7 +8,9 @@ import {
   getActivityDate,
   getAuditEventAction,
   getAuditEventLabel,
+  getPermissionChangeLabel,
   hasPropertyChange,
+  isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
@@ -49,6 +51,7 @@ function getGroupAction(items: AuditLog[]): string {
 }
 
 function getEntryChangeLabel(entry: AuditLog): string | null {
+  if (isPermissionEvent(entry.event)) return getPermissionChangeLabel(entry);
   if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
 
   const labels: Record<string, string> = {

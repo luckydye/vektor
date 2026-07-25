@@ -254,8 +254,8 @@ watchEffect((onCleanup) => {
   if (!spaceId || !currentDocumentId || !currentUser.value) return;
 
   let current = true;
-  void api.document
-    .getEmailPreference(spaceId, currentDocumentId)
+  void api.space
+    .getNotificationPreference(spaceId, currentDocumentId)
     .then(({ muted }) => {
       if (!current) return;
       emailMuted.value = muted;
@@ -287,10 +287,10 @@ watchEffect(() => {
     group: "document",
     order: 35,
     run: async () => {
-      const response = await api.document.setEmailMuted(
+      const response = await api.space.setNotificationMuted(
         spaceId,
-        currentDocumentId,
         !muted,
+        currentDocumentId,
       );
       emailMuted.value = response.muted;
     },

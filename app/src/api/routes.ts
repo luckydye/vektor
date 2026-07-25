@@ -24,7 +24,6 @@ import * as documentChildren from "./routes/v1/spaces/[spaceId]/documents/[docum
 import * as documentContributors from "./routes/v1/spaces/[spaceId]/documents/[documentId]/contributors.ts";
 import * as documentDiff from "./routes/v1/spaces/[spaceId]/documents/[documentId]/diff.ts";
 import * as documentEdit from "./routes/v1/spaces/[spaceId]/documents/[documentId]/edit.ts";
-import * as documentEmailPreference from "./routes/v1/spaces/[spaceId]/documents/[documentId]/email-preference.ts";
 import * as document from "./routes/v1/spaces/[spaceId]/documents/[documentId]/index.ts";
 import * as documentRevisions from "./routes/v1/spaces/[spaceId]/documents/[documentId]/revisions.ts";
 import * as documentsArchived from "./routes/v1/spaces/[spaceId]/documents/archived.ts";
@@ -42,6 +41,7 @@ import * as integrations from "./routes/v1/spaces/[spaceId]/integrations/index.t
 import * as jobsRun from "./routes/v1/spaces/[spaceId]/jobs/run.ts";
 import * as jobRuns from "./routes/v1/spaces/[spaceId]/jobs/runs.ts";
 import * as members from "./routes/v1/spaces/[spaceId]/members.ts";
+import * as spaceNotificationPreference from "./routes/v1/spaces/[spaceId]/notification-preference.ts";
 import * as permissions from "./routes/v1/spaces/[spaceId]/permissions/index.ts";
 import * as permissionsMe from "./routes/v1/spaces/[spaceId]/permissions/me.ts";
 import * as properties from "./routes/v1/spaces/[spaceId]/properties.ts";
@@ -93,6 +93,10 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]", module: space },
   { pattern: "/api/v1/spaces/[spaceId]/audit-logs", module: spaceAuditLogs },
   { pattern: "/api/v1/spaces/[spaceId]/members", module: members },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/notification-preference",
+    module: spaceNotificationPreference,
+  },
   { pattern: "/api/v1/spaces/[spaceId]/properties", module: properties },
 
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },
@@ -132,10 +136,6 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/diff",
     module: documentDiff,
-  },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/email-preference",
-    module: documentEmailPreference,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",

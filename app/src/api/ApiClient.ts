@@ -354,6 +354,11 @@ export interface AuditDetails {
   commentId?: string;
   parentId?: string | null;
   reference?: string | null;
+  targetUserId?: string;
+  targetGroupId?: string;
+  targetName?: string;
+  resourceType?: string;
+  resourceId?: string;
 }
 
 export interface AuditLog {
@@ -1063,6 +1068,33 @@ export class ApiClient {
     },
 
     /**
+     * Get the caller's notification preference for the space, or for a single
+     * document within it when `documentId` is given.
+     */
+    getNotificationPreference: async (spaceId: string, documentId?: string) => {
+      const path = documentId
+        ? `/api/v1/spaces/${spaceId}/notification-preference?documentId=${encodeURIComponent(documentId)}`
+        : `/api/v1/spaces/${spaceId}/notification-preference`;
+      return await this.apiGet<{ muted: boolean }>(this.baseUrl, path);
+    },
+
+    /**
+     * Mute/unmute notifications for the space, or for a single document
+     * within it when `documentId` is given.
+     */
+    setNotificationMuted: async (
+      spaceId: string,
+      muted: boolean,
+      documentId?: string,
+    ) => {
+      return await this.apiPatch<{ muted: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/notification-preference`,
+        { muted, documentId },
+      );
+    },
+
+    /**
      * Partially update a space (PATCH)
      */
     patch: async (
@@ -1535,21 +1567,6 @@ export class ApiClient {
   };
 
   document = {
-    getEmailPreference: async (spaceId: string, documentId: string) => {
-      return await this.apiGet<{ muted: boolean }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/email-preference`,
-      );
-    },
-
-    setEmailMuted: async (spaceId: string, documentId: string, muted: boolean) => {
-      return await this.apiPatch<{ muted: boolean }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/email-preference`,
-        { muted },
-      );
-    },
-
     /**
      * Get a document by ID
      */

@@ -102,6 +102,22 @@ export const DOCUMENT_CONTRIBUTION_AUDIT_EVENTS: AuditEvent[] = [
  *
  * Access control fields:
  * - permission: The permission being granted or revoked
+ * - previousValue: The permission held before the change (undefined for a new grant)
+ * - targetUserId / targetGroupId: Who the permission change applies to
+ * - targetName: Display name of the target, captured at the time of the change so
+ *   the entry stays readable after the member has been removed
+ * - resourceType: What the permission applies to (space, document, feature, ...)
+ * - resourceId: The id of that resource (the feature name for feature grants)
+ *
+ * @example Member invited to a space
+ * ```ts
+ * {
+ *   permission: "editor",
+ *   targetUserId: "usr_123",
+ *   targetName: "Jane Doe",
+ *   resourceType: "space"
+ * }
+ * ```
  */
 export interface AuditDetails {
   ip?: string;
@@ -119,6 +135,16 @@ export interface AuditDetails {
   parentId?: string | null;
   /** Document selector or position anchoring the comment thread. */
   reference?: string | null;
+  /** ACL events: user the permission change applies to. */
+  targetUserId?: string;
+  /** ACL events: group the permission change applies to. */
+  targetGroupId?: string;
+  /** ACL events: name (or email/id) of the target when the change was made. */
+  targetName?: string;
+  /** ACL events: resource type the permission applies to. */
+  resourceType?: string;
+  /** ACL events: resource the permission applies to (feature name for features). */
+  resourceId?: string;
   /** Revision number this save/suggestion was based on. */
   parentRev?: number | null;
   /** Suggestion status at the time of the "suggest" event. */

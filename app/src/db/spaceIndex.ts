@@ -276,6 +276,8 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
         metadata.id,
         metadata.createdBy,
         Permission.OWNER,
+        undefined,
+        metadata.createdBy,
       );
     } catch (error) {
       if (existing.status === "disabled") {

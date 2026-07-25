@@ -3,7 +3,7 @@ import { config } from "#config";
 import { getUniqueMentionedEmails } from "#documents/mentions.ts";
 import { DOCUMENT_CONTRIBUTION_AUDIT_EVENTS } from "./auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "./db.ts";
-import { getDocumentEmailMutedUserIds } from "./emailNotificationPreferences.ts";
+import { getEmailMutedUserIds } from "./emailNotificationPreferences.ts";
 import { createId } from "./ids.ts";
 import { getPublishedContent } from "./revisions.ts";
 import { user } from "./schema/auth.ts";
@@ -130,10 +130,10 @@ async function enqueueRecipients(
   const recipientUserIds = [...new Set(params.recipientUserIds)].filter(
     (userId) => userId !== params.actorId,
   );
-  const mutedUserIds = await getDocumentEmailMutedUserIds(
+  const mutedUserIds = await getEmailMutedUserIds(
     spaceId,
-    params.documentId,
     recipientUserIds,
+    params.documentId,
   );
   const recipients = recipientUserIds.filter((userId) => !mutedUserIds.has(userId));
   if (recipients.length === 0) return 0;

@@ -60,6 +60,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET | `/spaces/:spaceId/properties` | List all document property keys/values in space |
 | GET | `/spaces/:spaceId/audit-logs` | Space-wide (or `?documentId=` scoped) audit log (paginated) |
 | GET/POST/PATCH/DELETE | `/spaces/:spaceId/comments` | List / create / update / delete comments (`documentId` scoped) |
+| GET/PATCH | `/spaces/:spaceId/notification-preference` | Read / set per-user notification mute, space-wide or (`documentId` scoped) per document |
 | GET/POST/PUT | `/spaces/:spaceId/categories` | List / create / reorder categories |
 | GET/PUT/DELETE | `/spaces/:spaceId/categories/:id` | Read / update / delete a category |
 | GET/POST | `/spaces/:spaceId/permissions` | List / grant-deny-revoke roles & features |
@@ -95,7 +96,6 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET | `/spaces/:spaceId/documents/:documentId/contributors` | Users who have edited the document |
 | GET | `/spaces/:spaceId/documents/:documentId/diff` | Unified/inline diff between a revision and its base |
 | POST | `/spaces/:spaceId/documents/:documentId/edit` | Apply structured partial edit operations (live-merge aware) |
-| GET/PATCH | `/spaces/:spaceId/documents/:documentId/email-preference` | Read / set per-user email-mute for a document |
 | GET/POST/PATCH | `/spaces/:spaceId/documents/:documentId/revisions` | List revisions / restore a revision / update suggestion status |
 | GET/POST | `/spaces/:spaceId/extensions` | List extensions / upload (install or update) an extension package |
 | GET/PATCH/DELETE | `/spaces/:spaceId/extensions/:extensionId` | Read / enable-disable / delete an extension |
@@ -804,18 +804,6 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Returns**: `200 { document, live: boolean }` (`live` indicates whether the edit
   was applied to an open collab room). `400` for invalid operations.
 
-### `GET /spaces/:spaceId/documents/:documentId/email-preference`
-
-- **Auth**: session; `verifyDocumentAccess`.
-- **Returns**: `200 { muted: boolean }` — per-user email-notification mute state for
-  this document.
-
-### `PATCH /spaces/:spaceId/documents/:documentId/email-preference`
-
-- **Auth**: session; `verifyDocumentAccess`.
-- **Body**: `{ muted: boolean }`.
-- **Returns**: `200 { muted }`.
-
 ### `GET /spaces/:spaceId/documents/:documentId/revisions`
 
 - **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(view_history)`.
@@ -874,6 +862,28 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Body**: `{ commentId: string, documentId: string }`.
 - **Behavior**: broadcasts `comment_deleted`.
 - **Returns**: `200 { success: true }`. `404` if comment missing.
+
+---
+
+## Notifications
+
+### `GET /spaces/:spaceId/notification-preference`
+
+- **Auth**: session; `verifyDocumentAccess` when `documentId` is given, else
+  `verifySpaceAccess`.
+- **Query**: `documentId?` — read the per-document override instead of the
+  space-wide default.
+- **Behavior**: a per-document mute overrides the space-wide default; if neither
+  is set, notifications are not muted.
+- **Returns**: `200 { muted: boolean }`.
+
+### `PATCH /spaces/:spaceId/notification-preference`
+
+- **Auth**: session; `verifyDocumentAccess` when `documentId` is given, else
+  `verifySpaceAccess`.
+- **Body**: `{ muted: boolean, documentId?: string }` — sets the per-document
+  override when `documentId` is given, otherwise the space-wide default.
+- **Returns**: `200 { muted }`.
 
 ---
 

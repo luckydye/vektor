@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { type AuditLog, api } from "#api/client.ts";
-import { chevronRightThinIcon, documentIcon } from "#assets/icons.ts";
+import { chevronRightThinIcon, documentIcon, usersIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
@@ -9,7 +9,9 @@ import {
   getActivityBucketLabel,
   getActivityDate,
   getAuditEventAction,
+  getPermissionChangeLabel,
   hasPropertyChange,
+  isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
@@ -46,6 +48,8 @@ interface CompactActivityBatch {
   id: string;
   docId: string;
   action: string;
+  /** Permission batches describe membership, not a document. */
+  isPermission: boolean;
   entries: AuditLog[];
 }
 
@@ -73,9 +77,7 @@ const {
       api.spaceMembers.get(props.spaceId),
     ]);
 
-    const activities = logsData.auditLogs.filter(
-      (log) => log.event !== "acl_grant" && log.event !== "acl_revoke",
-    );
+    const activities = logsData.auditLogs;
 
     const usersMap = new Map<string, User>();
     for (const member of membersData) {
@@ -147,11 +149,12 @@ function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
     if (entry.event === "view") continue;
 
     const action = getEntryAction(entry);
-    const key = `${entry.docId}:${action}`;
+    const isPermission = isPermissionEvent(entry.event);
+    const key = `${isPermission ? "permissions" : entry.docId}:${action}`;
     let batch = batchMap.get(key);
 
     if (!batch) {
-      batch = { id: key, docId: entry.docId, action, entries: [] };
+      batch = { id: key, docId: entry.docId, action, isPermission, entries: [] };
       batchMap.set(key, batch);
       batches.push(batch);
     }
@@ -163,6 +166,7 @@ function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
 }
 
 function getEntryChangeLabel(entry: AuditLog): string | null {
+  if (isPermissionEvent(entry.event)) return getPermissionChangeLabel(entry);
   if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
 
   const labels: Record<string, string> = {
@@ -200,6 +204,18 @@ function getBatchChangeCount(batch: CompactActivityBatch): number {
 
 function getChangeCountLabel(count: number): string {
   return `${count} ${count === 1 ? t("change") : t("changes")}`;
+}
+
+/**
+ * Secondary line of a card: a change count for document work, and the actual
+ * membership changes ("Invited: Jane (editor)") for permission entries.
+ */
+function getBatchSummary(batch: CompactActivityBatch): string {
+  if (batch.isPermission) {
+    const changes = getBatchChanges(batch);
+    if (changes.length) return changes.join(", ");
+  }
+  return getChangeCountLabel(getBatchChangeCount(batch));
 }
 
 function activityTimeMs(dateString: string | Date): number {
@@ -311,7 +327,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
         <a
           v-for="batch in getCompactActivityBatches(group.items)"
           :key="batch.id"
-          :href="getDocumentHref(batch.docId)"
+          :href="batch.isPermission ? undefined : getDocumentHref(batch.docId)"
           class="block rounded-lg border border-neutral-100 bg-neutral-10 px-3.5 py-3 transition-colors hover:bg-neutral-50"
         >
           <div
@@ -334,7 +350,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
                   <span class="shrink-0 text-neutral-700">{{ batch.action }}</span>
                 </div>
                 <div class="mt-0.5 text-size-small font-medium text-neutral-500">
-                  {{ getChangeCountLabel(getBatchChangeCount(batch)) }}
+                  {{ getBatchSummary(batch) }}
                 </div>
               </div>
             </div>
@@ -344,15 +360,18 @@ const activityGroups = computed((): CompactActivityGroup[] => {
             >
               <div
                 class="svg-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-100 p-2 text-neutral-500"
-                v-html="documentIcon"
+                v-html="batch.isPermission ? usersIcon : documentIcon"
               />
               <div class="min-w-0 truncate text-size-medium text-neutral-700">
-                {{ getDocumentName(batch.docId) }}
+                {{ batch.isPermission ? t("Members") : getDocumentName(batch.docId) }}
               </div>
             </div>
 
+            <!-- Permission cards are not links, but keep the column so the
+                 middle column stays aligned with the document cards. -->
             <div
               class="svg-icon col-start-2 row-span-2 h-5 w-5 shrink-0 text-neutral-400 @md:col-auto @md:row-auto"
+              :class="{ invisible: batch.isPermission }"
               v-html="chevronRightThinIcon"
             />
           </div>

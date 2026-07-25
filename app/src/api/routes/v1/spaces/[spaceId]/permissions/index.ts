@@ -171,6 +171,7 @@ export const POST: ApiRouteHandler = (context) =>
           userId,
           roleOrFeature,
           groupId,
+          user.id,
         );
         return jsonResponse({ permission: entry });
       }
@@ -182,6 +183,7 @@ export const POST: ApiRouteHandler = (context) =>
         targetResourceId,
         userId,
         groupId,
+        user.id,
       );
       return jsonResponse({ success: true });
     }
@@ -196,16 +198,16 @@ export const POST: ApiRouteHandler = (context) =>
     const feature = roleOrFeature as Feature;
 
     if (action === "grant") {
-      const entry = await grantFeature(spaceId, feature, userId, groupId);
+      const entry = await grantFeature(spaceId, feature, userId, groupId, user.id);
       return jsonResponse({ permission: entry });
     }
 
     if (action === "deny") {
-      const entry = await denyFeature(spaceId, feature, userId, groupId);
+      const entry = await denyFeature(spaceId, feature, userId, groupId, user.id);
       return jsonResponse({ permission: entry });
     }
 
     // action === "revoke"
-    await revokeFeature(spaceId, feature, userId, groupId);
+    await revokeFeature(spaceId, feature, userId, groupId, user.id);
     return jsonResponse({ success: true });
   }, "Failed to update permissions");
