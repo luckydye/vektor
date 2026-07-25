@@ -68,6 +68,16 @@ type TwoFingerTapCandidate = {
   valid: boolean;
 };
 
+// WebKit's proprietary trackpad pinch event. Safari never synthesises the
+// ctrl+wheel events other browsers use for pinch, so these are the only signal
+// we get. `scale` is cumulative relative to gesturestart.
+interface WebKitGestureEvent extends UIEvent {
+  scale: number;
+  rotation: number;
+  clientX: number;
+  clientY: number;
+}
+
 const TWO_FINGER_TAP_MAX_INTERVAL_MS = 180;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 320;
 const TWO_FINGER_TAP_MOVE_TOLERANCE_PX = 12;
@@ -312,6 +322,13 @@ export function createViewportControls({
     if (completedTwoFingerTap) onTwoFingerTap?.();
   }
 
+  let nativeGesture: {
+    centerX: number;
+    centerY: number;
+    scale: number;
+    zoom: number;
+  } | null = null;
+
   let wheelRafId: number | null = null;
   let pendingDx = 0;
   let pendingDy = 0;
@@ -355,6 +372,9 @@ export function createViewportControls({
 
   function handleViewportWheel(e: WheelEvent) {
     e.preventDefault();
+    // Safari keeps emitting momentum wheel events during a pinch; the gesture
+    // handler already owns the camera while one is in flight.
+    if (nativeGesture) return;
     const pointer = targetPoint(target, e.clientX, e.clientY);
 
     if (e.ctrlKey || e.metaKey) {
@@ -375,8 +395,56 @@ export function createViewportControls({
     }
   }
 
-  function preventNativeViewportGesture(e: Event) {
+  function beginNativeGesture(e: Event) {
+    const gesture = e as WebKitGestureEvent;
     e.preventDefault();
+    const center = targetPoint(target, gesture.clientX, gesture.clientY);
+    nativeGesture = {
+      centerX: center.x,
+      centerY: center.y,
+      scale: gesture.scale || 1,
+      zoom: getCamera().zoom,
+    };
+  }
+
+  function updateNativeGesture(e: Event) {
+    const gesture = e as WebKitGestureEvent;
+    e.preventDefault();
+    if (!nativeGesture || !gesture.scale) return;
+
+    const center = targetPoint(target, gesture.clientX, gesture.clientY);
+    const screen = getScreen();
+    const fit = getFit();
+    // Pinching with a moving centre pans as well, matching the touch gesture.
+    const panned = panCameraByScreenDelta({
+      camera: getCamera(),
+      screen,
+      fit,
+      dxPx: nativeGesture.centerX - center.x,
+      dyPx: nativeGesture.centerY - center.y,
+    });
+    const zoomed = zoomCameraAtPoint({
+      camera: panned,
+      screen,
+      fit,
+      screenX: center.x,
+      screenY: center.y,
+      zoom: nativeGesture.zoom * (gesture.scale / nativeGesture.scale),
+      minZoom,
+      maxZoom,
+    });
+    setCamera(zoomed);
+    nativeGesture = {
+      centerX: center.x,
+      centerY: center.y,
+      scale: gesture.scale,
+      zoom: zoomed.zoom,
+    };
+  }
+
+  function endNativeGesture(e: Event) {
+    e.preventDefault();
+    nativeGesture = null;
   }
 
   target.addEventListener("pointerdown", beginTouchPointer as EventListener, {
@@ -399,13 +467,18 @@ export function createViewportControls({
     capture: true,
     passive: false,
   });
-  target.addEventListener("gesturestart", preventNativeViewportGesture, {
+  target.addEventListener("gesturestart", beginNativeGesture, {
+    capture: true,
     passive: false,
   });
-  target.addEventListener("gesturechange", preventNativeViewportGesture, {
+  target.addEventListener("gesturechange", updateNativeGesture, {
+    capture: true,
     passive: false,
   });
-  target.addEventListener("gestureend", preventNativeViewportGesture, { passive: false });
+  target.addEventListener("gestureend", endNativeGesture, {
+    capture: true,
+    passive: false,
+  });
 
   return {
     dispose() {
@@ -424,9 +497,14 @@ export function createViewportControls({
       target.removeEventListener("wheel", handleViewportWheel as EventListener, {
         capture: true,
       });
-      target.removeEventListener("gesturestart", preventNativeViewportGesture);
-      target.removeEventListener("gesturechange", preventNativeViewportGesture);
-      target.removeEventListener("gestureend", preventNativeViewportGesture);
+      target.removeEventListener("gesturestart", beginNativeGesture, {
+        capture: true,
+      });
+      target.removeEventListener("gesturechange", updateNativeGesture, {
+        capture: true,
+      });
+      target.removeEventListener("gestureend", endNativeGesture, { capture: true });
+      nativeGesture = null;
       touchPointers.clear();
       touchStarts.clear();
       touchGestureActive = false;
