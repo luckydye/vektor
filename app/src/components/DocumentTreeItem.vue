@@ -1,11 +1,16 @@
 <template>
   <page-target
     :data-document-id="doc.id"
+    :data-document-type="doc.type ?? undefined"
     :data-space-id="currentSpace?.id"
     :data-document-url="getDocumentUrl(doc.slug)"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50 pl-[0.535rem]"
   >
-    <div class="flex items-center gap-1">
+    <!-- Only the row dims: descendants may still be valid drop targets. -->
+    <div
+      class="flex items-center gap-1 transition-opacity"
+      :class="{ 'opacity-40': isInvalidDropTarget }"
+    >
       <button
         type="button"
         v-if="hasChildren"
@@ -68,12 +73,14 @@
 
 <script setup>
 import { computed } from "vue";
+import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
   propertyValueIncludes,
   propertyValueToScalar,
   propertyValueToText,
 } from "#documents/properties.ts";
+import { allowsChildDocumentType } from "#documents/types.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { chevronRightThinIcon } from "~/src/assets/icons.ts";
@@ -100,6 +107,16 @@ const props = defineProps({
 defineEmits(["toggle"]);
 
 const { currentSpace } = useSpace();
+const { draggedDocument } = useDocumentDrag();
+
+// Dim rows that cannot parent the document being dragged (e.g. a plain
+// document dropped on a database, which only accepts records). The dragged
+// row itself keeps its own `data-dragging` styling.
+const isInvalidDropTarget = computed(() => {
+  const dragged = draggedDocument.value;
+  if (!dragged || dragged.id === props.doc.id) return false;
+  return !allowsChildDocumentType(props.doc.type, dragged.type);
+});
 
 function docTitle(doc) {
   const title = doc.properties?.title;

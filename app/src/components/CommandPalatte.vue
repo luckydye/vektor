@@ -258,6 +258,7 @@ Actions.register("ui:toggle:palatte", {
                 :is="result.type === 'document' ? 'page-target' : 'div'"
                 v-bind="result.type === 'document' ? {
                   'data-document-id': result.data.id,
+                  'data-document-type': result.data.type ?? undefined,
                   'data-space-id': currentSpace?.id,
                   'data-document-url': spacePath(currentSpace?.slug, `/doc/${result.data.slug}`),
                 } : {}"

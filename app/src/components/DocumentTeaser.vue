@@ -39,6 +39,7 @@ function docTags(doc: DocumentWithProperties): string[] {
 <template>
   <page-target
     :data-document-id="doc.id"
+    :data-document-type="doc.type ?? undefined"
     :data-space-id="currentSpace?.id"
     :data-document-url="spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
     class="block flex-none w-60 pr-4 [&[data-dragging]]:opacity-50"

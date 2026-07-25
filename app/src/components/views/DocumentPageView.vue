@@ -349,6 +349,7 @@ watchEffect(() => {
                   :is="isDraft ? 'div' : 'page-target'"
                   class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
                   :data-document-id="doc?.id"
+                  :data-document-type="doc?.type ?? undefined"
                   :data-space-id="currentSpace.id"
                   :data-document-url="titleDragUrl"
                 >
@@ -421,6 +422,7 @@ watchEffect(() => {
                     :is="isDraft ? 'div' : 'page-target'"
                     class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
                     :data-document-id="doc?.id"
+                    :data-document-type="doc?.type ?? undefined"
                     :data-space-id="currentSpace.id"
                     :data-document-url="titleDragUrl"
                   >
@@ -490,6 +492,7 @@ watchEffect(() => {
                 :is="isDraft ? 'div' : 'page-target'"
                 class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
                 :data-document-id="doc?.id"
+                :data-document-type="doc?.type ?? undefined"
                 :data-space-id="currentSpace.id"
                 :data-document-url="titleDragUrl"
               >

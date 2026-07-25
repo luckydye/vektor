@@ -2,8 +2,18 @@ import {
   createVektorDocumentAddress,
   parseVektorDocumentAddress,
 } from "#documents/address.ts";
+import { allowsChildDocumentType } from "#documents/types.ts";
 
 const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
+
+/**
+ * The document currently being dragged in this window. `dataTransfer` is in
+ * protected mode during dragenter/dragover (only MIME types are readable), so
+ * the dragged document's type is kept here to decide whether a target may
+ * accept it. Drags originating from another window leave this null; those
+ * fall back to permissive local behaviour and are rejected server-side.
+ */
+let activeDrag: { documentId: string; documentType: string | null } | null = null;
 
 /**
  * page-target
@@ -23,11 +33,15 @@ const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
  *
  * Attributes:
  * - data-document-id: Required. The unique ID of the document
+ * - data-document-type: Optional. The document's type, used to decide which
+ *   documents this one may parent (see `allowedChildDocumentTypes`)
  * - data-dragging: Automatically added when this element is being dragged
  * - data-drag-over: Automatically added when another element is dragged over this one
  *
  * Events:
  * - document-drag-start: Fired when this document starts being dragged
+ *   detail: { documentId: string, documentType: string | null }
+ * - document-drag-end: Fired when the drag finishes (dropped or cancelled)
  *   detail: { documentId: string }
  * - document-parent-change: Fired when a document is dropped onto this element
  *   detail: { documentId: string, newParentId: string }
@@ -97,11 +111,15 @@ customElements.define(
 
       if (!e.dataTransfer) return;
 
+      const documentType = this.getAttribute("data-document-type") || null;
+      activeDrag = { documentId, documentType };
+
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData(
         DOCUMENT_LINK_MIME,
         JSON.stringify({
           address,
+          type: documentType,
         }),
       );
       if (url) {
@@ -113,7 +131,7 @@ customElements.define(
         new CustomEvent("document-drag-start", {
           bubbles: true,
           composed: true,
-          detail: { documentId },
+          detail: { documentId, documentType },
         }),
       );
 
@@ -121,9 +139,32 @@ customElements.define(
     }
 
     handleDragEnd(_e: DragEvent) {
+      const documentId = this.getAttribute("data-document-id");
+      activeDrag = null;
       this.removeAttribute("data-dragging");
       this.removeAttribute("data-drag-over");
       this.dragCounter = 0;
+
+      this.dispatchEvent(
+        new CustomEvent("document-drag-end", {
+          bubbles: true,
+          composed: true,
+          detail: { documentId },
+        }),
+      );
+    }
+
+    /**
+     * Whether this document may become the parent of the dragged one. Unknown
+     * drags (from another window) are treated as allowed — the API has the
+     * final say.
+     */
+    acceptsActiveDrag() {
+      if (!activeDrag) return true;
+      return allowsChildDocumentType(
+        this.getAttribute("data-document-type"),
+        activeDrag.documentType,
+      );
     }
 
     handleDragEnter(e: DragEvent) {
@@ -133,7 +174,7 @@ customElements.define(
       this.dragCounter++;
 
       const isDraggingSelf = this.hasAttribute("data-dragging");
-      if (isDraggingSelf) return;
+      if (isDraggingSelf || !this.acceptsActiveDrag()) return;
 
       this.setAttribute("data-drag-over", "true");
     }
@@ -156,7 +197,7 @@ customElements.define(
       if (!e.dataTransfer) return;
 
       const isDraggingSelf = this.hasAttribute("data-dragging");
-      if (isDraggingSelf) {
+      if (isDraggingSelf || !this.acceptsActiveDrag()) {
         e.dataTransfer.dropEffect = "none";
         return;
       }
@@ -178,12 +219,21 @@ customElements.define(
 
       const structured = e.dataTransfer.getData(DOCUMENT_LINK_MIME);
       let address: unknown = null;
+      let draggedType: string | null = null;
       try {
-        address =
+        const payload =
           typeof structured === "string" && structured.trim()
-            ? (JSON.parse(structured) as { address?: unknown }).address
+            ? (JSON.parse(structured) as { address?: unknown; type?: unknown })
             : null;
+        address = payload?.address ?? null;
+        draggedType = typeof payload?.type === "string" ? payload.type : null;
       } catch {
+        return;
+      }
+
+      if (
+        !allowsChildDocumentType(this.getAttribute("data-document-type"), draggedType)
+      ) {
         return;
       }
       const parsedAddress =
