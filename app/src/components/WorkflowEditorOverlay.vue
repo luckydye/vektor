@@ -16,7 +16,7 @@ const props = defineProps<{
     :default-width="720"
     default-mode="floating"
   >
-    <div class="flex flex-col h-full bg-white">
+    <div class="flex flex-col h-full bg-background">
       <WorkflowCodeEditor
         class="flex-1 min-h-0"
         :document-id="props.documentId"

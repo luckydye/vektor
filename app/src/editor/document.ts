@@ -38,6 +38,7 @@ import {
   documentExtensions,
   type EditorContext,
 } from "./extensions.ts";
+import { highlightStaticCodeBlocks } from "./prism.ts";
 
 type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
 
@@ -523,6 +524,10 @@ export class DocumentView extends HTMLElement {
 
     shadow.querySelector('[part="content"]')?.replaceWith(content) ??
       shadow.appendChild(content);
+
+    // Read mode renders stored HTML, so code blocks are highlighted in place.
+    // Grammars load lazily; the call bails out if this tree is replaced first.
+    void highlightStaticCodeBlocks(content);
   }
 
   private resolvedEditorContext(): EditorContext {

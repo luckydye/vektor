@@ -8,12 +8,11 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { cancelEditSession } from "./editSession.ts";
 import {
   INDENT_STEP_EM,
   INDENT_TYPES,
-  MAX_INDENT,
   indentEditor,
+  MAX_INDENT,
   outdentEditor,
 } from "#editor/indent.ts";
 import { Actions } from "#utils/actions.ts";
@@ -21,6 +20,7 @@ import {
   canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
 } from "#utils/clipboard.ts";
+import { cancelEditSession } from "./editSession.ts";
 import {
   BackgroundColor,
   Blockquote,
@@ -48,6 +48,7 @@ import {
   TextStyle,
   Underline,
 } from "./extensions/baseExtensions.ts";
+import { CodeBlockHighlight } from "./extensions/CodeBlockHighlight.ts";
 import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
 import { CommentAnchor } from "./extensions/CommentAnchor.ts";
 import { DatePicker } from "./extensions/DatePicker.ts";
@@ -494,6 +495,7 @@ export function documentExtensions(
     HorizontalRule,
 
     // custom extensions
+    CodeBlockHighlight,
     CommentAnchor,
     ExtensionView,
     MarkdownPaste,

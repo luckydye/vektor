@@ -298,6 +298,18 @@ watch(
   { immediate: true },
 );
 
+// Router navigations don't fire `popstate`, so the query param is watched
+// separately. This is how a run started from the header button (a different
+// part of the tree) switches the view over to it.
+watch(
+  () => router.currentRoute.value.query.run,
+  (value) => {
+    const runId = typeof value === "string" ? value.trim() : null;
+    if (!runId || runId === selectedRunId.value) return;
+    void selectRun(runId, { updateUrl: false });
+  },
+);
+
 function handleUrlChange() {
   const runId = runIdFromUrl();
   if (runId && runId !== selectedRunId.value) {

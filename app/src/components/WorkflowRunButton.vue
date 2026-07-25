@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "~/src/assets/icons.ts";
@@ -8,6 +9,8 @@ const props = defineProps<{
   documentId: string;
   spaceId: string;
 }>();
+
+const router = useRouter();
 
 const starting = ref(false);
 const cancelling = ref(false);
@@ -31,6 +34,12 @@ async function startRun() {
     const { runId } = await api.workflows.startRun(props.spaceId, props.documentId, {});
     latestRunId.value = runId;
     latestRunStatus.value = "running";
+    // The workflow view follows the `run` query param, so pointing the URL at
+    // the new run switches the view over to it.
+    void router.replace({
+      query: { ...router.currentRoute.value.query, run: runId },
+      hash: "",
+    });
   } finally {
     starting.value = false;
   }

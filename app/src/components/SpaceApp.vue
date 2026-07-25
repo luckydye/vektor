@@ -214,8 +214,8 @@ function registerShellElements() {
   ]).catch(console.error);
 }
 
-// Heavy document/editor content elements — these pull in TipTap, CodeMirror,
-// Yjs and embeds. They only ever render inside document content, so keep them
+// Heavy document/editor content elements — these pull in TipTap, Yjs and
+// embeds. They only ever render inside document content, so keep them
 // off the initial-render/hydration critical path. Custom elements upgrade
 // automatically once defined, and the document renderers (e.g. PinnedDocument)
 // already tolerate late registration, so deferring is safe.

@@ -140,6 +140,58 @@
   }
 }
 
+/* Syntax highlighting palette.
+ *
+ * The single source of truth for code token colors, shared by the workflow code
+ * editor and by code blocks in documents (see editor/css/code.css). It lives
+ * here, on `:root`, because document styles are injected into `document-view`
+ * shadow roots — custom properties inherit across that boundary, so one global
+ * declaration reaches both light-DOM and shadow-DOM code.
+ *
+ * Unlike the color scales above, these follow the `data-theme` convention used
+ * by tooltip.css and BaseLayout, so an explicit light/dark preference wins over
+ * the OS setting. */
+:root {
+  --code-comment: #6e7781;
+  --code-punctuation: #57606a;
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-function: #8250df;
+  --code-property: #0550ae;
+  --code-class: #953800;
+  --code-invalid: #82071e;
+  --code-inserted: #116329;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --code-comment: #8b949e;
+    --code-punctuation: #b0b0b0;
+    --code-keyword: #ff7b72;
+    --code-string: #a5d6ff;
+    --code-number: #79c0ff;
+    --code-function: #d2a8ff;
+    --code-property: #79c0ff;
+    --code-class: #ffa657;
+    --code-invalid: #ffa198;
+    --code-inserted: #7ee787;
+  }
+}
+
+:root[data-theme="dark"] {
+  --code-comment: #8b949e;
+  --code-punctuation: #b0b0b0;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-function: #d2a8ff;
+  --code-property: #79c0ff;
+  --code-class: #ffa657;
+  --code-invalid: #ffa198;
+  --code-inserted: #7ee787;
+}
+
 /* Text Style Utilities */
 @utility text-label {
   font-size: var(--text-size-medium);

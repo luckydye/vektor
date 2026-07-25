@@ -1,0 +1,97 @@
+/* Syntax highlighting for code.
+ *
+ * Two surfaces feed these classes: Prism's token spans in read mode and in the
+ * workflow code editor, and ProseMirror inline decorations in the document
+ * editor (see editor/prism.ts and extensions/CodeBlockHighlight.ts). All of them
+ * emit `token <type>`, so one rule set covers everything.
+ *
+ * Colors come from the `--code-*` palette in styles/theme.css — the single
+ * source of truth, themed there for OS and forced `data-theme` preferences. The
+ * light values are repeated here only as fallbacks, for contexts that inject
+ * this file without the global stylesheet. Do not add a dark variant here: it
+ * would shadow the inherited palette and break the forced-theme preference.
+ *
+ * `pre` covers documents; add `code-highlight` to any other container (the
+ * workflow editor's `.cj-code` does this) to opt into the same rules. */
+:where(pre, .code-highlight) .token.comment,
+:where(pre, .code-highlight) .token.prolog,
+:where(pre, .code-highlight) .token.cdata,
+:where(pre, .code-highlight) .token.doctype {
+  color: var(--code-comment, #6e7781);
+  font-style: italic;
+}
+
+/* Ordered least to most specific meaning: later rules win for tokens carrying
+   several classes, e.g. a nested `token property` inside a template string. */
+:where(pre, .code-highlight) .token.punctuation,
+:where(pre, .code-highlight) .token.interpolation-punctuation {
+  color: var(--code-punctuation, #57606a);
+}
+
+:where(pre, .code-highlight) .token.property,
+:where(pre, .code-highlight) .token.property-access,
+:where(pre, .code-highlight) .token.attr-name,
+:where(pre, .code-highlight) .token.key {
+  color: var(--code-property, #0550ae);
+}
+
+:where(pre, .code-highlight) .token.class-name,
+:where(pre, .code-highlight) .token.builtin,
+:where(pre, .code-highlight) .token.tag,
+:where(pre, .code-highlight) .token.selector {
+  color: var(--code-class, #953800);
+}
+
+:where(pre, .code-highlight) .token.number,
+:where(pre, .code-highlight) .token.boolean,
+:where(pre, .code-highlight) .token.constant,
+:where(pre, .code-highlight) .token.symbol,
+:where(pre, .code-highlight) .token.unit {
+  color: var(--code-number, #0550ae);
+}
+
+:where(pre, .code-highlight) .token.string,
+:where(pre, .code-highlight) .token.char,
+:where(pre, .code-highlight) .token.template-string,
+:where(pre, .code-highlight) .token.regex,
+:where(pre, .code-highlight) .token.url,
+:where(pre, .code-highlight) .token.attr-value {
+  color: var(--code-string, #0a3069);
+}
+
+:where(pre, .code-highlight) .token.function,
+:where(pre, .code-highlight) .token.method,
+:where(pre, .code-highlight) .token.function-name {
+  color: var(--code-function, #8250df);
+}
+
+:where(pre, .code-highlight) .token.keyword,
+:where(pre, .code-highlight) .token.operator,
+:where(pre, .code-highlight) .token.atrule,
+:where(pre, .code-highlight) .token.rule,
+:where(pre, .code-highlight) .token.important,
+:where(pre, .code-highlight) .token.directive {
+  color: var(--code-keyword, #cf222e);
+}
+
+:where(pre, .code-highlight) .token.variable,
+:where(pre, .code-highlight) .token.parameter {
+  color: inherit;
+}
+
+:where(pre, .code-highlight) .token.bold,
+:where(pre, .code-highlight) .token.important {
+  font-weight: 600;
+}
+
+:where(pre, .code-highlight) .token.italic {
+  font-style: italic;
+}
+
+:where(pre, .code-highlight) .token.deleted {
+  color: var(--code-invalid, #82071e);
+}
+
+:where(pre, .code-highlight) .token.inserted {
+  color: var(--code-inserted, #116329);
+}

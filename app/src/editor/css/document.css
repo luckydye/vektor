@@ -2,6 +2,7 @@
 @import "./lists.css";
 @import "./layout.css";
 @import "./tiptap.css";
+@import "./code.css";
 
 @reference "../../styles/index.css";
 
