@@ -4,7 +4,7 @@
  * Lists job execution history (newest first). All runs are recorded —
  * manual, workflow nodes and cron-scheduled.
  *
- * Query: ?jobId=...&scheduleId=...&limit=50&offset=0 (max 500)
+ * Query: ?jobId=...&scheduleId=...&limit=50&cursor=... (max 500)
  */
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
@@ -24,19 +24,19 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const { limit, offset } = parsePaginationParams(
+    const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
     );
     const jobId = new URL(context.req.url).searchParams.get("jobId") ?? undefined;
     const scheduleId =
       new URL(context.req.url).searchParams.get("scheduleId") ?? undefined;
 
-    const { runs, total } = await listJobRuns(spaceId, {
+    const { runs, nextCursor } = await listJobRuns(spaceId, {
       jobId,
       scheduleId,
       limit,
-      offset,
+      cursor,
     });
 
-    return jsonResponse({ runs: runs.map(toJobRunDto), total, limit, offset });
+    return jsonResponse({ runs: runs.map(toJobRunDto), limit, nextCursor });
   }, "Failed to list job runs");

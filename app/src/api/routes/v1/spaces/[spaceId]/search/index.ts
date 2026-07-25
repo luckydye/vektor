@@ -22,7 +22,7 @@ export const GET: ApiRouteHandler = (context) =>
       const userId = access.isPublic ? null : access.aclUserId;
 
       const query = new URL(context.req.url).searchParams.get("q") || "";
-      const { limit, offset } = parsePaginationParams(
+      const { limit, cursor } = parsePaginationParams(
         new URL(context.req.url).searchParams,
         {
           defaultLimit: 20,
@@ -58,24 +58,23 @@ export const GET: ApiRouteHandler = (context) =>
 
       // Allow empty query only when filters are provided
       if (!query.trim() && filters.length === 0) {
-        return jsonResponse({ results: [], total: 0, query: "", filters: [] });
+        return jsonResponse({ results: [], nextCursor: null, query: "", filters: [] });
       }
 
-      const { results, total } = await searchDocuments(
+      const { results, nextCursor } = await searchDocuments(
         spaceId,
         userId,
         query,
         limit,
-        offset,
+        cursor,
         filters,
       );
 
       return jsonResponse({
         results,
-        total,
+        nextCursor,
         query,
         limit,
-        offset,
         filters,
       });
     },

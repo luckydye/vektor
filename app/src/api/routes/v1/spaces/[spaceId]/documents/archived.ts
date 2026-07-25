@@ -15,17 +15,17 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceAccess(spaceId, user.id);
-    const { limit, offset } = parsePaginationParams(
+    const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
       {
         defaultLimit: 50,
         maxLimit: 500,
       },
     );
-    const { documents, total } = await listArchivedDocuments(
+    const { documents, nextCursor } = await listArchivedDocuments(
       spaceId,
       { userId: user.id, userGroups: await getUserGroups(user.id) },
-      { limit, offset },
+      { limit, cursor },
     );
-    return jsonResponse({ documents, total, limit, offset });
+    return jsonResponse({ documents, limit, nextCursor });
   }, "Failed to list archived documents");

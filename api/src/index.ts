@@ -83,7 +83,7 @@ export interface PropertyFilter {
 export interface SearchOptions {
   query?: string;
   limit?: number;
-  offset?: number;
+  cursor?: string;
   filters?: PropertyFilter[];
   signal?: AbortSignal;
 }
@@ -95,10 +95,9 @@ export interface SearchResult extends Document {
 
 export interface SearchResponse {
   results: SearchResult[];
-  total: number;
+  nextCursor?: string | null;
   query: string;
   limit: number;
-  offset: number;
   filters: PropertyFilter[];
 }
 

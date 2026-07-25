@@ -1451,12 +1451,11 @@ export class ApiClient {
     /**
      * List archived documents in a space
      */
-    archived: async (spaceId: string, query?: { limit?: number; offset?: number }) => {
+    archived: async (spaceId: string, query?: { limit?: number; cursor?: string }) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
-        total: number;
         limit: number;
-        offset: number;
+        nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/archived`, query);
       return response;
     },
@@ -1809,13 +1808,12 @@ export class ApiClient {
     get: async (
       spaceId: string,
       documentId: string,
-      query?: { limit?: number; offset?: number },
+      query?: { limit?: number; cursor?: string },
     ) => {
       return this.apiGet<{
         auditLogs: AuditLog[];
-        total: number;
         limit: number;
-        offset: number;
+        nextCursor: string | null;
       }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/documents/${documentId}/audit-logs`,
@@ -1884,20 +1882,19 @@ export class ApiClient {
      * @param spaceId - The space to search in
      * @param query.q - Search query text (can be empty when using filters only)
      * @param query.limit - Max results to return
-     * @param query.offset - Pagination offset
+     * @param query.cursor - Pagination cursor from a previous response's nextCursor
      * @param query.filters - Property filters as JSON string: [{"key":"author","value":"John"}]
      *                        Use value: null to filter for documents that have the property
      */
     get: async (
       spaceId: string,
-      query: { q?: string; limit?: number; offset?: number; filters?: string },
+      query: { q?: string; limit?: number; cursor?: string; filters?: string },
     ) => {
       const response = await this.apiGet<{
         results: SearchResult[];
-        total: number;
+        nextCursor: string | null;
         query: string;
         limit: number;
-        offset: number;
         filters?: PropertyFilter[];
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/search`, query);
       return response;
@@ -1928,12 +1925,11 @@ export class ApiClient {
     /**
      * List audit logs for a space
      */
-    get: async (spaceId: string, query?: { limit?: number; offset?: number }) => {
+    get: async (spaceId: string, query?: { limit?: number; cursor?: string }) => {
       return this.apiGet<{
         auditLogs: AuditLog[];
-        total: number;
         limit: number;
-        offset: number;
+        nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/audit-logs`, query);
     },
   };
@@ -2792,13 +2788,12 @@ export class ApiClient {
      */
     listRuns: async (
       spaceId: string,
-      options?: { jobId?: string; scheduleId?: string; limit?: number; offset?: number },
+      options?: { jobId?: string; scheduleId?: string; limit?: number; cursor?: string },
     ) => {
       return this.apiGet<{
         runs: JobRun[];
-        total: number;
         limit: number;
-        offset: number;
+        nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/jobs/runs`, options);
     },
   };

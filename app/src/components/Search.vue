@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
-import { usePagedList } from "#composeables/usePagedList.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
@@ -14,7 +14,7 @@ import {
   spinnerIcon,
 } from "~/src/assets/icons.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
-import Pager from "./Pager.vue";
+import PagerCursor from "./PagerCursor.vue";
 import SearchFilters from "./SearchFilters.vue";
 
 const props = defineProps<{
@@ -34,27 +34,27 @@ const hasSearched = ref(false);
 const committedQuery = ref("");
 const committedFilters = ref<PropertyFilter[]>([]);
 
-// Search results via usePagedList
+// Search results via useCursorPagedList
 const {
   items: results,
-  total,
   isLoading: isSearching,
   isFetching: isFetchingSearch,
   error: searchError,
-  page,
-  totalPages,
-  goToPage: handleGoToPage,
-} = usePagedList({
+  hasPrevPage: hasPrevSearchPage,
+  hasNextPage: hasNextSearchPage,
+  nextPage: nextSearchPage,
+  prevPage: prevSearchPage,
+} = useCursorPagedList({
   queryKey: computed(() => [
     "search",
     props.spaceId,
     committedQuery.value,
     JSON.stringify(committedFilters.value),
   ]),
-  fetcher: ({ limit, offset }) => {
-    const queryParams: { q?: string; limit: number; offset: number; filters?: string } = {
+  fetcher: ({ limit, cursor }) => {
+    const queryParams: { q?: string; limit: number; cursor?: string; filters?: string } = {
       limit,
-      offset,
+      cursor,
     };
     if (committedQuery.value.trim()) queryParams.q = committedQuery.value;
     if (committedFilters.value.length > 0) {
@@ -62,7 +62,7 @@ const {
     }
     return api.search.get(props.spaceId, queryParams).then((r) => ({
       items: r.results,
-      total: r.total,
+      nextCursor: r.nextCursor,
     }));
   },
   enabled: computed(() => hasSearched.value),
@@ -394,12 +394,13 @@ const batchArchive = async (ids: string[]) => {
         </template>
       </DocumentGroupedList>
 
-      <Pager
+      <PagerCursor
         class="mt-6 pt-5"
-        :page="page"
-        :total-pages="totalPages"
+        :has-prev-page="hasPrevSearchPage"
+        :has-next-page="hasNextSearchPage"
         :disabled="isFetchingSearch"
-        @change="handleGoToPage"
+        @prev="prevSearchPage"
+        @next="nextSearchPage"
       />
     </template>
 

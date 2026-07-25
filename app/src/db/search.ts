@@ -340,19 +340,35 @@ export async function rebuildSearchIndex(spaceId: string): Promise<void> {
 // Search
 // ---------------------------------------------------------------------------
 
+// Cursor encodes the index into the deterministically-ordered in-memory
+// result set (relevance-ranked, then filtered) of the last returned result.
+export function encodeSearchCursor(index: number): string {
+  return Buffer.from(JSON.stringify({ i: index })).toString("base64url");
+}
+
+export function decodeSearchCursor(cursor: string): { index: number } | null {
+  try {
+    const { i } = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (typeof i !== "number") return null;
+    return { index: i };
+  } catch {
+    return null;
+  }
+}
+
 export async function searchDocuments(
   spaceId: string,
   userId: string | null,
   query: string,
   limit = 20,
-  offset = 0,
+  cursor?: string,
   filters: PropertyFilter[] = [],
-): Promise<{ results: SearchResult[]; total: number }> {
+): Promise<{ results: SearchResult[]; nextCursor: string | null }> {
   const hasQuery = query.trim().length > 0;
   const hasFilters = filters.length > 0;
 
   if (!hasQuery && !hasFilters) {
-    return { results: [], total: 0 };
+    return { results: [], nextCursor: null };
   }
 
   const db = await getSpaceDb(spaceId);
@@ -361,7 +377,7 @@ export async function searchDocuments(
   if (userId !== null) {
     docIds = await listAccessibleResources(spaceId, userId, ResourceType.DOCUMENT);
     if (docIds !== null && docIds.length === 0) {
-      return { results: [], total: 0 };
+      return { results: [], nextCursor: null };
     }
   }
 
@@ -688,10 +704,14 @@ export async function searchDocuments(
   const total = accessibleResults.length;
 
   if (total === 0) {
-    return { results: [], total: 0 };
+    return { results: [], nextCursor: null };
   }
 
-  const rawResults = accessibleResults.slice(offset, offset + limit);
+  const pos = cursor ? decodeSearchCursor(cursor) : null;
+  const startIndex = pos?.index ?? 0;
+  const rawResults = accessibleResults.slice(startIndex, startIndex + limit);
+  const nextCursor =
+    startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null;
 
   const results: SearchResult[] = [];
 
@@ -737,5 +757,5 @@ export async function searchDocuments(
     });
   }
 
-  return { results, total };
+  return { results, nextCursor };
 }

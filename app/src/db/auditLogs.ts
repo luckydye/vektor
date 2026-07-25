@@ -1,6 +1,7 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
+import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
 import type { getSpaceDb } from "./db.ts";
 import { type AuditLog, auditLog } from "./schema.ts";
 
@@ -241,42 +242,84 @@ export async function createAuditLog(
   return result[0];
 }
 
+// Cursor encodes the (createdAt, id) position of the last returned row.
+export function encodeAuditCursor(createdAt: Date, id: number): string {
+  return encodeSeekCursor(createdAt.getTime(), id);
+}
+
+export function decodeAuditCursor(
+  cursor: string,
+): { createdAt: Date; id: number } | null {
+  const pos = decodeSeekCursor(cursor, "number");
+  if (!pos) return null;
+  return { createdAt: new Date(pos.t), id: pos.id as number };
+}
+
 export async function getAuditLogsForDocument(
   db: Awaited<ReturnType<typeof getSpaceDb>>,
   docId: string,
   limit = 50,
-  offset = 0,
-): Promise<{ rows: AuditLog[]; total: number }> {
+  cursor?: string,
+): Promise<{ rows: AuditLog[]; nextCursor: string | null }> {
   const where = eq(auditLog.docId, docId);
-  const [countResult, rows] = await Promise.all([
-    db.select({ total: sql<number>`count(*)` }).from(auditLog).where(where).get(),
-    db
-      .select()
-      .from(auditLog)
-      .where(where)
-      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-      .limit(limit)
-      .offset(offset),
-  ]);
-  return { rows, total: countResult?.total ?? 0 };
+  const pos = cursor ? decodeAuditCursor(cursor) : null;
+  const seekCondition = pos
+    ? and(
+        where,
+        or(
+          lt(auditLog.createdAt, pos.createdAt),
+          and(eq(auditLog.createdAt, pos.createdAt), lt(auditLog.id, pos.id)),
+        ),
+      )
+    : where;
+
+  const fetchLimit = limit + 1;
+  const rows = await db
+    .select()
+    .from(auditLog)
+    .where(seekCondition)
+    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+    .limit(fetchLimit);
+
+  let nextCursor: string | null = null;
+  let page = rows;
+  if (rows.length === fetchLimit) {
+    page = rows.slice(0, -1);
+    const last = page[page.length - 1];
+    nextCursor = last ? encodeAuditCursor(last.createdAt, last.id) : null;
+  }
+  return { rows: page, nextCursor };
 }
 
 export async function getRecentAuditLogs(
   db: Awaited<ReturnType<typeof getSpaceDb>>,
   limit = 50,
-  offset = 0,
-): Promise<{ rows: AuditLog[]; total: number }> {
-  const [countResult, rows] = await Promise.all([
-    // max(id) is O(1) from SQLite's B-tree header; accurate for append-only tables
-    db.select({ total: sql<number>`coalesce(max(id), 0)` }).from(auditLog).get(),
-    db
-      .select()
-      .from(auditLog)
-      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-      .limit(limit)
-      .offset(offset),
-  ]);
-  return { rows, total: countResult?.total ?? 0 };
+  cursor?: string,
+): Promise<{ rows: AuditLog[]; nextCursor: string | null }> {
+  const pos = cursor ? decodeAuditCursor(cursor) : null;
+  const seekCondition = pos
+    ? or(
+        lt(auditLog.createdAt, pos.createdAt),
+        and(eq(auditLog.createdAt, pos.createdAt), lt(auditLog.id, pos.id)),
+      )
+    : undefined;
+
+  const fetchLimit = limit + 1;
+  const rows = await db
+    .select()
+    .from(auditLog)
+    .where(seekCondition)
+    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+    .limit(fetchLimit);
+
+  let nextCursor: string | null = null;
+  let page = rows;
+  if (rows.length === fetchLimit) {
+    page = rows.slice(0, -1);
+    const last = page[page.length - 1];
+    nextCursor = last ? encodeAuditCursor(last.createdAt, last.id) : null;
+  }
+  return { rows: page, nextCursor };
 }
 
 export function parseAuditDetails(log: AuditLog): AuditDetails | null {

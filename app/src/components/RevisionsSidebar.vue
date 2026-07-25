@@ -19,7 +19,7 @@ import {
 } from "~/src/assets/icons.ts";
 import DockedPanel from "./DockedPanel.vue";
 import DocumentActivityFeed from "./DocumentActivityFeed.vue";
-import Pager from "./Pager.vue";
+import PagerCursor from "./PagerCursor.vue";
 import "@atrium-ui/elements/popover";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useMembers } from "#composeables/useMembers.ts";
@@ -47,9 +47,10 @@ const {
   isFetching: isFetchingAudit,
   error: auditError,
   fetchAuditLogs,
-  page,
-  totalPages,
-  goToPage,
+  hasPrevPage: hasPrevAuditPage,
+  hasNextPage: hasNextAuditPage,
+  nextPage: nextAuditPage,
+  prevPage: prevAuditPage,
 } = useAuditLogs(props.documentId);
 
 const { currentSpaceId } = useSpace();
@@ -424,12 +425,13 @@ useSync(
       </wiki-scroll>
 
       <!-- Pager -->
-      <Pager
+      <PagerCursor
         class="shrink-0 px-3 py-2"
-        :page="page"
-        :total-pages="totalPages"
+        :has-prev-page="hasPrevAuditPage"
+        :has-next-page="hasNextAuditPage"
         :disabled="isFetchingAudit"
-        @change="goToPage"
+        @prev="prevAuditPage"
+        @next="nextAuditPage"
       />
     </div>
   </DockedPanel>

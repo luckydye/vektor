@@ -117,7 +117,7 @@ describe("Search API Tests", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.results).toEqual([]);
-    expect(data.total).toBe(0);
+    expect(data.nextCursor).toBeNull();
   });
 
   it("should find documents with simple single word query", async () => {
@@ -129,7 +129,6 @@ describe("Search API Tests", () => {
     const data = await response.json();
 
     expect(data.results).toBeDefined();
-    expect(data.total).toBeGreaterThan(0);
     expect(data.results.length).toBeGreaterThan(0);
 
     // Should find JavaScript Guide and React Components (mentions JavaScript)
@@ -143,7 +142,7 @@ describe("Search API Tests", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    expect(data.total).toBeGreaterThan(0);
+    expect(data.results.length).toBeGreaterThan(0);
     // Should match "javascript" with prefix search
     const slugs = data.results.map((r: any) => r.slug);
     expect(slugs).toContain("javascript-guide");
@@ -157,7 +156,6 @@ describe("Search API Tests", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    expect(data.total).toBeGreaterThan(0);
     // Should find documents containing either "programming" or "language"
     expect(data.results.length).toBeGreaterThan(0);
   });
@@ -170,7 +168,7 @@ describe("Search API Tests", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    expect(data.total).toBeGreaterThan(0);
+    expect(data.results.length).toBeGreaterThan(0);
     const slugs = data.results.map((r: any) => r.slug);
     expect(slugs).toContain("typescript-basics");
   });
@@ -203,10 +201,9 @@ describe("Search API Tests", () => {
     const data = await response.json();
 
     expect(data.results).toBeDefined();
-    expect(data.total).toBeDefined();
     expect(data.query).toBe("python");
     expect(data.limit).toBeDefined();
-    expect(data.offset).toBeDefined();
+    expect(data.nextCursor).not.toBeUndefined();
 
     if (data.results.length > 0) {
       const result = data.results[0];
@@ -224,7 +221,7 @@ describe("Search API Tests", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    expect(data.total).toBeGreaterThan(0);
+    expect(data.results.length).toBeGreaterThan(0);
 
     if (data.results.length > 0) {
       const result = data.results[0];
@@ -235,9 +232,9 @@ describe("Search API Tests", () => {
     }
   });
 
-  it("should handle pagination with limit and offset", async () => {
+  it("should handle pagination with limit and cursor", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=2&offset=0`,
+      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=2`,
     );
 
     expect(response.status).toBe(200);
@@ -245,7 +242,15 @@ describe("Search API Tests", () => {
 
     expect(data.results.length).toBeLessThanOrEqual(2);
     expect(data.limit).toBe(2);
-    expect(data.offset).toBe(0);
+
+    if (data.nextCursor) {
+      const nextResponse = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=2&cursor=${encodeURIComponent(data.nextCursor)}`,
+      );
+      expect(nextResponse.status).toBe(200);
+      const nextData = await nextResponse.json();
+      expect(nextData.results.length).toBeLessThanOrEqual(2);
+    }
   });
 
   it("should respect limit parameter", async () => {
@@ -262,14 +267,6 @@ describe("Search API Tests", () => {
   it("should return 400 for invalid limit", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/search?q=test&limit=200`,
-    );
-
-    expect(response.status).toBe(400);
-  });
-
-  it("should return 400 for negative offset", async () => {
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=test&offset=-1`,
     );
 
     expect(response.status).toBe(400);
@@ -318,10 +315,10 @@ describe("Search API Tests", () => {
 
     expect(searchResponse.status).toBe(200);
     const searchData = await searchResponse.json();
-    expect(searchData.total).toBe(0);
+    expect(searchData.results).toEqual([]);
   });
 
-  it("should return total count greater than limit when more results exist", async () => {
+  it("should return a nextCursor when more results exist", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=1`,
     );
@@ -329,9 +326,8 @@ describe("Search API Tests", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    if (data.total > 1) {
+    if (data.nextCursor) {
       expect(data.results.length).toBe(1);
-      expect(data.total).toBeGreaterThan(1);
     }
   });
 });
@@ -348,7 +344,7 @@ describe("Search Property Filters", () => {
     const data = await response.json();
 
     expect(data.results).toBeDefined();
-    expect(data.total).toBeGreaterThan(0);
+    expect(data.results.length).toBeGreaterThan(0);
     expect(data.filters).toEqual([{ key: "category", value: "Programming" }]);
 
     // All results should have category = Programming
@@ -402,7 +398,7 @@ describe("Search Property Filters", () => {
     const data = await response.json();
 
     expect(data.results).toBeDefined();
-    expect(data.total).toBeGreaterThan(0);
+    expect(data.results.length).toBeGreaterThan(0);
 
     // All results should have a category property
     for (const result of data.results) {
@@ -441,7 +437,6 @@ describe("Search Property Filters", () => {
     const data = await response.json();
 
     expect(data.results).toEqual([]);
-    expect(data.total).toBe(0);
   });
 
   it("should support multiple property filters", async () => {
@@ -502,7 +497,7 @@ describe("Search Property Filters", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    expect(data.total).toBeGreaterThan(0);
+    expect(data.results.length).toBeGreaterThan(0);
   });
 });
 
@@ -523,6 +518,6 @@ describe("Search Embedding Rebuild", () => {
     );
     expect(searchResponse.status).toBe(200);
     const searchData = await searchResponse.json();
-    expect(searchData.total).toBeGreaterThan(0);
+    expect(searchData.results.length).toBeGreaterThan(0);
   });
 });

@@ -403,12 +403,13 @@
           </tbody>
         </table>
       </div>
-      <Pager
+      <PagerCursor
         class="mt-3 pt-3"
-        :page="runsPage"
-        :total-pages="runsTotalPages"
+        :has-prev-page="runsHasPrevPage"
+        :has-next-page="runsHasNextPage"
         :disabled="isFetchingRuns"
-        @change="runsGoToPage"
+        @prev="runsPrevPage"
+        @next="runsNextPage"
       />
     </div>
   </div>
@@ -419,10 +420,10 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
-import { usePagedList } from "#composeables/usePagedList.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import Pager from "./Pager.vue";
+import PagerCursor from "./PagerCursor.vue";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
 type WorkflowRunRow = WorkflowRunsPage["runs"][number];
@@ -488,16 +489,17 @@ const {
   isLoading: isLoadingRuns,
   isFetching: isFetchingRuns,
   error: runsQueryError,
-  page: runsPage,
-  totalPages: runsTotalPages,
-  goToPage: runsGoToPage,
+  hasPrevPage: runsHasPrevPage,
+  hasNextPage: runsHasNextPage,
+  nextPage: runsNextPage,
+  prevPage: runsPrevPage,
   refresh: refreshRuns,
-} = usePagedList({
+} = useCursorPagedList({
   queryKey: computed(() => ["job_runs", currentSpace.value?.id]),
-  fetcher: ({ limit, offset }) =>
-    api.jobs.listRuns(currentSpace.value?.id, { limit, offset }).then((r) => ({
+  fetcher: ({ limit, cursor }) =>
+    api.jobs.listRuns(currentSpace.value?.id, { limit, cursor }).then((r) => ({
       items: r.runs,
-      total: r.total,
+      nextCursor: r.nextCursor,
     })),
   enabled: computed(() => !!currentSpace.value?.id),
   pageSize: 25,

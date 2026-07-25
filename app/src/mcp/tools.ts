@@ -211,7 +211,10 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         properties: {
           q: { type: "string" },
           limit: { type: "number" },
-          offset: { type: "number" },
+          cursor: {
+            type: "string",
+            description: "nextCursor returned by a previous search_documents call.",
+          },
           filters: { type: "string" },
         },
       },
@@ -528,7 +531,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         `/api/v1/spaces/${config.spaceId}/search${buildQuery({
           q: expectString(args, "q", { optional: true }),
           limit: expectNumber(args, "limit", { optional: true }),
-          offset: expectNumber(args, "offset", { optional: true }),
+          cursor: expectString(args, "cursor", { optional: true }),
           filters: expectString(args, "filters", { optional: true }),
         })}`,
       );

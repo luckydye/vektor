@@ -27,14 +27,14 @@ describe("VektorClient", () => {
       accessToken: "at_example",
       fetch: async (input, init) => {
         request = new Request(input, init);
-        return Response.json({ documents: [], total: 0, limit: 12, offset: 2 });
+        return Response.json({ documents: [], total: 0, limit: 12, nextCursor: null });
       },
     });
 
-    await client.listDocuments("space/id", { limit: 12, offset: 2 });
+    await client.listDocuments("space/id", { limit: 12, cursor: "abc" });
 
     expect(request?.url).toBe(
-      `${DEFAULT_VEKTOR_URL}/api/v1/spaces/space%2Fid/documents?limit=12&offset=2`,
+      `${DEFAULT_VEKTOR_URL}/api/v1/spaces/space%2Fid/documents?limit=12&cursor=abc`,
     );
     expect(request?.headers.get("Authorization")).toBe("Bearer at_example");
   });
@@ -51,7 +51,7 @@ describe("VektorClient", () => {
             documents: [listedDocument],
             total: 1,
             limit: 500,
-            offset: 0,
+            nextCursor: null,
           });
         }
         return Response.json({

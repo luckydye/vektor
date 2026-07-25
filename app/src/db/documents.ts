@@ -20,6 +20,7 @@ import {
   ResourceType,
 } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
 import { getSpaceDb } from "./db.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { createId } from "./ids.ts";
@@ -521,19 +522,13 @@ async function syncFileIndex(
 
 // Cursor encodes the (updatedAt, id) position of the last returned document.
 export function encodeListCursor(updatedAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ t: updatedAt.getTime(), id })).toString(
-    "base64url",
-  );
+  return encodeSeekCursor(updatedAt.getTime(), id);
 }
 
 export function decodeListCursor(cursor: string): { updatedAt: Date; id: string } | null {
-  try {
-    const { t, id } = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    if (typeof t !== "number" || typeof id !== "string") return null;
-    return { updatedAt: new Date(t), id };
-  } catch {
-    return null;
-  }
+  const pos = decodeSeekCursor(cursor, "string");
+  if (!pos) return null;
+  return { updatedAt: new Date(pos.t), id: pos.id as string };
 }
 
 export async function listDocuments(
@@ -737,8 +732,8 @@ export async function listDocuments(
 export async function listArchivedDocuments(
   spaceId: string,
   viewer?: AclViewer | null,
-  options?: { limit?: number; offset?: number },
-): Promise<{ documents: DocumentWithProperties[]; total: number }> {
+  options?: { limit?: number; cursor?: string },
+): Promise<{ documents: DocumentWithProperties[]; nextCursor: string | null }> {
   const db = await getSpaceDb(spaceId);
 
   let docs = await db
@@ -757,6 +752,7 @@ export async function listArchivedDocuments(
     })
     .from(document)
     .where(archivedDocumentCondition)
+    .orderBy(desc(document.updatedAt), desc(document.id))
     .all();
 
   // Per-document ACL filtering, mirroring listDocuments. Space access alone
@@ -797,10 +793,27 @@ export async function listArchivedDocuments(
     archived: doc.archived,
   }));
 
-  const total = results.length;
   const limit = options?.limit ?? 50;
-  const offset = options?.offset ?? 0;
-  return { documents: results.slice(offset, offset + limit), total };
+  let start = 0;
+  if (options?.cursor) {
+    const pos = decodeListCursor(options.cursor);
+    if (pos) {
+      const idx = results.findIndex(
+        (d) =>
+          d.updatedAt < pos.updatedAt ||
+          (d.updatedAt.getTime() === pos.updatedAt.getTime() && d.id < pos.id),
+      );
+      start = idx === -1 ? results.length : idx;
+    }
+  }
+
+  const page = results.slice(start, start + limit);
+  const last = page[page.length - 1];
+  const nextCursor =
+    start + limit < results.length && last
+      ? encodeListCursor(last.updatedAt, last.id)
+      : null;
+  return { documents: page, nextCursor };
 }
 
 export async function updateDocumentProperty(

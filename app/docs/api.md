@@ -217,8 +217,8 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 ### `GET /spaces/:spaceId/audit-logs`
 
 - **Auth**: session; `verifySpaceAccess` + `verifyFeatureAccess(view_audit)`.
-- **Query**: `limit`, `offset` (via `parsePaginationParams`, default 50/max 500).
-- **Returns**: `200 { auditLogs, total, limit, offset }` — each log has `details`
+- **Query**: `limit`, `cursor?` (via `parsePaginationParams`, default 50/max 500).
+- **Returns**: `200 { auditLogs, limit, nextCursor }` — each log has `details`
   parsed from its raw stored form.
 
 ---
@@ -302,12 +302,13 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 ### `GET /spaces/:spaceId/search`
 
 - **Auth**: `authenticateSpaceAccess(viewer)`.
-- **Query**: `q` (string), `limit`/`offset` (default 20/max 100), `filters` (JSON
+- **Query**: `q` (string), `limit`/`cursor?` (default 20/max 100), `filters` (JSON
   array string of `{ key: string, value: string|null }`).
 - **Behavior**: empty query + no filters → returns empty result set without
   querying. Public-space access is treated as a trusted view (no per-document ACL
-  filtering) for search purposes.
-- **Returns**: `200 { results, total, query, limit, offset, filters }`. `400` for
+  filtering) for search purposes. `cursor` is an opaque index into the
+  relevance-ranked, in-memory result set (not a DB-level seek).
+- **Returns**: `200 { results, nextCursor, query, limit, filters }`. `400` for
   malformed `filters`.
 
 ### `POST /spaces/:spaceId/search/rebuild`
@@ -545,10 +546,11 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 ### `GET /spaces/:spaceId/jobs/runs`
 
 - **Auth**: session; `verifySpaceRole(viewer)`.
-- **Query**: `jobId?`, `scheduleId?`, `limit`/`offset` (default 50/max 500).
+- **Query**: `jobId?`, `scheduleId?`, `limit`/`cursor?` (default 50/max 500).
 - **Behavior**: lists all recorded job executions — manual, workflow-node, and
-  cron-scheduled runs.
-- **Returns**: `200 { runs, total, limit, offset }`.
+  cron-scheduled runs. Cursor-paginated at the DB level, keyset on
+  `(queuedAt, id)`.
+- **Returns**: `200 { runs, limit, nextCursor }`.
 
 ---
 
@@ -560,11 +562,11 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
   backing document the caller can read.
 - **Query**: `documentId?` (returns just the latest run for that document, `404` if
   none/inaccessible), `sourceExtensionId?` (filter), `filterDocumentId?` (narrow list
-  to one document), `limit`/`offset` (default 20/max 200, only used in list mode).
+  to one document), `limit`/`cursor?` (default 20/max 200, only used in list mode).
 - **Returns** (with `documentId`): `200 { runId, status }`.
 - **Returns** (list mode): `200 { runs: Array<{ runId, documentId, documentSlug,
   documentTitle, status, createdAt, startedAt, finishedAt, sourceExtensionId,
-  runtimeInputs }>, total, limit, offset }`.
+  runtimeInputs }>, limit, nextCursor }`.
 
 ### `POST /spaces/:spaceId/workflows/runs`
 
@@ -692,8 +694,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 ### `GET /spaces/:spaceId/documents/archived`
 
 - **Auth**: session; `verifySpaceAccess`.
-- **Query**: `limit`/`offset` (default 50/max 500).
-- **Returns**: `200 { documents, total, limit, offset }`.
+- **Query**: `limit`/`cursor?` (default 50/max 500).
+- **Returns**: `200 { documents, limit, nextCursor }`.
 
 ### `GET /spaces/:spaceId/documents/:documentId`
 
@@ -847,8 +849,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 ### `GET /spaces/:spaceId/documents/:documentId/audit-logs`
 
 - **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(view_audit)`.
-- **Query**: `limit`/`offset` (default 50/max 500).
-- **Returns**: `200 { auditLogs, total, limit, offset }`.
+- **Query**: `limit`/`cursor?` (default 50/max 500).
+- **Returns**: `200 { auditLogs, limit, nextCursor }`.
 
 ### `GET /spaces/:spaceId/documents/:documentId/revisions`
 

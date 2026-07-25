@@ -1,17 +1,17 @@
 import { computed } from "vue";
 import { api } from "#api/client.ts";
-import { usePagedList } from "./usePagedList.ts";
+import { useCursorPagedList } from "./useCursorPagedList.ts";
 import { useSpace } from "./useSpace.ts";
 
 export function useAuditLogs(documentId: string, pageSize = 50) {
   const { currentSpaceId } = useSpace();
 
-  const paged = usePagedList({
+  const paged = useCursorPagedList({
     queryKey: computed(() => ["document_audit_logs", currentSpaceId.value, documentId]),
-    fetcher: ({ limit, offset }) =>
+    fetcher: ({ limit, cursor }) =>
       api.documentAuditLogs
-        .get(currentSpaceId.value as string, documentId, { limit, offset })
-        .then((r) => ({ items: r.auditLogs, total: r.total })),
+        .get(currentSpaceId.value as string, documentId, { limit, cursor })
+        .then((r) => ({ items: r.auditLogs, nextCursor: r.nextCursor })),
     enabled: computed(() => !!currentSpaceId.value),
     pageSize,
   });
@@ -23,9 +23,9 @@ export function useAuditLogs(documentId: string, pageSize = 50) {
     error: computed(() => paged.error.value?.message ?? null),
     fetchAuditLogs: paged.refresh,
     // Pagination controls
-    page: paged.page,
-    totalPages: paged.totalPages,
-    total: paged.total,
-    goToPage: paged.goToPage,
+    hasPrevPage: paged.hasPrevPage,
+    hasNextPage: paged.hasNextPage,
+    nextPage: paged.nextPage,
+    prevPage: paged.prevPage,
   };
 }

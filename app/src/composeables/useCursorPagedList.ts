@@ -9,7 +9,7 @@ import {
 } from "vue";
 import { useQuery } from "./query.ts";
 
-export interface PagedListOptions<T> {
+export interface CursorPagedListOptions<T> {
   /**
    * Base query key used for cache namespacing.
    * Pagination params are appended automatically, so keys like
@@ -20,12 +20,13 @@ export interface PagedListOptions<T> {
 
   /**
    * Async function that fetches one page of results.
-   * Must return `{ items, total }` where `total` is the full un-paged count.
+   * Must return `{ items, nextCursor }`, where `nextCursor` is the opaque
+   * cursor to pass back in to fetch the next page, or `null` on the last page.
    */
   fetcher: (params: {
     limit: number;
-    offset: number;
-  }) => Promise<{ items: T[]; total: number }>;
+    cursor?: string;
+  }) => Promise<{ items: T[]; nextCursor: string | null }>;
 
   /**
    * Number of items per page.
@@ -42,17 +43,9 @@ export interface PagedListOptions<T> {
   enabled?: MaybeRef<boolean>;
 }
 
-export interface PagedListResult<T> {
+export interface CursorPagedListResult<T> {
   /** Current page of items (empty array while loading). */
   items: ComputedRef<T[]>;
-  /** Total number of items across all pages. */
-  total: ComputedRef<number>;
-  /** Current 1-based page number. */
-  page: Ref<number>;
-  /** Total number of pages given the current `total` and `pageSize`. */
-  totalPages: ComputedRef<number>;
-  /** 0-based offset of the first item on the current page. */
-  offset: ComputedRef<number>;
   /** True while the initial page load is in flight. */
   isLoading: Ref<boolean>;
   /** True while any fetch (including background re-fetches) is in flight. */
@@ -63,8 +56,6 @@ export interface PagedListResult<T> {
   hasPrevPage: ComputedRef<boolean>;
   /** Whether a next page exists. */
   hasNextPage: ComputedRef<boolean>;
-  /** Navigate to an arbitrary 1-based page number (clamped to valid range). */
-  goToPage: (page: number) => void;
   /** Advance to the next page (no-op on the last page). */
   nextPage: () => void;
   /** Go back to the previous page (no-op on the first page). */
@@ -74,55 +65,40 @@ export interface PagedListResult<T> {
 }
 
 /**
- * Generic composable for offset-based paged listings.
+ * Generic composable for cursor-based paged listings.
+ *
+ * Unlike offset paging, cursor paging only supports moving sequentially
+ * (previous/next) — there's no jump-to-page-N or total count. Cursors for
+ * pages already visited are cached client-side so `prevPage` doesn't refetch.
  *
  * @example
  * // Run history
- * const { items: runs, ...pagination } = usePagedList({
+ * const { items: runs, ...pagination } = useCursorPagedList({
  *   queryKey: computed(() => ["job_runs", spaceId.value]),
- *   fetcher: ({ limit, offset }) =>
- *     api.jobs.listRuns(spaceId.value!, { limit, offset }).then(r => ({
+ *   fetcher: ({ limit, cursor }) =>
+ *     api.jobs.listRuns(spaceId.value!, { limit, cursor }).then(r => ({
  *       items: r.runs,
- *       total: r.total,
+ *       nextCursor: r.nextCursor,
  *     })),
  *   enabled: computed(() => !!spaceId.value),
  * });
- *
- * @example
- * // Archived documents
- * const { items: docs, ...pagination } = usePagedList({
- *   queryKey: computed(() => ["archived_docs", spaceId]),
- *   fetcher: ({ limit, offset }) =>
- *     api.documents.archived(spaceId, { limit, offset }).then(r => ({
- *       items: r.documents,
- *       total: r.total,
- *     })),
- * });
- *
- * @example
- * // Search results
- * const { items: results, ...pagination } = usePagedList({
- *   queryKey: computed(() => ["search", spaceId, query.value, filters.value]),
- *   fetcher: ({ limit, offset }) =>
- *     api.search.get(spaceId, { q: query.value, limit, offset }).then(r => ({
- *       items: r.results,
- *       total: r.total,
- *     })),
- *   enabled: computed(() => query.value.trim().length > 0),
- *   pageSize: 20,
- * });
  */
-export function usePagedList<T>(options: PagedListOptions<T>): PagedListResult<T> {
+export function useCursorPagedList<T>(
+  options: CursorPagedListOptions<T>,
+): CursorPagedListResult<T> {
   const { fetcher, pageSize = 20, enabled, queryKey } = options;
 
-  const page = ref(1);
-  const offset = computed(() => (page.value - 1) * pageSize);
+  // cursors[i] is the cursor used to fetch page i; cursors[0] is always
+  // undefined (first page).
+  const cursors = ref<(string | undefined)[]>([undefined]);
+  const pageIndex = ref(0);
+  const currentCursor = computed(() => cursors.value[pageIndex.value]);
 
   // Include pagination params in the cache key so each page is cached
   // independently and page transitions trigger automatic re-fetches.
   const fullQueryKey = computed(() => [
     ...toValue(queryKey),
-    { limit: pageSize, offset: offset.value },
+    { limit: pageSize, cursor: currentCursor.value },
   ]);
 
   const {
@@ -133,7 +109,7 @@ export function usePagedList<T>(options: PagedListOptions<T>): PagedListResult<T
     refetch,
   } = useQuery({
     queryKey: fullQueryKey,
-    queryFn: () => fetcher({ limit: pageSize, offset: offset.value }),
+    queryFn: () => fetcher({ limit: pageSize, cursor: currentCursor.value }),
     enabled: computed(() => (enabled !== undefined ? toValue(enabled) : true)),
     // Keep previous page data visible while the next page loads so the UI
     // doesn't flash an empty state between pages.
@@ -141,32 +117,31 @@ export function usePagedList<T>(options: PagedListOptions<T>): PagedListResult<T
   });
 
   const items = computed<T[]>(() => data.value?.items ?? []);
-  const total = computed(() => data.value?.total ?? 0);
-  const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-  const hasPrevPage = computed(() => page.value > 1);
-  const hasNextPage = computed(() => page.value < totalPages.value);
+  const hasPrevPage = computed(() => pageIndex.value > 0);
+  const hasNextPage = computed(() => !!data.value?.nextCursor);
 
-  // Reset to page 1 whenever the base query key changes (e.g. space switch,
-  // new search query) so the user doesn't land on a now-invalid page.
+  // Reset to the first page whenever the base query key changes (e.g. space
+  // switch, new search query) so the user doesn't land on a stale cursor.
   watch(
     () => toValue(queryKey),
     () => {
-      page.value = 1;
+      cursors.value = [undefined];
+      pageIndex.value = 0;
     },
     { deep: true },
   );
 
-  function goToPage(target: number): void {
-    const clamped = Math.max(1, Math.min(target, totalPages.value));
-    page.value = clamped;
-  }
-
   function nextPage(): void {
-    if (hasNextPage.value) page.value++;
+    const next = data.value?.nextCursor;
+    if (!next) return;
+    if (pageIndex.value + 1 >= cursors.value.length) {
+      cursors.value.push(next);
+    }
+    pageIndex.value++;
   }
 
   function prevPage(): void {
-    if (hasPrevPage.value) page.value--;
+    if (pageIndex.value > 0) pageIndex.value--;
   }
 
   function refresh(): void {
@@ -175,16 +150,11 @@ export function usePagedList<T>(options: PagedListOptions<T>): PagedListResult<T
 
   return {
     items,
-    total,
-    page,
-    totalPages,
-    offset,
     isLoading: isLoading as unknown as Ref<boolean>,
     isFetching: isFetching as unknown as Ref<boolean>,
     error: rawError as unknown as Ref<Error | null>,
     hasPrevPage,
     hasNextPage,
-    goToPage,
     nextPage,
     prevPage,
     refresh,

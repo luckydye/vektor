@@ -23,17 +23,22 @@ export const GET: ApiRouteHandler = (context) =>
     // Verify user has audit log viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_AUDIT, user.id);
 
-    const { limit, offset } = parsePaginationParams(
+    const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
     );
 
     const db = await getSpaceDb(spaceId);
-    const { rows, total } = await getAuditLogsForDocument(db, documentId, limit, offset);
+    const { rows, nextCursor } = await getAuditLogsForDocument(
+      db,
+      documentId,
+      limit,
+      cursor,
+    );
 
     const auditLogs = rows.map((log) => ({
       ...log,
       details: parseAuditDetails(log),
     }));
 
-    return jsonResponse({ auditLogs, total, limit, offset });
+    return jsonResponse({ auditLogs, limit, nextCursor });
   }, "Failed to list document audit logs");

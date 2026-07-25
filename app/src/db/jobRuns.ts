@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { appLogger } from "#observability/logger.ts";
+import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
 import { getSpaceDb } from "./db.ts";
 import { type JobRun, type JobRunInsert, jobRun } from "./schema/space.ts";
 
@@ -109,28 +110,57 @@ export async function failStaleJobRuns(spaceId: string, cutoff: Date): Promise<n
   }
 }
 
+// Cursor encodes the (queuedAt, id) position of the last returned run.
+export function encodeJobRunCursor(queuedAt: Date, id: string): string {
+  return encodeSeekCursor(queuedAt.getTime(), id);
+}
+
+export function decodeJobRunCursor(
+  cursor: string,
+): { queuedAt: Date; id: string } | null {
+  const pos = decodeSeekCursor(cursor, "string");
+  if (!pos) return null;
+  return { queuedAt: new Date(pos.t), id: pos.id as string };
+}
+
 export async function listJobRuns(
   spaceId: string,
-  options?: { jobId?: string; scheduleId?: string; limit?: number; offset?: number },
-): Promise<{ runs: JobRun[]; total: number }> {
+  options?: { jobId?: string; scheduleId?: string; limit?: number; cursor?: string },
+): Promise<{ runs: JobRun[]; nextCursor: string | null }> {
   const db = await getSpaceDb(spaceId);
   const conditions = [];
   if (options?.jobId) conditions.push(eq(jobRun.jobId, options.jobId));
   if (options?.scheduleId) conditions.push(eq(jobRun.scheduleId, options.scheduleId));
+
+  const pos = options?.cursor ? decodeJobRunCursor(options.cursor) : null;
+  if (pos) {
+    conditions.push(
+      or(
+        lt(jobRun.queuedAt, pos.queuedAt),
+        and(eq(jobRun.queuedAt, pos.queuedAt), lt(jobRun.id, pos.id)),
+      ),
+    );
+  }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [countResult, runs] = await Promise.all([
-    db.select({ total: sql<number>`count(*)` }).from(jobRun).where(where).get(),
-    db
-      .select()
-      .from(jobRun)
-      .where(where)
-      .orderBy(desc(jobRun.queuedAt))
-      .limit(options?.limit ?? 50)
-      .offset(options?.offset ?? 0)
-      .all(),
-  ]);
-  return { runs, total: countResult?.total ?? 0 };
+  const limit = options?.limit ?? 50;
+  const fetchLimit = limit + 1;
+  const rows = await db
+    .select()
+    .from(jobRun)
+    .where(where)
+    .orderBy(desc(jobRun.queuedAt), desc(jobRun.id))
+    .limit(fetchLimit)
+    .all();
+
+  let nextCursor: string | null = null;
+  let runs = rows;
+  if (rows.length === fetchLimit) {
+    runs = rows.slice(0, -1);
+    const last = runs[runs.length - 1];
+    nextCursor = last ? encodeJobRunCursor(last.queuedAt, last.id) : null;
+  }
+  return { runs, nextCursor };
 }
 
 export function toJobRunDto(run: JobRun) {
