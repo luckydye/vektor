@@ -1,4 +1,11 @@
-import * as html5parser from "html5parser";
+import {
+  type IAttribute,
+  type INode,
+  type ITag,
+  type IText,
+  parse,
+  SyntaxKind,
+} from "html5parser";
 
 /**
  * HTML string helpers shared by every hand-built markup path: escaping for
@@ -22,9 +29,16 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-type TagNode = html5parser.ITag;
-type TextNode = html5parser.IText;
-type AnyNode = html5parser.INode;
+// This is the only module that imports `html5parser` directly. Everything that
+// walks document HTML goes through the re-exports below, so the parser stays
+// replaceable in one place and node-type aliases are named consistently.
+export type {
+  IAttribute as HtmlAttribute,
+  INode as HtmlNode,
+  ITag as HtmlTagNode,
+  IText as HtmlTextNode,
+};
+export { parse as parseHtml, SyntaxKind };
 
 const VOID_TAGS = new Set([
   "area",
@@ -81,7 +95,7 @@ const BLOCK_TAGS = new Set([
   "ul",
 ]);
 
-function attrsToString(attrs: html5parser.IAttribute[] = []): string {
+function attrsToString(attrs: IAttribute[] = []): string {
   return attrs
     .map((attr) => {
       if (attr.value === undefined) {
@@ -98,16 +112,16 @@ function attrsToString(attrs: html5parser.IAttribute[] = []): string {
  * Serialize a parsed node back to HTML, preserving attributes and quote style.
  * Used to pass tables and custom elements through markdown conversion verbatim.
  */
-export function reconstructNode(node: AnyNode): string {
-  if (node.type === html5parser.SyntaxKind.Text) {
-    return (node as TextNode).value;
+export function reconstructNode(node: INode): string {
+  if (node.type === SyntaxKind.Text) {
+    return (node as IText).value;
   }
 
-  if (node.type !== html5parser.SyntaxKind.Tag) {
+  if (node.type !== SyntaxKind.Tag) {
     return "";
   }
 
-  const tag = node as TagNode;
+  const tag = node as ITag;
   const attrs = tag.attributes?.length ? ` ${attrsToString(tag.attributes)}` : "";
   const name = tag.name.toLowerCase();
 
@@ -119,18 +133,18 @@ export function reconstructNode(node: AnyNode): string {
   return `<${tag.name}${attrs}>${body}</${tag.name}>`;
 }
 
-function hasBlockContent(nodes: AnyNode[]): boolean {
+function hasBlockContent(nodes: INode[]): boolean {
   return nodes.some((node) => {
-    if (node.type !== html5parser.SyntaxKind.Tag) {
+    if (node.type !== SyntaxKind.Tag) {
       return false;
     }
 
-    const tag = node as TagNode;
+    const tag = node as ITag;
     return BLOCK_TAGS.has(tag.name.toLowerCase()) || hasBlockContent(tag.body || []);
   });
 }
 
-function formatTextNode(node: TextNode, indent: string): string[] {
+function formatTextNode(node: IText, indent: string): string[] {
   if (node.value.trim().length === 0) {
     return [];
   }
@@ -142,18 +156,18 @@ function formatTextNode(node: TextNode, indent: string): string[] {
     .map((line) => `${indent}${line}`);
 }
 
-function formatNode(node: AnyNode, depth: number): string[] {
+function formatNode(node: INode, depth: number): string[] {
   const indent = "  ".repeat(depth);
 
-  if (node.type === html5parser.SyntaxKind.Text) {
-    return formatTextNode(node as TextNode, indent);
+  if (node.type === SyntaxKind.Text) {
+    return formatTextNode(node as IText, indent);
   }
 
-  if (node.type !== html5parser.SyntaxKind.Tag) {
+  if (node.type !== SyntaxKind.Tag) {
     return [];
   }
 
-  const tag = node as TagNode;
+  const tag = node as ITag;
   const attrs = tag.attributes?.length ? ` ${attrsToString(tag.attributes)}` : "";
   const name = tag.name.toLowerCase();
 
@@ -185,7 +199,7 @@ export function prettyPrintHtml(html: string): string {
     return "";
   }
 
-  const ast = html5parser.parse(trimmed);
+  const ast = parse(trimmed);
   const lines = ast.flatMap((node) => formatNode(node, 0));
   return lines.join("\n");
 }
@@ -306,7 +320,7 @@ function safeUrl(
   return null;
 }
 
-function normalizedAttrValue(attr: html5parser.IAttribute): string {
+function normalizedAttrValue(attr: IAttribute): string {
   return attr.value?.value ?? "";
 }
 
@@ -321,7 +335,7 @@ function isAllowedAttribute(tagName: string, attrName: string): boolean {
   return false;
 }
 
-function sanitizedAttributes(tag: TagNode): string {
+function sanitizedAttributes(tag: ITag): string {
   const tagName = tag.name.toLowerCase();
   const attrs: string[] = [];
 
@@ -358,14 +372,14 @@ function sanitizedAttributes(tag: TagNode): string {
   return attrs.length ? ` ${attrs.join(" ")}` : "";
 }
 
-function sanitizeNode(node: AnyNode): string {
-  if (node.type === html5parser.SyntaxKind.Text) {
-    return escapeHtml((node as TextNode).value);
+function sanitizeNode(node: INode): string {
+  if (node.type === SyntaxKind.Text) {
+    return escapeHtml((node as IText).value);
   }
 
-  if (node.type !== html5parser.SyntaxKind.Tag) return "";
+  if (node.type !== SyntaxKind.Tag) return "";
 
-  const tag = node as TagNode;
+  const tag = node as ITag;
   const name = tag.name.toLowerCase();
   if (DROP_WITH_CONTENT_TAGS.has(name)) return "";
 
@@ -379,5 +393,5 @@ function sanitizeNode(node: AnyNode): string {
 
 export function sanitizeVektorDocumentPreviewHtml(html: string): string {
   if (!html.trim()) return "";
-  return html5parser.parse(html).map(sanitizeNode).join("");
+  return parse(html).map(sanitizeNode).join("");
 }

@@ -1,5 +1,5 @@
-import * as html5parser from "html5parser";
 import { appLogger } from "#observability/logger.ts";
+import { type HtmlNode, parseHtml, SyntaxKind } from "#utils/html.ts";
 
 export interface ExtractedMention {
   email: string;
@@ -26,10 +26,10 @@ export function extractMentionsFromHtml(html: string): ExtractedMention[] {
   const mentions: ExtractedMention[] = [];
 
   try {
-    const ast = html5parser.parse(html);
+    const ast = parseHtml(html);
 
     traverseNodes(ast, (node) => {
-      if (node.type === html5parser.SyntaxKind.Tag && node.name === "user-mention") {
+      if (node.type === SyntaxKind.Tag && node.name === "user-mention") {
         const emailAttr = node.attributes?.find((attr) => attr.name.value === "email");
         const email = emailAttr?.value?.value;
 
@@ -37,10 +37,8 @@ export function extractMentionsFromHtml(html: string): ExtractedMention[] {
           let label: string | undefined;
 
           if (node.body && node.body.length > 0) {
-            const textNode = node.body.find(
-              (child) => child.type === html5parser.SyntaxKind.Text,
-            );
-            if (textNode && textNode.type === html5parser.SyntaxKind.Text) {
+            const textNode = node.body.find((child) => child.type === SyntaxKind.Text);
+            if (textNode && textNode.type === SyntaxKind.Text) {
               label = textNode.value.replace(/^@/, "").trim();
             }
           }
@@ -62,14 +60,11 @@ export function extractMentionsFromHtml(html: string): ExtractedMention[] {
 /**
  * Recursively traverses the AST nodes
  */
-function traverseNodes(
-  nodes: html5parser.INode[],
-  callback: (node: html5parser.INode) => void,
-): void {
+function traverseNodes(nodes: HtmlNode[], callback: (node: HtmlNode) => void): void {
   for (const node of nodes) {
     callback(node);
 
-    if (node.type === html5parser.SyntaxKind.Tag && node.body) {
+    if (node.type === SyntaxKind.Tag && node.body) {
       traverseNodes(node.body, callback);
     }
   }

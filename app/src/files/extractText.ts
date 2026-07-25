@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { unzipSync } from "fflate";
+import { unzipSync } from "#utils/zip.ts";
 
 const TEXT_MIME_TYPES = new Set([
   "text/plain",

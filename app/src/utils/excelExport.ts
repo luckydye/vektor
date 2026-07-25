@@ -1,3 +1,5 @@
+import { zipSync } from "#utils/zip.ts";
+
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MAX_EXCEL_CELL_LENGTH = 32767;
 const MIN_COLUMN_WIDTH = 12;
@@ -202,113 +204,6 @@ function textData(value: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(value);
 }
 
-const CRC_TABLE = new Uint32Array(
-  Array.from({ length: 256 }, (_, index) => {
-    let crc = index;
-    for (let bit = 0; bit < 8; bit++) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
-    return crc >>> 0;
-  }),
-);
-
-function crc32(data: Uint8Array): number {
-  let crc = 0xffffffff;
-  for (const byte of data) {
-    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ byte) & 0xff];
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function uint16(value: number): Uint8Array<ArrayBuffer> {
-  const data = new Uint8Array(2);
-  new DataView(data.buffer).setUint16(0, value, true);
-  return data;
-}
-
-function uint32(value: number): Uint8Array<ArrayBuffer> {
-  const data = new Uint8Array(4);
-  new DataView(data.buffer).setUint32(0, value, true);
-  return data;
-}
-
-function concat(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
-  const length = parts.reduce((total, part) => total + part.length, 0);
-  const data = new Uint8Array(length);
-  let offset = 0;
-  for (const part of parts) {
-    data.set(part, offset);
-    offset += part.length;
-  }
-  return data;
-}
-
-function createZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
-  const fileParts: Uint8Array[] = [];
-  const centralParts: Uint8Array[] = [];
-  let offset = 0;
-
-  for (const entry of entries) {
-    const name = textData(entry.name);
-    const crc = crc32(entry.data);
-    const localHeader = concat([
-      uint32(0x04034b50),
-      uint16(20),
-      uint16(0x0800),
-      uint16(0),
-      uint16(0),
-      uint16(0),
-      uint32(crc),
-      uint32(entry.data.length),
-      uint32(entry.data.length),
-      uint16(name.length),
-      uint16(0),
-      name,
-    ]);
-
-    fileParts.push(localHeader, entry.data);
-
-    centralParts.push(
-      concat([
-        uint32(0x02014b50),
-        uint16(20),
-        uint16(20),
-        uint16(0x0800),
-        uint16(0),
-        uint16(0),
-        uint16(0),
-        uint32(crc),
-        uint32(entry.data.length),
-        uint32(entry.data.length),
-        uint16(name.length),
-        uint16(0),
-        uint16(0),
-        uint16(0),
-        uint16(0),
-        uint32(0),
-        uint32(offset),
-        name,
-      ]),
-    );
-
-    offset += localHeader.length + entry.data.length;
-  }
-
-  const centralDirectory = concat(centralParts);
-  const endRecord = concat([
-    uint32(0x06054b50),
-    uint16(0),
-    uint16(0),
-    uint16(entries.length),
-    uint16(entries.length),
-    uint32(centralDirectory.length),
-    uint32(offset),
-    uint16(0),
-  ]);
-
-  return concat([...fileParts, centralDirectory, endRecord]);
-}
-
 export interface ExcelSheet {
   name: string;
   rows: ExcelCell[][];
@@ -435,7 +330,11 @@ ${sheetRelationships}
     })),
   ];
 
-  return createZip(entries);
+  const files: Record<string, Uint8Array> = {};
+  for (const entry of entries) {
+    files[entry.name] = entry.data;
+  }
+  return zipSync(files, { level: 6 });
 }
 
 export function downloadExcelRows(rows: ExcelCell[][], fileName: string): void {

@@ -1,6 +1,6 @@
 import { dirname, posix } from "node:path";
-import { unzipSync, type Zippable, zipSync } from "fflate";
 import { defineCommand, type IFileSystem } from "just-bash";
+import { unzipSync, type Zippable, zipSync } from "#utils/zip.ts";
 
 async function addPathToZip(
   files: Zippable,

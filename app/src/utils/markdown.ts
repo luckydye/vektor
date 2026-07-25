@@ -7,9 +7,16 @@
  */
 
 import type { JSONContent } from "@tiptap/core";
-import * as html5parser from "html5parser";
 import { marked } from "marked";
-import { escapeHtml, reconstructNode } from "#utils/html.ts";
+import {
+  escapeHtml,
+  type HtmlNode,
+  type HtmlTagNode,
+  type HtmlTextNode,
+  parseHtml,
+  reconstructNode,
+  SyntaxKind,
+} from "#utils/html.ts";
 
 const markdownRenderer = new marked.Renderer();
 markdownRenderer.html = ({ text }: { text: string }) => escapeHtml(text);
@@ -130,21 +137,17 @@ export function tiptapJsonToMarkdown(document: JSONContent): string {
 // Document HTML → Markdown
 // ---------------------------------------------------------------------------
 
-type TagNode = html5parser.ITag;
-type TextNode = html5parser.IText;
-type AnyNode = html5parser.INode;
-
-function getAttr(node: TagNode, name: string): string | undefined {
+function getAttr(node: HtmlTagNode, name: string): string | undefined {
   return node.attributes?.find((a) => a.name.value === name)?.value?.value;
 }
 
-function getTextContent(nodes: AnyNode[]): string {
+function getTextContent(nodes: HtmlNode[]): string {
   let text = "";
   for (const node of nodes) {
-    if (node.type === html5parser.SyntaxKind.Text) {
-      text += (node as TextNode).value;
-    } else if (node.type === html5parser.SyntaxKind.Tag) {
-      const body = (node as TagNode).body;
+    if (node.type === SyntaxKind.Text) {
+      text += (node as HtmlTextNode).value;
+    } else if (node.type === SyntaxKind.Tag) {
+      const body = (node as HtmlTagNode).body;
       if (body) text += getTextContent(body);
     }
   }
@@ -160,18 +163,18 @@ const HTML_PASSTHROUGH_TAGS = new Set([
 ]);
 
 // Check if a div is a column layout
-function isColumnLayout(node: TagNode): boolean {
+function isColumnLayout(node: HtmlTagNode): boolean {
   return node.name === "div" && getAttr(node, "data-type") === "column-layout";
 }
 
-function nodeToMarkdown(node: AnyNode): string {
-  if (node.type === html5parser.SyntaxKind.Text) {
-    return (node as TextNode).value;
+function nodeToMarkdown(node: HtmlNode): string {
+  if (node.type === SyntaxKind.Text) {
+    return (node as HtmlTextNode).value;
   }
 
-  if (node.type !== html5parser.SyntaxKind.Tag) return "";
+  if (node.type !== SyntaxKind.Tag) return "";
 
-  const tag = node as TagNode;
+  const tag = node as HtmlTagNode;
   const name = tag.name.toLowerCase();
   const children = tag.body || [];
   const childContent = () => children.map(nodeToMarkdown).join("");
@@ -245,8 +248,8 @@ function nodeToMarkdown(node: AnyNode): string {
     // Code blocks
     case "pre": {
       const codeNode = children.find(
-        (c) => c.type === html5parser.SyntaxKind.Tag && (c as TagNode).name === "code",
-      ) as TagNode | undefined;
+        (c) => c.type === SyntaxKind.Tag && (c as HtmlTagNode).name === "code",
+      ) as HtmlTagNode | undefined;
       const text = codeNode ? getTextContent(codeNode.body || []) : childContent();
       const lang =
         codeNode?.attributes
@@ -300,7 +303,7 @@ function nodeToMarkdown(node: AnyNode): string {
 
 export function htmlToMarkdown(html: string): string {
   if (!html) return "";
-  const ast = html5parser.parse(html);
+  const ast = parseHtml(html);
   return ast
     .map(nodeToMarkdown)
     .join("")

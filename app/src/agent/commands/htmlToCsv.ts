@@ -1,18 +1,12 @@
-import * as html5parser from "html5parser";
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
-
-type HtmlTagNode = html5parser.ITag;
-type HtmlNode = html5parser.INode;
+import { type HtmlNode, type HtmlTagNode, parseHtml, SyntaxKind } from "#utils/html.ts";
 
 function isTag(node: HtmlNode, name?: string): node is HtmlTagNode {
-  return (
-    node.type === html5parser.SyntaxKind.Tag &&
-    (name ? node.name.toLowerCase() === name : true)
-  );
+  return node.type === SyntaxKind.Tag && (name ? node.name.toLowerCase() === name : true);
 }
 
 function getNodeText(node: HtmlNode): string {
-  if (node.type === html5parser.SyntaxKind.Text) {
+  if (node.type === SyntaxKind.Text) {
     return node.value;
   }
   if (!isTag(node) || !node.body) {
@@ -129,7 +123,7 @@ async function writeOutput(
  */
 export const htmlToCsvCommand = defineCommand("html-to-csv", async (args, ctx) => {
   const { html, outputFile } = await readInput(args, ctx);
-  const ast = html5parser.parse(html);
+  const ast = parseHtml(html);
   const table = findFirstTag(ast, "table");
   if (!table) {
     return {
@@ -149,7 +143,7 @@ export const htmlTableToCsvCommand = defineCommand(
   "html-table-to-csv",
   async (args, ctx) => {
     const { html, outputFile } = await readInput(args, ctx);
-    const ast = html5parser.parse(html);
+    const ast = parseHtml(html);
     const table = findFirstTag(ast, "table");
     if (!table) {
       return {

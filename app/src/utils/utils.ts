@@ -23,6 +23,14 @@ export function normalizeTimestamp(value: string | number | Date): Date {
   return parsed;
 }
 
+/** Inverse of `slugify` for display: "my-extension" → "My Extension". */
+export function kebabToTitle(kebab: string): string {
+  return kebab
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export function slugify(text: string) {
   const reservedSlugs = ["new"];
 

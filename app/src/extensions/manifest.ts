@@ -1,4 +1,4 @@
-import { inflateRawSync } from "node:zlib";
+import { unzipSync } from "#utils/zip.ts";
 
 export interface ExtensionRouteMenuItem {
   title: string;
@@ -39,10 +39,8 @@ export interface ExtensionManifest {
   jobs?: JobDefinition[];
 }
 
-export interface ZipEntry {
-  name: string;
-  data: Buffer;
-}
+/** Unpacked package contents, keyed by the archive path of each entry. */
+type ZipFiles = Record<string, Uint8Array>;
 
 function normaliseZipPath(filePath: string): string {
   const normalised = filePath.replace(/^\.?\//, "").trim();
@@ -52,55 +50,33 @@ function normaliseZipPath(filePath: string): string {
   return normalised;
 }
 
-function findZipEntry(files: ZipEntry[], filePath: string): ZipEntry | undefined {
+/**
+ * Look an entry up by archive path. The requested path is normalised (which
+ * rejects traversal), and entry names only have a leading "./" stripped — an
+ * entry whose own name escapes the archive can therefore never be matched.
+ */
+function findZipEntry(files: ZipFiles, filePath: string): Uint8Array | undefined {
   const normalisedPath = normaliseZipPath(filePath);
-  return files.find((file) => normaliseZipPath(file.name) === normalisedPath);
-}
-
-export function parseZip(buffer: Buffer): ZipEntry[] {
-  const entries: ZipEntry[] = [];
-  let offset = 0;
-
-  while (offset < buffer.length - 4) {
-    const signature = buffer.readUInt32LE(offset);
-
-    if (signature !== 0x04034b50) {
-      break;
-    }
-
-    const compressionMethod = buffer.readUInt16LE(offset + 8);
-    const compressedSize = buffer.readUInt32LE(offset + 18);
-    const fileNameLength = buffer.readUInt16LE(offset + 26);
-    const extraFieldLength = buffer.readUInt16LE(offset + 28);
-
-    const fileName = buffer
-      .subarray(offset + 30, offset + 30 + fileNameLength)
-      .toString("utf-8");
-
-    const dataStart = offset + 30 + fileNameLength + extraFieldLength;
-    const compressedData = buffer.subarray(dataStart, dataStart + compressedSize);
-
-    let fileData: Buffer;
-
-    if (compressionMethod === 0) {
-      fileData = compressedData;
-    } else if (compressionMethod === 8) {
-      fileData = inflateRawSync(compressedData);
-    } else {
-      throw new Error(`Unsupported compression method: ${compressionMethod}`);
-    }
-
-    if (!fileName.endsWith("/")) {
-      entries.push({ name: fileName, data: fileData });
-    }
-
-    offset = dataStart + compressedSize;
+  for (const [name, data] of Object.entries(files)) {
+    if (name.replace(/^\.?\//, "").trim() === normalisedPath) return data;
   }
-
-  return entries;
+  return undefined;
 }
 
-function resolveMenuIcon(icon: string, files: ZipEntry[]): string {
+/**
+ * Unpack a package. Anything fflate cannot read (truncated upload, not a ZIP)
+ * throws; the upload route turns that into a "Invalid extension package: …"
+ * bad-request, so the message here is the bare cause.
+ */
+function unzipPackage(buffer: Buffer): ZipFiles {
+  try {
+    return unzipSync(new Uint8Array(buffer));
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function resolveMenuIcon(icon: string, files: ZipFiles): string {
   try {
     const trimmedIcon = icon.trim();
 
@@ -124,7 +100,7 @@ function resolveMenuIcon(icon: string, files: ZipEntry[]): string {
       return "";
     }
 
-    const svgContent = iconFile.data.toString("utf-8").trim();
+    const svgContent = Buffer.from(iconFile).toString("utf-8").trim();
     if (!svgContent.startsWith("<svg")) {
       console.warn(
         `Ignoring extension menu icon '${trimmedIcon}': file content is not SVG`,
@@ -140,22 +116,19 @@ function resolveMenuIcon(icon: string, files: ZipEntry[]): string {
 }
 
 export function extractFile(zipBuffer: Buffer, filePath: string): Buffer | null {
-  const files = parseZip(zipBuffer);
-  const file = findZipEntry(files, filePath);
-  return file?.data ?? null;
+  const file = findZipEntry(unzipPackage(zipBuffer), filePath);
+  return file ? Buffer.from(file) : null;
 }
 
 export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
-  const files = parseZip(zipBuffer);
-  const manifestFile = files.find(
-    (f) => f.name === "manifest.json" || f.name === "./manifest.json",
-  );
+  const files = unzipPackage(zipBuffer);
+  const manifestFile = findZipEntry(files, "manifest.json");
 
   if (!manifestFile) {
     throw new Error("Extension package missing manifest.json");
   }
 
-  const manifestText = manifestFile.data.toString("utf-8");
+  const manifestText = Buffer.from(manifestFile).toString("utf-8");
   const manifest = JSON.parse(manifestText) as ExtensionManifest;
 
   if (!manifest.id || typeof manifest.id !== "string") {

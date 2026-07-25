@@ -2,11 +2,11 @@ import type { JSONContent } from "@tiptap/core";
 import { getSchema } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
-import * as html5parser from "html5parser";
 import { prosemirrorToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#canvas/canvasYjs.ts";
 import { contentExtensions } from "#editor/extensions.ts";
+import { parseHtml, SyntaxKind } from "#utils/html.ts";
 
 /**
  * Pure, dependency-light document (de)serialization primitives shared by the
@@ -77,9 +77,9 @@ export function toCleanHtml(
   // previous per-block output (a ProseMirror doc holds only block nodes, so
   // top-level text nodes are not expected).
   const lines: string[] = [];
-  for (const node of html5parser.parse(html)) {
+  for (const node of parseHtml(html)) {
     const source = html.slice(node.start, node.end);
-    if (node.type === html5parser.SyntaxKind.Text && !source.trim()) continue;
+    if (node.type === SyntaxKind.Text && !source.trim()) continue;
     lines.push(source);
   }
   return lines.join("\n");
