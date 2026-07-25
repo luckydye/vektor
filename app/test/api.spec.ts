@@ -740,7 +740,7 @@ describe("API Tests - Document Properties", () => {
     expect(response.status).toBe(200);
 
     const auditResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${propertyTestDocId}`,
     );
     expect(auditResponse.status).toBe(200);
 
@@ -774,7 +774,7 @@ describe("API Tests - Document Properties", () => {
     expect(response.status).toBe(200);
 
     const auditResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${propertyTestDocId}`,
     );
     const auditData = await auditResponse.json();
     const propertyUpdateLogs = auditData.auditLogs.filter(
@@ -811,7 +811,7 @@ describe("API Tests - Document Properties", () => {
     expect(response.status).toBe(200);
 
     const auditResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${propertyTestDocId}`,
     );
     expect(auditResponse.status).toBe(200);
 
@@ -1885,7 +1885,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should return audit logs for a document", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     expect(response.status).toBe(200);
@@ -1897,7 +1897,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should include create event in audit logs", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -1924,7 +1924,7 @@ describe("API Tests - Audit Logs", () => {
     auditSavedRev = saveData.revision.rev;
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -1941,7 +1941,7 @@ describe("API Tests - Audit Logs", () => {
     });
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -1962,7 +1962,7 @@ describe("API Tests - Audit Logs", () => {
     );
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -1974,7 +1974,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should return audit logs in descending order by creation time", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -1989,7 +1989,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should parse audit log details correctly", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -2003,7 +2003,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should respect limit query parameter", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs?limit=2`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}&limit=2`,
     );
 
     const data = await response.json();
@@ -2012,7 +2012,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should use default limit of 100 when not specified", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -2022,7 +2022,7 @@ describe("API Tests - Audit Logs", () => {
   it("should return empty array for non-existent document", async () => {
     const fakeDocId = "non-existent-doc-id";
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${fakeDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${fakeDocId}`,
     );
 
     expect(response.status).toBe(200);
@@ -2035,7 +2035,7 @@ describe("API Tests - Audit Logs", () => {
   it("should return 404 for non-existent space", async () => {
     const fakeSpaceId = "non-existent-space-id";
     const response = await apiRequest(
-      `/api/v1/spaces/${fakeSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${fakeSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     expect(response.status).toBe(404);
@@ -2043,7 +2043,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should include all required fields in audit log entries", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -2058,7 +2058,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should handle invalid limit parameter gracefully", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs?limit=invalid`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}&limit=invalid`,
     );
 
     expect(response.status).toBe(400);
@@ -2071,7 +2071,7 @@ describe("API Tests - Audit Logs", () => {
     });
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();
@@ -2093,7 +2093,7 @@ describe("API Tests - Audit Logs", () => {
     const newDocId = newDocData.document.id;
 
     const logsBeforeArchive = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
     const dataBeforeArchive = await logsBeforeArchive.json();
     const initialLogCount = dataBeforeArchive.auditLogs.length;
@@ -2103,7 +2103,7 @@ describe("API Tests - Audit Logs", () => {
     });
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
 
     expect(response.status).toBe(200);
@@ -2131,7 +2131,7 @@ describe("API Tests - Audit Logs", () => {
     });
 
     const logsBeforeRestore = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
     const dataBeforeRestore = await logsBeforeRestore.json();
     const initialLogCount = dataBeforeRestore.auditLogs.length;
@@ -2143,7 +2143,7 @@ describe("API Tests - Audit Logs", () => {
     });
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
 
     expect(response.status).toBe(200);
@@ -2168,7 +2168,7 @@ describe("API Tests - Audit Logs", () => {
     const newDocId = newDocData.document.id;
 
     const logsBeforeDelete = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
     const dataBeforeDelete = await logsBeforeDelete.json();
     const initialLogCount = dataBeforeDelete.auditLogs.length;
@@ -2181,7 +2181,7 @@ describe("API Tests - Audit Logs", () => {
     );
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
 
     expect(response.status).toBe(200);
@@ -2193,7 +2193,7 @@ describe("API Tests - Audit Logs", () => {
 
   it("should verify audit log timestamps are valid ISO strings", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
     );
 
     const data = await response.json();

@@ -45,7 +45,7 @@ describe("ApiReplica", () => {
       "/api/v1/spaces/space_1/members",
       "/api/v1/spaces/space_1/permissions/me",
       "/api/v1/spaces/space_1/documents/document_1/breadcrumbs",
-      "/api/v1/spaces/space_1/documents/document_1/audit-logs",
+      "/api/v1/spaces/space_1/audit-logs?documentId=document_1",
       "/api/v1/spaces/space_1/documents/document_1/contributors",
     ];
 

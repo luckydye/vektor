@@ -2301,7 +2301,7 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
 describe("ACL API Tests - Unauthenticated Access", () => {
   it("should return 401 for unauthenticated access to audit logs", async () => {
     const response = await fetch(
-      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}/audit-logs`,
+      `${BASE_URL}/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${testDocumentId}`,
       { headers: { "Content-Type": "application/json" } },
     );
     expect(response.status).toBe(401);
@@ -2395,11 +2395,12 @@ describe("Permissions API - Get Current User Permissions", () => {
 describe("Permissions API - Comments Feature", () => {
   it("should allow owner to create comments", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      `/api/v1/spaces/${featuresTestSpaceId}/comments`,
       session1Token,
       {
         method: "POST",
         body: JSON.stringify({
+          documentId: featuresTestDocumentId,
           content: "Owner comment test",
           reference: "120",
         }),
@@ -2412,7 +2413,7 @@ describe("Permissions API - Comments Feature", () => {
     expect(data.comment.content).toBe("Owner comment test");
 
     const auditResponse = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs?documentId=${featuresTestDocumentId}`,
       session1Token,
     );
     expect(auditResponse.ok).toBe(true);
@@ -2427,11 +2428,12 @@ describe("Permissions API - Comments Feature", () => {
 
   it("should allow editor to create comments", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      `/api/v1/spaces/${featuresTestSpaceId}/comments`,
       session2Token,
       {
         method: "POST",
         body: JSON.stringify({
+          documentId: featuresTestDocumentId,
           content: "Editor comment test",
           reference: "240",
         }),
@@ -2446,11 +2448,12 @@ describe("Permissions API - Comments Feature", () => {
 
   it("should deny viewer from creating comments by default", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      `/api/v1/spaces/${featuresTestSpaceId}/comments`,
       session3Token,
       {
         method: "POST",
         body: JSON.stringify({
+          documentId: featuresTestDocumentId,
           content: "Viewer comment test - should fail",
           reference: "360",
         }),
@@ -2463,7 +2466,7 @@ describe("Permissions API - Comments Feature", () => {
 
   it("should allow viewer to read comments", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      `/api/v1/spaces/${featuresTestSpaceId}/comments?documentId=${featuresTestDocumentId}`,
       session3Token,
     );
 
@@ -2475,11 +2478,12 @@ describe("Permissions API - Comments Feature", () => {
 
   it("should require reference for top-level comments", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      `/api/v1/spaces/${featuresTestSpaceId}/comments`,
       session1Token,
       {
         method: "POST",
         body: JSON.stringify({
+          documentId: featuresTestDocumentId,
           content: "Missing reference",
         }),
       },
@@ -2601,7 +2605,7 @@ describe("Permissions API - Audit Logs Feature", () => {
 
   it("should allow owner to view document audit logs", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs?documentId=${featuresTestDocumentId}`,
       session1Token,
     );
 
@@ -2624,7 +2628,7 @@ describe("Permissions API - Audit Logs Feature", () => {
 
   it("should allow editor to view document audit logs by default", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs?documentId=${featuresTestDocumentId}`,
       session2Token,
     );
 
@@ -2646,7 +2650,7 @@ describe("Permissions API - Audit Logs Feature", () => {
 
   it("should deny viewer from viewing document audit logs", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs?documentId=${featuresTestDocumentId}`,
       session3Token,
     );
 
@@ -2728,11 +2732,12 @@ describe("Permissions API - Grant/Deny/Revoke Features", () => {
 
   it("should allow viewer to comment after feature grant", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      `/api/v1/spaces/${featuresTestSpaceId}/comments`,
       session3Token,
       {
         method: "POST",
         body: JSON.stringify({
+          documentId: featuresTestDocumentId,
           content: "Viewer comment after grant",
           reference: "480",
         }),

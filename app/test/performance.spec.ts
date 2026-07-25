@@ -516,7 +516,7 @@ describe.if(import.meta.env.TEST_PERF)(
 
         const queryStart = performance.now();
         const response = await apiRequest(
-          `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}/audit-logs`,
+          `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${randomDocId}`,
         );
         const queryEnd = performance.now();
 

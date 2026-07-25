@@ -164,7 +164,7 @@ describe("API Tests - Readonly Documents", () => {
 
     // Check audit logs
     const auditResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${newDocId}`,
     );
 
     expect(auditResponse.status).toBe(200);
@@ -198,7 +198,7 @@ describe("API Tests - Readonly Documents", () => {
 
   it("should create unlock audit log entry when setting readonly to false", async () => {
     const auditResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}/audit-logs`,
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${readonlyTestDocId}`,
     );
 
     expect(auditResponse.status).toBe(200);
