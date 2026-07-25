@@ -58,7 +58,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space |
 | GET | `/spaces/:spaceId/members` | List space members with roles |
 | GET | `/spaces/:spaceId/properties` | List all document property keys/values in space |
-| GET | `/spaces/:spaceId/audit-logs` | Space-wide audit log (paginated) |
+| GET | `/spaces/:spaceId/audit-logs` | Space-wide (or `?documentId=` scoped) audit log (paginated) |
 | GET/POST/PUT | `/spaces/:spaceId/categories` | List / create / reorder categories |
 | GET/PUT/DELETE | `/spaces/:spaceId/categories/:id` | Read / update / delete a category |
 | GET/POST | `/spaces/:spaceId/permissions` | List / grant-deny-revoke roles & features |
@@ -96,7 +96,6 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET | `/spaces/:spaceId/documents/:documentId/diff` | Unified/inline diff between a revision and its base |
 | POST | `/spaces/:spaceId/documents/:documentId/edit` | Apply structured partial edit operations (live-merge aware) |
 | GET/PATCH | `/spaces/:spaceId/documents/:documentId/email-preference` | Read / set per-user email-mute for a document |
-| GET | `/spaces/:spaceId/documents/:documentId/audit-logs` | Document-scoped audit log |
 | GET/POST/PATCH | `/spaces/:spaceId/documents/:documentId/revisions` | List revisions / restore a revision / update suggestion status |
 | GET/POST | `/spaces/:spaceId/extensions` | List extensions / upload (install or update) an extension package |
 | GET/PATCH/DELETE | `/spaces/:spaceId/extensions/:extensionId` | Read / enable-disable / delete an extension |
@@ -216,8 +215,11 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `GET /spaces/:spaceId/audit-logs`
 
-- **Auth**: session; `verifySpaceAccess` + `verifyFeatureAccess(view_audit)`.
-- **Query**: `limit`, `cursor?` (via `parsePaginationParams`, default 50/max 500).
+- **Auth**: session; `verifySpaceAccess` (or, when `documentId` is given,
+  `verifyDocumentAccess`) + `verifyFeatureAccess(view_audit)`.
+- **Query**: `documentId?` (scopes the log to a single document instead of the
+  whole space), `limit`, `cursor?` (via `parsePaginationParams`, default
+  50/max 500).
 - **Returns**: `200 { auditLogs, limit, nextCursor }` — each log has `details`
   parsed from its raw stored form.
 
@@ -675,7 +677,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Behavior**: content is never included in list responses (fetched separately per
   document). `record`-type documents are excluded when filtering by category.
 - **Returns**: shape depends on query — `{ documentsByCategory, categorySlugs }`
-  (grouped), `{ documents, total, limit, offset }` (category/flat), or
+  (grouped), `{ documents, total, limit, offset: 0 }` (category/flat — returns the
+  full filtered result set, unpaginated; `offset` is always `0`), or
   `{ documents, total, limit, nextCursor }` (`parentId` or default cursor-paginated
   listing).
 
@@ -845,12 +848,6 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Auth**: session; `verifyDocumentAccess`.
 - **Body**: `{ muted: boolean }`.
 - **Returns**: `200 { muted }`.
-
-### `GET /spaces/:spaceId/documents/:documentId/audit-logs`
-
-- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(view_audit)`.
-- **Query**: `limit`/`cursor?` (default 50/max 500).
-- **Returns**: `200 { auditLogs, limit, nextCursor }`.
 
 ### `GET /spaces/:spaceId/documents/:documentId/revisions`
 

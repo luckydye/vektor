@@ -5,19 +5,29 @@ import {
   parsePaginationParams,
   requireParam,
   requireUser,
+  verifyDocumentAccess,
   verifyFeatureAccess,
   verifySpaceAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getRecentAuditLogs, parseAuditDetails } from "#db/auditLogs.ts";
+import {
+  getAuditLogsForDocument,
+  getRecentAuditLogs,
+  parseAuditDetails,
+} from "#db/auditLogs.ts";
 import { getSpaceDb } from "#db/db.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = new URL(context.req.url).searchParams.get("documentId");
 
-    await verifySpaceAccess(spaceId, user.id);
+    if (documentId) {
+      await verifyDocumentAccess(spaceId, documentId, user.id);
+    } else {
+      await verifySpaceAccess(spaceId, user.id);
+    }
 
     // Verify user has audit log viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_AUDIT, user.id);
@@ -27,7 +37,9 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     const db = await getSpaceDb(spaceId);
-    const { rows, nextCursor } = await getRecentAuditLogs(db, limit, cursor);
+    const { rows, nextCursor } = documentId
+      ? await getAuditLogsForDocument(db, documentId, limit, cursor)
+      : await getRecentAuditLogs(db, limit, cursor);
 
     const auditLogs = rows.map((log) => ({
       ...log,

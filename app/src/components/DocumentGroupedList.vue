@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
@@ -192,6 +192,19 @@ function toggleSelect(id: string, event: MouseEvent) {
 function deselectAll() {
   selectedIds.value = new Set();
 }
+
+// Drop any selected id that's no longer in `items` (e.g. after paging) so
+// stale ids from a previous page never reach batch actions.
+watch(
+  () => props.items,
+  () => {
+    const availableIds = new Set(allIds.value);
+    const next = new Set([...selectedIds.value].filter((id) => availableIds.has(id)));
+    if (next.size !== selectedIds.value.size) {
+      selectedIds.value = next;
+    }
+  },
+);
 
 // ── Collapsed groups ─────────────────────────────────────────────────────────
 

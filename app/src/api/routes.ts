@@ -18,7 +18,6 @@ import * as aiChatSessions from "./routes/v1/spaces/[spaceId]/ai-chat/sessions/i
 import * as spaceAuditLogs from "./routes/v1/spaces/[spaceId]/audit-logs.ts";
 import * as category from "./routes/v1/spaces/[spaceId]/categories/[id].ts";
 import * as categories from "./routes/v1/spaces/[spaceId]/categories/index.ts";
-import * as documentAuditLogs from "./routes/v1/spaces/[spaceId]/documents/[documentId]/audit-logs.ts";
 import * as documentBreadcrumbs from "./routes/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs.ts";
 import * as documentChildren from "./routes/v1/spaces/[spaceId]/documents/[documentId]/children.ts";
 import * as documentComments from "./routes/v1/spaces/[spaceId]/documents/[documentId]/comments.ts";
@@ -116,10 +115,6 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/documents", module: documents },
   { pattern: "/api/v1/spaces/[spaceId]/documents/archived", module: documentsArchived },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]", module: document },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/audit-logs",
-    module: documentAuditLogs,
-  },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs",
     module: documentBreadcrumbs,

@@ -9,8 +9,8 @@ export function useAuditLogs(documentId: string, pageSize = 50) {
   const paged = useCursorPagedList({
     queryKey: computed(() => ["document_audit_logs", currentSpaceId.value, documentId]),
     fetcher: ({ limit, cursor }) =>
-      api.documentAuditLogs
-        .get(currentSpaceId.value as string, documentId, { limit, cursor })
+      api.auditLogs
+        .get(currentSpaceId.value as string, { documentId, limit, cursor })
         .then((r) => ({ items: r.auditLogs, nextCursor: r.nextCursor })),
     enabled: computed(() => !!currentSpaceId.value),
     pageSize,

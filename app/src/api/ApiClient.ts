@@ -392,6 +392,7 @@ export interface PropertyFilter {
 export interface SearchResult {
   id: string;
   slug: string;
+  type?: string | null;
   content: string;
   properties: Record<string, string | string[]>;
   createdAt: string;
@@ -400,6 +401,8 @@ export interface SearchResult {
   parentId: string | null;
   rank: number;
   snippet: string;
+  /** Set for file-table entries — use this URL instead of the doc route */
+  fileUrl?: string;
 }
 
 export interface Comment {
@@ -1801,27 +1804,6 @@ export class ApiClient {
     },
   };
 
-  documentAuditLogs = {
-    /**
-     * Get audit logs for a document
-     */
-    get: async (
-      spaceId: string,
-      documentId: string,
-      query?: { limit?: number; cursor?: string },
-    ) => {
-      return this.apiGet<{
-        auditLogs: AuditLog[];
-        limit: number;
-        nextCursor: string | null;
-      }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/audit-logs`,
-        query,
-      );
-    },
-  };
-
   documentContributors = {
     /**
      * Get contributors for a document
@@ -1923,9 +1905,12 @@ export class ApiClient {
 
   auditLogs = {
     /**
-     * List audit logs for a space
+     * List audit logs for a space, optionally scoped to a single document
      */
-    get: async (spaceId: string, query?: { limit?: number; cursor?: string }) => {
+    get: async (
+      spaceId: string,
+      query?: { documentId?: string; limit?: number; cursor?: string },
+    ) => {
       return this.apiGet<{
         auditLogs: AuditLog[];
         limit: number;

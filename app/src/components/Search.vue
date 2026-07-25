@@ -215,8 +215,9 @@ const canSearch = computed(() => {
 const isBatchArchiving = ref(false);
 const batchError = ref<string | null>(null);
 
-// Files (search results backed by the file table) aren't documents and can't be
-// archived — their id is a file path, so the document endpoint would 404.
+// Files (search results backed by the file table) aren't documents — their id
+// is a file storage path, not a document id, so they go through the uploads
+// delete endpoint instead of the document archive endpoint.
 const isFileId = (id: string) => {
   const item = [...sortedResults.value, ...allDocuments.value].find((d) => d.id === id);
   return item?.type === "file" || Boolean(item?.fileUrl);
@@ -224,22 +225,24 @@ const isFileId = (id: string) => {
 
 const batchArchive = async (ids: string[]) => {
   batchError.value = null;
+  if (ids.length === 0) return;
 
-  const archivableIds = ids.filter((id) => !isFileId(id));
-  const skippedFiles = ids.length - archivableIds.length;
+  const fileIds = ids.filter((id) => isFileId(id));
+  const documentIds = ids.filter((id) => !isFileId(id));
 
-  if (archivableIds.length === 0) {
-    batchError.value =
-      skippedFiles > 0 ? "Files can't be archived." : "Nothing to archive.";
-    return;
+  const parts: string[] = [];
+  if (documentIds.length > 0) {
+    parts.push(`archive ${documentIds.length} document${documentIds.length !== 1 ? "s" : ""}`);
   }
-
-  const count = archivableIds.length;
-  if (!confirm(`Archive ${count} document${count !== 1 ? "s" : ""}?`)) return;
+  if (fileIds.length > 0) {
+    parts.push(`permanently delete ${fileIds.length} file${fileIds.length !== 1 ? "s" : ""}`);
+  }
+  if (!confirm(`${parts.join(" and ")}?`)) return;
 
   isBatchArchiving.value = true;
   const failed: string[] = [];
-  for (const id of archivableIds) {
+
+  for (const id of documentIds) {
     try {
       await api.document.archive(props.spaceId, id);
     } catch (error) {
@@ -248,19 +251,22 @@ const batchArchive = async (ids: string[]) => {
     }
   }
 
-  if (failed.length > 0) {
-    isBatchArchiving.value = false;
-    batchError.value = `Failed to archive ${failed.length} of ${count} document${
-      count !== 1 ? "s" : ""
-    }.`;
-    return;
+  for (const id of fileIds) {
+    try {
+      await api.upload.delete(props.spaceId, id);
+    } catch (error) {
+      console.error("Failed to delete file", id, error);
+      failed.push(id);
+    }
   }
 
-  if (skippedFiles > 0) {
-    // Everything archivable succeeded, but some selected files were skipped.
-    batchError.value = `Archived ${count} document${
-      count !== 1 ? "s" : ""
-    }; skipped ${skippedFiles} file${skippedFiles !== 1 ? "s" : ""}.`;
+  isBatchArchiving.value = false;
+
+  if (failed.length > 0) {
+    batchError.value = `Failed to process ${failed.length} of ${ids.length} item${
+      ids.length !== 1 ? "s" : ""
+    }.`;
+    return;
   }
 
   window.location.reload();
@@ -350,7 +356,7 @@ const batchArchive = async (ids: string[]) => {
             :disabled="isBatchArchiving"
             class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {{ isBatchArchiving ? "Archiving…" : "Archive selected" }}
+            {{ isBatchArchiving ? "Processing…" : "Archive / delete selected" }}
           </button>
         </template>
       </DocumentGroupedList>
@@ -389,7 +395,7 @@ const batchArchive = async (ids: string[]) => {
             :disabled="isBatchArchiving"
             class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {{ isBatchArchiving ? "Archiving…" : "Archive selected" }}
+            {{ isBatchArchiving ? "Processing…" : "Archive / delete selected" }}
           </button>
         </template>
       </DocumentGroupedList>

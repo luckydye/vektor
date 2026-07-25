@@ -801,7 +801,7 @@ async function bench(state: SeedState): Promise<BenchResult> {
 
   const auditLogList = await measureN("GET doc audit-logs", 300, async () => {
     const id = randomItem(documentIds);
-    await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}/audit-logs`);
+    await apiJson(`/api/v1/spaces/${spaceId}/audit-logs?documentId=${id}`);
   });
 
   const spaceAuditLog = await measureN("GET space audit-logs", 50, async () => {
