@@ -81,7 +81,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Transition name="picker-fade">
+  <Transition
+    enter-active-class="transition-opacity duration-150 ease-[ease]"
+    enter-from-class="opacity-0"
+    leave-active-class="transition-opacity duration-150 ease-[ease]"
+    leave-to-class="opacity-0"
+  >
     <div
       v-if="visible"
       role="dialog"
@@ -102,7 +107,7 @@ onUnmounted(() => {
             v-for="option in documentOptions"
             :key="option.type"
             type="button"
-            class="group picker-card grid min-h-[154px] gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
+            class="group grid min-h-[154px] cursor-pointer gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
             @click="selectType(option.type)"
           >
             <span class="flex min-w-0 items-start gap-4">
@@ -125,7 +130,7 @@ onUnmounted(() => {
 
             <span
               v-if="option.illustration"
-              class="picker-preview"
+              class="block min-h-[116px] overflow-hidden max-[640px]:hidden [&_svg]:block [&_svg]:w-full [&_svg]:h-full"
               aria-hidden="true"
               v-html="option.illustration"
             />
@@ -135,50 +140,3 @@ onUnmounted(() => {
     </div>
   </Transition>
 </template>
-
-<style scoped>
-.picker-fade-enter-active,
-.picker-fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.picker-fade-enter-from,
-.picker-fade-leave-to {
-  opacity: 0;
-}
-
-.starter-illustration {
-  width: 120px;
-  height: 72px;
-}
-
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.starter-illustration :deep(svg) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.picker-card {
-  cursor: pointer;
-}
-
-.picker-preview {
-  display: block;
-  min-height: 116px;
-  overflow: hidden;
-}
-
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.picker-preview :deep(svg) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-@media (max-width: 640px) {
-  .picker-preview {
-    display: none;
-  }
-}
-</style>

@@ -197,7 +197,12 @@ Actions.register("ui:toggle:palatte", {
 
 <template>
   <div>
-    <Transition name="fade">
+    <Transition
+      enter-active-class="transition-opacity duration-150 ease-[ease]"
+      enter-from-class="opacity-0"
+      leave-active-class="transition-opacity duration-150 ease-[ease]"
+      leave-to-class="opacity-0"
+    >
       <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
       <a-blur
         v-if="isOpen"
@@ -349,17 +354,3 @@ Actions.register("ui:toggle:palatte", {
     </Transition>
   </div>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-</style>

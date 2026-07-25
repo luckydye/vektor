@@ -324,7 +324,7 @@ function formatCommentTime(date: Date | string): string {
                       </div>
 
                       <div
-                        class="mt-1 text-size-medium text-neutral-700 leading-relaxed markdown-comment"
+                        class="mt-1 text-size-medium text-neutral-700 leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-semibold [&_em]:italic [&_a]:text-primary-600 [&_a]:underline"
                         v-html="renderMessageMarkdown(comment.content)"
                       />
                     </div>
@@ -364,29 +364,3 @@ function formatCommentTime(date: Date | string): string {
     </Transition>
   </Teleport>
 </template>
-
-<style scoped>
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(ul) {
-  list-style: disc;
-  padding-left: 1.25rem;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(ol) {
-  list-style: decimal;
-  padding-left: 1.25rem;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(strong) {
-  font-weight: 600;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(em) {
-  font-style: italic;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(a) {
-  color: var(--color-primary-600);
-  text-decoration: underline;
-}
-</style>

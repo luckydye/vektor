@@ -26,6 +26,18 @@
   --container-xs: 120px;
   --container-sm: 180px;
 
+  --animate-workflow-progress: workflow-progress 1.8s ease-in-out infinite;
+
+  @keyframes workflow-progress {
+    from {
+      transform: translateX(-120%);
+    }
+
+    to {
+      transform: translateX(420%);
+    }
+  }
+
   /* spacing */
   --spacing-6xs: 0.125rem; /* 2px */
   --spacing-5xs: 0.25rem; /* 4px */

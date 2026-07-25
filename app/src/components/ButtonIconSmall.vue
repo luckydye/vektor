@@ -13,18 +13,9 @@ const props = withDefaults(defineProps<Props>(), {});
       type="button"
       :aria-label="props.ariaLabel"
       :title="props.ariaLabel"
-      class="cursor-pointer flex items-center justify-center gap-5xs bg-background border border-primary-100 rounded-md h-[28px] px-4xs hover:bg-primary-10 active:bg-primary-50 transition-colors text-primary-400"
+      class="cursor-pointer flex items-center justify-center gap-5xs bg-background border border-primary-100 rounded-md h-[28px] px-4xs hover:bg-primary-10 active:bg-primary-50 transition-colors text-primary-400 [&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:text-inherit"
     >
       <div v-html="icon" />
     </button>
   </div>
 </template>
-
-<style scoped>
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style deep selector. */
-button :deep(svg) {
-  width: 18px;
-  height: 18px;
-  color: inherit;
-}
-</style>

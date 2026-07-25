@@ -210,7 +210,7 @@ async function onCsvFileChange(event: Event) {
 
       <table
         v-else
-        class="database-table text-size-medium"
+        class="overflow-hidden border border-neutral-100 border-separate rounded-b-[var(--radius-md)] border-spacing-0 text-size-medium [&_th]:border-r [&_th]:border-b [&_th]:border-neutral-100 [&_th]:leading-[1.45] [&_td]:border-r [&_td]:border-b [&_td]:border-neutral-100 [&_td]:leading-[1.45] [&_tr_>_:last-child]:border-r-0 [&_tbody_tr:last-child_>_td]:border-b-0"
         style="table-layout: fixed; width: max-content; min-width: 100%;"
       >
         <thead>
@@ -473,27 +473,3 @@ async function onCsvFileChange(event: Event) {
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-.database-table {
-  overflow: hidden;
-  border: 1px solid var(--color-neutral-100);
-  border-collapse: separate;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  border-spacing: 0;
-}
-
-.database-table :is(th, td) {
-  border-right: 1px solid var(--color-neutral-100);
-  border-bottom: 1px solid var(--color-neutral-100);
-  line-height: 1.45;
-}
-
-.database-table tr > :last-child {
-  border-right: 0;
-}
-
-.database-table tbody tr:last-child > td {
-  border-bottom: 0;
-}
-</style>

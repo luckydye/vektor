@@ -697,7 +697,7 @@ defineExpose({ isEditMode, toggleEditMode });
             <!-- biome-ignore lint/a11y/noStaticElementInteractions: Preventing the native context menu does not make this menu panel an interactive control. -->
             <div
               v-if="contextMenu"
-              class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100"
+              class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100 [.category-context-menu[data-placement^='right']_&]:origin-top-left [.category-context-menu[data-placement^='left']_&]:origin-top-right"
               @contextmenu.prevent
             >
               <div class="px-3xs py-5xs text-size-extra-small text-neutral-500 truncate">
@@ -916,13 +916,3 @@ defineExpose({ isEditMode, toggleEditMode });
     </template>
   </div>
 </template>
-
-<style scoped>
-.category-context-menu[data-placement^="right"] .category-context-panel {
-  transform-origin: top left;
-}
-
-.category-context-menu[data-placement^="left"] .category-context-panel {
-  transform-origin: top right;
-}
-</style>

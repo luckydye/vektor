@@ -78,11 +78,17 @@ onBeforeUnmount(() => applyScrollLock(false));
 <template>
   <ClientOnly>
     <Teleport to="body">
-      <Transition name="dialog"
-        ><!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. --><a-blur
+      <Transition
+        enter-active-class="[&_.dialog-backdrop]:transition-opacity [&_.dialog-backdrop]:duration-200 [&_.dialog-backdrop]:ease-[ease] [&_.dialog-panel]:[transition:transform_0.28s_cubic-bezier(0.32,0.72,0,1),opacity_0.2s_ease]"
+        enter-from-class="[&_.dialog-backdrop]:opacity-0 [&_.dialog-panel]:translate-y-full md:[&_.dialog-panel]:translate-y-2 md:[&_.dialog-panel]:scale-[0.97] md:[&_.dialog-panel]:opacity-0"
+        leave-active-class="[&_.dialog-backdrop]:transition-opacity [&_.dialog-backdrop]:duration-200 [&_.dialog-backdrop]:ease-[ease] [&_.dialog-panel]:[transition:transform_0.28s_cubic-bezier(0.32,0.72,0,1),opacity_0.2s_ease]"
+        leave-to-class="[&_.dialog-backdrop]:opacity-0 [&_.dialog-panel]:translate-y-full md:[&_.dialog-panel]:translate-y-2 md:[&_.dialog-panel]:scale-[0.97] md:[&_.dialog-panel]:opacity-0"
+      >
+        <!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. -->
+        <a-blur
           v-if="show"
           enabled
-          class="dialog-root fixed inset-0 z-100 flex items-end justify-center md:items-center"
+          class="fixed inset-0 z-100 flex items-end justify-center md:items-center"
           @exit="onDismiss"
         >
           <button
@@ -143,42 +149,8 @@ onBeforeUnmount(() => applyScrollLock(false));
               <slot name="footer" />
             </div>
           </div>
-        </a-blur></Transition
-      >
+        </a-blur>
+      </Transition>
     </Teleport>
   </ClientOnly>
 </template>
-
-<style scoped>
-.dialog-enter-active .dialog-backdrop,
-.dialog-leave-active .dialog-backdrop {
-  transition: opacity 0.2s ease;
-}
-
-.dialog-enter-active .dialog-panel,
-.dialog-leave-active .dialog-panel {
-  transition:
-    transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.2s ease;
-}
-
-.dialog-enter-from .dialog-backdrop,
-.dialog-leave-to .dialog-backdrop {
-  opacity: 0;
-}
-
-/* Mobile: slide up from the bottom like a drawer. */
-.dialog-enter-from .dialog-panel,
-.dialog-leave-to .dialog-panel {
-  transform: translateY(100%);
-}
-
-/* Desktop: subtle fade + scale for a centered modal. */
-@media (min-width: 768px) {
-  .dialog-enter-from .dialog-panel,
-  .dialog-leave-to .dialog-panel {
-    transform: translateY(8px) scale(0.97);
-    opacity: 0;
-  }
-}
-</style>

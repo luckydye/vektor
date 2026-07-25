@@ -91,7 +91,7 @@ function docTags(doc: DocumentWithProperties): string[] {
           {{ formatDate(doc.updatedAt) }}
         </p>
         <h4
-          class="doc-title text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors"
+          class="text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors text-primary-700 group-hover:text-primary-500"
         >
           {{ docTitle(doc) }}
         </h4>
@@ -106,12 +106,3 @@ function docTags(doc: DocumentWithProperties): string[] {
     </a>
   </page-target>
 </template>
-
-<style scoped>
-.doc-title {
-  color: var(--color-primary-700);
-}
-a:hover .doc-title {
-  color: var(--color-primary-500);
-}
-</style>

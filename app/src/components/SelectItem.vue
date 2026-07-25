@@ -22,7 +22,7 @@ const handleClick = () => {
 <template>
   <button
     type="button"
-    class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors text-left"
+    class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors text-left [&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:text-neutral-950"
     :class="{
     'bg-primary-50': selected,
     'hover:bg-primary-10': !selected,
@@ -35,12 +35,3 @@ const handleClick = () => {
     </span>
   </button>
 </template>
-
-<style scoped>
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-button :deep(svg) {
-  width: 18px;
-  height: 18px;
-  color: var(--color-neutral-950);
-}
-</style>

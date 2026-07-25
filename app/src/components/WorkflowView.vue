@@ -649,7 +649,7 @@ const statusBadgeClass: Record<string, string> = {
                   class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70"
                 >
                   <div
-                    class="workflow-progress-indicator absolute inset-y-0 w-1/3 rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)]"
+                    class="absolute inset-y-0 w-1/3 rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)] animate-workflow-progress motion-reduce:animate-none motion-reduce:translate-x-full"
                   />
                 </div>
               </div>
@@ -669,7 +669,15 @@ const statusBadgeClass: Record<string, string> = {
                     updates
                   </span>
                 </div>
-                <TransitionGroup name="workflow-activity" tag="div" class="space-y-1.5">
+                <TransitionGroup
+                  tag="div"
+                  class="space-y-1.5"
+                  enter-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
+                  enter-from-class="opacity-0 translate-y-[0.55rem]"
+                  leave-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
+                  leave-to-class="opacity-0 translate-y-[0.55rem]"
+                  move-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
+                >
                   <div
                     v-for="activity in recentActivity"
                     :key="activity.id"
@@ -1006,40 +1014,3 @@ const statusBadgeClass: Record<string, string> = {
     </a-tabs>
   </div>
 </template>
-
-<style scoped>
-.workflow-progress-indicator {
-  animation: workflow-progress 1.8s ease-in-out infinite;
-}
-
-.workflow-activity-enter-active,
-.workflow-activity-leave-active,
-.workflow-activity-move {
-  transition:
-    opacity 0.28s ease,
-    transform 0.28s ease;
-}
-
-.workflow-activity-enter-from,
-.workflow-activity-leave-to {
-  opacity: 0;
-  transform: translateY(0.55rem);
-}
-
-@keyframes workflow-progress {
-  from {
-    transform: translateX(-120%);
-  }
-
-  to {
-    transform: translateX(420%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workflow-progress-indicator {
-    animation: none;
-    transform: translateX(100%);
-  }
-}
-</style>

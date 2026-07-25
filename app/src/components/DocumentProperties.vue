@@ -384,6 +384,7 @@ const availableNewProperties = computed(() => {
       <ButtonIconSmall
         :icon="addIcon"
         :aria-label="t('New property')"
+        class="[&_svg]:inline [&_svg]:text-primary-600"
         @click="toggleCreatePopover"
       />
 
@@ -397,11 +398,3 @@ const availableNewProperties = computed(() => {
     </div>
   </div>
 </template>
-
-<style scoped>
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-button :deep(svg) {
-  color: var(--color-primary-600);
-  display: inline;
-}
-</style>

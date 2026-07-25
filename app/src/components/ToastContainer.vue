@@ -16,7 +16,12 @@ const icons = {
     <div
       class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 pointer-events-none"
     >
-      <TransitionGroup name="toast">
+      <TransitionGroup
+        enter-active-class="transition-[opacity,transform] duration-200 ease-[ease]"
+        enter-from-class="opacity-0 translate-y-2"
+        leave-active-class="transition-[opacity,transform] duration-200 ease-[ease]"
+        leave-to-class="opacity-0 -translate-y-1"
+      >
         <div
           v-for="toast in toasts"
           :key="toast.id"
@@ -43,20 +48,3 @@ const icons = {
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-.toast-enter-active,
-.toast-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-.toast-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-.toast-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-</style>

@@ -186,12 +186,3 @@ onMounted(() => {
     </template>
   </a-blur>
 </template>
-
-<style scoped>
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-button :deep(svg) {
-  width: 18px;
-  height: 18px;
-  color: var(--color-neutral-950);
-}
-</style>
