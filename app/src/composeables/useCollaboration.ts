@@ -9,9 +9,9 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
+import { api } from "#api/client.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import type { PresenceEnvelope, PresenceUser } from "#utils/realtime.ts";
-import { joinPresenceRoom, joinYjsRoom } from "#utils/sync.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   readCanvasCursorColorOverride,
@@ -202,7 +202,8 @@ export function useCollaboration<TPresenceState>(options: {
     }
     if (!leaveYjsRoom) {
       yjsReady = waitForInitialSync((onSynced) => {
-        leaveYjsRoom = joinYjsRoom(spaceId, currentDocumentId, ydoc.value, onSynced);
+        // Returns a cleanup function that disconnects from the Y.js room.
+        leaveYjsRoom = api.joinYjsRoom(spaceId, currentDocumentId, ydoc.value, onSynced);
       });
       joinedDocumentId = currentDocumentId;
     }
@@ -276,7 +277,7 @@ export function useCollaboration<TPresenceState>(options: {
       return;
     }
 
-    presenceHandle = joinPresenceRoom<TPresenceState>(
+    presenceHandle = api.joinPresenceRoom<TPresenceState>(
       spaceId,
       roomId,
       clientId,

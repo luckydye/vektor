@@ -1,4 +1,4 @@
-import { loadTwitterWidgets } from "#utils/twitterWidgets.ts";
+import { loadTwitterWidgets } from "./twitterWidgets.ts";
 import { HostElement } from "./CanvasElementBase.ts";
 
 // Renders an X/Twitter tweet embedded on the canvas. The server hands us the
