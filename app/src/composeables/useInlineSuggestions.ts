@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { applyPatch, parsePatch } from "diff";
+import { applyPatch, parsePatch, reversePatch } from "diff";
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { api } from "#api/client.ts";
 import { prettyPrintHtml } from "#utils/html.ts";
@@ -18,7 +18,6 @@ export function useInlineSuggestions(options: {
   );
 
   const suggestionPatches = ref<Record<number, string>>({});
-  const hiddenSuggestionHunks = ref<Set<string>>(new Set());
 
   const openSuggestions = computed(() =>
     revisions.value.filter((r) => r.status === "open"),
@@ -75,6 +74,30 @@ export function useInlineSuggestions(options: {
     editor.value.commands.setContent(html);
   }
 
+  function hunkChangesAreAlreadyPresent(currentHtml: string, hunkPatch: string) {
+    const hunk = parsePatch(hunkPatch)[0]?.hunks[0];
+    if (!hunk) return false;
+
+    const currentLines = new Set(currentHtml.split("\n"));
+    const addedLines = hunk.lines
+      .filter((line) => line.startsWith("+"))
+      .map((line) => line.slice(1))
+      .filter((line) => line.trim() !== "" && line.trim() !== "<p></p>");
+    const removedLines = hunk.lines
+      .filter((line) => line.startsWith("-"))
+      .map((line) => line.slice(1))
+      .filter((line) => line.trim() !== "" && line.trim() !== "<p></p>");
+
+    // An insertion-only hunk is commonly already present in the persisted
+    // collaboration draft after its suggestion was saved. There is nothing to
+    // apply in that case, and applying it with relaxed context would duplicate it.
+    return (
+      addedLines.length > 0 &&
+      addedLines.every((line) => currentLines.has(line)) &&
+      removedLines.every((line) => !currentLines.has(line))
+    );
+  }
+
   function clearQueuedInlineSuggestionsSync() {
     if (!inlineSuggestionSyncTimer) return;
     clearTimeout(inlineSuggestionSyncTimer);
@@ -91,10 +114,6 @@ export function useInlineSuggestions(options: {
           rev: s.rev,
           message: s.message,
           patch: suggestionPatches.value[s.rev],
-          hiddenHunks: Array.from(hiddenSuggestionHunks.value)
-            .filter((key) => key.startsWith(`${s.rev}:`))
-            .map((key) => Number(key.split(":")[1]))
-            .filter((hunkIndex) => Number.isInteger(hunkIndex)),
         })),
     );
   }
@@ -115,28 +134,45 @@ export function useInlineSuggestions(options: {
     }, delay);
   }
 
-  function acceptSuggestionHunk(revisionRev: number, hunkIndex: number) {
+  async function acceptSuggestionHunk(revisionRev: number, hunkIndex: number) {
     const patch = suggestionPatches.value[revisionRev];
     if (!patch) throw new Error(`Suggestion patch ${revisionRev} not loaded`);
 
     if (!editor.value) throw new Error("Editor is not ready");
 
     const currentHtml = prettyPrintHtml(editor.value.getHTML());
-    const nextHtml = applyPatch(currentHtml, buildSingleHunkPatch(patch, hunkIndex));
+    const hunkPatch = buildSingleHunkPatch(patch, hunkIndex);
+    let nextHtml = applyPatch(currentHtml, hunkPatch);
     if (nextHtml === false) {
-      throw new Error(
-        `Failed to apply suggestion hunk ${hunkIndex + 1} from suggestion ${revisionRev}`,
-      );
+      // The collaboration editor may normalize nearby empty blocks or list
+      // markup after a suggestion is created. Keep the tolerance bounded so
+      // removals still require an exact match while insertions can follow
+      // their surrounding content through small structural changes.
+      nextHtml = applyPatch(currentHtml, hunkPatch, { fuzzFactor: 3 });
+    }
+    if (nextHtml === false) {
+      const parsedPatch = parsePatch(hunkPatch)[0];
+      const hunkAlreadyApplied =
+        parsedPatch !== undefined &&
+        (applyPatch(currentHtml, reversePatch(parsedPatch)) !== false ||
+          hunkChangesAreAlreadyPresent(currentHtml, hunkPatch));
+
+      if (!hunkAlreadyApplied) {
+        throw new Error(
+          `Failed to apply suggestion hunk ${hunkIndex + 1} from suggestion ${revisionRev}`,
+        );
+      }
+
+      nextHtml = currentHtml;
     }
 
-    setEditorHtml(nextHtml);
-    hideSuggestionHunk(revisionRev, hunkIndex);
-  }
+    if (nextHtml !== currentHtml) setEditorHtml(nextHtml);
+    const revision = await updateRevisionStatus(revisionRev, "applied");
+    if (!revision) throw new Error(`Failed to accept suggestion ${revisionRev}`);
 
-  function hideSuggestionHunk(revisionRev: number, hunkIndex: number) {
-    const next = new Set(hiddenSuggestionHunks.value);
-    next.add(`${revisionRev}:${hunkIndex}`);
-    hiddenSuggestionHunks.value = next;
+    const { [revisionRev]: _acceptedPatch, ...remainingPatches } =
+      suggestionPatches.value;
+    suggestionPatches.value = remainingPatches;
     syncInlineSuggestions();
   }
 
@@ -150,10 +186,10 @@ export function useInlineSuggestions(options: {
     syncInlineSuggestions();
   }
 
-  function handleInlineSuggestionAccept(
+  async function handleInlineSuggestionAccept(
     event: CustomEvent<{ revisionRev: number; hunkIndex: number }>,
   ) {
-    acceptSuggestionHunk(event.detail.revisionRev, event.detail.hunkIndex);
+    await acceptSuggestionHunk(event.detail.revisionRev, event.detail.hunkIndex);
   }
 
   async function handleInlineSuggestionDecline(
@@ -168,7 +204,6 @@ export function useInlineSuggestions(options: {
       if (!editing || !documentId.value) {
         clearQueuedInlineSuggestionsSync();
         suggestionPatches.value = {};
-        hiddenSuggestionHunks.value = new Set();
         editor.value?.commands.clearInlineSuggestions();
         return;
       }
