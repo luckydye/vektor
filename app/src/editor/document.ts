@@ -8,6 +8,7 @@ import type { Editor } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import type { EditorState } from "@tiptap/pm/state";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
+import { dropPoint } from "@tiptap/pm/transform";
 import * as Y from "yjs";
 import {
   colorForPresenceProfile,
@@ -227,69 +228,64 @@ function createEditor(
     blockDropIndicator.style.width = "0";
   };
 
-  const getTopLevelBlockAtPoint = (
-    clientX: number,
-    clientY: number,
-  ): HTMLElement | null => {
-    const root = editor.view.root as Document | ShadowRoot;
-    const elements = root.elementsFromPoint(clientX, clientY);
+  const getDropCursorRect = (pos: number) => {
+    const view = editor.view;
+    const $pos = view.state.doc.resolve(pos);
 
-    for (const element of elements) {
-      if (!(element instanceof HTMLElement)) continue;
-      if (!editor.view.dom.contains(element)) continue;
-      if (element.closest(".wiki-inline-suggestion")) continue;
+    if (!$pos.parent.inlineContent) {
+      const before = $pos.nodeBefore;
+      const after = $pos.nodeAfter;
+      const node = view.nodeDOM(pos - (before ? before.nodeSize : 0));
 
-      // Inside a list, the drop indicator should snap between list items (that
-      // is where a dragged item actually lands), not before/after the whole list.
-      const listItem = element.closest<HTMLElement>("li");
-      if (listItem && editor.view.dom.contains(listItem)) {
-        return listItem;
-      }
-
-      const columnItem = element.closest<HTMLElement>('div[data-type="column-item"]');
-      if (columnItem && editor.view.dom.contains(columnItem)) {
-        let current: HTMLElement | null = element;
-        while (current?.parentElement && current.parentElement !== columnItem) {
-          current = current.parentElement;
+      if ((before || after) && node instanceof HTMLElement) {
+        const nodeRect = node.getBoundingClientRect();
+        let top = before ? nodeRect.bottom : nodeRect.top;
+        const afterNode = before && after ? view.nodeDOM(pos) : null;
+        if (afterNode instanceof HTMLElement) {
+          top = (top + afterNode.getBoundingClientRect().top) / 2;
         }
 
-        if (current?.parentElement === columnItem) {
-          return current;
-        }
-
-        return columnItem;
-      }
-
-      let current: HTMLElement | null = element;
-      while (current?.parentElement && current.parentElement !== editor.view.dom) {
-        current = current.parentElement;
-      }
-
-      if (current?.parentElement === editor.view.dom) {
-        return current;
+        return {
+          left: nodeRect.left,
+          right: nodeRect.right,
+          top: top - 1,
+          bottom: top + 1,
+        };
       }
     }
 
-    return null;
+    const coords = view.coordsAtPos(pos);
+    return {
+      left: coords.left - 1,
+      right: coords.left + 1,
+      top: coords.top,
+      bottom: coords.bottom,
+    };
   };
 
   const updateBlockDropIndicator = (event: DragEvent) => {
     if (!editor.isEditable) return;
 
-    const block = getTopLevelBlockAtPoint(event.clientX, event.clientY);
-    if (!block) {
+    const position = editor.view.posAtCoords({
+      left: event.clientX,
+      top: event.clientY,
+    });
+    if (!position) {
       hideBlockDropIndicator();
       return;
     }
 
-    const rect = block.getBoundingClientRect();
-    const isTopHalf = event.clientY < rect.top + rect.height / 2;
-    const lineY = isTopHalf ? rect.top : rect.bottom;
+    const draggedSlice = editor.view.dragging?.slice;
+    const dropPos = draggedSlice
+      ? (dropPoint(editor.state.doc, position.pos, draggedSlice) ?? position.pos)
+      : position.pos;
+    const rect = getDropCursorRect(dropPos);
     const indicator = ensureBlockDropIndicator();
 
     indicator.style.left = `${Math.round(rect.left)}px`;
-    indicator.style.top = `${Math.round(lineY - 1)}px`;
-    indicator.style.width = `${Math.round(rect.width)}px`;
+    indicator.style.top = `${Math.round(rect.top)}px`;
+    indicator.style.width = `${Math.round(rect.right - rect.left)}px`;
+    indicator.style.height = `${Math.round(rect.bottom - rect.top)}px`;
     indicator.style.opacity = "1";
   };
 
@@ -373,6 +369,7 @@ function createEditor(
         computePositionConfig: {
           strategy: "fixed",
         },
+        isDraggableBlock: (block) => !block.matches(".wiki-inline-suggestion"),
         render: () => {
           const element = document.createElement("div");
           element.classList.add("custom-drag-handle");

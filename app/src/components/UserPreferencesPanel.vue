@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import {
   api,
   type OAuthIntegrationConnection,
@@ -12,12 +12,19 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
+import {
+  applyThemePreference,
+  getStoredThemePreference,
+  type ThemePreference,
+  THEME_STORAGE_KEY,
+} from "#utils/themePreference.ts";
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 
-type ThemePreference = "system" | "light" | "dark";
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (updateCallback: () => void | Promise<void>) => void;
+};
 
-const THEME_STORAGE_KEY = "user-theme-preference";
 const themePreference = ref<ThemePreference>("system");
 const currentUser = useUserProfile();
 // `null` means "automatic" — the presence color follows the user's avatar.
@@ -44,42 +51,70 @@ const tabs = [
   { id: "appearance", label: t("Appearance") },
   { id: "integrations", label: t("Integrations") },
 ];
+const themeOptions: { value: ThemePreference; label: string; swatchClass: string }[] = [
+  {
+    value: "system",
+    label: t("System"),
+    swatchClass: "bg-[linear-gradient(135deg,#ffffff_0%,#ffffff_48%,#222222_52%,#222222_100%)]",
+  },
+  { value: "light", label: t("Light"), swatchClass: "bg-[#fff5b8]" },
+  { value: "dark", label: t("Dark"), swatchClass: "bg-[#252525]" },
+];
 
 const activeSpaceName = computed(() => currentSpace.value?.name || null);
 
-const getIntegrationConnection = (
-  provider: OAuthIntegrationProvider,
-): OAuthIntegrationConnection | null => {
-  return (
-    integrationConnections.value.find((connection) => connection.provider === provider) ??
-    null
-  );
+const integrationProviderDetails: Record<
+  OAuthIntegrationProvider,
+  { label: string; description: string; initial: string; iconClass: string }
+> = {
+  gitlab: {
+    label: "GitLab",
+    description: t("Connect GitLab to work with your projects and issues."),
+    initial: "G",
+    iconClass: "bg-[#fc6d26]",
+  },
+  youtrack: {
+    label: "YouTrack",
+    description: t("Connect YouTrack to work with your issues and projects."),
+    initial: "Y",
+    iconClass: "bg-[#4c57e8]",
+  },
 };
 
-const isThemePreference = (value: string | null): value is ThemePreference => {
-  return value === "system" || value === "light" || value === "dark";
-};
+const integrationCards = computed(() =>
+  integrationProviders.map((provider) => ({
+    provider,
+    connection:
+      integrationConnections.value.find((connection) => connection.provider === provider) ??
+      null,
+    ...integrationProviderDetails[provider],
+  })),
+);
 
-const applyThemePreference = (preference: ThemePreference) => {
-  const root = document.documentElement;
-  if (preference === "system") {
-    root.removeAttribute("data-theme");
+const applyThemePreferenceWithTransition = (
+  preference: ThemePreference,
+) => {
+  const updateTheme = async () => {
+    themePreference.value = preference;
+    applyThemePreference(preference);
+    await nextTick();
+  };
+  const viewTransitionDocument = document as ViewTransitionDocument;
+
+  if (
+    !viewTransitionDocument.startViewTransition ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    void updateTheme();
     return;
   }
-  root.setAttribute("data-theme", preference);
+
+  viewTransitionDocument.startViewTransition(updateTheme);
 };
 
 const setThemePreference = (preference: ThemePreference) => {
-  themePreference.value = preference;
   localStorage.setItem(THEME_STORAGE_KEY, preference);
-  applyThemePreference(preference);
-};
-
-const handleThemeChange = (event: Event) => {
-  const target = event.target as HTMLSelectElement;
-  const preference = target.value;
-  if (!isThemePreference(preference)) return;
-  setThemePreference(preference);
+  applyThemePreferenceWithTransition(preference);
 };
 
 const loadIntegrations = async () => {
@@ -141,13 +176,9 @@ const handleDisconnectIntegration = async (provider: OAuthIntegrationProvider) =
 };
 
 onMounted(() => {
-  const savedPreference = localStorage.getItem(THEME_STORAGE_KEY);
-  if (isThemePreference(savedPreference)) {
-    themePreference.value = savedPreference;
-    applyThemePreference(savedPreference);
-  } else {
-    setThemePreference("system");
-  }
+  const savedPreference = getStoredThemePreference();
+  themePreference.value = savedPreference;
+  applyThemePreference(savedPreference);
   const url = new URL(window.location.href);
   const integrationStatus = url.searchParams.get("status");
   const integrationName = url.searchParams.get("integration");
@@ -187,150 +218,228 @@ watch(
   </div>
 
   <!-- Tabbed settings layout -->
-  <SettingsLayout :tabs="tabs" class="min-h-[200px]">
+  <SettingsLayout
+    :tabs="tabs"
+    class="w-[620px] max-w-[calc(100vw-2rem)] min-h-[200px]"
+  >
     <!-- Appearance tab -->
     <template #appearance>
       <section>
-        <p class="text-size-small font-medium text-neutral-700 mb-1.5">
-          {{ t("Theme") }}
-        </p>
-        <select
-          :value="themePreference"
-          @change="handleThemeChange"
-          class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
-        >
-          <option value="system">{{ t("System") }}</option>
-          <option value="light">{{ t("Light") }}</option>
-          <option value="dark">{{ t("Dark") }}</option>
-        </select>
+        <div class="mb-3">
+          <h2 class="text-size-medium font-semibold text-foreground">{{ t("Interface") }}</h2>
+          <p class="mt-1 text-size-small text-neutral-500">
+            {{ t("Choose how Vektor looks on this device.") }}
+          </p>
+        </div>
+        <div class="rounded-lg border border-neutral-200 bg-background p-3">
+          <p class="text-size-small font-medium text-foreground">{{ t("Theme") }}</p>
+          <div
+            class="mt-3 grid grid-cols-3 gap-3"
+            role="group"
+            :aria-label="t('Theme')"
+          >
+            <button
+              v-for="option in themeOptions"
+              :key="option.value"
+              type="button"
+              :aria-pressed="themePreference === option.value"
+              @click="setThemePreference(option.value)"
+              class="group flex flex-col items-center gap-1.5 rounded-md px-2 py-1 text-size-small font-medium text-neutral-500 transition-colors hover:text-neutral-900"
+            >
+              <span
+                class="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 p-0.5 transition-transform group-hover:scale-105"
+                :class="themePreference === option.value ? 'ring-2 ring-primary-500 ring-offset-2' : ''"
+              >
+                <span
+                  class="h-full w-full rounded-full"
+                  :class="option.swatchClass"
+                ></span>
+              </span>
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
+        </div>
       </section>
 
-      <section class="mt-4">
-        <div class="flex items-center justify-between mb-1.5">
-          <p class="text-size-small font-medium text-neutral-700">
-            {{ t("Cursor color") }}
+      <section class="mt-6">
+        <div class="mb-3">
+          <h2 class="text-size-medium font-semibold text-foreground">
+            {{ t("Collaboration") }}
+          </h2>
+          <p class="mt-1 text-size-small text-neutral-500">
+            {{ t("Personalize how you appear to collaborators.") }}
           </p>
-          <button
-            v-if="!isAutomaticCursorColor"
-            type="button"
-            @click="clearCursorColor"
-            class="text-label font-medium text-neutral-500 hover:text-neutral-900 transition-colors"
-          >
-            {{ t("Reset to automatic") }}
-          </button>
         </div>
-        <a-popover-trigger>
-          <button
-            slot="trigger"
-            type="button"
-            class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground hover:bg-neutral-50 transition-colors flex items-center justify-between gap-3"
-            :aria-label="t('Cursor color')"
-          >
-            <span>{{ isAutomaticCursorColor ? t("Automatic") : cursorColor }}</span>
-            <span
-              class="w-5 h-5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(15,23,42,0.2),0_1px_2px_rgba(15,23,42,0.18)]"
-              :style="{ background: cursorColor }"
-              aria-hidden="true"
-            ></span>
-          </button>
-          <a-popover class="group" placements="top-start">
-            <div
-              class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
-            >
-              <div
-                class="bg-background border border-neutral-100 rounded-lg p-2 origin-bottom-left scale-95 transition-all shadow-large duration-150 group-[&[enabled]]:scale-100"
-              >
-                <a-color-picker
-                  class="w-[220px]"
-                  :value="cursorColor"
-                  @change="setCursorColor(($event.target as HTMLElement & { value: string }).value)"
-                ></a-color-picker>
-              </div>
+        <div class="rounded-lg border border-neutral-200 bg-background p-3">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-size-small font-medium text-foreground">
+                {{ t("Cursor color") }}
+              </p>
+              <p class="mt-0.5 text-label text-neutral-500">
+                {{ t("Used for your presence in shared documents and canvases.") }}
+              </p>
             </div>
-          </a-popover>
-        </a-popover-trigger>
+            <button
+              v-if="!isAutomaticCursorColor"
+              type="button"
+              @click="clearCursorColor"
+              class="shrink-0 text-label font-medium text-neutral-500 transition-colors hover:text-neutral-900"
+            >
+              {{ t("Reset to automatic") }}
+            </button>
+          </div>
+          <a-popover-trigger>
+            <button
+              slot="trigger"
+              type="button"
+              class="mt-3 flex w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-background px-3 py-2 text-size-medium text-foreground transition-colors hover:bg-neutral-50"
+              :aria-label="t('Cursor color')"
+            >
+              <span class="flex items-center gap-2">
+                <span
+                  class="h-5 w-5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(15,23,42,0.2),0_1px_2px_rgba(15,23,42,0.18)]"
+                  :style="{ background: cursorColor }"
+                  aria-hidden="true"
+                ></span>
+                <span>{{ isAutomaticCursorColor ? t("Automatic") : cursorColor }}</span>
+              </span>
+              <span class="text-label font-medium text-neutral-500">{{ t("Change") }}</span>
+            </button>
+            <a-popover class="group" placements="top-start">
+              <div
+                class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
+              >
+                <div
+                  class="bg-background border border-neutral-100 rounded-lg p-2 origin-bottom-left scale-95 transition-all shadow-large duration-150 group-[&[enabled]]:scale-100"
+                >
+                  <a-color-picker
+                    class="w-[220px]"
+                    :value="cursorColor"
+                    @change="setCursorColor(($event.target as HTMLElement & { value: string }).value)"
+                  ></a-color-picker>
+                </div>
+              </div>
+            </a-popover>
+          </a-popover-trigger>
+        </div>
       </section>
     </template>
 
     <!-- Integrations tab -->
     <template #integrations>
       <section>
-        <p class="text-size-small text-neutral-500 mb-2">
-          {{ t("Space:") }}
-          <span class="font-medium text-foreground"
-            >{{ activeSpaceName || t("None") }}</span
-          >
-        </p>
+        <div class="mb-4">
+          <h2 class="text-size-medium font-semibold text-foreground">
+            {{ t("Integrations") }}
+          </h2>
+          <p class="mt-1 text-size-small text-neutral-500">
+            {{ t("Connect tools to make them available in this space.") }}
+          </p>
+          <p class="mt-2 text-label text-neutral-500">
+            {{ t("Space:") }}
+            <span class="font-medium text-foreground">{{ activeSpaceName || t("None") }}</span>
+          </p>
+        </div>
 
         <div
           v-if="integrationsError"
-          class="mb-2 p-2 bg-red-50 border border-red-200 rounded-sm text-size-small text-red-600"
+          class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-size-small text-red-600"
         >
           {{ integrationsError }}
         </div>
         <div
           v-if="integrationsMessage"
-          class="mb-2 p-2 bg-green-50 border border-green-200 rounded-sm text-size-small text-green-700"
+          class="mb-3 rounded-md border border-green-200 bg-green-50 p-2.5 text-size-small text-green-700"
         >
           {{ integrationsMessage }}
         </div>
 
-        <div v-if="!currentSpace?.id" class="text-size-small text-neutral-500">
+        <div
+          v-if="!currentSpace?.id"
+          class="rounded-lg border border-dashed border-neutral-200 p-5 text-center text-size-small text-neutral-500"
+        >
           {{ t("Open a space to manage integrations.") }}
         </div>
-        <div v-else-if="isLoadingIntegrations" class="text-size-small text-neutral-500">
+        <div
+          v-else-if="isLoadingIntegrations"
+          class="rounded-lg border border-neutral-100 p-5 text-center text-size-small text-neutral-500"
+        >
           {{ t("Loading...") }}
         </div>
-        <div v-else class="space-y-1.5">
+        <div v-else class="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
           <div
-            v-for="provider in integrationProviders"
-            :key="provider"
-            class="border border-neutral-100 rounded-md p-2"
+            v-for="card in integrationCards"
+            :key="card.provider"
+            class="flex min-h-[254px] flex-col rounded-lg border border-neutral-200 bg-background p-4"
           >
-            <p class="text-size-small font-medium text-foreground leading-tight">
-              {{ getIntegrationConnection(provider)?.label || provider }}
-            </p>
-            <p class="text-label text-neutral-500 mt-0.5">
-              <template v-if="getIntegrationConnection(provider)?.connected">
-                {{ t("Connected as") }}
-                {{ getIntegrationConnection(provider)?.externalUsername ||
-                  getIntegrationConnection(provider)?.externalAccountId }}
-              </template>
-              <template v-else>{{ t("Not connected") }}</template>
-            </p>
-            <p
-              v-if="getIntegrationConnection(provider)?.configured === false"
-              class="text-label text-amber-700 mt-0.5"
-            >
-              {{ t("Missing:") }}
-              {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
-            </p>
-            <p
-              v-if="getIntegrationConnection(provider)?.instanceUrl"
-              class="text-label text-neutral-500 mt-0.5"
-            >
-              {{ getIntegrationConnection(provider)?.instanceUrl }}
-            </p>
-            <div class="mt-1.5">
-              <button
-                v-if="getIntegrationConnection(provider)?.connected"
-                type="button"
-                :disabled="disconnectingProvider === provider"
-                @click="handleDisconnectIntegration(provider)"
-                class="px-2 py-0.5 text-label font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
+            <div class="flex items-start justify-between gap-3">
+              <div
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-size-large font-semibold text-white"
+                :class="card.iconClass"
+                aria-hidden="true"
               >
-                {{ disconnectingProvider === provider
+                {{ card.initial }}
+              </div>
+              <span
+                class="inline-flex rounded-full px-2 py-0.5 text-label font-medium"
+                :class="
+                  card.connection?.connected
+                    ? 'bg-green-50 text-green-700'
+                    : 'bg-neutral-100 text-neutral-500'
+                "
+              >
+                {{ card.connection?.connected ? t("Connected") : t("Not connected") }}
+              </span>
+            </div>
+
+            <div class="mt-4">
+              <h3 class="text-size-medium font-semibold text-foreground">
+                {{ card.connection?.label || card.label }}
+              </h3>
+              <p class="mt-1 text-size-small leading-5 text-neutral-500">
+                {{ card.description }}
+              </p>
+            </div>
+
+            <div class="mt-3 min-h-10 text-label">
+              <p v-if="card.connection?.connected" class="text-neutral-600">
+                {{ t("Connected as") }}
+                {{ card.connection.externalUsername || card.connection.externalAccountId }}
+              </p>
+              <p
+                v-else-if="card.connection?.configured === false"
+                class="text-amber-700"
+              >
+                {{ t("Not configured") }}
+              </p>
+              <p v-else-if="card.connection?.instanceUrl" class="truncate text-neutral-500">
+                {{ card.connection.instanceUrl }}
+              </p>
+            </div>
+
+            <div class="mt-auto border-t border-neutral-100 pt-3">
+              <button
+                v-if="card.connection?.connected"
+                type="button"
+                :disabled="disconnectingProvider === card.provider"
+                @click="handleDisconnectIntegration(card.provider)"
+                class="w-full rounded-md border border-red-200 px-3 py-1.5 text-size-small font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+              >
+                {{ disconnectingProvider === card.provider
                     ? t("Disconnecting…")
                     : t("Disconnect") }}
               </button>
               <button
                 v-else
                 type="button"
-                :disabled="connectingProvider === provider"
-                @click="handleConnectIntegration(provider)"
-                class="px-2 py-0.5 text-label font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                :disabled="
+                  connectingProvider === card.provider || card.connection?.configured === false
+                "
+                @click="handleConnectIntegration(card.provider)"
+                class="w-full rounded-md bg-blue-600 px-3 py-1.5 text-size-small font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {{ connectingProvider === provider ? t("Redirecting…") : t("Connect") }}
+                {{ connectingProvider === card.provider ? t("Redirecting…") : t("Connect") }}
               </button>
             </div>
           </div>

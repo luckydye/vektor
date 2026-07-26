@@ -22,6 +22,7 @@ export type DragHandleOptions = {
     strategy?: PositionStrategy;
   };
   getReferencedVirtualElement?: () => ReferenceElement | null;
+  isDraggableBlock?: (block: HTMLElement) => boolean;
   locked?: boolean;
   onNodeChange?: (options: {
     editor: Editor;
@@ -92,14 +93,11 @@ function collectDraggableBlocks(view: EditorView) {
 }
 
 // Resolve the document position that starts the node rendered as `block`.
-// `posAtDOM(block, 0)` is enough for top-level textblocks (it lands on the
-// position before the node), but a list item is a block *container*, so that
-// call lands inside it — before its inner paragraph. Walk up from there to the
-// position of the <li> node itself so the whole item is selected, not its text.
+// `posAtDOM(block, 0)` lands inside a block's content, including for a
+// top-level paragraph. Walk up to the matching node DOM position so the whole
+// block is selected instead of its first text node.
 function resolveBlockPos(view: EditorView, block: HTMLElement) {
   const insidePos = view.posAtDOM(block, 0);
-  if (block.nodeName !== "LI") return insidePos;
-
   const $pos = view.state.doc.resolve(insidePos);
   for (let depth = $pos.depth; depth > 0; depth--) {
     const before = $pos.before(depth);
@@ -109,18 +107,35 @@ function resolveBlockPos(view: EditorView, block: HTMLElement) {
   return insidePos;
 }
 
-function blockAtPoint(view: EditorView, clientX: number, clientY: number) {
+function blockAtPoint(
+  view: EditorView,
+  clientX: number,
+  clientY: number,
+  isDraggableBlock: (block: HTMLElement) => boolean,
+) {
   const root = view.root as Document | ShadowRoot;
   for (const element of root.elementsFromPoint(clientX, clientY)) {
     if (!view.dom.contains(element)) continue;
     const block = draggableBlockFromElement(view, element);
-    if (block) return block;
+    if (!block) continue;
+    if (!isDraggableBlock(block)) return null;
+    return block;
+  }
+
+  const excludedBlockAtPointer = Array.from(view.dom.children).some((child) => {
+    if (!(child instanceof HTMLElement) || isDraggableBlock(child)) return false;
+    const rect = child.getBoundingClientRect();
+    return clientY >= rect.top && clientY <= rect.bottom;
+  });
+  if (excludedBlockAtPointer) {
+    return null;
   }
 
   let closestBlock: HTMLElement | null = null;
   let closestDistance = Number.POSITIVE_INFINITY;
 
   for (const child of collectDraggableBlocks(view)) {
+    if (!isDraggableBlock(child)) continue;
     const rect = child.getBoundingClientRect();
     const distance =
       clientY < rect.top
@@ -164,6 +179,7 @@ export const DragHandle = Extension.create<DragHandleOptions>({
       },
       computePositionConfig: { strategy: "absolute" },
       getReferencedVirtualElement: undefined,
+      isDraggableBlock: () => true,
       locked: false,
       onNodeChange: undefined,
       onElementDragStart: undefined,
@@ -187,6 +203,7 @@ export const DragHandle = Extension.create<DragHandleOptions>({
   addProseMirrorPlugins() {
     const editor = this.editor;
     const options = this.options;
+    const isDraggableBlock = options.isDraggableBlock ?? (() => true);
     const element = options.render();
     const wrapper = document.createElement("div");
     const pluginKey = new PluginKey("dragHandle");
@@ -395,7 +412,7 @@ export const DragHandle = Extension.create<DragHandleOptions>({
               return;
             }
 
-            const block = blockAtPoint(view, x, y);
+            const block = blockAtPoint(view, x, y, isDraggableBlock);
             if (block) showForBlock(view, block);
             else clearCurrentNode();
           };
