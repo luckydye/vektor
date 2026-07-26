@@ -518,7 +518,10 @@ export const PUT: ApiRouteHandler = (context) =>
     // event-loop-blocking regex scan, so skip it for non-HTML types.
     const contentSanitized = contentIsHtml(nextType) ? stripScriptTags(content) : content;
 
-    let document = await updateDocument(spaceId, id, contentSanitized, userId, nextType);
+    // createRevision records the canonical content-save audit event, including
+    // its revision ID. Do not also record the draft write or the activity feed
+    // shows a duplicate edit without revision actions.
+    let document = await updateDocument(spaceId, id, contentSanitized, nextType);
     if (!document) {
       throw notFoundResponse("Document");
     }

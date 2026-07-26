@@ -38,7 +38,6 @@ export const POST: ApiRouteHandler = (context) =>
       id,
     });
     const isJobRequest = auth.type === "job";
-    const userId = auth.type === "user" ? auth.user.id : auth.userId;
 
     // Parity with PATCH/DELETE on the sibling route: a user session must also
     // hold editor on the document itself, not just on the space.
@@ -72,11 +71,6 @@ export const POST: ApiRouteHandler = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const document = await updateDocument(
-      spaceId,
-      id,
-      result.content,
-      userId ?? undefined,
-    );
+    const document = await updateDocument(spaceId, id, result.content);
     return jsonResponse({ document, live: result.live });
   }, "Failed to edit document");

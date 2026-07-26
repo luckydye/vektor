@@ -24,7 +24,7 @@ import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
 import { getSpaceDb } from "./db.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { createId } from "./ids.ts";
-import { createRevision, decompressHtml } from "./revisions.ts";
+import { decompressHtml } from "./revisions.ts";
 import { document, file as fileTable, property, revision } from "./schema/space.ts";
 import {
   type DocumentWithProperties,
@@ -208,17 +208,9 @@ export async function createDocument(
 
   await updateDocumentEmbeddingBestEffort(spaceId, id);
 
-  const draftOnly = type === "canvas";
-  if (!draftOnly) {
-    await createRevision(spaceId, id, content, createdBy, {
-      message: "Initial revision",
-    });
-  }
-
   await createAuditLog(await getSpaceDb(spaceId), {
     spaceId,
     docId: id,
-    revisionId: draftOnly ? undefined : 1,
     userId: createdBy,
     event: "create",
     details: { message: "Document created" },
@@ -229,7 +221,7 @@ export async function createDocument(
     slug: uniqueSlug,
     type: type || null,
     content,
-    currentRev: draftOnly ? 0 : 1,
+    currentRev: 0,
     publishedRev: null,
     properties: storedProperties,
     createdAt: documentCreatedAt,
@@ -364,7 +356,6 @@ export async function updateDocument(
   spaceId: string,
   id: string,
   content: string,
-  userId?: string,
   type?: string | null,
 ): Promise<DocumentWithProperties | null> {
   const db = await getSpaceDb(spaceId);
@@ -386,16 +377,6 @@ export async function updateDocument(
     .where(eq(document.id, id));
 
   await updateDocumentEmbeddingBestEffort(spaceId, id);
-
-  if (userId) {
-    await createAuditLog(db, {
-      spaceId,
-      docId: id,
-      userId,
-      event: "save",
-      details: { message: "Document updated" },
-    });
-  }
 
   return {
     id,

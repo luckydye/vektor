@@ -5,6 +5,8 @@ import {
   extensionPresenceRoom,
   type PresenceMessage,
 } from "#realtime/protocol.ts";
+import { getAvatarColor } from "#utils/avatarColor.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 
 export type { ExtensionInfo };
 
@@ -90,7 +92,7 @@ export type ExtensionContext = {
       options: { state: TState },
     ) => Promise<{
       clientId: string;
-      user: { id: string; name: string; image?: string | null };
+      user: { id: string; name: string; image?: string | null; color: string };
       update: (state: TState) => void;
       leave: () => void;
       subscribe: (listener: (event: PresenceMessage<TState>) => void) => () => void;
@@ -449,13 +451,20 @@ export class Extensions {
           options: { state: TState },
         ) {
           const user = await api.users.me();
+          const { cursorColorOverride } = useCanvasCursorColor();
+          const presenceUser = {
+            id: user.id,
+            name: user.name,
+            image: user.image,
+            color: cursorColorOverride.value ?? getAvatarColor(user.id),
+          };
           const clientId = crypto.randomUUID();
           const listeners = new Set<(event: PresenceMessage<TState>) => void>();
           const connection = api.joinPresenceRoom(
             instance.spaceId as string,
             extensionPresenceRoom(extensionId, room),
             clientId,
-            { id: user.id, name: user.name, image: user.image },
+            presenceUser,
             (event) => {
               for (const listener of listeners) listener(event);
             },
@@ -463,7 +472,7 @@ export class Extensions {
           );
           return {
             clientId,
-            user,
+            user: presenceUser,
             ...connection,
             subscribe(listener: (event: PresenceMessage<TState>) => void) {
               listeners.add(listener);

@@ -1029,7 +1029,7 @@ describe("API Tests - Revisions", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     revisionTestDocId = data.document.id;
-    expect(data.document.currentRev).toBe(1);
+    expect(data.document.currentRev).toBe(0);
     expect(data.document.publishedRev).toBe(null);
   });
 
@@ -1048,7 +1048,7 @@ describe("API Tests - Revisions", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.revision).toBeDefined();
-    // Saves within the 5-hour autosave window overwrite rev in place, so rev stays at 1.
+    // Saves within the 3-hour autosave window overwrite rev in place, so rev stays at 1.
     expect(data.revision.rev).toBeGreaterThanOrEqual(1);
     expect(data.revision.message).toBe("Updated heading and content");
     expect(data.revision.checksum).toBeDefined();
@@ -1071,7 +1071,7 @@ describe("API Tests - Revisions", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    // Autosave overwrites rev in place within the 5-hour window.
+    // Autosave overwrites rev in place within the 3-hour window.
     expect(data.revision.rev).toBeGreaterThanOrEqual(1);
 
     secondRevisionNumber = data.revision.rev;
@@ -1104,7 +1104,7 @@ describe("API Tests - Revisions", () => {
     const data = await response.json();
     expect(data.revisions).toBeDefined();
     expect(Array.isArray(data.revisions)).toBe(true);
-    // Autosave overwrites within 5 hours, so there's at least 1 revision.
+    // Autosave overwrites within 3 hours, so there's at least 1 revision.
     expect(data.revisions.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -1171,7 +1171,7 @@ describe("API Tests - Revisions", () => {
     expect(data.revisions.length).toBe(0);
   });
 
-  it("should return empty history for document with only initial revision", async () => {
+  it("should return empty history for a newly created document", async () => {
     // Create a new document
     const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
@@ -1182,7 +1182,7 @@ describe("API Tests - Revisions", () => {
     });
     const newDocId = (await createResponse.json()).document.id;
 
-    // Get history - should have just the initial revision
+    // New documents do not get a revision until the first save or checkpoint.
     const historyResponse = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/revisions`,
     );
@@ -1191,9 +1191,7 @@ describe("API Tests - Revisions", () => {
     const historyData = await historyResponse.json();
     expect(historyData.revisions).toBeDefined();
     expect(Array.isArray(historyData.revisions)).toBe(true);
-    expect(historyData.revisions.length).toBe(1);
-    expect(historyData.revisions[0].rev).toBe(1);
-    expect(historyData.revisions[0].message).toBe("Initial revision");
+    expect(historyData.revisions).toHaveLength(0);
   });
 
   it("should get specific revision with query parameter", async () => {
@@ -1906,7 +1904,7 @@ describe("API Tests - Audit Logs", () => {
     expect(createLog).toBeDefined();
     expect(createLog.docId).toBe(auditTestDocId);
     expect(createLog.userId).toBe(LOCAL_USER_ID);
-    expect(createLog.revisionId).toBe(1);
+    expect(createLog.revisionId).toBeUndefined();
   });
 
   it("should track save events in audit logs", async () => {
@@ -1932,6 +1930,26 @@ describe("API Tests - Audit Logs", () => {
 
     expect(saveLogs.length).toBeGreaterThan(0);
     expect(saveLogs[0].userId).toBe(LOCAL_USER_ID);
+  });
+
+  it("should record a document save as one revision-backed activity entry", async () => {
+    const saveResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "<p>Updated through document save</p>" }),
+      },
+    );
+    expect(saveResponse.status).toBe(200);
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/audit-logs?documentId=${auditTestDocId}`,
+    );
+    const data = await response.json();
+    const saveLogs = data.auditLogs.filter((log: any) => log.event === "save");
+
+    expect(saveLogs.filter((log: any) => log.revisionId === undefined)).toHaveLength(0);
+    expect(saveLogs.some((log: any) => log.revisionId !== undefined)).toBe(true);
   });
 
   it("should track publish events in audit logs", async () => {

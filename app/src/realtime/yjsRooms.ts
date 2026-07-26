@@ -6,6 +6,7 @@ import type { WebSocket } from "ws";
 import { prosemirrorJSONToYXmlFragment, updateYFragment } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
+import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
 import {
   canvasSnapshotFromDoc,
@@ -35,6 +36,8 @@ export interface YRoom {
   presences: Map<string, PresenceEnvelope>;
   /** Timestamp (ms) of the last persist attempt, used to throttle serialize frequency. */
   lastPersistAt?: number;
+  /** User who made the most recently received collaborative update. */
+  lastEditorId?: string;
 }
 
 export const yRooms = new Map<string, YRoom>();
@@ -201,6 +204,7 @@ function broadcastToRoom(room: YRoom, frame: Uint8Array): void {
 
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const PERSIST_DEBOUNCE_MS = 1000;
+const COLLABORATION_REVISION_INTERVAL_MS = 3 * 60 * 60 * 1000;
 // Serializing a large canvas (tens of MB JSON.stringify) blocks the event loop
 // for ~100ms+, so cap how often it runs during sustained editing. Clean
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
@@ -236,8 +240,26 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   const content = contentIsHtml(meta.type) ? stripScriptTags(serialized) : serialized;
 
   await traced("persist.write", () =>
-    updateDocument(ids.spaceId, ids.documentId, content, undefined, meta.type),
+    updateDocument(ids.spaceId, ids.documentId, content, meta.type),
   );
+
+  // The live draft is persisted on every edit, but revisions are periodic
+  // checkpoints. Only HTML documents have collaborative revision history;
+  // canvases and other serialized document types remain draft-only.
+  if (!contentIsHtml(meta.type) || !room.lastEditorId) return;
+
+  const latestRevisionCreatedAt = await getLatestRevisionCreatedAt(
+    ids.spaceId,
+    ids.documentId,
+  );
+  const revisionIsDue =
+    !latestRevisionCreatedAt ||
+    Date.now() - latestRevisionCreatedAt.getTime() >= COLLABORATION_REVISION_INTERVAL_MS;
+  if (!revisionIsDue) return;
+
+  await createRevision(ids.spaceId, ids.documentId, content, room.lastEditorId, {
+    message: "Collaboration checkpoint",
+  });
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
@@ -247,13 +269,16 @@ export function persistYRoomDraftBestEffort(key: string): void {
   });
 }
 
-export function scheduleYRoomDraftPersist(key: string): void {
+export function scheduleYRoomDraftPersist(key: string, editorId?: string): void {
   const existing = persistTimers.get(key);
   if (existing) clearTimeout(existing);
 
   // Debounce quick bursts, but never persist more than once per
   // MIN_PERSIST_INTERVAL_MS — the serialize is the event-loop-blocking cost.
   const room = yRooms.get(key);
+  if (editorId && room) {
+    room.lastEditorId = editorId;
+  }
   const sinceLast = room?.lastPersistAt
     ? Date.now() - room.lastPersistAt
     : Number.POSITIVE_INFINITY;

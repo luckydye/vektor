@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import { useSpace } from "#composeables/useSpace.ts";
 import { activityIcon } from "~/src/assets/icons.ts";
@@ -20,6 +20,9 @@ const revisionContent = ref("");
 const viewingSuggestion = ref(false);
 const showingDiff = ref(false);
 const diffContent = ref("");
+const viewRootEl = ref<HTMLElement | null>(null);
+const bannerStyle = ref<{ left: string; width: string }>();
+let bannerResizeObserver: ResizeObserver | null = null;
 
 // When viewing a diff the document element renders the inline redline instead
 // of the plain revision content; otherwise it renders the revision as-is.
@@ -75,6 +78,31 @@ function closeRevisionView() {
   window.dispatchEvent(new CustomEvent("revision:close"));
 }
 
+function updateBannerPosition() {
+  const bounds = viewRootEl.value?.getBoundingClientRect();
+  if (!bounds) return;
+  bannerStyle.value = {
+    left: `${bounds.left}px`,
+    width: `${bounds.width}px`,
+  };
+}
+
+function observeBannerPosition() {
+  bannerResizeObserver?.disconnect();
+  updateBannerPosition();
+  if (!viewRootEl.value) return;
+  bannerResizeObserver = new ResizeObserver(updateBannerPosition);
+  bannerResizeObserver.observe(viewRootEl.value);
+}
+
+watch(viewingRevision, (visible) => {
+  if (visible) {
+    void nextTick(observeBannerPosition);
+  } else {
+    bannerResizeObserver?.disconnect();
+  }
+});
+
 async function handleRevisionDiff(event: CustomEvent) {
   if (!currentSpaceId.value) return;
 
@@ -97,6 +125,7 @@ async function handleRevisionDiff(event: CustomEvent) {
 }
 
 onMounted(() => {
+  window.addEventListener("resize", updateBannerPosition);
   window.addEventListener("revision:view", handleRevisionView as EventListener);
   window.addEventListener("revision:close", handleRevisionClose);
   window.addEventListener(
@@ -106,6 +135,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  bannerResizeObserver?.disconnect();
+  window.removeEventListener("resize", updateBannerPosition);
   window.removeEventListener("revision:view", handleRevisionView as EventListener);
   window.removeEventListener("revision:close", handleRevisionClose);
   window.removeEventListener(
@@ -116,46 +147,51 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="viewingRevision">
+  <div v-if="viewingRevision" ref="viewRootEl">
     <!-- Revision Disclaimer Banner -->
     <div
-      class="sticky top-0 z-60 bg-amber-50 border border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
+      class="pointer-events-none fixed bottom-4 z-60 flex justify-center px-4"
+      :style="bannerStyle"
     >
-      <div class="flex items-center gap-3">
-        <div class="svg-icon w-5 h-5 text-amber-600" v-html="activityIcon" />
-        <div>
-          <p class="text-size-medium font-semibold text-amber-900">
-            {{ showingDiff ? "Comparing" : "Viewing" }}
-            {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
-          </p>
-          <p class="my-0! text-size-small text-amber-700 flex items-center gap-3">
-            <template v-if="showingDiff">
-              Changes from the published version are shown inline.
-              <span class="inline-flex items-center gap-2">
-                <span class="px-1 rounded-xs bg-green-100 text-green-700 no-underline"
-                  >added</span
-                >
-                <span class="px-1 rounded-xs bg-red-100 text-red-700 line-through"
-                  >removed</span
-                >
-              </span>
-            </template>
-            <template v-else-if="viewingSuggestion">
-              This suggestion is read-only until it is applied.
-            </template>
-            <template v-else>
-              This is a historical version of the document. Changes cannot be made.
-            </template>
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        @click="closeRevisionView"
-        class="px-4 py-2 text-size-medium font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors"
+      <div
+        class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between"
       >
-        Show published version
-      </button>
+        <div class="flex min-w-0 flex-1 items-center gap-3">
+          <div class="svg-icon w-5 h-5 shrink-0 text-amber-600" v-html="activityIcon" />
+          <div class="min-w-0">
+            <p class="text-size-medium font-semibold text-amber-900">
+              {{ showingDiff ? "Comparing" : "Viewing" }}
+              {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
+            </p>
+            <p class="my-0! text-size-small text-amber-700 flex flex-wrap items-center gap-3">
+              <template v-if="showingDiff">
+                Changes from the published version are shown inline.
+                <span class="inline-flex items-center gap-2">
+                  <span class="px-1 rounded-xs bg-green-100 text-green-700 no-underline"
+                    >added</span
+                  >
+                  <span class="px-1 rounded-xs bg-red-100 text-red-700 line-through"
+                    >removed</span
+                  >
+                </span>
+              </template>
+              <template v-else-if="viewingSuggestion">
+                This suggestion is read-only until it is applied.
+              </template>
+              <template v-else>
+                This is a historical version of the document. Changes cannot be made.
+              </template>
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          @click="closeRevisionView"
+          class="shrink-0 px-4 py-2 text-size-medium font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors"
+        >
+          Show published version
+        </button>
+      </div>
     </div>
 
     <!-- App Revision View (diffs render as an inline redline via document-view) -->

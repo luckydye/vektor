@@ -461,6 +461,15 @@ describe("API Tests - Readonly Documents", () => {
     const docData = await docResponse.json();
     const newDocId = docData.document.id;
 
+    const revisionResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ html: "<p>Publish Test</p>" }),
+      },
+    );
+    const revisionData = await revisionResponse.json();
+
     await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${newDocId}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -474,7 +483,7 @@ describe("API Tests - Readonly Documents", () => {
       {
         method: "PATCH",
         body: JSON.stringify({
-          publishedRev: 1,
+          publishedRev: revisionData.revision.rev,
         }),
       },
     );

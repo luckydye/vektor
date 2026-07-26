@@ -185,9 +185,14 @@ async function publishRevisionAction(revisionId: number | null | undefined) {
   }
 }
 
-function copyRevisionLink(entryId: string) {
-  const url = `${window.location.origin}/rev/${entryId}`;
-  navigator.clipboard.writeText(url);
+function copyRevisionLink(revisionId: number | null | undefined) {
+  if (!revisionId) return;
+
+  const route = router.resolve({
+    path: router.currentRoute.value.path,
+    query: { ...router.currentRoute.value.query, revision: String(revisionId) },
+  });
+  navigator.clipboard.writeText(new URL(route.href, window.location.origin).href);
 }
 
 function showDiff(entry: AuditLog) {
@@ -359,45 +364,45 @@ useSync(
                     />
                   </button>
 
-                  <a-popover @exit="console.error" class="group" placements="bottom-end">
+                  <a-popover class="group" placements="bottom-end">
                     <div
-                      class="w-max py-2 opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100"
+                      class="revision-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
                     >
                       <div
-                        class="bg-background border border-neutral-100 rounded-lg origin-top-right scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 min-w-[160px]"
+                        class="revision-context-panel min-w-[224px] origin-top-right scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100"
                       >
                         <button
                           type="button"
                           @click="e => { exitPopover(e); viewRevision(primaryRevisionEntry(items)!.revisionId); }"
-                          class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
+                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-size-normal text-neutral-900 transition-colors hover:bg-primary-50 active:bg-primary-100"
                         >
-                          <div class="svg-icon w-4 h-4" v-html="eyeIcon" />
+                          <div class="svg-icon w-4 h-4 flex-none" v-html="eyeIcon" />
                           View Revision
                         </button>
                         <button
                           type="button"
                           @click="e => { exitPopover(e); showDiff(primaryRevisionEntry(items)!); }"
-                          class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
+                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-size-normal text-neutral-900 transition-colors hover:bg-primary-50 active:bg-primary-100"
                         >
-                          <div class="svg-icon w-4 h-4" v-html="pasteIcon" />
+                          <div class="svg-icon w-4 h-4 flex-none" v-html="pasteIcon" />
                           Show Diff
                         </button>
                         <button
                           type="button"
-                          @click="e => { exitPopover(e); copyRevisionLink(primaryRevisionEntry(items)!.id); }"
-                          class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
+                          @click="e => { exitPopover(e); copyRevisionLink(primaryRevisionEntry(items)!.revisionId); }"
+                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-size-normal text-neutral-900 transition-colors hover:bg-primary-50 active:bg-primary-100"
                         >
-                          <div class="svg-icon w-4 h-4" v-html="copyIcon" />
+                          <div class="svg-icon w-4 h-4 flex-none" v-html="copyIcon" />
                           Copy Link
                         </button>
                         <button
                           type="button"
                           v-if="!isPublishedEntry(primaryRevisionEntry(items)!) && !isSuggestionEntry(primaryRevisionEntry(items)!)"
                           @click="e => { exitPopover(e); publishRevisionAction(primaryRevisionEntry(items)!.revisionId); }"
-                          class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-size-normal text-neutral-900 transition-colors hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
                           :disabled="isPublishing"
                         >
-                          <div class="svg-icon w-4 h-4" v-html="publishIcon" />
+                          <div class="svg-icon w-4 h-4 flex-none" v-html="publishIcon" />
                           Publish Revision
                         </button>
                       </div>

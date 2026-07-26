@@ -172,7 +172,7 @@ async function handleRealtimeWebSocket(
         tracedSync("yjs.applyUpdate", () =>
           Y.applyUpdate(room.doc as Y.Doc, update, websocket),
         );
-        scheduleYRoomDraftPersist(roomKey);
+        scheduleYRoomDraftPersist(roomKey, userId);
 
         const frame = wsEncodeYjsUpdate(documentId, update);
         tracedSync("yjs.broadcast", () => {

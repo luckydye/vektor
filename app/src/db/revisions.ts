@@ -83,6 +83,23 @@ async function getDocumentSlug(spaceId: string, documentId: string): Promise<str
   return doc.slug;
 }
 
+/** Returns when the most recent revision was created without loading its snapshot. */
+export async function getLatestRevisionCreatedAt(
+  spaceId: string,
+  documentId: string,
+): Promise<Date | null> {
+  const db = await getSpaceDb(spaceId);
+  const latestRevision = await db
+    .select({ createdAt: revision.createdAt })
+    .from(revision)
+    .where(eq(revision.documentId, documentId))
+    .orderBy(desc(revision.rev))
+    .limit(1)
+    .get();
+
+  return latestRevision?.createdAt ?? null;
+}
+
 export async function createRevision(
   spaceId: string,
   documentId: string,
@@ -124,7 +141,7 @@ export async function createRevision(
     };
   }
 
-  const OVERWRITE_WINDOW_MS = 5 * 60 * 60 * 1000;
+  const OVERWRITE_WINDOW_MS = 3 * 60 * 60 * 1000;
   const lastIsRecent =
     lastRevision &&
     Date.now() - new Date(lastRevision.createdAt).getTime() < OVERWRITE_WINDOW_MS;
@@ -136,7 +153,7 @@ export async function createRevision(
     .get();
   const lastIsPublished = lastRevision && lastRevision.rev === doc?.publishedRev;
 
-  // Overwrite the last revision in place if it's a regular save within the 5-hour window,
+  // Overwrite the last revision in place if it's a regular save within the 3-hour window,
   // but never overwrite the published revision — that would silently change published content.
   if (
     lastIsRecent &&
