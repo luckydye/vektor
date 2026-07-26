@@ -2,12 +2,13 @@
 defineOptions({ inheritAttrs: false });
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useAIChat } from "#composeables/useAIChat.ts";
+import { type ImageChatAttachment, useAIChat } from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
@@ -44,6 +45,13 @@ type UploadedAttachment = {
   size: number;
   isImage: boolean;
 };
+
+const VISION_IMAGE_MEDIA_TYPES = new Set<ImageChatAttachment["mediaType"]>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -156,9 +164,19 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function attachmentPreviewUrl(attachment: UploadedAttachment): string {
+  return withTransformParams(attachment.url, { w: 640, format: "webp" });
+}
+
 function buildAttachmentContext(attachments: UploadedAttachment[]): string {
   if (attachments.length === 0) return "";
   const fileLines = attachments.map((file) => {
+    if (file.isImage) {
+      return [
+        `- ${file.name} (${file.type || "unknown"}, ${formatFileSize(file.size)}):`,
+        " included directly as an image input",
+      ].join("");
+    }
     return `- ${file.name} (${file.type || "unknown"}, ${formatFileSize(file.size)}): ${file.url}`;
   });
   return `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
@@ -504,7 +522,9 @@ async function sendMessage() {
           name: attachment.name,
           type: attachment.type,
           size: attachment.size,
-          isImage: attachment.type.startsWith("image/"),
+          isImage: VISION_IMAGE_MEDIA_TYPES.has(
+            attachment.type as ImageChatAttachment["mediaType"],
+          ),
         };
       });
     } catch (error) {
@@ -526,6 +546,19 @@ async function sendMessage() {
   ]
     .filter(Boolean)
     .join("\n\n");
+  const imageAttachments: ImageChatAttachment[] = uploadedAttachments.flatMap(
+    (attachment) =>
+      VISION_IMAGE_MEDIA_TYPES.has(
+        attachment.type as ImageChatAttachment["mediaType"],
+      )
+        ? [
+            {
+              key: attachment.key,
+              mediaType: attachment.type as ImageChatAttachment["mediaType"],
+            },
+          ]
+        : [],
+  );
 
   messages.value.push({
     role: "user",
@@ -537,7 +570,7 @@ async function sendMessage() {
   messageInputEl.value?.clearAttachments();
   scrollToBottom();
 
-  await completeResponse(userDisplayText, additionalContext);
+  await completeResponse(userDisplayText, additionalContext, imageAttachments);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -888,12 +921,22 @@ onUnmounted(() => {
                   :href="attachment.url"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="block rounded-lg border border-white/20 bg-white/10 px-2 py-1.5 text-size-small hover:bg-white/15 transition-colors"
+                  class="block overflow-hidden rounded-lg border border-white/20 bg-white/10 text-size-small hover:bg-white/15 transition-colors"
                 >
-                  <span class="font-medium">{{ attachment.name }}</span>
-                  <span class="opacity-80 ml-1"
-                    >({{ formatFileSize(attachment.size) }})</span
+                  <img
+                    v-if="attachment.isImage"
+                    :src="attachmentPreviewUrl(attachment)"
+                    :alt="attachment.name"
+                    class="block max-h-80 w-full object-contain bg-black/10"
+                    decoding="async"
+                    loading="lazy"
                   >
+                  <span class="block px-2 py-1.5">
+                    <span class="font-medium">{{ attachment.name }}</span>
+                    <span class="opacity-80 ml-1"
+                      >({{ formatFileSize(attachment.size) }})</span
+                    >
+                  </span>
                 </a>
               </div>
             </div>

@@ -36,6 +36,25 @@ export function getOpenAICompatibleHeaders(
   };
 }
 
+/** Removes Vektor-only fields and emits OpenAI's multimodal message format. */
+export function toOpenAICompatibleMessages(
+  messages: ChatMessage[],
+): Array<Record<string, unknown>> {
+  return messages.map(({ images, imageAttachments: _imageAttachments, ...message }) => {
+    if (!images?.length) return message;
+
+    const content: Array<Record<string, unknown>> = [];
+    if (message.content) content.push({ type: "text", text: message.content });
+    for (const image of images) {
+      content.push({
+        type: "image_url",
+        image_url: { url: `data:${image.mediaType};base64,${image.data}` },
+      });
+    }
+    return { ...message, content };
+  });
+}
+
 export async function callOpenAICompatible(options: {
   provider: OpenAICompatibleProvider;
   messages: ChatMessage[];
@@ -48,7 +67,7 @@ export async function callOpenAICompatible(options: {
     headers: getOpenAICompatibleHeaders(options.provider),
     body: JSON.stringify({
       model: options.provider.model,
-      messages: options.messages,
+      messages: toOpenAICompatibleMessages(options.messages),
       tools: options.tools,
       stream: true,
     }),

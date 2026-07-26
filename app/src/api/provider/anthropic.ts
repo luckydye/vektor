@@ -56,7 +56,23 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
       continue;
     }
 
-    result.push({ role: "user", content: msg.content ?? "" });
+    if (msg.images?.length) {
+      const content: unknown[] = [];
+      if (msg.content) content.push({ type: "text", text: msg.content });
+      for (const image of msg.images) {
+        content.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: image.mediaType,
+            data: image.data,
+          },
+        });
+      }
+      result.push({ role: "user", content });
+    } else {
+      result.push({ role: "user", content: msg.content ?? "" });
+    }
     i++;
   }
 

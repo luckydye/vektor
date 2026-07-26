@@ -6,6 +6,11 @@ import type { ChatStreamEvent } from "./ai-chat/types.ts";
 
 type MessageIndex = { value: number | null };
 
+export type ImageChatAttachment = {
+  key: string;
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+};
+
 export function useAIChat(options: {
   currentSessionId: Readonly<Ref<string | null>>;
   currentSpaceId: Readonly<Ref<string | null | undefined>>;
@@ -140,6 +145,7 @@ export function useAIChat(options: {
     userMessage: string,
     responseStartIndex: number,
     additionalContext = "",
+    imageAttachments: ImageChatAttachment[] = [],
   ) {
     const assistantMessageIndex: MessageIndex = { value: null };
     const thinkingMessageIndex: MessageIndex = { value: null };
@@ -153,6 +159,7 @@ export function useAIChat(options: {
       spaceId,
       documentId: options.documentId() || undefined,
       userMessage,
+      imageAttachments,
       additionalContext: additionalContext || undefined,
       onEvent: (event) =>
         applyStreamEvent(
@@ -165,14 +172,23 @@ export function useAIChat(options: {
     });
   }
 
-  async function completeResponse(userMessage: string, additionalContext = "") {
+  async function completeResponse(
+    userMessage: string,
+    additionalContext = "",
+    imageAttachments: ImageChatAttachment[] = [],
+  ) {
     if (options.isGenerating.value || !options.currentSessionId.value) return;
     options.isGenerating.value = true;
     abortController = new AbortController();
     const responseStartIndex = options.messages.value.length;
 
     try {
-      await streamAssistantResponse(userMessage, responseStartIndex, additionalContext);
+      await streamAssistantResponse(
+        userMessage,
+        responseStartIndex,
+        additionalContext,
+        imageAttachments,
+      );
       await options.refreshCurrentSession();
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {

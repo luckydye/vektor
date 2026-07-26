@@ -53,10 +53,14 @@ export function toOllamaMessages(
       };
     }
 
-    return {
+    const result: Record<string, unknown> = {
       role: message.role,
       content: message.content ?? "",
     };
+    if (message.images?.length) {
+      result.images = message.images.map((image) => image.data);
+    }
+    return result;
   });
 }
 

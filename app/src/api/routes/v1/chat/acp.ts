@@ -1,6 +1,7 @@
 import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
 import { getLocalOrigin } from "#config";
 import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
 import {
@@ -12,6 +13,8 @@ import {
 } from "#db/api.ts";
 import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
 import { getUserProfile } from "#db/userProfiles.ts";
+import { getFileStorage } from "#files/storage.ts";
+import { isSafeUploadPath } from "#files/uploads.ts";
 import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -26,6 +29,64 @@ type AcpJsonRpcRequest = {
   method: string;
   params?: Record<string, unknown>;
 };
+
+const VISION_IMAGE_MEDIA_TYPES = new Set<ChatImageAttachment["mediaType"]>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+const MAX_CHAT_IMAGE_BYTES = 20 * 1024 * 1024;
+
+function parseImageAttachments(value: unknown): ChatImageAttachment[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+
+  const attachments: ChatImageAttachment[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return null;
+    const { key, mediaType } = item as Record<string, unknown>;
+    if (
+      typeof key !== "string" ||
+      !isSafeUploadPath(key) ||
+      typeof mediaType !== "string" ||
+      !VISION_IMAGE_MEDIA_TYPES.has(mediaType as ChatImageAttachment["mediaType"])
+    ) {
+      return null;
+    }
+    attachments.push({
+      key,
+      mediaType: mediaType as ChatImageAttachment["mediaType"],
+    });
+  }
+  return attachments;
+}
+
+/** Loads persisted image references only for the outbound model request. */
+async function hydrateMessageImages(
+  spaceId: string,
+  messages: ChatMessage[],
+): Promise<ChatMessage[]> {
+  const storage = getFileStorage();
+  return await Promise.all(
+    messages.map(async (message) => {
+      if (message.images?.length || !message.imageAttachments?.length) return message;
+
+      const images = await Promise.all(
+        message.imageAttachments.map(async (attachment) => {
+          const file = await storage.read(spaceId, attachment.key);
+          if (!file || file.byteLength > MAX_CHAT_IMAGE_BYTES) return null;
+          return { ...attachment, data: file.toString("base64") };
+        }),
+      );
+      return {
+        ...message,
+        images: images.filter((image): image is ChatImage => image !== null),
+      };
+    }),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Agent run types
@@ -656,6 +717,7 @@ export const POST: ApiRouteHandler = (context) =>
         const spaceId = params.spaceId;
         const documentId = params.documentId;
         const prompt = params.prompt;
+        const imageAttachments = parseImageAttachments(params.imageAttachments);
         const additionalContext = params.additionalContext;
 
         if (!sessionId || typeof sessionId !== "string") {
@@ -669,6 +731,9 @@ export const POST: ApiRouteHandler = (context) =>
         }
         if (additionalContext !== undefined && typeof additionalContext !== "string") {
           return badRequestResponse("params.additionalContext must be a string");
+        }
+        if (imageAttachments === null) {
+          return badRequestResponse("params.imageAttachments must contain valid image uploads");
         }
         if (
           !Array.isArray(prompt) ||
@@ -730,7 +795,14 @@ export const POST: ApiRouteHandler = (context) =>
         const messages: ChatMessage[] =
           lastHistoryRole === "user"
             ? history
-            : [...history, { role: "user", content: userText }];
+            : [
+                ...history,
+                {
+                  role: "user",
+                  content: userText,
+                  ...(imageAttachments.length ? { imageAttachments } : {}),
+                },
+              ];
         const agentMessages = additionalContext
           ? [
               ...messages,
@@ -738,8 +810,17 @@ export const POST: ApiRouteHandler = (context) =>
                 role: "user" as const,
                 content: `Additional context for the preceding message:\n${additionalContext}`,
               },
-            ]
+          ]
           : messages;
+        const modelMessages = await hydrateMessageImages(spaceId, agentMessages);
+        const currentMessageImages = modelMessages.find(
+          (message) => message.imageAttachments === imageAttachments,
+        )?.images;
+        if (imageAttachments.length !== (currentMessageImages?.length ?? 0)) {
+          return badRequestResponse(
+            `Unable to read an image attachment (maximum ${MAX_CHAT_IMAGE_BYTES / 1024 / 1024}MB per image)`,
+          );
+        }
 
         // Pre-save the user message to the session BEFORE starting the agent.
         // This ensures that if the page is reloaded mid-turn the history shows
@@ -769,7 +850,7 @@ export const POST: ApiRouteHandler = (context) =>
           key,
           userId,
           chatId: sessionId,
-          messages: agentMessages,
+          messages: modelMessages,
           sessionMessages: messages,
           userProfile: userProfile ?? undefined,
           connectedProviders,
