@@ -3,8 +3,13 @@ title: Find and read documents
 keywords: search, find, list, read, lookup
 ---
 
-- `list_documents`: list documents and metadata.
-- `search_documents`: full-text search; pass the query in `q`.
-- `read_document`: read a live draft by document ID.
-- `get_current_document`: read "this document" or "the page" from chat context.
-- To save returned content in the virtual filesystem, pass it to `write_file`.
+1. Use `get_current_document` for "this document" or "the page".
+2. Use `search_documents` for full-text search; pass the query in `q`.
+3. Use `list_documents` for browsing metadata. Useful filters include `type`,
+   `parentId`, and comma-separated `categorySlugs`.
+4. Both list and search responses can contain `nextCursor`; pass it back as
+   `cursor` to continue.
+5. Use `read_document` with the returned ID to read the live draft. Pass `rev`
+   only when a historical revision is specifically required.
+6. To keep selected content in the virtual filesystem, write it with
+   `write_file`; do not claim a sandbox path is a user-downloadable URL.

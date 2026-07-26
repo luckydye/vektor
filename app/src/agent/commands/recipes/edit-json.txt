@@ -9,4 +9,9 @@ keywords: edit, json, set, unset, push, path, jq
    {"documentId":"<id>","operations":[{"op":"set","path":".items[0].name","value":"Widget"}]}
    {"documentId":"<id>","operations":[{"op":"push","path":".items","value":{"name":"new entry"}}]}
    {"documentId":"<id>","operations":[{"op":"unset","path":".items[2]"}]}
-Quoted keys work too: `.['weird key'].x`.
+3. Quoted keys use double-quoted bracket syntax: `["weird key"].x`.
+   Single-quoted bracket paths are not supported.
+4. Parent objects and arrays must already exist; `set` does not create missing
+   intermediate containers.
+5. Operations run in order. Re-read afterward, especially before using array
+   indexes again.

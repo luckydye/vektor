@@ -1,7 +1,10 @@
 import { Bash } from "just-bash";
 import { callAnthropic } from "#api/provider/anthropic.ts";
 import { callOllama } from "#api/provider/ollama.ts";
-import { callOpenAICompatible } from "#api/provider/openaiCompatible.ts";
+import {
+  callOpenAICompatible,
+  callOpenAIResponses,
+} from "#api/provider/openaiCompatible.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/aiConfig.ts";
 import {
@@ -92,13 +95,17 @@ function documentEditingSection(
 
   const recipeName = recipeForDocumentType(documentType);
   const recipe = getRecipe(recipeName);
+  const mutationInstructions =
+    documentType === "app"
+      ? `- To change it, read the complete source and use \`write_document\` with documentId \`${documentId}\` and the complete revised HTML. NEVER use \`edit_document\` for app documents because partial HTML edits remove script elements.`
+      : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
+  sed, perl, python, js-exec, or by piping through grep/awk — those corrupt unicode (emoji,
+  umlauts) and bypass collaborative editing. There is no temp-file step.`;
 
   return `
 ## Editing the current document
 - "this document" / "the page" = document ID \`${documentId}\`. Read it first with \`get_current_document\`.
-- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
-  sed, perl, python, js-exec, or by piping through grep/awk — those corrupt unicode (emoji,
-  umlauts) and bypass collaborative editing. There is no temp-file step.
+${mutationInstructions}
 ${
   recipe
     ? `- Playbook (\`recipes\` tool, name: "${recipeName}"):\n${recipe.body
@@ -118,13 +125,40 @@ export async function callModel(options: {
   onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
   const provider = options.provider;
-  if (provider.provider === "anthropic") {
+  if (
+    provider.provider === "anthropic" ||
+    (provider.provider === "opencode-zen" && isOpenCodeZenClaudeModel(provider.model))
+  ) {
     return callAnthropic({ ...options, provider });
   }
   if (provider.provider === "ollama") {
     return callOllama({ ...options, provider });
   }
+  if (provider.provider === "opencode-zen" && isOpenCodeZenGPTModel(provider.model)) {
+    return callOpenAIResponses({ ...options, provider });
+  }
+  if (provider.provider === "opencode-zen" && isOpenCodeZenTextOnlyModel(provider.model)) {
+    const hasImages = options.messages.some((message) => message.images?.length);
+    if (hasImages) {
+      throw new Error(`${provider.model} does not support image input.`);
+    }
+  }
   return callOpenAICompatible({ ...options, provider });
+}
+
+/** Zen serves Claude models from its Anthropic-compatible `/messages` endpoint. */
+export function isOpenCodeZenClaudeModel(model: string): boolean {
+  return model.toLowerCase().startsWith("claude-");
+}
+
+/** Zen exposes GPT models through `/responses`, unlike its chat-completions models. */
+export function isOpenCodeZenGPTModel(model: string): boolean {
+  return model.toLowerCase().startsWith("gpt-");
+}
+
+/** Zen's GLM 5 series accepts text only; image blocks would be rejected upstream. */
+export function isOpenCodeZenTextOnlyModel(model: string): boolean {
+  return model.toLowerCase().startsWith("glm-");
 }
 
 async function listFiles(

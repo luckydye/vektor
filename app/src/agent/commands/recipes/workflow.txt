@@ -3,7 +3,18 @@ title: Run a workflow and check its results
 keywords: workflow, run, status, logs, automation
 ---
 
-1. Start with `run_workflow` using the workflow document ID and optional inputs.
-2. Poll `get_workflow_run` with the returned run ID until it finishes.
-3. Use `get_workflow_log` for the script log and terminal error.
-4. Use `list_workflow_runs` to inspect past runs, optionally filtered by document ID.
+1. Start with `run_workflow` using the workflow document ID and optional
+   object-valued `inputs`. Keep the returned run ID.
+2. Poll `get_workflow_run` until `status` is no longer `pending` or `running`.
+   Do not start duplicate runs while polling.
+3. Use `get_workflow_log` for concise `status`, `error`, and `logs`.
+4. On success, inspect `resultArtifact` from `get_workflow_run`. Report its
+   `url` and `key` when present; the current agent tools do not expose a direct
+   artifact-content reader.
+5. Use `list_workflow_runs` without `documentId` for the recent run-history
+   page. Passing `documentId` currently returns only that workflow's latest run
+   status, not its complete filtered history.
+
+Workflow schedule tools currently target routes that require an interactive
+user session, so they cannot be completed through the agent's job-token
+connection. Explain that limitation instead of repeatedly retrying them.

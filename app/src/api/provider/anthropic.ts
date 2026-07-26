@@ -1,7 +1,22 @@
 import type { ChatMessage } from "./types.ts";
 import { type PartialToolCall, parseSSE } from "./utils.ts";
 
-type AnthropicProvider = { provider: "anthropic"; apiKey: string; model: string };
+/**
+ * Zen exposes Claude models through an Anthropic-compatible endpoint. Keeping
+ * those requests on this wire format is especially important for image blocks.
+ */
+export type AnthropicCompatibleProvider = {
+  provider: "anthropic" | "opencode-zen";
+  apiKey: string;
+  model: string;
+};
+
+function getAnthropicMessagesUrl(provider: AnthropicCompatibleProvider): string {
+  if (provider.provider === "opencode-zen") {
+    return "https://opencode.ai/zen/v1/messages";
+  }
+  return "https://api.anthropic.com/v1/messages";
+}
 
 export function toAnthropicMessages(messages: ChatMessage[]): {
   system: string | undefined;
@@ -171,7 +186,7 @@ export function toAnthropicRequestBody(
 }
 
 export async function callAnthropic(options: {
-  provider: AnthropicProvider;
+  provider: AnthropicCompatibleProvider;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
@@ -197,7 +212,7 @@ export async function callAnthropic(options: {
   if (system) body.system = system;
   if (anthropicTools.length) body.tools = anthropicTools;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch(getAnthropicMessagesUrl(options.provider), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -209,7 +224,7 @@ export async function callAnthropic(options: {
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`Anthropic ${response.status}: ${await response.text()}`);
+    throw new Error(`${options.provider.provider} ${response.status}: ${await response.text()}`);
   }
 
   let textContent = "";

@@ -4,6 +4,15 @@ keywords: app, iframe, html, application, widget
 ---
 
 Type "app" documents are full HTML apps rendered in a sandboxed iframe.
-Create with `write_document`: pass the complete HTML (inline CSS/JS), title, and type `app`.
-For a full rewrite, call `write_document` with the document ID and complete HTML.
-For small fixes, read with `read_document`, then use `edit_document` line operations.
+Keep CSS and JavaScript inline unless the app deliberately loads public assets.
+
+1. Read an existing app with `read_document` or `get_current_document`.
+2. Create one with `write_document` using complete HTML, a title, and type `app`:
+   {"title":"My App","type":"app","content":"<!doctype html><html>...</html>"}
+3. Update an app by calling `write_document` with its document ID and the complete
+   revised HTML.
+4. Read it again to verify the stored source.
+
+Do not use `edit_document` on app documents. That partial-edit route sanitizes
+HTML and can remove the app's `<script>` elements. Always preserve the complete
+working source and replace it atomically with `write_document`.

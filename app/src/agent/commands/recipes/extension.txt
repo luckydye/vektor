@@ -1,18 +1,30 @@
 ---
 title: Build and install an extension
-keywords: extension, plugin, install, manifest, activate
+keywords: extension, plugin, install, manifest, activate, view, job, presence
 ---
 
-## Rules — read first
-- `frontend` entry runs on every page: register actions/suggestions only, no rendering
-- `view` entry renders a full-page route: its `activate` MUST call `ctx.views.register(path, fn)` where `path` exactly matches the route path string in the manifest — any mismatch causes a runtime "no view registered" error
-- Never call `activate` or `deactivate` yourself — the framework calls them and passes `ctx`
-- Never use `ctx` outside of `activate`/`deactivate`
-- If manifest has `routes`, it MUST also have a `view` entry (otherwise the route can never render)
-- If manifest has a `view` entry, it MUST have `routes` (otherwise the view is never loaded)
-- IDs: lowercase alphanumeric + hyphens only
+Call `get_documentation` with `{"section":"extensions"}` before building an
+extension. It is the canonical, complete API reference. The rules below cover
+the paths most likely to fail.
 
-## Manifest — actions/suggestions only (no page)
+## Safety and lifecycle
+
+- Only install when the user explicitly asks.
+- Never call `activate` or `deactivate`; Vektor owns the module lifecycle.
+- Do not keep `ctx` in global scope. Register behavior inside `activate`.
+- `activate` returns `void`; a cleanup function returned from it is ignored.
+  Put module cleanup in `deactivate`. A *view renderer* may return a cleanup
+  function, which Vektor runs when that rendered view unmounts.
+- Action and suggestion IDs are automatically prefixed with the extension ID.
+  They are also cleaned up on unload, though explicit unregistering is valid.
+- Extension IDs use lowercase letters, digits, and hyphens.
+
+## Manifest
+
+An extension needs `manifest.json` and at least one entry file.
+
+Actions or suggestions only:
+
 ```json
 {
   "id": "my-ext",
@@ -23,163 +35,178 @@ keywords: extension, plugin, install, manifest, activate
 }
 ```
 
-## Manifest — with a full-page route
-```json
-{
-  "id": "my-ext",
-  "name": "My Extension",
-  "version": "1.0.0",
-  "entries": {
-    "frontend": "dist/main.js",
-    "view": "dist/view.js"
-  },
-  "routes": [
-    { "path": "my-ext", "title": "My Extension", "menuItem": { "title": "My Extension" } }
-  ]
-}
-```
+Custom page or inline document view:
 
-## Manifest — inline document view (Add Content menu)
-Add `"document"` to a route's `placements` array to make it appear in the document Add Content menu. Users can then insert it as a block directly inside a document:
 ```json
 {
   "id": "my-ext",
   "name": "My Extension",
   "version": "1.0.0",
-  "entries": {
-    "frontend": "dist/main.js",
-    "view": "dist/view.js"
-  },
+  "entries": { "view": "dist/view.js" },
   "routes": [
     {
       "path": "my-ext",
       "title": "My Extension",
-      "description": "Show my extension inline",
       "menuItem": { "title": "My Extension" },
-      "placements": ["document"]
+      "placements": ["page", "document"]
     }
   ]
 }
 ```
-- `placements` defaults to `["page"]` (full-page sidebar only) when omitted
-- Use `["page", "document"]` to appear in both places
-- The view entry and `ctx.views.register` work exactly the same as for page routes — the framework handles embedding the rendered container as a document block
 
-## ctx.collaboration — shared Yjs document
-Available when a canvas or document is open; `null` otherwise. Always guard:
+- `entries.frontend` and `entries.view` are independently optional. A view-only
+  extension does not need a frontend entry.
+- Routes require `entries.view`, and a view entry requires at least one route.
+- `placements` defaults to `["page"]`. Add `"document"` for the Add Content
+  menu and inline document rendering.
+- Every entry path declared in the manifest must exist in the ZIP.
+
+## Frontend entry
+
 ```js
 export function activate(ctx) {
-  if (!ctx.collaboration) return;
-  const { ydoc, clientId } = ctx.collaboration;
-
-  // Read/write synced state — visible to all peers in the room
-  const yState = ydoc.getMap('game.mygame');
-  yState.set('turn', 1);
-  yState.observe(() => console.log('turn:', yState.get('turn')));
-}
-```
-`clientId` is the Yjs numeric peer ID. There is no awareness object — use a YMap to track peers and share ephemeral state (cursors, presence):
-```js
-export function activate(ctx) {
-  if (!ctx.collaboration) return;
-  const { ydoc, clientId } = ctx.collaboration;
-
-  // Each peer registers itself; others see the full set via observe
-  const peers = ydoc.getMap('ext.mygame.peers');
-  peers.set(String(clientId), { cursor: null });
-
-  // Host election: peer with the lowest numeric clientId is the host
-  function isHost() {
-    const ids = [...peers.keys()].map(Number);
-    return ids.length === 0 || Math.min(...ids) === clientId;
-  }
-
-  peers.observe(() => {
-    console.log('host?', isHost());
-  });
-
-  return () => {
-    // deactivate: remove self so others stop counting this peer
-    peers.delete(String(clientId));
-  };
-}
-```
-Return a cleanup function from `activate` (or use `deactivate`) to remove the peer entry — otherwise stale entries remain until the ydoc is garbage-collected.
-
-## ctx.api — wiki API client
-Available inside `activate`/`deactivate` via `ctx.api` and `ctx.spaceId`:
-```js
-// List documents
-const { documents } = await ctx.api.documents.get(ctx.spaceId, { limit: 100 });
-
-// Get one document (returns DocumentWithProperties)
-const doc = await ctx.api.document.get(ctx.spaceId, documentId);
-
-// Create a document
-const doc = await ctx.api.documents.post(ctx.spaceId, {
-  title: 'My Doc', content: '<p>Hello</p>', type: 'document',
-});
-
-// Update document content (HTML)
-await ctx.api.document.put(ctx.spaceId, documentId, '<p>Updated</p>');
-
-// Patch metadata / properties
-await ctx.api.document.patch(ctx.spaceId, documentId, {
-  properties: { status: 'published' },
-});
-
-// Search
-const { results } = await ctx.api.search.get(ctx.spaceId, { q: 'hello' });
-```
-
-## dist/main.js (frontend entry — always present)
-```js
-export function activate(ctx) {
-  ctx.actions.register('my-ext.hello', {
+  ctx.actions.register('hello', {
     title: 'Say hello',
     run: async () => { alert('hello'); },
   });
 }
+
 export function deactivate(ctx) {
-  ctx.actions.unregister('my-ext.hello');
+  ctx.actions.unregister('hello');
 }
 ```
 
-## dist/view.js (view entry — only when manifest has "view" + "routes")
-The path passed to `ctx.views.register` MUST be the same string as `routes[n].path` in the manifest:
+Frontend entries are loaded for installed extensions in the active space.
+Register actions and suggestions there; render route UI through a view entry.
+
+## View entry
+
+The registered path must exactly match `routes[n].path`:
+
 ```js
 export function activate(ctx) {
   ctx.views.register('my-ext', (container) => {
     container.innerHTML = '<h1>My Extension</h1>';
-    return () => { container.innerHTML = ''; }; // optional cleanup
+    return () => { container.innerHTML = ''; };
   });
 }
+
 export function deactivate(ctx) {
   ctx.views.unregister('my-ext');
 }
 ```
 
-## Jobs
-Add to manifest:
-```json
-"jobs": [{ "id": "my-job", "name": "My Job", "entry": "dist/job.js" }]
-```
-Job entry (dist/job.js) runs in worker_threads:
+Views render inside a shadow DOM and must provide their own styling.
+
+## API client
+
+Use `ctx.api` and `ctx.spaceId`:
+
 ```js
-const { parentPort } = require('worker_threads');
-parentPort.postMessage({ type: 'result', success: true, outputs: { result: 'done' } });
+const { documents, nextCursor } =
+  await ctx.api.documents.get(ctx.spaceId, { limit: 100 });
+const doc = await ctx.api.document.get(ctx.spaceId, documentId);
+const created = await ctx.api.documents.post(ctx.spaceId, {
+  title: 'My Doc',
+  content: '<p>Hello</p>',
+  type: 'document',
+});
+await ctx.api.document.put(ctx.spaceId, documentId, '<p>Updated</p>');
+await ctx.api.document.patch(ctx.spaceId, documentId, {
+  properties: { status: 'published' },
+});
+const { results } = await ctx.api.search.get(ctx.spaceId, { q: 'hello' });
 ```
 
-## Build and install
-Always zip from INSIDE the extension directory so manifest.json lands at the ZIP root:
+## Collaboration and presence
+
+`ctx.collaboration` is available only while a canvas or editor document is
+active. It exposes `{ydoc, clientId}` for persistent, document-bound shared
+state. Always guard it:
+
+```js
+export function activate(ctx) {
+  if (!ctx.collaboration) return;
+  const state = ctx.collaboration.ydoc.getMap('my-ext.state');
+  state.set('score', 0);
+}
+```
+
+For ephemeral multiplayer state on page routes, use `ctx.presence` instead of
+writing peer records into a YMap:
+
+```js
+export function activate(ctx) {
+  ctx.views.register('my-ext', async (container) => {
+    const room = await ctx.presence.connect('main', {
+      state: { status: 'ready' },
+    });
+    const unsubscribe = room.subscribe((event) => console.log(event));
+    return () => {
+      unsubscribe();
+      room.leave();
+      container.innerHTML = '';
+    };
+  });
+}
+```
+
+Call `room.update(nextState)` to publish local presence changes. Presence rooms
+are ephemeral and must not be used as document storage.
+
+## Jobs
+
+Jobs run in Vektor's sandboxed Boa JavaScript VM, not Node or worker_threads.
+Add a job definition to the manifest:
+
+```json
+{
+  "jobs": [
+    {
+      "id": "word-count",
+      "name": "Word Count",
+      "entry": "dist/word-count.js",
+      "inputs": { "documentId": { "type": "string", "required": true } },
+      "outputs": { "words": { "type": "text" } }
+    }
+  ]
+}
+```
+
+Job entry:
+
+```js
+const { documentId } = input;
+if (!documentId) throw new Error('Missing documentId');
+
+const content = await readDocument(documentId);
+log(`Read ${content.length} bytes`);
+await output({
+  words: { type: 'text', value: String(content.trim().split(/\s+/).length) },
+});
+```
+
+- Job bundles contain no `import`, `export`, `require`, or `node:*` usage.
+- Results go through `output()`; throwing fails the run.
+- Available capabilities include document operations, `fetch`, `apiFetch`,
+  `uploadArtifact`, secrets, archives, spreadsheets, scratch storage, cache,
+  timers, and `agentPrompt`. Use the canonical extension documentation for
+  exact signatures.
+
+## Package and install
+
+The agent sandbox has no package manager or general build tool. Write already
+bundled browser/job JavaScript into `dist`, or provide a self-contained source
+that needs no build step.
+
+Zip from inside the extension directory so `manifest.json` is at the ZIP root:
+
 ```bash
 cd my-ext
 zip ../my-ext.zip .
-zipinfo ../my-ext.zip   # verify: manifest.json must appear at the root, NOT under my-ext/
+zipinfo ../my-ext.zip
 extension install ../my-ext.zip
 ```
-Do NOT run `zip my-ext.zip my-ext/` from outside — manifest.json would be nested under my-ext/ and the install will fail with "missing manifest.json".
 
-Run `zipinfo` after zipping and before installing. If manifest.json does not appear at the root of the listing, the zip is wrong — recreate it from inside the directory.
-
-Only install when the user explicitly asks.
+Run `zipinfo` before installation. The listing must show `manifest.json` and
+every declared entry at the expected root-relative path.

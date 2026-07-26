@@ -234,7 +234,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "write_document",
       description:
-        "Create or update a document in the current Vektor space. Omit documentId to create a new document, provide it to update an existing one. Content can be HTML or Markdown.",
+        "Create or replace a document in the current Vektor space. Omit documentId to create, or provide it to replace the complete stored content. Use HTML for ordinary documents; Markdown in this JSON tool call is not converted automatically.",
       inputSchema: {
         type: "object",
         properties: {
@@ -242,7 +242,11 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
             type: "string",
             description: "Document ID to update. Omit to create a new document.",
           },
-          content: { type: "string", description: "Document content (HTML or Markdown)" },
+          content: {
+            type: "string",
+            description:
+              "Complete stored content. Use HTML for ordinary documents and complete HTML for app documents.",
+          },
           title: { type: "string", description: "Document title (used when creating)" },
           type: { type: "string", description: "Document type (used when creating)" },
           parentId: {
@@ -346,11 +350,15 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "list_workflow_runs",
-      description: "List workflow runs in the current Vektor space.",
+      description:
+        "List the recent workflow-run history page in the current space. When documentId is provided, the current API returns only that workflow's latest run status rather than filtered history.",
       inputSchema: {
         type: "object",
         properties: {
-          documentId: { type: "string", description: "Filter by workflow document ID" },
+          documentId: {
+            type: "string",
+            description: "Return the latest run status for this workflow document ID.",
+          },
           sourceExtensionId: {
             type: "string",
             description: "Filter by source extension",

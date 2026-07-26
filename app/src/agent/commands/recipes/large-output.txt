@@ -3,7 +3,8 @@ title: Handle output too large for one tool result
 keywords: large, output, truncated, pagination, jq, file
 ---
 
-Tool output is capped at ~6000 chars. When truncated:
+Most tool output is capped at about 6000 characters; `list_documents` has a
+larger 30000-character allowance. When output is truncated:
 - Structured tools: narrow the query or lower `limit`, then continue with
   `nextCursor`. Truncated results preserve the response tail so pagination
   metadata remains visible.

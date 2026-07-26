@@ -22,11 +22,14 @@ document tools — there is no dedicated database tool.
    `get_current_document` if the database is the open page).
 2. Read columns: `read_document` on the database id, then parse the
    `properties._schema` JSON string.
-3. List rows: `list_documents` with {"type":"record"}, then keep the ones
-   whose `parentId` equals the database id. Each row's `properties` holds its
-   cells. Pipe the JSON through `js-exec` to filter/format when there are many.
+3. List rows directly with `list_documents` using
+   {"parentId":"<database-id>","type":"record","limit":500}.
+   Each row's `properties` holds its cells.
 
 ## Change a database
+- Create a database: call `write_document` with type `database`, a title, and
+  non-empty content such as `<p></p>`. Use the returned ID, then initialize
+  `_schema` with `update_document_properties`.
 - Add a column: read the current `_schema`, append to its `columns`, and write
   the whole array back with `update_document_properties` on the database:
     {"documentId":"<dbId>","properties":{"_schema":"{\"columns\":[…]}"}}
@@ -47,5 +50,8 @@ document tools — there is no dedicated database tool.
   or it will be stored as "[object Object]".
 - Property values are stored as text; pass numbers and dates as strings.
 - Never invent a row id — create the row first and use the id it returns.
+- Prefer `parentId` when listing rows; a global record listing is paginated and
+  can omit rows from the target database.
 - Rows carry data in properties only. Never edit row content with
-  sed/js-exec/regex; change cells with `update_document_properties`.
+  shell commands or `edit_document`; change cells with
+  `update_document_properties`.

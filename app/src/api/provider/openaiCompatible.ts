@@ -36,6 +36,74 @@ export function getOpenAICompatibleHeaders(
   };
 }
 
+/** Converts stored chat history to the OpenAI Responses API input shape. */
+export function toOpenAIResponsesInput(messages: ChatMessage[]): unknown[] {
+  const input: unknown[] = [];
+
+  for (const message of messages) {
+    if (message.role === "tool") {
+      input.push({
+        type: "function_call_output",
+        call_id: message.tool_call_id,
+        output: message.content ?? "",
+      });
+      continue;
+    }
+
+    if (message.role === "assistant" && message.tool_calls?.length) {
+      if (message.content) {
+        input.push({
+          role: "assistant",
+          content: [{ type: "output_text", text: message.content }],
+        });
+      }
+      for (const toolCall of message.tool_calls) {
+        input.push({
+          type: "function_call",
+          call_id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        });
+      }
+      continue;
+    }
+
+    const role = message.role === "system" ? "developer" : message.role;
+    const content: Array<Record<string, unknown>> = [];
+    if (message.content) {
+      content.push({
+        type: message.role === "assistant" ? "output_text" : "input_text",
+        text: message.content,
+      });
+    }
+    for (const image of message.images ?? []) {
+      content.push({
+        type: "input_image",
+        image_url: `data:${image.mediaType};base64,${image.data}`,
+      });
+    }
+    input.push({ role, content });
+  }
+
+  return input;
+}
+
+function toOpenAIResponsesTools(tools: unknown[]): unknown[] {
+  return tools.map((tool) => {
+    const functionTool = tool as {
+      type?: string;
+      function?: { name?: string; description?: string; parameters?: unknown };
+    };
+    if (functionTool.type !== "function" || !functionTool.function?.name) return tool;
+    return {
+      type: "function",
+      name: functionTool.function.name,
+      description: functionTool.function.description,
+      parameters: functionTool.function.parameters,
+    };
+  });
+}
+
 /** Removes Vektor-only fields and emits OpenAI's multimodal message format. */
 export function toOpenAICompatibleMessages(
   messages: ChatMessage[],
@@ -141,5 +209,67 @@ export async function callOpenAICompatible(options: {
       ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
     },
     finishReason,
+  };
+}
+
+/** Calls a Zen GPT model, which Zen exposes through the OpenAI Responses API. */
+export async function callOpenAIResponses(options: {
+  provider: OpenAICompatibleProvider;
+  messages: ChatMessage[];
+  tools: unknown[];
+  signal?: AbortSignal;
+  onText?: (text: string) => void | Promise<void>;
+}): Promise<{ message: ChatMessage; finishReason: string }> {
+  const response = await fetch("https://opencode.ai/zen/v1/responses", {
+    method: "POST",
+    headers: getOpenAICompatibleHeaders(options.provider),
+    body: JSON.stringify({
+      model: options.provider.model,
+      input: toOpenAIResponsesInput(options.messages),
+      tools: toOpenAIResponsesTools(options.tools),
+      stream: true,
+    }),
+    signal: options.signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(
+      `${options.provider.provider} ${response.status}: ${await response.text()}`,
+    );
+  }
+
+  let content = "";
+  let completedResponse: Record<string, unknown> | undefined;
+  for await (const chunk of parseSSE(response.body)) {
+    if (chunk.type === "response.output_text.delta" && typeof chunk.delta === "string") {
+      content += chunk.delta;
+      await options.onText?.(chunk.delta);
+    }
+    if (chunk.type === "response.completed" && chunk.response) {
+      completedResponse = chunk.response as Record<string, unknown>;
+    }
+  }
+
+  const output = Array.isArray(completedResponse?.output)
+    ? (completedResponse.output as Array<Record<string, unknown>>)
+    : [];
+  const toolCalls = output
+    .filter((item) => item.type === "function_call")
+    .map((item) => ({
+      id: String(item.call_id ?? ""),
+      type: "function" as const,
+      function: {
+        name: String(item.name ?? ""),
+        arguments: String(item.arguments ?? "{}"),
+      },
+    }));
+
+  return {
+    message: {
+      role: "assistant",
+      content: content || null,
+      ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+    },
+    finishReason: toolCalls.length ? "tool_calls" : "stop",
   };
 }

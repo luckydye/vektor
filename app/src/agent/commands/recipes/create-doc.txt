@@ -3,8 +3,17 @@ title: Create a new document
 keywords: create, new, document, page, title, parent
 ---
 
-Call `write_document` without a document ID. Pass HTML or Markdown in `content`:
+Call `write_document` without a document ID. For ordinary documents, pass HTML
+content; the JSON tool call does not convert Markdown automatically.
+
    {"title":"Notes","content":"<h1>Notes</h1><p>...</p>"}
-   {"title":"Child page","parentId":"<parent-document-id>","content":"..."}
-   {"title":"My App","type":"app","content":"<!doctype html>..."}
-The result contains the new document ID and metadata.
+   {"title":"Child page","parentId":"<parent-document-id>","content":"<p>...</p>"}
+   {"title":"My App","type":"app","content":"<!doctype html><html>...</html>"}
+
+- Omit `type` for a normal document.
+- Use a non-empty placeholder such as `<p></p>` when the document starts blank.
+- `parentId` must reference a document that allows the requested child type.
+- To create a database, first create type `database`, then follow the `database`
+  recipe to initialize its `_schema`.
+- The result contains the new document ID and metadata. Use that returned ID;
+  never invent one.

@@ -3,6 +3,15 @@ title: Upload and share a file
 keywords: upload, share, file, artifact, url, image
 ---
 
-   upload report.pdf      # prints JSON with a shareable URL
-Never share sandbox file paths with the user — always upload first and share the URL.
-Only include final output files in zips; exclude intermediates.
+1. Make sure the artifact exists in the virtual filesystem. Download remote
+   files with `curl -o <file>` or create text with `write_file`.
+2. Upload it:
+     upload report.pdf
+   Optional flags:
+     upload report.pdf -t application/pdf -d <document-id>
+   `-t` sets the MIME type; `-d` associates the upload with a document.
+3. The command prints JSON containing `url` and `key`. Share the returned `url`,
+   never the sandbox path.
+
+Only include final deliverables in archives; exclude temporary and intermediate
+files.

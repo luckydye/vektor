@@ -1,6 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import type { Bash } from "just-bash";
-import { createAgentShell, runAgentPrompt } from "#agent/core.ts";
+import {
+  createAgentShell,
+  isOpenCodeZenClaudeModel,
+  isOpenCodeZenGPTModel,
+  isOpenCodeZenTextOnlyModel,
+  runAgentPrompt,
+} from "#agent/core.ts";
+import { toAnthropicMessages } from "#api/provider/anthropic.ts";
+import { toOpenAIResponsesInput } from "#api/provider/openaiCompatible.ts";
 import type { ChatMessage } from "#api/provider/types.ts";
 
 const provider = {
@@ -10,6 +18,64 @@ const provider = {
 };
 
 describe("agent model loop", () => {
+  it("routes Zen Claude models through the Anthropic-compatible endpoint", () => {
+    expect(isOpenCodeZenClaudeModel("claude-sonnet-4-6")).toBe(true);
+    expect(isOpenCodeZenClaudeModel("CLAUDE-OPUS-4-6")).toBe(true);
+    expect(isOpenCodeZenClaudeModel("gpt-5.4")).toBe(false);
+    expect(isOpenCodeZenGPTModel("gpt-5.4")).toBe(true);
+    expect(isOpenCodeZenTextOnlyModel("glm-5.2")).toBe(true);
+  });
+
+  it("serializes image attachments as Anthropic image blocks", () => {
+    const result = toAnthropicMessages([
+      {
+        role: "user",
+        content: "What is shown?",
+        images: [{ mediaType: "image/png", data: "iVBORw0KGgo=" }],
+      },
+    ]);
+
+    expect(result.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is shown?" },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: "iVBORw0KGgo=",
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("serializes GPT image attachments for the Responses API", () => {
+    expect(
+      toOpenAIResponsesInput([
+        {
+          role: "user",
+          content: "What is shown?",
+          images: [{ mediaType: "image/png", data: "iVBORw0KGgo=" }],
+        },
+      ]),
+    ).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "What is shown?" },
+          {
+            type: "input_image",
+            image_url: "data:image/png;base64,iVBORw0KGgo=",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("retries an empty completion and executes the subsequent tool call", async () => {
     const responses: Array<{ message: ChatMessage; finishReason: string }> = [
       { message: { role: "assistant", content: null }, finishReason: "stop" },

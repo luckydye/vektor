@@ -3,6 +3,9 @@ title: Edit an HTML/text document by line numbers or regex
 keywords: edit, html, text, line, insert, replace, delete, document, sub, regex, remove, sed
 ---
 
+Use this recipe for normal HTML/text documents and workflow source. Do not use
+it for app documents or JSON-backed canvas documents.
+
 1. Read the live draft with `read_document`, or `get_current_document` for the current page.
 2. Call `edit_document` with one or more operations. To remove or rewrite a pattern
    everywhere, use `sub` — do NOT round-trip through temp files or sed:
@@ -16,3 +19,4 @@ keywords: edit, html, text, line, insert, replace, delete, document, sub, regex,
 4. Re-read after each edit because line numbers shift.
 Edits merge with concurrent changes from other users — never rewrite the whole
 document with `write_document` unless replacing everything is the goal.
+HTML edits are sanitized; script elements are removed.
