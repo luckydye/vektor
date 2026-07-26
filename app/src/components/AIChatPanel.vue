@@ -2,7 +2,11 @@
 defineOptions({ inheritAttrs: false });
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { type ImageChatAttachment, useAIChat } from "#composeables/useAIChat.ts";
+import {
+  type ChatAttachment,
+  type ImageChatAttachment,
+  useAIChat,
+} from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
@@ -37,13 +41,8 @@ const props = defineProps({
   },
 });
 
-type UploadedAttachment = {
-  key: string;
+type UploadedAttachment = ChatAttachment & {
   url: string;
-  name: string;
-  type: string;
-  size: number;
-  isImage: boolean;
 };
 
 const VISION_IMAGE_MEDIA_TYPES = new Set<ImageChatAttachment["mediaType"]>([
@@ -570,7 +569,18 @@ async function sendMessage() {
   messageInputEl.value?.clearAttachments();
   scrollToBottom();
 
-  await completeResponse(userDisplayText, additionalContext, imageAttachments);
+  await completeResponse(
+    userDisplayText,
+    additionalContext,
+    imageAttachments,
+    uploadedAttachments.map(({ key, name, type, size, isImage }) => ({
+      key,
+      name,
+      type,
+      size,
+      isImage,
+    })),
+  );
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

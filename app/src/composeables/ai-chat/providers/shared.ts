@@ -41,7 +41,7 @@ export async function* parseSSEStream(
  *
  * Request format (Agent Client Protocol):
  *   { jsonrpc: "2.0", id, method: "session/prompt",
- *     params: { sessionId, spaceId, documentId?, prompt: [{type:"text",text}], imageAttachments?, additionalContext? } }
+ *     params: { sessionId, spaceId, documentId?, prompt: [{type:"text",text}], imageAttachments?, attachments?, additionalContext? } }
  *
  * The server manages conversation history; the caller only provides the new
  * user message.
@@ -55,6 +55,13 @@ export async function fetchStreamingCompletion(options: {
   imageAttachments?: Array<{
     key: string;
     mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  }>;
+  attachments?: Array<{
+    key: string;
+    name: string;
+    type: string;
+    size: number;
+    isImage: boolean;
   }>;
   additionalContext?: string;
   onEvent?: (event: ChatStreamEvent) => void;
@@ -76,6 +83,7 @@ export async function fetchStreamingCompletion(options: {
         documentId: options.documentId,
         prompt: [{ type: "text", text: options.userMessage }],
         imageAttachments: options.imageAttachments,
+        attachments: options.attachments,
         additionalContext: options.additionalContext,
       },
     }),

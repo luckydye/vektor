@@ -4,6 +4,12 @@ keywords: large, output, truncated, pagination, jq, file
 ---
 
 Tool output is capped at ~6000 chars. When truncated:
-   command > out.json && jq '.items | length' out.json   # process from a file
-For paginated APIs, loop pages and append to a file; stop when a page is empty.
-Read large files in slices: sed -n '100,160p' out.json
+- Structured tools: narrow the query or lower `limit`, then continue with
+  `nextCursor`. Truncated results preserve the response tail so pagination
+  metadata remains visible.
+- Shell commands: rerun through `bash` and redirect to a file:
+    command > out.json
+  Then inspect only the needed portion with shell tools such as `wc`, `sed`,
+  or `jq`.
+- For paginated APIs, process one page at a time rather than combining the
+  entire result in model context.

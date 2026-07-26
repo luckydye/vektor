@@ -11,6 +11,14 @@ export type ImageChatAttachment = {
   mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 };
 
+export type ChatAttachment = {
+  key: string;
+  name: string;
+  type: string;
+  size: number;
+  isImage: boolean;
+};
+
 export function useAIChat(options: {
   currentSessionId: Readonly<Ref<string | null>>;
   currentSpaceId: Readonly<Ref<string | null | undefined>>;
@@ -146,6 +154,7 @@ export function useAIChat(options: {
     responseStartIndex: number,
     additionalContext = "",
     imageAttachments: ImageChatAttachment[] = [],
+    attachments: ChatAttachment[] = [],
   ) {
     const assistantMessageIndex: MessageIndex = { value: null };
     const thinkingMessageIndex: MessageIndex = { value: null };
@@ -160,6 +169,7 @@ export function useAIChat(options: {
       documentId: options.documentId() || undefined,
       userMessage,
       imageAttachments,
+      attachments,
       additionalContext: additionalContext || undefined,
       onEvent: (event) =>
         applyStreamEvent(
@@ -176,6 +186,7 @@ export function useAIChat(options: {
     userMessage: string,
     additionalContext = "",
     imageAttachments: ImageChatAttachment[] = [],
+    attachments: ChatAttachment[] = [],
   ) {
     if (options.isGenerating.value || !options.currentSessionId.value) return;
     options.isGenerating.value = true;
@@ -188,6 +199,7 @@ export function useAIChat(options: {
         responseStartIndex,
         additionalContext,
         imageAttachments,
+        attachments,
       );
       await options.refreshCurrentSession();
     } catch (error) {

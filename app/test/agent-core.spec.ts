@@ -354,6 +354,124 @@ describe("agent model loop", () => {
     expect(new Headers(requests[0]?.init?.headers).get("X-Job-Token")).toBe("token");
   });
 
+  it("rejects unknown tools instead of executing them as shell commands", async () => {
+    const shellCommands: string[] = [];
+    const bash = {
+      exec: async (command: string) => {
+        shellCommands.push(command);
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+    } as unknown as Bash;
+    const responses: Array<{ message: ChatMessage; finishReason: string }> = [
+      {
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "unknown-1",
+              type: "function",
+              function: {
+                name: "js-exec",
+                arguments: JSON.stringify({ code: "console.log('unexpected')" }),
+              },
+            },
+          ],
+        },
+        finishReason: "tool_calls",
+      },
+      {
+        message: { role: "assistant", content: "The requested tool is unavailable." },
+        finishReason: "stop",
+      },
+    ];
+    const toolResults: Array<{ content: string; isError: boolean }> = [];
+
+    await runAgentPrompt({
+      messages: [{ role: "user", content: "Run the legacy tool" }],
+      apiUrl: "http://unused.invalid",
+      spaceId: "space",
+      jobToken: "token",
+      provider,
+      bash,
+      modelCaller: async (options) => {
+        const response = responses.shift();
+        if (!response) throw new Error("No mock model response remaining");
+        if (response.message.content) {
+          await options.onText?.(response.message.content);
+        }
+        return response;
+      },
+      onEvent: (event) => {
+        if (event.type === "tool_result") toolResults.push(event);
+      },
+    });
+
+    expect(shellCommands).toEqual([]);
+    expect(toolResults[0]?.isError).toBe(true);
+    expect(toolResults[0]?.content).toContain('Unknown tool "js-exec"');
+  });
+
+  it("preserves the beginning and tail of truncated tool results", async () => {
+    const bash = createAgentShell({
+      current: {
+        apiUrl: "http://unused.invalid",
+        spaceId: "space",
+        jobToken: "token",
+      },
+    });
+    const filePath = bash.fs.resolvePath(bash.getCwd(), "large.txt");
+    await bash.fs.writeFile(filePath, `BEGIN\n${"x".repeat(8_000)}\nEND`, "utf8");
+    const responses: Array<{ message: ChatMessage; finishReason: string }> = [
+      {
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "read-large",
+              type: "function",
+              function: {
+                name: "read_file",
+                arguments: JSON.stringify({ path: "large.txt" }),
+              },
+            },
+          ],
+        },
+        finishReason: "tool_calls",
+      },
+      {
+        message: { role: "assistant", content: "Done." },
+        finishReason: "stop",
+      },
+    ];
+    let callCount = 0;
+
+    await runAgentPrompt({
+      messages: [{ role: "user", content: "Read the large file" }],
+      apiUrl: "http://unused.invalid",
+      spaceId: "space",
+      jobToken: "token",
+      provider,
+      bash,
+      modelCaller: async (options) => {
+        if (callCount === 1) {
+          const modelContent = options.messages.at(-1)?.content ?? "";
+          expect(modelContent).toStartWith("BEGIN\n");
+          expect(modelContent).toContain("middle characters not shown");
+          expect(modelContent).toEndWith("\nEND");
+        }
+        callCount += 1;
+        const response = responses.shift();
+        if (!response) throw new Error("No mock model response remaining");
+        if (response.message.content) {
+          await options.onText?.(response.message.content);
+        }
+        return response;
+      },
+    });
+  });
+
   it("does not register removed vektor or ai shell commands", async () => {
     const bash = createAgentShell({
       current: {

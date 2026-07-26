@@ -39,6 +39,15 @@ const VISION_IMAGE_MEDIA_TYPES = new Set<ChatImageAttachment["mediaType"]>([
 
 const MAX_CHAT_IMAGE_BYTES = 20 * 1024 * 1024;
 
+type ChatAttachment = {
+  key: string;
+  url: string;
+  name: string;
+  type: string;
+  size: number;
+  isImage: boolean;
+};
+
 function parseImageAttachments(value: unknown): ChatImageAttachment[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
@@ -58,6 +67,44 @@ function parseImageAttachments(value: unknown): ChatImageAttachment[] | null {
     attachments.push({
       key,
       mediaType: mediaType as ChatImageAttachment["mediaType"],
+    });
+  }
+  return attachments;
+}
+
+function parseChatAttachments(value: unknown, spaceId: string): ChatAttachment[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+
+  const storage = getFileStorage();
+  const attachments: ChatAttachment[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return null;
+    const { key, name, type, size } = item as Record<string, unknown>;
+    if (
+      typeof key !== "string" ||
+      !isSafeUploadPath(key) ||
+      typeof name !== "string" ||
+      !name.trim() ||
+      name.length > 512 ||
+      typeof type !== "string" ||
+      type.length > 128 ||
+      typeof size !== "number" ||
+      !Number.isSafeInteger(size) ||
+      size < 0
+    ) {
+      return null;
+    }
+    const isImage = VISION_IMAGE_MEDIA_TYPES.has(
+      type as ChatImageAttachment["mediaType"],
+    );
+    attachments.push({
+      key,
+      url: storage.url(spaceId, key),
+      name,
+      type,
+      size,
+      isImage,
     });
   }
   return attachments;
@@ -282,9 +329,9 @@ function createTurnMessagesFromEvents(
 /**
  * Appends the current turn's messages to the session log and updates the
  * conversation history.  The message list is built entirely from server-side
- * data — the user message comes from the request payload, tool messages come
- * from ACP events, and the assistant message comes from the agent result.
- * The client never writes display messages to the session.
+ * data — the user message and attachment metadata come from the request
+ * payload, tool messages come from ACP events, and the assistant message comes
+ * from the agent result.
  */
 /**
  * Persists the user message and every displayable event received before a turn
@@ -297,6 +344,7 @@ async function persistCancelledChatTurn(options: {
   chatId: string;
   userId: string;
   requestMessages: Array<{ role: string; content?: string | null }>;
+  userAttachments: ChatAttachment[];
   events: AgentEvent[];
 }) {
   const session = await getAIChatSession(options.spaceId, options.chatId, options.userId);
@@ -309,7 +357,14 @@ async function persistCancelledChatTurn(options: {
   const alreadyHasUserMessage = existingMessages.at(-1)?.role === "user";
   const userMessage =
     !alreadyHasUserMessage && lastUserRequest
-      ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
+      ? {
+          role: "user",
+          content: lastUserRequest.content ?? "",
+          timestamp: Date.now(),
+          ...(options.userAttachments.length
+            ? { attachments: options.userAttachments }
+            : {}),
+        }
       : null;
   const partialAssistantContent = options.events
     .filter(
@@ -342,6 +397,7 @@ async function persistCompletedChatTurn(options: {
   chatId: string;
   userId: string;
   requestMessages: Array<{ role: string; content?: string | null }>;
+  userAttachments: ChatAttachment[];
   events: AgentEvent[];
   result: AgentRunResult;
 }) {
@@ -362,7 +418,14 @@ async function persistCompletedChatTurn(options: {
   const alreadyHasUserMessage = existingMessages.at(-1)?.role === "user";
   const userMessage =
     !alreadyHasUserMessage && lastUserRequest
-      ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
+      ? {
+          role: "user",
+          content: lastUserRequest.content ?? "",
+          timestamp: Date.now(),
+          ...(options.userAttachments.length
+            ? { attachments: options.userAttachments }
+            : {}),
+        }
       : null;
 
   const conversationHistory = [
@@ -583,6 +646,8 @@ function getOrStartActiveChatTurn(options: {
   messages: ChatMessage[];
   /** The persistent conversation, without turn-only generated context. */
   sessionMessages: ChatMessage[];
+  /** Attachment display metadata persisted with the current user message. */
+  userAttachments: ChatAttachment[];
   userProfile?: string;
   connectedProviders: string[];
   apiUrl: string;
@@ -637,6 +702,7 @@ function getOrStartActiveChatTurn(options: {
           chatId: options.chatId,
           userId: options.userId,
           requestMessages: options.sessionMessages,
+          userAttachments: options.userAttachments,
           events: turn.events,
           result,
         });
@@ -666,6 +732,7 @@ function getOrStartActiveChatTurn(options: {
               chatId: options.chatId,
               userId: options.userId,
               requestMessages: options.sessionMessages,
+              userAttachments: options.userAttachments,
               events: turn.events,
             });
           } catch (persistError) {
@@ -718,6 +785,7 @@ export const POST: ApiRouteHandler = (context) =>
         const documentId = params.documentId;
         const prompt = params.prompt;
         const imageAttachments = parseImageAttachments(params.imageAttachments);
+        const attachmentInput = params.attachments;
         const additionalContext = params.additionalContext;
 
         if (!sessionId || typeof sessionId !== "string") {
@@ -734,6 +802,10 @@ export const POST: ApiRouteHandler = (context) =>
         }
         if (imageAttachments === null) {
           return badRequestResponse("params.imageAttachments must contain valid image uploads");
+        }
+        const chatAttachments = parseChatAttachments(attachmentInput, spaceId);
+        if (chatAttachments === null) {
+          return badRequestResponse("params.attachments must contain valid uploaded files");
         }
         if (
           !Array.isArray(prompt) ||
@@ -834,7 +906,12 @@ export const POST: ApiRouteHandler = (context) =>
               updatedAt: Date.now(),
               messages: [
                 ...(persistedSession.messages as unknown[]),
-                { role: "user", content: userText, timestamp: Date.now() },
+                {
+                  role: "user",
+                  content: userText,
+                  timestamp: Date.now(),
+                  ...(chatAttachments.length ? { attachments: chatAttachments } : {}),
+                },
               ],
               conversationHistory: messages,
               shellSnapshot: persistedSession.shellSnapshot ?? null,
@@ -852,6 +929,7 @@ export const POST: ApiRouteHandler = (context) =>
           chatId: sessionId,
           messages: modelMessages,
           sessionMessages: messages,
+          userAttachments: chatAttachments,
           userProfile: userProfile ?? undefined,
           connectedProviders,
           apiUrl: getLocalOrigin(),

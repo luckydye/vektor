@@ -127,10 +127,6 @@ export async function callModel(options: {
   return callOpenAICompatible({ ...options, provider });
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
 async function listFiles(
   bash: Bash,
   requestedPath: string,
@@ -189,38 +185,6 @@ async function listFiles(
   };
   await walk(rootPath, "");
   return lines.join("\n");
-}
-
-/**
- * Turns a model tool call into a shell command for the bash sandbox. `bash`
- * carries the full command line in `command`. Small models frequently name a
- * CLI command directly as the tool (e.g. js-exec) and put the payload in
- * `command`/`code`/`script`/`input`; rebuild a runnable line from the tool
- * name and that payload instead of rejecting it.
- */
-export function buildShellCommand(toolName: string, args: unknown): string {
-  const record = (args && typeof args === "object" ? args : {}) as Record<
-    string,
-    unknown
-  >;
-  const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
-
-  if (toolName === "bash") return str(record.command);
-
-  const payload =
-    str(record.command) ||
-    str(record.code) ||
-    str(record.script) ||
-    str(record.input) ||
-    str(record.query) ||
-    str(record.args) ||
-    (typeof args === "string" ? (args as string).trim() : "");
-
-  if (!payload) return toolName;
-  if (payload === toolName || payload.startsWith(`${toolName} `)) return payload;
-  // js-exec runs inline code with -c; a bare positional would be read as a path.
-  if (toolName === "js-exec") return `js-exec -c ${shellQuote(payload)}`;
-  return `${toolName} ${payload}`;
 }
 
 /** Best-effort lookup of a document's type for prompt tailoring. */
@@ -487,7 +451,26 @@ export async function runAgentPrompt(options: {
           unknown
         >;
 
-        if (toolCall.function.name === "list_files") {
+        if (toolCall.function.name === "bash") {
+          const command = record.command;
+          if (typeof command !== "string" || !command.trim()) {
+            throw new Error('bash requires a non-empty "command".');
+          }
+          const res = await bash.exec(command);
+          const stdout = res.stdout.trim();
+          const stderr = res.stderr.trim();
+          const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
+            .filter(Boolean)
+            .join("\n");
+          if (res.exitCode !== 0) {
+            result =
+              output ||
+              `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
+          } else {
+            result = output || "(no output)";
+          }
+          isError = res.exitCode !== 0;
+        } else if (toolCall.function.name === "list_files") {
           const path = record.path ?? ".";
           const recursive = record.recursive ?? false;
           if (typeof path !== "string" || !path.trim()) {
@@ -537,27 +520,9 @@ export async function runAgentPrompt(options: {
         } else if (vektorToolNames.has(toolCall.function.name)) {
           result = await callVektorTool(mcpConfig, toolCall.function.name, record);
         } else {
-          // Small models sometimes call a shell command directly as a "tool"
-          // (e.g. js-exec). Route unknown tool names through bash by
-          // reconstructing the command line for backwards compatibility.
-          const cmd = buildShellCommand(toolCall.function.name, args);
-          if (!cmd) {
-            throw new Error('No command provided. Call bash with {"command": "…"}.');
-          }
-          const res = await bash.exec(cmd);
-          const stdout = res.stdout.trim();
-          const stderr = res.stderr.trim();
-          const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
-            .filter(Boolean)
-            .join("\n");
-          if (res.exitCode !== 0) {
-            result =
-              output ||
-              `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
-          } else {
-            result = output || "(no output)";
-          }
-          isError = res.exitCode !== 0;
+          throw new Error(
+            `Unknown tool "${toolCall.function.name}". Use the bash tool for shell commands.`,
+          );
         }
       } catch (error) {
         isError = true;
@@ -576,15 +541,20 @@ export async function runAgentPrompt(options: {
         isError,
       });
 
-      // Truncate before adding to the LLM context window.
-      // Large tool outputs flood the context and cause the model to lose
-      // coherence.  The truncation message instructs the model to redirect
-      // output to a file when it needs to process more data.
+      // Truncate before adding to the LLM context window. Preserve the tail so
+      // structured responses keep pagination metadata such as nextCursor.
       const MAX_TOOL_RESULT_CHARS =
         toolCall.function.name === "list_documents" ? 30_000 : 6_000;
+      const TOOL_RESULT_TAIL_CHARS = Math.min(2_000, MAX_TOOL_RESULT_CHARS / 3);
       const modelContent =
         content.length > MAX_TOOL_RESULT_CHARS
-          ? `${content.slice(0, MAX_TOOL_RESULT_CHARS)}\n\n[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} more characters not shown. Redirect to a file and process it there: e.g. \`command > output.json && jq '...'  output.json\`]`
+          ? [
+              content.slice(0, MAX_TOOL_RESULT_CHARS - TOOL_RESULT_TAIL_CHARS),
+              "",
+              `[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} middle characters not shown. For structured tools, narrow the query or request a smaller page and continue with nextCursor from the response tail. For bash output, rerun the command with output redirected to a file.]`,
+              "",
+              content.slice(-TOOL_RESULT_TAIL_CHARS),
+            ].join("\n")
           : content;
 
       agentMessages.push({
