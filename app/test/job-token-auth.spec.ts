@@ -100,6 +100,43 @@ describe("X-Job-Token validation on document routes", () => {
     );
   });
 
+  it("does not let a valid job token bypass a document's readonly lock", async () => {
+    const docResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>locked</p>",
+        properties: { title: "Locked" },
+      }),
+    });
+    expect(docResponse.status).toBe(201);
+    const lockedDocumentId = (await docResponse.json()).document.id as string;
+    const lockedPath = `/api/v1/spaces/${testSpaceId}/documents/${lockedDocumentId}`;
+
+    const lockResponse = await apiRequest(lockedPath, {
+      method: "PATCH",
+      body: JSON.stringify({ readonly: true }),
+    });
+    expect(lockResponse.status).toBe(200);
+
+    const token = createJobToken(testSpaceId, String(Date.now()));
+    const putResponse = await jobRequest(lockedPath, token, {
+      method: "PUT",
+      body: JSON.stringify({ content: "<p>overwritten</p>" }),
+    });
+    expect(putResponse.status).toBe(403);
+
+    const editResponse = await jobRequest(`${lockedPath}/edit`, token, {
+      method: "POST",
+      body: JSON.stringify({
+        operations: [{ op: "replace", range: "1", content: "overwritten" }],
+      }),
+    });
+    expect(editResponse.status).toBe(403);
+
+    const readResponse = await jobRequest(lockedPath, token);
+    expect((await readResponse.json()).document.content).toBe("<p>locked</p>");
+  });
+
   it("rejects the edit endpoint with a forged job token", async () => {
     const response = await jobRequest(`${docPath()}/edit`, "forged-token", {
       method: "POST",

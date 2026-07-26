@@ -3,6 +3,14 @@ export const workflowRunDocumentType = "workflow-run";
 
 export const readOnlyDocumentTypes: readonly string[] = ["csv", workflowRunDocumentType];
 
+/** Whether a document is locked explicitly or immutable because of its type. */
+export function documentIsReadonly(document: {
+  readonly?: boolean;
+  type?: string | null;
+}): boolean {
+  return Boolean(document.readonly) || readOnlyDocumentTypes.includes(document.type ?? "");
+}
+
 /**
  * Document types whose stored content is serialized JSON rather than HTML
  * (canvas, app, and workflow persist their own document models). HTML sanitization such

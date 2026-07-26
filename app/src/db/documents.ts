@@ -369,7 +369,8 @@ export async function updateDocument(
 
   const now = new Date();
   const nextType = type === undefined ? existing.type : type;
-  const nextReadonly = readOnlyDocumentTypes.includes(nextType ?? "");
+  const nextReadonly =
+    existing.readonly || readOnlyDocumentTypes.includes(nextType ?? "");
 
   await db
     .update(document)

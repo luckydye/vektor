@@ -7,6 +7,7 @@ import {
   isOpenCodeZenTextOnlyModel,
   runAgentPrompt,
 } from "#agent/core.ts";
+import { callTool } from "#agent/tools.ts";
 import { toAnthropicMessages } from "#api/provider/anthropic.ts";
 import { toOpenAIResponsesInput } from "#api/provider/openaiCompatible.ts";
 import type { ChatMessage } from "#api/provider/types.ts";
@@ -331,6 +332,67 @@ describe("agent model loop", () => {
     });
   });
 
+  it("tells the model that explicitly locked and immutable-type documents are readonly", async () => {
+    for (const documentContext of [
+      { documentType: "document", documentReadonly: true },
+      { documentType: "workflow-run", documentReadonly: false },
+    ]) {
+      await runAgentPrompt({
+        messages: [{ role: "user", content: "Edit this document" }],
+        apiUrl: "http://unused.invalid",
+        spaceId: "space",
+        documentId: "doc-1",
+        ...documentContext,
+        jobToken: "token",
+        provider,
+        modelCaller: async (options) => {
+          expect(options.messages[0]?.content).toContain(
+            "The current document is read-only",
+          );
+          expect(options.messages[0]?.content).not.toContain(
+            "## Editing the current document",
+          );
+          return {
+            message: { role: "assistant", content: "This document is read-only." },
+            finishReason: "stop",
+          };
+        },
+      });
+    }
+  });
+
+  it("maps workflow history filters and pagination to the list API contract", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestUrl = "";
+    globalThis.fetch = async (input) => {
+      requestUrl = String(input);
+      return Response.json({ runs: [], limit: 5, nextCursor: null });
+    };
+
+    try {
+      await callTool(
+        {
+          apiUrl: "http://vektor.test",
+          spaceId: "space",
+          jobToken: "token",
+        },
+        "list_workflow_runs",
+        {
+          documentId: "doc-1",
+          sourceExtensionId: "extension-1",
+          limit: 5,
+          cursor: "cursor-1",
+        },
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requestUrl).toBe(
+      "http://vektor.test/api/v1/spaces/space/workflows/runs?filterDocumentId=doc-1&sourceExtensionId=extension-1&limit=5&cursor=cursor-1",
+    );
+  });
+
   it("advertises and directly executes Vektor MCP tools", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -380,6 +442,7 @@ describe("agent model loop", () => {
         spaceId: "space",
         documentId: "doc-1",
         documentType: "html",
+        documentReadonly: false,
         connectedProviders: [],
         jobToken: "token",
         provider,

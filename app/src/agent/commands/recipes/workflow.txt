@@ -11,9 +11,9 @@ keywords: workflow, run, status, logs, automation
 4. On success, inspect `resultArtifact` from `get_workflow_run`. Report its
    `url` and `key` when present; the current agent tools do not expose a direct
    artifact-content reader.
-5. Use `list_workflow_runs` without `documentId` for the recent run-history
-   page. Passing `documentId` currently returns only that workflow's latest run
-   status, not its complete filtered history.
+5. Use `list_workflow_runs` for recent run history. Pass `documentId` to filter
+   by workflow, and follow `nextCursor` with the `cursor` argument to read
+   additional pages.
 
 Workflow schedule tools currently target routes that require an interactive
 user session, so they cannot be completed through the agent's job-token

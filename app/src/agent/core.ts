@@ -7,6 +7,7 @@ import {
 } from "#api/provider/openaiCompatible.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/aiConfig.ts";
+import { readOnlyDocumentTypes } from "#documents/types.ts";
 import {
   callTool as callVektorTool,
   listTools as listVektorTools,
@@ -57,15 +58,16 @@ function buildCoreAgentSystemPrompt(
   connectedProviders?: string[],
   userProfile?: string,
   documentType?: string | null,
+  documentReadonly?: boolean,
 ) {
   const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
   const gitlabLine = gitlabConnected
     ? "- GitLab: prefer `integration_api_request` for API calls. The `gitlab ls/cat/tree <project> [path] [--ref <ref>]` shell commands are available for repository files.\n"
     : "";
-  return `${systemPromptRaw}${gitlabLine}${documentEditingSection(documentId, documentType)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+  return `${systemPromptRaw}${gitlabLine}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
 }
 
-const READONLY_DOC_TYPES = new Set(["csv"]);
+const READONLY_DOC_TYPES = new Set(readOnlyDocumentTypes);
 
 /** Maps a document type to the recipe that best explains how to edit it. */
 function recipeForDocumentType(documentType?: string | null): string {
@@ -83,13 +85,15 @@ function recipeForDocumentType(documentType?: string | null): string {
 function documentEditingSection(
   documentId?: string,
   documentType?: string | null,
+  documentReadonly?: boolean,
 ): string {
   if (!documentId) return "";
 
-  if (documentType && READONLY_DOC_TYPES.has(documentType)) {
+  if (documentReadonly || (documentType && READONLY_DOC_TYPES.has(documentType))) {
+    const typeDescription = documentType ? ` (type "${documentType}")` : "";
     return `
 ## Current document
-- The current document is read-only (type "${documentType}") and cannot be edited.
+- The current document is read-only${typeDescription} and cannot be edited.
   If the user asks to change it, explain that it is read-only.`;
   }
 
@@ -221,21 +225,32 @@ async function listFiles(
   return lines.join("\n");
 }
 
-/** Best-effort lookup of a document's type for prompt tailoring. */
-async function fetchDocumentType(
+type AgentDocumentContext = {
+  type: string | null;
+  readonly: boolean;
+};
+
+/** Best-effort lookup of document metadata used to tailor the system prompt. */
+async function fetchDocumentContext(
   apiUrl: string,
   spaceId: string,
   documentId: string,
   jobToken: string,
-): Promise<string | null> {
+): Promise<AgentDocumentContext | null> {
   try {
     const res = await fetch(
       `${apiUrl.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/documents/${encodeURIComponent(documentId)}`,
       { headers: { "X-Job-Token": jobToken } },
     );
     if (!res.ok) return null;
-    const data = (await res.json()) as { document?: { type?: string | null } };
-    return data.document?.type ?? null;
+    const data = (await res.json()) as {
+      document?: { type?: string | null; readonly?: boolean };
+    };
+    if (!data.document) return null;
+    return {
+      type: data.document.type ?? null,
+      readonly: data.document.readonly === true,
+    };
   } catch {
     return null;
   }
@@ -247,6 +262,7 @@ export async function runAgentPrompt(options: {
   spaceId: string;
   documentId?: string;
   documentType?: string | null;
+  documentReadonly?: boolean;
   connectedProviders?: string[];
   userProfile?: string;
   jobToken: string;
@@ -276,12 +292,27 @@ export async function runAgentPrompt(options: {
   const provider = options.provider ?? (await getAIProvider(spaceId));
   const modelCaller = options.modelCaller ?? callModel;
 
-  // Resolve the document type so the system prompt can inline the right
-  // editing playbook. Use the caller-provided type, else fetch once
-  // (best-effort — a failure just falls back to the generic HTML playbook).
+  // Resolve document metadata so the system prompt can inline the right
+  // editing playbook and avoid suggesting mutations for locked documents.
+  // A failed lookup falls back to the caller-provided context.
   let documentType = options.documentType;
-  if (documentType === undefined && documentId) {
-    documentType = await fetchDocumentType(apiUrl, spaceId, documentId, jobToken);
+  let documentReadonly = options.documentReadonly;
+  if (
+    documentId &&
+    (documentType === undefined || documentReadonly === undefined)
+  ) {
+    const documentContext = await fetchDocumentContext(
+      apiUrl,
+      spaceId,
+      documentId,
+      jobToken,
+    );
+    if (documentType === undefined) {
+      documentType = documentContext?.type;
+    }
+    if (documentReadonly === undefined) {
+      documentReadonly = documentContext?.readonly;
+    }
   }
 
   const mcpConfig: VektorMcpConfig = {
@@ -418,6 +449,7 @@ export async function runAgentPrompt(options: {
         connectedProviders,
         userProfile,
         documentType,
+        documentReadonly,
       ),
     },
     ...messages,

@@ -351,17 +351,27 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "list_workflow_runs",
       description:
-        "List the recent workflow-run history page in the current space. When documentId is provided, the current API returns only that workflow's latest run status rather than filtered history.",
+        "List a cursor-paginated page of recent workflow-run history in the current space.",
       inputSchema: {
         type: "object",
         properties: {
           documentId: {
             type: "string",
-            description: "Return the latest run status for this workflow document ID.",
+            description: "Filter run history to this workflow document ID.",
           },
           sourceExtensionId: {
             type: "string",
             description: "Filter by source extension",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 200,
+            description: "Maximum runs to return (default 20, maximum 200)",
+          },
+          cursor: {
+            type: "string",
+            description: "Cursor returned by the previous page",
           },
         },
       },
@@ -686,9 +696,16 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       const sourceExtensionId = expectString(args, "sourceExtensionId", {
         optional: true,
       });
+      const limit = expectNumber(args, "limit", { optional: true });
+      const cursor = expectString(args, "cursor", { optional: true });
       return await apiRequest(
         config,
-        `/api/v1/spaces/${config.spaceId}/workflows/runs${buildQuery({ documentId, sourceExtensionId })}`,
+        `/api/v1/spaces/${config.spaceId}/workflows/runs${buildQuery({
+          filterDocumentId: documentId,
+          sourceExtensionId,
+          limit,
+          cursor,
+        })}`,
       );
     }
     case "schedule_workflow": {

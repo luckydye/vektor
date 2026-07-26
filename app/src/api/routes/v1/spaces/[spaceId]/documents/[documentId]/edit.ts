@@ -12,7 +12,7 @@ import {
 } from "#db/api.ts";
 import { getDocument, updateDocument } from "#db/documents.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
-import { readOnlyDocumentTypes } from "#documents/types.ts";
+import { documentIsReadonly } from "#documents/types.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { stripScriptTags } from "#utils/html.ts";
@@ -37,18 +37,13 @@ export const POST: ApiRouteHandler = (context) =>
       type: ResourceType.DOCUMENT,
       id,
     });
-    const isJobRequest = auth.type === "job";
-
     // Parity with PATCH/DELETE on the sibling route: a user session must also
     // hold editor on the document itself, not just on the space.
     if (auth.type === "user") {
       await verifyDocumentRole(spaceId, id, auth.user.id, "editor");
     }
 
-    if (
-      !isJobRequest &&
-      (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? ""))
-    ) {
+    if (documentIsReadonly(existingDoc)) {
       throw forbiddenResponse("Cannot edit readonly document");
     }
 

@@ -49,6 +49,7 @@ import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
 import {
   contentIsHtml,
+  documentIsReadonly,
   readOnlyDocumentTypes,
   workflowRunDocumentType,
 } from "#documents/types.ts";
@@ -415,7 +416,6 @@ export const PUT: ApiRouteHandler = (context) =>
     let userId: string | undefined;
 
     const jobToken = context.req.raw.headers.get("X-Job-Token");
-    const isJobRequest = Boolean(jobToken);
     if (jobToken) {
       const parsed = parseJobToken(jobToken, spaceId);
       if (!parsed) {
@@ -482,10 +482,7 @@ export const PUT: ApiRouteHandler = (context) =>
         return jsonResponse({ success: true });
       }
 
-      if (
-        !isJobRequest &&
-        (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? ""))
-      ) {
+      if (documentIsReadonly(existingDoc)) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
@@ -496,10 +493,7 @@ export const PUT: ApiRouteHandler = (context) =>
       content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
       nextType = existingDoc.type;
     } else {
-      if (
-        !isJobRequest &&
-        (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? ""))
-      ) {
+      if (documentIsReadonly(existingDoc)) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
@@ -650,7 +644,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 
     if (readonly !== undefined) {
       if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
-        throw badRequestResponse("CSV documents are readonly");
+        throw badRequestResponse(`Documents of type "${existingDoc.type}" are readonly`);
       }
       await handleReadonlyPatch(spaceId, id, userId, readonly);
     }
@@ -696,7 +690,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Document not found");
     }
 
-    if (document.readonly || readOnlyDocumentTypes.includes(document.type ?? "")) {
+    if (documentIsReadonly(document)) {
       throw forbiddenResponse("Cannot save readonly document");
     }
 
