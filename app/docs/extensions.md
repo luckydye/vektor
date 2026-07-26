@@ -348,6 +348,32 @@ export function activate({ collaboration }: ExtensionContext): void {
 
 `collaboration` is `null` when no canvas or document is open. Always guard against it.
 
+## Extension presence rooms
+
+For live, non-document features such as a game, use an explicit extension
+presence room. These rooms are ephemeral, scoped to the current space and
+extension, and work from page routes. Vektor supplies the signed-in user's
+profile and enforces extension access on the server.
+
+```ts
+export function activate(ctx: ExtensionContext): void {
+  ctx.views.register("lobby", async (container) => {
+    const room = await ctx.presence.connect("main", {
+      state: { status: "ready" },
+    });
+    const unsubscribe = room.subscribe((event) => {
+      // presence-snapshot, presence-update, or presence-leave
+      console.log(event);
+    });
+
+    return () => { unsubscribe(); room.leave(); };
+  });
+}
+```
+
+Call `room.update(state)` to publish the latest local state. The room is not
+persisted and must not be used as document storage.
+
 ### Leader election
 
 `clientId` is the Yjs numeric peer ID. The peer with the lowest `clientId` among currently connected peers is a stable, self-healing host — if the host disconnects, the next-lowest peer takes over. Use this to assign one peer as the authority for writes that must not conflict (random events, turn advancement, etc.):

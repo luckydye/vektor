@@ -1,6 +1,10 @@
 import type { Editor } from "@tiptap/core";
 import type * as Y from "yjs";
 import { api, type ExtensionInfo, type ExtensionRoute } from "#api/client.ts";
+import {
+  extensionPresenceRoom,
+  type PresenceMessage,
+} from "#realtime/protocol.ts";
 
 export type { ExtensionInfo };
 
@@ -75,6 +79,23 @@ export type ExtensionContext = {
    * Yjs numeric peer ID — the peer with the lowest value is a stable host.
    */
   collaboration: { ydoc: Y.Doc; clientId: number } | null;
+  /**
+   * Explicit, ephemeral realtime presence rooms owned by this extension.
+   * Unlike `collaboration`, these work from page routes and do not write to a
+   * document. Room names are isolated by space and extension id.
+   */
+  presence: {
+    connect: <TState>(
+      room: string,
+      options: { state: TState },
+    ) => Promise<{
+      clientId: string;
+      user: { id: string; name: string; image?: string | null };
+      update: (state: TState) => void;
+      leave: () => void;
+      subscribe: (listener: (event: PresenceMessage<TState>) => void) => () => void;
+    }>;
+  };
 };
 
 type LoadedExtension = {
@@ -421,6 +442,35 @@ export class Extensions {
       get collaboration() {
         const ydoc = instance.activeYdoc;
         return ydoc ? { ydoc, clientId: ydoc.clientID } : null;
+      },
+      presence: {
+        async connect<TState>(
+          room: string,
+          options: { state: TState },
+        ) {
+          const user = await api.users.me();
+          const clientId = crypto.randomUUID();
+          const listeners = new Set<(event: PresenceMessage<TState>) => void>();
+          const connection = api.joinPresenceRoom(
+            instance.spaceId as string,
+            extensionPresenceRoom(extensionId, room),
+            clientId,
+            { id: user.id, name: user.name, image: user.image },
+            (event) => {
+              for (const listener of listeners) listener(event);
+            },
+            options.state,
+          );
+          return {
+            clientId,
+            user,
+            ...connection,
+            subscribe(listener: (event: PresenceMessage<TState>) => void) {
+              listeners.add(listener);
+              return () => listeners.delete(listener);
+            },
+          };
+        },
       },
     };
   }

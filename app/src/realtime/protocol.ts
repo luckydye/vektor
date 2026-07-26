@@ -87,6 +87,33 @@ export type PresenceMessage<TState = unknown> =
   | PresenceUpdateMessage<TState>
   | PresenceLeaveMessage;
 
+const EXTENSION_PRESENCE_ROOM_PREFIX = "extension:";
+
+/**
+ * A namespaced, ephemeral presence room owned by an installed extension.
+ *
+ * Extension code should create these through `ctx.presence.connect()` rather
+ * than calling the websocket API directly. Keeping the extension id in the
+ * room name lets the realtime server apply extension ACLs without confusing
+ * the room with a document id.
+ */
+export function extensionPresenceRoom(extensionId: string, room: string): string {
+  if (!/^[a-zA-Z0-9._-]{1,96}$/.test(extensionId)) {
+    throw new Error("Invalid extension id for presence room");
+  }
+  if (!/^[a-zA-Z0-9._-]{1,96}$/.test(room)) {
+    throw new Error("Presence room names may contain only letters, numbers, '.', '_' and '-'");
+  }
+  return `${EXTENSION_PRESENCE_ROOM_PREFIX}${extensionId}:${room}`;
+}
+
+/** Returns the owning extension id, or null when this is not an extension room. */
+export function extensionIdFromPresenceRoom(room: string): string | null {
+  if (!room.startsWith(EXTENSION_PRESENCE_ROOM_PREFIX)) return null;
+  const match = /^extension:([a-zA-Z0-9._-]{1,96}):[a-zA-Z0-9._-]{1,96}$/.exec(room);
+  return match?.[1] ?? "";
+}
+
 export function isDocumentRealtimeTopic(topic: string): topic is `document:${string}` {
   return topic.startsWith("document:") && topic.length > "document:".length;
 }

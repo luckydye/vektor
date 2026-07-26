@@ -2,7 +2,8 @@ import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
 import { auth } from "#auth";
-import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
+import { verifyDocumentRole, verifyExtensionAccess, verifySpaceRole } from "#db/api.ts";
+import { getExtension } from "#db/extensions.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import {
@@ -14,6 +15,7 @@ import { subscribeToSyncEvents } from "./events.ts";
 import { PresenceConnection } from "./presence.ts";
 import {
   isDocumentRealtimeTopic,
+  extensionIdFromPresenceRoom,
   isWorkflowRunRealtimeTopic,
   realtimeTopics,
   WsMsgType,
@@ -111,7 +113,28 @@ async function handleRealtimeWebSocket(
   // Rooms this connection may mutate (editor role). Viewers can join to receive
   // state but may not send updates.
   const yjsEditableRooms = new Set<string>();
-  const presence = new PresenceConnection(spaceId, userId, websocket);
+  const presence = new PresenceConnection(spaceId, userId, websocket, async (room) => {
+    const extensionId = extensionIdFromPresenceRoom(room);
+    if (extensionId !== null) {
+      // A malformed extension room must not fall through to document ACLs.
+      if (!extensionId) return false;
+      if (!(await getExtension(spaceId, extensionId))) return false;
+      if (isNoAuthMode()) return true;
+      try {
+        await verifyExtensionAccess(spaceId, extensionId, userId);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    try {
+      await verifyDocumentRole(spaceId, room, userId, "viewer");
+      return true;
+    } catch {
+      return false;
+    }
+  });
   const off = subscribeToSyncEvents((event) => {
     if (event.spaceId !== spaceId) return;
 

@@ -1,5 +1,4 @@
 import type { WebSocket } from "ws";
-import { verifyDocumentRole } from "#db/api.ts";
 import {
   type PresenceEnvelope,
   type PresenceJoinPayload,
@@ -34,6 +33,7 @@ export class PresenceConnection {
     private readonly spaceId: string,
     private readonly userId: string,
     private readonly websocket: WebSocket,
+    private readonly authorizeRoom: (room: string) => Promise<boolean>,
   ) {}
 
   /** Handles a presence frame and returns whether the frame was recognized. */
@@ -81,9 +81,7 @@ export class PresenceConnection {
   }
 
   private async join(join: PresenceJoinPayload): Promise<void> {
-    try {
-      await verifyDocumentRole(this.spaceId, join.room, this.userId, "viewer");
-    } catch {
+    if (!(await this.authorizeRoom(join.room))) {
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       return;
     }
