@@ -1287,6 +1287,14 @@ export type CanvasSelectionSnapshot = {
   strokes: CanvasStroke[];
   selectedStrokeIds: Set<string>;
   remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
+  // Present for a multi-item local selection, adding one axis-aligned bounds
+  // box around the individual item outlines for group transforms.
+  selectionBounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   selectedShapeBounds?: Array<{
     x: number;
     y: number;
@@ -1322,6 +1330,7 @@ export function renderCanvasSelections(params: CanvasSelectionRenderParams) {
     strokes,
     selectedStrokeIds,
     remoteSelectedStrokeIds = [],
+    selectionBounds,
     selectedShapeBounds = [],
     remoteSelectedShapeBounds = [],
   } = params;
@@ -1331,16 +1340,26 @@ export function renderCanvasSelections(params: CanvasSelectionRenderParams) {
   context.setLineDash([]);
   drawRetainedFreehandSelection(
     context,
-    retainCanvasSelectionStrokes(
-      { strokes, selectedStrokeIds, remoteSelectedStrokeIds },
-      transform,
-    ),
+    retainCanvasSelectionStrokes({ strokes, selectedStrokeIds }, transform),
     transform,
   );
 
   for (const bounds of selectedShapeBounds) {
     drawShapeOutline(context, bounds, transform, "#2563eb");
   }
+
+  if (selectionBounds) {
+    drawShapeOutline(context, selectionBounds, transform, "#2563eb");
+  }
+
+  drawRetainedFreehandSelection(
+    context,
+    retainCanvasSelectionStrokes(
+      { strokes, selectedStrokeIds: new Set(), remoteSelectedStrokeIds },
+      transform,
+    ),
+    transform,
+  );
 
   for (const bounds of remoteSelectedShapeBounds) {
     drawShapeOutline(context, bounds, transform, bounds.color);
@@ -1380,6 +1399,7 @@ export type CanvasSelectionRendererParams = {
 };
 
 function hasCanvasSelection(selection: CanvasSelectionSnapshot) {
+  if (selection.selectionBounds) return true;
   if (selection.selectedStrokeIds.size > 0) return true;
   if ((selection.selectedShapeBounds?.length ?? 0) > 0) return true;
   if ((selection.remoteSelectedShapeBounds?.length ?? 0) > 0) return true;
@@ -1546,6 +1566,7 @@ export class CanvasSelectionRenderer {
     renderCanvasSelections({
       strokes: selection.strokes,
       selectedStrokeIds: selection.selectedStrokeIds,
+      selectionBounds: selection.selectionBounds,
       selectedShapeBounds: selection.selectedShapeBounds,
       remoteSelectedStrokeIds: [],
       remoteSelectedShapeBounds: [],

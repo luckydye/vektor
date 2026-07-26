@@ -160,6 +160,20 @@ type DragState =
       initial: CanvasFrame;
     }
   | {
+      type: "selection-scale";
+      pointerId: number;
+      origin: { x: number; y: number };
+      startBounds: Rect;
+      minSize: { width: number; height: number };
+      shapes: Array<{
+        id: string;
+        frame: CanvasFrame;
+        resizeMode: "box" | "font";
+        fontScale: number;
+      }>;
+      strokes: Array<{ id: string; points: FreehandPoint[] }>;
+    }
+  | {
       type: "rotate";
       pointerId: number;
       shapeId: string;
@@ -459,6 +473,58 @@ const selectedResizeOnlyShape = computed(() => {
   return transform && transform.resize !== "none" && !transform.rotate ? shape : null;
 });
 
+const selectedCanvasItems = computed(() => ({
+  shapes: [...selectedShapeIds.value]
+    .map((id) => shapesById.value.get(id))
+    .filter((shape): shape is CanvasShape => shape != null),
+  strokes: [...selectedStrokeIds.value]
+    .map((id) => strokesById.value.get(id))
+    .filter((stroke): stroke is CanvasStroke => stroke != null),
+}));
+
+function boundsForCanvasItems(
+  items: Pick<{ shapes: CanvasShape[]; strokes: CanvasStroke[] }, "shapes" | "strokes">,
+): Rect | null {
+  const bounds = [
+    ...items.shapes.map(shapeAabb),
+    ...items.strokes.map(strokeBounds).filter((bounds): bounds is Rect => bounds != null),
+  ];
+  if (bounds.length === 0) return null;
+  const minX = Math.min(...bounds.map((bounds) => bounds.x));
+  const minY = Math.min(...bounds.map((bounds) => bounds.y));
+  const maxX = Math.max(...bounds.map((bounds) => bounds.x + bounds.width));
+  const maxY = Math.max(...bounds.map((bounds) => bounds.y + bounds.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+// Multiple selected items behave as one uniformly-scaled group. A single item
+// keeps its type-specific controls, including rotation where supported.
+const selectedGroupBounds = computed(() => {
+  const items = selectedCanvasItems.value;
+  if (items.shapes.length + items.strokes.length < 2) return null;
+  return boundsForCanvasItems(items);
+});
+
+// A group can only scale when every selected item participates. This deliberately
+// includes ordinary freehand strokes: their points can be uniformly transformed.
+const selectedScalableSelection = computed(() => {
+  const bounds = selectedGroupBounds.value;
+  const items = selectedCanvasItems.value;
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+  if (
+    items.shapes.some(
+      (shape) => {
+        const transform = extensionManager.get(shape.type).behavior.transform;
+        return !canMoveShape(shape) || !transform.move || transform.resize === "none";
+      },
+    ) ||
+    items.strokes.some((stroke) => !canMoveStroke(stroke))
+  ) {
+    return null;
+  }
+  return { bounds, ...items };
+});
+
 function transformControlPositions(shape: CanvasShape) {
   // Text auto-sizes, so anchor the handles to its measured box.
   const bounds = shapeBounds(shape);
@@ -477,6 +543,14 @@ function transformControlPositions(shape: CanvasShape) {
       }),
     ),
   };
+}
+
+function selectionScaleControlPosition(bounds: Rect) {
+  const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
+  return worldToScreen({
+    x: bounds.x + bounds.width + resizeOffset,
+    y: bounds.y + bounds.height + resizeOffset,
+  });
 }
 
 // Custom-element tag registered by an extension for its DOM body.
@@ -1276,6 +1350,7 @@ const selectionSnapshot = computed<CanvasSelectionSnapshot>(() => ({
   strokes: strokes.value,
   selectedStrokeIds: selectedStrokeIds.value,
   remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
+  selectionBounds: selectedGroupBounds.value ?? undefined,
   selectedShapeBounds: [...selectedShapeIds.value]
     .map((id) => shapesById.value.get(id))
     .filter((shape) => shape != null)
@@ -2011,6 +2086,56 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
   event.preventDefault();
 }
 
+function startSelectionScale(
+  selection: NonNullable<typeof selectedScalableSelection.value>,
+  event: PointerEvent,
+) {
+  if (event.button !== 0) return;
+  const { bounds } = selection;
+  let minimumScale = 0.05;
+  for (const shape of selection.shapes) {
+    const transform = extensionManager.get(shape.type).behavior.transform;
+    if (transform.resize === "font") {
+      minimumScale = Math.max(
+        minimumScale,
+        MIN_FONT_SCALE / (Number(shape.data.fontScale) || 1),
+      );
+      continue;
+    }
+    const minSize = extensionManager.get(shape.type).defaults.minSize;
+    minimumScale = Math.max(
+      minimumScale,
+      minSize.width / Math.max(1, shape.frame.width),
+      minSize.height / Math.max(1, shape.frame.height),
+    );
+  }
+  dragState = {
+    type: "selection-scale",
+    pointerId: event.pointerId,
+    origin: { x: bounds.x, y: bounds.y },
+    startBounds: { ...bounds },
+    // Keep every selected item above its own supported minimum size.
+    minSize: {
+      width: Math.max(1, bounds.width * minimumScale),
+      height: Math.max(1, bounds.height * minimumScale),
+    },
+    shapes: selection.shapes.map((shape) => ({
+      id: shape.id,
+      frame: { ...shape.frame },
+      resizeMode: extensionManager.get(shape.type).behavior.transform.resize as
+        | "box"
+        | "font",
+      fontScale: Number(shape.data.fontScale) || 1,
+    })),
+    strokes: selection.strokes.map((stroke) => ({
+      id: stroke.id,
+      points: stroke.points.map(cloneFreehandPoint),
+    })),
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
   const canRotate = extensionManager.get(shape.type).behavior.transform.rotate;
   if (event.button !== 0 || !canRotate || !canMoveShape(shape)) return;
@@ -2567,6 +2692,50 @@ function handlePointerMove(event: PointerEvent) {
     return;
   }
 
+  if (dragState.type === "selection-scale") {
+    const resized = resizeRotatedShapeFromBottomRight({
+      fixedTopLeft: dragState.origin,
+      pointer: world,
+      rotation: 0,
+      minSize: dragState.minSize,
+      aspect: dragState.startBounds.width / dragState.startBounds.height,
+    });
+    const scale = resized.width / dragState.startBounds.width;
+    ydoc.transact(() => {
+      for (const shape of dragState.shapes) {
+        const nextFrame = {
+          x: dragState.origin.x + (shape.frame.x - dragState.origin.x) * scale,
+          y: dragState.origin.y + (shape.frame.y - dragState.origin.y) * scale,
+        };
+        if (shape.resizeMode === "font") {
+          updateShapeFrame(shape.id, nextFrame);
+          updateShapeData(
+            shape.id,
+            { fontScale: Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000 },
+            { transform: true },
+          );
+          continue;
+        }
+        updateShapeFrame(shape.id, {
+          ...nextFrame,
+          width: Math.round(shape.frame.width * scale),
+          height: Math.round(shape.frame.height * scale),
+        });
+      }
+      for (const stroke of dragState.strokes) {
+        updateStrokePoints(
+          stroke.id,
+          stroke.points.map((point) => ({
+            ...point,
+            x: dragState.origin.x + (point.x - dragState.origin.x) * scale,
+            y: dragState.origin.y + (point.y - dragState.origin.y) * scale,
+          })),
+        );
+      }
+    });
+    return;
+  }
+
   if (dragState.type === "rotate") {
     const shape = shapesById.value.get(dragState.shapeId);
     if (!shape || !canMoveShape(shape)) return;
@@ -2738,6 +2907,18 @@ function cancelTransformDrag() {
     if (shape && canMoveShape(shape)) {
       updateShapeFrame(dragState.shapeId, dragState.initial);
     }
+  } else if (dragState?.type === "selection-scale") {
+    ydoc.transact(() => {
+      for (const shape of dragState.shapes) {
+        updateShapeFrame(shape.id, shape.frame);
+        if (shape.resizeMode === "font") {
+          updateShapeData(shape.id, { fontScale: shape.fontScale }, { transform: true });
+        }
+      }
+      for (const stroke of dragState.strokes) {
+        updateStrokePoints(stroke.id, stroke.points);
+      }
+    });
   } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
     cancelStrokeTransformInteraction();
   } else {
@@ -3887,6 +4068,18 @@ onUnmounted(() => {
             transform: `translate(-50%, -50%) rotate(${selectedResizeOnlyShape.frame.rotation}deg)`,
           }"
           @pointerdown.stop="startShapeResize(selectedResizeOnlyShape, $event)"
+        ></button>
+      </div>
+      <div v-if="selectedScalableSelection" class="canvas-transform-controls">
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-resize-handle"
+          :aria-label="t('Scale selection')"
+          :style="{
+            left: `${selectionScaleControlPosition(selectedScalableSelection.bounds).x}px`,
+            top: `${selectionScaleControlPosition(selectedScalableSelection.bounds).y}px`,
+          }"
+          @pointerdown.stop="startSelectionScale(selectedScalableSelection, $event)"
         ></button>
       </div>
       <div
