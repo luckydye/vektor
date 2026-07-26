@@ -5,6 +5,7 @@ import { Node } from "@tiptap/pm/model";
 import { prosemirrorToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#canvas/canvasYjs.ts";
+import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { parseHtml, SyntaxKind } from "#utils/html.ts";
 
@@ -23,6 +24,25 @@ function loadCanvasYDoc(content: string): Y.Doc {
   // diverge). The deterministic seed keeps ids stable across room reloads.
   seedCanvasDoc(ydoc, parseCanvasContent(content));
   return ydoc;
+}
+
+function workflowDoc(content: string) {
+  return Node.fromJSON(
+    getSchema(codeEditorExtensions()),
+    codeEditorContent(content, "javascript"),
+  );
+}
+
+function workflowCode(doc: Y.Doc): string {
+  const json = yDocToProsemirrorJSON(doc, "default") as JSONContent;
+  const block = json.content?.find((node) => node.type === "codeBlock");
+  if (!block) return "";
+
+  const text = (node: JSONContent): string =>
+    typeof node.text === "string"
+      ? node.text
+      : (node.content ?? []).map(text).join("");
+  return text(block);
 }
 
 /** Serializes a canvas room doc back to the snapshot content format. */
@@ -85,7 +105,7 @@ export function toCleanHtml(
   return lines.join("\n");
 }
 
-/** Builds a Y.Doc from persisted content (canvas snapshot JSON or HTML). */
+/** Builds a Y.Doc from persisted canvas, workflow-source, or HTML content. */
 export function docFromContent(
   spaceId: string,
   documentId: string,
@@ -93,6 +113,7 @@ export function docFromContent(
   content: string,
 ): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
+  if (type === "workflow") return prosemirrorToYDoc(workflowDoc(content), "default");
   const extensions = contentExtensions({ spaceId, documentId });
   const json = generateJSON(content, extensions);
   const schema = getSchema(extensions);
@@ -100,7 +121,7 @@ export function docFromContent(
   return prosemirrorToYDoc(pmDoc, "default");
 }
 
-/** Serializes a Y.Doc to its persisted content form (canvas JSON or HTML). */
+/** Serializes a Y.Doc to canvas JSON, workflow source, or HTML. */
 export function contentFromDoc(
   spaceId: string,
   documentId: string,
@@ -108,6 +129,7 @@ export function contentFromDoc(
   doc: Y.Doc,
 ): string {
   if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
+  if (type === "workflow") return workflowCode(doc);
   return toCleanHtml(doc, contentExtensions({ spaceId, documentId }));
 }
 

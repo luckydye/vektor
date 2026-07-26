@@ -5,11 +5,11 @@ export const readOnlyDocumentTypes: readonly string[] = ["csv", workflowRunDocum
 
 /**
  * Document types whose stored content is serialized JSON rather than HTML
- * (canvas and app persist their own document models). HTML sanitization such
+ * (canvas, app, and workflow persist their own document models). HTML sanitization such
  * as script-tag stripping is both meaningless and expensive on these — a
  * canvas reaches tens of MB — so the save path skips it for them.
  */
-export const nonHtmlContentDocumentTypes: readonly string[] = ["canvas", "app"];
+export const nonHtmlContentDocumentTypes: readonly string[] = ["canvas", "app", "workflow"];
 
 /** Whether a document type's stored content should be treated as HTML. */
 export function contentIsHtml(type: string | null | undefined): boolean {

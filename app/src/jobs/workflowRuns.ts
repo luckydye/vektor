@@ -1,4 +1,5 @@
 import { getDocument, getDocumentContent } from "#db/documents.ts";
+import { getLiveDocumentContent } from "#realtime/yjsRooms.ts";
 import { createRun } from "./runStore.ts";
 import { executeWorkflowScript } from "./workflowScript.ts";
 import type { WorkflowStepCache } from "./workflowStepCache.ts";
@@ -28,7 +29,12 @@ export async function startWorkflowRun(
   }
 
   // Always run the current draft — workflows are scripts, not versioned publications.
-  const code = await getDocumentContent(spaceId, documentId);
+  const code = getLiveDocumentContent(
+    spaceId,
+    documentId,
+    doc.type,
+    (await getDocumentContent(spaceId, documentId)) ?? "",
+  );
   if (!code?.trim()) {
     throw new Error("Workflow script is empty");
   }

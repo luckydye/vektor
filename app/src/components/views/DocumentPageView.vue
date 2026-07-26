@@ -213,7 +213,7 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
     title: "Untitled Canvas",
     content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
   },
-  workflow: { title: "Untitled Workflow", content: "<p></p>" },
+  workflow: { title: "Untitled Workflow", content: "" },
 };
 
 const redirecting = ref(false);

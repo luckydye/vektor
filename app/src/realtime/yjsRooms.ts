@@ -7,7 +7,12 @@ import { prosemirrorJSONToYXmlFragment, updateYFragment } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import type { EditOperation } from "#documents/edit.ts";
-import { canvasSnapshotFromDoc, toCleanHtml } from "#documents/serialization.ts";
+import {
+  canvasSnapshotFromDoc,
+  contentFromDoc,
+  toCleanHtml,
+} from "#documents/serialization.ts";
+import { contentIsHtml } from "#documents/types.ts";
 import {
   deserializeDocContent,
   serializeDocContent,
@@ -166,8 +171,9 @@ function normalizeHtmlContent(
 
 /**
  * Returns the document content as edit operations see it: the live Yjs room
- * state when one is open, otherwise the persisted content — with HTML
- * normalized to one top-level block per line in both cases.
+ * state when one is open, otherwise the persisted content. HTML is normalized
+ * to one top-level block per line; canvas and workflow source stay in their
+ * native serialized formats.
  */
 export function getLiveDocumentContent(
   spaceId: string,
@@ -178,9 +184,10 @@ export function getLiveDocumentContent(
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
     if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
+    if (type === "workflow") return contentFromDoc(spaceId, documentId, type, room.doc);
     return toCleanHtml(room.doc, contentExtensions({ spaceId, documentId }));
   }
-  if (type === "canvas" || isJsonContent(persisted)) return persisted;
+  if (type === "canvas" || type === "workflow" || isJsonContent(persisted)) return persisted;
   return normalizeHtmlContent(spaceId, documentId, persisted);
 }
 
@@ -223,11 +230,10 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   if (!meta) return;
 
   const doc = room.doc;
-  const content = stripScriptTags(
-    await traced("persist.serialize", () =>
-      serializeDocContent(ids.spaceId, ids.documentId, meta.type, doc),
-    ),
+  const serialized = await traced("persist.serialize", () =>
+    serializeDocContent(ids.spaceId, ids.documentId, meta.type, doc),
   );
+  const content = contentIsHtml(meta.type) ? stripScriptTags(serialized) : serialized;
 
   await traced("persist.write", () =>
     updateDocument(ids.spaceId, ids.documentId, content, undefined, meta.type),

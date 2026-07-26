@@ -10,7 +10,7 @@
     },
     "app": {
       "name": "@vektorapp/app",
-      "version": "0.0.42",
+      "version": "0.0.44",
       "dependencies": {
         "@astrojs/node": "^11.0.0",
         "@astrojs/vue": "^7.0.0",
@@ -28,7 +28,6 @@
         "@tiptap/suggestion": "3.9.1",
         "astro": "^7.0.0",
         "better-auth": "^1.3.28",
-        "codejar": "^4.3.0",
         "cron-parser": "^5.5.0",
         "cuelume": "^0.1.0",
         "diff": "^8.0.2",
@@ -748,8 +747,6 @@
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
     "code-block-writer": ["code-block-writer@13.0.3", "", {}, "sha512-Oofo0pq3IKnsFtuHqSF7TqBfr71aeyZDVJ0HpmqB7FBM2qEigL0iPONSCZSO9pE9dZTAxANe5XHG9Uy0YMv8cg=="],
-
-    "codejar": ["codejar@4.3.0", "", {}, "sha512-A7BlrtD2oHR4xsABs/lLvDNxiPxkx71SuyHhcilBHbPMASpQs4d1AG2XjDSAm7y40RmfXbSGbMBhllGy//CDOA=="],
 
     "color-convert": ["color-convert@2.0.1", "", { "dependencies": { "color-name": "~1.1.4" } }, "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ=="],
 
