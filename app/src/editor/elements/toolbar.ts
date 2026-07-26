@@ -146,6 +146,7 @@ if (
       private tableActive = false;
       private tableSelectionPointerDown = false;
       private editorSelectionPointerDown = false;
+      private elementDragInProgress = false;
       private cellBackgroundColor = "transparent";
       private cellBackgroundActive = false;
       private copiedRow: unknown = null;
@@ -205,6 +206,10 @@ if (
             "table-selection-pointer-state",
             this.handleTableSelectionPointerState as EventListener,
           );
+          window.addEventListener(
+            "editor-element-drag-state",
+            this.handleElementDragState as EventListener,
+          );
         }
         window.addEventListener("resize", this.updatePosition, { passive: true });
         document.addEventListener("pointerdown", this.handlePointerDown, true);
@@ -229,6 +234,10 @@ if (
             "table-selection-pointer-state",
             this.handleTableSelectionPointerState as EventListener,
           );
+          window.removeEventListener(
+            "editor-element-drag-state",
+            this.handleElementDragState as EventListener,
+          );
         } else {
           this.unbindEditorEvents();
         }
@@ -238,6 +247,7 @@ if (
         document.removeEventListener("pointercancel", this.handlePointerUp);
         document.removeEventListener("scroll", this.updatePosition);
         this.editorSelectionPointerDown = false;
+        this.elementDragInProgress = false;
       }
 
       private bindEditorEvents() {
@@ -275,6 +285,7 @@ if (
         this._editor = undefined;
         this.shouldShow = false;
         this.editorSelectionPointerDown = false;
+        this.elementDragInProgress = false;
         this.paint();
       };
 
@@ -295,6 +306,7 @@ if (
         this.tableActive = false;
         this.tableSelectionPointerDown = false;
         this.editorSelectionPointerDown = false;
+        this.elementDragInProgress = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.imageActive = false;
@@ -309,6 +321,14 @@ if (
         this.paint();
       };
 
+      private handleElementDragState = (
+        event: CustomEvent<{ editor: Editor; active: boolean }>,
+      ) => {
+        if (event.detail.editor !== this._editor) return;
+        this.elementDragInProgress = event.detail.active;
+        this.paint();
+      };
+
       dismiss() {
         const editor = this.getEditor();
         if (editorReady(editor)) {
@@ -318,6 +338,7 @@ if (
         this.tableActive = false;
         this.tableSelectionPointerDown = false;
         this.editorSelectionPointerDown = false;
+        this.elementDragInProgress = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.paint();
@@ -1139,7 +1160,7 @@ if (
       private renderCanvasToolbar() {
         return html`
           <div
-            class=${`floating-menu${this.editorSelectionPointerDown ? " toolbar-hidden" : ""}`}
+            class=${`floating-menu${this.editorSelectionPointerDown || this.elementDragInProgress ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
             @mousedown=${() => {
               this.interacting = true;
@@ -1216,7 +1237,7 @@ if (
 
         return html`
           <div
-            class=${`floating-menu${this.tableSelectionPointerDown || this.editorSelectionPointerDown ? " toolbar-hidden" : ""}`}
+            class=${`floating-menu${this.tableSelectionPointerDown || this.editorSelectionPointerDown || this.elementDragInProgress ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
             @mousedown=${() => {
               this.interacting = true;

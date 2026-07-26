@@ -391,7 +391,19 @@ function createEditor(
             editor.commands.setMeta("hideDragHandle", true);
           }
         },
+        onElementDragStart: () => {
+          window.dispatchEvent(
+            new CustomEvent("editor-element-drag-state", {
+              detail: { editor, active: true },
+            }),
+          );
+        },
         onElementDragEnd: () => {
+          window.dispatchEvent(
+            new CustomEvent("editor-element-drag-state", {
+              detail: { editor, active: false },
+            }),
+          );
           // Reset plugin state after a drag so handle can reappear on the same block.
           editor.commands.setMeta("hideDragHandle", true);
         },
