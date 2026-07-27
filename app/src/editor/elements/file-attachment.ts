@@ -1,13 +1,14 @@
 // Custom element for file attachments in the editor
 // Renders file previews with unique UI based on file type:
 // - Text files (md, txt): Show text content preview
-// - 3D models (obj): Show a lightweight wireframe preview
+// - 3D models (obj, gltf, glb): Show a live WebGPU preview via <model-viewer-3d>
 // - Documents (docx, doc, pdf): Show document icon
 // - Presentations (pptx, ppt): Show presentation icon
 //
 // Usage in HTML:
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
+import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
 import { escapeHtml } from "#utils/html.ts";
 import {
   archiveBoxIcon,
@@ -24,7 +25,7 @@ const PRESENTATION_EXTENSIONS = ["pptx", "ppt"];
 const SPREADSHEET_EXTENSIONS = ["xlsx", "xls", "csv"];
 const ARCHIVE_EXTENSIONS = ["zip"];
 const TEXT_EXTENSIONS = ["md", "txt"];
-const MODEL_EXTENSIONS = ["obj"];
+const MODEL_EXTENSIONS = ["obj", "gltf", "glb"];
 
 type FileType =
   | "image"
@@ -35,14 +36,6 @@ type FileType =
   | "text"
   | "model"
   | "unknown";
-
-type Vec3 = [number, number, number];
-type Edge = [number, number];
-
-type ObjModel = {
-  vertices: Vec3[];
-  edges: Edge[];
-};
 
 function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
@@ -58,84 +51,6 @@ function getFileType(filename: string): FileType {
   if (TEXT_EXTENSIONS.includes(ext)) return "text";
   if (MODEL_EXTENSIONS.includes(ext)) return "model";
   return "unknown";
-}
-
-function parseObjIndex(token: string, vertexCount: number): number | null {
-  const raw = Number.parseInt(token.split("/")[0] ?? "", 10);
-  if (!Number.isInteger(raw) || raw === 0) return null;
-  return raw < 0 ? vertexCount + raw : raw - 1;
-}
-
-function parseObj(text: string): ObjModel {
-  const vertices: Vec3[] = [];
-  const edges = new Set<string>();
-
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-
-    const parts = line.split(/\s+/);
-    if (parts[0] === "v") {
-      const x = Number(parts[1]);
-      const y = Number(parts[2]);
-      const z = Number(parts[3]);
-      if ([x, y, z].every(Number.isFinite)) vertices.push([x, y, z]);
-      continue;
-    }
-
-    if (parts[0] !== "f" && parts[0] !== "l") continue;
-
-    const indices = parts
-      .slice(1)
-      .map((token) => parseObjIndex(token, vertices.length))
-      .filter((index): index is number => index !== null && index >= 0);
-    if (indices.length < 2) continue;
-
-    const segmentCount = parts[0] === "f" ? indices.length : indices.length - 1;
-    for (let i = 0; i < segmentCount; i += 1) {
-      const a = indices[i];
-      const b = indices[(i + 1) % indices.length];
-      if (a === undefined || b === undefined || a === b) continue;
-      const min = Math.min(a, b);
-      const max = Math.max(a, b);
-      edges.add(`${min}:${max}`);
-    }
-  }
-
-  return {
-    vertices,
-    edges: Array.from(edges, (edge) => {
-      const [a, b] = edge.split(":").map(Number);
-      return [a, b] as Edge;
-    }),
-  };
-}
-
-function normalizeVertices(vertices: Vec3[]): Vec3[] {
-  if (vertices.length === 0) return [];
-
-  const min: Vec3 = [...vertices[0]] as Vec3;
-  const max: Vec3 = [...vertices[0]] as Vec3;
-
-  for (const vertex of vertices) {
-    for (let axis = 0; axis < 3; axis += 1) {
-      min[axis] = Math.min(min[axis], vertex[axis]);
-      max[axis] = Math.max(max[axis], vertex[axis]);
-    }
-  }
-
-  const center: Vec3 = [
-    (min[0] + max[0]) / 2,
-    (min[1] + max[1]) / 2,
-    (min[2] + max[2]) / 2,
-  ];
-  const scale = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], 1);
-
-  return vertices.map((vertex) => [
-    (vertex[0] - center[0]) / scale,
-    (vertex[1] - center[1]) / scale,
-    (vertex[2] - center[2]) / scale,
-  ]);
 }
 
 const ICONS: Record<FileType, string> = {
@@ -169,10 +84,7 @@ if (
     "file-attachment",
     class FileAttachmentElement extends HTMLElement {
       shadow: ShadowRoot;
-      previewEl: HTMLElement | null = null;
-      private animationFrame: number | null = null;
       private previewRun = 0;
-      private rotation = 0;
 
       static get observedAttributes() {
         return ["src", "filename"];
@@ -194,7 +106,6 @@ if (
       }
 
       render() {
-        this.stopModelPreview();
         const run = ++this.previewRun;
         const src = this.getAttribute("src") || "";
         const filename = this.getAttribute("filename") || "file";
@@ -231,7 +142,7 @@ if (
               align-items: flex-start;
             }
             .preview-area.model-preview {
-              min-height: 92px;
+              height: 180px;
               padding: 0;
               background: radial-gradient(
                 circle at 50% 35%,
@@ -253,20 +164,10 @@ if (
               text-align: left;
               width: 100%;
             }
-            .model-canvas {
+            ${MODEL_VIEWER_TAG} {
               display: block;
               width: 100%;
               height: 100%;
-              min-height: 92px;
-            }
-            .model-status {
-              position: absolute;
-              inset: auto 8px 8px 8px;
-              color: var(--color-neutral-500, #64748b);
-              font-size: 11px;
-              line-height: 1.2;
-              text-align: center;
-              pointer-events: none;
             }
             .icon-wrapper {
               width: 48px;
@@ -302,7 +203,7 @@ if (
             }
           </style>
           <div class="preview-area ${fileType === "text" ? "text-preview" : ""} ${fileType === "model" ? "model-preview" : ""}">
-            ${this.previewMarkup(fileType)}
+            ${this.previewMarkup(fileType, src)}
           </div>
           <div class="info-bar">
             <div class="icon-small" style="color: ${FILE_COLORS[fileType]}">${ICONS[fileType]}</div>
@@ -315,22 +216,24 @@ if (
 
         if (fileType === "text" && src) {
           this.loadTextPreview(src, run);
-        } else if (fileType === "model" && src) {
-          this.loadModelPreview(src, run);
         }
       }
 
-      previewMarkup(fileType: FileType): string {
+      previewMarkup(fileType: FileType, src: string): string {
         if (fileType === "text") {
           return `<pre class="text-content">Loading preview...</pre>`;
         }
         if (fileType === "model") {
-          return `<canvas class="model-canvas" aria-label="3D model preview"></canvas><div class="model-status">Loading preview...</div>`;
+          // The 3D preview owns its own drag/orbit interaction; stop clicks on
+          // it from bubbling to the card's open-in-new-tab handler.
+          return `<${MODEL_VIEWER_TAG} src="${escapeHtml(src)}"></${MODEL_VIEWER_TAG}>`;
         }
         return `<div class="icon-wrapper" style="color: ${FILE_COLORS[fileType]}">${ICONS[fileType]}</div>`;
       }
 
       handleClick = (e: Event) => {
+        // Interacting with the live 3D preview should orbit it, not open the file.
+        if ((e.target as Element | null)?.closest?.(MODEL_VIEWER_TAG)) return;
         e.preventDefault();
         const src = this.getAttribute("src");
         if (src) {
@@ -355,111 +258,7 @@ if (
         }
       }
 
-      async loadModelPreview(src: string, run: number) {
-        const canvas = this.shadow.querySelector<HTMLCanvasElement>(".model-canvas");
-        const status = this.shadow.querySelector<HTMLElement>(".model-status");
-        if (!canvas) return;
-
-        try {
-          const response = await fetch(src);
-          if (!response.ok) throw new Error("Failed to load");
-
-          const model = parseObj(await response.text());
-          if (run !== this.previewRun) return;
-          if (model.vertices.length === 0 || model.edges.length === 0) {
-            throw new Error("No mesh data");
-          }
-
-          if (status) status.textContent = "";
-          this.renderModel(canvas, model);
-        } catch {
-          if (run !== this.previewRun) return;
-          if (status) status.textContent = "Unable to preview OBJ";
-          this.drawEmptyModelState(canvas);
-        }
-      }
-
-      renderModel(canvas: HTMLCanvasElement, model: ObjModel) {
-        const vertices = normalizeVertices(model.vertices);
-        const context = canvas.getContext("2d");
-        if (!context) return;
-
-        const draw = () => {
-          const rect = canvas.getBoundingClientRect();
-          const width = Math.max(1, Math.round(rect.width));
-          const height = Math.max(1, Math.round(rect.height));
-          const ratio = window.devicePixelRatio || 1;
-          const pixelWidth = Math.round(width * ratio);
-          const pixelHeight = Math.round(height * ratio);
-
-          if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-            canvas.width = pixelWidth;
-            canvas.height = pixelHeight;
-          }
-
-          context.setTransform(ratio, 0, 0, ratio, 0, 0);
-          context.clearRect(0, 0, width, height);
-          context.lineWidth = 1;
-          context.strokeStyle = "#0891b2";
-          context.globalAlpha = 0.9;
-
-          const sinY = Math.sin(this.rotation);
-          const cosY = Math.cos(this.rotation);
-          const sinX = Math.sin(-0.38);
-          const cosX = Math.cos(-0.38);
-          const projected = vertices.map(([x, y, z]) => {
-            const rotatedX = x * cosY - z * sinY;
-            const rotatedZ = x * sinY + z * cosY;
-            const rotatedY = y * cosX - rotatedZ * sinX;
-            const tiltedZ = y * sinX + rotatedZ * cosX;
-            const perspective = 1.8 / (1.8 + tiltedZ);
-            return {
-              x: width / 2 + rotatedX * perspective * width * 0.72,
-              y: height / 2 - rotatedY * perspective * height * 0.72,
-            };
-          });
-
-          context.beginPath();
-          for (const [a, b] of model.edges) {
-            const start = projected[a];
-            const end = projected[b];
-            if (!start || !end) continue;
-            context.moveTo(start.x, start.y);
-            context.lineTo(end.x, end.y);
-          }
-          context.stroke();
-
-          this.rotation += 0.01;
-          this.animationFrame = requestAnimationFrame(draw);
-        };
-
-        draw();
-      }
-
-      drawEmptyModelState(canvas: HTMLCanvasElement) {
-        const context = canvas.getContext("2d");
-        if (!context) return;
-        const rect = canvas.getBoundingClientRect();
-        const width = Math.max(1, Math.round(rect.width));
-        const height = Math.max(1, Math.round(rect.height));
-        const ratio = window.devicePixelRatio || 1;
-        canvas.width = Math.round(width * ratio);
-        canvas.height = Math.round(height * ratio);
-        context.setTransform(ratio, 0, 0, ratio, 0, 0);
-        context.clearRect(0, 0, width, height);
-        context.strokeStyle = "#94a3b8";
-        context.strokeRect(width / 2 - 18, height / 2 - 18, 36, 36);
-      }
-
-      stopModelPreview() {
-        if (this.animationFrame !== null) {
-          cancelAnimationFrame(this.animationFrame);
-          this.animationFrame = null;
-        }
-      }
-
       disconnectedCallback() {
-        this.stopModelPreview();
         this.removeEventListener("click", this.handleClick);
       }
 

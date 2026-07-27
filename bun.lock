@@ -10,7 +10,7 @@
     },
     "app": {
       "name": "@vektorapp/app",
-      "version": "0.0.44",
+      "version": "0.0.49",
       "dependencies": {
         "@astrojs/node": "^11.0.0",
         "@astrojs/vue": "^7.0.0",
@@ -54,6 +54,7 @@
         "@types/nodemailer": "^8.0.1",
         "@types/prismjs": "^1.26.6",
         "@types/ws": "^8.18.1",
+        "@webgpu/types": "^0.1.71",
         "detect-libc": "2.0.2",
         "mitata": "^1.0.34",
       },
@@ -651,6 +652,8 @@
     "@vue/server-renderer": ["@vue/server-renderer@3.5.39", "", { "dependencies": { "@vue/compiler-ssr": "3.5.39", "@vue/shared": "3.5.39" }, "peerDependencies": { "vue": "3.5.39" } }, "sha512-yZSakiAGw85rZfG7UM8akMnIF+FmeiNk47uvHf2nVBBSe+dIKUhZuZq9+XgJhbV3nS5Z4ALH23/MpXofW+mbcw=="],
 
     "@vue/shared": ["@vue/shared@3.5.39", "", {}, "sha512-l1rrBtBfTnmxvtsvdQDXltUUy8S1Y+ZaqdfUzmAnJkTd8Z8rv5v/ytW+TKiqEOWyHPoqtPlNFSs0lhRmYVSHVA=="],
+
+    "@webgpu/types": ["@webgpu/types@0.1.71", "", {}, "sha512-mMy8/ODcKhab808co15eW+yN+HgXoQxRQHTiBV9Mrvl1r0ufnid7YOcI+gi4eUWSWl9ezD6TW2KXccrL8HCh2A=="],
 
     "acorn": ["acorn@8.17.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg=="],
 
