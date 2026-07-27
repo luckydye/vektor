@@ -1,11 +1,12 @@
 import "#editor/elements/file-attachment.ts";
-import { isMediaFile } from "#files/fileTypes.ts";
+import { isMediaFile, isModelFile } from "#files/fileTypes.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
 } from "./CanvasElementBase.ts";
 import { mediaFilesFromDataTransfer, uploadMediaFile } from "./media.ts";
+import { createModelShape } from "./model.ts";
 import type { CanvasElementExtension, CanvasInputHandler, CanvasShape } from "./types.ts";
 
 const PDF_PREVIEW_SIZE = { width: 420, height: 560 };
@@ -235,9 +236,9 @@ export async function createUploadedFileShape(
 ): Promise<CanvasShape | null> {
   if (!isCanvasFile(file)) return null;
   const src = await uploadMediaFile(file, options);
-  return createFileShape({
-    at,
-    src,
-    filename: file.name || "file",
-  });
+  const filename = file.name || "file";
+  // 3D models render as a dedicated resizable model shape; every other file
+  // keeps the generic attachment card.
+  if (isModelFile(file)) return createModelShape({ at, src, filename });
+  return createFileShape({ at, src, filename });
 }

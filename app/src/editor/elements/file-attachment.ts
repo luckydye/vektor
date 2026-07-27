@@ -111,6 +111,7 @@ if (
         const filename = this.getAttribute("filename") || "file";
         const safeFilename = escapeHtml(filename);
         const fileType = getFileType(filename);
+        this.setAttribute("data-filetype", fileType);
 
         this.shadow.innerHTML = `
           <style>
@@ -129,6 +130,10 @@ if (
             :host(:hover) {
               box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
+            /* Let the model card grow past the default width when resized. */
+            :host([data-filetype="model"]) {
+              max-width: none;
+            }
             .preview-area {
               flex: 1;
               display: flex;
@@ -142,13 +147,15 @@ if (
               align-items: flex-start;
             }
             .preview-area.model-preview {
-              height: 180px;
+              width: 280px;
+              height: 200px;
+              min-width: 160px;
+              min-height: 120px;
               padding: 0;
-              background: radial-gradient(
-                circle at 50% 35%,
-                var(--color-primary-50, #eef2ff) 0,
-                var(--color-neutral-50, #f8fafc) 62%
-              );
+              background: var(--color-neutral-100, #f1f5f9);
+              /* Native drag handle so the preview can be resized in-place. */
+              resize: both;
+              overflow: hidden;
             }
             .text-content {
               font-family: ui-monospace, monospace;
