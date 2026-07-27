@@ -6,6 +6,7 @@ import { fileElement } from "./files.ts";
 import { canvasClipboardInput } from "./inputs.ts";
 import { linkElement } from "./link.ts";
 import { audioElement, imageElement, videoElement } from "./media.ts";
+import { modelElement } from "./model.ts";
 import { noteElement } from "./note.ts";
 import {
   type CanvasExtensionRuntimeOptions,
@@ -66,6 +67,7 @@ export const builtInCanvasElementExtensions = [
   videoElement,
   audioElement,
   fileElement,
+  modelElement,
   documentLinkElement,
   linkElement,
   sectionElement,

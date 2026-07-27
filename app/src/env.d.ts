@@ -1,4 +1,5 @@
 /// <reference path="../.astro/types.d.ts" />
+/// <reference types="@webgpu/types" />
 
 // Vue SFCs are only type-checked in isolation by editor tooling (Volar);
 // `tsc` has no Vue plugin, so plain .ts files importing a .vue component

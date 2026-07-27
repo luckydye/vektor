@@ -66,6 +66,7 @@
     "#integrations/*": "./src/integrations/*",
     "#jobs/*": "./src/jobs/*",
     "#layouts/*": "./src/layouts/*",
+    "#model-viewer/*": "./src/model-viewer/*",
     "#observability/*": "./src/observability/*",
     "#pages/*": "./src/pages/*",
     "#realtime/*": "./src/realtime/*",
@@ -83,6 +84,7 @@
     "@types/nodemailer": "^8.0.1",
     "@types/prismjs": "^1.26.6",
     "@types/ws": "^8.18.1",
+    "@webgpu/types": "^0.1.71",
     "detect-libc": "2.0.2",
     "mitata": "^1.0.34"
   }

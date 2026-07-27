@@ -29,8 +29,20 @@ export const AUDIO_MIME_TYPES = [
   "audio/opus",
 ];
 
+// 3D model formats the WebGPU preview (`<model-viewer-3d>`) can render.
+export const MODEL_EXTENSIONS = ["obj", "gltf", "glb"];
+
 function extensionOf(file: File): string {
   return file.name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+export function isModelFile(file: File): boolean {
+  return MODEL_EXTENSIONS.includes(extensionOf(file));
+}
+
+export function isModelSource(value: string | undefined): boolean {
+  const ext = (value ?? "").split(/[?#]/)[0].split(".").pop()?.toLowerCase() ?? "";
+  return MODEL_EXTENSIONS.includes(ext);
 }
 
 export function isImageFile(file: File): boolean {
