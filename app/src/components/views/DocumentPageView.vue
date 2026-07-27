@@ -606,7 +606,11 @@ watchEffect(() => {
 
   <ClientOnly>
     <Teleport to="body">
-      <RevisionsSidebar v-if="!isDraft && doc" :documentId="doc.id" />
+      <RevisionsSidebar
+        v-if="!isDraft && doc"
+        :key="doc.id"
+        :documentId="doc.id"
+      />
     </Teleport>
   </ClientOnly>
 </template>
