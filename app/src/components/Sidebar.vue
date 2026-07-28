@@ -30,7 +30,8 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  "mobile-open-change": [open: boolean];
+  "mobile-open-change": [open: boolean, width: number];
+  "mobile-drag-change": [offset: number | null];
 }>();
 
 const sidebarRef = ref<HTMLElement | null>(null);
@@ -45,6 +46,15 @@ let resizeStartY = 0;
 let resizeStartWidth = 0;
 const resizeDragThreshold = 4;
 
+let drawerPointerId: number | null = null;
+let drawerStartX = 0;
+let drawerStartY = 0;
+let drawerStartOffset = 0;
+const drawerOffset = ref(0);
+const drawerWidth = ref(initialSidebarWidth);
+const isDrawerDragging = ref(false);
+const drawerDragThreshold = 8;
+
 let holdsScrollLock = false;
 const setMobileOpen = (open: boolean) => {
   isMobileOpen.value = open;
@@ -55,10 +65,90 @@ const setMobileOpen = (open: boolean) => {
     unlockScroll();
     holdsScrollLock = false;
   }
-  emit("mobile-open-change", open);
+  emit("mobile-open-change", open, mobileDrawerWidth());
 };
 
 const closeMobile = () => setMobileOpen(false);
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function mobileDrawerWidth() {
+  return Math.max(currentWidth.value, props.defaultWidth);
+}
+
+function closeMobileDrawerOnDesktop() {
+  if (!isMobileViewport() && isMobileOpen.value) setMobileOpen(false);
+}
+
+function startDrawerDrag(e: PointerEvent, startOffset: number) {
+  if (!isMobileViewport()) return false;
+
+  drawerPointerId = e.pointerId;
+  drawerStartX = e.clientX;
+  drawerStartY = e.clientY;
+  drawerStartOffset = startOffset;
+  drawerOffset.value = startOffset;
+  drawerWidth.value = mobileDrawerWidth();
+  isDrawerDragging.value = false;
+  sidebarRef.value?.style.removeProperty("transform");
+  return true;
+}
+
+function startDrawerFromEdge(e: PointerEvent) {
+  if (!startDrawerDrag(e, 0)) return;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function startDrawerFromSidebar(e: PointerEvent) {
+  if (!isMobileOpen.value) return;
+  startDrawerDrag(e, mobileDrawerWidth());
+}
+
+function startDrawerFromContent(e: PointerEvent) {
+  if (!startDrawerDrag(e, mobileDrawerWidth())) return;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+}
+
+function handleDrawerMove(e: PointerEvent) {
+  if (e.pointerId !== drawerPointerId) return;
+
+  const deltaX = e.clientX - drawerStartX;
+  const deltaY = e.clientY - drawerStartY;
+  if (!isDrawerDragging.value) {
+    if (Math.abs(deltaY) > drawerDragThreshold && Math.abs(deltaY) > Math.abs(deltaX)) {
+      drawerPointerId = null;
+      return;
+    }
+    if (Math.abs(deltaX) < drawerDragThreshold) return;
+
+    isDrawerDragging.value = true;
+    sidebarRef.value?.setPointerCapture(e.pointerId);
+  }
+
+  e.preventDefault();
+  drawerOffset.value = Math.max(
+    0,
+    Math.min(drawerWidth.value, drawerStartOffset + deltaX),
+  );
+  sidebarRef.value?.style.setProperty(
+    "transform",
+    `translateX(${drawerOffset.value - drawerWidth.value}px)`,
+  );
+  emit("mobile-drag-change", drawerOffset.value);
+}
+
+function stopDrawerDrag(e: PointerEvent) {
+  if (e.pointerId !== drawerPointerId) return;
+  drawerPointerId = null;
+
+  if (!isDrawerDragging.value) return;
+
+  isDrawerDragging.value = false;
+  emit("mobile-drag-change", null);
+  setMobileOpen(drawerOffset.value >= drawerWidth.value / 2);
+}
 
 const handleSidebarClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
@@ -163,6 +253,8 @@ const stopResize = () => {
 };
 
 onMounted(() => {
+  window.addEventListener("resize", closeMobileDrawerOnDesktop);
+
   Actions.register("ui:toggle:sidebar", {
     title: t("Toggle Sidebar"),
     description: t("Open or close the sidebar menu"),
@@ -202,11 +294,13 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener("resize", closeMobileDrawerOnDesktop);
+  emit("mobile-drag-change", null);
   if (holdsScrollLock) {
     unlockScroll();
     holdsScrollLock = false;
   }
-  emit("mobile-open-change", false);
+  emit("mobile-open-change", false, mobileDrawerWidth());
   Actions.unregister("ui:toggle:sidebar");
   Actions.unregister("sidebar:toggle-mobile");
 });
@@ -214,24 +308,62 @@ onUnmounted(() => {
 
 <template>
   <div>
+    <!-- The 32px edge target keeps navigation available without a mobile header. -->
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: Pointer gestures are the control's only interaction. -->
+    <div
+      v-show="!isMobileOpen"
+      class="fixed inset-y-0 left-0 z-50 w-8 md:hidden touch-none"
+      @pointerdown="startDrawerFromEdge"
+      @pointermove="handleDrawerMove"
+      @pointerup="stopDrawerDrag"
+      @pointercancel="stopDrawerDrag"
+    />
+
+    <!-- The open drawer is modal on mobile: drag anywhere in the exposed
+         content area to push it back to the left. -->
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: Pointer gestures are the control's only interaction. -->
+    <div
+      v-show="isMobileOpen"
+      class="fixed inset-y-0 right-0 z-40 md:hidden touch-pan-y"
+      :style="{ left: `${mobileDrawerWidth()}px` }"
+      @pointerdown="startDrawerFromContent"
+      @pointermove="handleDrawerMove"
+      @pointerup="stopDrawerDrag"
+      @pointercancel="stopDrawerDrag"
+    />
+
     <!-- Sidebar -->
     <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
     <div
       ref="sidebarRef"
       :style="{
-            width: `${displayWidth}px`,
+            '--sidebar-rendered-width': `${displayWidth}px`,
+            '--mobile-sidebar-width': `${mobileDrawerWidth()}px`,
+            transform: isDrawerDragging
+              ? `translateX(${drawerOffset - drawerWidth}px)`
+              : undefined,
+            transition: isDrawerDragging ? 'none' : undefined,
             '--color-background': 'var(--color-neutral-25)'
         }"
       :class="[
             '@container sidebar p-1.5 flex',
-            'fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
+            'fixed top-0 bottom-0 w-(--mobile-sidebar-width) md:w-(--sidebar-rendered-width) transition-transform will-change-transform touch-pan-y',
             'z-40 md:z-10',
             'md:translate-x-0',
             isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         ]"
       @click="handleSidebarClick"
+      @pointerdown="startDrawerFromSidebar"
+      @pointermove="handleDrawerMove"
+      @pointerup="stopDrawerDrag"
+      @pointercancel="stopDrawerDrag"
     >
+      <span
+        aria-hidden="true"
+        class="absolute left-full ml-1 top-1/2 h-12 w-1 -translate-y-1/2 rounded-full bg-neutral-300/70 md:hidden"
+      />
+
       <!-- Toggle Button - Floating on Right Border -->
       <button
         @click.stop="toggleCollapse"

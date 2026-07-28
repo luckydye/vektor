@@ -40,6 +40,7 @@ usePageTitle(() => match.value?.route.title ?? null);
         :extensionId="match.extension.id"
         :routePath="routePath"
         :spaceId="currentSpace.id"
+        fill
       />
     </inset-view>
   </div>

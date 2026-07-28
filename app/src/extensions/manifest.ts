@@ -5,12 +5,17 @@ export interface ExtensionRouteMenuItem {
   icon?: string;
 }
 
+/** @deprecated Use "standalone". Kept so existing extension manifests continue to work. */
+export type DeprecatedPageExtensionPlacement = "page";
+
 export interface ExtensionRoute {
   path: string;
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  placements?: Array<"page" | "home-top" | "document">;
+  placements?: Array<
+    "standalone" | "inline" | "document" | DeprecatedPageExtensionPlacement
+  >;
 }
 
 export interface JobIOField {

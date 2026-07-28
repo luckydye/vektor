@@ -214,13 +214,18 @@ export interface ExtensionRouteMenuItem {
   icon?: string;
 }
 
+/** @deprecated Use "standalone". Kept so existing extension manifests continue to work. */
+export type DeprecatedPageExtensionPlacement = "page";
+
 export interface ExtensionRoute {
   path: string;
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "page" (default), home placements, or "document" for inline document embedding */
-  placements?: Array<"page" | "home-top" | "document">;
+  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, or "document" beside standard documents. */
+  placements?: Array<
+    "standalone" | "inline" | "document" | DeprecatedPageExtensionPlacement
+  >;
 }
 
 export interface ExtensionJobField {

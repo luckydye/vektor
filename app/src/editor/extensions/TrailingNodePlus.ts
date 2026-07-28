@@ -161,7 +161,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     },
   ];
 
-  for (const { extensionId, route } of extensions.getRoutesWithPlacement("document")) {
+  for (const { extensionId, route } of extensions.getRoutesWithPlacement("inline")) {
     items.push({
       title: route.menuItem?.title || route.title || extensionId,
       description: route.description || "Extension view",

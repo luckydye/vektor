@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { computed, getCurrentInstance, onMounted, onUnmounted, provide, ref } from "vue";
 import {
   createMemoryHistory,
   createRouter,
@@ -7,10 +7,10 @@ import {
   RouterView,
 } from "vue-router";
 import { api } from "#api/client.ts";
+import { commandPaletteIcon } from "#assets/icons.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { useQueryClient } from "#composeables/query.ts";
 import { provideDocumentContext } from "#composeables/useDocument.ts";
-import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { extensions } from "#extensions/manager.ts";
@@ -20,14 +20,13 @@ import { history } from "#utils/history.ts";
 import { currentLang, languageInjectionKey } from "#utils/lang.ts";
 // Side effect: registers the Vue-injected locale lookup with `lang.ts`, which
 // stays framework-free so server-side document serialization does not load Vue.
-import { parseSidebarWidth } from "#utils/sidebarState.ts";
+import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
 import CommandPalatte from "./CommandPalatte.vue";
 import DockedWindowLayout from "./DockedWindowLayout.vue";
 import DocumentOverlay from "./DocumentOverlay.vue";
-import MobileHeader from "./MobileHeader.vue";
 import Sidebar from "./Sidebar.vue";
 import ToastContainer from "./ToastContainer.vue";
 import DocumentPageView from "./views/DocumentPageView.vue";
@@ -190,12 +189,44 @@ if (props.initialSpace && props.initialDocument) {
   );
 }
 
-const { pathname } = useRoute();
 // A component cannot inject a value it provides itself, so pass the active ID
 // directly here. Descendants continue to receive it through provide().
-const { currentSpaceId, currentSpace, spaceNotFound } = useSpace(activeSpaceId);
+const { currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
 const documentContext = provideDocumentContext();
-const isMobileSidebarOpen = ref(false);
+const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
+const initialLayoutStyle = {
+  "--sidebar-width": `${initialSidebarWidth}px`,
+  "--mobile-sidebar-width": `${Math.max(initialSidebarWidth, DEFAULT_SIDEBAR_WIDTH)}px`,
+  "--inset-left": `${initialSidebarWidth}px`,
+};
+const mobileSidebarOffset = ref(0);
+const isMobileSidebarDragging = ref(false);
+
+const mobileSidebarStyle = computed(() => ({
+  transform: `translateX(${mobileSidebarOffset.value}px)`,
+  transition: isMobileSidebarDragging.value ? "none" : undefined,
+}));
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function handleMobileDrawerDrag(offset: number | null) {
+  if (!isMobileViewport()) return;
+  isMobileSidebarDragging.value = offset !== null;
+  if (offset !== null) mobileSidebarOffset.value = offset;
+}
+
+function handleMobileSidebarOpen(open: boolean, width: number) {
+  if (!isMobileViewport()) return;
+  mobileSidebarOffset.value = open ? width : 0;
+}
+
+function resetMobileDrawerOnDesktop() {
+  if (isMobileViewport()) return;
+  isMobileSidebarDragging.value = false;
+  mobileSidebarOffset.value = 0;
+}
 
 useSync(currentSpaceId, [realtimeTopics.extensions], (topics) => {
   if (!topics.includes(realtimeTopics.extensions) || !currentSpaceId.value) return;
@@ -203,12 +234,6 @@ useSync(currentSpaceId, [realtimeTopics.extensions], (topics) => {
   queryClient.invalidateQueries({ queryKey: ["extensions", currentSpaceId.value] });
   void extensions.refresh(currentSpaceId.value).catch(console.error);
 });
-
-const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
-const initialLayoutStyle = {
-  "--sidebar-width": `${initialSidebarWidth}px`,
-  "--inset-left": `${initialSidebarWidth}px`,
-};
 
 // Lightweight custom elements the app chrome needs on every route: the sidebar
 // document tree (category/page targets, scroller), keyboard-shortcut hints, and
@@ -241,6 +266,7 @@ function registerDocumentElements() {
 
 onMounted(() => {
   document.addEventListener("click", handleDocumentClick);
+  window.addEventListener("resize", resetMobileDrawerOnDesktop);
 
   registerShellElements();
 
@@ -273,6 +299,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (!isServer) {
     document.removeEventListener("click", handleDocumentClick);
+    window.removeEventListener("resize", resetMobileDrawerOnDesktop);
   }
 });
 </script>
@@ -284,13 +311,9 @@ onUnmounted(() => {
     :style="initialLayoutStyle"
   >
     <div
-      :class="[
-        'main-content min-h-screen h-full transition-transform md:transition-none relative',
-        isMobileSidebarOpen ? 'translate-x-(--sidebar-width) md:translate-x-0' : '',
-      ]"
+      class="main-content min-h-screen h-full relative transition-transform md:transition-none will-change-transform"
+      :style="mobileSidebarStyle"
     >
-      <MobileHeader :spaceName="currentSpace?.name ?? ''" :pathname="pathname" />
-
       <DockedWindowLayout />
 
       <div
@@ -302,13 +325,26 @@ onUnmounted(() => {
         <a href="/" class="text-sm underline hover:text-neutral-800">Go home</a>
       </div>
       <RouterView v-else />
+
     </div>
 
     <Sidebar
       :initialWidth="initialSidebarWidth"
-      @mobile-open-change="isMobileSidebarOpen = $event"
+      @mobile-drag-change="handleMobileDrawerDrag"
+      @mobile-open-change="handleMobileSidebarOpen"
     />
+
   </div>
+
+  <button
+    type="button"
+    class="fixed bottom-s right-xs z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary-100 text-white shadow-lg transition-colors hover:bg-primary-200 active:bg-primary-300 md:hidden"
+    aria-label="Open command palette"
+    title="Open command palette"
+    @click="Actions.run('ui:toggle:palatte')"
+  >
+    <span class="svg-icon h-7 w-7" v-html="commandPaletteIcon" />
+  </button>
 
   <ClientOnly>
     <CalDAVSetupDialog />

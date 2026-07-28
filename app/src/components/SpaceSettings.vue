@@ -137,18 +137,6 @@
                   class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring"
                 >
               </div>
-              <div class="border-t border-neutral-100 pt-4">
-                <h2 class="text-size-medium font-semibold text-neutral-900">Features</h2>
-                <div class="mt-3 flex items-center justify-between gap-4">
-                  <div>
-                    <p class="text-size-medium font-medium text-neutral-900">Workflows</p>
-                    <p class="text-size-small text-neutral-500 mt-0.5">
-                      Allow members to create workflow documents in this space.
-                    </p>
-                  </div>
-                  <SwitchToggle v-model="localWorkflowCreationEnabled" />
-                </div>
-              </div>
             </div>
             <div
               v-if="error"
@@ -165,6 +153,24 @@
             </div>
           </form>
         </div>
+
+        <!-- Features -->
+        <section class="mt-10">
+          <h2 class="text-size-large font-semibold text-neutral-900">Features</h2>
+          <div class="mt-3 flex items-center justify-between gap-4">
+            <div>
+              <p class="text-size-medium font-medium text-neutral-900">Workflows</p>
+              <p class="text-size-small text-neutral-500 mt-0.5">
+                Allow members to create workflow documents in this space.
+              </p>
+            </div>
+            <SwitchToggle
+              :model-value="localWorkflowCreationEnabled"
+              :disabled="isSavingWorkflowCreationEnabled"
+              @update:model-value="saveWorkflowCreationEnabled"
+            />
+          </div>
+        </section>
 
         <!-- Members -->
         <div class="mt-10">
@@ -908,6 +914,7 @@ const localBrandColor = ref("#1e293b");
 const localLogoSvg = ref("");
 const localWorkflowCreationEnabled = ref(true);
 const isSaving = ref(false);
+const isSavingWorkflowCreationEnabled = ref(false);
 const error = ref<string | null>(null);
 
 // MCP CLI config
@@ -1037,13 +1044,15 @@ watch(
   () => currentSpace.value,
   () => {
     if (currentSpace.value) {
-      localName.value = currentSpace.value.name;
-      localDescription.value = currentSpace.value.preferences?.description || "";
-      localBrandColor.value = currentSpace.value.preferences?.brandColor || "#1e293b";
-      localLogoSvg.value = currentSpace.value.preferences?.logoSvg || "";
-      localWorkflowCreationEnabled.value = isWorkflowCreationEnabled(
-        currentSpace.value.preferences,
-      );
+      if (!isSavingWorkflowCreationEnabled.value) {
+        localName.value = currentSpace.value.name;
+        localDescription.value = currentSpace.value.preferences?.description || "";
+        localBrandColor.value = currentSpace.value.preferences?.brandColor || "#1e293b";
+        localLogoSvg.value = currentSpace.value.preferences?.logoSvg || "";
+        localWorkflowCreationEnabled.value = isWorkflowCreationEnabled(
+          currentSpace.value.preferences,
+        );
+      }
       error.value = null;
     }
   },
@@ -1051,6 +1060,29 @@ watch(
     immediate: true,
   },
 );
+
+async function saveWorkflowCreationEnabled(enabled: boolean) {
+  if (!currentSpace.value || isSavingWorkflowCreationEnabled.value) return;
+
+  const previousValue = localWorkflowCreationEnabled.value;
+  localWorkflowCreationEnabled.value = enabled;
+  isSavingWorkflowCreationEnabled.value = true;
+  error.value = null;
+
+  try {
+    await api.space.patch(currentSpace.value.id, {
+      preferences: {
+        [spacePreferenceKeys.workflowCreationEnabled]: String(enabled),
+      },
+    });
+    toast.success("Feature settings saved");
+  } catch (err) {
+    localWorkflowCreationEnabled.value = previousValue;
+    error.value = err instanceof Error ? err.message : "Failed to update feature settings";
+  } finally {
+    isSavingWorkflowCreationEnabled.value = false;
+  }
+}
 
 async function handleLogoUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];

@@ -38,12 +38,12 @@ An extension requires a `manifest.json` and at least one entry point:
 | `version` | `string` | Yes | Semantic version |
 | `description` | `string` | No | Short description |
 | `entries.frontend` | `string` | No | Path to frontend JS entry (actions, etc.) |
-| `entries.view` | `string` | No | Path to view JS entry (custom pages) |
+| `entries.view` | `string` | No | Path to view JS entry (standalone views) |
 | `routes` | `array` | No | Custom view routes |
 
 ### Routes
 
-Define custom pages your extension provides. Routes are accessible at `/:spaceSlug/x/:path`:
+Define standalone views your extension provides. Routes are accessible at `/:spaceSlug/x/:path`:
 
 ```json
 {
@@ -53,6 +53,11 @@ Define custom pages your extension provides. Routes are accessible at `/:spaceSl
   ]
 }
 ```
+
+Set `placements` on a route to render it in additional locations. `"standalone"` is
+the default, `"inline"` makes it available through the Add Content menu, and
+`"document"` renders it beside standard documents on desktop.
+`"page"` remains accepted as a deprecated alias for `"standalone"`.
 
 ### Menu Items
 
@@ -352,7 +357,7 @@ export function activate({ collaboration }: ExtensionContext): void {
 
 For live, non-document features such as a game, use an explicit extension
 presence room. These rooms are ephemeral, scoped to the current space and
-extension, and work from page routes. Vektor supplies the signed-in user's
+extension, and work from standalone routes. Vektor supplies the signed-in user's
 profile and enforces extension access on the server.
 
 ```ts

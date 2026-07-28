@@ -692,14 +692,17 @@ export class Extensions {
    * Get all routes with specific placement
    */
   getRoutesWithPlacement(
-    placement: "page" | "home-top" | "document",
+    placement: "standalone" | "inline" | "document" | "page",
   ): Array<{ extensionId: string; route: ExtensionRoute }> {
     const routes: Array<{ extensionId: string; route: ExtensionRoute }> = [];
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
       for (const route of loaded.info.routes) {
-        const placements = route.placements || ["page"];
-        if (placements.includes(placement)) {
+        const placements = route.placements || ["standalone"];
+        const matchesPlacement =
+          placements.includes(placement) ||
+          (placement === "standalone" && placements.includes("page"));
+        if (matchesPlacement) {
           routes.push({
             extensionId: loaded.info.id,
             route,

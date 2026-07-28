@@ -1,25 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import ExtensionView from "#components/ExtensionView.vue";
 import PinnedDocument from "#components/PinnedDocument.vue";
 import RecentDocuments from "#components/RecentDocuments.vue";
 import SpaceActivityFeed from "#components/SpaceActivityFeed.vue";
-import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
-const { extensions } = useExtensions();
 
 usePageTitle(null);
-
-const homeTopViews = computed(() =>
-  extensions.value.flatMap((ext) =>
-    (ext.routes || [])
-      .filter((route) => route.placements?.includes("home-top"))
-      .map((route) => ({ extensionId: ext.id, route })),
-  ),
-);
 </script>
 
 <template>
@@ -38,25 +26,6 @@ const homeTopViews = computed(() =>
 
       <div>
         <RecentDocuments :spaceId="currentSpace.id" :limit="10" />
-      </div>
-
-      <div v-if="homeTopViews.length > 0" class="space-y-4 mb-20">
-        <div
-          v-for="{ extensionId, route } in homeTopViews"
-          :key="`${extensionId}-${route.path}`"
-        >
-          <div v-if="route.title || route.description" class="mb-3">
-            <h3 v-if="route.title" class="text-size-title">{{ route.title }}</h3>
-            <p v-if="route.description" class="text-size-medium text-neutral-600 mt-1">
-              {{ route.description }}
-            </p>
-          </div>
-          <ExtensionView
-            :extensionId="extensionId"
-            :routePath="route.path"
-            :spaceId="currentSpace.id"
-          />
-        </div>
       </div>
 
       <div class="mb-20">

@@ -35,7 +35,7 @@ Actions or suggestions only:
 }
 ```
 
-Custom page or inline document view:
+Standalone or document-side view:
 
 ```json
 {
@@ -48,7 +48,7 @@ Custom page or inline document view:
       "path": "my-ext",
       "title": "My Extension",
       "menuItem": { "title": "My Extension" },
-      "placements": ["page", "document"]
+      "placements": ["standalone", "inline", "document"]
     }
   ]
 }
@@ -57,8 +57,9 @@ Custom page or inline document view:
 - `entries.frontend` and `entries.view` are independently optional. A view-only
   extension does not need a frontend entry.
 - Routes require `entries.view`, and a view entry requires at least one route.
-- `placements` defaults to `["page"]`. Add `"document"` for the Add Content
-  menu and inline document rendering.
+- `placements` defaults to `["standalone"]`. Add `"inline"` to make the view
+  available through the Add Content menu, or `"document"` to render beside
+  standard documents on desktop.
 - Every entry path declared in the manifest must exist in the ZIP.
 
 ## Frontend entry
@@ -132,7 +133,7 @@ export function activate(ctx) {
 }
 ```
 
-For ephemeral multiplayer state on page routes, use `ctx.presence` instead of
+For ephemeral multiplayer state on standalone routes, use `ctx.presence` instead of
 writing peer records into a YMap:
 
 ```js

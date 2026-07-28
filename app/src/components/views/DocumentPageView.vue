@@ -10,6 +10,7 @@ import DatabaseView from "#components/DatabaseView.vue";
 import DocumentActions from "#components/DocumentActions.vue";
 import DocumentContent from "#components/DocumentContent.vue";
 import DocumentProperties from "#components/DocumentProperties.vue";
+import DocumentExtensionViews from "#components/DocumentExtensionViews.vue";
 import HeaderImage from "#components/HeaderImage.vue";
 import NewDocumentPicker from "#components/NewDocumentPicker.vue";
 import RestoreButton from "#components/RestoreButton.vue";
@@ -20,6 +21,7 @@ import WorkflowView from "#components/WorkflowView.vue";
 import { useQuery } from "#composeables/query.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useEditor } from "#composeables/useEditor.ts";
+import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -40,6 +42,7 @@ const now = ref(ssrNow);
 
 const { currentSpace } = useSpace();
 const { editing, resetEditingState } = useEditor();
+const { extensions } = useExtensions();
 const { canUseDocumentEditor, setDocumentContext, resetDocumentContext } =
   useDocumentContext();
 
@@ -154,6 +157,16 @@ const isPaddedDocument = computed(
     !isWorkflow.value &&
     !isDatabase.value,
 );
+
+const documentRightViews = computed(() => {
+  if (isDraft.value || documentType.value !== "document") return [];
+
+  return extensions.value.flatMap((extension) =>
+    (extension.routes || [])
+      .filter((route) => route.placements?.includes("document"))
+      .map((route) => ({ extensionId: extension.id, route })),
+  );
+});
 
 const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
@@ -531,6 +544,12 @@ watchEffect(() => {
 
         <div
           :class="twMerge(
+                    documentRightViews.length > 0 && 'lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6',
+                )"
+        >
+          <div class="min-w-0">
+            <div
+              :class="twMerge(
                     'max-w-none text-neutral-700 h-full overflow-x-auto',
                     isCsv || isDatabase
                         ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
@@ -569,24 +588,31 @@ watchEffect(() => {
               :readonly="isReadonly"
             />
           </template>
-        </div>
+            </div>
 
-        <inset-view
-          v-if="!isDraft && !editing && !isCanvas"
-          :class="twMerge(
+            <inset-view
+              v-if="!isDraft && !editing && !isCanvas"
+              :class="twMerge(
           'flex items-center justify-end px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
             isCanvas && 'pointer-events-auto',
           )"
-        >
-          <div
-            v-if="doc?.updatedAt"
-            class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500 mb-12"
-          >
-            <ClientOnly>
-              <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
-            </ClientOnly>
+            >
+              <div
+                v-if="doc?.updatedAt"
+                class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500 mb-12"
+              >
+                <ClientOnly>
+                  <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
+                </ClientOnly>
+              </div>
+            </inset-view>
           </div>
-        </inset-view>
+
+          <DocumentExtensionViews
+            :views="documentRightViews"
+            :spaceId="currentSpace.id"
+          />
+        </div>
       </div>
     </inset-view>
   </div>

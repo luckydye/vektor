@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { twMerge } from "tailwind-merge";
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { type ExtensionViewElement, extensions } from "#extensions/manager.ts";
 
-const props = defineProps<{
-  extensionId: string;
-  routePath: string;
-  spaceId: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    extensionId: string;
+    routePath: string;
+    spaceId: string;
+    fill?: boolean;
+  }>(),
+  {
+    fill: false,
+  },
+);
 
 const containerRef = ref<ExtensionViewElement>();
 const error = ref<string | null>(null);
@@ -100,7 +105,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div>
+  <div :class="['w-full', { 'relative h-full': props.fill }]">
     <div v-if="loading" class="flex items-center justify-center py-20">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
@@ -115,17 +120,16 @@ onUnmounted(() => {
 
     <extension-view
       ref="containerRef"
-      :class="twMerge(loading && 'hidden')"
+      :class="[
+        'block w-full',
+        { 'absolute inset-0 h-full': props.fill, hidden: loading },
+      ]"
     ></extension-view>
   </div>
 </template>
 
 <style>
 extension-view {
-  height: 100%;
-  width: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
+  display: block;
 }
 </style>
