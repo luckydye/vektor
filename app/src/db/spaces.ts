@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import { isInMemoryDb } from "#inMemoryDb";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 import { slugify } from "#utils/utils.ts";
 import {
   countSpaceMembers,
@@ -76,6 +77,7 @@ export async function createSpace(
   let spaceDb: Awaited<ReturnType<typeof getSpaceDb>>;
   const defaultPreferences = {
     brandColor: "#1e293b",
+    [spacePreferenceKeys.workflowCreationEnabled]: "true",
     ...preferences,
   };
 

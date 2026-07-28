@@ -12,6 +12,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { deleteSpace, getSpace, updateSpace } from "#db/spaces.ts";
+import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -42,12 +43,6 @@ export const PATCH: ApiRouteHandler = (context) =>
         );
       }
 
-      if (updatesMetadata) {
-        await verifySpaceRole(spaceId, user.id, "owner");
-      } else {
-        await verifySpaceRole(spaceId, user.id, "editor");
-      }
-
       if (hasName && !name.trim()) {
         throw badRequestResponse("name must be a non-empty string");
       }
@@ -67,6 +62,24 @@ export const PATCH: ApiRouteHandler = (context) =>
 
       if (hasPreferences) {
         requirePreferencesSize(preferences);
+      }
+
+      const updatesWorkflowCreationPreference =
+        hasPreferences &&
+        Object.hasOwn(preferences as object, spacePreferenceKeys.workflowCreationEnabled);
+      if (updatesWorkflowCreationPreference) {
+        const value = (preferences as Record<string, unknown>)[
+          spacePreferenceKeys.workflowCreationEnabled
+        ];
+        if (value !== "true" && value !== "false") {
+          throw badRequestResponse("workflowCreationEnabled must be 'true' or 'false'");
+        }
+      }
+
+      if (updatesMetadata || updatesWorkflowCreationPreference) {
+        await verifySpaceRole(spaceId, user.id, "owner");
+      } else {
+        await verifySpaceRole(spaceId, user.id, "editor");
       }
 
       const space = await getSpace(spaceId);

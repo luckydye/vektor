@@ -25,6 +25,7 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { readOnlyDocumentTypes } from "#documents/types.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { spacePath } from "#utils/utils.ts";
 
@@ -224,6 +225,13 @@ async function maybeAutoCreateDraft() {
   if (redirecting.value) return;
   const autoCreate = AUTO_CREATE_TYPES[documentType.value];
   if (!autoCreate || !currentSpace.value) return;
+  if (
+    documentType.value === "workflow" &&
+    !isWorkflowCreationEnabled(currentSpace.value.preferences)
+  ) {
+    router.replace("/new");
+    return;
+  }
   if (!userCanEdit.value) {
     router.push("/");
     return;

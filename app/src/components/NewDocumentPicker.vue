@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import databasePreview from "#assets/new-document-picker/database-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?raw";
+import { useSpace } from "#composeables/useSpace.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "~/src/assets/icons.ts";
 
 const router = useRouter();
 const route = useRoute();
+const { currentSpace } = useSpace();
 const visible = ref(true);
 
 type DocumentType = "document" | "canvas" | "workflow" | "database";
@@ -48,6 +51,13 @@ const documentOptions: Array<{
     icon: databaseIcon,
   },
 ];
+
+const availableDocumentOptions = computed(() =>
+  documentOptions.filter(
+    (option) =>
+      option.type !== "workflow" || isWorkflowCreationEnabled(currentSpace.value?.preferences),
+  ),
+);
 
 function focusEditor() {
   const editorEl = document.querySelector("document-view") as HTMLElement | null;
@@ -104,7 +114,7 @@ onUnmounted(() => {
 
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
           <button
-            v-for="option in documentOptions"
+            v-for="option in availableDocumentOptions"
             :key="option.type"
             type="button"
             class="group grid min-h-[154px] cursor-pointer gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"

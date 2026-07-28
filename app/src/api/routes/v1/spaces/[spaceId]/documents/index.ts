@@ -22,6 +22,8 @@ import {
   toHtmlIfMarkdown,
 } from "#documents/content.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import { getSpace } from "#db/spaces.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
@@ -204,6 +206,13 @@ export const POST: ApiRouteHandler = (context) =>
 
     if (!content || typeof content !== "string") {
       throw badRequestResponse("Content is required and must be a string");
+    }
+
+    if (type === "workflow") {
+      const space = await getSpace(spaceId);
+      if (!isWorkflowCreationEnabled(space?.preferences)) {
+        throw forbiddenResponse("Workflow creation is disabled for this space");
+      }
     }
 
     const titleValue = properties?.title;

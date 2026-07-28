@@ -137,6 +137,18 @@
                   class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring"
                 >
               </div>
+              <div class="border-t border-neutral-100 pt-4">
+                <h2 class="text-size-medium font-semibold text-neutral-900">Features</h2>
+                <div class="mt-3 flex items-center justify-between gap-4">
+                  <div>
+                    <p class="text-size-medium font-medium text-neutral-900">Workflows</p>
+                    <p class="text-size-small text-neutral-500 mt-0.5">
+                      Allow members to create workflow documents in this space.
+                    </p>
+                  </div>
+                  <SwitchToggle v-model="localWorkflowCreationEnabled" />
+                </div>
+              </div>
             </div>
             <div
               v-if="error"
@@ -851,6 +863,7 @@ import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
 import SettingsLayout from "./SettingsLayout.vue";
 import SpaceMembers from "./SpaceMembers.vue";
+import SwitchToggle from "./SwitchToggle.vue";
 
 const VEKTOR_VERSION = import.meta.env.VEKTOR_VERSION;
 
@@ -878,6 +891,10 @@ function setTab(id: string) {
 import { type AccessToken, api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import {
+  isWorkflowCreationEnabled,
+  spacePreferenceKeys,
+} from "#utils/spacePreferences.ts";
 import { editEntryIcon } from "~/src/assets/icons.ts";
 
 const emit = defineEmits(["saved"]);
@@ -889,6 +906,7 @@ const localName = ref("");
 const localDescription = ref("");
 const localBrandColor = ref("#1e293b");
 const localLogoSvg = ref("");
+const localWorkflowCreationEnabled = ref(true);
 const isSaving = ref(false);
 const error = ref<string | null>(null);
 
@@ -1023,6 +1041,9 @@ watch(
       localDescription.value = currentSpace.value.preferences?.description || "";
       localBrandColor.value = currentSpace.value.preferences?.brandColor || "#1e293b";
       localLogoSvg.value = currentSpace.value.preferences?.logoSvg || "";
+      localWorkflowCreationEnabled.value = isWorkflowCreationEnabled(
+        currentSpace.value.preferences,
+      );
       error.value = null;
     }
   },
@@ -1086,6 +1107,9 @@ async function handleSave() {
         description: localDescription.value.trim(),
         brandColor: localBrandColor.value,
         logoSvg: localLogoSvg.value,
+        [spacePreferenceKeys.workflowCreationEnabled]: String(
+          localWorkflowCreationEnabled.value,
+        ),
       },
     );
     toast.success("Space settings saved");

@@ -20,6 +20,7 @@ import {
 } from "#utils/themePreference.ts";
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import SettingsLayout from "./SettingsLayout.vue";
+import SwitchToggle from "./SwitchToggle.vue";
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (updateCallback: () => void | Promise<void>) => void;
@@ -41,6 +42,10 @@ const integrationsError = ref<string | null>(null);
 const integrationsMessage = ref<string | null>(null);
 const connectingProvider = ref<OAuthIntegrationProvider | null>(null);
 const disconnectingProvider = ref<OAuthIntegrationProvider | null>(null);
+const spaceNotificationsMuted = ref(false);
+const isLoadingNotificationPreference = ref(false);
+const isUpdatingNotificationPreference = ref(false);
+const notificationPreferenceError = ref<string | null>(null);
 const { currentSpace } = useSpace();
 
 const emit = defineEmits<{
@@ -49,6 +54,7 @@ const emit = defineEmits<{
 
 const tabs = [
   { id: "appearance", label: t("Appearance") },
+  { id: "notifications", label: t("Notifications") },
   { id: "integrations", label: t("Integrations") },
 ];
 const themeOptions: { value: ThemePreference; label: string; swatchClass: string }[] = [
@@ -138,6 +144,47 @@ const loadIntegrations = async () => {
   }
 };
 
+const loadNotificationPreference = async () => {
+  if (!currentSpace.value?.id) {
+    spaceNotificationsMuted.value = false;
+    return;
+  }
+
+  isLoadingNotificationPreference.value = true;
+  notificationPreferenceError.value = null;
+
+  try {
+    const response = await api.space.getNotificationPreference(currentSpace.value.id);
+    spaceNotificationsMuted.value = response.muted;
+  } catch (error) {
+    notificationPreferenceError.value =
+      error instanceof Error
+        ? error.message
+        : t("Failed to load notification preference");
+  } finally {
+    isLoadingNotificationPreference.value = false;
+  }
+};
+
+const setSpaceNotificationsMuted = async (muted: boolean) => {
+  if (!currentSpace.value?.id || isUpdatingNotificationPreference.value) return;
+
+  isUpdatingNotificationPreference.value = true;
+  notificationPreferenceError.value = null;
+
+  try {
+    const response = await api.space.setNotificationMuted(currentSpace.value.id, muted);
+    spaceNotificationsMuted.value = response.muted;
+  } catch (error) {
+    notificationPreferenceError.value =
+      error instanceof Error
+        ? error.message
+        : t("Failed to update notification preference");
+  } finally {
+    isUpdatingNotificationPreference.value = false;
+  }
+};
+
 const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
   if (!currentSpace.value?.id) return;
   connectingProvider.value = provider;
@@ -193,12 +240,14 @@ onMounted(() => {
   }
 
   loadIntegrations();
+  loadNotificationPreference();
 });
 
 watch(
   () => currentSpace.value?.id,
   () => {
     loadIntegrations();
+    loadNotificationPreference();
   },
 );
 </script>
@@ -322,6 +371,55 @@ watch(
               </div>
             </a-popover>
           </a-popover-trigger>
+        </div>
+      </section>
+    </template>
+
+    <!-- Notifications tab -->
+    <template #notifications>
+      <section>
+        <div class="mb-3">
+          <p class="text-size-small text-neutral-500">
+            {{ t("Manage notifications for the current space.") }}
+          </p>
+        </div>
+
+        <div
+          v-if="notificationPreferenceError"
+          class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-size-small text-red-600"
+        >
+          {{ notificationPreferenceError }}
+        </div>
+
+        <div
+          v-if="!currentSpace?.id"
+          class="rounded-lg border border-dashed border-neutral-200 p-5 text-center text-size-small text-neutral-500"
+        >
+          {{ t("Open a space to manage notifications.") }}
+        </div>
+        <div
+          v-else-if="isLoadingNotificationPreference"
+          class="rounded-lg border border-neutral-100 p-5 text-center text-size-small text-neutral-500"
+        >
+          {{ t("Loading...") }}
+        </div>
+        <div
+          v-else
+          class="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-background p-3"
+        >
+          <div>
+            <p class="text-size-small font-medium text-foreground">
+              {{ t("Mute space notifications") }}
+            </p>
+            <p class="mt-0.5 text-label text-neutral-500">
+              {{ t("Stop email notifications from this space.") }}
+            </p>
+          </div>
+          <SwitchToggle
+            :model-value="spaceNotificationsMuted"
+            :disabled="isUpdatingNotificationPreference"
+            @update:model-value="setSpaceNotificationsMuted"
+          />
         </div>
       </section>
     </template>
