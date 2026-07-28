@@ -48,6 +48,7 @@ const documentId = computed(() => documentContext.value.documentId);
 const documentType = computed(() => documentContext.value.documentType);
 
 const isCreatingToken = ref(false);
+const isDuplicating = ref(false);
 const showShareDialog = ref(false);
 const emailMuted = ref(false);
 const emailPreferenceLoaded = ref(false);
@@ -240,6 +241,7 @@ onUnmounted(() => {
   Actions.unregister("document:share");
   Actions.unregister("document:mute-email");
   Actions.unregister("document:unmute-email");
+  Actions.unregister("document:duplicate");
 });
 
 function runContextMenuAction(e: Event, name: string) {
@@ -341,6 +343,37 @@ watchEffect(() => {
       });
     }
   }
+});
+
+watchEffect(() => {
+  Actions.unregister("document:duplicate");
+
+  const spaceId = currentSpaceId.value;
+  const currentDocumentId = documentId.value;
+  if (!userCanManageDocument.value || !spaceId || !currentDocumentId) return;
+
+  Actions.register("document:duplicate", {
+    title: t("Duplicate Document"),
+    icon: () => "copy",
+    description: t("Create a new document with this document's content"),
+    group: "document",
+    order: 25,
+    run: async () => {
+      if (isDuplicating.value) return;
+
+      isDuplicating.value = true;
+      try {
+        const source = await api.document.get(spaceId, currentDocumentId);
+        const duplicate = await api.documents.post(spaceId, {
+          content: source.content,
+          ...(source.type ? { type: source.type } : {}),
+        });
+        await router.push(`/doc/${duplicate.slug}`);
+      } finally {
+        isDuplicating.value = false;
+      }
+    },
+  });
 });
 
 watchEffect(() => {
