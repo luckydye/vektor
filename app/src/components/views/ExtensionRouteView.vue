@@ -31,7 +31,7 @@ usePageTitle(() => match.value?.route.title ?? null);
 </script>
 
 <template>
-  <div class="min-h-screen h-full flex flex-col relative overflow-x-hidden">
+  <div class="h-dvh flex flex-col relative overflow-x-hidden">
     <inset-view
       class="block overflow-hidden h-full relative flex-1 md:ml-(--inset-left) my-1.5 md:mr-(--inset-right)"
     >
