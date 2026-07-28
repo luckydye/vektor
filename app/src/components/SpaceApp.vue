@@ -12,7 +12,9 @@ import { useQueryClient } from "#composeables/query.ts";
 import { provideDocumentContext } from "#composeables/useDocument.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { extensions } from "#extensions/manager.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
 import { currentLang, languageInjectionKey } from "#utils/lang.ts";
@@ -194,6 +196,13 @@ const { pathname } = useRoute();
 const { currentSpaceId, currentSpace, spaceNotFound } = useSpace(activeSpaceId);
 const documentContext = provideDocumentContext();
 const isMobileSidebarOpen = ref(false);
+
+useSync(currentSpaceId, [realtimeTopics.extensions], (topics) => {
+  if (!topics.includes(realtimeTopics.extensions) || !currentSpaceId.value) return;
+
+  queryClient.invalidateQueries({ queryKey: ["extensions", currentSpaceId.value] });
+  void extensions.refresh(currentSpaceId.value).catch(console.error);
+});
 
 const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
 const initialLayoutStyle = {

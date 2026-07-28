@@ -39,6 +39,7 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.categoryDocuments,
   realtimeTopics.documentTree,
   realtimeTopics.documents,
+  realtimeTopics.extensions,
   realtimeTopics.properties,
   realtimeTopics.workflowRuns,
 ]);

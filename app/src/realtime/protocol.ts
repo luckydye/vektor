@@ -4,6 +4,8 @@ export const realtimeTopics = {
   categoryDocuments: "space:category-documents",
   documentTree: "space:document-tree",
   documents: "space:documents",
+  /** Installed extensions or their enabled state changed. */
+  extensions: "space:extensions",
   properties: "space:properties",
   document: (documentId: string) => `document:${documentId}`,
   /** Any workflow run in the space changed (list views) */

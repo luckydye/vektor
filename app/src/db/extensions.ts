@@ -11,6 +11,8 @@ import {
 } from "#extensions/manifest.ts";
 import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
 import { appLogger } from "#observability/logger.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 
@@ -186,6 +188,8 @@ export async function createExtension(
     createdBy: userId,
   });
 
+  sendSyncEvent(spaceId, realtimeTopics.extensions);
+
   return {
     id: extensionId,
     manifest,
@@ -232,6 +236,8 @@ export async function updateExtension(
       updatedAt: now,
     })
     .where(eq(extension.id, extensionId));
+
+  sendSyncEvent(spaceId, realtimeTopics.extensions);
 
   const manifest = extractManifest(packageBuffer);
   return {
@@ -283,6 +289,8 @@ export async function setExtensionEnabled(
     })
     .where(eq(extension.id, extensionId));
 
+  sendSyncEvent(spaceId, realtimeTopics.extensions);
+
   const result = safeExtractManifest(existing.package, extensionId);
   if (!result.manifest) {
     return null;
@@ -327,6 +335,10 @@ export async function deleteExtension(
     .delete(extension)
     .where(eq(extension.id, extensionId))
     .returning({ id: extension.id });
+
+  if (result.length > 0) {
+    sendSyncEvent(spaceId, realtimeTopics.extensions);
+  }
 
   return result.length > 0;
 }

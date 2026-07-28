@@ -226,6 +226,23 @@ export class Extensions {
     return result.extensions;
   }
 
+  /**
+   * Reconcile the loaded runtime with the latest space extension manifests.
+   * Called after the space-wide extensions realtime event so navigation and
+   * extension routes update without a page reload.
+   */
+  async refresh(spaceId: string): Promise<void> {
+    if (this.spaceId !== spaceId) return;
+
+    // Do not race an initial cached/remote reconciliation with a realtime
+    // event received while the connection is coming up.
+    await this.initPromise;
+    if (this.spaceId !== spaceId) return;
+
+    const extensionInfos = await this.fetchExtensions(spaceId);
+    await this.loadExtensions(extensionInfos, { reconcile: true, reloadUpdated: true });
+  }
+
   private notifyExtensionsLoaded(): void {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("extensions:loaded"));
@@ -234,13 +251,22 @@ export class Extensions {
 
   private async loadExtensions(
     extensionInfos: ExtensionInfo[],
-    options?: { reconcile?: boolean },
+    options?: { reconcile?: boolean; reloadUpdated?: boolean },
   ): Promise<void> {
     if (options?.reconcile) {
       const currentIds = new Set(extensionInfos.map((extension) => extension.id));
       for (const extensionId of [...this.loaded.keys()]) {
         if (!currentIds.has(extensionId)) {
           await this.unloadExtension(extensionId);
+        }
+      }
+    }
+
+    if (options?.reloadUpdated) {
+      for (const info of extensionInfos) {
+        const loaded = this.loaded.get(info.id);
+        if (loaded && loaded.info.updatedAt !== info.updatedAt) {
+          await this.unloadExtension(info.id);
         }
       }
     }
