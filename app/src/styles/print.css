@@ -1,10 +1,16 @@
 @media print {
-  /* hide everything that is not a descendent of .main-content */
-  :not(.main-content, body, html, body > div):not(.main-content *) {
+  /*
+   * Keep the app shell's ancestors visible. Astro wraps the Vue app in an
+   * <astro-island>; hiding it also hides .main-content and therefore the
+   * document, even though .main-content itself is excluded below.
+   */
+  astro-island > :not(#root),
+  #root > :not(.main-content) {
     display: none !important;
   }
-  /*and this*/
+
   #app-header,
+  #toast-container,
   #document-properties,
   #document-footer,
   #document-actions {
