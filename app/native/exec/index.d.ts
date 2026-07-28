@@ -30,7 +30,7 @@ export function evalJsSync(
 // ──────────────────────────────────────────────────────────────────────────────
 
 export interface VmOptions {
-  /** Wall-clock ceiling for the whole run. Default 15 minutes. */
+  /** Inactivity ceiling for the run. Host-side log activity renews it. */
   timeoutMs?: number;
   /** Loop iterations allowed per call frame; bounds runaway loops. Default 50M. */
   loopIterationLimit?: number;
@@ -78,6 +78,9 @@ export function vmResolve(id: number, callId: string, value: unknown): void;
 
 /** Reject a pending host call; guest code sees a thrown Error. */
 export function vmReject(id: number, callId: string, message: string): void;
+
+/** Renew a VM's inactivity deadline. Unknown ids are ignored. */
+export function vmTouch(id: number): void;
 
 /**
  * Ask a VM to stop. In-flight calls reject with "cancelled" so the script can

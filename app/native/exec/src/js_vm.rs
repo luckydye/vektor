@@ -42,8 +42,8 @@ use serde_json::Value as Json;
 
 use crate::marshal::{base64_decode, base64_encode, js_to_json, json_to_js, read_bytes};
 
-/// Default wall-clock ceiling for one VM (15 minutes), matching the previous
-/// job timeout.
+/// Default inactivity ceiling for one VM (15 minutes). Host-side log activity
+/// renews this deadline, so a job that is still reporting progress may continue.
 const DEFAULT_TIMEOUT_MS: u64 = 15 * 60 * 1000;
 /// Loop iterations allowed per call frame. Boa counts back-edges per frame, so
 /// this is a per-function budget, not a whole-program one. Well above anything
@@ -60,6 +60,7 @@ const DEFAULT_LOOP_ITERATION_LIMIT: u64 = 50_000_000;
 pub enum VmCommand {
     Resolve { call_id: String, value: Json },
     Reject { call_id: String, message: String },
+    Touch,
     Abort,
 }
 
@@ -445,7 +446,7 @@ pub fn run_vm(
     cmd_rx: Receiver<VmCommand>,
     emit: impl Fn(VmEventKind) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_millis(config.timeout_ms);
+    let mut deadline = Instant::now() + Duration::from_millis(config.timeout_ms);
 
     let mut vm = match Vm::new(&prelude, &code, &inputs, &config) {
         Ok(vm) => vm,
@@ -458,7 +459,11 @@ pub fn run_vm(
     loop {
         // Commands are applied before stepping so an abort takes effect promptly.
         match drain_commands(&mut vm, &cmd_rx) {
-            Drain::Ok => {}
+            Drain::Ok { touched } => {
+                if touched {
+                    deadline = Instant::now() + Duration::from_millis(config.timeout_ms);
+                }
+            }
             Drain::Aborted => {
                 unwind_and_fail(&mut vm, &emit, "cancelled".to_string());
                 return;
@@ -533,12 +538,16 @@ pub fn run_vm(
         // event-driven instead of a poll: an idle VM consumes nothing.
         let remaining = deadline.saturating_duration_since(Instant::now());
         match cmd_rx.recv_timeout(remaining) {
-            Ok(command) => {
-                if apply(&mut vm, command) {
+            Ok(command) => match apply(&mut vm, command) {
+                CommandEffect::Continue => {}
+                CommandEffect::Touched => {
+                    deadline = Instant::now() + Duration::from_millis(config.timeout_ms);
+                }
+                CommandEffect::Aborted => {
                     unwind_and_fail(&mut vm, &emit, "cancelled".to_string());
                     return;
                 }
-            }
+            },
             Err(RecvTimeoutError::Timeout) => {
                 let message = format!("timed out after {}ms", config.timeout_ms);
                 unwind_and_fail(&mut vm, &emit, message);
@@ -567,37 +576,46 @@ fn unwind_and_fail(vm: &mut Vm, emit: &impl Fn(VmEventKind) -> bool, message: St
 }
 
 enum Drain {
-    Ok,
+    Ok { touched: bool },
     Aborted,
     HostGone,
 }
 
 fn drain_commands(vm: &mut Vm, cmd_rx: &Receiver<VmCommand>) -> Drain {
+    let mut touched = false;
     loop {
         match cmd_rx.try_recv() {
-            Ok(command) => {
-                if apply(vm, command) {
-                    return Drain::Aborted;
-                }
-            }
-            Err(mpsc::TryRecvError::Empty) => return Drain::Ok,
+            Ok(command) => match apply(vm, command) {
+                CommandEffect::Continue => {}
+                CommandEffect::Touched => touched = true,
+                CommandEffect::Aborted => return Drain::Aborted,
+            },
+            Err(mpsc::TryRecvError::Empty) => return Drain::Ok { touched },
             Err(mpsc::TryRecvError::Disconnected) => return Drain::HostGone,
         }
     }
 }
 
-/// Apply one command. Returns true if it was an abort.
-fn apply(vm: &mut Vm, command: VmCommand) -> bool {
+/// The effect a host command has on the VM driver.
+enum CommandEffect {
+    Continue,
+    Touched,
+    Aborted,
+}
+
+/// Apply one command.
+fn apply(vm: &mut Vm, command: VmCommand) -> CommandEffect {
     match command {
         VmCommand::Resolve { call_id, value } => {
             vm.resolve(&call_id, value);
-            false
+            CommandEffect::Continue
         }
         VmCommand::Reject { call_id, message } => {
             vm.reject(&call_id, &message);
-            false
+            CommandEffect::Continue
         }
-        VmCommand::Abort => true,
+        VmCommand::Touch => CommandEffect::Touched,
+        VmCommand::Abort => CommandEffect::Aborted,
     }
 }
 

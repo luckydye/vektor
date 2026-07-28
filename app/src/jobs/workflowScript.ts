@@ -59,6 +59,15 @@ export async function executeWorkflowScript(
   const seedCache = options?.seedCache ?? {};
   const runtimeInputs = options?.runtimeInputs ?? {};
   const stepCache = createStepCacheWriter(seedCache);
+  let touchWorkflowVm: (() => void) | undefined;
+
+  // Nested jobs report to the workflow log directly, rather than through the
+  // parent VM. Forward that activity to the parent so its inactivity deadline
+  // reflects progress anywhere in the workflow tree.
+  const appendWorkflowLog = (message: string): void => {
+    appendRunLog(runId, message);
+    touchWorkflowVm?.();
+  };
 
   // Persist the exact inputs up front so a retry reproduces the script's `input`
   // faithfully — the copy on the run document is summarized for display and is
@@ -66,8 +75,7 @@ export async function executeWorkflowScript(
   const persistResumeState = async () => {
     const dropped = stepCache.droppedSteps();
     if (dropped > 0) {
-      appendRunLog(
-        runId,
+      appendWorkflowLog(
         `resume: ${dropped} step result(s) exceeded the cache budget and will re-run on retry`,
       );
     }
@@ -104,8 +112,7 @@ export async function executeWorkflowScript(
     // Resume: replay a prior run's successful output without re-executing.
     const cached = seedCache[cacheKey];
     if (cached) {
-      appendRunLog(
-        runId,
+      appendWorkflowLog(
         `[${extensionId}/${workflowJobId}] resume: replayed cached result (skipped)`,
       );
       return cached;
@@ -129,7 +136,7 @@ export async function executeWorkflowScript(
       jobDef.entry,
       jobInputs,
       spaceId,
-      (message) => appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${message}`),
+      (message) => appendWorkflowLog(`[${extensionId}/${workflowJobId}] ${message}`),
       {
         signal: controller.signal,
         initiatedByUserId: run.initiatedByUserId,
@@ -158,7 +165,10 @@ export async function executeWorkflowScript(
       jobId: `workflow:${runId}`,
       initiatedByUserId: run.initiatedByUserId,
       inputs: runtimeInputs,
-      onLog: (message) => appendRunLog(runId, message),
+      onLog: appendWorkflowLog,
+      onVmReady: (touch) => {
+        touchWorkflowVm = touch;
+      },
       signal: controller.signal,
       extraCapabilities: { runJob: runWorkflowJob as never },
     });
@@ -169,7 +179,7 @@ export async function executeWorkflowScript(
     await finalizeRun(runId);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    appendRunLog(runId, error);
+    appendWorkflowLog(error);
     setRunError(runId, error);
     setRunStatus(runId, "failed");
     // Persist whatever completed so a retry can resume past these steps. This

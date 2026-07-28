@@ -22,7 +22,7 @@ export function createBoaRuntime(): JobRuntime {
       code: string,
       context: JobRunContext,
     ): Promise<Record<string, unknown>> {
-      const { vmCreate, vmDestroy, vmReject, vmResolve } = await getNativeExec();
+      const { vmCreate, vmDestroy, vmReject, vmResolve, vmTouch } = await getNativeExec();
 
       /**
        * Where `output(...)` lands.
@@ -76,6 +76,9 @@ export function createBoaRuntime(): JobRuntime {
             switch (event.type) {
               case "log":
                 context.onLog(event.message ?? "");
+                // A guest log is observable proof of progress, so it renews the
+                // inactivity timeout even if the next host call takes a while.
+                if (vmId !== null) vmTouch(vmId);
                 return;
 
               case "call": {
@@ -131,6 +134,9 @@ export function createBoaRuntime(): JobRuntime {
               { timeoutMs: context.timeoutMs },
               onEvent,
             );
+            context.onVmReady?.(() => {
+              if (vmId !== null && !settled) vmTouch(vmId);
+            });
           } catch (error) {
             finish(() =>
               reject(error instanceof Error ? error : new Error(String(error))),

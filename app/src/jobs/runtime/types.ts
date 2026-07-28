@@ -26,6 +26,8 @@ export interface JobRunContext {
   /** Becomes the guest's `input` global. */
   inputs: Record<string, unknown>;
   onLog: (message: string) => void;
+  /** Provides a way for the host to renew this run's inactivity deadline. */
+  onVmReady?: (touch: () => void) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
   /**

@@ -86,7 +86,7 @@ pub fn eval_js_sync(
 
 #[napi(object)]
 pub struct VmOptions {
-    /// Wall-clock ceiling for the whole run. Default 15 minutes.
+    /// Inactivity ceiling for the run. Host-side log activity renews it.
     pub timeout_ms: Option<u32>,
     /// Loop iterations allowed per call frame; bounds runaway loops.
     pub loop_iteration_limit: Option<u32>,
@@ -214,6 +214,12 @@ pub fn vm_resolve(id: u32, call_id: String, value: Json) {
 #[napi]
 pub fn vm_reject(id: u32, call_id: String, message: String) {
     send_command(id, VmCommand::Reject { call_id, message });
+}
+
+/// Renew a VM's inactivity deadline. Unknown ids are ignored.
+#[napi]
+pub fn vm_touch(id: u32) {
+    send_command(id, VmCommand::Touch);
 }
 
 /// Ask a VM to stop. In-flight calls reject with "cancelled" so the script can
