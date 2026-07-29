@@ -106,12 +106,35 @@ function hasBlockChild(element: HTMLDivElement): boolean {
 function normalizeHtmlNodes(nodes: Iterable<Element>): string {
   const html: string[] = [];
   let bullets: RichClipboardBullet[] = [];
+  let list: { tagName: "ol" | "ul"; content: string } | null = null;
   const flushBullets = () => {
     if (bullets.length) html.push(renderBulletList(bullets));
     bullets = [];
   };
+  const flushList = () => {
+    if (list) html.push(`<${list.tagName}>${list.content}</${list.tagName}>`);
+    list = null;
+  };
 
   for (const node of nodes) {
+    const tagName = node.tagName.toLowerCase();
+    if (tagName === "ul" || tagName === "ol") {
+      flushBullets();
+      if (list?.tagName === tagName) {
+        list.content += node.innerHTML;
+      } else {
+        flushList();
+        list = { tagName, content: node.innerHTML };
+      }
+      continue;
+    }
+
+    // Rich clipboard HTML often uses a <br> only to separate adjacent block
+    // elements. Keeping it creates an empty paragraph in addition to the
+    // normal margins of the surrounding blocks.
+    if (tagName === "br") continue;
+
+    flushList();
     if (node instanceof HTMLDivElement) {
       const content = bulletContent(node);
       if (content) {
@@ -122,10 +145,11 @@ function normalizeHtmlNodes(nodes: Iterable<Element>): string {
         continue;
       }
 
-      flushBullets();
       if (hasBlockChild(node)) {
+        flushBullets();
         html.push(normalizeHtmlNodes(node.children));
       } else {
+        flushBullets();
         // Rich-text producers commonly use divs for ordinary paragraphs. Keep
         // their inline marks but drop the wrapper before the document parser
         // can turn it into an HTML block.
@@ -139,6 +163,7 @@ function normalizeHtmlNodes(nodes: Iterable<Element>): string {
   }
 
   flushBullets();
+  flushList();
   return html.join("");
 }
 
