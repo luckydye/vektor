@@ -114,6 +114,36 @@ function previewHtml(preview: ChangePreview | null): string {
     </tr>`;
 }
 
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const firstInitial = parts[0]?.[0] ?? "?";
+  return parts.length === 1 ? firstInitial : `${firstInitial}${parts.at(-1)?.[0] ?? ""}`;
+}
+
+function commentHtml(params: {
+  actorName: string;
+  actorImage?: string | null;
+  comment: string;
+}): string {
+  const { actorName, comment } = params;
+  const image = params.actorImage?.trim();
+  const avatar = image
+    ? `<img src="${escapeHtml(image)}" alt="" width="28" height="28" style="display:block;width:28px;height:28px;border-radius:50%;object-fit:cover;">`
+    : `<table role="presentation" width="28" height="28" cellspacing="0" cellpadding="0" border="0" style="width:28px;height:28px;border-radius:50%;background:#d6bfde;"><tr><td align="center" valign="middle" style="height:28px;color:#78378f;font:700 11px/11px ${EMAIL_FONT};text-align:center;vertical-align:middle;">${escapeHtml(initials(actorName).toUpperCase())}</td></tr></table>`;
+
+  return `<tr>
+    <td style="padding:0 32px 24px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td width="28" valign="top" style="padding:2px 10px 0 0;">${avatar}</td>
+          <td valign="top"><p style="margin:0 0 3px;color:#141414;font:600 13px/18px ${EMAIL_FONT};">${escapeHtml(actorName)}</p><div style="color:#3d3d3d;font:14px/22px ${EMAIL_FONT};white-space:pre-wrap;">${escapeHtml(comment)}</div></td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
 function emailHtml(params: {
   eyebrow: string;
   heading: string;
@@ -175,6 +205,7 @@ export function renderNotificationEmail(params: {
   spaceName: string;
   documentUrl: string;
   commentContent?: string | null;
+  actorImage?: string | null;
   previousPublishedContent?: string | null;
   publishedContent?: string | null;
 }): { subject: string; text: string; html: string } {
@@ -198,7 +229,7 @@ export function renderNotificationEmail(params: {
         spaceName,
         documentUrl,
         content: comment
-          ? `<tr><td style="padding:0 32px 24px;"><p style="margin:0 0 8px;color:#6e6e6e;font:600 12px/18px ${EMAIL_FONT};letter-spacing:.04em;text-transform:uppercase;">Comment</p><div style="padding:14px 16px;border:1px solid #e8e8e8;border-radius:6px;background:#f9f9f9;color:#3d3d3d;font:14px/22px ${EMAIL_FONT};white-space:pre-wrap;">${escapeHtml(comment)}</div></td></tr>`
+          ? commentHtml({ actorName, actorImage: params.actorImage, comment })
           : "",
       }),
     };

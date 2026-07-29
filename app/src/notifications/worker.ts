@@ -34,6 +34,17 @@ function documentUrl(spaceSlug: string, documentSlug: string): string {
   ).toString();
 }
 
+function emailImageUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const origin = config().SITE_URL || config().API_URL || getLocalOrigin();
+  try {
+    const url = new URL(value, origin);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 async function deliver(
   spaceId: string,
   notification: EmailNotificationOutbox,
@@ -69,7 +80,7 @@ async function deliver(
       .where(eq(user.id, notification.recipientUserId))
       .get(),
     authDb
-      .select({ name: user.name, email: user.email })
+      .select({ name: user.name, email: user.email, image: user.image })
       .from(user)
       .where(eq(user.id, notification.actorId))
       .get(),
@@ -117,6 +128,7 @@ async function deliver(
   const rendered = renderNotificationEmail({
     notification,
     actorName: actor?.name || actor?.email || "Someone",
+    actorImage: emailImageUrl(actor?.image),
     documentTitle: title || "Untitled",
     spaceName: space.name,
     documentUrl: documentUrl(space.slug, doc.slug),
