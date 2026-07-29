@@ -5,6 +5,7 @@ import {
   Feature,
   grantFeature,
   grantPermission,
+  listAllRolePermissions,
   listFeaturePermissions,
   listPermissions,
   ResourceType,
@@ -37,14 +38,18 @@ export const GET: ApiRouteHandler = (context) =>
       (new URL(context.req.url).searchParams.get("resourceType") as ResourceType) ||
       ResourceType.SPACE;
     const resourceId = new URL(context.req.url).searchParams.get("resourceId") || spaceId;
+    const allResources =
+      new URL(context.req.url).searchParams.get("allResources") === "true";
 
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await verifySpaceRole(spaceId, user.id, allResources ? "owner" : "editor");
 
     const permissions: Array<{ type: string; permission: unknown }> = [];
 
     // Get role permissions (space members)
     if (typeFilter === "all" || typeFilter === "role") {
-      const rolePermissions = await listPermissions(spaceId, resourceType, resourceId);
+      const rolePermissions = allResources
+        ? await listAllRolePermissions(spaceId)
+        : await listPermissions(spaceId, resourceType, resourceId);
       permissions.push(
         ...rolePermissions.map((p) => ({
           type: "role" as const,

@@ -15,8 +15,6 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 import { slugify } from "#utils/utils.ts";
 import {
   filterReadableResources,
-  grantPermission,
-  Permission,
   ResourceType,
 } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
@@ -195,16 +193,6 @@ export async function createDocument(
       updatedAt: now,
     });
   }
-
-  await grantPermission(
-    spaceId,
-    ResourceType.DOCUMENT,
-    id,
-    createdBy,
-    Permission.OWNER,
-    undefined,
-    createdBy,
-  );
 
   await updateDocumentEmbeddingBestEffort(spaceId, id);
 

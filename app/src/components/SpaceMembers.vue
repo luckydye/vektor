@@ -33,6 +33,7 @@ const updatingMember = ref(null);
 const removingMember = ref(null);
 const usersMap = ref(new Map());
 const categories = ref([]);
+const documents = ref([]);
 const loadingUsers = ref(false);
 const copiedUserId = ref(null);
 
@@ -43,32 +44,35 @@ async function fetchPermissions() {
   error.value = null;
 
   try {
-    const [spaceResponse, categoryList] = await Promise.all([
-      api.permissions.list(currentSpace.value.id, "role"),
+    const [spaceResponse, categoryList, documentList] = await Promise.all([
+      api.permissions.list(currentSpace.value.id, "role", { allResources: true }),
       api.categories.get(currentSpace.value.id),
+      fetchAllDocuments(currentSpace.value.id),
     ]);
 
     categories.value = categoryList?.categories || [];
+    documents.value = documentList;
 
-    const categoryResponses = await Promise.all(
-      categories.value.map((category) =>
-        api.permissions.list(currentSpace.value.id, "role", {
-          resourceType: "category",
-          resourceId: category.id,
-        }),
-      ),
-    );
-
-    permissions.value = [
-      ...(spaceResponse.permissions || []),
-      ...categoryResponses.flatMap((response) => response.permissions || []),
-    ];
+    permissions.value = spaceResponse.permissions || [];
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to fetch permissions";
     console.error("Failed to fetch permissions:", err);
   } finally {
     isLoading.value = false;
   }
+}
+
+async function fetchAllDocuments(spaceId) {
+  const documents = [];
+  let cursor;
+
+  do {
+    const response = await api.documents.get(spaceId, { limit: 500, cursor });
+    documents.push(...response.documents);
+    cursor = response.nextCursor || undefined;
+  } while (cursor);
+
+  return documents;
 }
 
 async function fetchUsers() {
@@ -116,6 +120,64 @@ watch(showAddMember, (isOpen) => {
 
 const rolePermissions = computed(() => {
   return permissions.value.filter((p) => p.type === "role") || [];
+});
+
+const memberAccess = computed(() => {
+  const accessByMember = new Map();
+
+  for (const perm of rolePermissions.value) {
+    const memberId = perm.permission.userId || perm.permission.groupId;
+    if (!memberId) continue;
+
+    const key = `${perm.permission.userId ? "user" : "group"}:${memberId}`;
+    const existing = accessByMember.get(key);
+    if (existing) {
+      existing.grants.push(perm);
+      continue;
+    }
+
+    accessByMember.set(key, {
+      key,
+      primaryPermission: perm,
+      grants: [perm],
+    });
+  }
+
+  return [...accessByMember.values()]
+    .map((member) => {
+      const spaceGrant = member.grants.find(
+        (grant) =>
+          !grant.permission.resourceType || grant.permission.resourceType === "space",
+      );
+      const categoryGrants = member.grants.filter(
+        (grant) => grant.permission.resourceType === "category",
+      );
+
+      return {
+        ...member,
+        spaceGrant,
+        categoryGrants,
+        highestRole: getHighestRole(member.grants),
+      };
+    })
+    .sort((a, b) => getMemberName(a.primaryPermission).localeCompare(getMemberName(b.primaryPermission)));
+});
+
+const expandedMembers = ref(new Set());
+
+const documentsById = computed(
+  () => new Map(documents.value.map((document) => [document.id, document])),
+);
+
+const documentsByCategoryId = computed(() => {
+  return new Map(
+    categories.value.map((category) => [
+      category.id,
+      documents.value.filter((document) =>
+        documentBelongsToCategory(document, category.slug, documentsById.value),
+      ),
+    ]),
+  );
 });
 
 async function handleAddMember(e) {
@@ -241,6 +303,132 @@ function getRoleBadgeClass(role) {
   return classes[role] || classes.viewer;
 }
 
+function getHighestRole(grants) {
+  const hierarchy = { viewer: 1, editor: 2, owner: 3 };
+  return grants.reduce(
+    (highest, grant) =>
+      hierarchy[grant.permission.permission] > hierarchy[highest]
+        ? grant.permission.permission
+        : highest,
+    "viewer",
+  );
+}
+
+function getAccessSummary(member) {
+  if (member.spaceGrant) return "Entire space";
+  if (member.categoryGrants.length > 0) {
+    const count = member.categoryGrants.length;
+    return `${count} categor${count === 1 ? "y" : "ies"}`;
+  }
+  const count = member.grants.filter((grant) =>
+    ["document", "document_tree"].includes(grant.permission.resourceType),
+  ).length;
+  if (count > 0) return `${count} page${count === 1 ? "" : "s"}`;
+  return `${member.grants.length} resource${member.grants.length === 1 ? "" : "s"}`;
+}
+
+function getAccessDetail(member) {
+  if (member.spaceGrant && member.categoryGrants.length > 0) {
+    return `Plus ${member.categoryGrants.length} category override${member.categoryGrants.length === 1 ? "" : "s"}`;
+  }
+  if (member.spaceGrant) return "Space-wide access";
+  if (member.categoryGrants.length > 0) return "Category-scoped access";
+  if (member.grants.some((grant) => ["document", "document_tree"].includes(grant.permission.resourceType))) {
+    return "Page-scoped access";
+  }
+  return "Resource-scoped access";
+}
+
+function documentBelongsToCategory(document, categorySlug, documentsById) {
+  const seen = new Set();
+  let current = document;
+
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    const categoryValues = [current.properties?.category, current.properties?.collection]
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .filter(Boolean);
+
+    if (categoryValues.includes(categorySlug)) return true;
+    current = current.parentId ? documentsById.get(current.parentId) : undefined;
+  }
+
+  return false;
+}
+
+function getAccessibleResourceGroups(member) {
+  if (member.spaceGrant) return [];
+
+  const categoryGroups = member.categoryGrants.map((grant) => {
+    const category = categories.value.find(
+      (item) => item.id === grant.permission.resourceId,
+    );
+    return {
+      id: grant.permission.resourceId,
+      label: category?.name || "Category",
+      documents: documentsByCategoryId.value.get(grant.permission.resourceId) || [],
+    };
+  });
+
+  const documentGroups = member.grants
+    .filter((grant) => ["document", "document_tree"].includes(grant.permission.resourceType))
+    .map((grant) => {
+      const root = documentsById.value.get(grant.permission.resourceId);
+      const isTree = grant.permission.resourceType === "document_tree";
+      return {
+        id: `${grant.permission.resourceType}:${grant.permission.resourceId}`,
+        label: `${isTree ? "Page tree" : "Page"}: ${root ? getDocumentLabel(root) : grant.permission.resourceId}`,
+        documents: root
+          ? isTree
+            ? documents.value.filter((document) =>
+                documentIsInTree(document, root.id, documentsById.value),
+              )
+            : [root]
+          : [],
+      };
+    });
+
+  return [...categoryGroups, ...documentGroups];
+}
+
+function getAccessibleDocumentCount(member) {
+  return new Set(
+    getAccessibleResourceGroups(member).flatMap((group) => group.documents.map((document) => document.id)),
+  ).size;
+}
+
+function getDocumentLabel(document) {
+  const title = document.properties?.title || document.properties?.name;
+  return Array.isArray(title) ? title[0] : title || document.slug;
+}
+
+function documentIsInTree(document, rootId, documentsById) {
+  const seen = new Set();
+  let current = document;
+
+  while (current && !seen.has(current.id)) {
+    if (current.id === rootId) return true;
+    seen.add(current.id);
+    current = current.parentId ? documentsById.get(current.parentId) : undefined;
+  }
+
+  return false;
+}
+
+function hasMixedRoles(member) {
+  return new Set(member.grants.map((grant) => grant.permission.permission)).size > 1;
+}
+
+function toggleMemberDetails(memberKey) {
+  const next = new Set(expandedMembers.value);
+  if (next.has(memberKey)) {
+    next.delete(memberKey);
+  } else {
+    next.add(memberKey);
+  }
+  expandedMembers.value = next;
+}
+
 function canEditMember(userId, perm) {
   if (user.value.id === userId) {
     return false;
@@ -251,7 +439,10 @@ function canEditMember(userId, perm) {
   }
 
   const currentUserPerm = permissions.value.find(
-    (p) => p.type === "role" && p.permission.userId === user.value.id,
+    (p) =>
+      p.type === "role" &&
+      p.permission.userId === user.value.id &&
+      p.permission.resourceType === "space",
   );
   if (!currentUserPerm) {
     return false;
@@ -294,7 +485,10 @@ function canRemoveMember(perm) {
   }
 
   const currentUserPerm = permissions.value.find(
-    (p) => p.type === "role" && p.permission.userId === user.value.id,
+    (p) =>
+      p.type === "role" &&
+      p.permission.userId === user.value.id &&
+      p.permission.resourceType === "space",
   );
   if (!currentUserPerm) {
     return false;
@@ -345,6 +539,14 @@ function getResourceLabel(perm) {
     const category = categories.value.find((c) => c.id === perm.permission.resourceId);
     return category ? `Category: ${category.name}` : "Category";
   }
+  if (perm.permission.resourceType === "document") {
+    const document = documentsById.value.get(perm.permission.resourceId);
+    return `Page: ${document ? getDocumentLabel(document) : perm.permission.resourceId}`;
+  }
+  if (perm.permission.resourceType === "document_tree") {
+    const document = documentsById.value.get(perm.permission.resourceId);
+    return `Page tree: ${document ? getDocumentLabel(document) : perm.permission.resourceId}`;
+  }
   return `${perm.permission.resourceType}: ${perm.permission.resourceId}`;
 }
 
@@ -380,7 +582,7 @@ async function copyMemberId(memberId) {
 
     <!-- Members List -->
     <div
-      v-if="!isLoading && !loadingUsers && rolePermissions.length > 0"
+      v-if="!isLoading && !loadingUsers && memberAccess.length > 0"
       class="overflow-x-auto border border-neutral-100 rounded-md"
     >
       <table class="min-w-full text-size-medium">
@@ -407,113 +609,177 @@ async function copyMemberId(memberId) {
               Role
             </th>
             <th
-              class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-            >
-              Added
-            </th>
-            <th
               class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide"
             >
-              Actions
+              Details
             </th>
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-          <tr
-            v-for="perm in rolePermissions"
-            :key="`${perm.permission.resourceType || 'space'}-${perm.permission.resourceId || currentSpace?.id}-${perm.permission.userId || perm.permission.groupId}`"
-            class="hover:bg-neutral-50"
-          >
-            <td class="px-4 py-2.5">
-              <div class="flex items-center gap-3">
-                <vektor-avatar
-                  v-if="perm.permission.userId"
-                  size="28"
-                  :user-id="perm.permission.userId"
-                  :user="getMemberUser(perm)"
-                />
-                <div
-                  v-else
-                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600"
-                >
-                  <div class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
-                </div>
-                <div>
-                  <div class="font-medium text-neutral-900">
-                    {{ getMemberName(perm) }}
-                  </div>
+          <template v-for="member in memberAccess" :key="member.key">
+            <tr class="hover:bg-neutral-50">
+              <td class="px-4 py-2.5">
+                <div class="flex items-center gap-3">
+                  <vektor-avatar
+                    v-if="member.primaryPermission.permission.userId"
+                    size="28"
+                    :user-id="member.primaryPermission.permission.userId"
+                    :user="getMemberUser(member.primaryPermission)"
+                  />
                   <div
-                    v-if="getMemberEmail(perm)"
-                    class="text-size-small text-neutral-500"
+                    v-else
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600"
                   >
-                    {{ getMemberEmail(perm) }}
+                    <div class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
                   </div>
+                  <div>
+                    <div class="font-medium text-neutral-900">
+                      {{ getMemberName(member.primaryPermission) }}
+                    </div>
+                    <div
+                      v-if="getMemberEmail(member.primaryPermission)"
+                      class="text-size-small text-neutral-500"
+                    >
+                      {{ getMemberEmail(member.primaryPermission) }}
+                    </div>
+                  </div>
+                  <button
+                    v-if="member.primaryPermission.permission.userId"
+                    type="button"
+                    :title="copiedUserId === member.primaryPermission.permission.userId ? 'Copied!' : 'Copy ID'"
+                    class="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
+                    @click="copyMemberId(member.primaryPermission.permission.userId)"
+                  >
+                    <div
+                      v-if="copiedUserId === member.primaryPermission.permission.userId"
+                      class="svg-icon w-3.5 h-3.5 text-green-600"
+                      v-html="confirmationIcon"
+                    />
+                    <div v-else class="svg-icon w-3.5 h-3.5" v-html="copyIcon" />
+                  </button>
                 </div>
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">
+                {{ getMemberType(member.primaryPermission) }}
+              </td>
+              <td class="px-4 py-2.5">
+                <div class="whitespace-nowrap font-medium text-neutral-800">
+                  {{ getAccessSummary(member) }}
+                </div>
+                <div class="text-size-small text-neutral-500">
+                  {{ getAccessDetail(member) }}
+                </div>
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap">
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-size-small font-medium"
+                  :class="getRoleBadgeClass(member.highestRole)"
+                >
+                  {{ hasMixedRoles(member) ? 'Mixed roles' : member.highestRole }}
+                </span>
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-right">
                 <button
                   type="button"
-                  v-if="perm.permission.userId"
-                  @click="copyMemberId(perm.permission.userId)"
-                  :title="copiedUserId === perm.permission.userId ? 'Copied!' : 'Copy ID'"
-                  class="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
+                  class="text-size-small text-neutral-600 hover:text-neutral-900"
+                  :aria-expanded="expandedMembers.has(member.key)"
+                  @click="toggleMemberDetails(member.key)"
                 >
-                  <div
-                    v-if="copiedUserId === perm.permission.userId"
-                    class="svg-icon w-3.5 h-3.5 text-green-600"
-                    v-html="confirmationIcon"
-                  />
-                  <div v-else class="svg-icon w-3.5 h-3.5" v-html="copyIcon" />
+                  {{ expandedMembers.has(member.key) ? 'Hide access' : `${member.grants.length} grant${member.grants.length === 1 ? '' : 's'}` }}
                 </button>
-              </div>
-            </td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">
-              {{ getMemberType(perm) }}
-            </td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">
-              {{ getResourceLabel(perm) }}
-            </td>
-            <td class="px-4 py-2.5 whitespace-nowrap">
-              <select
-                v-if="canEditMember(perm.permission.userId, perm)"
-                :value="perm.permission.permission"
-                @change="(e) => handleRoleChange(perm, e.target.value)"
-                class="text-size-medium border border-neutral-100 rounded-md px-2 py-1 focus-ring"
-                :disabled="updatingMember === (perm.permission.userId || perm.permission.groupId)"
-              >
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
-                <option value="owner">Owner</option>
-              </select>
-              <span
-                v-else
-                class="inline-flex items-center px-2 py-0.5 rounded-full text-size-small font-medium"
-                :class="getRoleBadgeClass(perm.permission.permission)"
-              >
-                {{ perm.permission.permission }}
-              </span>
-            </td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
-              {{ formatDate(perm.permission.createdAt) }}
-            </td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-right">
-              <button
-                type="button"
-                v-if="canRemoveMember(perm)"
-                @click="handleRemoveMember(perm)"
-                :disabled="removingMember === (perm.permission.userId || perm.permission.groupId)"
-                class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {{ removingMember === (perm.permission.userId || perm.permission.groupId) ? 'Removing...' : 'Remove' }}
-              </button>
-              <span v-else class="text-neutral-400">—</span>
-            </td>
-          </tr>
+              </td>
+            </tr>
+            <tr v-if="expandedMembers.has(member.key)" class="bg-neutral-50">
+              <td colspan="5" class="px-4 py-3">
+                <div class="ml-10 border-l-2 border-neutral-200 pl-4 space-y-2">
+                  <div
+                    v-for="grant in member.grants"
+                    :key="`${grant.permission.resourceType || 'space'}-${grant.permission.resourceId || currentSpace?.id}`"
+                    class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-background px-3 py-2 border border-neutral-100"
+                  >
+                    <div>
+                      <div class="font-medium text-neutral-900">{{ getResourceLabel(grant) }}</div>
+                      <div class="text-size-small text-neutral-500">
+                        Added {{ formatDate(grant.permission.createdAt) }}
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <select
+                        v-if="canEditMember(grant.permission.userId, grant)"
+                        :value="grant.permission.permission"
+                        :disabled="updatingMember === (grant.permission.userId || grant.permission.groupId)"
+                        class="text-size-medium border border-neutral-100 rounded-md px-2 py-1 focus-ring"
+                        @change="(e) => handleRoleChange(grant, e.target.value)"
+                      >
+                        <option value="viewer">Viewer</option>
+                        <option value="editor">Editor</option>
+                        <option value="owner">Owner</option>
+                      </select>
+                      <span
+                        v-else
+                        class="inline-flex items-center px-2 py-0.5 rounded-full text-size-small font-medium"
+                        :class="getRoleBadgeClass(grant.permission.permission)"
+                      >
+                        {{ grant.permission.permission }}
+                      </span>
+                      <button
+                        v-if="canRemoveMember(grant)"
+                        type="button"
+                        :disabled="removingMember === (grant.permission.userId || grant.permission.groupId)"
+                        class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        @click="handleRemoveMember(grant)"
+                      >
+                        {{ removingMember === (grant.permission.userId || grant.permission.groupId) ? 'Removing...' : 'Remove' }}
+                      </button>
+                    </div>
+                  </div>
+                  <details class="rounded-md border border-neutral-200 bg-background">
+                    <summary
+                      class="cursor-pointer px-3 py-2 text-size-small font-medium text-neutral-700 hover:bg-neutral-50"
+                    >
+                      {{ member.spaceGrant ? 'Accessible resources · Entire space' : `Accessible resources · ${getAccessibleDocumentCount(member)} pages` }}
+                    </summary>
+                    <div class="border-t border-neutral-100 p-3 space-y-3">
+                      <p v-if="member.spaceGrant" class="text-size-small text-neutral-600">
+                        This grant covers every resource in the space.
+                      </p>
+                      <div
+                        v-for="group in getAccessibleResourceGroups(member)"
+                        :key="group.id"
+                      >
+                        <div class="flex items-center justify-between text-size-small">
+                          <span class="font-medium text-neutral-800">{{ group.label }}</span>
+                          <span class="text-neutral-500">{{ group.documents.length }} pages</span>
+                        </div>
+                        <ul class="mt-1 divide-y divide-neutral-100 rounded-md border border-neutral-100">
+                          <li
+                            v-for="document in group.documents"
+                            :key="document.id"
+                            class="px-3 py-1.5 text-size-small text-neutral-700"
+                          >
+                            {{ getDocumentLabel(document) }}
+                          </li>
+                          <li
+                            v-if="group.documents.length === 0"
+                            class="px-3 py-1.5 text-size-small text-neutral-500"
+                          >
+                            No pages in this scope.
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
 
     <!-- Empty State -->
     <div
-      v-if="!isLoading && !loadingUsers && rolePermissions.length === 0"
+      v-if="!isLoading && !loadingUsers && memberAccess.length === 0"
       class="text-center py-12 border border-neutral-100 rounded-lg"
     >
       <div class="svg-icon mx-auto h-12 w-12 text-neutral-400" v-html="usersGroupIcon" />

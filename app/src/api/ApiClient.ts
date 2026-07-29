@@ -1187,12 +1187,14 @@ export class ApiClient {
       options?: {
         resourceType?: PermissionResourceType;
         resourceId?: string;
+        allResources?: boolean;
       },
     ) => {
       const query = new URLSearchParams();
       if (type && type !== "all") query.set("type", type);
       if (options?.resourceType) query.set("resourceType", options.resourceType);
       if (options?.resourceId) query.set("resourceId", options.resourceId);
+      if (options?.allResources) query.set("allResources", "true");
       const queryString = query.toString();
       const url = `/api/v1/spaces/${spaceId}/permissions${queryString ? `?${queryString}` : ""}`;
       return await this.apiGet<{

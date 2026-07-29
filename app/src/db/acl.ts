@@ -604,6 +604,24 @@ export async function listPermissions(
   }));
 }
 
+/** List every role grant in a space, including resource-scoped grants. */
+export async function listAllRolePermissions(spaceId: string): Promise<AclEntry[]> {
+  const db = await getSpaceDb(spaceId);
+  const results = await db.select().from(acl).all();
+
+  return results
+    .filter((row) => row.resourceType !== ResourceType.FEATURE)
+    .map((row) => ({
+      resourceType: row.resourceType,
+      resourceId: row.resourceId,
+      userId: row.userId || undefined,
+      groupId: row.groupId || undefined,
+      permission: row.permission,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    }));
+}
+
 export async function listUserPermissions(
   spaceId: string,
   userId: string,
