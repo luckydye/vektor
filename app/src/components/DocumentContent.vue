@@ -541,7 +541,7 @@ useSync(
 
     <div
       v-if="isMounted && documentType === 'canvas'"
-      class="h-[calc(100vh-4rem)] md:h-screen"
+      class="h-screen md:h-screen"
     >
       <Canvas
         :documentId="documentId"
