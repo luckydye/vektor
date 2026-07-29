@@ -60,6 +60,7 @@ import { HtmlBlock } from "./extensions/HtmlBlock.ts";
 import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
+import { RichClipboardPaste } from "./extensions/RichClipboardPaste.ts";
 import { TableReorder } from "./extensions/TableReorder.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
 import { TableEditing } from "./extensions/table.ts";
@@ -479,6 +480,7 @@ export function documentExtensions(
       documentId: documentId,
     }),
     CanvasClipboardPaste,
+    RichClipboardPaste,
     TableEditing,
     TableReorder,
     TaskItem.configure({ nested: true }).extend({
