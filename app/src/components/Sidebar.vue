@@ -54,6 +54,7 @@ const drawerOffset = ref(0);
 const drawerWidth = ref(initialSidebarWidth);
 const isDrawerDragging = ref(false);
 const drawerDragThreshold = 8;
+const androidBackGestureInset = 24;
 
 let holdsScrollLock = false;
 const setMobileOpen = (open: boolean) => {
@@ -82,12 +83,40 @@ function closeMobileDrawerOnDesktop() {
   if (!isMobileViewport() && isMobileOpen.value) setMobileOpen(false);
 }
 
-function startDrawerDrag(e: PointerEvent, startOffset: number) {
+function isAndroidBackGestureAt(clientX: number) {
+  return /Android/i.test(navigator.userAgent) && clientX < androidBackGestureInset;
+}
+
+function isInsideHorizontallyScrollableContent(targets: readonly EventTarget[]) {
+  return targets.some((target) => {
+    if (!(target instanceof Element)) return false;
+    const { overflowX } = getComputedStyle(target);
+    return (
+      (overflowX === "auto" || overflowX === "scroll") &&
+      target.scrollWidth > target.clientWidth
+    );
+  });
+}
+
+function isDrawerGestureControl(e: TouchEvent) {
+  return e.composedPath().some(
+    (target) =>
+      target instanceof Element &&
+      target.matches("a-track, input[type='range'], [role='slider']"),
+  );
+}
+
+function startDrawerDrag(
+  pointerId: number,
+  clientX: number,
+  clientY: number,
+  startOffset: number,
+) {
   if (!isMobileViewport()) return false;
 
-  drawerPointerId = e.pointerId;
-  drawerStartX = e.clientX;
-  drawerStartY = e.clientY;
+  drawerPointerId = pointerId;
+  drawerStartX = clientX;
+  drawerStartY = clientY;
   drawerStartOffset = startOffset;
   drawerOffset.value = startOffset;
   drawerWidth.value = mobileDrawerWidth();
@@ -96,38 +125,60 @@ function startDrawerDrag(e: PointerEvent, startOffset: number) {
   return true;
 }
 
-function startDrawerFromEdge(e: PointerEvent) {
-  if (!startDrawerDrag(e, 0)) return;
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+function startDrawerFromScreen(e: TouchEvent) {
+  const touch = e.changedTouches[0];
+  if (!touch || e.touches.length !== 1) return;
+  if (
+    isMobileOpen.value ||
+    isAndroidBackGestureAt(touch.clientX) ||
+    isDrawerGestureControl(e) ||
+    isInsideHorizontallyScrollableContent(e.composedPath())
+  ) {
+    return;
+  }
+  startDrawerDrag(touch.identifier, touch.clientX, touch.clientY, 0);
 }
 
-function startDrawerFromSidebar(e: PointerEvent) {
+function startDrawerFromSidebar(e: TouchEvent) {
   if (!isMobileOpen.value) return;
-  startDrawerDrag(e, mobileDrawerWidth());
+  const touch = e.changedTouches[0];
+  if (
+    !touch ||
+    e.touches.length !== 1 ||
+    isDrawerGestureControl(e) ||
+    isInsideHorizontallyScrollableContent(e.composedPath())
+  ) {
+    return;
+  }
+  startDrawerDrag(touch.identifier, touch.clientX, touch.clientY, mobileDrawerWidth());
 }
 
-function startDrawerFromContent(e: PointerEvent) {
-  if (!startDrawerDrag(e, mobileDrawerWidth())) return;
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+function startDrawerFromContent(e: TouchEvent) {
+  const touch = e.changedTouches[0];
+  if (!touch || e.touches.length !== 1) return;
+  startDrawerDrag(touch.identifier, touch.clientX, touch.clientY, mobileDrawerWidth());
 }
 
-function handleDrawerMove(e: PointerEvent) {
-  if (e.pointerId !== drawerPointerId) return;
+function moveDrawerDrag(pointerId: number, clientX: number, clientY: number) {
+  if (pointerId !== drawerPointerId) return false;
 
-  const deltaX = e.clientX - drawerStartX;
-  const deltaY = e.clientY - drawerStartY;
+  const deltaX = clientX - drawerStartX;
+  const deltaY = clientY - drawerStartY;
   if (!isDrawerDragging.value) {
     if (Math.abs(deltaY) > drawerDragThreshold && Math.abs(deltaY) > Math.abs(deltaX)) {
       drawerPointerId = null;
-      return;
+      return false;
     }
-    if (Math.abs(deltaX) < drawerDragThreshold) return;
+    if (Math.abs(deltaX) < drawerDragThreshold) return false;
+    const isOpening = drawerStartOffset === 0;
+    if ((isOpening && deltaX < 0) || (!isOpening && deltaX > 0)) {
+      drawerPointerId = null;
+      return false;
+    }
 
     isDrawerDragging.value = true;
-    sidebarRef.value?.setPointerCapture(e.pointerId);
   }
 
-  e.preventDefault();
   drawerOffset.value = Math.max(
     0,
     Math.min(drawerWidth.value, drawerStartOffset + deltaX),
@@ -137,10 +188,11 @@ function handleDrawerMove(e: PointerEvent) {
     `translateX(${drawerOffset.value - drawerWidth.value}px)`,
   );
   emit("mobile-drag-change", drawerOffset.value);
+  return true;
 }
 
-function stopDrawerDrag(e: PointerEvent) {
-  if (e.pointerId !== drawerPointerId) return;
+function stopDrawerDrag(pointerId: number) {
+  if (pointerId !== drawerPointerId) return;
   drawerPointerId = null;
 
   if (!isDrawerDragging.value) return;
@@ -148,6 +200,47 @@ function stopDrawerDrag(e: PointerEvent) {
   isDrawerDragging.value = false;
   emit("mobile-drag-change", null);
   setMobileOpen(drawerOffset.value >= drawerWidth.value / 2);
+}
+
+function handleDrawerTouchMove(e: TouchEvent) {
+  const touch = changedDrawerTouch(e);
+  if (!touch) return;
+
+  const deltaX = touch.clientX - drawerStartX;
+  const deltaY = touch.clientY - drawerStartY;
+  const isOpening = drawerStartOffset === 0;
+  const isDrawerDirection = isOpening ? deltaX > 0 : deltaX < 0;
+  if (isDrawerDirection && Math.abs(deltaX) > Math.abs(deltaY)) e.preventDefault();
+
+  moveDrawerDrag(touch.identifier, touch.clientX, touch.clientY);
+}
+
+function handleScreenDrawerMove(e: TouchEvent) {
+  if (!isMobileOpen.value) handleDrawerTouchMove(e);
+}
+
+function stopScreenDrawerDrag(e: TouchEvent) {
+  if (isMobileOpen.value) return;
+  const touch = changedDrawerTouch(e);
+  if (touch) stopDrawerDrag(touch.identifier);
+}
+
+function changedDrawerTouch(e: TouchEvent) {
+  for (let index = 0; index < e.changedTouches.length; index += 1) {
+    const touch = e.changedTouches.item(index);
+    if (touch?.identifier === drawerPointerId) return touch;
+  }
+  return null;
+}
+
+function handleOpenDrawerMove(e: TouchEvent) {
+  if (isMobileOpen.value) handleDrawerTouchMove(e);
+}
+
+function stopOpenDrawerDrag(e: TouchEvent) {
+  if (!isMobileOpen.value) return;
+  const touch = changedDrawerTouch(e);
+  if (touch) stopDrawerDrag(touch.identifier);
 }
 
 const handleSidebarClick = (e: MouseEvent) => {
@@ -254,6 +347,13 @@ const stopResize = () => {
 
 onMounted(() => {
   window.addEventListener("resize", closeMobileDrawerOnDesktop);
+  document.addEventListener("touchstart", startDrawerFromScreen, { capture: true });
+  document.addEventListener("touchmove", handleScreenDrawerMove, {
+    capture: true,
+    passive: false,
+  });
+  document.addEventListener("touchend", stopScreenDrawerDrag, { capture: true });
+  document.addEventListener("touchcancel", stopScreenDrawerDrag, { capture: true });
 
   Actions.register("ui:toggle:sidebar", {
     title: t("Toggle Sidebar"),
@@ -295,6 +395,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("resize", closeMobileDrawerOnDesktop);
+  document.removeEventListener("touchstart", startDrawerFromScreen, true);
+  document.removeEventListener("touchmove", handleScreenDrawerMove, true);
+  document.removeEventListener("touchend", stopScreenDrawerDrag, true);
+  document.removeEventListener("touchcancel", stopScreenDrawerDrag, true);
   emit("mobile-drag-change", null);
   if (holdsScrollLock) {
     unlockScroll();
@@ -308,17 +412,6 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <!-- The 32px edge target keeps navigation available without a mobile header. -->
-    <!-- biome-ignore lint/a11y/noStaticElementInteractions: Pointer gestures are the control's only interaction. -->
-    <div
-      v-show="!isMobileOpen"
-      class="fixed inset-y-0 left-0 z-50 w-8 md:hidden touch-none"
-      @pointerdown="startDrawerFromEdge"
-      @pointermove="handleDrawerMove"
-      @pointerup="stopDrawerDrag"
-      @pointercancel="stopDrawerDrag"
-    />
-
     <!-- The open drawer is modal on mobile: drag anywhere in the exposed
          content area to push it back to the left. -->
     <!-- biome-ignore lint/a11y/noStaticElementInteractions: Pointer gestures are the control's only interaction. -->
@@ -326,10 +419,10 @@ onUnmounted(() => {
       v-show="isMobileOpen"
       class="fixed inset-y-0 right-0 z-40 md:hidden touch-pan-y"
       :style="{ left: `${mobileDrawerWidth()}px` }"
-      @pointerdown="startDrawerFromContent"
-      @pointermove="handleDrawerMove"
-      @pointerup="stopDrawerDrag"
-      @pointercancel="stopDrawerDrag"
+      @touchstart="startDrawerFromContent"
+      @touchmove="handleOpenDrawerMove"
+      @touchend="stopOpenDrawerDrag"
+      @touchcancel="stopOpenDrawerDrag"
     />
 
     <!-- Sidebar -->
@@ -351,13 +444,13 @@ onUnmounted(() => {
             'fixed top-0 bottom-0 w-(--mobile-sidebar-width) md:w-(--sidebar-rendered-width) transition-transform will-change-transform touch-pan-y',
             'z-40 md:z-10',
             'md:translate-x-0',
-            isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+            isMobileOpen || isDrawerDragging ? 'translate-x-0' : '-translate-x-full'
         ]"
       @click="handleSidebarClick"
-      @pointerdown="startDrawerFromSidebar"
-      @pointermove="handleDrawerMove"
-      @pointerup="stopDrawerDrag"
-      @pointercancel="stopDrawerDrag"
+      @touchstart="startDrawerFromSidebar"
+      @touchmove="handleOpenDrawerMove"
+      @touchend="stopOpenDrawerDrag"
+      @touchcancel="stopOpenDrawerDrag"
     >
       <span
         aria-hidden="true"

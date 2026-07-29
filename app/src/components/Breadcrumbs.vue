@@ -50,7 +50,7 @@ watch(
   <nav
     v-if="showBreadcrumbs"
     aria-label="Breadcrumb"
-    class="breadcrumbs text-size-medium text-neutral-600 min-w-0 flex"
+    class="breadcrumbs text-size-medium text-neutral-600 min-w-0 hidden md:flex"
   >
     <ol
       ref="olRef"

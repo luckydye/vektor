@@ -573,7 +573,7 @@ useSync(
 
   <document-statusbar
     v-if="editing && canMountEditor"
-    class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-5 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
+    class="fixed inset-x-0 bottom-0 z-10 mx-auto hidden max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs pb-5 pointer-events-none md:block md:left-(--inset-left) md:right-(--inset-right) lg:px-xl"
   ></document-statusbar>
 
   <document-toolbar
