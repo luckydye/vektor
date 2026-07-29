@@ -202,6 +202,15 @@ function stopDrawerDrag(pointerId: number) {
   setMobileOpen(drawerOffset.value >= drawerWidth.value / 2);
 }
 
+function cancelDrawerDrag() {
+  drawerPointerId = null;
+  if (!isDrawerDragging.value) return;
+
+  isDrawerDragging.value = false;
+  emit("mobile-drag-change", null);
+  setMobileOpen(isMobileOpen.value);
+}
+
 function handleDrawerTouchMove(e: TouchEvent) {
   const touch = changedDrawerTouch(e);
   if (!touch) return;
@@ -210,7 +219,13 @@ function handleDrawerTouchMove(e: TouchEvent) {
   const deltaY = touch.clientY - drawerStartY;
   const isOpening = drawerStartOffset === 0;
   const isDrawerDirection = isOpening ? deltaX > 0 : deltaX < 0;
-  if (isDrawerDirection && Math.abs(deltaX) > Math.abs(deltaY)) e.preventDefault();
+  if (isDrawerDirection && Math.abs(deltaX) > Math.abs(deltaY)) {
+    if (!e.cancelable) {
+      cancelDrawerDrag();
+      return;
+    }
+    e.preventDefault();
+  }
 
   moveDrawerDrag(touch.identifier, touch.clientX, touch.clientY);
 }
