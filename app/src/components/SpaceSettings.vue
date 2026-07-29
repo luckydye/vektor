@@ -7,103 +7,16 @@
         <div class="flex flex-col sm:flex-row gap-8 sm:gap-10 items-start">
           <!-- Interactive preview card — sticky -->
           <div class="w-full sm:w-72 shrink-0 sm:sticky top-4">
-            <div class="rounded-xl border border-neutral-200 overflow-hidden">
-              <!-- Banner — click to pick color -->
-              <a-popover-trigger showdelay="0" hidedelay="100" class="block">
-                <div
-                  slot="trigger"
-                  class="relative h-24 w-full cursor-pointer group transition-colors duration-300"
-                  :style="{ backgroundColor: localBrandColor }"
-                  title="Change color"
-                >
-                  <div
-                    class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20"
-                  >
-                    <span class="text-[11px] font-medium text-white drop-shadow"
-                      >Change color</span
-                    >
-                  </div>
-                </div>
-                <a-popover class="group" placements="bottom-start">
-                  <div
-                    class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
-                  >
-                    <div
-                      class="bg-background border border-neutral-100 rounded-lg p-2 origin-top-left scale-95 transition-all shadow-large duration-150 group-[&[enabled]]:scale-100"
-                    >
-                      <a-color-picker
-                        class="w-[220px]"
-                        :value="localBrandColor"
-                        @change="localBrandColor = ($event.target as HTMLElement & { value: string }).value"
-                      ></a-color-picker>
-                    </div>
-                  </div>
-                </a-popover>
-              </a-popover-trigger>
-
-              <div class="px-3 pb-3">
-                <div class="-mt-8 mb-2.5 flex items-end gap-1.5">
-                  <!-- Logo — click to upload, ×  to remove -->
-                  <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-                  <label
-                    class="relative w-16 h-16 rounded-xl border-2 border-white shadow-sm flex items-center justify-center overflow-hidden cursor-pointer group"
-                    :style="{ backgroundColor: localBrandColor }"
-                    title="Change logo"
-                  >
-                    <input
-                      type="file"
-                      accept="image/svg+xml,image/png,image/jpeg"
-                      @change="handleLogoUpload"
-                      class="sr-only"
-                    >
-                    <template v-if="localLogoSvg">
-                      <div
-                        v-if="localLogoSvg.startsWith('<')"
-                        v-html="localLogoSvg"
-                        class="w-full h-full p-1.5 [&>svg]:w-full [&>svg]:h-full"
-                      />
-                      <img
-                        v-else
-                        :src="localLogoSvg"
-                        alt=""
-                        class="w-full h-full object-cover"
-                      >
-                    </template>
-                    <span
-                      v-else
-                      class="text-sm font-bold text-white select-none leading-none"
-                    >
-                      {{ (localName || '?')[0].toUpperCase() }}
-                    </span>
-                    <div
-                      class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 rounded-lg"
-                    >
-                      <div class="svg-icon w-4 h-4 text-white" v-html="editEntryIcon" />
-                    </div>
-                  </label>
-                  <ButtonSecondary
-                    v-if="localLogoSvg"
-                    text="Remove"
-                    @click="localLogoSvg = ''"
-                  />
-                </div>
-
-                <p
-                  class="text-size-medium font-semibold text-neutral-900 leading-snug truncate"
-                >
-                  {{ localName || 'Untitled Space' }}
-                </p>
-                <p
-                  v-if="localDescription"
-                  class="text-size-small text-neutral-500 mt-0.5 line-clamp-2 leading-snug"
-                >
-                  {{ localDescription }}
-                </p>
-                <p class="text-[11px] text-neutral-400 mt-1 font-mono truncate">
-                  {{ currentSpace?.slug }}
-                </p>
-              </div>
-            </div>
+            <SpaceProfileCard
+              :name="localName"
+              :slug="currentSpace?.slug ?? ''"
+              :description="localDescription"
+              :brand-color="localBrandColor"
+              :logo="localLogoSvg"
+              @update:brand-color="localBrandColor = $event"
+              @logo-upload="handleLogoUpload"
+              @remove-logo="localLogoSvg = ''"
+            />
           </div>
 
           <!-- Form -->
@@ -857,8 +770,6 @@
 </template>
 
 <script setup lang="ts">
-import "@atrium-ui/elements/color-picker";
-import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import { config } from "#config";
 import AgentSettings from "./AgentSettings.vue";
@@ -869,6 +780,7 @@ import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
 import SettingsLayout from "./SettingsLayout.vue";
 import SpaceMembers from "./SpaceMembers.vue";
+import SpaceProfileCard from "./SpaceProfileCard.vue";
 import SwitchToggle from "./SwitchToggle.vue";
 
 const VEKTOR_VERSION = import.meta.env.VEKTOR_VERSION;
@@ -901,7 +813,6 @@ import {
   isWorkflowCreationEnabled,
   spacePreferenceKeys,
 } from "#utils/spacePreferences.ts";
-import { editEntryIcon } from "~/src/assets/icons.ts";
 
 const emit = defineEmits(["saved"]);
 

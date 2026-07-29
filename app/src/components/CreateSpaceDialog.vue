@@ -2,6 +2,7 @@
 import { ref, watch } from "vue";
 import { slugify } from "#utils/utils.ts";
 import Dialog from "./Dialog.vue";
+import SpaceProfileCard from "./SpaceProfileCard.vue";
 
 interface Props {
   show?: boolean;
@@ -139,6 +140,16 @@ watch(
       @submit.prevent="handleSubmit"
       class="space-y-4"
     >
+      <SpaceProfileCard
+        :name="newSpaceName"
+        :slug="newSpaceSlug"
+        :brand-color="brandColor"
+        :logo="logoSvg"
+        @update:brand-color="brandColor = $event"
+        @logo-upload="handleLogoUpload"
+        @remove-logo="logoSvg = ''"
+      />
+
       <div>
         <label
           for="space-name"
@@ -175,73 +186,6 @@ watch(
         >
         <p class="mt-1 text-size-small text-neutral">
           Only lowercase letters, numbers, and hyphens
-        </p>
-      </div>
-
-      <div>
-        <label
-          for="space-brand-color"
-          class="block text-size-small font-medium text-neutral-900 mb-2"
-        >
-          Brand Color
-        </label>
-        <div class="flex gap-2 items-center">
-          <input
-            id="space-brand-color"
-            v-model="brandColor"
-            type="color"
-            class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
-          >
-          <input
-            v-model="brandColor"
-            type="text"
-            placeholder="#42516d"
-            pattern="^#[0-9A-Fa-f]{6}$"
-            class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
-          >
-        </div>
-        <p class="mt-1 text-size-small text-neutral">Used for the header and sidebar</p>
-      </div>
-
-      <div>
-        <label
-          for="space-logo"
-          class="block text-size-small font-medium text-neutral-900 mb-1"
-        >
-          Logo
-        </label>
-        <input
-          id="space-logo"
-          type="file"
-          accept="image/svg+xml,image/png,image/jpeg"
-          class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
-          @change="handleLogoUpload"
-        >
-        <div
-          v-if="logoSvg"
-          class="mt-2 flex items-center gap-2 p-2 bg-neutral-300 border border-neutral-100 rounded-md"
-        >
-          <div
-            v-if="logoSvg.startsWith('<')"
-            v-html="logoSvg"
-            class="h-8 w-8 flex items-center [&>svg]:w-full [&>svg]:h-full"
-          />
-          <img
-            v-else
-            :src="logoSvg"
-            alt=""
-            class="h-8 w-8 object-contain"
-          >
-          <button
-            type="button"
-            class="ml-auto text-size-small text-red-600 hover:text-red-800"
-            @click="logoSvg = ''"
-          >
-            Remove
-          </button>
-        </div>
-        <p class="mt-1 text-size-small text-neutral">
-          SVG, PNG, or JPG up to 300 KB
         </p>
       </div>
 
