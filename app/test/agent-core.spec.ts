@@ -8,7 +8,10 @@ import {
   runAgentPrompt,
 } from "#agent/core.ts";
 import { callTool } from "#agent/tools.ts";
-import { toAnthropicMessages } from "#api/provider/anthropic.ts";
+import {
+  toAnthropicMessages,
+  toAnthropicRequestBody,
+} from "#api/provider/anthropic.ts";
 import { toOpenAIResponsesInput } from "#api/provider/openaiCompatible.ts";
 import type { ChatMessage } from "#api/provider/types.ts";
 
@@ -52,6 +55,14 @@ describe("agent model loop", () => {
         ],
       },
     ]);
+  });
+
+  it("uses automatic prompt caching for direct Anthropic proxy requests", () => {
+    const body = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "Hello" }],
+    });
+
+    expect(body.cache_control).toEqual({ type: "ephemeral" });
   });
 
   it("serializes GPT image attachments for the Responses API", () => {

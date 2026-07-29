@@ -18,6 +18,17 @@ function getAnthropicMessagesUrl(provider: AnthropicCompatibleProvider): string 
   return "https://api.anthropic.com/v1/messages";
 }
 
+/**
+ * Anthropic automatically advances this breakpoint as a conversation grows.
+ * That lets consecutive agent/tool calls reuse the stable instructions, tool
+ * definitions, and prior turns without coupling our message conversion to a
+ * particular conversation shape. OpenCode Zen is Anthropic-compatible, but
+ * does not document support for this Anthropic API feature.
+ */
+function withAnthropicPromptCaching(body: Record<string, unknown>): Record<string, unknown> {
+  return { ...body, cache_control: { type: "ephemeral" } };
+}
+
 export function toAnthropicMessages(messages: ChatMessage[]): {
   system: string | undefined;
   messages: Array<{ role: "user" | "assistant"; content: string | unknown[] }>;
@@ -182,7 +193,7 @@ export function toAnthropicRequestBody(
       description: t.function.description,
       input_schema: t.function.parameters,
     }));
-  return result;
+  return withAnthropicPromptCaching(result);
 }
 
 export async function callAnthropic(options: {
@@ -203,7 +214,7 @@ export async function callAnthropic(options: {
     input_schema: t.function.parameters,
   }));
 
-  const body: Record<string, unknown> = {
+  let body: Record<string, unknown> = {
     model: options.provider.model,
     max_tokens: 8192,
     messages: anthropicMessages,
@@ -211,6 +222,7 @@ export async function callAnthropic(options: {
   };
   if (system) body.system = system;
   if (anthropicTools.length) body.tools = anthropicTools;
+  if (options.provider.provider === "anthropic") body = withAnthropicPromptCaching(body);
 
   const response = await fetch(getAnthropicMessagesUrl(options.provider), {
     method: "POST",
