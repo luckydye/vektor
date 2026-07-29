@@ -87,35 +87,40 @@ const cosmeticAssets = [
   },
   {
     id: "caret-spark",
-    slot: "caretDecoration",
+    slot: "caret",
     kind: "image",
-    name: "Spark",
-    description: "A bright spark beside your live caret.",
-    width: 32,
+    name: "Starlight",
+    description: "A bright beam that replaces your live caret.",
+    width: 14,
     height: 32,
-    animated: true,
     src: svgDataUri(`
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-        <path d="m16 2 2.7 8.7L28 13l-8.2 4.2L21 27l-6.2-7.2L6 24l4.5-8.2L4 9l9.2 2.1L16 2Z" fill="#facc15" stroke="#a16207" stroke-width="1.5" stroke-linejoin="round"/>
-        <circle cx="26" cy="5" r="2.2" fill="#fb7185"/>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 32">
+        <defs>
+          <linearGradient id="beam" x1="7" y1="3" x2="7" y2="30">
+            <stop stop-color="#fef08a"/>
+            <stop offset=".45" stop-color="#facc15"/>
+            <stop offset="1" stop-color="#fb7185"/>
+          </linearGradient>
+        </defs>
+        <path d="M7 4v25" stroke="#a16207" stroke-width="5" stroke-linecap="round" opacity=".35"/>
+        <path d="M7 4v25" stroke="url(#beam)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="m7 0 1.2 3.1L12 4.5 8.3 5.8 7 9 5.7 5.8 2 4.5l3.8-1.4L7 0Z" fill="#fef9c3" stroke="#a16207" stroke-width=".7"/>
       </svg>
     `),
   },
   {
     id: "caret-sprout",
-    slot: "caretDecoration",
+    slot: "caret",
     kind: "image",
-    name: "Sprout",
-    description: "A tiny green sprout growing beside your caret.",
-    width: 32,
+    name: "Vine",
+    description: "A growing vine that replaces your live caret.",
+    width: 16,
     height: 32,
-    animated: true,
     src: svgDataUri(`
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-        <path d="M16 28V13" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round"/>
-        <path d="M16 15C8 15 5 10 5 5c7 0 11 3 11 10Z" fill="#86efac" stroke="#166534" stroke-width="1.7" stroke-linejoin="round"/>
-        <path d="M16 18c0-7 4-11 11-11 0 6-3 11-11 11Z" fill="#4ade80" stroke="#166534" stroke-width="1.7" stroke-linejoin="round"/>
-        <path d="M10 28h12" fill="none" stroke="#854d0e" stroke-width="2.5" stroke-linecap="round"/>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 32">
+        <path d="M8 30C5 24 11 20 8 15S10 6 8 2" fill="none" stroke="#166534" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M8 11C3 11 1 8 1 5c4 0 7 2 7 6ZM8 20c0-5 3-7 7-7 0 4-2 7-7 7Z" fill="#4ade80" stroke="#166534" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M4 30h8" fill="none" stroke="#854d0e" stroke-width="2" stroke-linecap="round"/>
       </svg>
     `),
   },
@@ -130,7 +135,7 @@ function isCosmeticSlot(value: unknown): value is CosmeticSlot {
   return (
     value === "avatarFrame" ||
     value === "cursorCompanion" ||
-    value === "caretDecoration"
+    value === "caret"
   );
 }
 
@@ -216,8 +221,8 @@ export function sanitizeCosmeticLoadout(loadout: unknown): CosmeticLoadout {
     cursorCompanion: isCosmeticForSlot(candidate.cursorCompanion, "cursorCompanion")
       ? candidate.cursorCompanion
       : undefined,
-    caretDecoration: isCosmeticForSlot(candidate.caretDecoration, "caretDecoration")
-      ? candidate.caretDecoration
+    caret: isCosmeticForSlot(candidate.caret, "caret")
+      ? candidate.caret
       : undefined,
   };
 }
@@ -227,6 +232,6 @@ export function appearanceFromLoadout(loadout: CosmeticLoadout): PublicUserAppea
   return {
     avatarFrame: sanitized.avatarFrame,
     cursorCompanion: sanitized.cursorCompanion,
-    caretDecoration: sanitized.caretDecoration,
+    caret: sanitized.caret,
   };
 }

@@ -1,15 +1,15 @@
-export type CosmeticSlot = "avatarFrame" | "cursorCompanion" | "caretDecoration";
+export type CosmeticSlot = "avatarFrame" | "cursorCompanion" | "caret";
 
 export interface PublicUserAppearance {
   avatarFrame?: string;
   cursorCompanion?: string;
-  caretDecoration?: string;
+  caret?: string;
 }
 
 export interface CosmeticLoadout {
   avatarFrame?: string;
   cursorCompanion?: string;
-  caretDecoration?: string;
+  caret?: string;
 }
 
 export interface CosmeticAsset {

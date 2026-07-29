@@ -4143,12 +4143,12 @@ onUnmounted(() => {
 
       <canvas-presence-cursor
         v-if="localPointerScreen && currentAppearance.cursorCompanion"
-        class="is-instant"
         hide-pointer
         hide-label
         :companion-id="currentAppearance.cursorCompanion"
+        :x="localPointerScreen.x"
+        :y="localPointerScreen.y"
         :style="{
-          transform: `translate(${localPointerScreen.x}px, ${localPointerScreen.y}px)`,
           '--presence-color': cursorColor,
         }"
       />
@@ -4159,8 +4159,9 @@ onUnmounted(() => {
         :name="presence.user.name"
         :companion-id="presence.user.appearance?.cursorCompanion"
         :class="{ 'is-instant': isCameraMoving }"
+        :x="worldToScreen(presence.state!.pointer!).x"
+        :y="worldToScreen(presence.state!.pointer!).y"
         :style="{
-          transform: `translate(${worldToScreen(presence.state!.pointer!).x}px, ${worldToScreen(presence.state!.pointer!).y}px)`,
           '--presence-color':
             presence.state!.cursorColor ||
             presence.user.color ||

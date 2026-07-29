@@ -1,14 +1,33 @@
 <script setup lang="ts">
-import { useToast } from "#composeables/useToast.ts";
+import { ref, watch } from "vue";
+import { type Toast, useToast } from "#composeables/useToast.ts";
 import { alertCircleIcon, confirmationIcon, infoIcon } from "~/src/assets/icons.ts";
 
 const { toasts } = useToast();
+const completedActions = ref<Set<number>>(new Set());
 
 const icons = {
   error: alertCircleIcon,
   success: confirmationIcon,
   info: infoIcon,
 };
+
+watch(toasts, (currentToasts) => {
+  const currentIds = new Set(currentToasts.map((toast) => toast.id));
+  completedActions.value = new Set(
+    [...completedActions.value].filter((id) => currentIds.has(id)),
+  );
+});
+
+async function runAction(toast: Toast) {
+  if (!toast.action || completedActions.value.has(toast.id)) return;
+  try {
+    await toast.action.run();
+    completedActions.value = new Set([...completedActions.value, toast.id]);
+  } catch (error) {
+    console.error("Toast action failed", error);
+  }
+}
 </script>
 
 <template>
@@ -35,6 +54,19 @@ const icons = {
         >
           <div class="svg-icon w-4 h-4 shrink-0" v-html="icons[toast.type]" />
           <span class="relative z-10">{{ toast.message }}</span>
+          <button
+            v-if="toast.action"
+            type="button"
+            class="relative z-10 ml-auto rounded-md bg-white/15 px-2 py-1 text-xs font-semibold transition-colors hover:bg-white/25"
+            :disabled="completedActions.has(toast.id)"
+            @click="runAction(toast)"
+          >
+            {{
+              completedActions.has(toast.id)
+                ? (toast.action.completedLabel ?? toast.action.label)
+                : toast.action.label
+            }}
+          </button>
           <div
             v-if="toast.progress !== undefined"
             class="absolute inset-x-0 bottom-0 h-1 bg-white/15"

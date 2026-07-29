@@ -522,6 +522,7 @@ export class DocumentView extends HTMLElement {
 
   setLocalAppearance(appearance: PublicUserAppearance | undefined) {
     this.localAppearance = appearance;
+    this.element.style.caretColor = appearance?.caret ? "transparent" : "";
     this.schedulePresenceOverlayRender();
   }
 
@@ -838,7 +839,7 @@ export class DocumentView extends HTMLElement {
       overlay.append(this.createPresenceCaret(profile, color, toOverlayRect(caretRect)));
     }
 
-    if (editor.isFocused && this.localAppearance?.caretDecoration) {
+    if (editor.isFocused && this.localAppearance?.caret) {
       const maxPos = Math.max(editor.state.doc.content.size - 1, 0);
       const position = Math.max(0, Math.min(editor.state.selection.head, maxPos));
       const caretRect = toOverlayRect(editor.view.coordsAtPos(position));

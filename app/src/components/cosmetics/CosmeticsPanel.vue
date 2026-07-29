@@ -38,9 +38,9 @@ const slots = [
     description: t("Follows your pointer on shared canvases."),
   },
   {
-    id: "caretDecoration",
-    label: t("Caret decoration"),
-    description: t("Appears beside your caret while editing."),
+    id: "caret",
+    label: t("Caret"),
+    description: t("Replaces your caret while editing."),
   },
 ] as const satisfies readonly {
   id: CosmeticSlot;
@@ -86,7 +86,7 @@ const previewUser = computed(() => ({
             {{ t("Live preview") }}
           </p>
           <p class="mt-1 text-label text-neutral-500">
-            {{ t("Your selected frame, pointer companion, and caret decoration.") }}
+            {{ t("Your selected frame, pointer companion, and caret.") }}
           </p>
           <div class="mt-3 flex h-10 items-center gap-8">
             <span class="relative block h-7 w-7 text-primary-600">
@@ -98,10 +98,13 @@ const previewUser = computed(() => ({
                 :asset-id="appearance.cursorCompanion"
               />
             </span>
-            <span class="relative block h-8 border-l-2 border-primary-500">
+            <span
+              class="relative block h-8"
+              :class="{ 'border-l-2 border-primary-500': !appearance.caret }"
+            >
               <vektor-cosmetic
-                class="absolute bottom-0 left-1 h-8 w-8"
-                :asset-id="appearance.caretDecoration"
+                class="absolute bottom-0 left-[-7px] h-8 w-4"
+                :asset-id="appearance.caret"
               />
             </span>
           </div>

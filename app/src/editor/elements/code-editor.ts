@@ -526,7 +526,7 @@ if (
           }
         }
 
-        if (editor.isFocused && this.localAppearance?.caretDecoration) {
+        if (editor.isFocused && this.localAppearance?.caret) {
           try {
             const coordinates = editor.view.coordsAtPos(editor.state.selection.head);
             const cursor = document.createElement("div");
@@ -608,6 +608,7 @@ if (
 
       set appearance(value: PublicUserAppearance | undefined) {
         this.localAppearance = value;
+        this.surfaceEl.style.caretColor = value?.caret ? "transparent" : "";
         this.schedulePresenceRender();
       }
 

@@ -6,6 +6,13 @@ export interface Toast {
   message: string;
   type: "error" | "info" | "success";
   progress?: number;
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  completedLabel?: string;
+  run: () => void | Promise<void>;
 }
 
 const toasts = ref<Toast[]>([]);
@@ -16,10 +23,19 @@ export function useToast() {
     message: string,
     type: Toast["type"] = "info",
     duration = 4000,
-    options?: { progress?: number },
+    options?: { progress?: number; action?: ToastAction },
   ) {
     const id = ++nextId;
-    toasts.value = [...toasts.value, { id, message, type, progress: options?.progress }];
+    toasts.value = [
+      ...toasts.value,
+      {
+        id,
+        message,
+        type,
+        progress: options?.progress,
+        action: options?.action,
+      },
+    ];
     if (duration > 0) {
       setTimeout(() => remove(id), duration);
     }
