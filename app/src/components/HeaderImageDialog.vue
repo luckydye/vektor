@@ -77,16 +77,16 @@ function onSelect(file: File) {
               <template #default="{ isDragging, openPicker }">
                 <div
                   class="flex items-center justify-center w-14 h-14 rounded-full transition-colors"
-                  :class="isDragging ? 'bg-primary-100' : 'bg-primary-50'"
+                  :class="isDragging ? 'bg-neutral-200' : 'bg-neutral-100'"
                 >
-                  <Icon name="upload" class="w-7 h-7 text-primary-500" />
+                  <Icon name="upload" class="w-7 h-7 text-neutral-500" />
                 </div>
 
                 <p class="text-size-normal text-neutral-700 text-center">
                   {{ t("Drag & drop here or") }}
                   <button
                     type="button"
-                    class="text-primary-500 hover:text-primary-600 font-medium hover:underline underline-offset-2 cursor-pointer"
+                    class="text-neutral-700 hover:text-neutral-900 font-medium hover:underline underline-offset-2 cursor-pointer"
                     @click.stop="openPicker"
                   >
                     {{ t("choose file") }}

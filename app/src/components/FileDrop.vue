@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import Icon from "./Icon.vue";
 
 const props = defineProps<{
@@ -14,11 +14,17 @@ const emit = defineEmits<{
 
 const isDragging = ref(false);
 const dropZone = ref<HTMLElement | null>(null);
+const dropZoneColors = computed(() =>
+  isDragging.value
+    ? "border-neutral-400 bg-neutral-50"
+    : "border-neutral-200 bg-transparent",
+);
 
 function isAccepted(file: File): boolean {
   if (!props.accept) return true;
   return props.accept.split(",").some((type) => {
     const t = type.trim();
+    if (t.startsWith(".")) return file.name.toLowerCase().endsWith(t.toLowerCase());
     if (t.endsWith("/*")) return file.type.startsWith(t.slice(0, -1));
     return file.type === t;
   });
@@ -72,31 +78,28 @@ defineExpose({ isDragging, openPicker });
   <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
   <div
     ref="dropZone"
-    class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors"
-    :class="
-      isDragging
-        ? 'border-primary-400 bg-primary-50'
-        : 'border-primary-200 bg-primary-10'
-    "
+    class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors hover:border-neutral-400 hover:bg-neutral-50"
+    :class="dropZoneColors"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
     @paste="onPaste"
+    @click="openPicker"
   >
     <slot :is-dragging="isDragging" :open-picker="openPicker">
       <!-- Default content -->
       <div
         class="flex items-center justify-center w-14 h-14 rounded-full transition-colors"
-        :class="isDragging ? 'bg-primary-100' : 'bg-primary-50'"
+        :class="isDragging ? 'bg-neutral-200' : 'bg-neutral-100'"
       >
-        <Icon name="upload" class="w-7 h-7 text-primary-500" />
+        <Icon name="upload" class="w-7 h-7 text-neutral-500" />
       </div>
 
       <p class="text-size-normal text-neutral-700 text-center">
         Drag &amp; drop here or
         <button
           type="button"
-          class="text-primary-500 hover:text-primary-600 font-medium underline-offset-2 hover:underline cursor-pointer"
+          class="text-neutral-700 hover:text-neutral-900 font-medium underline-offset-2 hover:underline cursor-pointer"
           @click.stop="openPicker"
         >
           choose file

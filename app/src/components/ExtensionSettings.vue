@@ -157,41 +157,44 @@
         </div>
 
         <!-- Upload Card (trailing) -->
-        <label
+        <FileDrop
           v-if="uploadAllowed"
-          class="flex flex-col items-center justify-center gap-2 p-4 min-h-[168px] border-2 border-dashed border-neutral-100 rounded-lg cursor-pointer text-center hover:border-neutral-400 hover:bg-neutral-50 transition-colors"
+          accept=".zip,application/zip"
+          class="min-h-[168px] cursor-pointer text-center"
+          @select="handleExtensionSelect"
         >
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            class="hidden"
-            :disabled="isUploading"
-            @change="handleFileSelect"
-          >
-          <div
-            class="flex items-center justify-center h-12 w-12 shrink-0 rounded-lg bg-neutral-100 text-neutral-400"
-          >
-            <svg
-              class="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke-width="2"
-              stroke="currentColor"
-              role="img"
-              aria-label="Upload"
+          <template #default="{ isDragging, openPicker }">
+            <div
+              class="flex items-center justify-center h-12 w-12 shrink-0 rounded-lg transition-colors"
+              :class="isDragging ? 'bg-neutral-200 text-neutral-600' : 'bg-neutral-100 text-neutral-400'"
             >
-              <title>Upload</title>
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 4.5v15m7.5-7.5h-15"
-              />
-            </svg>
-          </div>
-          <span class="text-size-medium text-neutral">
-            {{ isUploading ? 'Uploading...' : 'Upload extension (.zip)' }}
-          </span>
-        </label>
+              <svg
+                class="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                stroke="currentColor"
+                role="img"
+                aria-label="Upload"
+              >
+                <title>Upload</title>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
+              </svg>
+            </div>
+            <button
+              type="button"
+              :disabled="isUploading"
+              class="text-size-medium text-neutral disabled:opacity-50"
+              @click.stop="openPicker"
+            >
+              {{ isUploading ? 'Uploading...' : 'Drag & drop a .zip or choose file' }}
+            </button>
+          </template>
+        </FileDrop>
       </div>
 
       <!-- Upload Not Allowed -->
@@ -212,6 +215,7 @@
 import { computed } from "vue";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { config } from "#config";
+import FileDrop from "./FileDrop.vue";
 import SwitchToggle from "./SwitchToggle.vue";
 
 const uploadAllowed = computed(() => {
@@ -237,11 +241,8 @@ const {
   downloadPackage,
 } = useExtensions();
 
-async function handleFileSelect(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
+async function handleExtensionSelect(file: File) {
+  if (isUploading.value) return;
   await uploadExtension(file);
 }
 
