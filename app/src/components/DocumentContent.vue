@@ -568,6 +568,7 @@ useSync(
     <CommentOverlays
       :comments="commentBubble?.commentsForOverlays ?? []"
       @move="commentBubble?.handleMoveThread($event)"
+      @positioned="commentBubble?.handleThreadReposition()"
     />
   </template>
 

@@ -130,6 +130,8 @@ const commentsForOverlays = computed(() =>
   comments.value.map((c: ApiComment) => ({
     id: c.id,
     reference: c.reference ?? undefined,
+    createdBy: c.createdBy,
+    createdByUser: c.createdByUser,
   })),
 );
 
@@ -303,11 +305,12 @@ onUnmounted(() => {
   document.removeEventListener("click", handleDocumentClick);
 });
 
-defineExpose({ commentsForOverlays, handleMoveThread });
+defineExpose({ commentsForOverlays, handleMoveThread, handleThreadReposition });
 </script>
 
 <template>
-  <div class="contents">
+  <Teleport to="body">
+    <div class="contents">
     <!-- Add comment bubble — appears near right viewport edge -->
     <div
       v-if="showAddBubble"
@@ -386,5 +389,6 @@ defineExpose({ commentsForOverlays, handleMoveThread });
         @close="clickedAnchorRef = null"
       />
     </div>
-  </div>
+    </div>
+  </Teleport>
 </template>
