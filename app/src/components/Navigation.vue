@@ -127,10 +127,12 @@ const handleCreateSpace = async (data: {
   name: string;
   slug: string;
   brandColor: string;
+  logoSvg: string;
 }) => {
   try {
     const newSpace = await createSpace(data.name, data.slug, {
       brandColor: data.brandColor,
+      logoSvg: data.logoSvg,
     });
     window.location.href = `/${newSpace.slug}/`;
   } catch (err) {

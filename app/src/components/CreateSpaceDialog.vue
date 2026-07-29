@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { slugify } from "#utils/utils.ts";
-import { cancelIcon, confirmationIcon } from "~/src/assets/icons.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonSecondary from "./ButtonSecondary.vue";
 import Dialog from "./Dialog.vue";
-import Input from "./Input.vue";
 
 interface Props {
   show?: boolean;
@@ -17,18 +13,21 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   "update:show": [value: boolean];
-  create: [data: { name: string; slug: string; brandColor: string }];
+  create: [data: { name: string; slug: string; brandColor: string; logoSvg: string }];
 }>();
 
 const newSpaceName = ref("");
 const newSpaceSlug = ref("");
 const brandColor = ref("#42516d");
+const logoSvg = ref("");
+const formError = ref("");
 
 const handleNameInput = () => {
   newSpaceSlug.value = slugify(newSpaceName.value);
 };
 
 const handleClose = () => {
+  formError.value = "";
   emit("update:show", false);
 };
 
@@ -40,35 +39,78 @@ const isValidHexColor = (color: string) => {
   return /^#[0-9A-Fa-f]{6}$/.test(color);
 };
 
+async function handleLogoUpload(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  const validTypes = ["image/svg+xml", "image/png", "image/jpeg"];
+  if (!validTypes.includes(file.type)) {
+    formError.value = "Only SVG, PNG, and JPG files are supported";
+    return;
+  }
+
+  // Logos are stored inline in space preferences, which every space request
+  // carries, so keep them compact.
+  if (file.size > 300 * 1024) {
+    formError.value = "Logo file must be smaller than 300 KB";
+    return;
+  }
+
+  try {
+    if (file.type === "image/svg+xml") {
+      let text = await file.text();
+      text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+      text = text.replace(/on\w+="[^"]*"/g, "");
+      text = text.replace(/on\w+='[^']*'/g, "");
+      logoSvg.value = text;
+    } else {
+      const reader = new FileReader();
+      reader.onload = (loadEvent) => {
+        logoSvg.value = loadEvent.target?.result as string;
+      };
+      reader.onerror = () => {
+        formError.value = "Failed to read image file";
+      };
+      reader.readAsDataURL(file);
+    }
+    formError.value = "";
+  } catch {
+    formError.value = "Failed to read image file";
+  }
+}
+
 const handleSubmit = () => {
   if (!newSpaceName.value.trim()) {
-    alert("Please enter a space name");
+    formError.value = "Please enter a space name";
     return;
   }
 
   if (!newSpaceSlug.value.trim()) {
-    alert("Please enter a slug");
+    formError.value = "Please enter a slug";
     return;
   }
 
   if (!isValidSlug(newSpaceSlug.value)) {
-    alert("Slug must contain only lowercase letters, numbers, and hyphens");
+    formError.value = "Slug must contain only lowercase letters, numbers, and hyphens";
     return;
   }
 
   if (!isValidHexColor(brandColor.value)) {
-    alert("Please enter a valid hex color (e.g., #42516d)");
+    formError.value = "Please enter a valid hex color (e.g., #42516d)";
     return;
   }
 
+  formError.value = "";
   emit("create", {
     name: newSpaceName.value.trim(),
     slug: newSpaceSlug.value.trim(),
     brandColor: brandColor.value,
+    logoSvg: logoSvg.value,
   });
   newSpaceName.value = "";
   newSpaceSlug.value = "";
   brandColor.value = "#42516d";
+  logoSvg.value = "";
   handleClose();
 };
 
@@ -79,6 +121,8 @@ watch(
       newSpaceName.value = "";
       newSpaceSlug.value = "";
       brandColor.value = "#42516d";
+      logoSvg.value = "";
+      formError.value = "";
     }
   },
 );
@@ -87,72 +131,141 @@ watch(
 <template>
   <Dialog
     :show="show"
-    title="Create New Space"
+    title="New space"
     @update:show="(v) => { if (!v) handleClose() }"
   >
     <form
       id="create-space-form"
       @submit.prevent="handleSubmit"
-      class="flex flex-col gap-3xs"
+      class="space-y-4"
     >
       <div>
         <label
           for="space-name"
-          class="block text-small font-medium text-neutral-900 mb-5xs"
+          class="block text-size-small font-medium text-neutral-900 mb-1"
         >
           Space Name
         </label>
-        <Input v-model="newSpaceName" placeholder="My Space" @input="handleNameInput" />
+        <input
+          id="space-name"
+          v-model="newSpaceName"
+          type="text"
+          required
+          class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
+          placeholder="My Space"
+          @input="handleNameInput"
+        >
       </div>
 
       <div>
         <label
           for="space-slug"
-          class="block text-small font-medium text-neutral-900 mb-5xs"
+          class="block text-size-small font-medium text-neutral-900 mb-1"
         >
           Slug
         </label>
-        <Input v-model="newSpaceSlug" placeholder="my-wiki" />
-        <p class="mt-5xs text-small text-neutral-500">
+        <input
+          id="space-slug"
+          v-model="newSpaceSlug"
+          type="text"
+          required
+          pattern="[a-z0-9-]+"
+          class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
+          placeholder="my-wiki"
+        >
+        <p class="mt-1 text-size-small text-neutral">
           Only lowercase letters, numbers, and hyphens
         </p>
       </div>
 
       <div>
         <label
-          for="brand-color"
-          class="block text-small font-medium text-neutral-900 mb-5xs"
+          for="space-brand-color"
+          class="block text-size-small font-medium text-neutral-900 mb-2"
         >
           Brand Color
         </label>
-        <div class="flex gap-4xs items-center">
+        <div class="flex gap-2 items-center">
           <input
-            id="brand-color"
+            id="space-brand-color"
             v-model="brandColor"
             type="color"
-            class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer"
+            class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
           >
-          <Input v-model="brandColor" placeholder="#42516d" class="flex-1" />
+          <input
+            v-model="brandColor"
+            type="text"
+            placeholder="#42516d"
+            pattern="^#[0-9A-Fa-f]{6}$"
+            class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
+          >
         </div>
-        <p class="mt-5xs text-small text-neutral-500">Used for the header and sidebar</p>
+        <p class="mt-1 text-size-small text-neutral">Used for the header and sidebar</p>
+      </div>
+
+      <div>
+        <label
+          for="space-logo"
+          class="block text-size-small font-medium text-neutral-900 mb-1"
+        >
+          Logo
+        </label>
+        <input
+          id="space-logo"
+          type="file"
+          accept="image/svg+xml,image/png,image/jpeg"
+          class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
+          @change="handleLogoUpload"
+        >
+        <div
+          v-if="logoSvg"
+          class="mt-2 flex items-center gap-2 p-2 bg-neutral-300 border border-neutral-100 rounded-md"
+        >
+          <div
+            v-if="logoSvg.startsWith('<')"
+            v-html="logoSvg"
+            class="h-8 w-8 flex items-center [&>svg]:w-full [&>svg]:h-full"
+          />
+          <img
+            v-else
+            :src="logoSvg"
+            alt=""
+            class="h-8 w-8 object-contain"
+          >
+          <button
+            type="button"
+            class="ml-auto text-size-small text-red-600 hover:text-red-800"
+            @click="logoSvg = ''"
+          >
+            Remove
+          </button>
+        </div>
+        <p class="mt-1 text-size-small text-neutral">
+          SVG, PNG, or JPG up to 300 KB
+        </p>
+      </div>
+
+      <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
+        <p class="text-size-small text-red-600">{{ formError }}</p>
       </div>
     </form>
 
     <template #footer>
-      <div class="flex gap-3xs">
-        <ButtonSecondary
-          :icon="cancelIcon"
-          text="Cancel"
-          class="flex-1"
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors"
           @click="handleClose"
-        />
-        <ButtonPrimary
-          :icon="confirmationIcon"
-          text="Create"
-          class="flex-1"
+        >
+          Cancel
+        </button>
+        <button
           type="submit"
+          class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           form="create-space-form"
-        />
+        >
+          Create
+        </button>
       </div>
     </template>
   </Dialog>
