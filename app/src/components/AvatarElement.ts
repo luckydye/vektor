@@ -7,6 +7,8 @@ import mouthTwo from "#assets/avatars/parts/mouth/mouth-2.svg?raw";
 import mouthThree from "#assets/avatars/parts/mouth/mouth-3.svg?raw";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
 import avatarZero from "#assets/avatars/zero.svg?raw";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import { createCosmeticElement } from "#cosmetics/CosmeticElement.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 import { avatarColorFromHash, hashAvatarSeed } from "#utils/avatarColor.ts";
 
@@ -17,6 +19,7 @@ interface AvatarUser {
   email?: string | null;
   image?: string | null;
   name?: string | null;
+  appearance?: PublicUserAppearance;
 }
 
 const sizeMap = {
@@ -46,6 +49,13 @@ const avatarStyles = `
     flex: none;
   }
 
+  .avatar-root {
+    position: relative;
+    display: block;
+    flex: none;
+    overflow: visible;
+  }
+
   .avatar {
     box-sizing: border-box;
     overflow: hidden;
@@ -60,6 +70,14 @@ const avatarStyles = `
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .avatar-frame {
+    position: absolute;
+    inset: -8px;
+    width: calc(100% + 16px);
+    height: calc(100% + 16px);
+    filter: drop-shadow(0 1px 1px rgb(15 23 42 / 0.18));
   }
 `;
 
@@ -124,6 +142,7 @@ function resolveAvatarUser(
     email: providedUser.email ?? fetchedUser.email,
     image: providedUser.image ?? fetchedUser.image,
     name: providedUser.name ?? fetchedUser.name,
+    appearance: providedUser.appearance ?? fetchedUser.appearance,
   };
 }
 
@@ -236,8 +255,12 @@ const AvatarElement =
         private render() {
           const user = resolveAvatarUser(this.providedUser, this.fetchedUser);
           const size = getAvatarSize(this.size);
+          const root = document.createElement("div");
           const avatar = document.createElement("div");
 
+          root.className = "avatar-root";
+          root.style.width = `${size}px`;
+          root.style.height = `${size}px`;
           avatar.className = "avatar";
           avatar.style.width = `${size}px`;
           avatar.style.height = `${size}px`;
@@ -266,7 +289,14 @@ const AvatarElement =
             avatar.appendChild(image);
           }
 
-          this.avatarContainer.replaceChildren(avatar);
+          root.appendChild(avatar);
+          const frame = createCosmeticElement(user?.appearance?.avatarFrame);
+          if (frame) {
+            frame.className = "avatar-frame";
+            root.appendChild(frame);
+          }
+
+          this.avatarContainer.replaceChildren(root);
         }
       };
 

@@ -57,6 +57,7 @@
     "#cli/*": "./src/cli/*",
     "#components/*": "./src/components/*",
     "#composeables/*": "./src/composeables/*",
+    "#cosmetics/*": "./src/cosmetics/*",
     "#db/*": "./src/db/*",
     "#documents/*": "./src/documents/*",
     "#editor/*": "./src/editor/*",

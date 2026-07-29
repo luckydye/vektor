@@ -13,6 +13,7 @@ import {
 import * as Y from "yjs";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -122,6 +123,7 @@ import {
   type WorldTransform,
   worldViewportBounds,
 } from "./viewport/index.ts";
+import "./CanvasPresenceCursorElement.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -290,12 +292,14 @@ const saveState = ref<"idle" | "saving" | "saved">("idle");
 const toast = useToast();
 const isDarkMode = ref(false);
 let localPointer: { x: number; y: number } | null = null;
+const localPointerScreen = shallowRef<{ x: number; y: number } | null>(null);
 
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
 const { document: documentData, saveDocument } = useDocument(props.documentId, "canvas");
 const { currentSpace } = useSpace();
 const currentUser = useUserProfile();
+const { appearance: currentAppearance } = useCosmetics();
 const currentUserId = computed(() => currentUser.value?.id);
 // The explicit cursor-color preference overrides the automatic avatar color.
 // `null` means "automatic", so the presence color matches the user's avatar.
@@ -2350,6 +2354,7 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   const point = screenPoint(event);
   localPointer = screenToWorld(point);
+  localPointerScreen.value = point;
 
   if (event.button === 1 || event.button === 2) {
     startPan(event);
@@ -2617,6 +2622,15 @@ function updateHoveredLockedElement(event: PointerEvent) {
 function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
   localPointer = screenToWorld(point);
+  const viewportBounds = viewportRef.value?.getBoundingClientRect();
+  localPointerScreen.value =
+    viewportBounds &&
+    event.clientX >= viewportBounds.left &&
+    event.clientX <= viewportBounds.right &&
+    event.clientY >= viewportBounds.top &&
+    event.clientY <= viewportBounds.bottom
+      ? point
+      : null;
 
   if (moveToolPointerGesture(event)) {
     schedulePresenceUpdate();
@@ -2952,6 +2966,7 @@ function handlePointerCancel(event: PointerEvent) {
 
 function handlePointerLeave() {
   localPointer = null;
+  localPointerScreen.value = null;
   hoveredLockedElement.value = null;
   updatePresence();
 }
@@ -4126,10 +4141,23 @@ onUnmounted(() => {
         <div class="svg-icon" aria-hidden="true" v-html="unlockElementIcon" />
       </button>
 
-      <div
+      <canvas-presence-cursor
+        v-if="localPointerScreen && currentAppearance.cursorCompanion"
+        class="is-instant"
+        hide-pointer
+        hide-label
+        :companion-id="currentAppearance.cursorCompanion"
+        :style="{
+          transform: `translate(${localPointerScreen.x}px, ${localPointerScreen.y}px)`,
+          '--presence-color': cursorColor,
+        }"
+      />
+
+      <canvas-presence-cursor
         v-for="presence in remoteCanvasPointerPresences"
         :key="presence.clientId"
-        class="canvas-presence"
+        :name="presence.user.name"
+        :companion-id="presence.user.appearance?.cursorCompanion"
         :class="{ 'is-instant': isCameraMoving }"
         :style="{
           transform: `translate(${worldToScreen(presence.state!.pointer!).x}px, ${worldToScreen(presence.state!.pointer!).y}px)`,
@@ -4138,15 +4166,7 @@ onUnmounted(() => {
             presence.user.color ||
             getAvatarColor(presence.user.id),
         }"
-      >
-        <div
-          class="svg-icon canvas-presence-cursor w-6 h-6"
-          aria-hidden="true"
-          :style="{ color: 'var(--presence-color)' }"
-          v-html="selectToolIcon"
-        />
-        <span class="canvas-presence-label">{{ presence.user.name }}</span>
-      </div>
+      />
 
       <div
         v-if="marqueeRect"
@@ -5261,39 +5281,4 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.canvas-presence {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 8;
-  pointer-events: none;
-  transition: transform 120ms linear;
-}
-
-.canvas-presence.is-instant {
-  transition: none;
-}
-
-.canvas-presence-cursor {
-  position: absolute;
-  left: -3px;
-  top: -3px;
-  /* select-tool.svg points up-right; flip it so the remote cursor points
-     up-left with its tip on the pointer, matching the local canvas cursor. */
-  transform: scaleX(-1);
-  filter: drop-shadow(0 1px 1.5px rgba(15, 23, 42, 0.3));
-}
-
-.canvas-presence-label {
-  position: absolute;
-  left: 14px;
-  top: 16px;
-  border-radius: 4px;
-  background: var(--presence-color);
-  padding: 3px 6px;
-  color: var(--canvas-presence-text);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
 </style>

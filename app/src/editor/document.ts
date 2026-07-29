@@ -10,6 +10,8 @@ import type { EditorState } from "@tiptap/pm/state";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import { dropPoint } from "@tiptap/pm/transform";
 import * as Y from "yjs";
+import { appendCaretDecoration } from "#cosmetics/render.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   colorForPresenceProfile,
   type DocumentPresenceProfile,
@@ -449,6 +451,7 @@ export class DocumentView extends HTMLElement {
   private ydoc?: Y.Doc;
   private _html = "";
   private presenceProfiles: DocumentPresenceProfile[] = [];
+  private localAppearance?: PublicUserAppearance;
   private presenceOverlay?: HTMLDivElement;
   private presenceRenderFrame: number | null = null;
   private presenceLayoutListenersAttached = false;
@@ -514,6 +517,11 @@ export class DocumentView extends HTMLElement {
 
   setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
     this.presenceProfiles = profiles;
+    this.schedulePresenceOverlayRender();
+  }
+
+  setLocalAppearance(appearance: PublicUserAppearance | undefined) {
+    this.localAppearance = appearance;
     this.schedulePresenceOverlayRender();
   }
 
@@ -721,6 +729,7 @@ export class DocumentView extends HTMLElement {
     label.style.backgroundColor = color;
     label.textContent = profile.user.name || "User";
     caret.append(label);
+    appendCaretDecoration(caret, profile.user.appearance);
 
     return caret;
   }
@@ -827,6 +836,20 @@ export class DocumentView extends HTMLElement {
         selectionRects[0] ??
         editor.view.coordsAtPos(Math.max(0, Math.min(from === to ? head : from, maxPos)));
       overlay.append(this.createPresenceCaret(profile, color, toOverlayRect(caretRect)));
+    }
+
+    if (editor.isFocused && this.localAppearance?.caretDecoration) {
+      const maxPos = Math.max(editor.state.doc.content.size - 1, 0);
+      const position = Math.max(0, Math.min(editor.state.selection.head, maxPos));
+      const caretRect = toOverlayRect(editor.view.coordsAtPos(position));
+      const caret = document.createElement("div");
+      caret.className = "document-presence-caret";
+      caret.style.left = `${caretRect.left}px`;
+      caret.style.top = `${caretRect.top}px`;
+      caret.style.height = `${Math.max(caretRect.bottom - caretRect.top, 12)}px`;
+      caret.style.borderColor = "transparent";
+      appendCaretDecoration(caret, this.localAppearance);
+      overlay.append(caret);
     }
   }
 

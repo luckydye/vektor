@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useActiveCollaboration } from "#composeables/useCollaboration.ts";
 import { useContributors } from "#composeables/useContributors.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
 
@@ -15,6 +16,7 @@ interface Collaborator {
   user: {
     name: string;
     image?: string | null;
+    appearance?: PublicUserAppearance;
   };
   isPresent: boolean;
   isCollaborator: boolean;

@@ -3,6 +3,7 @@ import { onMounted, ref, toRef, watch } from "vue";
 import "#editor/elements/code-editor.ts";
 import type { CodeEditorElementApi } from "#editor/elements/code-editor.ts";
 import { useCollaboration } from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import {
   currentEditorPresenceState,
   type DocumentPresenceProfile,
@@ -20,6 +21,7 @@ const collaboration = useCollaboration<DocumentPresenceState>({
   spaceId: props.spaceId,
   documentId: toRef(props, "documentId"),
 });
+const { appearance } = useCosmetics();
 
 function updatePresence() {
   collaboration.updatePresence(
@@ -42,6 +44,14 @@ watch(
   [codeEditor, collaboration.ydoc],
   ([editor, ydoc]) => {
     if (editor) editor.collaborationDocument = ydoc;
+  },
+  { immediate: true },
+);
+
+watch(
+  [codeEditor, appearance],
+  ([editor, currentAppearance]) => {
+    if (editor) editor.appearance = currentAppearance;
   },
   { immediate: true },
 );

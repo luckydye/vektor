@@ -22,6 +22,8 @@ import {
 import type * as Y from "yjs";
 import { documentIcon } from "#assets/icons.ts";
 import { useCollaboration } from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   currentEditorPresenceState,
   type DocumentPresenceProfile,
@@ -32,6 +34,7 @@ type DocumentViewElement = HTMLElement & {
   editorInstance?: Editor;
   setEditorEnabled?: (enabled: boolean, ydoc?: Y.Doc) => void;
   setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
+  setLocalAppearance?: (appearance: PublicUserAppearance | undefined) => void;
 };
 
 const CanvasDocumentEditorElement = defineCustomElement(
@@ -57,6 +60,7 @@ const CanvasDocumentEditorElement = defineCustomElement(
         spaceId: props.spaceId,
         documentId: computed(() => props.documentId),
       });
+      const { appearance } = useCosmetics();
 
       let leaveEditorSubscriptions: (() => void) | null = null;
       let pendingTaskToggle: number | null = props.toggleTaskIndex ?? null;
@@ -151,6 +155,14 @@ const CanvasDocumentEditorElement = defineCustomElement(
         [collaboration.presenceProfiles, editor],
         ([profiles]) => {
           viewEl.value?.setPresenceProfiles?.(profiles);
+        },
+        { immediate: true },
+      );
+
+      watch(
+        [viewEl, appearance],
+        ([view, currentAppearance]) => {
+          view?.setLocalAppearance?.(currentAppearance);
         },
         { immediate: true },
       );

@@ -11,9 +11,11 @@ import {
   useCollaboration,
 } from "#composeables/useCollaboration.ts";
 import { resetEditingState, useEditor } from "#composeables/useEditor.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";
 import {
@@ -74,6 +76,7 @@ type DocumentViewElement = HTMLElement & {
   setEditorEnabled?: (enabled: boolean, ydoc?: Y.Doc) => void;
   renderReadHtml?: (html: string) => void;
   setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
+  setLocalAppearance?: (appearance: PublicUserAppearance | undefined) => void;
 };
 type DocumentToolbarElement = HTMLElement & {
   editor?: Editor;
@@ -84,6 +87,7 @@ type DocumentToolbarElement = HTMLElement & {
 const documentViewEl = shallowRef<DocumentViewElement | null>(null);
 const documentToolbar = shallowRef<DocumentToolbarElement | null>(null);
 const editor = shallowRef<Editor>();
+const { appearance: localAppearance } = useCosmetics();
 let pendingTaskToggle: number | null = null;
 
 function requestTaskToggle(event: CustomEvent<TaskToggleRequest>) {
@@ -271,6 +275,14 @@ watch(
         profile.state?.kind === "editor",
     );
     documentViewEl.value?.setPresenceProfiles?.(editorProfiles);
+  },
+  { immediate: true },
+);
+
+watch(
+  [documentViewEl, localAppearance],
+  ([view, appearance]) => {
+    view?.setLocalAppearance?.(appearance);
   },
   { immediate: true },
 );

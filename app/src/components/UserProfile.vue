@@ -11,16 +11,22 @@ import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { t } from "#utils/lang.ts";
 import { applyThemePreference, getStoredThemePreference } from "#utils/themePreference.ts";
 
 const profileUser = useUserProfile();
+const { appearance } = useCosmetics();
 applyThemePreference(getStoredThemePreference());
 const isMounted = ref(false);
 onMounted(() => {
   isMounted.value = true;
 });
-const user = computed(() => (isMounted.value ? profileUser.value : undefined));
+const user = computed(() =>
+  isMounted.value && profileUser.value
+    ? { ...profileUser.value, appearance: appearance.value }
+    : undefined,
+);
 const isPreferencesOpen = ref(false);
 const isPreferencesLeaving = ref(false);
 const isPreferencesViewActive = computed(
@@ -69,7 +75,7 @@ onMounted(() => {
     <button
       slot="trigger"
       type="button"
-      class="block rounded-full mx-1.5 my-2 overflow-hidden focus-ring"
+      class="block rounded-full mx-1.5 my-2 overflow-visible focus-ring"
     >
       <vektor-avatar :user="user" />
     </button>

@@ -8,6 +8,7 @@ import {
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
@@ -21,6 +22,7 @@ import {
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 import SwitchToggle from "./SwitchToggle.vue";
+import CosmeticsPanel from "./cosmetics/CosmeticsPanel.vue";
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (updateCallback: () => void | Promise<void>) => void;
@@ -28,6 +30,12 @@ type ViewTransitionDocument = Document & {
 
 const themePreference = ref<ThemePreference>("system");
 const currentUser = useUserProfile();
+const {
+  inventory: cosmeticInventory,
+  loadout: cosmeticLoadout,
+  appearance: cosmeticAppearance,
+  equip: equipCosmetic,
+} = useCosmetics();
 // `null` means "automatic" — the presence color follows the user's avatar.
 const { cursorColorOverride, setCursorColor, clearCursorColor } = useCanvasCursorColor();
 const automaticCursorColor = computed(() => getAvatarColor(currentUser.value?.id));
@@ -54,6 +62,7 @@ const emit = defineEmits<{
 
 const tabs = [
   { id: "appearance", label: t("Appearance") },
+  { id: "cosmetics", label: t("Cosmetics") },
   { id: "notifications", label: t("Notifications") },
   { id: "integrations", label: t("Integrations") },
 ];
@@ -373,6 +382,16 @@ watch(
           </a-popover-trigger>
         </div>
       </section>
+    </template>
+
+    <template #cosmetics>
+      <CosmeticsPanel
+        :inventory="cosmeticInventory"
+        :loadout="cosmeticLoadout"
+        :appearance="cosmeticAppearance"
+        :user="currentUser"
+        @equip="equipCosmetic"
+      />
     </template>
 
     <!-- Notifications tab -->

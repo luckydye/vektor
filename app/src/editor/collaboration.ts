@@ -3,6 +3,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import { getRelativeSelection } from "y-prosemirror";
 import * as Y from "yjs";
 import type { CanvasTool } from "#canvas/extensions/types.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
@@ -34,6 +35,7 @@ export type DocumentPresenceProfile = {
     id: string;
     name: string;
     color?: string | null;
+    appearance?: PublicUserAppearance;
   };
   state: DocumentPresenceState | null;
 };

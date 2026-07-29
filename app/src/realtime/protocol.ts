@@ -1,3 +1,5 @@
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
+
 export const realtimeTopics = {
   acl: "space:acl",
   categories: "space:categories",
@@ -38,6 +40,7 @@ export interface PresenceUser {
   name: string;
   image?: string | null;
   color?: string | null;
+  appearance?: PublicUserAppearance;
 }
 
 export interface PresenceJoinPayload<TState = unknown> {
