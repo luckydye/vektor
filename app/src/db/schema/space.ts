@@ -231,6 +231,10 @@ export const emailNotificationOutbox = sqliteTable(
     documentId: text("document_id")
       .notNull()
       .references(() => document.id, { onDelete: "cascade" }),
+    /** Revision published by this event, retained for an accurate email preview. */
+    publishedRevision: integer("published_revision"),
+    /** The version that was published immediately before this event. */
+    previousPublishedRevision: integer("previous_published_revision"),
     actorId: text("actor_id").notNull(),
     recipientUserId: text("recipient_user_id").notNull(),
     status: text("status").notNull().default("pending"),

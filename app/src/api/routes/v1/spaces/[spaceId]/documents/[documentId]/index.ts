@@ -223,6 +223,7 @@ async function handlePublishedRevisionPatch(
       documentId,
       publicationId: auditEntry.id,
       revision: revToPublish,
+      previousPublishedRevision: existing?.publishedRev ?? null,
       publishedHtml: revisionContent,
       actorId: userId,
     });

@@ -4,6 +4,7 @@ import { verifyDocumentRole } from "#db/api.ts";
 import { getComment } from "#db/comments.ts";
 import { getAuthDb } from "#db/db.ts";
 import { getDocument } from "#db/documents.ts";
+import { getRevisionContent } from "#db/revisions.ts";
 import { isEmailMuted } from "#db/emailNotificationPreferences.ts";
 import {
   claimDueEmailNotifications,
@@ -87,10 +88,27 @@ async function deliver(
 
   const titleValue = doc.properties.title;
   const title = titleValue ? propertyValueToText(titleValue).trim() : doc.slug;
-  const commentRecord =
+  const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
     notification.kind === "comment_created"
-      ? await getComment(spaceId, notification.sourceId)
-      : undefined;
+      ? getComment(spaceId, notification.sourceId)
+      : undefined,
+    notification.kind === "document_published" &&
+    typeof notification.publishedRevision === "number"
+      ? getRevisionContent(
+          spaceId,
+          notification.documentId,
+          notification.publishedRevision,
+        )
+      : undefined,
+    notification.kind === "document_published" &&
+    typeof notification.previousPublishedRevision === "number"
+      ? getRevisionContent(
+          spaceId,
+          notification.documentId,
+          notification.previousPublishedRevision,
+        )
+      : undefined,
+  ]);
   if (notification.kind === "comment_created" && !commentRecord) {
     await markEmailNotificationSkipped(spaceId, notification.id, "Comment unavailable");
     return;
@@ -103,6 +121,8 @@ async function deliver(
     spaceName: space.name,
     documentUrl: documentUrl(space.slug, doc.slug),
     commentContent: commentRecord?.content,
+    previousPublishedContent,
+    publishedContent,
   });
   await sendEmail({ to: recipient.email, ...rendered });
   await markEmailNotificationSent(spaceId, notification.id);

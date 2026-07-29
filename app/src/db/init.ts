@@ -161,6 +161,18 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     spaceSchema.emailNotificationOutbox,
   );
   await spaceDb.run(sql.raw(emailNotificationOutboxSQL));
+  await ensureColumnExists(
+    spaceDb,
+    "email_notification_outbox",
+    "published_revision",
+    "INTEGER",
+  );
+  await ensureColumnExists(
+    spaceDb,
+    "email_notification_outbox",
+    "previous_published_revision",
+    "INTEGER",
+  );
   await spaceDb.run(
     sql.raw(
       "CREATE UNIQUE INDEX IF NOT EXISTS email_notification_outbox_event_recipient_unique ON email_notification_outbox (kind, source_id, recipient_user_id)",

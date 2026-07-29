@@ -117,6 +117,8 @@ async function enqueueRecipients(
     kind: EmailNotificationKind;
     sourceId: string;
     documentId: string;
+    publishedRevision?: number | null;
+    previousPublishedRevision?: number | null;
     actorId: string;
     recipientUserIds: Iterable<string>;
   },
@@ -148,6 +150,8 @@ async function enqueueRecipients(
         kind: params.kind,
         sourceId: params.sourceId,
         documentId: params.documentId,
+        publishedRevision: params.publishedRevision ?? null,
+        previousPublishedRevision: params.previousPublishedRevision ?? null,
         actorId: params.actorId,
         recipientUserId,
         status: "pending",
@@ -167,6 +171,7 @@ export async function enqueueDocumentPublishedEmails(params: {
   documentId: string;
   publicationId: number;
   revision: number;
+  previousPublishedRevision: number | null;
   publishedHtml: string;
   actorId: string;
 }): Promise<number> {
@@ -179,6 +184,8 @@ export async function enqueueDocumentPublishedEmails(params: {
     kind: "document_published",
     sourceId: String(params.publicationId),
     documentId: params.documentId,
+    publishedRevision: params.revision,
+    previousPublishedRevision: params.previousPublishedRevision,
     actorId: params.actorId,
     recipientUserIds: [...contributors, ...mentioned],
   });
