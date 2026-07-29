@@ -24,7 +24,7 @@ import type { CapabilityTable } from "./runtime/types.ts";
  *   return { words: { type: "text", value: String(text.split(/\s+/).length) } };
  */
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_CONCURRENT_JOBS = 3;
+const MAX_CONCURRENT_JOBS = 5;
 
 let activeJobs = 0;
 const waitQueue: Array<() => void> = [];
