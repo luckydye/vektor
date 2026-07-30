@@ -67,6 +67,13 @@ export interface CursorPagedListResult<T> {
 /**
  * Generic composable for cursor-based paged listings.
  *
+ * **Pick this or `useInfiniteQuery`?** This one is a *pager*: one page is
+ * visible at a time and `prevPage`/`nextPage` replace it. `useInfiniteQuery`
+ * (in `query.ts`) *accumulates* pages for load-more lists and only moves
+ * forward. Choose by the UI you want, not by the endpoint — both sit on the
+ * same `useQuery` cache, the same endpoint is read both ways where two views
+ * want different shapes, and one view showing two lists may need both.
+ *
  * Unlike offset paging, cursor paging only supports moving sequentially
  * (previous/next) — there's no jump-to-page-N or total count. Cursors for
  * pages already visited are cached client-side so `prevPage` doesn't refetch.

@@ -494,6 +494,17 @@ export function useMutation<TData = unknown, TVariables = void, TContext = unkno
   };
 }
 
+/**
+ * Accumulating pagination: every fetched page stays in `data.pages`, and
+ * `fetchNextPage` appends. For load-more and infinite-scroll lists.
+ *
+ * **Pick this or `useCursorPagedList`?** That one (in `useCursorPagedList.ts`)
+ * is a *pager* — one page visible at a time, with `prevPage`/`nextPage`
+ * replacing it. This one only moves forward and never drops what it has.
+ * Choose by the UI you want, not by the endpoint: both sit on the same
+ * `useQuery` cache, the same endpoint is read both ways where two views want
+ * different shapes, and one view showing two lists may need both.
+ */
 export function useInfiniteQuery<TPage, TPageParam = unknown>(
   options: UseInfiniteQueryOptions<TPage, TPageParam>,
 ) {
