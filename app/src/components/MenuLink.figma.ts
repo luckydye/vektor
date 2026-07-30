@@ -21,6 +21,6 @@ export default {
   icon="${icon}"
   is-active="${isActive}"
 />`,
-  imports: ['import { MenuLink } from "~/src/components";'],
+  imports: ['import MenuLink from "#components/MenuLink.vue";'],
   id: "menu-link",
 };

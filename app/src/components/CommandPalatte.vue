@@ -1,6 +1,12 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import {
+  boltIcon,
+  chevronRightThinIcon,
+  documentIcon,
+  searchIcon,
+} from "#assets/icons.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -8,12 +14,6 @@ import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { history } from "#utils/history.ts";
 import { spacePath } from "#utils/utils.ts";
-import {
-  boltIcon,
-  chevronRightThinIcon,
-  documentIcon,
-  searchIcon,
-} from "~/src/assets/icons.ts";
 
 const router = useRouter();
 const { documents } = useDocuments();

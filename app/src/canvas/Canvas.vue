@@ -11,14 +11,6 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
-import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
-import { useCosmetics } from "#composeables/useCosmetics.ts";
-import { useDocument } from "#composeables/useDocument.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { useUserProfile } from "#composeables/useUserProfile.ts";
-import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   copyIcon,
   cutIcon,
@@ -33,7 +25,15 @@ import {
   undoIcon,
   unlockElementIcon,
   uploadFileIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   activeDrawStrokeMode,
   activeShapeId,

@@ -2,17 +2,17 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, type PropertyFilter } from "#api/client.ts";
-import { useInfiniteQuery } from "#composeables/query.ts";
-import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
 import {
   alertCircleIcon,
   cancelIcon,
   documentIcon,
   searchIcon,
   spinnerIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
 import PagerCursor from "./PagerCursor.vue";
 import SearchFilters from "./SearchFilters.vue";

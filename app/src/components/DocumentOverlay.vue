@@ -35,7 +35,7 @@ import {
   commentIcon,
   documentIcon,
   warningTriangleIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
 
 interface OverlayState {
   documentId: string;

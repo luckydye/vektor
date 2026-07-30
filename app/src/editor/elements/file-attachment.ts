@@ -8,8 +8,6 @@
 // Usage in HTML:
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
-import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
-import { escapeHtml } from "#utils/html.ts";
 import {
   archiveBoxIcon,
   csvFileIcon,
@@ -17,7 +15,9 @@ import {
   fileIcon,
   imageIcon,
   presentationIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
+import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
+import { escapeHtml } from "#utils/html.ts";
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
 const DOCUMENT_EXTENSIONS = ["docx", "doc", "pdf"];

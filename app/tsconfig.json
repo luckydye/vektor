@@ -13,9 +13,6 @@
   ],
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "vue",
-    "paths": {
-      "~/*": ["./*"]
-    }
+    "jsxImportSource": "vue"
   }
 }

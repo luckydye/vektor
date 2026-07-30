@@ -6,7 +6,7 @@ import { formatRelativeTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import "#editor/css/mentions.css";
-import { cancelIcon, confirmationIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
+import { cancelIcon, confirmationIcon, deleteEntryIcon } from "#assets/icons.ts";
 import "./AvatarElement.ts";
 import Button from "./Button.vue";
 import MessageInput from "./MessageInput.vue";

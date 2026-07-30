@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { twMerge } from "tailwind-merge";
 import { computed, ref } from "vue";
+import {
+  addIcon,
+  dateIcon,
+  documentWidthFullIcon,
+  documentWidthStandardIcon,
+  genericPropertyIcon,
+  gridCleanIcon,
+  gridDotsIcon,
+  gridGridIcon,
+  peopleIcon,
+} from "#assets/icons.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useMembers } from "#composeables/useMembers.ts";
@@ -12,17 +23,6 @@ import {
 } from "#documents/properties.ts";
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import {
-  addIcon,
-  dateIcon,
-  documentWidthFullIcon,
-  documentWidthStandardIcon,
-  genericPropertyIcon,
-  gridCleanIcon,
-  gridDotsIcon,
-  gridGridIcon,
-  peopleIcon,
-} from "~/src/assets/icons.ts";
 import Button from "./Button.vue";
 import PropertyChip from "./PropertyChip.vue";
 import PropertyPopover from "./PropertyPopover.vue";

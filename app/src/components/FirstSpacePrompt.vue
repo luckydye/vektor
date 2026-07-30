@@ -145,8 +145,8 @@
 <script setup>
 import { onMounted, ref, watch } from "vue";
 import { api } from "#api/client.ts";
+import { folderIcon } from "#assets/icons.ts";
 import { slugify } from "#utils/utils.ts";
-import { folderIcon } from "~/src/assets/icons.ts";
 
 const showPrompt = ref(false);
 const spaceName = ref("");

@@ -1,9 +1,9 @@
 import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
-import type { DocumentWithProperties, SpaceMember } from "~/src/api/ApiClient.ts";
-import { documentIcon } from "~/src/assets/icons.ts";
-import "~/src/components/AvatarElement.ts";
+import type { DocumentWithProperties, SpaceMember } from "#api/ApiClient.ts";
+import { documentIcon } from "#assets/icons.ts";
+import "#components/AvatarElement.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { Mentions } from "./Mentions.ts";
 
@@ -66,7 +66,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
           }
 
           if (!state.cachedMembers || !state.cachedDocs) {
-            const { api } = await import("~/src/api/client.ts");
+            const { api } = await import("#api/client.ts");
             const [members, docsResponse] = await Promise.all([
               api.spaceMembers.get(state.spaceId).catch(() => []),
               api.documents

@@ -2,8 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
+import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "#assets/icons.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "~/src/assets/icons.ts";
 import Button from "./Button.vue";
 
 const props = defineProps<{

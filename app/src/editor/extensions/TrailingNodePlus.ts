@@ -3,8 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
-import { extensions } from "#extensions/manager.ts";
-import { api } from "~/src/api/client.ts";
+import { api } from "#api/client.ts";
 import {
   addIcon,
   dateIcon,
@@ -18,7 +17,8 @@ import {
   threeColumnsIcon,
   twoColumnsIcon,
   videoIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
+import { extensions } from "#extensions/manager.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 import { handleVideoUpload } from "./VideoUpload.ts";

@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { arrowLeftIcon, lockElementIcon } from "#assets/icons.ts";
 import { t } from "#utils/lang.ts";
-import { arrowLeftIcon, lockElementIcon } from "~/src/assets/icons.ts";
 import Button from "./Button.vue";
 
 function goBack() {

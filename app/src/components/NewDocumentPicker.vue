@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "#assets/icons.ts";
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import databasePreview from "#assets/new-document-picker/database-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
@@ -8,7 +9,6 @@ import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?ra
 import { useSpace } from "#composeables/useSpace.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
-import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "~/src/assets/icons.ts";
 
 const router = useRouter();
 const route = useRoute();

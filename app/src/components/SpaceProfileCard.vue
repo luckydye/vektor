@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
-import { editEntryIcon } from "~/src/assets/icons.ts";
+import { editEntryIcon } from "#assets/icons.ts";
 import Button from "./Button.vue";
 
 interface Props {

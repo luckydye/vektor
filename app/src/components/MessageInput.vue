@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { addAttachmentsIcon, deleteElementIcon, sendMessageIcon } from "#assets/icons.ts";
 import { formatFileSize } from "#utils/utils.ts";
-import {
-  addAttachmentsIcon,
-  deleteElementIcon,
-  sendMessageIcon,
-} from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
 import type {
   RichTextEditorElementApi,

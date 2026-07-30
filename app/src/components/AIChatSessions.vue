@@ -1,12 +1,7 @@
 <script setup lang="ts">
+import { activityIcon, addIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
 import type { ChatSession } from "#composeables/useChatSessions.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
-import {
-  activityIcon,
-  addIcon,
-  deleteEntryIcon,
-  editEntryIcon,
-} from "~/src/assets/icons.ts";
 
 defineProps<{
   sessions: ChatSession[];

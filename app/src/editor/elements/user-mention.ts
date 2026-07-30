@@ -1,4 +1,4 @@
-import { getSession } from "~/src/composeables/auth-client.ts";
+import { getSession } from "#composeables/auth-client.ts";
 
 // Custom element for user mentions in the editor.
 // Renders @mentions with click handling and tooltip support.

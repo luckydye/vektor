@@ -1,5 +1,5 @@
 import "#cosmetics/CosmeticElement.ts";
-import { selectToolIcon } from "~/src/assets/icons.ts";
+import { selectToolIcon } from "#assets/icons.ts";
 
 const canvasPresenceCursorTag = "canvas-presence-cursor";
 

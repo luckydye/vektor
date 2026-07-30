@@ -73,6 +73,7 @@
 
 <script setup>
 import { computed } from "vue";
+import { chevronRightThinIcon } from "#assets/icons.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
@@ -83,7 +84,6 @@ import {
 import { allowsChildDocumentType } from "#documents/types.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
-import { chevronRightThinIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps({
   doc: {

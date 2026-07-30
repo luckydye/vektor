@@ -2,13 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import type { AuditLog } from "#api/client.ts";
-import { useAuditLogs } from "#composeables/useAuditLogs.ts";
-import { useRevisions } from "#composeables/useRevisions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
-import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   activityIcon,
   contextMenuMoreIcon,
@@ -17,7 +10,14 @@ import {
   pasteIcon,
   publishIcon,
   refreshIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
+import { useAuditLogs } from "#composeables/useAuditLogs.ts";
+import { useRevisions } from "#composeables/useRevisions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { Actions } from "#utils/actions.ts";
+import { t } from "#utils/lang.ts";
+import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
+import { normalizeTimestamp } from "#utils/utils.ts";
 import DockedPanel from "./DockedPanel.vue";
 import DocumentActivityFeed from "./DocumentActivityFeed.vue";
 import PagerCursor from "./PagerCursor.vue";

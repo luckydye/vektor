@@ -9,6 +9,7 @@ import {
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
+import { chevronLeftLargeIcon } from "#assets/icons.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -21,7 +22,6 @@ import {
   THEME_STORAGE_KEY,
   type ThemePreference,
 } from "#utils/themePreference.ts";
-import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import CosmeticsPanel from "./cosmetics/CosmeticsPanel.vue";
 import SettingsLayout from "./SettingsLayout.vue";
 import SwitchToggle from "./SwitchToggle.vue";

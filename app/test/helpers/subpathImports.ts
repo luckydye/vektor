@@ -17,25 +17,6 @@ export function subpathImports(): Record<string, string> {
   return pkg.imports ?? {};
 }
 
-/**
- * `compilerOptions.paths` from `tsconfig.json` — currently just `~/*`.
- *
- * A second alias source, and an easy one to miss: Astro's Vite reads tsconfig
- * paths automatically, so `~/src/assets/icons.ts` resolves in the app and fails
- * under a bare Vitest config. Read rather than restated, for the same
- * anti-drift reason as `subpathImports`.
- */
-export function tsconfigPaths(): Record<string, string> {
-  const raw = readFileSync(join(APP_ROOT, "tsconfig.json"), "utf8");
-  const paths = JSON.parse(raw).compilerOptions?.paths ?? {};
-  return Object.fromEntries(
-    Object.entries(paths).map(([pattern, targets]) => [
-      pattern,
-      (targets as string[])[0] as string,
-    ]),
-  );
-}
-
 export interface ViteAlias {
   find: string | RegExp;
   replacement: string;
@@ -49,7 +30,7 @@ export interface ViteAlias {
  * and a bare `#config` must not be shadowed by a broader pattern.
  */
 export function viteAliases(): ViteAlias[] {
-  return Object.entries({ ...subpathImports(), ...tsconfigPaths() })
+  return Object.entries(subpathImports())
     .sort(([a], [b]) => b.length - a.length)
     .map(([specifier, target]) => {
       const absolute = resolve(APP_ROOT, target);

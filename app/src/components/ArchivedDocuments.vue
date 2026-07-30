@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { api } from "#api/client.ts";
+import { deleteElementIcon, spinnerIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
-import { deleteElementIcon, spinnerIcon } from "~/src/assets/icons.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
 
 const props = defineProps<{

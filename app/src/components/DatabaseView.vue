@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/popover";
 import { nextTick, ref, watch } from "vue";
+import { addIcon, csvFileIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
 import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.ts";
 import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
@@ -11,12 +12,6 @@ import {
   propertyValueToText,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
-import {
-  addIcon,
-  csvFileIcon,
-  deleteEntryIcon,
-  editEntryIcon,
-} from "~/src/assets/icons.ts";
 
 const { currentSpace } = useSpace();
 

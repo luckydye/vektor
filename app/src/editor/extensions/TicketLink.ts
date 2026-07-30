@@ -1,7 +1,7 @@
 import { Mark } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { Connection } from "~/src/api/client.ts";
-import { detectAppType } from "~/src/utils/utils.ts";
+import type { Connection } from "#api/client.ts";
+import { detectAppType } from "#utils/utils.ts";
 
 export interface TicketLinkOptions {
   connections: Connection[];

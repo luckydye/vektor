@@ -3,6 +3,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
+import {
+  chevronLeftThinIcon,
+  documentIcon,
+  downloadIcon,
+  fileAttachmentIcon,
+  refreshIcon,
+  spinnerIcon,
+} from "#assets/icons.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
@@ -12,14 +20,6 @@ import { formatDateTime } from "#utils/datetime.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
-import {
-  chevronLeftThinIcon,
-  documentIcon,
-  downloadIcon,
-  fileAttachmentIcon,
-  refreshIcon,
-  spinnerIcon,
-} from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
 import WorkflowRunHistory from "./WorkflowRunHistory.vue";

@@ -4,7 +4,7 @@ import {
   sendFeedbackIcon,
   signOutIcon,
   sourceCodeIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
 import "./AvatarElement.ts";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";

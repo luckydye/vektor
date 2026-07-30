@@ -1,15 +1,10 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { api } from "#api/client.ts";
+import { confirmationIcon, copyIcon, usersGroupIcon, usersIcon } from "#assets/icons.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { formatDate } from "#utils/datetime.ts";
-import {
-  confirmationIcon,
-  copyIcon,
-  usersGroupIcon,
-  usersIcon,
-} from "~/src/assets/icons.ts";
 import Button from "./Button.vue";
 import "./AvatarElement.ts";
 

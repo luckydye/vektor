@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { cancelIcon, dragDotsIcon, resizeHandleIcon } from "#assets/icons.ts";
 import {
   type DockedWindowState,
   useDockedWindows,
 } from "#composeables/useDockedWindows.ts";
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
-import { cancelIcon, dragDotsIcon, resizeHandleIcon } from "~/src/assets/icons.ts";
 import Dialog from "./Dialog.vue";
 
 const props = defineProps<{

@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref } from "vue";
+import {
+  agentChatIcon,
+  confirmationIcon,
+  copyIcon,
+  linkIcon,
+  thinkingIcon,
+} from "#assets/icons.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import {
@@ -11,13 +18,6 @@ import {
 import { formatTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
-import {
-  agentChatIcon,
-  confirmationIcon,
-  copyIcon,
-  linkIcon,
-  thinkingIcon,
-} from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   messages: UIMessage[];

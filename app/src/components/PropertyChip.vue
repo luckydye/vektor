@@ -8,7 +8,7 @@ import type { SelectMenuItem } from "./SelectMenu.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
-import { addIcon } from "~/src/assets/icons.ts";
+import { addIcon } from "#assets/icons.ts";
 
 const inputElement = ref();
 

@@ -115,8 +115,6 @@ function resolveInternal(specifier: string, fromFile: string): string | null {
         break;
       }
     }
-  } else if (specifier.startsWith("~/")) {
-    target = join(APP_ROOT, specifier.slice(2));
   } else if (specifier.startsWith(".")) {
     target = resolve(dirname(fromFile), specifier);
   }

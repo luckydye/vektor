@@ -2,6 +2,16 @@
 import "@atrium-ui/elements/popover";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
+import {
+  addIcon,
+  categoryIcon,
+  chevronRightThinIcon,
+  contextMenuMoreIcon,
+  deleteEntryIcon,
+  documentIcon,
+  dragDotsIcon,
+  editEntryIcon,
+} from "#assets/icons.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
@@ -12,16 +22,6 @@ import { propertyValueIncludes, propertyValueToText } from "#documents/propertie
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
-import {
-  addIcon,
-  categoryIcon,
-  chevronRightThinIcon,
-  contextMenuMoreIcon,
-  deleteEntryIcon,
-  documentIcon,
-  dragDotsIcon,
-  editEntryIcon,
-} from "~/src/assets/icons.ts";
 import Button from "./Button.vue";
 import Dialog from "./Dialog.vue";
 import DialogFooter from "./DialogFooter.vue";

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, useSlots, watch } from "vue";
+import { cancelIcon } from "#assets/icons.ts";
 import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
-import { cancelIcon } from "~/src/assets/icons.ts";
 import ClientOnly from "./ClientOnly.vue";
 import "@atrium-ui/elements/blur";
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
+import { activityIcon } from "#assets/icons.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { activityIcon } from "~/src/assets/icons.ts";
 import AppView from "./AppView.vue";
 
 const props = defineProps<{

@@ -17,7 +17,7 @@ import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import "#editor/css/mentions.css";
-import { sendMessageIcon, stopIcon } from "~/src/assets/icons.ts";
+import { sendMessageIcon, stopIcon } from "#assets/icons.ts";
 import AIChatMessages from "./AIChatMessages.vue";
 import AIChatSessions from "./AIChatSessions.vue";
 import DockedPanel from "./DockedPanel.vue";

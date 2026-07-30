@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { alertCircleIcon, confirmationIcon, infoIcon } from "#assets/icons.ts";
 import { type Toast, useToast } from "#composeables/useToast.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
-import { alertCircleIcon, confirmationIcon, infoIcon } from "~/src/assets/icons.ts";
 
 const { toasts, drop } = useToast();
 const elements = new Map<number, HTMLElement>();

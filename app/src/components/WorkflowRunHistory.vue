@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { spinnerIcon } from "#assets/icons.ts";
 import { formatDateTime } from "#utils/datetime.ts";
-import { spinnerIcon } from "~/src/assets/icons.ts";
 import PagerCursor from "./PagerCursor.vue";
 
 type RunSummary = {

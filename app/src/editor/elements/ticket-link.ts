@@ -1,4 +1,4 @@
-import { detectAppType } from "~/src/utils/utils.ts";
+import { detectAppType } from "#utils/utils.ts";
 
 function getTicketUrlTemplate(
   appType: "jira" | "youtrack" | "linear" | "github" | "gitlab",

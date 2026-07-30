@@ -3,18 +3,18 @@ import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
-import { formatDate } from "#utils/datetime.ts";
-import { currentLang, t } from "#utils/lang.ts";
-import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import {
   activityIcon,
   cancelIcon,
   chevronDownIcon,
   dateIcon,
   documentIcon,
-} from "~/src/assets/icons.ts";
+} from "#assets/icons.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
+import { formatDate } from "#utils/datetime.ts";
+import { currentLang, t } from "#utils/lang.ts";
+import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import SearchSnippet from "./SearchSnippet.vue";
 
 type DocumentListItem = DocumentWithProperties & {
@@ -37,7 +37,7 @@ defineSlots<{
 }>();
 
 onMounted(() => {
-  import("~/src/editor/elements/page-target.ts");
+  import("#editor/elements/page-target.ts");
 });
 
 // ── Category lookup ──────────────────────────────────────────────────────────

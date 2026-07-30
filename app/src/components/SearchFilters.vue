@@ -1,13 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { api, type PropertyFilter } from "#api/client.ts";
+import { addIcon, cancelIcon, chevronRightThinIcon, dateIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
-import {
-  addIcon,
-  cancelIcon,
-  chevronRightThinIcon,
-  dateIcon,
-} from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 

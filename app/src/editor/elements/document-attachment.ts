@@ -3,8 +3,8 @@
 // explicit open button.
 
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
+import { chevronRightThinIcon, csvFileIcon, documentIcon } from "#assets/icons.ts";
 import { escapeHtml } from "#utils/html.ts";
-import { chevronRightThinIcon, csvFileIcon, documentIcon } from "~/src/assets/icons.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
