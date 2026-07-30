@@ -75,9 +75,12 @@ const avatarStyles = `
     box-sizing: border-box;
     overflow: hidden;
     flex: none;
-    border: 1px solid var(--color-neutral-800);
     border-radius: 9999px;
     background: var(--color-neutral-100);
+    /* Inset shadow instead of a border so the ring paints *over* the image
+       edge rather than shrinking the content box. */
+    box-shadow: inset 0 0 0 1px
+      color-mix(in srgb, var(--color-neutral-800) 30%, transparent);
   }
 
   .avatar-image {
