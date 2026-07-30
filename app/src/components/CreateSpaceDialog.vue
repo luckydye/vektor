@@ -2,6 +2,7 @@
 import { ref, watch } from "vue";
 import { slugify } from "#utils/utils.ts";
 import Dialog from "./Dialog.vue";
+import DialogFooter from "./DialogFooter.vue";
 import SpaceProfileCard from "./SpaceProfileCard.vue";
 
 interface Props {
@@ -187,22 +188,11 @@ watch(
     </form>
 
     <template #footer>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors"
-          @click="handleClose"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          form="create-space-form"
-        >
-          Create
-        </button>
-      </div>
+      <DialogFooter
+        form="create-space-form"
+        confirm-label="Create"
+        @cancel="handleClose"
+      />
     </template>
   </Dialog>
 </template>

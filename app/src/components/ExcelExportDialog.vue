@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import Button from "./Button.vue";
 import Dialog from "./Dialog.vue";
+import DialogFooter from "./DialogFooter.vue";
 
 export interface ExcelExportConfig {
   sheetNameColumn: string;
@@ -140,14 +140,13 @@ function submit() {
     </div>
 
     <template #footer>
-      <div class="flex items-center justify-end gap-2xs">
-        <Button variant="secondary" text="Cancel" @click="emit('cancel')" />
-        <Button
-          text="Download"
-          :disabled="!sheetNameColumn || !splitColumn"
-          @click="submit"
-        />
-      </div>
+      <DialogFooter
+        layout="end"
+        confirm-label="Download"
+        :disabled="!sheetNameColumn || !splitColumn"
+        @cancel="emit('cancel')"
+        @confirm="submit"
+      />
     </template>
   </Dialog>
 </template>

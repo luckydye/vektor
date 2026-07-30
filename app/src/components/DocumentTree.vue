@@ -23,6 +23,7 @@ import {
   editEntryIcon,
 } from "~/src/assets/icons.ts";
 import Dialog from "./Dialog.vue";
+import DialogFooter from "./DialogFooter.vue";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
@@ -850,24 +851,13 @@ defineExpose({ isEditMode, toggleEditMode });
         </form>
 
         <template #footer>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              @click="cancelEdit"
-              :disabled="isSaving"
-              class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
-            >
-              {{ t("Cancel") }}
-            </button>
-            <button
-              type="submit"
-              form="category-form"
-              :disabled="isSaving"
-              class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {{ isSaving ? t("Saving...") : (editingId ? t("Update") : t("Create")) }}
-            </button>
-          </div>
+          <DialogFooter
+            form="category-form"
+            :confirm-label="editingId ? t('Update') : t('Create')"
+            :pending-label="t('Saving...')"
+            :pending="isSaving"
+            @cancel="cancelEdit"
+          />
         </template>
       </Dialog>
 
@@ -893,24 +883,14 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
 
         <template #footer>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              @click="cancelDelete"
-              :disabled="isDeleting"
-              class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
-            >
-              {{ t("Cancel") }}
-            </button>
-            <button
-              type="button"
-              @click="confirmDelete"
-              :disabled="isDeleting"
-              class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {{ isDeleting ? t("Deleting...") : t("Delete") }}
-            </button>
-          </div>
+          <DialogFooter
+            tone="danger"
+            :confirm-label="t('Delete')"
+            :pending-label="t('Deleting...')"
+            :pending="isDeleting"
+            @cancel="cancelDelete"
+            @confirm="confirmDelete"
+          />
         </template>
       </Dialog>
     </template>
