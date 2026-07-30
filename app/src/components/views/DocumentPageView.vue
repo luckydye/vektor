@@ -555,6 +555,7 @@ watchEffect(() => {
                         ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
                         : 'h-full overflow-x-auto',
                     isPaddedDocument && 'px-xs md:px-xl print:px-0',
+                    isWorkflow && 'overflow-inherit'
                 )"
         >
           <template v-if="isDraft">
