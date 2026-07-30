@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { type AuditLog, api } from "#api/client.ts";
+import type { AuditLog } from "#api/client.ts";
 import { chevronRightThinIcon, documentIcon, usersIcon } from "#assets/icons.ts";
-import { useQuery } from "#composeables/query.ts";
-import { useSpace } from "#composeables/useSpace.ts";
+import { useSpaceActivity } from "#composeables/useSpaceActivity.ts";
 import {
   type ActivityGroup,
   getAuditEventAction,
@@ -12,22 +11,8 @@ import {
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
-import { userDisplayName } from "#utils/userDisplay.ts";
-import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
-
-interface User {
-  id: string;
-  name: string;
-  email?: string;
-  image?: string | null;
-}
-
-interface Document {
-  id: string;
-  slug: string;
-  type?: string;
-}
 
 interface CompactActivityBatch {
   id: string;
@@ -48,73 +33,18 @@ const props = withDefaults(
   },
 );
 
-const { currentSpace } = useSpace();
-
 const {
-  data,
-  isPending: isLoading,
-  error: queryError,
-} = useQuery({
-  queryKey: computed(() => ["space_activity", props.spaceId, props.limit]),
-  queryFn: async () => {
-    const [logsData, membersData] = await Promise.all([
-      api.auditLogs.get(props.spaceId, { limit: props.limit }),
-      api.spaceMembers.get(props.spaceId),
-    ]);
-
-    const activities = logsData.auditLogs;
-
-    const usersMap = new Map<string, User>();
-    for (const member of membersData) {
-      if (member.user) usersMap.set(member.user.id, member.user);
-    }
-
-    const docIds = new Set<string>();
-    for (const activity of activities) {
-      if (activity.docId && activity.docId !== props.spaceId) {
-        docIds.add(activity.docId);
-      }
-    }
-
-    const docsMap = new Map<string, Document>();
-    await Promise.all(
-      Array.from(docIds).map(async (docId) => {
-        try {
-          const doc = await api.document.get(props.spaceId, docId);
-          docsMap.set(docId, doc);
-        } catch {
-          // best-effort
-        }
-      }),
-    );
-
-    return { activities, usersMap, docsMap };
-  },
-});
-
-const activities = computed(() => data.value?.activities ?? []);
-const error = computed(() => queryError.value?.message ?? null);
-
-function getUser(userId?: string | null): User | undefined {
-  if (!userId) return undefined;
-  return data.value?.usersMap.get(userId);
-}
-
-function getUserName(userId?: string | null): string {
-  return userDisplayName(getUser(userId), userId);
-}
-
-function getDocumentName(docId: string): string {
-  if (docId === props.spaceId) return t("Home");
-  return data.value?.docsMap.get(docId)?.slug ?? t("Unknown document");
-}
-
-function getDocumentHref(docId: string): string | undefined {
-  if (docId === props.spaceId) return spacePath(currentSpace.value?.slug, "/");
-  const doc = data.value?.docsMap.get(docId);
-  if (!doc?.slug) return undefined;
-  return spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
-}
+  activities,
+  isLoading,
+  error,
+  getUser,
+  getUserName,
+  getDocumentName,
+  getDocumentHref,
+} = useSpaceActivity(
+  computed(() => props.spaceId),
+  computed(() => props.limit),
+);
 
 function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
   const batches: CompactActivityBatch[] = [];
