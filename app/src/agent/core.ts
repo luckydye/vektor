@@ -1,4 +1,9 @@
 import { Bash } from "just-bash";
+import {
+  callTool as callVektorTool,
+  listTools as listVektorTools,
+  type VektorMcpConfig,
+} from "#agent/tools.ts";
 import { callAnthropic } from "#api/provider/anthropic.ts";
 import { callOllama } from "#api/provider/ollama.ts";
 import {
@@ -8,11 +13,6 @@ import {
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { getAIProvider } from "#db/aiConfig.ts";
 import { readOnlyDocumentTypes } from "#documents/types.ts";
-import {
-  callTool as callVektorTool,
-  listTools as listVektorTools,
-  type VektorMcpConfig,
-} from "#agent/tools.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { gitlabCommand } from "./commands/gitlab.ts";
@@ -141,7 +141,10 @@ export async function callModel(options: {
   if (provider.provider === "opencode-zen" && isOpenCodeZenGPTModel(provider.model)) {
     return callOpenAIResponses({ ...options, provider });
   }
-  if (provider.provider === "opencode-zen" && isOpenCodeZenTextOnlyModel(provider.model)) {
+  if (
+    provider.provider === "opencode-zen" &&
+    isOpenCodeZenTextOnlyModel(provider.model)
+  ) {
     const hasImages = options.messages.some((message) => message.images?.length);
     if (hasImages) {
       throw new Error(`${provider.model} does not support image input.`);
@@ -297,10 +300,7 @@ export async function runAgentPrompt(options: {
   // A failed lookup falls back to the caller-provided context.
   let documentType = options.documentType;
   let documentReadonly = options.documentReadonly;
-  if (
-    documentId &&
-    (documentType === undefined || documentReadonly === undefined)
-  ) {
+  if (documentId && (documentType === undefined || documentReadonly === undefined)) {
     const documentContext = await fetchDocumentContext(
       apiUrl,
       spaceId,

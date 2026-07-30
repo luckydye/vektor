@@ -163,7 +163,9 @@ onUnmounted(() => {
               {{ showingDiff ? "Comparing" : "Viewing" }}
               {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
             </p>
-            <p class="my-0! text-size-small text-amber-700 flex flex-wrap items-center gap-3">
+            <p
+              class="my-0! text-size-small text-amber-700 flex flex-wrap items-center gap-3"
+            >
               <template v-if="showingDiff">
                 Changes from the published version are shown inline.
                 <span class="inline-flex items-center gap-2">

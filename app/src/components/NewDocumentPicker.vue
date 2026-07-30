@@ -6,8 +6,8 @@ import databasePreview from "#assets/new-document-picker/database-preview.svg?ra
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?raw";
 import { useSpace } from "#composeables/useSpace.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "~/src/assets/icons.ts";
 
 const router = useRouter();
@@ -55,7 +55,8 @@ const documentOptions: Array<{
 const availableDocumentOptions = computed(() =>
   documentOptions.filter(
     (option) =>
-      option.type !== "workflow" || isWorkflowCreationEnabled(currentSpace.value?.preferences),
+      option.type !== "workflow" ||
+      isWorkflowCreationEnabled(currentSpace.value?.preferences),
   ),
 );
 

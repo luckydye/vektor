@@ -39,9 +39,7 @@ function workflowCode(doc: Y.Doc): string {
   if (!block) return "";
 
   const text = (node: JSONContent): string =>
-    typeof node.text === "string"
-      ? node.text
-      : (node.content ?? []).map(text).join("");
+    typeof node.text === "string" ? node.text : (node.content ?? []).map(text).join("");
   return text(block);
 }
 

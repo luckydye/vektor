@@ -4,7 +4,6 @@ import { verifyDocumentRole } from "#db/api.ts";
 import { getComment } from "#db/comments.ts";
 import { getAuthDb } from "#db/db.ts";
 import { getDocument } from "#db/documents.ts";
-import { getRevisionContent } from "#db/revisions.ts";
 import { isEmailMuted } from "#db/emailNotificationPreferences.ts";
 import {
   claimDueEmailNotifications,
@@ -12,6 +11,7 @@ import {
   markEmailNotificationSkipped,
   retryEmailNotification,
 } from "#db/emailNotifications.ts";
+import { getRevisionContent } from "#db/revisions.ts";
 import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
 import { listActiveSpaceIds } from "#db/spaceIndex.ts";

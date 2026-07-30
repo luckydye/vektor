@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import { defineCommand } from "just-bash";
-import { extractManifest } from "#extensions/manifest.ts";
 import { installExtension, type VektorMcpConfig } from "#agent/tools.ts";
+import { extractManifest } from "#extensions/manifest.ts";
 
 const USAGE = "usage: extension install <zip-file> | extension init <name>\n";
 

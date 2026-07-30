@@ -107,7 +107,9 @@ export function extensionPresenceRoom(extensionId: string, room: string): string
     throw new Error("Invalid extension id for presence room");
   }
   if (!/^[a-zA-Z0-9._-]{1,96}$/.test(room)) {
-    throw new Error("Presence room names may contain only letters, numbers, '.', '_' and '-'");
+    throw new Error(
+      "Presence room names may contain only letters, numbers, '.', '_' and '-'",
+    );
   }
   return `${EXTENSION_PRESENCE_ROOM_PREFIX}${extensionId}:${room}`;
 }

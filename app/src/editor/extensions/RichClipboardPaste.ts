@@ -18,14 +18,14 @@ function bulletContent(element: HTMLDivElement): string | null {
   if (!element.textContent?.trimStart().startsWith("•")) return null;
 
   const copy = element.cloneNode(true) as HTMLDivElement;
-  const walker = copy.ownerDocument.createTreeWalker(
-    copy,
-    4 /* NodeFilter.SHOW_TEXT */,
-  );
+  const walker = copy.ownerDocument.createTreeWalker(copy, 4 /* NodeFilter.SHOW_TEXT */);
   let removePrefix = true;
-  let node: Text | null;
 
-  while ((node = walker.nextNode() as Text | null)) {
+  for (
+    let node = walker.nextNode() as Text | null;
+    node;
+    node = walker.nextNode() as Text | null
+  ) {
     if (removePrefix) {
       const marker = node.data.indexOf("•");
       if (marker < 0) {
@@ -88,9 +88,7 @@ function renderBulletList(bullets: RichClipboardBullet[]): string {
 
   const renderList = (list: RichClipboardList): string =>
     `<ul>${list.items
-      .map(
-        (item) => `<li>${item.content}${item.children.map(renderList).join("")}</li>`,
-      )
+      .map((item) => `<li>${item.content}${item.children.map(renderList).join("")}</li>`)
       .join("")}</ul>`;
   return roots.map(renderList).join("");
 }
@@ -120,7 +118,7 @@ function normalizeHtmlNodes(nodes: Iterable<Element>): string {
     const tagName = node.tagName.toLowerCase();
     if (tagName === "ul" || tagName === "ol") {
       flushBullets();
-      if (list?.tagName === tagName) {
+      if (list !== null && list.tagName === tagName) {
         list.content += node.innerHTML;
       } else {
         flushList();

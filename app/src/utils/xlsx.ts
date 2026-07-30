@@ -48,7 +48,9 @@ function escapeXml(value: string): string {
 /** Reverses `escapeXml` plus the `_xHHHH_` escapes Excel writes for control chars. */
 function decodeXml(value: string): string {
   return value
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    )
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)))
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -219,8 +221,13 @@ function cellFill(cell: ExcelCell): ExcelCellFill | undefined {
   return isStyledCell(cell) ? cell.fill : undefined;
 }
 
-type CellStyle = Required<Pick<ExcelCellStyle, "bold" | "italic" | "underline" | "wrap">> &
-  Pick<ExcelCellStyle, "color" | "fill" | "fontName" | "fontSize" | "horizontal" | "vertical">;
+type CellStyle = Required<
+  Pick<ExcelCellStyle, "bold" | "italic" | "underline" | "wrap">
+> &
+  Pick<
+    ExcelCellStyle,
+    "color" | "fill" | "fontName" | "fontSize" | "horizontal" | "vertical"
+  >;
 
 const STATUS_FILL_COLORS: Record<string, string> = {
   red: "FFFEE2E2",
@@ -261,7 +268,9 @@ function styleFor(cell: ExcelCell): CellStyle {
     fill: normalizeColor(cellFill(cell), STATUS_FILL_COLORS),
     fontName: cell.fontName?.trim() || undefined,
     fontSize:
-      typeof cell.fontSize === "number" && Number.isFinite(cell.fontSize) && cell.fontSize > 0
+      typeof cell.fontSize === "number" &&
+      Number.isFinite(cell.fontSize) &&
+      cell.fontSize > 0
         ? cell.fontSize
         : undefined,
     horizontal: cell.horizontal,
@@ -300,7 +309,9 @@ function compileStyles(sheets: ExcelSheet[]): CompiledStyles {
     }
   }
 
-  const fonts: Array<Pick<CellStyle, "bold" | "italic" | "underline" | "color" | "fontName" | "fontSize">> = [];
+  const fonts: Array<
+    Pick<CellStyle, "bold" | "italic" | "underline" | "color" | "fontName" | "fontSize">
+  > = [];
   const fontIndexes = new Map<string, number>();
   const fontIndex = (style: CellStyle): number => {
     const font = {
@@ -385,7 +396,9 @@ function normalizedCellText(value: string): string {
 }
 
 function visibleTextLength(value: string): number {
-  return value.split(/\r\n|\r|\n/).reduce((longest, line) => Math.max(longest, line.length), 0);
+  return value
+    .split(/\r\n|\r|\n/)
+    .reduce((longest, line) => Math.max(longest, line.length), 0);
 }
 
 function columnWidths(rows: ExcelCell[][]): number[] {
@@ -485,7 +498,10 @@ export function writeXlsx(sheets: ExcelSheet[]): Uint8Array<ArrayBuffer> {
     .join("\n");
 
   const sheetElements = sheets
-    .map((s, i) => `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
+    .map(
+      (s, i) =>
+        `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
+    )
     .join("\n");
 
   const sheetRelationships = sheets
@@ -679,7 +695,9 @@ function parseDateStyles(xml: string | undefined): boolean[] {
   const dateStyles: boolean[] = [];
   for (const match of cellXfs.matchAll(/<xf\b([^>]*?)\/?>/g)) {
     const id = Number(attributes(match[1]).numFmtId ?? 0);
-    dateStyles.push(BUILTIN_DATE_FORMAT_IDS.has(id) || isDateFormat(custom.get(id) ?? ""));
+    dateStyles.push(
+      BUILTIN_DATE_FORMAT_IDS.has(id) || isDateFormat(custom.get(id) ?? ""),
+    );
   }
   return dateStyles;
 }
@@ -746,13 +764,19 @@ function readCell(
   return value;
 }
 
-function readSheetRows(xml: string, workbook: Workbook, options: ReadXlsxOptions): XlsxValue[][] {
+function readSheetRows(
+  xml: string,
+  workbook: Workbook,
+  options: ReadXlsxOptions,
+): XlsxValue[][] {
   const sheetData = /<sheetData\b[^>]*>([\s\S]*?)<\/sheetData>/.exec(xml)?.[1] ?? "";
   const grid: XlsxValue[][] = [];
   let width = 0;
   let nextRow = 0;
 
-  for (const rowMatch of sheetData.matchAll(/<row\b([^>]*?)\/>|<row\b([^>]*?)>([\s\S]*?)<\/row>/g)) {
+  for (const rowMatch of sheetData.matchAll(
+    /<row\b([^>]*?)\/>|<row\b([^>]*?)>([\s\S]*?)<\/row>/g,
+  )) {
     const rowAttrs = attributes(rowMatch[1] ?? rowMatch[2] ?? "");
     const rowIndex = rowAttrs.r ? Number(rowAttrs.r) - 1 : nextRow;
     nextRow = rowIndex + 1;
@@ -777,7 +801,8 @@ function readSheetRows(xml: string, workbook: Workbook, options: ReadXlsxOptions
   for (let i = 0; i < grid.length; i++) {
     const cells = grid[i] ?? [];
     const row = Array.from({ length: width }, (_, column) => cells[column] ?? null);
-    if (!options.blankRows && row.every((value) => value === null || value === "")) continue;
+    if (!options.blankRows && row.every((value) => value === null || value === ""))
+      continue;
     rows.push(row);
   }
   return rows;
@@ -841,7 +866,11 @@ export function xlsxToText(bytes: Uint8Array): string {
         .map((row) =>
           row
             .map((value) =>
-              value == null ? "" : value instanceof Date ? value.toISOString() : String(value),
+              value == null
+                ? ""
+                : value instanceof Date
+                  ? value.toISOString()
+                  : String(value),
             )
             .join("\t")
             .trimEnd(),

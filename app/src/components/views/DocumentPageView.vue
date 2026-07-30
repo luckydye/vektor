@@ -9,8 +9,8 @@ import ClientOnly from "#components/ClientOnly.vue";
 import DatabaseView from "#components/DatabaseView.vue";
 import DocumentActions from "#components/DocumentActions.vue";
 import DocumentContent from "#components/DocumentContent.vue";
-import DocumentProperties from "#components/DocumentProperties.vue";
 import DocumentExtensionViews from "#components/DocumentExtensionViews.vue";
+import DocumentProperties from "#components/DocumentProperties.vue";
 import HeaderImage from "#components/HeaderImage.vue";
 import NewDocumentPicker from "#components/NewDocumentPicker.vue";
 import RestoreButton from "#components/RestoreButton.vue";
@@ -27,8 +27,8 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { readOnlyDocumentTypes } from "#documents/types.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
+import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
 
 const props = defineProps<{
@@ -557,38 +557,41 @@ watchEffect(() => {
                     isPaddedDocument && 'px-xs md:px-xl print:px-0',
                     isWorkflow && 'overflow-inherit'
                 )"
-        >
-          <template v-if="isDraft">
-            <NewDocumentPicker v-if="showPicker" />
-            <DocumentContent :spaceId="currentSpace.id" :documentType="documentType" />
-          </template>
-          <template v-else>
-            <RevisionView
-              :documentId="doc.id"
-              :documentType="documentType"
-              :spaceId="currentSpace.id"
-            />
+            >
+              <template v-if="isDraft">
+                <NewDocumentPicker v-if="showPicker" />
+                <DocumentContent
+                  :spaceId="currentSpace.id"
+                  :documentType="documentType"
+                />
+              </template>
+              <template v-else>
+                <RevisionView
+                  :documentId="doc.id"
+                  :documentType="documentType"
+                  :spaceId="currentSpace.id"
+                />
 
-            <AppView v-if="isApp" :html="doc.content || ''" />
-            <WorkflowView
-              v-else-if="isWorkflow"
-              :documentId="doc.id"
-              :spaceId="currentSpace.id"
-            />
-            <DatabaseView
-              v-else-if="isDatabase"
-              :databaseDocumentId="doc.id"
-              :schemaJson="optionalPropertyValueToText(doc.properties._schema) ?? undefined"
-            />
-            <DocumentContent
-              v-else
-              :spaceId="currentSpace.id"
-              :documentId="doc.id"
-              :initialHtml="doc.content"
-              :documentType="documentType"
-              :readonly="isReadonly"
-            />
-          </template>
+                <AppView v-if="isApp" :html="doc.content || ''" />
+                <WorkflowView
+                  v-else-if="isWorkflow"
+                  :documentId="doc.id"
+                  :spaceId="currentSpace.id"
+                />
+                <DatabaseView
+                  v-else-if="isDatabase"
+                  :databaseDocumentId="doc.id"
+                  :schemaJson="optionalPropertyValueToText(doc.properties._schema) ?? undefined"
+                />
+                <DocumentContent
+                  v-else
+                  :spaceId="currentSpace.id"
+                  :documentId="doc.id"
+                  :initialHtml="doc.content"
+                  :documentType="documentType"
+                  :readonly="isReadonly"
+                />
+              </template>
             </div>
 
             <inset-view
@@ -641,11 +644,7 @@ watchEffect(() => {
 
   <ClientOnly>
     <Teleport to="body">
-      <RevisionsSidebar
-        v-if="!isDraft && doc"
-        :key="doc.id"
-        :documentId="doc.id"
-      />
+      <RevisionsSidebar v-if="!isDraft && doc" :key="doc.id" :documentId="doc.id" />
     </Teleport>
   </ClientOnly>
 </template>

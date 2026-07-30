@@ -90,7 +90,7 @@ function toBytes(data: Buffer | Uint8Array): Record<string, string> {
  * Accept whatever the guest passed as content: a string, a `Uint8Array` (as an
  * envelope), or nothing.
  */
-function asBuffer(value: unknown): Buffer {
+function asBuffer(value: unknown): Buffer<ArrayBuffer> {
   if (value === undefined || value === null) return Buffer.alloc(0);
   if (isBytesEnvelope(value)) return Buffer.from(value[BYTES_KEY], "base64");
   if (typeof value === "string") return Buffer.from(value, "utf8");

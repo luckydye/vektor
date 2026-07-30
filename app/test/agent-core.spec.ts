@@ -8,10 +8,7 @@ import {
   runAgentPrompt,
 } from "#agent/core.ts";
 import { callTool } from "#agent/tools.ts";
-import {
-  toAnthropicMessages,
-  toAnthropicRequestBody,
-} from "#api/provider/anthropic.ts";
+import { toAnthropicMessages, toAnthropicRequestBody } from "#api/provider/anthropic.ts";
 import { toOpenAIResponsesInput } from "#api/provider/openaiCompatible.ts";
 import type { ChatMessage } from "#api/provider/types.ts";
 

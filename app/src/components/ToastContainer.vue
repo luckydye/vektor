@@ -61,11 +61,9 @@ async function runAction(toast: Toast) {
             :disabled="completedActions.has(toast.id)"
             @click="runAction(toast)"
           >
-            {{
-              completedActions.has(toast.id)
+            {{ completedActions.has(toast.id)
                 ? (toast.action.completedLabel ?? toast.action.label)
-                : toast.action.label
-            }}
+                : toast.action.label }}
           </button>
           <div
             v-if="toast.progress !== undefined"

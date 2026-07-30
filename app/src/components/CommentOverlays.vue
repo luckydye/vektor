@@ -100,20 +100,22 @@ function updateOverlays() {
     if (isInlineAnchorReference(reference)) return;
 
     const participants = Array.from(
-      comments.reduce((byUser, comment) => {
-        const userId = comment.createdByUser?.id ?? comment.createdBy;
-        // Optimistic comments have no author until the server responds, so their
-        // comment id keeps their temporary avatar separate from another pending one.
-        const key = userId || comment.id;
-        if (!byUser.has(key)) {
-          byUser.set(key, {
-            key,
-            userId,
-            user: comment.createdByUser ?? null,
-          });
-        }
-        return byUser;
-      }, new Map<string, CommentParticipant>()).values(),
+      comments
+        .reduce((byUser, comment) => {
+          const userId = comment.createdByUser?.id ?? comment.createdBy;
+          // Optimistic comments have no author until the server responds, so their
+          // comment id keeps their temporary avatar separate from another pending one.
+          const key = userId || comment.id;
+          if (!byUser.has(key)) {
+            byUser.set(key, {
+              key,
+              userId,
+              user: comment.createdByUser ?? null,
+            });
+          }
+          return byUser;
+        }, new Map<string, CommentParticipant>())
+        .values(),
     );
     const overlay = { count: comments.length, reference, participants };
 

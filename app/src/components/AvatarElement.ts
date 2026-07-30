@@ -13,8 +13,8 @@ import mouthThree from "#assets/avatars/parts/mouth/mouth-3.svg?raw";
 import mouthFour from "#assets/avatars/parts/mouth/mouth-4.svg?raw";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
 import avatarZero from "#assets/avatars/zero.svg?raw";
-import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { createCosmeticElement } from "#cosmetics/CosmeticElement.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 import { avatarColorFromHash, hashAvatarSeed } from "#utils/avatarColor.ts";
 

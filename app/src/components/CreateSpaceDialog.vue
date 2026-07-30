@@ -130,16 +130,8 @@ watch(
 </script>
 
 <template>
-  <Dialog
-    :show="show"
-    title="New space"
-    @update:show="(v) => { if (!v) handleClose() }"
-  >
-    <form
-      id="create-space-form"
-      @submit.prevent="handleSubmit"
-      class="space-y-4"
-    >
+  <Dialog :show="show" title="New space" @update:show="(v) => { if (!v) handleClose() }">
+    <form id="create-space-form" @submit.prevent="handleSubmit" class="space-y-4">
       <SpaceProfileCard
         :name="newSpaceName"
         :slug="newSpaceSlug"

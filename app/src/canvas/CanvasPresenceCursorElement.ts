@@ -197,10 +197,10 @@ const CanvasPresenceCursorElement =
         private startAnimation() {
           if (this.animationFrame !== null) return;
           this.previousFrameTime = performance.now();
-          this.animationFrame = requestAnimationFrame(this.animate);
+          this.animationFrame = requestAnimationFrame(this.stepFrame);
         }
 
-        private animate = (time: number) => {
+        private stepFrame = (time: number) => {
           this.animationFrame = null;
 
           if (this.shouldSnap()) {
@@ -240,7 +240,7 @@ const CanvasPresenceCursorElement =
             companionDistance > POSITION_EPSILON ||
             companionSpeed > VELOCITY_EPSILON
           ) {
-            this.animationFrame = requestAnimationFrame(this.animate);
+            this.animationFrame = requestAnimationFrame(this.stepFrame);
           } else {
             this.companionX = this.targetX;
             this.companionY = this.targetY;
@@ -253,8 +253,7 @@ const CanvasPresenceCursorElement =
         private updateCompanionPosition(elapsed: number) {
           const seconds = elapsed / 1000;
           const stiffness = COMPANION_SPRING_FREQUENCY ** 2;
-          const damping =
-            2 * COMPANION_SPRING_DAMPING * COMPANION_SPRING_FREQUENCY;
+          const damping = 2 * COMPANION_SPRING_DAMPING * COMPANION_SPRING_FREQUENCY;
           const accelerationX =
             (this.targetX - this.companionX) * stiffness -
             this.companionVelocityX * damping;
@@ -264,10 +263,7 @@ const CanvasPresenceCursorElement =
 
           this.companionVelocityX += accelerationX * seconds;
           this.companionVelocityY += accelerationY * seconds;
-          const speed = Math.hypot(
-            this.companionVelocityX,
-            this.companionVelocityY,
-          );
+          const speed = Math.hypot(this.companionVelocityX, this.companionVelocityY);
           if (speed > MAX_COMPANION_SPEED_PX_PER_SECOND) {
             const scale = MAX_COMPANION_SPEED_PX_PER_SECOND / speed;
             this.companionVelocityX *= scale;

@@ -1,4 +1,5 @@
 import { applyUpdate, encodeStateAsUpdate, Doc as YDoc } from "yjs";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -17,7 +18,6 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
-import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { ApiReplica, type OptimisticReplicaOperation } from "./ApiReplica.ts";
 
 export interface User {

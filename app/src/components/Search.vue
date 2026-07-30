@@ -52,10 +52,11 @@ const {
     JSON.stringify(committedFilters.value),
   ]),
   fetcher: ({ limit, cursor }) => {
-    const queryParams: { q?: string; limit: number; cursor?: string; filters?: string } = {
-      limit,
-      cursor,
-    };
+    const queryParams: { q?: string; limit: number; cursor?: string; filters?: string } =
+      {
+        limit,
+        cursor,
+      };
     if (committedQuery.value.trim()) queryParams.q = committedQuery.value;
     if (committedFilters.value.length > 0) {
       queryParams.filters = JSON.stringify(committedFilters.value);
@@ -232,10 +233,14 @@ const batchArchive = async (ids: string[]) => {
 
   const parts: string[] = [];
   if (documentIds.length > 0) {
-    parts.push(`archive ${documentIds.length} document${documentIds.length !== 1 ? "s" : ""}`);
+    parts.push(
+      `archive ${documentIds.length} document${documentIds.length !== 1 ? "s" : ""}`,
+    );
   }
   if (fileIds.length > 0) {
-    parts.push(`permanently delete ${fileIds.length} file${fileIds.length !== 1 ? "s" : ""}`);
+    parts.push(
+      `permanently delete ${fileIds.length} file${fileIds.length !== 1 ? "s" : ""}`,
+    );
   }
   if (!confirm(`${parts.join(" and ")}?`)) return;
 

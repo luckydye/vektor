@@ -1,17 +1,17 @@
 import { Editor, getSchema } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import codeStyles from "#editor/css/code.css?inline";
-import { appendCaretDecoration } from "#cosmetics/render.ts";
-import type { PublicUserAppearance } from "#cosmetics/types.ts";
-import {
-  colorForPresenceProfile,
-  findYSyncState,
-  type DocumentPresenceProfile,
-} from "#editor/collaboration.ts";
-import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
 import { prosemirrorToYDoc, relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
+import { appendCaretDecoration } from "#cosmetics/render.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
+import {
+  colorForPresenceProfile,
+  type DocumentPresenceProfile,
+  findYSyncState,
+} from "#editor/collaboration.ts";
+import codeStyles from "#editor/css/code.css?inline";
 
 export interface CodeEditorElementApi extends HTMLElement {
   value: string;
@@ -327,7 +327,9 @@ if (
         }
         this.syncHeader();
         this.mountEditor();
-        this.surfaceEl.addEventListener("scroll", this.syncGutterScroll, { passive: true });
+        this.surfaceEl.addEventListener("scroll", this.syncGutterScroll, {
+          passive: true,
+        });
         window.addEventListener("resize", this.schedulePresenceRender);
       }
 
@@ -554,7 +556,12 @@ if (
           const range = document.createRange();
           range.setStart(start.node, start.offset);
           range.setEnd(end.node, end.offset);
-          const lines: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+          const lines: Array<{
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+          }> = [];
           for (const rect of Array.from(range.getClientRects())) {
             if (rect.width <= 0 || rect.height <= 0) continue;
 
@@ -644,7 +651,9 @@ if (
       }
 
       get saving() {
-        return this.getAttribute("saving") !== null && this.getAttribute("saving") !== "false";
+        return (
+          this.getAttribute("saving") !== null && this.getAttribute("saving") !== "false"
+        );
       }
 
       set saving(value: boolean) {
@@ -652,7 +661,9 @@ if (
       }
 
       get saved() {
-        return this.getAttribute("saved") !== null && this.getAttribute("saved") !== "false";
+        return (
+          this.getAttribute("saved") !== null && this.getAttribute("saved") !== "false"
+        );
       }
 
       set saved(value: boolean) {

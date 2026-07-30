@@ -10,10 +10,13 @@ import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
-import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { t } from "#utils/lang.ts";
-import { applyThemePreference, getStoredThemePreference } from "#utils/themePreference.ts";
+import {
+  applyThemePreference,
+  getStoredThemePreference,
+} from "#utils/themePreference.ts";
 
 const profileUser = useUserProfile();
 const { appearance } = useCosmetics();
@@ -148,10 +151,7 @@ onMounted(() => {
           </template>
 
           <Transition name="preferences-panel" @after-leave="handlePreferencesLeave">
-            <div
-              v-if="isPreferencesOpen"
-              class="w-[620px] max-w-[calc(100vw-2rem)]"
-            >
+            <div v-if="isPreferencesOpen" class="w-[620px] max-w-[calc(100vw-2rem)]">
               <UserPreferencesPanel @close="closePreferences" />
             </div>
           </Transition>
@@ -185,5 +185,4 @@ onMounted(() => {
     transition: none;
   }
 }
-
 </style>

@@ -132,11 +132,7 @@ const assetsById = new Map<string, CosmeticAsset>(
 const registryListeners = new Set<() => void>();
 
 function isCosmeticSlot(value: unknown): value is CosmeticSlot {
-  return (
-    value === "avatarFrame" ||
-    value === "cursorCompanion" ||
-    value === "caret"
-  );
+  return value === "avatarFrame" || value === "cursorCompanion" || value === "caret";
 }
 
 function isRenderableSource(src: string): boolean {
@@ -221,9 +217,7 @@ export function sanitizeCosmeticLoadout(loadout: unknown): CosmeticLoadout {
     cursorCompanion: isCosmeticForSlot(candidate.cursorCompanion, "cursorCompanion")
       ? candidate.cursorCompanion
       : undefined,
-    caret: isCosmeticForSlot(candidate.caret, "caret")
-      ? candidate.caret
-      : undefined,
+    caret: isCosmeticForSlot(candidate.caret, "caret") ? candidate.caret : undefined,
   };
 }
 

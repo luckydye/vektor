@@ -1,4 +1,3 @@
-import { config } from "#config";
 import {
   assertObject,
   callTool,
@@ -7,6 +6,7 @@ import {
   parseLooseObject,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
+import { config } from "#config";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 /**

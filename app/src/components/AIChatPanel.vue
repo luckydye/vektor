@@ -548,9 +548,7 @@ async function sendMessage() {
     .join("\n\n");
   const imageAttachments: ImageChatAttachment[] = uploadedAttachments.flatMap(
     (attachment) =>
-      VISION_IMAGE_MEDIA_TYPES.has(
-        attachment.type as ImageChatAttachment["mediaType"],
-      )
+      VISION_IMAGE_MEDIA_TYPES.has(attachment.type as ImageChatAttachment["mediaType"])
         ? [
             {
               key: attachment.key,

@@ -16,7 +16,10 @@ const pages = [
 ---
 
 <DocsLayout title="Docs - Vektor">
-  <h1 class="text-2xl font-semibold text-neutral-900 mb-2" style="letter-spacing: -0.02em">
+  <h1
+    class="text-2xl font-semibold text-neutral-900 mb-2"
+    style="letter-spacing: -0.02em"
+  >
     Documentation
   </h1>
   <p class="text-neutral-500 mb-8">
@@ -24,8 +27,7 @@ const pages = [
   </p>
 
   <div class="grid gap-4 sm:grid-cols-2">
-    {
-      pages.map((page) => (
+    {pages.map((page) => (
         <a
           href={page.href}
           class="group block p-5 rounded-xl border border-neutral-200 bg-background hover:border-primary-300 hover:shadow-sm transition-all"
@@ -49,7 +51,6 @@ const pages = [
           </h2>
           <p class="text-size-medium text-neutral-500">{page.description}</p>
         </a>
-      ))
-    }
+      ))}
   </div>
 </DocsLayout>

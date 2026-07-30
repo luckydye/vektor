@@ -14,8 +14,8 @@ import { tracedSync } from "#observability/trace.ts";
 import { subscribeToSyncEvents } from "./events.ts";
 import { PresenceConnection } from "./presence.ts";
 import {
-  isDocumentRealtimeTopic,
   extensionIdFromPresenceRoom,
+  isDocumentRealtimeTopic,
   isWorkflowRunRealtimeTopic,
   realtimeTopics,
   WsMsgType,

@@ -325,7 +325,6 @@ onUnmounted(() => {
         <a href="/" class="text-sm underline hover:text-neutral-800">Go home</a>
       </div>
       <RouterView v-else />
-
     </div>
 
     <Sidebar
@@ -333,7 +332,6 @@ onUnmounted(() => {
       @mobile-drag-change="handleMobileDrawerDrag"
       @mobile-open-change="handleMobileSidebarOpen"
     />
-
   </div>
 
   <button

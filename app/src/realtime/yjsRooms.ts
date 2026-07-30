@@ -13,11 +13,11 @@ import {
   contentFromDoc,
   toCleanHtml,
 } from "#documents/serialization.ts";
-import { contentIsHtml } from "#documents/types.ts";
 import {
   deserializeDocContent,
   serializeDocContent,
 } from "#documents/serializationPool.ts";
+import { contentIsHtml } from "#documents/types.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
@@ -190,7 +190,8 @@ export function getLiveDocumentContent(
     if (type === "workflow") return contentFromDoc(spaceId, documentId, type, room.doc);
     return toCleanHtml(room.doc, contentExtensions({ spaceId, documentId }));
   }
-  if (type === "canvas" || type === "workflow" || isJsonContent(persisted)) return persisted;
+  if (type === "canvas" || type === "workflow" || isJsonContent(persisted))
+    return persisted;
   return normalizeHtmlContent(spaceId, documentId, persisted);
 }
 

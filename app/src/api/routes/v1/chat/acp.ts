@@ -1,7 +1,7 @@
 import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
 import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
 import {
@@ -121,10 +121,10 @@ async function hydrateMessageImages(
       if (message.images?.length || !message.imageAttachments?.length) return message;
 
       const images = await Promise.all(
-        message.imageAttachments.map(async (attachment) => {
+        message.imageAttachments.map(async (attachment): Promise<ChatImage | null> => {
           const file = await storage.read(spaceId, attachment.key);
           if (!file || file.byteLength > MAX_CHAT_IMAGE_BYTES) return null;
-          return { ...attachment, data: file.toString("base64") };
+          return { mediaType: attachment.mediaType, data: file.toString("base64") };
         }),
       );
       return {
@@ -801,11 +801,15 @@ export const POST: ApiRouteHandler = (context) =>
           return badRequestResponse("params.additionalContext must be a string");
         }
         if (imageAttachments === null) {
-          return badRequestResponse("params.imageAttachments must contain valid image uploads");
+          return badRequestResponse(
+            "params.imageAttachments must contain valid image uploads",
+          );
         }
         const chatAttachments = parseChatAttachments(attachmentInput, spaceId);
         if (chatAttachments === null) {
-          return badRequestResponse("params.attachments must contain valid uploaded files");
+          return badRequestResponse(
+            "params.attachments must contain valid uploaded files",
+          );
         }
         if (
           !Array.isArray(prompt) ||
@@ -882,7 +886,7 @@ export const POST: ApiRouteHandler = (context) =>
                 role: "user" as const,
                 content: `Additional context for the preceding message:\n${additionalContext}`,
               },
-          ]
+            ]
           : messages;
         const modelMessages = await hydrateMessageImages(spaceId, agentMessages);
         const currentMessageImages = modelMessages.find(

@@ -4,8 +4,8 @@
  */
 
 import type { AuditLog } from "#api/client.ts";
-import { currentLang, type TranslationKey, t } from "./lang.ts";
 import { formatRelativeTime } from "./datetime.ts";
+import { currentLang, type TranslationKey, t } from "./lang.ts";
 import { normalizeTimestamp } from "./utils.ts";
 
 // ---------------------------------------------------------------------------

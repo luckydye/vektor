@@ -16,13 +16,13 @@ import { t } from "#utils/lang.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
-  type ThemePreference,
   THEME_STORAGE_KEY,
+  type ThemePreference,
 } from "#utils/themePreference.ts";
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
+import CosmeticsPanel from "./cosmetics/CosmeticsPanel.vue";
 import SettingsLayout from "./SettingsLayout.vue";
 import SwitchToggle from "./SwitchToggle.vue";
-import CosmeticsPanel from "./cosmetics/CosmeticsPanel.vue";
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (updateCallback: () => void | Promise<void>) => void;
@@ -70,7 +70,8 @@ const themeOptions: { value: ThemePreference; label: string; swatchClass: string
   {
     value: "system",
     label: t("System"),
-    swatchClass: "bg-[linear-gradient(135deg,#ffffff_0%,#ffffff_48%,#222222_52%,#222222_100%)]",
+    swatchClass:
+      "bg-[linear-gradient(135deg,#ffffff_0%,#ffffff_48%,#222222_52%,#222222_100%)]",
   },
   { value: "light", label: t("Light"), swatchClass: "bg-[#fff5b8]" },
   { value: "dark", label: t("Dark"), swatchClass: "bg-[#252525]" },
@@ -100,15 +101,14 @@ const integrationCards = computed(() =>
   integrationProviders.map((provider) => ({
     provider,
     connection:
-      integrationConnections.value.find((connection) => connection.provider === provider) ??
-      null,
+      integrationConnections.value.find(
+        (connection) => connection.provider === provider,
+      ) ?? null,
     ...integrationProviderDetails[provider],
   })),
 );
 
-const applyThemePreferenceWithTransition = (
-  preference: ThemePreference,
-) => {
+const applyThemePreferenceWithTransition = (preference: ThemePreference) => {
   const updateTheme = async () => {
     themePreference.value = preference;
     applyThemePreference(preference);
@@ -276,26 +276,21 @@ watch(
   </div>
 
   <!-- Tabbed settings layout -->
-  <SettingsLayout
-    :tabs="tabs"
-    class="w-[620px] max-w-[calc(100vw-2rem)] min-h-[200px]"
-  >
+  <SettingsLayout :tabs="tabs" class="w-[620px] max-w-[calc(100vw-2rem)] min-h-[200px]">
     <!-- Appearance tab -->
     <template #appearance>
       <section>
         <div class="mb-3">
-          <h2 class="text-size-medium font-semibold text-foreground">{{ t("Interface") }}</h2>
+          <h2 class="text-size-medium font-semibold text-foreground">
+            {{ t("Interface") }}
+          </h2>
           <p class="mt-1 text-size-small text-neutral-500">
             {{ t("Choose how Vektor looks on this device.") }}
           </p>
         </div>
         <div class="rounded-lg border border-neutral-200 bg-background p-3">
           <p class="text-size-small font-medium text-foreground">{{ t("Theme") }}</p>
-          <div
-            class="mt-3 grid grid-cols-3 gap-3"
-            role="group"
-            :aria-label="t('Theme')"
-          >
+          <fieldset class="mt-3 grid grid-cols-3 gap-3" :aria-label="t('Theme')">
             <button
               v-for="option in themeOptions"
               :key="option.value"
@@ -315,7 +310,7 @@ watch(
               </span>
               <span>{{ option.label }}</span>
             </button>
-          </div>
+          </fieldset>
         </div>
       </section>
 
@@ -362,7 +357,9 @@ watch(
                 ></span>
                 <span>{{ isAutomaticCursorColor ? t("Automatic") : cursorColor }}</span>
               </span>
-              <span class="text-label font-medium text-neutral-500">{{ t("Change") }}</span>
+              <span class="text-label font-medium text-neutral-500"
+                >{{ t("Change") }}</span
+              >
             </button>
             <a-popover class="group" placements="top-start">
               <div
@@ -455,7 +452,9 @@ watch(
           </p>
           <p class="mt-2 text-label text-neutral-500">
             {{ t("Space:") }}
-            <span class="font-medium text-foreground">{{ activeSpaceName || t("None") }}</span>
+            <span class="font-medium text-foreground"
+              >{{ activeSpaceName || t("None") }}</span
+            >
           </p>
         </div>
 
@@ -524,13 +523,13 @@ watch(
                 {{ t("Connected as") }}
                 {{ card.connection.externalUsername || card.connection.externalAccountId }}
               </p>
-              <p
-                v-else-if="card.connection?.configured === false"
-                class="text-amber-700"
-              >
+              <p v-else-if="card.connection?.configured === false" class="text-amber-700">
                 {{ t("Not configured") }}
               </p>
-              <p v-else-if="card.connection?.instanceUrl" class="truncate text-neutral-500">
+              <p
+                v-else-if="card.connection?.instanceUrl"
+                class="truncate text-neutral-500"
+              >
                 {{ card.connection.instanceUrl }}
               </p>
             </div>

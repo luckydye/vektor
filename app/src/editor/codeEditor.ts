@@ -1,4 +1,4 @@
-import { Extension, type Editor, type Extensions } from "@tiptap/core";
+import { type Editor, Extension, type Extensions } from "@tiptap/core";
 import { Plugin, TextSelection } from "@tiptap/pm/state";
 import { yUndoPluginKey } from "y-prosemirror";
 import { CodeBlock, Document, Text } from "./extensions/baseExtensions.ts";
@@ -31,10 +31,7 @@ function updateSelectedLines(editor: Editor, transform: (line: string) => string
   const lineEnd = code.indexOf("\n", end);
   const endOffset = lineEnd === -1 ? code.length : lineEnd;
   const before = code.slice(lineStart, endOffset);
-  const after = before
-    .split("\n")
-    .map(transform)
-    .join("\n");
+  const after = before.split("\n").map(transform).join("\n");
 
   if (before === after) return false;
 
@@ -68,12 +65,10 @@ function newlineWithIndent(editor: Editor) {
   const lineStart = code.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
   const line = code.slice(lineStart, offset);
   const indentation = line.match(/^\s*/)?.[0] ?? "";
-  const opensScope = /[\[{(]\s*$/.test(line);
+  const opensScope = /[[{(]\s*$/.test(line);
   const closesScope = /^\s*[\]})]/.test(code.slice(codeTextOffset(to)));
   const nextIndent = `${indentation}${opensScope ? INDENT : ""}`;
-  const inserted = closesScope
-    ? `\n${nextIndent}\n${indentation}`
-    : `\n${nextIndent}`;
+  const inserted = closesScope ? `\n${nextIndent}\n${indentation}` : `\n${nextIndent}`;
   const cursor = from + nextIndent.length + 1;
   const tr = state.tr.insertText(inserted, from, to);
   view.dispatch(tr.setSelection(TextSelection.create(tr.doc, cursor)));
@@ -201,7 +196,9 @@ const CodeEditing = Extension.create({
               const next = view.state.doc.textBetween(from, from + 1, "\n");
               if (next === text) {
                 view.dispatch(
-                  view.state.tr.setSelection(TextSelection.create(view.state.doc, from + 1)),
+                  view.state.tr.setSelection(
+                    TextSelection.create(view.state.doc, from + 1),
+                  ),
                 );
                 return true;
               }

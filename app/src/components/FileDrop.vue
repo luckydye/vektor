@@ -76,6 +76,7 @@ defineExpose({ isDragging, openPicker });
 
 <template>
   <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+  <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
   <div
     ref="dropZone"
     class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors hover:border-neutral-400 hover:bg-neutral-50"

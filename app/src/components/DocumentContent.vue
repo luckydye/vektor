@@ -10,8 +10,8 @@ import {
   provideCollaboration,
   useCollaboration,
 } from "#composeables/useCollaboration.ts";
-import { resetEditingState, useEditor } from "#composeables/useEditor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { resetEditingState, useEditor } from "#composeables/useEditor.ts";
 import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
@@ -551,10 +551,7 @@ useSync(
       />
     </div>
 
-    <div
-      v-if="isMounted && documentType === 'canvas'"
-      class="h-screen md:h-screen"
-    >
+    <div v-if="isMounted && documentType === 'canvas'" class="h-screen md:h-screen">
       <Canvas
         :documentId="documentId"
         :spaceId="props.spaceId"

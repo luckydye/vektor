@@ -516,12 +516,10 @@ const selectedScalableSelection = computed(() => {
   const items = selectedCanvasItems.value;
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
   if (
-    items.shapes.some(
-      (shape) => {
-        const transform = extensionManager.get(shape.type).behavior.transform;
-        return !canMoveShape(shape) || !transform.move || transform.resize === "none";
-      },
-    ) ||
+    items.shapes.some((shape) => {
+      const transform = extensionManager.get(shape.type).behavior.transform;
+      return !canMoveShape(shape) || !transform.move || transform.resize === "none";
+    }) ||
     items.strokes.some((stroke) => !canMoveStroke(stroke))
   ) {
     return null;
@@ -2725,7 +2723,10 @@ function handlePointerMove(event: PointerEvent) {
           updateShapeFrame(shape.id, nextFrame);
           updateShapeData(
             shape.id,
-            { fontScale: Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000 },
+            {
+              fontScale:
+                Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000,
+            },
             { transform: true },
           );
           continue;
@@ -5281,5 +5282,4 @@ onUnmounted(() => {
   background: rgba(37, 99, 235, 0.1);
   pointer-events: none;
 }
-
 </style>

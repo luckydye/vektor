@@ -8,7 +8,7 @@ import type {
 } from "#cosmetics/types.ts";
 import { t } from "#utils/lang.ts";
 import "#cosmetics/CosmeticElement.ts";
-import "../AvatarElement.ts";
+import "#components/AvatarElement.ts";
 
 const props = defineProps<{
   inventory: readonly CosmeticAsset[];
@@ -91,7 +91,9 @@ const previewUser = computed(() => ({
           <div class="mt-3 flex h-10 items-center gap-8">
             <span class="relative block h-7 w-7 text-primary-600">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M19.824 2.735a1.1 1.1 0 0 1 1.44 1.44l-6.917 16.5a1.1 1.1 0 0 1-1.015.675h-.902a1.1 1.1 0 0 1-1.028-.706l-2.231-5.816-5.815-2.23a1.1 1.1 0 0 1-.706-1.028v-.902c0-.443.265-.843.674-1.015l16.5-6.918Z"/>
+                <path
+                  d="M19.824 2.735a1.1 1.1 0 0 1 1.44 1.44l-6.917 16.5a1.1 1.1 0 0 1-1.015.675h-.902a1.1 1.1 0 0 1-1.028-.706l-2.231-5.816-5.815-2.23a1.1 1.1 0 0 1-.706-1.028v-.902c0-.443.265-.843.674-1.015l16.5-6.918Z"
+                />
               </svg>
               <vektor-cosmetic
                 class="absolute left-5 top-0 h-9 w-11"
@@ -155,9 +157,7 @@ const previewUser = computed(() => ({
             :title="asset.description"
             @click="emit('equip', slot.id, asset.id)"
           >
-            <span
-              class="flex h-14 items-center justify-center rounded-md bg-neutral-100"
-            >
+            <span class="flex h-14 items-center justify-center rounded-md bg-neutral-100">
               <vektor-cosmetic class="h-12 w-12" :asset-id="asset.id" />
             </span>
             <span class="mt-2 block truncate text-label font-medium text-foreground">

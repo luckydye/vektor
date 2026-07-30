@@ -99,11 +99,13 @@ function isInsideHorizontallyScrollableContent(targets: readonly EventTarget[]) 
 }
 
 function isDrawerGestureControl(e: TouchEvent) {
-  return e.composedPath().some(
-    (target) =>
-      target instanceof Element &&
-      target.matches("a-track, input[type='range'], [role='slider']"),
-  );
+  return e
+    .composedPath()
+    .some(
+      (target) =>
+        target instanceof Element &&
+        target.matches("a-track, input[type='range'], [role='slider']"),
+    );
 }
 
 function startDrawerDrag(

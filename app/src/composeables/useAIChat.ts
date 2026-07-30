@@ -43,8 +43,8 @@ export function useAIChat(options: {
       references.push({ id, title });
     }
     if (references.length === 0) return "";
-    const lines = references.map((document) =>
-      `- ${document.title} (documentId: ${document.id})`,
+    const lines = references.map(
+      (document) => `- ${document.title} (documentId: ${document.id})`,
     );
     return `Referenced documents:\n${lines.join("\n")}\nUse these document IDs with tools when relevant.`;
   }
@@ -204,7 +204,8 @@ export function useAIChat(options: {
       await options.refreshCurrentSession();
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
-        const errorMessage = error instanceof Error ? error.message : "AI generation failed";
+        const errorMessage =
+          error instanceof Error ? error.message : "AI generation failed";
         options.messages.value.push({
           role: "assistant",
           content: `Sorry, I encountered an error: ${errorMessage}`,

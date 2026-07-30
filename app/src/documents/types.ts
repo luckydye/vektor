@@ -8,7 +8,9 @@ export function documentIsReadonly(document: {
   readonly?: boolean;
   type?: string | null;
 }): boolean {
-  return Boolean(document.readonly) || readOnlyDocumentTypes.includes(document.type ?? "");
+  return (
+    Boolean(document.readonly) || readOnlyDocumentTypes.includes(document.type ?? "")
+  );
 }
 
 /**
@@ -17,7 +19,11 @@ export function documentIsReadonly(document: {
  * as script-tag stripping is both meaningless and expensive on these — a
  * canvas reaches tens of MB — so the save path skips it for them.
  */
-export const nonHtmlContentDocumentTypes: readonly string[] = ["canvas", "app", "workflow"];
+export const nonHtmlContentDocumentTypes: readonly string[] = [
+  "canvas",
+  "app",
+  "workflow",
+];
 
 /** Whether a document type's stored content should be treated as HTML. */
 export function contentIsHtml(type: string | null | undefined): boolean {

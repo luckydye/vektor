@@ -13,10 +13,7 @@ import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { slugify } from "#utils/utils.ts";
-import {
-  filterReadableResources,
-  ResourceType,
-} from "./acl.ts";
+import { filterReadableResources, ResourceType } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
 import { getSpaceDb } from "./db.ts";

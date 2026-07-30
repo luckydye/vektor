@@ -25,7 +25,9 @@ function getAnthropicMessagesUrl(provider: AnthropicCompatibleProvider): string 
  * particular conversation shape. OpenCode Zen is Anthropic-compatible, but
  * does not document support for this Anthropic API feature.
  */
-function withAnthropicPromptCaching(body: Record<string, unknown>): Record<string, unknown> {
+function withAnthropicPromptCaching(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   return { ...body, cache_control: { type: "ephemeral" } };
 }
 
@@ -236,7 +238,9 @@ export async function callAnthropic(options: {
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`${options.provider.provider} ${response.status}: ${await response.text()}`);
+    throw new Error(
+      `${options.provider.provider} ${response.status}: ${await response.text()}`,
+    );
   }
 
   let textContent = "";

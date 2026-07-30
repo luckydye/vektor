@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, toRef, watch } from "vue";
 import "#editor/elements/code-editor.ts";
-import type { CodeEditorElementApi } from "#editor/elements/code-editor.ts";
 import { useCollaboration } from "#composeables/useCollaboration.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import {
@@ -9,6 +8,7 @@ import {
   type DocumentPresenceProfile,
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
+import type { CodeEditorElementApi } from "#editor/elements/code-editor.ts";
 import DockedPanel from "./DockedPanel.vue";
 
 const props = defineProps<{

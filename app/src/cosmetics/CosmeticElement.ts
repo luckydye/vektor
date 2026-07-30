@@ -1,7 +1,4 @@
-import {
-  getCosmeticAsset,
-  subscribeCosmeticRegistry,
-} from "./assetRegistry.ts";
+import { getCosmeticAsset, subscribeCosmeticRegistry } from "./assetRegistry.ts";
 
 const cosmeticElementTag = "vektor-cosmetic";
 
