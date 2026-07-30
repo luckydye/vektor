@@ -99,12 +99,12 @@ export type StepCacheWriter = {
 /**
  * Accumulates the step cache a run will persist, under a byte budget.
  *
- * Every other persisted run field is bounded (2 KB strings, 200 log entries),
- * but step outputs are raw job results, held in memory for the whole run and
- * written as one JSON artifact on every attempt — and a resumed run carries the
- * prior run's entries forward, so without a cap a long workflow grows without
- * bound across retries. Dropping an entry only costs re-execution, never
- * correctness, so the budget is enforced by simply not caching.
+ * Other persisted run fields are bounded or stored as dedicated artifacts, but
+ * step outputs are raw job results, held in memory for the whole run and written
+ * as one JSON artifact on every attempt — and a resumed run carries the prior
+ * run's entries forward, so without a cap a long workflow grows without bound
+ * across retries. Dropping an entry only costs re-execution, never correctness,
+ * so the budget is enforced by simply not caching.
  */
 export function createStepCacheWriter(seed: WorkflowStepCache = {}): StepCacheWriter {
   const steps = new Map<string, Record<string, unknown>>();

@@ -46,7 +46,6 @@ export const RUN_STORE_RECOVERY_ERROR =
 const MAX_STRING_CHARS = 2_000;
 const MAX_ARRAY_ITEMS = 20;
 const MAX_OBJECT_ENTRIES = 20;
-const MAX_LOG_ENTRIES = 200;
 const REDACTED_VALUE = "[redacted]";
 
 const runProperty = {
@@ -117,16 +116,6 @@ function summarizeValue(value: unknown, depth = 0): unknown {
 
 function summarizeRecord(value: Record<string, unknown>): Record<string, unknown> {
   return summarizeValue(value) as Record<string, unknown>;
-}
-
-function summarizeLogs(messages: string[]): string[] {
-  const summarized = messages
-    .slice(-MAX_LOG_ENTRIES)
-    .map((message) => summarizeString(message));
-  const truncatedEntries = messages.length - summarized.length;
-  return truncatedEntries > 0
-    ? [`…(truncated ${truncatedEntries} log entries)`, ...summarized]
-    : summarized;
 }
 
 function parseInputs(value: string | undefined): Record<string, unknown> {
@@ -484,7 +473,6 @@ export function appendRunLog(runId: string, message: string): void {
   const run = activeRuns.get(runId);
   if (!run) return;
   run.logs.push(summarizeString(message));
-  run.logs = summarizeLogs(run.logs);
   emitRunChanged(runId, run);
 }
 
