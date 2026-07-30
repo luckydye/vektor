@@ -3,8 +3,7 @@ import { ref, watch } from "vue";
 import homeIcon from "#assets/icons/home.svg?raw";
 import settingsIcon from "#assets/icons/settings.svg?raw";
 import { t } from "#utils/lang.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 import Icon from "./Icon.vue";
 import "@atrium-ui/elements/popover";
 import { computed } from "vue";
@@ -201,13 +200,14 @@ const handleCreateDoc = (event: Event) => {
 
     <!-- Action Buttons -->
     <div class="@max-sm:hidden flex items-center gap-2xs flex-none py-5xs pr-4xs">
-      <ButtonSecondary
+      <Button
+        variant="secondary"
         v-if="props.canCreateDocs"
         :aria-label="t('New document')"
         @click="handleCreateDoc"
       >
         <Icon name="plus" class="-mx-1.5" />
-      </ButtonSecondary>
+      </Button>
     </div>
   </div>
 </template>

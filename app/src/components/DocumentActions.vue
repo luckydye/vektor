@@ -12,7 +12,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 import ContextMenu from "./ContextMenu.vue";
 import ContextMenuItem from "./ContextMenuItem.vue";
 import Contributors from "./Contributors.vue";
@@ -569,10 +569,10 @@ watchEffect(() => {
         </a-popover-trigger>
       </div>
 
-      <ButtonSecondary v-if="showCancel" @click="cancelEditing">
+      <Button variant="secondary" v-if="showCancel" @click="cancelEditing">
         <Icon name="cancel" />
         <span>Cancel</span>
-      </ButtonSecondary>
+      </Button>
     </div>
 
     <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->

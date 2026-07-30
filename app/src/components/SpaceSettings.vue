@@ -58,7 +58,7 @@
               {{ error }}
             </div>
             <div class="mt-6 flex justify-end">
-              <ButtonPrimary
+              <Button
                 type="submit"
                 :disabled="isSaving"
                 :text="isSaving ? 'Saving…' : 'Save Changes'"
@@ -104,11 +104,7 @@
                 All documents and data will be archived. This cannot be undone.
               </p>
             </div>
-            <ButtonPrimary
-              tone="danger"
-              text="Delete Space"
-              @click="showDeleteConfirm = true"
-            />
+            <Button tone="danger" text="Delete Space" @click="showDeleteConfirm = true" />
           </div>
         </div>
 
@@ -752,12 +748,13 @@
         {{ deleteError }}
       </div>
       <div class="flex gap-2">
-        <ButtonSecondary
+        <Button
+          variant="secondary"
           text="Cancel"
           @click="showDeleteConfirm = false; deleteConfirmText = ''; deleteError = null;"
           class="flex-1"
         />
-        <ButtonPrimary
+        <Button
           tone="danger"
           :text="isDeleting ? 'Deleting...' : 'Delete Space'"
           @click="handleDeleteSpace"
@@ -774,8 +771,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { config } from "#config";
 import AgentSettings from "./AgentSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
 import SettingsLayout from "./SettingsLayout.vue";
@@ -989,7 +985,8 @@ async function saveWorkflowCreationEnabled(enabled: boolean) {
     toast.success("Feature settings saved");
   } catch (err) {
     localWorkflowCreationEnabled.value = previousValue;
-    error.value = err instanceof Error ? err.message : "Failed to update feature settings";
+    error.value =
+      err instanceof Error ? err.message : "Failed to update feature settings";
   } finally {
     isSavingWorkflowCreationEnabled.value = false;
   }

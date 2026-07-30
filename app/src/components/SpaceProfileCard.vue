@@ -2,7 +2,7 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { editEntryIcon } from "~/src/assets/icons.ts";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 
 interface Props {
   name: string;
@@ -23,10 +23,7 @@ const emit = defineEmits<{
 }>();
 
 function handleBrandColorChange(event: Event) {
-  emit(
-    "update:brandColor",
-    (event.target as HTMLElement & { value: string }).value,
-  );
+  emit("update:brandColor", (event.target as HTMLElement & { value: string }).value);
 }
 </script>
 
@@ -84,12 +81,7 @@ function handleBrandColorChange(event: Event) {
               v-html="props.logo"
               class="w-full h-full p-1.5 [&>svg]:w-full [&>svg]:h-full"
             />
-            <img
-              v-else
-              :src="props.logo"
-              alt=""
-              class="w-full h-full object-cover"
-            >
+            <img v-else :src="props.logo" alt="" class="w-full h-full object-cover">
           </template>
           <span v-else class="text-sm font-bold text-white select-none leading-none">
             {{ (props.name || '?')[0].toUpperCase() }}
@@ -100,7 +92,8 @@ function handleBrandColorChange(event: Event) {
             <div class="svg-icon w-4 h-4 text-white" v-html="editEntryIcon" />
           </div>
         </label>
-        <ButtonSecondary
+        <Button
+          variant="secondary"
           v-if="props.logo"
           text="Remove"
           @click="emit('remove-logo')"

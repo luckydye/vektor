@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from "#utils/lang.ts";
 import { arrowLeftIcon, lockElementIcon } from "~/src/assets/icons.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
+import Button from "./Button.vue";
 
 function goBack() {
   history.back();
@@ -24,10 +24,10 @@ function goBack() {
         mistake, have a chat with your administrator.
       </p>
 
-      <ButtonPrimary @click="goBack">
+      <Button @click="goBack">
         <div class="svg-icon w-5 h-5 mr-2" v-html="arrowLeftIcon" />
         Go Back
-      </ButtonPrimary>
+      </Button>
     </div>
   </div>
 </template>

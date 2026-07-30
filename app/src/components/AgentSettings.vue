@@ -118,7 +118,7 @@
         </div>
 
         <div class="flex justify-end">
-          <ButtonPrimary
+          <Button
             type="submit"
             :disabled="isSaving"
             :text="isSaving ? 'Saving…' : 'Save'"
@@ -133,7 +133,7 @@
 import { computed, ref, watch } from "vue";
 import { type AIConfigMeta, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
+import Button from "./Button.vue";
 
 const { currentSpace } = useSpace();
 

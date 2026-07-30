@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from "vue";
 import { t } from "#utils/lang.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
+import Button from "./Button.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";
 import type { Property, SpaceProperty } from "#documents/properties.ts";
@@ -177,7 +177,7 @@ onMounted(() => {
         @select="handleTypeSelect"
       />
 
-      <ButtonPrimary
+      <Button
         :text="t('Create')"
         class="justify-center"
         :disabled="!propertyName.trim() || !selectedType"

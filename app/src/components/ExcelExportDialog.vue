@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 import Dialog from "./Dialog.vue";
 
 export interface ExcelExportConfig {
@@ -142,8 +141,8 @@ function submit() {
 
     <template #footer>
       <div class="flex items-center justify-end gap-2xs">
-        <ButtonSecondary text="Cancel" @click="emit('cancel')" />
-        <ButtonPrimary
+        <Button variant="secondary" text="Cancel" @click="emit('cancel')" />
+        <Button
           text="Download"
           :disabled="!sheetNameColumn || !splitColumn"
           @click="submit"

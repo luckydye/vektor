@@ -3,8 +3,7 @@ import { ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
 import { config } from "#config";
 import { type TranslationKey, t } from "#utils/lang.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 import FormField from "./FormField.vue";
 import Input from "./Input.vue";
 
@@ -160,7 +159,7 @@ function toggleMode() {
         {{ error }}
       </div>
 
-      <ButtonPrimary
+      <Button
         :text="
           loading
             ? translate('Loading...')
@@ -194,7 +193,8 @@ function toggleMode() {
       </div>
     </div>
 
-    <ButtonSecondary
+    <Button
+      variant="secondary"
       v-if="showGoogleLogin"
       :text="translate('Continue with Google')"
       class="w-full px-6 py-3 text-base justify-center"
@@ -202,7 +202,8 @@ function toggleMode() {
       :disabled="loading"
     />
 
-    <ButtonSecondary
+    <Button
+      variant="secondary"
       v-if="showSsoLogin"
       :text="translate('Continue with SSO')"
       class="w-full px-6 py-3 text-base justify-center"

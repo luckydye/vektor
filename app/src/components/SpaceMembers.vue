@@ -10,8 +10,7 @@ import {
   usersGroupIcon,
   usersIcon,
 } from "~/src/assets/icons.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonSecondary from "./ButtonSecondary.vue";
+import Button from "./Button.vue";
 import "./AvatarElement.ts";
 
 const { currentSpace } = useSpace();
@@ -160,7 +159,11 @@ const memberAccess = computed(() => {
         highestRole: getHighestRole(member.grants),
       };
     })
-    .sort((a, b) => getMemberName(a.primaryPermission).localeCompare(getMemberName(b.primaryPermission)));
+    .sort((a, b) =>
+      getMemberName(a.primaryPermission).localeCompare(
+        getMemberName(b.primaryPermission),
+      ),
+    );
 });
 
 const expandedMembers = ref(new Set());
@@ -333,7 +336,11 @@ function getAccessDetail(member) {
   }
   if (member.spaceGrant) return "Space-wide access";
   if (member.categoryGrants.length > 0) return "Category-scoped access";
-  if (member.grants.some((grant) => ["document", "document_tree"].includes(grant.permission.resourceType))) {
+  if (
+    member.grants.some((grant) =>
+      ["document", "document_tree"].includes(grant.permission.resourceType),
+    )
+  ) {
     return "Page-scoped access";
   }
   return "Resource-scoped access";
@@ -371,7 +378,9 @@ function getAccessibleResourceGroups(member) {
   });
 
   const documentGroups = member.grants
-    .filter((grant) => ["document", "document_tree"].includes(grant.permission.resourceType))
+    .filter((grant) =>
+      ["document", "document_tree"].includes(grant.permission.resourceType),
+    )
     .map((grant) => {
       const root = documentsById.value.get(grant.permission.resourceId);
       const isTree = grant.permission.resourceType === "document_tree";
@@ -393,7 +402,9 @@ function getAccessibleResourceGroups(member) {
 
 function getAccessibleDocumentCount(member) {
   return new Set(
-    getAccessibleResourceGroups(member).flatMap((group) => group.documents.map((document) => document.id)),
+    getAccessibleResourceGroups(member).flatMap((group) =>
+      group.documents.map((document) => document.id),
+    ),
   ).size;
 }
 
@@ -567,7 +578,7 @@ async function copyMemberId(memberId) {
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-size-large font-semibold text-neutral-900">Members</h2>
-      <ButtonPrimary text="Invite People" @click="showAddMember = true" />
+      <Button text="Invite People" @click="showAddMember = true" />
     </div>
 
     <!-- Loading State -->
@@ -698,7 +709,9 @@ async function copyMemberId(memberId) {
                     class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-background px-3 py-2 border border-neutral-100"
                   >
                     <div>
-                      <div class="font-medium text-neutral-900">{{ getResourceLabel(grant) }}</div>
+                      <div class="font-medium text-neutral-900">
+                        {{ getResourceLabel(grant) }}
+                      </div>
                       <div class="text-size-small text-neutral-500">
                         Added {{ formatDate(grant.permission.createdAt) }}
                       </div>
@@ -740,7 +753,10 @@ async function copyMemberId(memberId) {
                       {{ member.spaceGrant ? 'Accessible resources · Entire space' : `Accessible resources · ${getAccessibleDocumentCount(member)} pages` }}
                     </summary>
                     <div class="border-t border-neutral-100 p-3 space-y-3">
-                      <p v-if="member.spaceGrant" class="text-size-small text-neutral-600">
+                      <p
+                        v-if="member.spaceGrant"
+                        class="text-size-small text-neutral-600"
+                      >
                         This grant covers every resource in the space.
                       </p>
                       <div
@@ -748,10 +764,17 @@ async function copyMemberId(memberId) {
                         :key="group.id"
                       >
                         <div class="flex items-center justify-between text-size-small">
-                          <span class="font-medium text-neutral-800">{{ group.label }}</span>
-                          <span class="text-neutral-500">{{ group.documents.length }} pages</span>
+                          <span class="font-medium text-neutral-800"
+                            >{{ group.label }}</span
+                          >
+                          <span class="text-neutral-500"
+                            >{{ group.documents.length }}
+                            pages</span
+                          >
                         </div>
-                        <ul class="mt-1 divide-y divide-neutral-100 rounded-md border border-neutral-100">
+                        <ul
+                          class="mt-1 divide-y divide-neutral-100 rounded-md border border-neutral-100"
+                        >
                           <li
                             v-for="document in group.documents"
                             :key="document.id"
@@ -919,12 +942,13 @@ async function copyMemberId(memberId) {
         </div>
 
         <div class="flex gap-3">
-          <ButtonSecondary
+          <Button
+            variant="secondary"
             text="Cancel"
             @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberEmail = ''; newMemberType = 'user'; newMemberRole = 'viewer'; newMemberScope = 'space'; newMemberCategoryId = '';"
             class="flex-1"
           />
-          <ButtonPrimary
+          <Button
             type="submit"
             :disabled="addingMember"
             :text="addingMember ? 'Adding...' : 'Invite People'"

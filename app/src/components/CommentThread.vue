@@ -7,7 +7,7 @@ import { renderMessageMarkdown } from "#utils/markdown.ts";
 import "#editor/css/mentions.css";
 import { cancelIcon, confirmationIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
 import "./AvatarElement.ts";
-import ButtonGhost from "./ButtonGhost.vue";
+import Button from "./Button.vue";
 import MessageInput from "./MessageInput.vue";
 
 export interface Comment {
@@ -111,20 +111,23 @@ watch(
         </span>
       </div>
       <div class="flex items-center gap-1">
-        <ButtonGhost
+        <Button
+          variant="ghost"
           v-if="comments.length > 0"
           @click="emit('resolve')"
           class="p-1 text-neutral-400 hover:text-green-600 w-6 h-6"
-          title="Resolve thread"
+          aria-label="Resolve thread"
         >
           <div class="svg-icon w-4 h-4" v-html="confirmationIcon" />
-        </ButtonGhost>
-        <ButtonGhost
+        </Button>
+        <Button
+          variant="ghost"
           @click="emit('close')"
           class="p-1 -mr-1 text-neutral-400 hover:text-neutral-700 w-6 h-6"
+          aria-label="Close thread"
         >
           <div class="svg-icon w-4 h-4" v-html="cancelIcon" />
-        </ButtonGhost>
+        </Button>
       </div>
     </div>
 
@@ -154,15 +157,16 @@ watch(
             <span class="text-[10px] text-neutral-400 whitespace-nowrap">
               {{ getRelativeTime(comment.createdAt) }}
             </span>
-            <ButtonGhost
+            <Button
+              variant="ghost"
               v-if="currentUser?.id === comment.createdBy"
               @click="handleDeleteComment(comment.id)"
               :disabled="isDeletingComment"
               class="ml-auto p-0.5 text-neutral-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5"
-              title="Delete comment"
+              aria-label="Delete comment"
             >
               <div class="svg-icon w-3 h-3" v-html="deleteEntryIcon" />
-            </ButtonGhost>
+            </Button>
           </div>
 
           <div

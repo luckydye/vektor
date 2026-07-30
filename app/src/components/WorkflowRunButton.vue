@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "~/src/assets/icons.ts";
-import ButtonPrimary from "./ButtonPrimary.vue";
+import Button from "./Button.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -75,25 +75,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ButtonPrimary
-    v-if="isActiveRun"
-    tone="danger"
-    :disabled="cancelling"
-    @click="cancelRun"
-  >
+  <Button v-if="isActiveRun" tone="danger" :disabled="cancelling" @click="cancelRun">
     <div
       class="icon"
       :class="{ 'animate-spin': cancelling }"
       v-html="cancelling ? spinnerIcon : cancelIcon"
     />
     <span>{{ cancelling ? "Cancelling…" : "Cancel" }}</span>
-  </ButtonPrimary>
-  <ButtonPrimary v-else :disabled="starting" @click="startRun">
+  </Button>
+  <Button v-else :disabled="starting" @click="startRun">
     <div
       class="icon"
       :class="{ 'animate-spin': starting }"
       v-html="starting ? spinnerIcon : playCircleFilledIcon"
     />
     <span>{{ starting ? "Starting…" : "Run workflow" }}</span>
-  </ButtonPrimary>
+  </Button>
 </template>

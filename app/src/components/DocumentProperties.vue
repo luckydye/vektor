@@ -23,7 +23,7 @@ import {
   gridGridIcon,
   peopleIcon,
 } from "~/src/assets/icons.ts";
-import ButtonIconSmall from "./ButtonIconSmall.vue";
+import Button from "./Button.vue";
 import PropertyChip from "./PropertyChip.vue";
 import PropertyPopover from "./PropertyPopover.vue";
 
@@ -381,10 +381,12 @@ const availableNewProperties = computed(() => {
       v-if="!readonly"
       :class="twMerge('pointer-events-auto', layout === 'labeled' ? 'relative ml-28 pl-3xs' : 'relative')"
     >
-      <ButtonIconSmall
+      <Button
+        variant="outline"
+        size="small"
         :icon="addIcon"
         :aria-label="t('New property')"
-        class="[&_svg]:inline [&_svg]:text-primary-600"
+        class="w-full justify-center [&_svg]:inline [&_svg]:text-primary-600"
         @click="toggleCreatePopover"
       />
 
