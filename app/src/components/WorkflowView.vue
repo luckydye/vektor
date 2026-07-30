@@ -3,15 +3,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
-import { useInfiniteQuery } from "#composeables/query.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import { spacePath } from "#utils/utils.ts";
+import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import {
   chevronLeftThinIcon,
-  chevronRightSmallIcon,
   documentIcon,
   downloadIcon,
   fileAttachmentIcon,
@@ -20,6 +19,8 @@ import {
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
+import PagerCursor from "./PagerCursor.vue";
+import WorkflowRunHistory from "./WorkflowRunHistory.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -86,31 +87,31 @@ function handleWorkflowTabSelected(event: Event) {
   animateWorkflowTabPanel(index, direction);
 }
 
-type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
+const WORKFLOW_RUNS_PAGE_SIZE = 10;
 
-const WORKFLOW_RUNS_PAGE_SIZE = 20;
-
+// The history is paged (previous/next), so `runList` only holds the page in
+// view. Everything the selected run needs falls back to `selectedRunDetail`,
+// which keeps working when the run isn't on the current page.
 const {
-  data: runListData,
-  fetchNextPage: fetchNextRunsPage,
-  hasNextPage: hasMoreRuns,
-  isFetchingNextPage: isFetchingNextRunsPage,
-  refetch: refreshRuns,
-} = useInfiniteQuery<WorkflowRunsPage, string | undefined>({
+  items: runList,
+  isFetching: isFetchingRuns,
+  hasPrevPage: hasPrevRunsPage,
+  hasNextPage: hasNextRunsPage,
+  nextPage: nextRunsPage,
+  prevPage: prevRunsPage,
+  refresh: refreshRuns,
+} = useCursorPagedList<RunSummary>({
   queryKey: computed(() => ["workflow_runs", props.spaceId, props.documentId]),
-  queryFn: ({ pageParam }) =>
-    api.workflows.listRuns(props.spaceId, {
+  fetcher: async ({ limit, cursor }) => {
+    const page = await api.workflows.listRuns(props.spaceId, {
       filterDocumentId: props.documentId,
-      limit: WORKFLOW_RUNS_PAGE_SIZE,
-      cursor: pageParam,
-    }),
-  getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-  initialPageParam: undefined,
+      limit,
+      cursor,
+    });
+    return { items: page.runs, nextCursor: page.nextCursor ?? null };
+  },
+  pageSize: WORKFLOW_RUNS_PAGE_SIZE,
 });
-
-const runList = computed<RunSummary[]>(
-  () => runListData.value?.pages.flatMap((page) => page.runs) ?? [],
-);
 
 function runIdFromUrl(): string | null {
   const runParam = new URLSearchParams(window.location.search).get("run")?.trim();
@@ -180,6 +181,13 @@ async function selectRun(runId: string, options: { updateUrl?: boolean } = {}) {
   selectedRunId.value = runId;
   selectedRunResult.value = null;
   await fetchSelectedRunDetail();
+}
+
+// On mobile the history is a tab, so jump back to the results of the run that
+// was just picked instead of leaving the user on the list.
+function selectRunFromHistoryTab(runId: string) {
+  void selectRun(runId);
+  workflowTabsEl.value?.selectTabByIndex(0);
 }
 
 const retrying = ref(false);
@@ -418,71 +426,6 @@ watch(outputDocumentId, async (id) => {
     : doc.slug;
 });
 
-// Run history expansion — lazy load per run
-const expandedHistoryRuns = ref<Set<string>>(new Set());
-const historyRunDetails = ref<Map<string, WorkflowRunStatus>>(new Map());
-const historyRunResults = ref<Map<string, Record<string, unknown> | null>>(new Map());
-const historyRunDocHrefs = ref<Map<string, string>>(new Map());
-const historyRunDocTitles = ref<Map<string, string>>(new Map());
-
-async function toggleHistoryRun(runId: string) {
-  if (expandedHistoryRuns.value.has(runId)) {
-    expandedHistoryRuns.value = new Set(
-      [...expandedHistoryRuns.value].filter((id) => id !== runId),
-    );
-    return;
-  }
-  expandedHistoryRuns.value = new Set([...expandedHistoryRuns.value, runId]);
-  if (historyRunDetails.value.has(runId)) return;
-  const detail = await api.workflows.getRun(props.spaceId, runId);
-  historyRunDetails.value = new Map([...historyRunDetails.value, [runId, detail]]);
-  let result: Record<string, unknown> | null = null;
-  try {
-    result = await fetchResultArtifact(detail);
-  } catch {
-    // Keep the run selectable even if a historical artifact was removed.
-  }
-  historyRunResults.value = new Map([...historyRunResults.value, [runId, result]]);
-  const docId = unwrapOutputValue(result?.documentId);
-  if (docId) {
-    const doc = await api.document.get(props.spaceId, docId);
-    historyRunDocHrefs.value = new Map([
-      ...historyRunDocHrefs.value,
-      [runId, spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`)],
-    ]);
-    historyRunDocTitles.value = new Map([
-      ...historyRunDocTitles.value,
-      [
-        runId,
-        doc.properties?.title ? propertyValueToText(doc.properties.title) : doc.slug,
-      ],
-    ]);
-  }
-}
-
-function historyOutputHtml(runId: string): string | null {
-  return unwrapOutputValue(historyRunResults.value.get(runId)?.html);
-}
-
-function historyOutputData(runId: string): Record<string, unknown>[] | null {
-  return extractTableData(historyRunResults.value.get(runId));
-}
-
-function historyRunTitle(run: RunSummary): string | null {
-  const title =
-    run.runtimeInputs?.title ??
-    historyRunDetails.value.get(run.runId)?.runtimeInputs?.title;
-  return typeof title === "string" ? title : null;
-}
-
-function historyOutputDocumentHref(runId: string): string | null {
-  return historyRunDocHrefs.value.get(runId) ?? null;
-}
-
-function historyOutputDocumentTitle(runId: string): string | null {
-  return historyRunDocTitles.value.get(runId) ?? null;
-}
-
 const isSelectedRunActive = computed(
   () =>
     selectedRunDetail.value?.status === "pending" ||
@@ -547,470 +490,374 @@ const statusBadgeClass: Record<string, string> = {
     </a>
   </Teleport>
 
-  <div class="px-xs lg:px-xl space-y-8 mx-auto mb-12">
-    <div class="flex justify-between gap-4">
-      <!-- Title -->
-      <h2 class="text-size-title font-semibold text-neutral-800">
-        {{ selectedRunTitle || "Untitled" }}
-      </h2>
+  <div
+    class="px-xs lg:px-xl mx-auto mb-12 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-12"
+  >
+    <div class="min-w-0 space-y-8">
+      <div class="flex justify-between gap-4">
+        <!-- Title -->
+        <h2 class="text-size-title font-semibold text-neutral-800">
+          {{ selectedRunTitle || "Untitled" }}
+        </h2>
 
-      <!-- Header -->
-      <div class="flex items-center justify-between gap-12">
-        <div class="flex items-center gap-3">
-          <span v-if="selectedRunCreatedAt" class="text-size-small text-neutral-400">
-            {{ formatDate(selectedRunCreatedAt) }}
-          </span>
-          <div v-if="selectedRunDetail" class="flex items-center gap-3">
-            <span
-              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-size-medium font-medium capitalize"
-              :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
-            >
-              <div
-                v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'"
-                class="svg-icon w-3 h-3 animate-spin"
-                v-html="spinnerIcon"
-              />
-              {{ selectedRunDetail.status }}
+        <!-- Header -->
+        <div class="flex items-center justify-between gap-12">
+          <div class="flex items-center gap-3">
+            <span v-if="selectedRunCreatedAt" class="text-size-small text-neutral-400">
+              {{ formatDate(selectedRunCreatedAt) }}
             </span>
+            <div v-if="selectedRunDetail" class="flex items-center gap-3">
+              <span
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-size-medium font-medium capitalize"
+                :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
+              >
+                <div
+                  v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'"
+                  class="svg-icon w-3 h-3 animate-spin"
+                  v-html="spinnerIcon"
+                />
+                {{ selectedRunDetail.status }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Tabs: Results / Run Details / History -->
-    <a-tabs ref="workflowTabsEl" @tab-selected="handleWorkflowTabSelected">
-      <a-tabs-list class="block py-4xs overflow-clip">
-        <a-tabs-tab
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
-        >
-          <span
-            class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
-            >Results</span
+      <!-- Tabs: Results / Run Details / History -->
+      <a-tabs ref="workflowTabsEl" @tab-selected="handleWorkflowTabSelected">
+        <a-tabs-list class="block py-4xs overflow-clip">
+          <a-tabs-tab
+            class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
           >
-        </a-tabs-tab>
-        <a-tabs-tab
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
-        >
-          <span
-            class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
-            >Run Details</span
+            <span
+              class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
+              >Results</span
+            >
+          </a-tabs-tab>
+          <a-tabs-tab
+            class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
           >
-        </a-tabs-tab>
-        <a-tabs-tab
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
-        >
-          <span
-            class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
-            >History</span
+            <span
+              class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
+              >Run Details</span
+            >
+          </a-tabs-tab>
+          <!-- On desktop the history lives in the sidebar instead of a tab. -->
+          <a-tabs-tab
+            class="lg:hidden inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
           >
-        </a-tabs-tab>
-      </a-tabs-list>
+            <span
+              class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
+              >History</span
+            >
+          </a-tabs-tab>
+        </a-tabs-list>
 
-      <!-- Results panel -->
-      <a-tabs-panel>
-        <div class="space-y-4 pt-4">
-          <section
-            v-if="isSelectedRunActive"
-            class="relative overflow-hidden rounded-xl border border-sky-100 bg-[linear-gradient(135deg,rgba(240,249,255,0.9),rgba(255,255,255,0.96)_55%,rgba(236,253,245,0.8))] p-5 shadow-[0_8px_24px_rgba(14,116,144,0.08)] dark:border-sky-900/50 dark:bg-[linear-gradient(135deg,rgba(12,74,110,0.2),rgba(23,23,23,0.96)_55%,rgba(6,78,59,0.2))]"
-            aria-live="polite"
-          >
-            <div
-              class="absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-200/25 blur-3xl dark:bg-sky-500/10"
-            />
-            <div class="relative space-y-5">
-              <div class="flex items-start justify-between gap-4">
-                <div class="flex items-start gap-3">
+        <!-- Results panel -->
+        <a-tabs-panel>
+          <div class="space-y-4 pt-4">
+            <section
+              v-if="isSelectedRunActive"
+              class="relative overflow-hidden rounded-xl border border-sky-100 bg-[linear-gradient(135deg,rgba(240,249,255,0.9),rgba(255,255,255,0.96)_55%,rgba(236,253,245,0.8))] p-5 shadow-[0_8px_24px_rgba(14,116,144,0.08)] dark:border-sky-900/50 dark:bg-[linear-gradient(135deg,rgba(12,74,110,0.2),rgba(23,23,23,0.96)_55%,rgba(6,78,59,0.2))]"
+              aria-live="polite"
+            >
+              <div
+                class="absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-200/25 blur-3xl dark:bg-sky-500/10"
+              />
+              <div class="relative space-y-5">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="flex items-start gap-3">
+                    <div
+                      class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none"
+                    >
+                      <div
+                        class="svg-icon h-5 w-5 animate-spin"
+                        v-html="spinnerQuarterIcon"
+                      />
+                    </div>
+                    <div>
+                      <p class="font-semibold text-neutral-800">
+                        Your workflow is in progress
+                      </p>
+                      <p class="mt-0.5 text-size-small text-neutral-500">
+                        {{ activeRunPhase }}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300"
+                  >
+                    Working
+                  </span>
+                </div>
+
+                <div>
                   <div
-                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none"
+                    class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70"
                   >
                     <div
-                      class="svg-icon h-5 w-5 animate-spin"
-                      v-html="spinnerQuarterIcon"
+                      class="absolute inset-y-0 w-1/3 rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)] animate-workflow-progress motion-reduce:animate-none motion-reduce:translate-x-full"
                     />
                   </div>
-                  <div>
-                    <p class="font-semibold text-neutral-800">
-                      Your workflow is in progress
-                    </p>
-                    <p class="mt-0.5 text-size-small text-neutral-500">
-                      {{ activeRunPhase }}
-                    </p>
-                  </div>
                 </div>
-                <span
-                  class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300"
-                >
-                  Working
-                </span>
-              </div>
 
-              <div>
                 <div
-                  class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70"
+                  v-if="recentActivity.length"
+                  class="border-t border-sky-100/80 pt-3 dark:border-sky-900/60"
                 >
-                  <div
-                    class="absolute inset-y-0 w-1/3 rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)] animate-workflow-progress motion-reduce:animate-none motion-reduce:translate-x-full"
-                  />
-                </div>
-              </div>
-
-              <div
-                v-if="recentActivity.length"
-                class="border-t border-sky-100/80 pt-3 dark:border-sky-900/60"
-              >
-                <div class="mb-2 flex items-center justify-between gap-3">
-                  <span
-                    class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400"
-                  >
-                    Recent activity
-                  </span>
-                  <span class="text-[10px] text-neutral-400">
-                    {{ selectedRunDetail?.logs.length }}
-                    updates
-                  </span>
-                </div>
-                <TransitionGroup
-                  tag="div"
-                  class="space-y-1.5"
-                  enter-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
-                  enter-from-class="opacity-0 translate-y-[0.55rem]"
-                  leave-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
-                  leave-to-class="opacity-0 translate-y-[0.55rem]"
-                  move-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
-                >
-                  <div
-                    v-for="activity in recentActivity"
-                    :key="activity.id"
-                    class="flex min-w-0 items-center gap-2 text-size-small"
-                    :class="activity.isLatest ? 'text-neutral-700' : 'text-neutral-400'"
-                  >
+                  <div class="mb-2 flex items-center justify-between gap-3">
                     <span
-                      class="h-1.5 w-1.5 shrink-0 rounded-full"
-                      :class="activity.isLatest ? 'bg-sky-500 animate-pulse' : 'bg-neutral-300'"
-                    />
-                    <span class="truncate" :title="activity.message"
-                      >{{ activity.message }}</span
+                      class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400"
                     >
+                      Recent activity
+                    </span>
+                    <span class="text-[10px] text-neutral-400">
+                      {{ selectedRunDetail?.logs.length }}
+                      updates
+                    </span>
                   </div>
-                </TransitionGroup>
+                  <TransitionGroup
+                    tag="div"
+                    class="space-y-1.5"
+                    enter-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
+                    enter-from-class="opacity-0 translate-y-[0.55rem]"
+                    leave-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
+                    leave-to-class="opacity-0 translate-y-[0.55rem]"
+                    move-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
+                  >
+                    <div
+                      v-for="activity in recentActivity"
+                      :key="activity.id"
+                      class="flex min-w-0 items-center gap-2 text-size-small"
+                      :class="activity.isLatest ? 'text-neutral-700' : 'text-neutral-400'"
+                    >
+                      <span
+                        class="h-1.5 w-1.5 shrink-0 rounded-full"
+                        :class="activity.isLatest ? 'bg-sky-500 animate-pulse' : 'bg-neutral-300'"
+                      />
+                      <span class="truncate" :title="activity.message"
+                        >{{ activity.message }}</span
+                      >
+                    </div>
+                  </TransitionGroup>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <template v-else-if="selectedRunDetail?.status === 'completed'">
-            <!-- HTML output -->
-            <div
-              v-if="outputHtml"
-              class="rounded-xl border border-neutral-200 overflow-hidden"
-            >
-              <div v-html="outputHtml" class="p-2" />
-            </div>
-
-            <!-- Data table -->
-            <DataTable
-              v-if="outputData"
-              :data="outputData"
-              :document-id="props.documentId"
-              :export-file-name="selectedRunTitle ?? 'data'"
-            />
-
-            <div class="flex flex-wrap items-center gap-2">
-              <!-- Raw JSON artifact -->
-              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-              <a
-                v-if="selectedRunDetail?.resultArtifact"
-                :href="selectedRunDetail.resultArtifact.url"
-                target="_blank"
-                rel="noreferrer"
-                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
+            <template v-else-if="selectedRunDetail?.status === 'completed'">
+              <!-- HTML output -->
+              <div
+                v-if="outputHtml"
+                class="rounded-xl border border-neutral-200 overflow-hidden"
               >
-                <div
-                  class="svg-icon w-4 h-4 text-neutral-400"
-                  v-html="arrowDownTrayIcon"
-                />
-                Result JSON
-              </a>
+                <div v-html="outputHtml" class="p-2" />
+              </div>
 
-              <!-- Document link -->
-              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-              <a
-                v-if="outputDocumentId && outputDocumentHref"
-                :href="outputDocumentHref"
-                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
-              >
-                <div class="svg-icon w-4 h-4 text-neutral-400" v-html="documentIcon" />
-                {{ outputDocumentTitle ?? "Open document" }}
-              </a>
+              <!-- Data table -->
+              <DataTable
+                v-if="outputData"
+                :data="outputData"
+                :document-id="props.documentId"
+                :export-file-name="selectedRunTitle ?? 'data'"
+              />
 
-              <!-- File download -->
-              <template v-if="selectedRunFileUrl && selectedRunFileName">
+              <div class="flex flex-wrap items-center gap-2">
+                <!-- Raw JSON artifact -->
                 <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                 <a
-                  :href="selectedRunFileUrl"
+                  v-if="selectedRunDetail?.resultArtifact"
+                  :href="selectedRunDetail.resultArtifact.url"
                   target="_blank"
                   rel="noreferrer"
                   class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
                 >
                   <div
                     class="svg-icon w-4 h-4 text-neutral-400"
-                    v-html="fileAttachmentIcon"
+                    v-html="arrowDownTrayIcon"
                   />
-                  {{ selectedRunFileName }}
+                  Result JSON
                 </a>
-                <button
-                  type="button"
-                  class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
-                  title="Download"
-                  @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
+
+                <!-- Document link -->
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+                <a
+                  v-if="outputDocumentId && outputDocumentHref"
+                  :href="outputDocumentHref"
+                  class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
                 >
-                  <div class="svg-icon w-4 h-4" v-html="downloadIcon" />
-                </button>
-              </template>
+                  <div class="svg-icon w-4 h-4 text-neutral-400" v-html="documentIcon" />
+                  {{ outputDocumentTitle ?? "Open document" }}
+                </a>
+
+                <!-- File download -->
+                <template v-if="selectedRunFileUrl && selectedRunFileName">
+                  <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+                  <a
+                    :href="selectedRunFileUrl"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
+                  >
+                    <div
+                      class="svg-icon w-4 h-4 text-neutral-400"
+                      v-html="fileAttachmentIcon"
+                    />
+                    {{ selectedRunFileName }}
+                  </a>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
+                    title="Download"
+                    @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
+                  >
+                    <div class="svg-icon w-4 h-4" v-html="downloadIcon" />
+                  </button>
+                </template>
+              </div>
+
+              <p
+                v-if="!outputHtml && !outputData && !outputDocumentId && !selectedRunFileUrl && !selectedRunDetail?.resultArtifact"
+                class="text-size-medium text-neutral-400"
+              >
+                No output
+              </p>
+            </template>
+
+            <div v-else-if="canRetrySelectedRun" class="space-y-3">
+              <p class="text-size-medium text-red-600">
+                {{ selectedRunDetail?.error ?? (selectedRunDetail?.status === 'cancelled' ? 'Run cancelled.' : 'Run failed.') }}
+              </p>
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                :disabled="retrying"
+                title="Start a new run, replaying already-completed steps from cache"
+                @click="retrySelectedRun"
+              >
+                <div
+                  v-if="retrying"
+                  class="svg-icon w-3.5 h-3.5 animate-spin"
+                  v-html="spinnerIcon"
+                />
+                <div v-else class="svg-icon w-3.5 h-3.5" v-html="refreshIcon" />
+                {{ retrying ? "Retrying…" : "Retry" }}
+              </button>
+              <p v-if="retryError" class="text-size-small text-red-600">
+                {{ retryError }}
+              </p>
+            </div>
+
+            <p v-else class="text-size-medium text-neutral-400">
+              {{ !selectedRunDetail ? (selectedRunError ?? 'Select a run from History to see results.') : 'Run did not complete.' }}
+            </p>
+          </div>
+        </a-tabs-panel>
+
+        <!-- Run Details panel -->
+        <a-tabs-panel>
+          <div class="space-y-6 pt-4">
+            <!-- Input fields -->
+            <div v-if="selectedRunInputs">
+              <div
+                class="mb-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Input fields
+              </div>
+              <div
+                class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50 transition-colors"
+              >
+                <div
+                  class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+                >
+                  Field
+                </div>
+                <div
+                  class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+                >
+                  Value
+                </div>
+              </div>
+              <div>
+                <div
+                  v-for="(val, key) in selectedRunInputs"
+                  :key="key"
+                  class="border-b border-neutral-100 transition-colors hover:bg-neutral-50"
+                >
+                  <div class="grid grid-cols-[180px_1fr] items-center text-size-medium">
+                    <div
+                      class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate"
+                    >
+                      {{ key }}
+                    </div>
+                    <pre
+                      class="px-0 py-2.5 pr-4 overflow-x-auto whitespace-pre-wrap break-all text-size-small text-neutral-700"
+                    >{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Logs -->
+            <div
+              v-if="allLogs.length > 0"
+              class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg"
+            >
+              <div class="text-size-small text-neutral-400">Logs</div>
+              <div class="mt-2 w-full overflow-x-auto max-h-[400px]">
+                <div class="font-mono text-[11px] space-y-0.5">
+                  <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
+                    <span
+                      :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'"
+                      >{{ entry.line }}</span
+                    >
+                  </div>
+                </div>
+              </div>
             </div>
 
             <p
-              v-if="!outputHtml && !outputData && !outputDocumentId && !selectedRunFileUrl && !selectedRunDetail?.resultArtifact"
+              v-if="!selectedRunInputs && allLogs.length === 0"
               class="text-size-medium text-neutral-400"
             >
-              No output
-            </p>
-          </template>
-
-          <div v-else-if="canRetrySelectedRun" class="space-y-3">
-            <p class="text-size-medium text-red-600">
-              {{ selectedRunDetail?.error ?? (selectedRunDetail?.status === 'cancelled' ? 'Run cancelled.' : 'Run failed.') }}
-            </p>
-            <button
-              type="button"
-              class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              :disabled="retrying"
-              title="Start a new run, replaying already-completed steps from cache"
-              @click="retrySelectedRun"
-            >
-              <div
-                v-if="retrying"
-                class="svg-icon w-3.5 h-3.5 animate-spin"
-                v-html="spinnerIcon"
-              />
-              <div v-else class="svg-icon w-3.5 h-3.5" v-html="refreshIcon" />
-              {{ retrying ? "Retrying…" : "Retry" }}
-            </button>
-            <p v-if="retryError" class="text-size-small text-red-600">
-              {{ retryError }}
+              No details available.
             </p>
           </div>
+        </a-tabs-panel>
 
-          <p v-else class="text-size-medium text-neutral-400">
-            {{ !selectedRunDetail ? (selectedRunError ?? 'Select a run from History to see results.') : 'Run did not complete.' }}
-          </p>
-        </div>
-      </a-tabs-panel>
-
-      <!-- Run Details panel -->
-      <a-tabs-panel>
-        <div class="space-y-6 pt-4">
-          <!-- Input fields -->
-          <div v-if="selectedRunInputs">
-            <div
-              class="mb-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-            >
-              Input fields
-            </div>
-            <div
-              class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50 transition-colors"
-            >
-              <div
-                class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-              >
-                Field
-              </div>
-              <div
-                class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-              >
-                Value
-              </div>
-            </div>
-            <div>
-              <div
-                v-for="(val, key) in selectedRunInputs"
-                :key="key"
-                class="border-b border-neutral-100 transition-colors hover:bg-neutral-50"
-              >
-                <div class="grid grid-cols-[180px_1fr] items-center text-size-medium">
-                  <div
-                    class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate"
-                  >
-                    {{ key }}
-                  </div>
-                  <pre
-                    class="px-0 py-2.5 pr-4 overflow-x-auto whitespace-pre-wrap break-all text-size-small text-neutral-700"
-                  >{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
-                </div>
-              </div>
-            </div>
+        <!-- History panel (mobile only; desktop renders the sidebar below) -->
+        <a-tabs-panel>
+          <div class="pt-2 lg:hidden">
+            <WorkflowRunHistory
+              :runs="runList"
+              :selectedRunId="selectedRunId"
+              :hasPrevPage="hasPrevRunsPage"
+              :hasNextPage="hasNextRunsPage"
+              :busy="isFetchingRuns"
+              @select="selectRunFromHistoryTab"
+              @prev="prevRunsPage"
+              @next="nextRunsPage"
+            />
           </div>
+        </a-tabs-panel>
+      </a-tabs>
+    </div>
 
-          <!-- Logs -->
-          <div
-            v-if="allLogs.length > 0"
-            class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg"
-          >
-            <div class="text-size-small text-neutral-400">Logs</div>
-            <div class="mt-2 w-full overflow-x-auto max-h-[400px]">
-              <div class="font-mono text-[11px] space-y-0.5">
-                <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-                  <span
-                    :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'"
-                    >{{ entry.line }}</span
-                  >
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <p
-            v-if="!selectedRunInputs && allLogs.length === 0"
-            class="text-size-medium text-neutral-400"
-          >
-            No details available.
-          </p>
-        </div>
-      </a-tabs-panel>
-
-      <!-- History panel -->
-      <a-tabs-panel>
-        <div class="pt-2">
-          <div v-if="runList.length > 0 || hasMoreRuns">
-            <div
-              class="grid grid-cols-[1fr_120px_140px] items-center h-9 border-b border-neutral-100 bg-neutral-50 sticky top-0 z-10 transition-colors"
-            >
-              <div
-                class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-              >
-                Run
-              </div>
-              <div
-                class="text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-              >
-                Status
-              </div>
-              <div
-                class="pr-4 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-              >
-                Results
-              </div>
-            </div>
-            <div>
-              <div
-                v-for="run in runList"
-                :key="run.runId"
-                class="border-b border-neutral-100 group transition-colors hover:transition-none"
-                :class="selectedRunId === run.runId ? 'bg-primary-50' : 'hover:bg-neutral-50'"
-              >
-                <div
-                  class="grid grid-cols-[1fr_120px_140px] items-center text-size-medium"
-                >
-                  <button
-                    type="button"
-                    class="flex items-center gap-2 min-w-0 py-2.5 px-4 text-left"
-                    @click="selectRun(run.runId)"
-                  >
-                    <span class="text-size-medium font-medium text-neutral-800 truncate">
-                      {{ historyRunTitle(run) || "Untitled" }}
-                    </span>
-                    <span class="text-neutral-400 text-size-small tabular-nums shrink-0">
-                      {{ formatDate(run.createdAt) }}
-                    </span>
-                  </button>
-
-                  <div class="flex items-center py-2.5 pr-3">
-                    <span
-                      class="px-1.5 py-0.5 rounded-sm text-[11px] font-medium capitalize"
-                      :class="statusBadgeClass[run.status] ?? 'bg-neutral-100 text-neutral-500'"
-                      >{{ run.status }}</span
-                    >
-                  </div>
-
-                  <div class="flex items-center justify-end py-2.5 pr-4">
-                    <button
-                      type="button"
-                      v-if="run.status === 'completed'"
-                      class="inline-flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
-                      @click="toggleHistoryRun(run.runId)"
-                    >
-                      <div
-                        class="svg-icon w-3 h-3 transition-transform"
-                        :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''"
-                        v-html="chevronRightSmallIcon"
-                      />
-                      Results
-                    </button>
-                    <span v-else class="text-size-small text-neutral-300">-</span>
-                  </div>
-                </div>
-
-                <!-- Expanded output -->
-                <div
-                  v-if="expandedHistoryRuns.has(run.runId)"
-                  class="px-4 pb-4 space-y-3 bg-neutral-50"
-                >
-                  <template v-if="historyRunDetails.has(run.runId)">
-                    <div
-                      v-if="historyOutputHtml(run.runId)"
-                      class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100"
-                    >
-                      <div v-html="historyOutputHtml(run.runId)" class="p-4" />
-                    </div>
-                    <DataTable
-                      v-if="historyOutputData(run.runId)"
-                      :data="historyOutputData(run.runId)!"
-                      :document-id="props.documentId"
-                      :export-file-name="historyRunTitle(run) ?? 'data'"
-                    />
-                    <div
-                      v-if="historyOutputDocumentHref(run.runId)"
-                      class="inline-flex items-center gap-2"
-                    >
-                      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-                      <a
-                        :href="historyOutputDocumentHref(run.runId)!"
-                        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
-                      >
-                        <div
-                          class="svg-icon w-4 h-4 text-neutral-400"
-                          v-html="documentIcon"
-                        />
-                        {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
-                      </a>
-                    </div>
-                    <p
-                      v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)"
-                      class="text-size-small text-neutral-400"
-                    >
-                      No output
-                    </p>
-                  </template>
-                  <div v-else class="text-size-small text-neutral-400">Loading…</div>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="hasMoreRuns" class="flex justify-center mt-4 pt-3 mb-12">
-              <button
-                type="button"
-                @click="() => fetchNextRunsPage()"
-                :disabled="isFetchingNextRunsPage"
-                class="px-4 py-1.5 text-size-small border border-neutral-100 rounded-md hover:border-primary-300 hover:text-primary-600 disabled:opacity-50"
-              >
-                {{ isFetchingNextRunsPage ? 'Loading…' : 'Load more' }}
-              </button>
-            </div>
-          </div>
-          <p v-else class="text-size-medium text-neutral-400 py-8 text-center">
-            No runs yet.
-          </p>
-        </div>
-      </a-tabs-panel>
-    </a-tabs>
+    <aside class="hidden min-w-0 lg:block">
+      <h3
+        class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400 mb-2"
+      >
+        History
+      </h3>
+      <WorkflowRunHistory
+        :runs="runList"
+        :selectedRunId="selectedRunId"
+        :hasPrevPage="hasPrevRunsPage"
+        :hasNextPage="hasNextRunsPage"
+        :busy="isFetchingRuns"
+        @select="(runId: string) => selectRun(runId)"
+        @prev="prevRunsPage"
+        @next="nextRunsPage"
+      />
+    </aside>
   </div>
 </template>

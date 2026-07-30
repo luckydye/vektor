@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "~/src/assets/icons.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -74,30 +75,25 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <button
+  <ButtonPrimary
     v-if="isActiveRun"
-    type="button"
-    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    tone="danger"
     :disabled="cancelling"
     @click="cancelRun"
   >
     <div
-      v-if="cancelling"
-      class="svg-icon w-3.5 h-3.5 animate-spin"
-      v-html="spinnerIcon"
+      class="icon"
+      :class="{ 'animate-spin': cancelling }"
+      v-html="cancelling ? spinnerIcon : cancelIcon"
     />
-    <div v-else class="svg-icon w-3.5 h-3.5" v-html="cancelIcon" />
-    {{ cancelling ? "Cancelling…" : "Cancel" }}
-  </button>
-  <button
-    v-else
-    type="button"
-    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-    :disabled="starting"
-    @click="startRun"
-  >
-    <div v-if="starting" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerIcon" />
-    <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
-    {{ starting ? "Starting…" : "Run Workflow" }}
-  </button>
+    <span>{{ cancelling ? "Cancelling…" : "Cancel" }}</span>
+  </ButtonPrimary>
+  <ButtonPrimary v-else :disabled="starting" @click="startRun">
+    <div
+      class="icon"
+      :class="{ 'animate-spin': starting }"
+      v-html="starting ? spinnerIcon : playCircleFilledIcon"
+    />
+    <span>{{ starting ? "Starting…" : "Run workflow" }}</span>
+  </ButtonPrimary>
 </template>

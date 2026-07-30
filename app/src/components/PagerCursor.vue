@@ -3,6 +3,8 @@ defineProps<{
   hasPrevPage: boolean;
   hasNextPage: boolean;
   disabled?: boolean;
+  /** Keep the (disabled) buttons visible when there is only one page. */
+  alwaysVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -13,7 +15,7 @@ const emit = defineEmits<{
 
 <template>
   <div
-    v-if="hasPrevPage || hasNextPage"
+    v-if="alwaysVisible || hasPrevPage || hasNextPage"
     class="flex items-center justify-between border-t border-neutral-100"
   >
     <button

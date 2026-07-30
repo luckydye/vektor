@@ -505,15 +505,7 @@ watchEffect(() => {
       :spaceId="currentSpaceId"
     />
 
-    <button
-      v-if="documentType === 'workflow' && documentId && userCanEdit"
-      type="button"
-      class="button-primary px-3 max-md:hidden"
-      @click="openWorkflowEditor"
-    >
-      <Icon name="edit" />
-      <span>Edit</span>
-    </button>
+    <!-- Workflows have no dedicated edit button; the context menu carries it. -->
 
     <button
       v-if="canUseDocumentEditor && !editing"
@@ -598,7 +590,6 @@ watchEffect(() => {
       <ContextMenu>
         <ContextMenuItem
           v-if="documentType === 'workflow' && documentId && userCanEdit"
-          class="md:hidden"
           :onClick="openWorkflowEditorFromMenu"
         >
           <div class="aspect-sqaure flex-none w-[1rem]">
