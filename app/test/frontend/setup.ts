@@ -44,3 +44,32 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
     },
   );
 }) as typeof fetch;
+
+/**
+ * No spec may open a realtime socket.
+ *
+ * The API client connects on mount for live updates. happy-dom's `WebSocket`
+ * delegates to the `ws` package, which refuses to run in a browser context, so
+ * every route render threw an unhandled error. This inert stand-in never
+ * connects and never fires — realtime behaviour is out of scope for a DOM
+ * snapshot, and a spec that wants it can dispatch on the instance itself.
+ */
+class InertWebSocket extends EventTarget {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  readonly readyState = InertWebSocket.CLOSED;
+  readonly url: string;
+  onopen: unknown = null;
+  onclose: unknown = null;
+  onerror: unknown = null;
+  onmessage: unknown = null;
+  constructor(url: string | URL) {
+    super();
+    this.url = String(url);
+  }
+  send(): void {}
+  close(): void {}
+}
+globalThis.WebSocket = InertWebSocket as unknown as typeof WebSocket;

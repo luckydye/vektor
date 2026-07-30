@@ -148,7 +148,8 @@
       "!**/vendor",
       "!**/public",
       "!**/assets/**/*",
-      "!**/dist"
+      "!**/dist",
+      "!**/test/frontend/__snapshots__/**"
     ]
   }
 }
