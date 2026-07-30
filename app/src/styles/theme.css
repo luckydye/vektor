@@ -377,6 +377,152 @@
   @apply [&_svg]:w-[18px] [&_svg]:h-[18px];
 }
 
+/* Mount/unmount transitions without a framework.
+ *
+ * The element stays in the DOM and toggles the `hidden` attribute. `display` is
+ * in the transition list with `allow-discrete` so it flips at the end of the
+ * leave instead of the start, and `@starting-style` supplies the enter's
+ * from-state. Only `display: none` is set here — the visible `display` stays
+ * with the element's own classes, which are variously flex or block.
+ *
+ * Where a browser supports neither, the element simply appears and disappears.
+ * That is the accepted outcome (plan §5): no fallback, no polyfill.
+ */
+@utility overlay-fade {
+  opacity: 1;
+  transition:
+    opacity 150ms ease,
+    display 150ms allow-discrete;
+
+  &[hidden] {
+    opacity: 0;
+    display: none;
+  }
+
+  @starting-style {
+    &:not([hidden]) {
+      opacity: 0;
+    }
+  }
+}
+
+/** Slides up on mobile, in from the right on desktop. Pairs with `overlay-fade`
+ * on a sibling backdrop. */
+@utility overlay-slide {
+  transform: translateY(0);
+  transition:
+    transform 300ms cubic-bezier(0.32, 0.72, 0, 1),
+    display 300ms allow-discrete;
+
+  &[hidden] {
+    transform: translateY(100%);
+    display: none;
+  }
+
+  @starting-style {
+    &:not([hidden]) {
+      transform: translateY(100%);
+    }
+  }
+
+  @variant lg {
+    transform: translateX(0);
+
+    &[hidden] {
+      transform: translateX(100%);
+    }
+
+    @starting-style {
+      &:not([hidden]) {
+        transform: translateX(100%);
+      }
+    }
+  }
+}
+
+/** The dialog's backdrop and panel move on their own curves, so the layer only
+ * carries `display` — the timeline has to outlast the slower of the two. */
+@utility dialog-layer {
+  transition: display 280ms allow-discrete;
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .dialog-backdrop {
+    opacity: 1;
+    transition: opacity 200ms ease;
+  }
+
+  & .dialog-panel {
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      transform 280ms cubic-bezier(0.32, 0.72, 0, 1),
+      opacity 200ms ease;
+  }
+
+  &[hidden] .dialog-backdrop {
+    opacity: 0;
+  }
+
+  &[hidden] .dialog-panel {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+
+  @variant md {
+    &[hidden] .dialog-panel {
+      transform: translateY(0.5rem) scale(0.97);
+    }
+  }
+
+  @starting-style {
+    &:not([hidden]) .dialog-backdrop {
+      opacity: 0;
+    }
+
+    &:not([hidden]) .dialog-panel {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+}
+
+/** The user preferences panel inside the profile popover. */
+@utility preferences-panel {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 160ms var(--emphasized-curve, ease-out),
+    transform 160ms var(--emphasized-curve, ease-out),
+    display 160ms allow-discrete;
+
+  &[hidden] {
+    opacity: 0;
+    transform: translateX(14px);
+    display: none;
+  }
+
+  @starting-style {
+    &:not([hidden]) {
+      opacity: 0;
+      transform: translateX(14px);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade,
+  .overlay-slide,
+  .preferences-panel,
+  .dialog-layer,
+  .dialog-layer .dialog-backdrop,
+  .dialog-layer .dialog-panel {
+    transition: none;
+  }
+}
+
 @utility text-shadow {
   text-shadow: 2px 2px 0px var(--color-neutral-50);
 }

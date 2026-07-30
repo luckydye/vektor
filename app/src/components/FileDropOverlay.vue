@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { uploadFileIcon } from "#assets/icons.ts";
 import { t } from "#utils/lang.ts";
+import ClientOnly from "./ClientOnly.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -63,16 +64,11 @@ function handleDrop(event: DragEvent) {
   >
     <slot />
 
-    <Teleport to="body">
-      <Transition
-        enter-active-class="transition-opacity duration-150 ease-out"
-        enter-from-class="opacity-0"
-        leave-active-class="transition-opacity duration-150 ease-in"
-        leave-to-class="opacity-0"
-      >
+    <ClientOnly>
+      <Teleport to="body">
         <inset-view
-          v-if="isDraggingFile"
-          class="pointer-events-none fixed inset-xs z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary-300 bg-background/95 shadow-large backdrop-blur-sm md:left-[calc(var(--inset-left,0px)+var(--spacing-xs))] md:right-[calc(var(--inset-right,0px)+var(--spacing-xs))]"
+          :hidden="!isDraggingFile"
+          class="overlay-fade pointer-events-none fixed inset-xs z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary-300 bg-background/95 shadow-large backdrop-blur-sm md:left-[calc(var(--inset-left,0px)+var(--spacing-xs))] md:right-[calc(var(--inset-right,0px)+var(--spacing-xs))]"
         >
           <div class="flex flex-col items-center gap-xs text-center text-primary-700">
             <div
@@ -82,7 +78,7 @@ function handleDrop(event: DragEvent) {
             <p class="text-size-large font-semibold">{{ t("Drop file to upload") }}</p>
           </div>
         </inset-view>
-      </Transition>
-    </Teleport>
+      </Teleport>
+    </ClientOnly>
   </div>
 </template>

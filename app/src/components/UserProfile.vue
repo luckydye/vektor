@@ -31,24 +31,12 @@ const user = computed(() =>
     : undefined,
 );
 const isPreferencesOpen = ref(false);
-const isPreferencesLeaving = ref(false);
-const isPreferencesViewActive = computed(
-  () => isPreferencesOpen.value || isPreferencesLeaving.value,
-);
-
 const openPreferences = () => {
-  isPreferencesLeaving.value = false;
   isPreferencesOpen.value = true;
 };
 
 const closePreferences = () => {
-  if (!isPreferencesOpen.value) return;
-  isPreferencesLeaving.value = true;
   isPreferencesOpen.value = false;
-};
-
-const handlePreferencesLeave = () => {
-  isPreferencesLeaving.value = false;
 };
 
 const handlePopoverExit = () => {
@@ -87,7 +75,7 @@ onMounted(() => {
       <div
         class="overflow-hidden rounded-lg bg-background opacity-0 shadow-xl transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100"
         :class="
-          isPreferencesViewActive
+          isPreferencesOpen
             ? 'w-[620px] max-w-[calc(100vw-2rem)]'
             : 'w-[300px] max-w-[calc(100vw-2rem)]'
         "
@@ -95,12 +83,12 @@ onMounted(() => {
         <div
           class="border border-neutral-100 rounded-lg origin-bottom-left scale-95 transition-all duration-150 group-[[enabled]]:scale-100"
           :class="
-            isPreferencesViewActive
+            isPreferencesOpen
               ? 'w-[620px] max-w-[calc(100vw-2rem)]'
               : 'w-[300px] max-w-[calc(100vw-2rem)]'
           "
         >
-          <template v-if="!isPreferencesViewActive">
+          <template v-if="!isPreferencesOpen">
             <!-- User Info -->
             <div class="p-4 border-b border-neutral-100">
               <div class="flex items-center gap-3">
@@ -150,39 +138,14 @@ onMounted(() => {
             </div>
           </template>
 
-          <Transition name="preferences-panel" @after-leave="handlePreferencesLeave">
-            <div v-if="isPreferencesOpen" class="w-[620px] max-w-[calc(100vw-2rem)]">
-              <UserPreferencesPanel @close="closePreferences" />
-            </div>
-          </Transition>
+          <div
+            :hidden="!isPreferencesOpen"
+            class="preferences-panel w-[620px] max-w-[calc(100vw-2rem)]"
+          >
+            <UserPreferencesPanel @close="closePreferences" />
+          </div>
         </div>
       </div>
     </a-popover>
   </a-popover-trigger>
 </template>
-
-<style>
-.preferences-panel-enter-active,
-.preferences-panel-leave-active {
-  transition:
-    opacity 160ms var(--emphasized-curve, ease-out),
-    transform 160ms var(--emphasized-curve, ease-out);
-}
-
-.preferences-panel-enter-from {
-  opacity: 0;
-  transform: translateX(14px);
-}
-
-.preferences-panel-leave-to {
-  opacity: 0;
-  transform: translateX(14px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .preferences-panel-enter-active,
-  .preferences-panel-leave-active {
-    transition: none;
-  }
-}
-</style>

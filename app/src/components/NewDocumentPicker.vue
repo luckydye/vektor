@@ -92,62 +92,55 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Transition
-    enter-active-class="transition-opacity duration-150 ease-[ease]"
-    enter-from-class="opacity-0"
-    leave-active-class="transition-opacity duration-150 ease-[ease]"
-    leave-to-class="opacity-0"
+  <div
+    :hidden="!visible"
+    role="dialog"
+    class="overlay-fade relative z-10 flex justify-center pt-6 pb-8 pointer-events-none"
+    :aria-label="t('Select document type')"
   >
     <div
-      v-if="visible"
-      role="dialog"
-      class="relative z-10 flex justify-center pt-6 pb-8 pointer-events-none"
-      :aria-label="t('Select document type')"
+      class="new-document-picker pointer-events-auto w-full max-w-[1120px] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100"
     >
-      <div
-        class="new-document-picker pointer-events-auto w-full max-w-[1120px] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100"
-      >
-        <div class="flex flex-col items-center text-center mb-8">
-          <p class="mt-2 text-size-large text-neutral-500">
-            {{ t("Choose a format to get started.") }}
-          </p>
-        </div>
+      <div class="flex flex-col items-center text-center mb-8">
+        <p class="mt-2 text-size-large text-neutral-500">
+          {{ t("Choose a format to get started.") }}
+        </p>
+      </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
-          <button
-            v-for="option in availableDocumentOptions"
-            :key="option.type"
-            type="button"
-            class="group grid min-h-[154px] cursor-pointer gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
-            @click="selectType(option.type)"
-          >
-            <span class="flex min-w-0 items-start gap-4">
-              <span
-                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 transition-colors group-hover:bg-primary-100"
-              >
-                <span class="svg-icon h-6 w-6" v-html="option.icon" />
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
+        <button
+          v-for="option in availableDocumentOptions"
+          :key="option.type"
+          type="button"
+          class="group grid min-h-[154px] cursor-pointer gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
+          @click="selectType(option.type)"
+        >
+          <span class="flex min-w-0 items-start gap-4">
+            <span
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 transition-colors group-hover:bg-primary-100"
+            >
+              <span class="svg-icon h-6 w-6" v-html="option.icon" />
+            </span>
+            <span class="min-w-0 pt-1">
+              <span class="block text-[21px] leading-7 font-semibold text-neutral-900">
+                {{ t(option.title) }}
               </span>
-              <span class="min-w-0 pt-1">
-                <span class="block text-[21px] leading-7 font-semibold text-neutral-900">
-                  {{ t(option.title) }}
-                </span>
-                <span
-                  class="mt-1 block max-w-[240px] text-size-medium leading-6 text-neutral-500"
-                >
-                  {{ t(option.description) }}
-                </span>
+              <span
+                class="mt-1 block max-w-[240px] text-size-medium leading-6 text-neutral-500"
+              >
+                {{ t(option.description) }}
               </span>
             </span>
+          </span>
 
-            <span
-              v-if="option.illustration"
-              class="block min-h-[116px] overflow-hidden max-[640px]:hidden [&_svg]:block [&_svg]:w-full [&_svg]:h-full"
-              aria-hidden="true"
-              v-html="option.illustration"
-            />
-          </button>
-        </div>
+          <span
+            v-if="option.illustration"
+            class="block min-h-[116px] overflow-hidden max-[640px]:hidden [&_svg]:block [&_svg]:w-full [&_svg]:h-full"
+            aria-hidden="true"
+            v-html="option.illustration"
+          />
+        </button>
       </div>
     </div>
-  </Transition>
+  </div>
 </template>
