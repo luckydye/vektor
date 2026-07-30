@@ -1,4 +1,5 @@
 import Button from "#components/Button.vue";
+import ContextMenu from "#components/ContextMenu.vue";
 import Dialog from "#components/Dialog.vue";
 import DialogFooter from "#components/DialogFooter.vue";
 import FormField from "#components/FormField.vue";
@@ -24,6 +25,7 @@ import SwitchToggle from "#components/SwitchToggle.vue";
  */
 const components = {
   Button,
+  ContextMenu,
   Dialog,
   DialogFooter,
   FormField,

@@ -72,3 +72,18 @@ export function render(Component: unknown, props: Props = {}): RenderResult {
 export function cleanupAll(): void {
   for (const dispose of [...mounted]) dispose();
 }
+
+/**
+ * Props for a two-way–bound value, in whichever shape the live framework uses.
+ *
+ * Vue spells this `modelValue` + `onUpdate:modelValue`; Solid will spell it
+ * `value` + `onInput` (plan section 10). Specs should never name either
+ * directly — that is exactly the kind of detail the swap changes, and a spec
+ * that has to be rewritten mid-comparison stops being a before/after check.
+ */
+export function modelProps(value: unknown, onChange?: (next: never) => void): Props {
+  return {
+    modelValue: value,
+    ...(onChange ? { "onUpdate:modelValue": onChange } : {}),
+  };
+}
