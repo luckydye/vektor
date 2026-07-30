@@ -265,3 +265,71 @@ export function drawSnapGuides(
 
   ctx.restore();
 }
+
+export interface DragSnapOptions {
+  /** Where the moving group started, before the drag offset is applied. */
+  bounds: WorldRect | null;
+  dx: number;
+  dy: number;
+  /** Snapping is bypassed while the modifier is held. */
+  disabled: boolean;
+  scale: number;
+  camera: ViewportCamera;
+  screen: ScreenSize;
+  fit: FitReference;
+  /** Every element the drag is *not* moving — filtered by proximity here. */
+  candidates: readonly SnapTarget[];
+}
+
+/** How near a candidate must be to take part, and how near a guide must be to catch. */
+const SNAP_PROXIMITY_PX = 320;
+const SNAP_THRESHOLD_PX = 6;
+
+/**
+ * Nudges a drag offset so the moving group's edges and centers line up with the
+ * elements it is not moving.
+ *
+ * Both distances are screen-space constants divided by the scale: a snap must
+ * feel the same at every zoom level, and a world-space threshold would not.
+ *
+ * Candidates are pre-filtered to a proximity window around the group. A canvas
+ * can hold hundreds of elements and this runs on every pointermove, so building
+ * guides for all of them is the difference between a smooth drag and a stuttery
+ * one — the cheap rect test pays for itself.
+ */
+export function snapDragOffset(options: DragSnapOptions): SnapRectResult {
+  const { bounds, dx, dy, scale } = options;
+  if (options.disabled || !bounds) return { dx, dy, guides: [] };
+
+  const margin = SNAP_PROXIMITY_PX / scale;
+  const near: WorldRect = {
+    x: bounds.x + dx - margin,
+    y: bounds.y + dy - margin,
+    width: bounds.width + margin * 2,
+    height: bounds.height + margin * 2,
+  };
+
+  const guides = computeSnapGuides({
+    camera: options.camera,
+    screen: options.screen,
+    fit: options.fit,
+    targets: options.candidates.filter((target) => rectsOverlap(near, target.bounds)),
+  });
+
+  const snap = snapRectToGuides({
+    guides,
+    bounds: { ...bounds, x: bounds.x + dx, y: bounds.y + dy },
+    threshold: SNAP_THRESHOLD_PX / scale,
+  });
+
+  return { dx: dx + snap.dx, dy: dy + snap.dy, guides: snap.guides };
+}
+
+function rectsOverlap(a: WorldRect, b: WorldRect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}

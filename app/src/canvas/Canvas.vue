@@ -146,8 +146,7 @@ import {
   panCameraByScreenDelta,
   type ScreenSize,
   type SnapGuide,
-  type SnapTarget,
-  snapRectToGuides,
+  snapDragOffset as snapDrag,
   type ViewportCamera,
   type ViewportControls,
   screenToWorld as viewportScreenToWorld,
@@ -289,12 +288,6 @@ const marqueeRect = ref<Rect | null>(null);
 // Alignment guides shown while dragging shapes; empty when no edge/center of
 // the dragged group is snapped to another shape. Drawn on the ink overlay.
 let activeSnapGuides: SnapGuide[] = [];
-// How close (in screen px) a dragged edge/center must come to another shape's
-// edge/center before it snaps to it.
-const SNAP_THRESHOLD_PX = 6;
-// Only shapes within this screen-space margin of the dragged group are
-// considered as snap targets, so a canvas with hundreds of elements stays fast.
-const SNAP_PROXIMITY_PX = 320;
 // True only while a pan drag is in progress, so the viewport shows the grabbing
 // hand during panning and a resting cursor otherwise.
 const isPanning = ref(false);
@@ -2301,81 +2294,44 @@ function handleViewportDoubleClick(event: MouseEvent) {
 function movingGroupBounds(
   drag: Extract<DragState, { type: "shape" }>,
 ): WorldRect | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
+  const boxes: Rect[] = [];
   for (const moved of drag.shapes) {
     const shape = shapesById.value.get(moved.id);
     if (!shape) continue;
-    const bounds = shapeAabb({
-      ...shape,
-      frame: { ...shape.frame, x: moved.x, y: moved.y },
-    });
-    minX = Math.min(minX, bounds.x);
-    minY = Math.min(minY, bounds.y);
-    maxX = Math.max(maxX, bounds.x + bounds.width);
-    maxY = Math.max(maxY, bounds.y + bounds.height);
+    boxes.push(
+      shapeAabb({ ...shape, frame: { ...shape.frame, x: moved.x, y: moved.y } }),
+    );
   }
   for (const stroke of drag.strokes) {
-    for (const point of stroke.points) {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    }
+    const bounds = boundsOfPoints(stroke.points);
+    if (bounds) boxes.push(bounds);
   }
-  if (!Number.isFinite(minX)) return null;
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  return unionBounds(boxes);
 }
 
-// Nudges the raw drag offset so the dragged group's edges/centers snap to the
-// edges/centers of the shapes it isn't moving, and records the active guides
-// for rendering. Returns the (possibly adjusted) offset. Holding Cmd bypasses
-// snapping entirely.
+/** Binds the drag's moving group and the shapes it can snap against. */
 function snapDragOffset(
   drag: Extract<DragState, { type: "shape" }>,
   dx: number,
   dy: number,
   disabled: boolean,
 ): { dx: number; dy: number } {
-  const startBounds = movingGroupBounds(drag);
-  if (disabled || !startBounds) {
-    activeSnapGuides = [];
-    return { dx, dy };
-  }
-
-  // Only snap to shapes near the dragged group. A canvas can hold hundreds of
-  // elements, so building guides for all of them (and matching against each)
-  // every pointermove gets expensive — restrict to a proximity window around
-  // the group's current position with a cheap rect test first.
-  const margin = SNAP_PROXIMITY_PX / transform.value.scale;
-  const near: Rect = {
-    x: startBounds.x + dx - margin,
-    y: startBounds.y + dy - margin,
-    width: startBounds.width + margin * 2,
-    height: startBounds.height + margin * 2,
-  };
   const movingIds = new Set(drag.shapes.map((moved) => moved.id));
-  const targets: SnapTarget[] = shapes.value
-    .filter((shape) => !movingIds.has(shape.id) && rectsIntersect(near, shapeAabb(shape)))
-    .map((shape) => ({ id: shape.id, bounds: shapeAabb(shape) }));
-
-  const guides = computeSnapGuides({
+  const snap = snapDrag({
+    bounds: movingGroupBounds(drag),
+    dx,
+    dy,
+    disabled,
+    scale: transform.value.scale,
     camera: camera.value,
     screen: screen.value,
     fit: FIT_REFERENCE,
-    targets,
+    candidates: shapes.value
+      .filter((shape) => !movingIds.has(shape.id))
+      .map((shape) => ({ id: shape.id, bounds: shapeAabb(shape) })),
   });
-
-  const snap = snapRectToGuides({
-    guides,
-    bounds: { ...startBounds, x: startBounds.x + dx, y: startBounds.y + dy },
-    threshold: SNAP_THRESHOLD_PX / transform.value.scale,
-  });
-
   activeSnapGuides = snap.guides;
-  return { dx: dx + snap.dx, dy: dy + snap.dy };
+  return { dx: snap.dx, dy: snap.dy };
 }
 
 function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null {

@@ -37,6 +37,7 @@ export type {
 } from "./overlay-anchor";
 export { createAnchorLayer } from "./overlay-anchor";
 export type {
+  DragSnapOptions,
   DrawSnapGuideOptions,
   SnapGuide,
   SnapGuideAxis,
@@ -51,6 +52,7 @@ export type {
 export {
   computeSnapGuides,
   drawSnapGuides,
+  snapDragOffset,
   snapRectToGuides,
   worldViewportBounds,
 } from "./snap-guides";
