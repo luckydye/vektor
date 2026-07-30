@@ -5,16 +5,14 @@ import { chevronRightThinIcon, documentIcon, usersIcon } from "#assets/icons.ts"
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
-  formatPropertyKey,
   getActivityBucketLabel,
   getActivityDate,
   getAuditEventAction,
-  getPermissionChangeLabel,
-  hasPropertyChange,
+  getEntryChangeLabel,
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
-import { type DisplayUser, userDisplayName } from "#utils/userDisplay.ts";
+import { userDisplayName } from "#utils/userDisplay.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 
@@ -126,10 +124,6 @@ function getDocumentHref(docId: string): string | undefined {
   return spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
 }
 
-function getCardUser(userId: string | null): DisplayUser | undefined {
-  return getUser(userId);
-}
-
 function getEntryAction(entry: AuditLog): string {
   return getAuditEventAction(entry.event);
 }
@@ -156,25 +150,6 @@ function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
   }
 
   return batches;
-}
-
-function getEntryChangeLabel(entry: AuditLog): string | null {
-  if (isPermissionEvent(entry.event)) return getPermissionChangeLabel(entry);
-  if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
-
-  const labels: Record<string, string> = {
-    save: t("Content"),
-    publish: t("Page published"),
-    unpublish: t("Page unpublished"),
-    create: t("Page created"),
-    delete: t("Page deleted"),
-    archive: t("Page archived"),
-    restore: t("Page restored"),
-    lock: t("Page locked"),
-    unlock: t("Page unlocked"),
-  };
-
-  return labels[entry.event] ?? null;
 }
 
 function getBatchChanges(batch: CompactActivityBatch): string[] {
@@ -330,7 +305,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
               <vektor-avatar
                 size="medium"
                 :user-id="group.userId ?? undefined"
-                :user="getCardUser(group.userId)"
+                :user="getUser(group.userId)"
               />
 
               <div class="min-w-0">

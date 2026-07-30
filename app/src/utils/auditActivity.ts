@@ -142,6 +142,31 @@ export function getPermissionChangeLabel(activity: AuditLog): string | null {
     : `${verb}: ${name}`;
 }
 
+/**
+ * What actually changed in an entry, shown next to the action. Permission and
+ * property edits describe themselves; everything else falls back to a fixed
+ * label per event, and `null` means the event has nothing to add beyond its
+ * action verb.
+ */
+export function getEntryChangeLabel(entry: AuditLog): string | null {
+  if (isPermissionEvent(entry.event)) return getPermissionChangeLabel(entry);
+  if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
+
+  const labels: Record<string, string> = {
+    save: t("Content"),
+    publish: t("Page published"),
+    unpublish: t("Page unpublished"),
+    create: t("Page created"),
+    delete: t("Page deleted"),
+    archive: t("Page archived"),
+    restore: t("Page restored"),
+    lock: t("Page locked"),
+    unlock: t("Page unlocked"),
+  };
+
+  return labels[entry.event] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Time formatting
 // ---------------------------------------------------------------------------

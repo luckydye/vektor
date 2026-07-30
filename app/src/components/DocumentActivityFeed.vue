@@ -3,14 +3,12 @@ import { computed, ref } from "vue";
 import type { AuditLog } from "#api/client.ts";
 import { addIcon, confirmationIcon, editEntryIcon } from "#assets/icons.ts";
 import {
-  formatPropertyKey,
   getActivityBucketLabel,
   getActivityDate,
   getAuditEventAction,
   getAuditEventLabel,
-  getPermissionChangeLabel,
+  getEntryChangeLabel,
   hasPropertyChange,
-  isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
 import type { DisplayUser } from "#utils/userDisplay.ts";
@@ -33,35 +31,12 @@ const props = defineProps<{
 
 const expandedGroups = ref(new Set<string>());
 
-function getCardUser(userId: string | null): DisplayUser | undefined {
-  return props.getUser?.(userId);
-}
-
 function getEntryAction(entry: AuditLog): string {
   return getAuditEventAction(entry.event);
 }
 
 function getGroupAction(items: AuditLog[]): string {
   return items[0] ? getEntryAction(items[0]) : t("updated");
-}
-
-function getEntryChangeLabel(entry: AuditLog): string | null {
-  if (isPermissionEvent(entry.event)) return getPermissionChangeLabel(entry);
-  if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
-
-  const labels: Record<string, string> = {
-    save: t("Content"),
-    publish: t("Page published"),
-    unpublish: t("Page unpublished"),
-    create: t("Page created"),
-    delete: t("Page deleted"),
-    archive: t("Page archived"),
-    restore: t("Page restored"),
-    lock: t("Page locked"),
-    unlock: t("Page unlocked"),
-  };
-
-  return labels[entry.event] ?? null;
 }
 
 function getDocumentActivityIcon(entry: AuditLog): string {
@@ -177,7 +152,7 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
           <vektor-avatar
             size="small"
             :user-id="group.userId ?? undefined"
-            :user="getCardUser(group.userId)"
+            :user="props.getUser?.(group.userId)"
           />
 
           <div class="min-w-0 flex-1">
