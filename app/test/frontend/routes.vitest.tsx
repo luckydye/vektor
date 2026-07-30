@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+import CommandPalatte from "#components/CommandPalatte.vue";
 import Dialog from "#components/Dialog.vue";
 import DocumentTree from "#components/DocumentTree.vue";
+import DocumentPageView from "#components/views/DocumentPageView.vue";
+import ExtensionRouteView from "#components/views/ExtensionRouteView.vue";
 import NotFoundView from "#components/views/NotFoundView.vue";
 import SpaceHomeView from "#components/views/SpaceHomeView.vue";
 import SpaceSearchView from "#components/views/SpaceSearchView.vue";
@@ -49,6 +52,77 @@ describe("route snapshots", () => {
     );
   });
 
+  it("document page", async () => {
+    await expect(
+      await snapshotOf(DocumentPageView, {
+        at: "/doc/getting-started",
+        props: { documentSlug: "getting-started" },
+        fixture: [
+          [
+            /\/documents\/[^/?]+(\?|$)/,
+            {
+              document: {
+                id: "doc_fixture_1",
+                slug: "getting-started",
+                type: "document",
+                title: "Getting started",
+                content: "# Getting started\n\nA seeded paragraph.",
+                currentRev: 1,
+                publishedRev: 1,
+                properties: {},
+                readonly: false,
+                archived: false,
+                parentId: null,
+                createdBy: "user_ada",
+                createdAt: "2026-01-02T09:00:00.000Z",
+                updatedAt: "2026-01-02T10:00:00.000Z",
+              },
+            },
+          ],
+          [/\/revisions/, { revisions: [] }],
+          [/\/comments/, { comments: [] }],
+          [/\/contributors/, { contributors: [] }],
+        ],
+      }),
+    ).toMatchFileSnapshot("./__snapshots__/route-document-page.html");
+  });
+
+  // Two states, because the happy path needs a real extension bundle served
+  // over HTTP and happy-dom cannot load one. What these do lock in is that the
+  // route resolves the extension, mounts `<extension-view>`, and degrades to a
+  // readable error instead of a blank page — which is the part a port could
+  // plausibly break.
+  it("extension route, view fails to load", async () => {
+    await expect(
+      await snapshotOf(ExtensionRouteView, {
+        at: "/x/reports/monthly",
+        fixture: [
+          [
+            /\/extensions/,
+            {
+              extensions: [
+                {
+                  id: "ext_reports",
+                  name: "Reports",
+                  version: "1.0.0",
+                  enabled: true,
+                  entries: { view: "view.js" },
+                  routes: [{ path: "reports", title: "Reports", icon: "" }],
+                },
+              ],
+            },
+          ],
+        ],
+      }),
+    ).toMatchFileSnapshot("./__snapshots__/route-extension.html");
+  });
+
+  it("extension route, no extension matches the path", async () => {
+    await expect(
+      await snapshotOf(ExtensionRouteView, { at: "/x/nothing/here" }),
+    ).toMatchFileSnapshot("./__snapshots__/route-extension-unmatched.html");
+  });
+
   it("not found", async () => {
     await expect(await snapshotOf(NotFoundView)).toMatchFileSnapshot(
       "./__snapshots__/route-not-found.html",
@@ -68,6 +142,20 @@ describe("panel snapshots", () => {
         ],
       }),
     ).toMatchFileSnapshot("./__snapshots__/panel-document-tree.html");
+  });
+
+  it("command palette, open", async () => {
+    const route = await renderRoute(CommandPalatte, {});
+    open.push(route.cleanup);
+    // The palette is keyboard-summoned and never route-reachable, so it is
+    // opened through the action it registers rather than by navigating.
+    const { Actions } = await import("#utils/actions.js");
+    await Actions.run("ui:toggle:palatte");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { normalizeDom } = await import("./normalize.ts");
+    await expect(normalizeDom(route.container)).toMatchFileSnapshot(
+      "./__snapshots__/panel-command-palette.html",
+    );
   });
 
   it("dialog, open", async () => {

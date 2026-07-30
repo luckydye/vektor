@@ -38,7 +38,9 @@ export default defineConfig({
 
   test: {
     environment: "happy-dom",
-    setupFiles: ["./test/frontend/setup.ts"],
+    // Order matters: env.ts installs the runtime env script and network
+    // stubs that the element registrations in setup.ts depend on.
+    setupFiles: ["./test/frontend/env.ts", "./test/frontend/setup.ts"],
     include: ["test/frontend/**/*.vitest.{ts,tsx}"],
     globals: false,
     restoreMocks: true,

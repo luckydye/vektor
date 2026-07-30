@@ -1,4 +1,5 @@
 import { createApp, defineComponent, h, nextTick, provide, ref } from "vue";
+import { createMemoryHistory, createRouter } from "vue-router";
 import { QueryClient, QueryPlugin } from "#composeables/query.ts";
 import { normalizeDom } from "./normalize.ts";
 
@@ -115,6 +116,40 @@ export function installFixture(fixture: Fixture): void {
   }) as typeof fetch;
 }
 
+/**
+ * A router for views that need one.
+ *
+ * `DocumentPageView` and `ExtensionRouteView` read `useRoute()`/`useRouter()`,
+ * so they cannot mount without one. Memory history mirrors what `SpaceApp` uses
+ * on the server, and the single wildcard route means any `at` path resolves and
+ * supplies its params.
+ */
+async function installRouter(
+  app: ReturnType<typeof createApp>,
+  at: string,
+  View: unknown,
+) {
+  const router = createRouter({
+    history: createMemoryHistory("/"),
+    routes: [
+      {
+        path: "/doc/:documentSlug(.*)",
+        // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
+        component: View as any,
+        props: (route) => ({ documentSlug: route.params.documentSlug }),
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
+      { path: "/x/:pathMatch(.*)*", component: View as any },
+      // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
+      { path: "/:pathMatch(.*)*", component: View as any },
+    ],
+  });
+  app.use(router);
+  await router.push(at);
+  await router.isReady();
+  return router;
+}
+
 export interface RenderedRoute {
   container: HTMLElement;
   snapshot(): string;
@@ -127,7 +162,13 @@ export interface RenderedRoute {
  */
 export async function renderRoute(
   View: unknown,
-  options: { fixture?: Fixture; props?: Record<string, unknown>; settle?: number } = {},
+  options: {
+    fixture?: Fixture;
+    props?: Record<string, unknown>;
+    settle?: number;
+    /** Router path. Supply this for a view that reads route params. */
+    at?: string;
+  } = {},
 ): Promise<RenderedRoute> {
   // Overrides first so a spec's pattern wins over the base one it shadows.
   installFixture([...(options.fixture ?? []), ...BASE_FIXTURE]);
@@ -146,6 +187,7 @@ export async function renderRoute(
 
   const app = createApp(Host);
   app.use(QueryPlugin, { queryClient: new QueryClient() });
+  if (options.at) await installRouter(app, options.at, View);
   app.mount(container);
 
   // Queries resolve over several microtask hops; a snapshot taken too early
