@@ -9,14 +9,6 @@ const props = withDefaults(defineProps<Props>(), {
   label: "Item",
   selected: false,
 });
-
-const emit = defineEmits<{
-  click: [];
-}>();
-
-const handleClick = () => {
-  emit("click");
-};
 </script>
 
 <template>
@@ -27,7 +19,6 @@ const handleClick = () => {
     'bg-primary-50': selected,
     'hover:bg-primary-10': !selected,
   }"
-    @click="handleClick"
   >
     <div v-if="icon" v-html="icon" class="w-[18px] h-[18px] shrink-0" />
     <span class="text-size-normal font-normal text-neutral-950 capitalize leading-[1rem]">

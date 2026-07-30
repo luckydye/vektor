@@ -61,11 +61,6 @@ const props = withDefaults(
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   submit: [];
-  keydown: [event: KeyboardEvent];
-  keyup: [event: KeyboardEvent];
-  input: [event: Event];
-  click: [event: MouseEvent];
-  paste: [event: ClipboardEvent];
 }>();
 
 defineSlots<{
@@ -152,7 +147,7 @@ function onDrop(event: DragEvent) {
 // ── Input events ──────────────────────────────────────────────────────────────
 
 function onKeydown(event: KeyboardEvent) {
-  emit("keydown", event);
+  // The editor may already have handled this key; do not act on it twice.
   if (event.defaultPrevented) return;
 
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
@@ -200,19 +195,10 @@ function onPaste(event: ClipboardEvent) {
     addFiles(event.clipboardData.files);
     event.preventDefault();
   }
-  emit("paste", event);
 }
 
 function onEditorKeydown(event: CustomEvent<KeyboardEvent>) {
   onKeydown(event.detail);
-}
-
-function onEditorKeyup(event: CustomEvent<KeyboardEvent>) {
-  emit("keyup", event.detail);
-}
-
-function onEditorClick(event: CustomEvent<MouseEvent>) {
-  emit("click", event.detail);
 }
 
 function onEditorPaste(event: CustomEvent<ClipboardEvent>) {
@@ -223,7 +209,6 @@ function onContentChange(event: CustomEvent<string>) {
   const markdown = event.detail;
   lastEmittedValue = markdown;
   emit("update:modelValue", markdown);
-  emit("input", new InputEvent("input"));
 }
 
 onMounted(() => {
@@ -321,8 +306,6 @@ defineExpose({
         :style="{ '--editor-min-height': `${Math.max(1, rows) * 1.25}rem` }"
         @content-change="onContentChange"
         @editor-keydown="onEditorKeydown"
-        @editor-keyup="onEditorKeyup"
-        @editor-click="onEditorClick"
         @editor-paste="onEditorPaste"
       />
 
