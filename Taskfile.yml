@@ -157,12 +157,25 @@ tasks:
 
   test:visual:
     desc: >
-      Screenshot comparison (Playwright, real browser). Baselines are local-only
-      and live outside the working tree — see VEKTOR_VISUAL_BASELINES.
+      Screenshot comparison (Playwright, real browser). Boots a disposable
+      in-memory server and seeds it. Baselines are local-only and live outside
+      the working tree — set VEKTOR_VISUAL_BASELINES to keep them somewhere
+      `git clean -fdx` cannot reach. First run: `task test:visual -- --update-snapshots`.
     dir: ./app
     cmds:
-      - echo "Not implemented yet — see the tier 3 ticket (_order 1230)."
-      - exit 1
+      - bun ./test/visual/run.ts {{.CLI_ARGS}}
+
+  test:visual:archive:
+    desc: >
+      Tar the screenshot baselines. They are gitignored and outside the working
+      tree, so nothing else backs them up — and they have to survive from phase
+      1 to phase 6.
+    cmds:
+      - |
+        dir="${VEKTOR_VISUAL_BASELINES:-$HOME/.vektor-visual-baselines}"
+        out="$dir-$(date +%Y%m%d-%H%M%S).tar.gz"
+        tar -czf "$out" -C "$(dirname "$dir")" "$(basename "$dir")"
+        echo "archived to $out"
 
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.

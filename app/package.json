@@ -80,7 +80,9 @@
     "#native/*": "./native/*",
     "#generated/*": "./generated/*",
     "#docs/*": "./docs/*",
-    "#dist/*": "./dist/*"
+    "#dist/*": "./dist/*",
+    "#test/*": "./test/*",
+    "#build": "./build.ts"
   },
   "devDependencies": {
     "@figma/code-connect": "^1.4.8",

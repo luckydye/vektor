@@ -36,3 +36,7 @@ api-example
 
 # Generated platform-specific native embedding addon and its loader.
 /app/src/embeddings/native/
+
+# Tier 3 screenshot artefacts. Baselines live outside the working tree entirely
+# (VEKTOR_VISUAL_BASELINES); only the run output could ever land here.
+app/test/visual/.results/
