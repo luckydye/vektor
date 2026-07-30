@@ -9,6 +9,7 @@ import {
   useComments,
 } from "#composeables/useComments.ts";
 import { addIcon } from "~/src/assets/icons.ts";
+import ClientOnly from "./ClientOnly.vue";
 import type { Comment as CommentThreadType } from "./CommentThread.vue";
 import CommentThread from "./CommentThread.vue";
 
@@ -309,86 +310,88 @@ defineExpose({ commentsForOverlays, handleMoveThread, handleThreadReposition });
 </script>
 
 <template>
-  <Teleport to="body">
-    <div class="contents">
-      <!-- Add comment bubble — appears near right viewport edge -->
-      <div
-        v-if="showAddBubble"
-        class="fixed right-4 z-50 -translate-y-1/2 transition-opacity duration-200"
-        :class="fadeAddBubble ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'"
-        :style="{ top: `${bubbleY}px` }"
-      >
-        <button
-          type="button"
-          @click="handleAddComment"
-          class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
-          title="Add comment"
+  <ClientOnly>
+    <Teleport to="body">
+      <div class="contents">
+        <!-- Add comment bubble — appears near right viewport edge -->
+        <div
+          v-if="showAddBubble"
+          class="fixed right-4 z-50 -translate-y-1/2 transition-opacity duration-200"
+          :class="fadeAddBubble ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'"
+          :style="{ top: `${bubbleY}px` }"
         >
-          <div class="svg-icon w-4 h-4" v-html="addIcon" />
-        </button>
-      </div>
+          <button
+            type="button"
+            @click="handleAddComment"
+            class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
+            title="Add comment"
+          >
+            <div class="svg-icon w-4 h-4" v-html="addIcon" />
+          </button>
+        </div>
 
-      <!-- Thread for existing comment reference — anchored to its comment bubble -->
-      <div
-        v-if="activeReference"
-        class="fixed z-40"
-        :style="threadAnchor
-        ? { top: `${threadAnchor.top}px`, right: `${threadAnchor.right}px` }
-        : { top: `${threadPosition}px`, right: '1rem' }"
-      >
-        <CommentThread
-          :space-id="spaceId"
-          :document-id="documentId"
-          :comments="commentsForThread"
-          :activeReference="activeReference"
-          :isSubmitting="isSubmitting"
-          :isDeletingComment="isDeletingComment"
-          @submit="handleSubmit"
-          @delete="handleDeleteComment"
-          @resolve="handleResolve(activeReference)"
-          @close="handleCloseThread"
-        />
-      </div>
+        <!-- Thread for existing comment reference — anchored to its comment bubble -->
+        <div
+          v-if="activeReference"
+          class="fixed z-40"
+          :style="threadAnchor
+          ? { top: `${threadAnchor.top}px`, right: `${threadAnchor.right}px` }
+          : { top: `${threadPosition}px`, right: '1rem' }"
+        >
+          <CommentThread
+            :space-id="spaceId"
+            :document-id="documentId"
+            :comments="commentsForThread"
+            :activeReference="activeReference"
+            :isSubmitting="isSubmitting"
+            :isDeletingComment="isDeletingComment"
+            @submit="handleSubmit"
+            @delete="handleDeleteComment"
+            @resolve="handleResolve(activeReference)"
+            @close="handleCloseThread"
+          />
+        </div>
 
-      <!-- Thread for new comment (bubble click) -->
-      <div
-        v-if="addingCommentY !== null && !activeReference"
-        class="fixed right-4 z-40"
-        :style="{ top: `${addingCommentY}px` }"
-      >
-        <CommentThread
-          :space-id="spaceId"
-          :document-id="documentId"
-          :comments="[]"
-          :activeReference="addingCommentRef"
-          :isSubmitting="isSubmitting"
-          :isDeletingComment="isDeletingComment"
-          @submit="handleSubmitNew"
-          @delete="handleDeleteComment"
-          @close="addingCommentY = null; addingCommentRef = null"
-        />
-      </div>
+        <!-- Thread for new comment (bubble click) -->
+        <div
+          v-if="addingCommentY !== null && !activeReference"
+          class="fixed right-4 z-40"
+          :style="{ top: `${addingCommentY}px` }"
+        >
+          <CommentThread
+            :space-id="spaceId"
+            :document-id="documentId"
+            :comments="[]"
+            :activeReference="addingCommentRef"
+            :isSubmitting="isSubmitting"
+            :isDeletingComment="isDeletingComment"
+            @submit="handleSubmitNew"
+            @delete="handleDeleteComment"
+            @close="addingCommentY = null; addingCommentRef = null"
+          />
+        </div>
 
-      <!-- Inline anchor click tooltip -->
-      <div
-        v-if="clickedAnchorRef && !activeReference"
-        ref="tooltipEl"
-        class="fixed z-40"
-        :style="{ top: `${tooltipPos.top}px`, left: `${tooltipPos.left}px` }"
-      >
-        <CommentThread
-          :space-id="spaceId"
-          :document-id="documentId"
-          :comments="clickedAnchorComments"
-          :activeReference="clickedAnchorRef"
-          :isSubmitting="isSubmitting"
-          :isDeletingComment="isDeletingComment"
-          @submit="handleSubmit"
-          @delete="handleDeleteComment"
-          @resolve="handleResolve(clickedAnchorRef)"
-          @close="clickedAnchorRef = null"
-        />
+        <!-- Inline anchor click tooltip -->
+        <div
+          v-if="clickedAnchorRef && !activeReference"
+          ref="tooltipEl"
+          class="fixed z-40"
+          :style="{ top: `${tooltipPos.top}px`, left: `${tooltipPos.left}px` }"
+        >
+          <CommentThread
+            :space-id="spaceId"
+            :document-id="documentId"
+            :comments="clickedAnchorComments"
+            :activeReference="clickedAnchorRef"
+            :isSubmitting="isSubmitting"
+            :isDeletingComment="isDeletingComment"
+            @submit="handleSubmit"
+            @delete="handleDeleteComment"
+            @resolve="handleResolve(clickedAnchorRef)"
+            @close="clickedAnchorRef = null"
+          />
+        </div>
       </div>
-    </div>
-  </Teleport>
+    </Teleport>
+  </ClientOnly>
 </template>
