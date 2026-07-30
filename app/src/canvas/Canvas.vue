@@ -91,6 +91,7 @@ import {
   toNumber,
   unionBounds,
 } from "./viewport/bounds.ts";
+import { makeCanvasCursor } from "./viewport/cursor.ts";
 import {
   normalizeRotation,
   pointOnRotatedShape,
@@ -101,6 +102,7 @@ import {
   rotationFromPointer,
   snapRotation,
 } from "./viewport/geometry.ts";
+import { readCanvasTheme, isDarkMode as resolveDarkMode } from "./viewport/theme.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
@@ -1108,40 +1110,6 @@ const transform = computed(() =>
 // the editor DOM reflects the new position when we read its coords).
 watch(transform, () => canvasToolbarRef.value?.reposition(), { flush: "post" });
 
-const canvasCursorCache = new Map<string, string>();
-function makeCanvasCursor(color: string): string {
-  if (typeof document === "undefined") return "default";
-  const cached = canvasCursorCache.get(color);
-  if (cached) return cached;
-
-  const size = 18;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return "default";
-  ctx.scale(0.56, 0.56);
-
-  const path = new Path2D(
-    "M5.1 4.8a1.2 1.2 0 0 1 1.53-1.54l20.4 8.28a1.2 1.2 0 0 1-.14 2.26l-7.81 2.01a2.4 2.4 0 0 0-1.72 1.72l-2.01 7.81a1.2 1.2 0 0 1-2.26.14z",
-  );
-
-  ctx.shadowColor = "rgba(15, 23, 42, 0.25)";
-  ctx.shadowBlur = 2;
-  ctx.shadowOffsetY = 1;
-  ctx.fillStyle = color;
-  ctx.fill(path);
-  ctx.shadowColor = "transparent";
-  ctx.lineWidth = 1.8;
-  ctx.strokeStyle = "white";
-  ctx.lineJoin = "round";
-  ctx.stroke(path);
-
-  const result = `url("${canvas.toDataURL()}") 3 3, default`;
-  canvasCursorCache.set(color, result);
-  return result;
-}
-
 // Panning (middle/right-drag) shows the grabbing hand; otherwise the canvas uses
 // a local colored cursor that matches the color broadcast to collaborators.
 const viewportCursor = computed(() => {
@@ -1165,25 +1133,12 @@ let cssGridMinor = "rgba(15, 23, 42, 0.07)";
 let cssInkColor = FREEHAND_STYLE.color;
 let cssChromeText = "#1e3a8a";
 
-function canvasCssVar(name: string, fallback: string) {
-  if (typeof window === "undefined") return fallback;
-  const source = viewportRef.value ?? document.documentElement;
-  return getComputedStyle(source).getPropertyValue(name).trim() || fallback;
-}
-
 function refreshCssVars() {
-  cssGridMajor = canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)");
-  cssGridMinor = canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)");
-  cssInkColor = canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
-  cssChromeText = canvasCssVar("--canvas-section-title-text", "#1e3a8a");
-}
-
-function resolveDarkMode() {
-  if (typeof window === "undefined") return false;
-  const theme = document.documentElement.getAttribute("data-theme");
-  if (theme === "dark") return true;
-  if (theme === "light") return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = readCanvasTheme(viewportRef.value, { ink: FREEHAND_STYLE.color });
+  cssGridMajor = theme.gridMajor;
+  cssGridMinor = theme.gridMinor;
+  cssInkColor = theme.ink;
+  cssChromeText = theme.chromeText;
 }
 
 function updateThemeMode() {
