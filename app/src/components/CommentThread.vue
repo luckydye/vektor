@@ -4,6 +4,7 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
+import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import "#editor/css/mentions.css";
 import { cancelIcon, confirmationIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
 import "./AvatarElement.ts";
@@ -48,17 +49,11 @@ const currentUser = useUserProfile();
 const newCommentContent = ref("");
 const commentListRef = ref<HTMLElement | null>(null);
 
-const getUser = (comment: Comment) => {
-  return (
-    comment.createdByUser ??
-    members.value.find((member) => member.userId === comment.createdBy)?.user
-  );
-};
+const getUser = (comment: Comment) =>
+  comment.createdByUser ?? findMemberUser(members.value, comment.createdBy);
 
-const getUserName = (comment: Comment): string => {
-  const user = getUser(comment);
-  return user?.name || comment.createdBy;
-};
+const getUserName = (comment: Comment): string =>
+  userDisplayName(getUser(comment), comment.createdBy);
 
 function getRelativeTime(dateString: string) {
   return formatRelativeTime(dateString, { style: "narrow" });

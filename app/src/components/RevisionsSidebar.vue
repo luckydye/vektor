@@ -7,6 +7,7 @@ import { useRevisions } from "#composeables/useRevisions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   activityIcon,
@@ -85,15 +86,12 @@ const revisionsByNumber = computed(() => new Map(revisions.value.map((r) => [r.r
 // User resolver passed to DocumentActivityFeed
 // ---------------------------------------------------------------------------
 
-function getUserName(userId?: string | null): string {
-  if (!userId) return "Unknown user";
-  const member = members.value?.find((m) => m.userId === userId);
-  return member?.user?.name || member?.user?.email || userId;
+function getUser(userId?: string | null) {
+  return findMemberUser(members.value, userId);
 }
 
-function getUser(userId?: string | null) {
-  if (!userId) return undefined;
-  return members.value?.find((m) => m.userId === userId)?.user ?? undefined;
+function getUserName(userId?: string | null): string {
+  return userDisplayName(getUser(userId), userId);
 }
 
 // ---------------------------------------------------------------------------

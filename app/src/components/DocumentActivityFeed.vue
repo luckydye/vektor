@@ -13,14 +13,9 @@ import {
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
+import type { DisplayUser } from "#utils/userDisplay.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
-
-interface UserLike {
-  name?: string;
-  email?: string;
-  image?: string | null;
-}
 
 interface DocumentActivityGroup {
   id: string;
@@ -33,12 +28,12 @@ interface DocumentActivityGroup {
 const props = defineProps<{
   entries: AuditLog[];
   getUserName: (userId?: string | null) => string;
-  getUser?: (userId?: string | null) => UserLike | undefined;
+  getUser?: (userId?: string | null) => DisplayUser | undefined;
 }>();
 
 const expandedGroups = ref(new Set<string>());
 
-function getCardUser(userId: string | null): UserLike | undefined {
+function getCardUser(userId: string | null): DisplayUser | undefined {
   return props.getUser?.(userId);
 }
 

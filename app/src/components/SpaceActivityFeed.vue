@@ -14,6 +14,7 @@ import {
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
+import { type DisplayUser, userDisplayName } from "#utils/userDisplay.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 
@@ -28,12 +29,6 @@ interface Document {
   id: string;
   slug: string;
   type?: string;
-}
-
-interface UserLike {
-  name?: string;
-  email?: string;
-  image?: string | null;
 }
 
 interface CompactActivityGroup {
@@ -116,9 +111,7 @@ function getUser(userId?: string | null): User | undefined {
 }
 
 function getUserName(userId?: string | null): string {
-  if (!userId) return t("Unknown user");
-  const user = data.value?.usersMap.get(userId);
-  return user?.name || user?.email || userId;
+  return userDisplayName(getUser(userId), userId);
 }
 
 function getDocumentName(docId: string): string {
@@ -133,7 +126,7 @@ function getDocumentHref(docId: string): string | undefined {
   return spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
 }
 
-function getCardUser(userId: string | null): UserLike | undefined {
+function getCardUser(userId: string | null): DisplayUser | undefined {
   return getUser(userId);
 }
 
