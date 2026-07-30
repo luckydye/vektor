@@ -34,6 +34,12 @@ const FRONTEND_PACKAGES = [
   "lit-element",
   "@lit",
   "@lit-labs",
+  // Added before any Solid exists, so the first import that would breach the
+  // boundary fails here rather than being discovered at cutover. `solid-js`
+  // covers its subpaths (`solid-js/web`, `solid-js/store`) via the prefix match
+  // in `forbiddenPackage`, and `@solidjs` covers the router.
+  "solid-js",
+  "@solidjs",
 ];
 
 /** Server-side entry points into document handling. */
