@@ -15,6 +15,12 @@ export interface RenderResult {
   /** The element the component was mounted into. Query from here, not `document`. */
   container: HTMLElement;
   /**
+   * Whatever the component exposed imperatively — `defineExpose` today, a `ref`
+   * callback prop under Solid (plan section 10). `undefined` for components
+   * that expose nothing.
+   */
+  exposed: Record<string, unknown> | undefined;
+  /**
    * Re-render with new props, merged over the originals like a parent
    * re-render. **Await it**: Vue flushes renders on the next tick, so a
    * synchronous `update()` would return before the DOM changed and every
@@ -41,8 +47,16 @@ export function render(Component: unknown, props: Props = {}): RenderResult {
   document.body.append(container);
 
   const state = reactive({ ...props });
+  let exposed: Record<string, unknown> | undefined;
+  // Vue treats `ref` on a vnode specially and hands back the exposed object,
+  // which is the same handle a Solid `ref` callback prop will provide.
+  const captureExposed = (instance: unknown) => {
+    exposed = (instance ?? undefined) as Record<string, unknown> | undefined;
+  };
   // biome-ignore lint/suspicious/noExplicitAny: the registry is deliberately untyped.
-  const app: App = createApp(() => h(Component as any, state));
+  const app: App = createApp(() =>
+    h(Component as any, { ...state, ref: captureExposed }),
+  );
   app.mount(container);
 
   let disposed = false;
@@ -57,6 +71,9 @@ export function render(Component: unknown, props: Props = {}): RenderResult {
 
   return {
     container,
+    get exposed() {
+      return exposed;
+    },
     async update(next: Props) {
       Object.assign(state, next);
       await nextTick();

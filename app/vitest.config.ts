@@ -38,6 +38,7 @@ export default defineConfig({
 
   test: {
     environment: "happy-dom",
+    setupFiles: ["./test/frontend/setup.ts"],
     include: ["test/frontend/**/*.vitest.{ts,tsx}"],
     globals: false,
     restoreMocks: true,
