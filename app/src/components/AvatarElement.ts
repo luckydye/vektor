@@ -2,9 +2,15 @@ import { api } from "#api/client.ts";
 import eyesOne from "#assets/avatars/parts/eyes/eyes-1.svg?raw";
 import eyesTwo from "#assets/avatars/parts/eyes/eyes-2.svg?raw";
 import eyesThree from "#assets/avatars/parts/eyes/eyes-3.svg?raw";
+import eyesFour from "#assets/avatars/parts/eyes/eyes-4.svg?raw";
+import eyesFive from "#assets/avatars/parts/eyes/eyes-5.svg?raw";
+import eyesSix from "#assets/avatars/parts/eyes/eyes-6.svg?raw";
+import eyesSeven from "#assets/avatars/parts/eyes/eyes-7.svg?raw";
+import eyesEight from "#assets/avatars/parts/eyes/eyes-8.svg?raw";
 import mouthOne from "#assets/avatars/parts/mouth/mouth-1.svg?raw";
 import mouthTwo from "#assets/avatars/parts/mouth/mouth-2.svg?raw";
 import mouthThree from "#assets/avatars/parts/mouth/mouth-3.svg?raw";
+import mouthFour from "#assets/avatars/parts/mouth/mouth-4.svg?raw";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
 import avatarZero from "#assets/avatars/zero.svg?raw";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
@@ -28,8 +34,17 @@ const sizeMap = {
   large: 48,
 };
 
-const eyesParts = [eyesOne, eyesTwo, eyesThree];
-const mouthParts = [mouthOne, mouthTwo, mouthThree];
+const eyesParts = [
+  eyesOne,
+  eyesTwo,
+  eyesThree,
+  eyesFour,
+  eyesFive,
+  eyesSix,
+  eyesSeven,
+  eyesEight,
+];
+const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
 const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
@@ -89,16 +104,10 @@ function getAvatarSize(value: string | number | null): number {
   return Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : sizeMap.medium;
 }
 
-// Each part SVG ships the shared face outline (a stroked circle) plus its own
-// feature paths (filled). We drop the outline from every part, then overlay the
-// hash-selected eyes and mouth on a single redrawn circle so the avatar is
-// assembled from independently varying features.
 const pathElementPattern = /<path\b[^>]*\/>/g;
 
 function extractFeaturePaths(rawPart: string): string[] {
-  return (rawPart.match(pathElementPattern) ?? []).filter(
-    (path) => !path.includes("stroke="),
-  );
+  return rawPart.match(pathElementPattern) ?? [];
 }
 
 function composeAvatar(eyes: string, mouth: string): string {
@@ -106,7 +115,7 @@ function composeAvatar(eyes: string, mouth: string): string {
     ...new Set([...extractFeaturePaths(eyes), ...extractFeaturePaths(mouth)]),
   ];
 
-  return `<svg width="325" height="325" viewBox="0 0 325 325" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="162.5" cy="162.5" r="162" stroke="white"/>${uniquePaths.join("")}</svg>`;
+  return `<svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="17" cy="17" r="16.5" stroke="white"/>${uniquePaths.join("")}</svg>`;
 }
 
 function getGeneratedAvatar(seed: string): { color: string; src: string } {
