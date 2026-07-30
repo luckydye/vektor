@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import Button from "./Button.vue";
 
 const { currentSpace } = useSpace();
 const toast = useToast();
@@ -332,13 +333,11 @@ watch(
           >
             Cancel
           </button>
-          <button
+          <Button
             type="submit"
             :disabled="isSubmittingSecret"
-            class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {{ isSubmittingSecret ? "Saving..." : "Save Secret" }}
-          </button>
+            :text="isSubmittingSecret ? 'Saving...' : 'Save Secret'"
+          />
         </div>
       </form>
     </div>
@@ -481,14 +480,12 @@ watch(
               ({{ u.email }})
             </option>
           </select>
-          <button
-            type="button"
-            @click="handleGrantSecretAccess"
+          <Button
+            class="text-size-small"
             :disabled="!selectedGrantUserId || !selectedSecretName || isGrantingSecretAccess"
-            class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {{ isGrantingSecretAccess ? "Granting..." : "Grant Viewer" }}
-          </button>
+            :text="isGrantingSecretAccess ? 'Granting...' : 'Grant Viewer'"
+            @click="handleGrantSecretAccess"
+          />
         </div>
 
         <div

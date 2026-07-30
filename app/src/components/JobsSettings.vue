@@ -89,13 +89,11 @@
           >
             Cancel
           </button>
-          <button
+          <Button
             type="submit"
             :disabled="isSubmittingSchedule || !newScheduleDocumentId"
-            class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {{ isSubmittingSchedule ? 'Creating...' : 'Create Schedule' }}
-          </button>
+            :text="isSubmittingSchedule ? 'Creating...' : 'Create Schedule'"
+          />
         </div>
       </form>
     </div>
@@ -424,6 +422,7 @@ import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { formatDateTime } from "#utils/datetime.ts";
+import Button from "./Button.vue";
 import PagerCursor from "./PagerCursor.vue";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;

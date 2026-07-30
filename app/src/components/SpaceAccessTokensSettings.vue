@@ -4,6 +4,7 @@ import { type AccessToken, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
+import Button from "./Button.vue";
 
 const { currentSpace } = useSpace();
 const toast = useToast();
@@ -273,13 +274,11 @@ watch(newTokenResourceType, (type) => {
             >
               Cancel
             </button>
-            <button
+            <Button
               type="submit"
               :disabled="isSubmittingToken"
-              class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              {{ isSubmittingToken ? 'Creating...' : 'Create Token' }}
-            </button>
+              :text="isSubmittingToken ? 'Creating...' : 'Create Token'"
+            />
           </div>
         </form>
       </div>

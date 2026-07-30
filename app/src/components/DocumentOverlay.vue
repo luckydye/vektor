@@ -19,7 +19,7 @@
  *     window.viewDocument?.(spaceId, docId);
  *   });
  */
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import type { Comment } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
@@ -29,6 +29,7 @@ import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
+import Button from "./Button.vue";
 import "./AvatarElement.ts";
 import {
   cancelIcon,
@@ -346,12 +347,7 @@ function formatCommentTime(date: Date | string): string {
                         rows="2"
                       />
                       <div class="mt-2 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors"
-                        >
-                          Comment
-                        </button>
+                        <Button text="Comment" />
                       </div>
                     </div>
                   </div>

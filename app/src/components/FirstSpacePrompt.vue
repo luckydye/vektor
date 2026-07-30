@@ -125,13 +125,12 @@
           <p class="text-size-medium text-red-600">{{ error }}</p>
         </div>
 
-        <button
+        <Button
           type="submit"
+          class="w-full justify-center px-4 py-3 text-base focus-ring focus:ring-offset-2"
           :disabled="isCreating"
-          class="w-full px-4 py-3 text-base font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {{ isCreating ? 'Creating Space...' : 'Create Your First Space' }}
-        </button>
+          :text="isCreating ? 'Creating Space...' : 'Create Your First Space'"
+        />
       </form>
 
       <div class="mt-6 pt-4 border-t border-neutral">

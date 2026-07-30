@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Button from "./Button.vue";
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
@@ -546,17 +547,16 @@ watch(
                     ? t("Disconnecting…")
                     : t("Disconnect") }}
               </button>
-              <button
+              <Button
                 v-else
-                type="button"
                 :disabled="
                   connectingProvider === card.provider || card.connection?.configured === false
                 "
                 @click="handleConnectIntegration(card.provider)"
-                class="w-full rounded-md bg-blue-600 px-3 py-1.5 text-size-small font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                class="w-full justify-center text-size-small"
               >
                 {{ connectingProvider === card.provider ? t("Redirecting…") : t("Connect") }}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

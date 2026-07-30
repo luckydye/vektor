@@ -22,6 +22,7 @@ import {
   dragDotsIcon,
   editEntryIcon,
 } from "~/src/assets/icons.ts";
+import Button from "./Button.vue";
 import Dialog from "./Dialog.vue";
 import DialogFooter from "./DialogFooter.vue";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
@@ -531,14 +532,10 @@ defineExpose({ isEditMode, toggleEditMode });
               {{ t("Group your documents into categories to organize this space.") }}
             </p>
           </div>
-          <button
-            type="button"
-            @click="startCreating"
-            class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-normal font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <div class="svg-icon w-4 h-4" v-html="addIcon" />
+          <Button class="mt-1 gap-1.5 text-size-normal" @click="startCreating">
+            <div class="icon svg-icon w-4 h-4" v-html="addIcon" />
             <span>{{ t("Create category") }}</span>
-          </button>
+          </Button>
         </div>
         <p v-else class="px-3 py-4 text-center text-size-normal text-neutral-500">
           {{ hasHiddenCategories
