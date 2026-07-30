@@ -79,3 +79,10 @@ export function spacePath(spaceSlug: string | null | undefined, path: string): s
   if (!spaceSlug) return path;
   return `/${spaceSlug}${path.startsWith("/") ? path : `/${path}`}`;
 }
+
+/** Byte count as a short human label: "812 B", "3.4 KB", "1.2 MB". */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

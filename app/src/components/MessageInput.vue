@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { formatFileSize } from "#utils/utils.ts";
 import {
   addAttachmentsIcon,
   deleteElementIcon,
@@ -89,12 +90,6 @@ function toggleFormat(name: RichTextEditorFormat) {
 }
 
 // ── File management ───────────────────────────────────────────────────────────
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function openFilePicker() {
   fileInputRef.value?.click();
