@@ -15,6 +15,7 @@ import {
   dateIcon,
   documentIcon,
 } from "~/src/assets/icons.ts";
+import SearchSnippet from "./SearchSnippet.vue";
 
 type DocumentListItem = DocumentWithProperties & {
   snippet?: string;
@@ -415,13 +416,9 @@ function docCategoryName(doc: DocumentListItem): string | null {
                   <span v-if="docCategoryName(doc)">{{ docCategoryName(doc) }} • </span>
                   <span class="capitalize">{{ doc.type || t("Document") }}</span>
                 </p>
-                <!-- Search snippets are escaped by the search service; only its
-                     generated <mark> elements are rendered as HTML here. -->
-                <p
-                  v-if="doc.snippet"
-                  class="mt-1 line-clamp-2 text-size-small leading-relaxed text-neutral-500 [&_mark]:rounded-xs [&_mark]:bg-primary-100 [&_mark]:px-0.5 [&_mark]:text-neutral-800"
-                  v-html="doc.snippet"
-                />
+                <!-- Snippets are document HTML, so they render behind the
+                     document-view shadow boundary and cannot style the shell. -->
+                <SearchSnippet v-if="doc.snippet" :html="doc.snippet" class="mt-1" />
               </div>
 
               <span
