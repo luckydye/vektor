@@ -7,6 +7,11 @@ export interface Toast {
   type: "error" | "info" | "success";
   progress?: number;
   action?: ToastAction;
+  /**
+   * Set by `dismiss`, cleared only by `drop`. The container watches this to
+   * play the leave animation; the toast is still in the list until `drop`.
+   */
+  exiting?: boolean;
 }
 
 export interface ToastAction {
@@ -37,7 +42,7 @@ export function useToast() {
       },
     ];
     if (duration > 0) {
-      setTimeout(() => remove(id), duration);
+      setTimeout(() => dismiss(id), duration);
     }
 
     switch (type) {
@@ -64,12 +69,32 @@ export function useToast() {
       toast.id === id ? { ...toast, ...patch } : toast,
     );
     if (options?.duration && options.duration > 0) {
-      setTimeout(() => remove(id), options.duration);
+      setTimeout(() => dismiss(id), options.duration);
     }
   }
 
+  /**
+   * Start the toast leaving. The container animates it out and then calls
+   * `drop`. Kept separate from `drop` so the element survives long enough to
+   * animate — nothing else may depend on the toast being gone after this.
+   */
+  function dismiss(id: number) {
+    toasts.value = toasts.value.map((toast) =>
+      toast.id === id ? { ...toast, exiting: true } : toast,
+    );
+  }
+
+  /** Remove the toast for real. Safe to call twice. */
+  function drop(id: number) {
+    toasts.value = toasts.value.filter((toast) => toast.id !== id);
+  }
+
+  /**
+   * Remove immediately, skipping the leave animation. For callers that replace
+   * a toast rather than letting it expire.
+   */
   function remove(id: number) {
-    toasts.value = toasts.value.filter((t) => t.id !== id);
+    drop(id);
   }
 
   function error(message: string) {
@@ -80,5 +105,5 @@ export function useToast() {
     show(message, "success");
   }
 
-  return { toasts, show, update, remove, error, success };
+  return { toasts, show, update, dismiss, drop, remove, error, success };
 }
