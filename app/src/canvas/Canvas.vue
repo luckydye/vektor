@@ -76,6 +76,21 @@ import type {
   CanvasToolContext,
   CanvasToolExtension,
 } from "./extensions/types.ts";
+import { shapeFromSource, shapeToYMap } from "./shapeSerialization.ts";
+import {
+  axisAlignedHandles,
+  strokeBounds as boundsOfPoints,
+  clampFontScale,
+  handleOffsets,
+  MAX_FONT_SCALE,
+  MIN_FONT_SCALE,
+  type Rect,
+  rectContains,
+  rectsIntersect,
+  scaleHandle,
+  toNumber,
+  unionBounds,
+} from "./viewport/bounds.ts";
 import {
   normalizeRotation,
   pointOnRotatedShape,
@@ -214,7 +229,6 @@ type DragState =
       baseStrokeIds: Set<string>;
     };
 
-type Rect = { x: number; y: number; width: number; height: number };
 type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
@@ -326,7 +340,7 @@ const currentOrigin =
 const undoManager = new Y.UndoManager([yShapes, yStrokes]);
 
 function insertNewShape(shape: CanvasShape) {
-  yShapes.set(shape.id, createShapeMap(shape));
+  yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
   saveImmediately();
@@ -366,7 +380,7 @@ const extensionRuntime = extensionManager.createRuntime({
   spaceId: props.spaceId,
   documentId: props.documentId,
   currentOrigin,
-  persistShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
+  persistShape: (shape) => yShapes.set(shape.id, shapeToYMap(shape, extensionManager)),
   insertNewShape,
   selectShape: selectOnlyShape,
   selectShapes: (ids) => {
@@ -493,12 +507,7 @@ function boundsForCanvasItems(
     ...items.shapes.map(shapeAabb),
     ...items.strokes.map(strokeBounds).filter((bounds): bounds is Rect => bounds != null),
   ];
-  if (bounds.length === 0) return null;
-  const minX = Math.min(...bounds.map((bounds) => bounds.x));
-  const minY = Math.min(...bounds.map((bounds) => bounds.y));
-  const maxX = Math.max(...bounds.map((bounds) => bounds.x + bounds.width));
-  const maxY = Math.max(...bounds.map((bounds) => bounds.y + bounds.height));
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  return unionBounds(bounds);
 }
 
 // Multiple selected items behave as one uniformly-scaled group. A single item
@@ -532,27 +541,22 @@ function transformControlPositions(shape: CanvasShape) {
   const bounds = shapeBounds(shape);
   // Handles stay a comfortable fixed size in screen space. Convert their
   // offset back to world units before placing them around the rotated shape.
-  const offset = 24 / transform.value.scale;
-  const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
+  const offset = handleOffsets(transform.value.scale);
   return {
     rotation: worldToScreen(
-      pointOnRotatedShape(bounds, { x: bounds.width / 2, y: -offset }),
+      pointOnRotatedShape(bounds, { x: bounds.width / 2, y: -offset.rotation }),
     ),
     resize: worldToScreen(
       pointOnRotatedShape(bounds, {
-        x: bounds.width + resizeOffset,
-        y: bounds.height + resizeOffset,
+        x: bounds.width + offset.resize,
+        y: bounds.height + offset.resize,
       }),
     ),
   };
 }
 
 function selectionScaleControlPosition(bounds: Rect) {
-  const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
-  return worldToScreen({
-    x: bounds.x + bounds.width + resizeOffset,
-    y: bounds.y + bounds.height + resizeOffset,
-  });
+  return scaleHandle(bounds, transform.value.scale, worldToScreen);
 }
 
 // Custom-element tag registered by an extension for its DOM body.
@@ -833,35 +837,6 @@ function clearSelection() {
   }
 }
 
-function rectsIntersect(a: Rect, b: Rect) {
-  return (
-    a.x < b.x + b.width &&
-    a.x + a.width > b.x &&
-    a.y < b.y + b.height &&
-    a.y + a.height > b.y
-  );
-}
-
-function rectContains(outer: Rect, inner: Rect) {
-  return (
-    inner.x >= outer.x &&
-    inner.y >= outer.y &&
-    inner.x + inner.width <= outer.x + outer.width &&
-    inner.y + inner.height <= outer.y + outer.height
-  );
-}
-
-function toNumber(value: unknown, fallback: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-const MIN_FONT_SCALE = 0.3;
-const MAX_FONT_SCALE = 10;
-
-function clampFontScale(value: number) {
-  return Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, value));
-}
-
 function intrinsicShapeSize(shape: CanvasShape) {
   return (
     intrinsicShapeSizes.value.get(shape.id) ??
@@ -897,95 +872,25 @@ function shapeAabb(shape: CanvasShape): Rect {
 }
 
 function strokeBounds(stroke: Pick<CanvasStroke, "points">): Rect | null {
-  if (stroke.points.length === 0) return null;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const point of stroke.points) {
-    minX = Math.min(minX, point.x);
-    minY = Math.min(minY, point.y);
-    maxX = Math.max(maxX, point.x);
-    maxY = Math.max(maxY, point.y);
-  }
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  return boundsOfPoints(stroke.points);
 }
 
 function strokeTransformControlPositions(stroke: CanvasStroke) {
   const bounds = strokeBounds(stroke);
   if (!bounds) return null;
-  const offset = 24 / transform.value.scale;
-  const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
-  return {
-    rotation: worldToScreen({ x: bounds.x + bounds.width / 2, y: bounds.y - offset }),
-    resize: worldToScreen({
-      x: bounds.x + bounds.width + resizeOffset,
-      y: bounds.y + bounds.height + resizeOffset,
-    }),
-  };
+  return axisAlignedHandles(bounds, transform.value.scale, worldToScreen);
 }
 
+/** Binds the ambient page origin and space id; the parsing itself is shared. */
 function toShape(
   id: string,
   source: Y.Map<unknown> | CanvasSerializedShape,
 ): CanvasShape | null {
-  const read = (key: string) => (source instanceof Y.Map ? source.get(key) : source[key]);
-
-  const typeValue = read("type");
-  if (!extensionManager.has(typeValue)) return null;
-  const type = typeValue;
-  const extension = extensionManager.get(type);
-  const defaultSize = extension.defaults.size;
-  const minSize = extension.defaults.minSize;
-  const frameValue = read("frame");
-  const styleValue = read("style");
-  const dataValue = read("data");
-  const readNested = (value: unknown, key: string) => {
-    if (value instanceof Y.Map) return value.get(key);
-    if (value && typeof value === "object") {
-      return (value as Record<string, unknown>)[key];
-    }
-    return undefined;
-  };
-  const storedData =
-    dataValue instanceof Y.Map
-      ? Object.fromEntries(dataValue.entries())
-      : dataValue && typeof dataValue === "object"
-        ? { ...(dataValue as Record<string, unknown>) }
-        : {};
-  const rawData = { ...extension.defaults.data, ...storedData };
-  const base: CanvasShape = {
-    id,
-    type,
-    frame: {
-      x: toNumber(readNested(frameValue, "x"), 0),
-      y: toNumber(readNested(frameValue, "y"), 0),
-      width: Math.max(
-        minSize.width,
-        toNumber(readNested(frameValue, "width"), defaultSize.width),
-      ),
-      height: Math.max(
-        minSize.height,
-        toNumber(readNested(frameValue, "height"), defaultSize.height),
-      ),
-      rotation: normalizeRotation(toNumber(readNested(frameValue, "rotation"), 0)),
-    },
-    style: {
-      color:
-        typeof readNested(styleValue, "color") === "string"
-          ? String(readNested(styleValue, "color"))
-          : extension.defaults.style.color,
-    },
-    data:
-      extension.storage?.parseData?.(rawData, {
-        currentOrigin,
-        defaultSpaceId: props.spaceId,
-      }) ?? rawData,
-    authorId: typeof read("authorId") === "string" ? String(read("authorId")) : undefined,
-    locked: read("locked") === true || undefined,
-    updatedAt: toNumber(read("updatedAt"), Date.now()),
-  };
-  return base;
+  return shapeFromSource(id, source, {
+    extensions: extensionManager,
+    currentOrigin,
+    defaultSpaceId: props.spaceId,
+  });
 }
 
 function toStroke(
@@ -1096,38 +1001,6 @@ function syncStrokesFromY() {
 
   strokes.value = next;
   renderInk();
-}
-
-function createShapeMap(shape: CanvasSerializedShape) {
-  const map = new Y.Map<unknown>();
-  map.set("type", shape.type);
-  const frame = new Y.Map<unknown>();
-  frame.set("x", shape.frame.x);
-  frame.set("y", shape.frame.y);
-  if (extensionManager.persistsSize(shape.type)) {
-    frame.set("width", shape.frame.width);
-    frame.set("height", shape.frame.height);
-  }
-  frame.set("rotation", shape.frame.rotation);
-  map.set("frame", frame);
-  const style = new Y.Map<unknown>();
-  style.set("color", shape.style.color);
-  map.set("style", style);
-  const data = new Y.Map<unknown>();
-  const serializedData =
-    extensionManager.get(shape.type).storage?.serializeData?.(shape.data) ?? shape.data;
-  for (const [key, value] of Object.entries(serializedData)) {
-    if (value !== undefined) data.set(key, value);
-  }
-  map.set("data", data);
-  if (shape.authorId) map.set("authorId", shape.authorId);
-  if (shape.locked) map.set("locked", true);
-  map.set("updatedAt", shape.updatedAt);
-  return map;
-}
-
-function serializeShape(shape: CanvasShape): CanvasSerializedShape {
-  return extensionManager.serialize(shape);
 }
 
 function serializeSnapshot(): string {
@@ -1709,7 +1582,7 @@ function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   // The active swatch (if the type has a palette) feeds the factory; text has none.
   const shape = extension.creation?.create(at, { color: activeColors[type] });
   if (!shape) return;
-  yShapes.set(shape.id, createShapeMap(shape));
+  yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
 
@@ -3256,7 +3129,7 @@ function pasteCanvasClipboard(
       pastedShapeIds.add(id);
       yShapes.set(
         id,
-        createShapeMap({
+        shapeToYMap({
           ...shape,
           id,
           frame: {
@@ -3308,7 +3181,7 @@ function insertConvertedShapes(nextShapes: CanvasShape[]): boolean {
       pastedShapeIds.add(shape.id);
       yShapes.set(
         shape.id,
-        createShapeMap({
+        shapeToYMap({
           ...shape,
           updatedAt: Date.now(),
         }),
