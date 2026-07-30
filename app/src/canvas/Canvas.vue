@@ -77,6 +77,15 @@ import type {
   CanvasToolExtension,
 } from "./extensions/types.ts";
 import {
+  type SelectionContext,
+  selectedGroupBounds as selectionGroupBounds,
+  selectedCanvasItems as selectionItems,
+  selectedResizeOnlyShape as selectionResizeOnlyShape,
+  selectedScalableSelection as selectionScalable,
+  selectedShape as selectionShape,
+  selectedTransformShape as selectionTransformShape,
+} from "./selectionModel.ts";
+import {
   isBrowserFindTarget,
   articleStyle as shapeArticleStyle,
   editorTagForShape as shapeEditorTag,
@@ -473,79 +482,33 @@ watch(camera, () => {
     renderSelections(true);
   }, 150);
 });
-// The single selected shape, or null when nothing or multiple things are
-// selected. Drives the per-shape affordances (note color, resize handle) that
-// only make sense for one shape at a time.
-const selectedShape = computed(() => {
-  if (selectedShapeIds.value.size !== 1 || selectedStrokeIds.value.size > 0) {
-    return null;
-  }
-  const [id] = selectedShapeIds.value;
-  return shapesById.value.get(id) ?? null;
-});
-
-// Transform affordances are declared per type on the extension. Types that can
-// rotate get the full rotate+resize controls (note/text/media); sections and
-// embedded documents declare resize without rotate, so they expose resize only.
-// Everything else stays move-only.
-const selectedTransformShape = computed(() => {
-  const shape = selectedShape.value;
-  if (!shape || !canMoveShape(shape)) return null;
-  return extensionManager.get(shape.type).behavior.transform.rotate ? shape : null;
-});
-
-// Types that resize but don't rotate get a lone resize handle.
-const selectedResizeOnlyShape = computed(() => {
-  const shape = selectedShape.value;
-  if (!shape || !canMoveShape(shape)) return null;
-  const transform = extensionManager.get(shape.type).behavior.transform;
-  return transform && transform.resize !== "none" && !transform.rotate ? shape : null;
-});
-
-const selectedCanvasItems = computed(() => ({
-  shapes: [...selectedShapeIds.value]
-    .map((id) => shapesById.value.get(id))
-    .filter((shape): shape is CanvasShape => shape != null),
-  strokes: [...selectedStrokeIds.value]
-    .map((id) => strokesById.value.get(id))
-    .filter((stroke): stroke is CanvasStroke => stroke != null),
-}));
-
-function boundsForCanvasItems(
-  items: Pick<{ shapes: CanvasShape[]; strokes: CanvasStroke[] }, "shapes" | "strokes">,
-): Rect | null {
-  const bounds = [
-    ...items.shapes.map(shapeAabb),
-    ...items.strokes.map(strokeBounds).filter((bounds): bounds is Rect => bounds != null),
-  ];
-  return unionBounds(bounds);
+// Everything the selection model needs to answer a question. Rebuilt per read
+// so it always reflects the current maps and ids; the computeds below cache the
+// answers, not this.
+function selectionContext(): SelectionContext {
+  return {
+    shapesById: shapesById.value,
+    strokesById: strokesById.value,
+    selectedShapeIds: selectedShapeIds.value,
+    selectedStrokeIds: selectedStrokeIds.value,
+    extensions: extensionManager,
+    canMoveShape,
+    canMoveStroke,
+    shapeAabb,
+    strokeBounds,
+  };
 }
 
-// Multiple selected items behave as one uniformly-scaled group. A single item
-// keeps its type-specific controls, including rotation where supported.
-const selectedGroupBounds = computed(() => {
-  const items = selectedCanvasItems.value;
-  if (items.shapes.length + items.strokes.length < 2) return null;
-  return boundsForCanvasItems(items);
-});
-
-// A group can only scale when every selected item participates. This deliberately
-// includes ordinary freehand strokes: their points can be uniformly transformed.
-const selectedScalableSelection = computed(() => {
-  const bounds = selectedGroupBounds.value;
-  const items = selectedCanvasItems.value;
-  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
-  if (
-    items.shapes.some((shape) => {
-      const transform = extensionManager.get(shape.type).behavior.transform;
-      return !canMoveShape(shape) || !transform.move || transform.resize === "none";
-    }) ||
-    items.strokes.some((stroke) => !canMoveStroke(stroke))
-  ) {
-    return null;
-  }
-  return { bounds, ...items };
-});
+const selectedShape = computed(() => selectionShape(selectionContext()));
+const selectedTransformShape = computed(() =>
+  selectionTransformShape(selectionContext()),
+);
+const selectedResizeOnlyShape = computed(() =>
+  selectionResizeOnlyShape(selectionContext()),
+);
+const selectedCanvasItems = computed(() => selectionItems(selectionContext()));
+const selectedGroupBounds = computed(() => selectionGroupBounds(selectionContext()));
+const selectedScalableSelection = computed(() => selectionScalable(selectionContext()));
 
 function transformControlPositions(shape: CanvasShape) {
   // Text auto-sizes, so anchor the handles to its measured box.
