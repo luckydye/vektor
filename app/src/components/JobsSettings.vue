@@ -423,6 +423,7 @@ import { useInfiniteQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import { formatDateTime } from "#utils/datetime.ts";
 import PagerCursor from "./PagerCursor.vue";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
@@ -537,15 +538,6 @@ function statusClasses(status: string): string {
     default:
       return "bg-neutral-100 text-neutral-600";
   }
-}
-
-function formatDateTime(date: Date | string): string {
-  return new Date(date).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function formatDuration(run: JobRun): string {

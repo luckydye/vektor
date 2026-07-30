@@ -215,6 +215,7 @@
 import { computed } from "vue";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { config } from "#config";
+import { formatDate } from "#utils/datetime.ts";
 import FileDrop from "./FileDrop.vue";
 import SwitchToggle from "./SwitchToggle.vue";
 
@@ -281,13 +282,5 @@ function avatarColor(id: string) {
     hash |= 0;
   }
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-function formatDate(dateStr: string | Date) {
-  const date = new Date(dateStr);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 </script>

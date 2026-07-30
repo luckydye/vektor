@@ -7,6 +7,7 @@ import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
+import { formatDateTime } from "#utils/datetime.ts";
 import { spacePath } from "#utils/utils.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import {
@@ -459,15 +460,6 @@ const allLogs = computed(() => {
   ];
 });
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 const statusBadgeClass: Record<string, string> = {
   pending: "bg-neutral-100 text-neutral-500",
   running: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400",
@@ -504,7 +496,7 @@ const statusBadgeClass: Record<string, string> = {
         <div class="flex items-center justify-between gap-12">
           <div class="flex items-center gap-3">
             <span v-if="selectedRunCreatedAt" class="text-size-small text-neutral-400">
-              {{ formatDate(selectedRunCreatedAt) }}
+              {{ formatDateTime(selectedRunCreatedAt) }}
             </span>
             <div v-if="selectedRunDetail" class="flex items-center gap-3">
               <span

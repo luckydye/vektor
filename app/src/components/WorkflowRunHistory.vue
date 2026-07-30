@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from "#utils/datetime.ts";
 import { spinnerIcon } from "~/src/assets/icons.ts";
 import PagerCursor from "./PagerCursor.vue";
 
@@ -26,15 +27,6 @@ const emit = defineEmits<{
 function runTitle(run: RunSummary): string {
   const title = run.runtimeInputs?.title;
   return typeof title === "string" && title ? title : "Untitled";
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 const statusBadgeClass: Record<string, string> = {
@@ -69,7 +61,7 @@ const statusBadgeClass: Record<string, string> = {
         </span>
         <span class="flex w-full items-center justify-between gap-2">
           <span class="text-size-small text-neutral-400 tabular-nums truncate">
-            {{ formatDate(run.createdAt) }}
+            {{ formatDateTime(run.createdAt) }}
           </span>
           <span
             class="inline-flex flex-none items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] font-medium capitalize"

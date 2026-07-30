@@ -268,10 +268,10 @@
                     {{ secret.description || "—" }}
                   </td>
                   <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
-                    {{ secret.lastUsedAt ? formatDate(secret.lastUsedAt) : "—" }}
+                    {{ secret.lastUsedAt ? formatAbsoluteDate(secret.lastUsedAt) : "—" }}
                   </td>
                   <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
-                    {{ formatDate(secret.updatedAt) }}
+                    {{ formatAbsoluteDate(secret.updatedAt) }}
                   </td>
                   <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
                     <button
@@ -656,10 +656,10 @@
                     </div>
                   </td>
                   <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
-                    {{ token.lastUsedAt ? formatDate(token.lastUsedAt) : '—' }}
+                    {{ token.lastUsedAt ? formatAbsoluteDate(token.lastUsedAt) : '—' }}
                   </td>
                   <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
-                    {{ token.expiresAt ? formatDate(token.expiresAt) : '—' }}
+                    {{ token.expiresAt ? formatAbsoluteDate(token.expiresAt) : '—' }}
                   </td>
                   <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
                     <button
@@ -805,6 +805,7 @@ function setTab(id: string) {
 import { type AccessToken, api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { formatAbsoluteDate } from "#utils/datetime.ts";
 import {
   isWorkflowCreationEnabled,
   spacePreferenceKeys,
@@ -1059,14 +1060,6 @@ async function handleSave() {
   } finally {
     isSaving.value = false;
   }
-}
-
-function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function resourceLabel(resource: {

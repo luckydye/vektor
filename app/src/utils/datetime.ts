@@ -83,3 +83,38 @@ export function formatRelativeTime(
 export function formatDate(dateString: string | number | Date): string {
   return formatRelativeTime(dateString, { dayOnly: true, maxDays: 7, capitalize: true });
 }
+
+/**
+ * Absolute calendar date, no time: "Jan 15, 2024". For dates the reader has to
+ * compare or diarize — an expiry, a scheduled cutoff — where `formatDate`'s
+ * "in 30 days" is the wrong shape.
+ */
+export function formatAbsoluteDate(value: string | number | Date): string {
+  try {
+    return normalizeTimestamp(value).toLocaleDateString(currentLang(), {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * Absolute date and time to the minute: "Jan 15, 03:42 PM". For run, job and
+ * schedule stamps, where the exact minute is the point and a relative label
+ * would hide it.
+ */
+export function formatDateTime(value: string | number | Date): string {
+  try {
+    return normalizeTimestamp(value).toLocaleString(currentLang(), {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(value);
+  }
+}
