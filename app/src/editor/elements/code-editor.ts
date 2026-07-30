@@ -2,6 +2,8 @@ import { Editor, getSchema } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import codeStyles from "#editor/css/code.css?inline";
+import { appendCaretDecoration } from "#cosmetics/render.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   colorForPresenceProfile,
   findYSyncState,
@@ -18,6 +20,7 @@ export interface CodeEditorElementApi extends HTMLElement {
   saved: boolean;
   collaborationDocument: Y.Doc;
   readonly editorInstance: Editor | null;
+  appearance: PublicUserAppearance | undefined;
   focus(options?: FocusOptions): void;
   setPresenceProfiles(profiles: DocumentPresenceProfile[]): void;
 }
@@ -266,6 +269,7 @@ if (
       private lineCount = 0;
       private activeLine = 1;
       private presenceProfiles: DocumentPresenceProfile[] = [];
+      private localAppearance?: PublicUserAppearance;
       private presenceRenderFrame: number | null = null;
       private readonly shadow: ShadowRoot;
       private readonly languageEl: HTMLSpanElement;
@@ -364,12 +368,14 @@ if (
             },
             handleDOMEvents: {
               focus: () => {
+                this.schedulePresenceRender();
                 this.dispatchEvent(
                   new CustomEvent("editor-focus", { bubbles: true, composed: true }),
                 );
                 return false;
               },
               blur: () => {
+                this.schedulePresenceRender();
                 this.dispatchEvent(
                   new CustomEvent("editor-blur", { bubbles: true, composed: true }),
                 );
@@ -461,7 +467,7 @@ if (
       private renderPresence() {
         this.presenceLayer.replaceChildren();
         const editor = this.editor;
-        if (!editor || this.presenceProfiles.length === 0) return;
+        if (!editor) return;
 
         const bodyRect = this.bodyEl.getBoundingClientRect();
         const surfaceRect = this.surfaceEl.getBoundingClientRect();
@@ -512,10 +518,26 @@ if (
             label.style.backgroundColor = color;
             label.textContent = profile.user.name;
             cursor.appendChild(label);
+            appendCaretDecoration(cursor, profile.user.appearance);
             this.presenceLayer.appendChild(cursor);
           } catch {
             // The remote position may have become stale between the Yjs update
             // and measuring it in the ProseMirror view.
+          }
+        }
+
+        if (editor.isFocused && this.localAppearance?.caret) {
+          try {
+            const coordinates = editor.view.coordsAtPos(editor.state.selection.head);
+            const cursor = document.createElement("div");
+            cursor.className = "code-editor-presence-cursor";
+            cursor.style.left = `${this.surfaceEl.offsetLeft + coordinates.left - surfaceRect.left}px`;
+            cursor.style.top = `${coordinates.top - bodyRect.top}px`;
+            cursor.style.height = `${Math.max(coordinates.bottom - coordinates.top, 1)}px`;
+            appendCaretDecoration(cursor, this.localAppearance);
+            this.presenceLayer.appendChild(cursor);
+          } catch {
+            // The editor may be remounting while the local selection is measured.
           }
         }
       }
@@ -577,6 +599,16 @@ if (
 
       setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
         this.presenceProfiles = profiles;
+        this.schedulePresenceRender();
+      }
+
+      get appearance() {
+        return this.localAppearance;
+      }
+
+      set appearance(value: PublicUserAppearance | undefined) {
+        this.localAppearance = value;
+        this.surfaceEl.style.caretColor = value?.caret ? "transparent" : "";
         this.schedulePresenceRender();
       }
 

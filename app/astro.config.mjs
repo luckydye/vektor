@@ -65,6 +65,10 @@ export default defineConfig({
         path: "en",
         codes: ["en", "en-US", "en-GB", "en-CA", "en-AU", "en-NZ", "en-IE"],
       },
+      {
+        path: "ko",
+        codes: ["ko", "ko-KR"],
+      },
     ],
   },
 

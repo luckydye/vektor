@@ -13,6 +13,7 @@ import { api } from "#api/client.ts";
 import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { useCanvasCursorColor } from "./useCanvasCursorColor.ts";
+import { useCosmetics } from "./useCosmetics.ts";
 import { useUserProfile } from "./useUserProfile.ts";
 
 export type CollaborationPresenceProfile<TState> = {
@@ -161,6 +162,7 @@ export function useCollaboration<TPresenceState>(options: {
   const { spaceId, documentId } = options;
   const presenceRoomId = options.presenceRoomId ?? documentId;
   const user = useUserProfile();
+  const { appearance } = useCosmetics();
   const ydoc = shallowRef(new Y.Doc());
   const localPresenceState = shallowRef<TPresenceState | null>(null);
   const presenceProfiles = shallowRef<CollaborationPresenceProfile<TPresenceState>[]>([]);
@@ -231,6 +233,7 @@ export function useCollaboration<TPresenceState>(options: {
                 name: localUser.name,
                 image: localUser.image,
                 color: presenceColor(localUser),
+                appearance: appearance.value,
               },
               state: localPresenceState.value,
             } satisfies CollaborationPresenceProfile<TPresenceState>,
@@ -287,6 +290,7 @@ export function useCollaboration<TPresenceState>(options: {
         name: user.value.name,
         image: user.value.image,
         color: presenceColor(user.value),
+        appearance: appearance.value,
       },
       (event) => {
         if (event.type === "presence-snapshot") {
@@ -343,6 +347,7 @@ export function useCollaboration<TPresenceState>(options: {
   }
 
   watch(cursorColorOverride, handleCursorColorPreferenceChange);
+  watch(appearance, handleCursorColorPreferenceChange);
 
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", clearPresence);

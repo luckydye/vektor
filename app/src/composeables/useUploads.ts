@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { api } from "#api/client.ts";
 import { t } from "#utils/lang.ts";
-import { useToast } from "./useToast.ts";
+import { type ToastAction, useToast } from "./useToast.ts";
 
 // Generic upload manager. It owns the shared upload feedback — a progress
 // toast (reusing useToast), success/error notifications, and a reactive
@@ -36,6 +36,15 @@ export interface UploadOptions {
   errorToast?: boolean;
   /** Receives upload progress in the 0..1 range. */
   onProgress?: (progress: number) => void;
+}
+
+export interface UploadFileOptions extends UploadOptions {
+  /** Customize the success state of the progress toast. */
+  successToast?: {
+    message?: string;
+    duration?: number;
+    action?: (result: UploadResult) => ToastAction;
+  };
 }
 
 // Module-level so all callers share one registry, like useToast.
@@ -85,7 +94,10 @@ export function useUploads() {
   }
 
   /** Upload a single file, reporting progress through the shared toast. */
-  async function uploadFile(file: File, options: UploadOptions): Promise<UploadResult> {
+  async function uploadFile(
+    file: File,
+    options: UploadFileOptions,
+  ): Promise<UploadResult> {
     const label = options.label ?? file.name ?? "file";
     const showProgress = options.progressToast !== false;
     const showError = options.errorToast !== false;
@@ -111,10 +123,16 @@ export function useUploads() {
 
       patchUpload(entry.id, { progress: 1, status: "done" });
       if (toastId != null) {
+        const successToast = options.successToast;
         toast.update(
           toastId,
-          { message: t("Upload complete"), type: "success", progress: 1 },
-          { duration: 2000 },
+          {
+            message: successToast?.message ?? t("Upload complete"),
+            type: "success",
+            progress: 1,
+            action: successToast?.action?.(result),
+          },
+          { duration: successToast?.duration ?? 2000 },
         );
       }
       return result;

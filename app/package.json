@@ -1,6 +1,6 @@
 {
   "name": "@vektorapp/app",
-  "version": "0.0.55",
+  "version": "0.0.56",
   "type": "module",
   "scripts": {
     "figma:parse": "figma connect parse --config figma.config.json",
@@ -57,6 +57,7 @@
     "#cli/*": "./src/cli/*",
     "#components/*": "./src/components/*",
     "#composeables/*": "./src/composeables/*",
+    "#cosmetics/*": "./src/cosmetics/*",
     "#db/*": "./src/db/*",
     "#documents/*": "./src/documents/*",
     "#editor/*": "./src/editor/*",

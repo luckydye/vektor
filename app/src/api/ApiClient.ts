@@ -17,6 +17,7 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
+import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { ApiReplica, type OptimisticReplicaOperation } from "./ApiReplica.ts";
 
 export interface User {
@@ -24,6 +25,7 @@ export interface User {
   name: string;
   email: string;
   image?: string | null;
+  appearance?: PublicUserAppearance;
 }
 
 export interface Space {

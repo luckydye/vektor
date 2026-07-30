@@ -1,6 +1,7 @@
 import { hasInjectionContext, type InjectionKey, inject } from "vue";
 import de from "#assets/lang/de.json";
 import en from "#assets/lang/en.json";
+import ko from "#assets/lang/ko.json";
 
 const FALLBACK_LANG = "en";
 
@@ -12,7 +13,7 @@ export type TranslationKey = keyof typeof en;
 // register it here to make that language available. Static imports (rather
 // than Vite's `import.meta.glob`) keep this working under plain runtimes such
 // as `bun test`, where `import.meta.glob` is undefined.
-const translations: Record<string, Record<string, string>> = { de, en };
+const translations: Record<string, Record<string, string>> = { de, en, ko };
 export const languageInjectionKey: InjectionKey<string> = Symbol("language");
 
 function normalizeLang(lang: string): string {
