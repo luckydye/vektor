@@ -14,25 +14,27 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import { Actions } from "#utils/actions.ts";
+import {
+  formatCollapsedToolInput,
+  formatToolPreview,
+  getMessageKey,
+  getToolMessageKey,
+} from "#utils/aiToolPreview.ts";
+import { formatTime } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import "#editor/css/mentions.css";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import {
-  activityIcon,
-  addIcon,
   agentChatIcon,
   confirmationIcon,
   copyIcon,
-  deleteEntryIcon,
-  editEntryIcon,
   linkIcon,
   sendMessageIcon,
   stopIcon,
   thinkingIcon,
 } from "~/src/assets/icons.ts";
+import AIChatSessions from "./AIChatSessions.vue";
 import DockedPanel from "./DockedPanel.vue";
-import type { PendingAttachment } from "./MessageInput.vue";
 import MessageInput from "./MessageInput.vue";
 
 const props = defineProps({
@@ -182,20 +184,8 @@ function buildAttachmentContext(attachments: UploadedAttachment[]): string {
   return `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
 }
 
-function formatSessionDate(date: string | number | Date): string {
-  return normalizeTimestamp(date).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function formatSessionStartTime(timestamp: number | null): string {
-  if (timestamp === null) return "";
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return timestamp === null ? "" : formatTime(timestamp);
 }
 
 async function copyAssistantMessage(message: UIMessage) {
@@ -249,219 +239,13 @@ const {
 });
 reconnectSession = reconnectChatSession;
 
-function parseToolArguments(content: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Tool arguments must be object");
-    }
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+/** Bound to the live conversation: a tool result names its call by id only. */
+function toolPreview(message: UIMessage): string {
+  return formatToolPreview(message, messages.value);
 }
 
-function parseToolResultContent(content: string): unknown {
-  try {
-    return JSON.parse(content) as unknown;
-  } catch {
-    return content;
-  }
-}
-
-function getBashCommandFromToolCallMessage(message: UIMessage): string | null {
-  if (message.toolName !== "bash" || message.toolPhase !== "call") {
-    return null;
-  }
-  const args = parseToolArguments(message.content);
-  const command = args?.command;
-  return typeof command === "string" && command.trim() ? command : null;
-}
-
-function findBashCommandForResultMessage(message: UIMessage): string | null {
-  if (message.toolName !== "bash" || message.toolPhase !== "result") {
-    return null;
-  }
-  const toolCallId = message.toolCallId;
-  if (!toolCallId) {
-    return null;
-  }
-  const toolCallMessage = messages.value.find(
-    (candidate) =>
-      candidate.toolCallId === toolCallId &&
-      candidate.toolName === "bash" &&
-      candidate.toolPhase === "call",
-  );
-  return toolCallMessage ? getBashCommandFromToolCallMessage(toolCallMessage) : null;
-}
-
-function formatBashResultPreview(message: UIMessage, result: unknown): string {
-  const output =
-    typeof result === "string"
-      ? result.trim() || "(no output)"
-      : formatValuePreview(result);
-  const command = findBashCommandForResultMessage(message);
-  if (!command) {
-    return output;
-  }
-  return `$ ${command}\n\n${output}`;
-}
-
-function formatValuePreview(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return JSON.stringify(value, null, 2);
-}
-
-function summarizeDocumentLikeResult(value: unknown): string | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const title =
-    typeof record.title === "string"
-      ? record.title
-      : typeof record.slug === "string"
-        ? record.slug
-        : null;
-  const id = typeof record.id === "string" ? record.id : null;
-  const type = typeof record.type === "string" ? record.type : null;
-  const parts = [title, id ? `id: ${id}` : null, type ? `type: ${type}` : null].filter(
-    Boolean,
-  );
-  if (parts.length === 0) {
-    return null;
-  }
-  return parts.join("\n");
-}
-
-function summarizeCollectionResult(value: unknown): string | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  for (const key of ["documents", "results", "items"]) {
-    const items = record[key];
-    if (!Array.isArray(items)) continue;
-    const lines = items.slice(0, 5).map((item, index) => {
-      const summary = summarizeDocumentLikeResult(item);
-      return summary
-        ? `${index + 1}. ${summary.replace(/\n/g, " · ")}`
-        : `${index + 1}. ${formatValuePreview(item)}`;
-    });
-    const extra =
-      items.length > lines.length ? `\n+${items.length - lines.length} more` : "";
-    return lines.join("\n") + extra;
-  }
-  return null;
-}
-
-function formatToolPreview(message: UIMessage): string {
-  if (message.toolPhase === "call") {
-    const args = parseToolArguments(message.content);
-    if (!args) {
-      return message.content;
-    }
-
-    if (message.toolName === "bash") {
-      const command = args.command;
-      if (typeof command === "string" && command.trim()) {
-        return command;
-      }
-    }
-
-    const previewEntries = Object.entries(args)
-      .filter(([, value]) => value !== undefined)
-      .slice(0, 4)
-      .map(([key, value]) => {
-        if (typeof value === "string") {
-          return `${key}: ${value}`;
-        }
-        return `${key}: ${JSON.stringify(value)}`;
-      });
-
-    if (previewEntries.length === 0) {
-      return message.toolName ? `${message.toolName}()` : message.content;
-    }
-
-    return previewEntries.join("\n");
-  }
-
-  const result = parseToolResultContent(message.content);
-
-  if (message.toolName === "bash") {
-    return formatBashResultPreview(message, result);
-  }
-
-  if (
-    message.toolName === "get_document" ||
-    message.toolName === "get_current_document"
-  ) {
-    const summary = summarizeDocumentLikeResult(result);
-    if (summary) {
-      const record = result as Record<string, unknown>;
-      const body =
-        typeof record.content === "string"
-          ? `\n\n${record.content.slice(0, 1200)}${record.content.length > 1200 ? "\n…" : ""}`
-          : "";
-      return summary + body;
-    }
-  }
-
-  if (message.toolName === "list_documents" || message.toolName === "search_documents") {
-    const summary = summarizeCollectionResult(result);
-    if (summary) {
-      return summary;
-    }
-  }
-
-  if (message.toolName === "upload_artifact") {
-    if (result && typeof result === "object" && !Array.isArray(result)) {
-      const record = result as Record<string, unknown>;
-      const parts = [
-        typeof record.key === "string" ? `key: ${record.key}` : null,
-        typeof record.url === "string" ? `url: ${record.url}` : null,
-      ].filter(Boolean);
-      if (parts.length > 0) {
-        return parts.join("\n");
-      }
-    }
-  }
-
-  if (typeof result === "string") {
-    return result;
-  }
-
-  const collectionSummary = summarizeCollectionResult(result);
-  if (collectionSummary) {
-    return collectionSummary;
-  }
-  const itemSummary = summarizeDocumentLikeResult(result);
-  if (itemSummary) {
-    return itemSummary;
-  }
-  return formatValuePreview(result);
-}
-
-function formatCollapsedToolInput(message: UIMessage): string {
-  if (message.toolPhase !== "call") return "";
-  const preview = formatToolPreview(message).replace(/\s+/g, " ").trim();
-  return preview.length > 120 ? `${preview.slice(0, 119)}…` : preview;
-}
-
-function getToolMessageKey(message: UIMessage, index: number): string {
-  return message.toolCallId
-    ? `${message.toolCallId}:${message.toolPhase ?? "unknown"}`
-    : `tool:${index}:${message.timestamp}`;
-}
-
-function getMessageKey(message: UIMessage, index: number): string {
-  if (message.role === "tool") {
-    return getToolMessageKey(message, index);
-  }
-  return `${message.role}:${message.timestamp}:${index}`;
+function collapsedToolInput(message: UIMessage): string {
+  return formatCollapsedToolInput(message, messages.value);
 }
 
 function isToolMessageExpanded(message: UIMessage, index: number): boolean {
@@ -684,105 +468,21 @@ onUnmounted(() => {
     :default-width="380"
   >
     <div class="flex flex-col h-full bg-neutral-50">
-      <!-- Session toolbar -->
-      <div
-        v-if="!showSessionPicker"
-        class="flex shrink-0 items-center gap-3 border-b border-neutral-100 bg-neutral-10 px-3 py-4"
-      >
-        <button
-          v-if="sessions.length > 0"
-          type="button"
-          @click="showSessionPicker = true"
-          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
-          title="Recent conversations"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="activityIcon" />
-          History
-        </button>
-        <div class="flex-1" />
-        <button
-          type="button"
-          @click="startNewChat"
-          :disabled="isGenerating"
-          class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
-          title="New chat"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="editEntryIcon" />
-          <span>New chat</span>
-        </button>
-      </div>
-
-      <!-- Sessions picker -->
-      <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide">
-            Recent conversations
-          </p>
-          <button
-            type="button"
-            @click="startNewChat"
-            class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
-          >
-            <div class="svg-icon w-3.5 h-3.5" v-html="addIcon" />
-            New chat
-          </button>
-        </div>
-        <div class="space-y-0.5">
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The row preserves the surrounding list layout and is activated by Vue click handling. -->
-          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: Session navigation is handled by the surrounding keyboard command interface. -->
-          <div
-            v-for="session in sessions"
-            :key="session.id"
-            class="group flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-neutral-100 cursor-pointer transition-colors"
-            @click="resumeSession(session)"
-          >
-            <!-- Status dot -->
-            <div class="shrink-0 mt-0.5">
-              <span
-                v-if="getSessionStatus(session) === 'generating'"
-                class="block w-2 h-2 rounded-full bg-primary-500 animate-pulse"
-              />
-              <span
-                v-else-if="getSessionStatus(session) === 'awaiting'"
-                class="block w-2 h-2 rounded-full bg-amber-400"
-              />
-              <span v-else class="block w-2 h-2 rounded-full bg-neutral-200" />
-            </div>
-
-            <div class="flex-1 min-w-0">
-              <p class="text-size-medium text-neutral-800 truncate">
-                {{ session.title }}
-              </p>
-              <p class="text-size-small mt-0.5">
-                <template v-if="getSessionStatus(session) === 'generating'">
-                  <span class="text-primary-500 font-medium">Generating response…</span>
-                </template>
-                <template v-else-if="getSessionStatus(session) === 'awaiting'">
-                  <span class="text-amber-500 font-medium">Awaiting response</span>
-                </template>
-                <template v-else>
-                  <span class="text-neutral-400"
-                    >{{ formatSessionDate(session.updatedAt) }}</span
-                  >
-                </template>
-              </p>
-            </div>
-
-            <button
-              type="button"
-              @click.stop="removeSession(session.id)"
-              class="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-red-500 transition-all shrink-0"
-              title="Delete"
-            >
-              <div class="svg-icon w-3.5 h-3.5" v-html="deleteEntryIcon" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <AIChatSessions
+        :sessions="sessions"
+        :current-session-id="currentSessionId"
+        :show-picker="showSessionPicker"
+        :is-generating="isGenerating"
+        :get-session-status="getSessionStatus"
+        @update:show-picker="showSessionPicker = $event"
+        @new-chat="startNewChat"
+        @resume="resumeSession"
+        @remove="(session) => removeSession(session.id)"
+      />
 
       <!-- Messages -->
       <div
-        v-else
+        v-if="!showSessionPicker"
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-2xs py-4 space-y-3 messages-container"
         @scroll="onMessagesScroll"
@@ -899,17 +599,17 @@ onUnmounted(() => {
                         {{ message.toolName || 'Tool' }}
                       </span>
                       <span
-                        v-if="formatCollapsedToolInput(message)"
+                        v-if="collapsedToolInput(message)"
                         class="min-w-0 flex-1 truncate text-neutral-500 font-normal"
                       >
-                        {{ formatCollapsedToolInput(message) }}
+                        {{ collapsedToolInput(message) }}
                       </span>
                     </div>
                     <pre
                       v-if="isToolMessageExpanded(message, index)"
                       class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
                       :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
-                    >{{ formatToolPreview(message) }}</pre>
+                    >{{ toolPreview(message) }}</pre>
                   </button>
                 </div>
               </div>
@@ -966,10 +666,10 @@ onUnmounted(() => {
               {{ waitingState.tool.toolName }}
             </span>
             <span
-              v-if="formatCollapsedToolInput(waitingState.tool)"
+              v-if="collapsedToolInput(waitingState.tool)"
               class="min-w-0 truncate text-neutral-500"
             >
-              {{ formatCollapsedToolInput(waitingState.tool) }}
+              {{ collapsedToolInput(waitingState.tool) }}
             </span>
             <span class="flex shrink-0 items-center gap-0.5">
               <span class="typing-dot" />

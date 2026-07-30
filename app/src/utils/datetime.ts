@@ -118,3 +118,15 @@ export function formatDateTime(value: string | number | Date): string {
     return String(value);
   }
 }
+
+/** Clock time only: "04:42 PM". For a stamp whose date is already established. */
+export function formatTime(value: string | number | Date): string {
+  try {
+    return normalizeTimestamp(value).toLocaleTimeString(currentLang(), {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(value);
+  }
+}
