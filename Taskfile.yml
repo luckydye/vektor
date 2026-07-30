@@ -149,6 +149,21 @@ tasks:
       - until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done
       - bun test {{.CLI_ARGS}}
 
+  test:frontend:
+    desc: Frontend component suite (Vitest + happy-dom). No server needed.
+    dir: ./app
+    cmds:
+      - bunx vitest run --config vitest.config.ts {{.CLI_ARGS}}
+
+  test:visual:
+    desc: >
+      Screenshot comparison (Playwright, real browser). Baselines are local-only
+      and live outside the working tree — see VEKTOR_VISUAL_BASELINES.
+    dir: ./app
+    cmds:
+      - echo "Not implemented yet — see the tier 3 ticket (_order 1230)."
+      - exit 1
+
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.
     deps: [compile]

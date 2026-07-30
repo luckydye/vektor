@@ -81,6 +81,7 @@
     {
       "includes": [
         "**/astro.config.mjs",
+        "**/vitest.config.ts",
         "app/src/app.ts"
       ],
       "linter": {

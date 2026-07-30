@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { subpathImports } from "./helpers/subpathImports.ts";
 
 /**
  * Guards the server's document path against frontend libraries.
@@ -51,9 +52,8 @@ const SERVER_ROOTS = [
   "src/realtime/yjsRooms.ts",
 ];
 
-const aliases: Record<string, string> = JSON.parse(
-  readFileSync(join(APP_ROOT, "package.json"), "utf8"),
-).imports;
+// Shared with the Vitest config so the two resolvers cannot drift.
+const aliases: Record<string, string> = subpathImports();
 
 /** Strips comments so commented-out imports are not treated as real edges. */
 function stripComments(source: string): string {
