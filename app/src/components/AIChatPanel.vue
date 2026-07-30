@@ -16,6 +16,7 @@ import { withTransformParams } from "#files/transformUrl.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
+import "#editor/css/mentions.css";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   activityIcon,
@@ -1162,31 +1163,7 @@ details[open] .details-chevron {
   color: var(--color-primary-600);
   text-decoration: underline;
 }
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(document-mention),
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(a[href^="doc:"]),
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(a[href*="/doc/"]) {
-  background: var(--color-neutral-50);
-  border: 1px solid var(--color-neutral-200);
-  border-radius: 0.375rem;
-  color: var(--color-primary-700);
-  cursor: default;
-  font-weight: 500;
-  padding: 0.0625rem 0.3125rem;
-  text-decoration: none;
-  white-space: nowrap;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(document-mention:hover),
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(a[href^="doc:"]:hover),
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(a[href*="/doc/"]:hover) {
-  background: var(--color-primary-50);
-  border-color: var(--color-primary-200);
-}
+/* Mention styling comes from #editor/css/mentions.css (imported above). */
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(blockquote) {
   border-left: 3px solid var(--color-neutral-200);

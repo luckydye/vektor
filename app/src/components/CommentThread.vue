@@ -4,6 +4,7 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
+import "#editor/css/mentions.css";
 import { cancelIcon, confirmationIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
 import "./AvatarElement.ts";
 import ButtonGhost from "./ButtonGhost.vue";
@@ -220,54 +221,5 @@ watch(
   color: var(--color-primary-600);
   text-decoration: underline;
 }
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(document-mention),
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(a[href*="/doc/"]) {
-  background: var(--color-neutral-50);
-  border: 1px solid var(--color-neutral-200);
-  border-radius: 0.375rem;
-  color: var(--color-primary-700);
-  cursor: default;
-  font-weight: 500;
-  padding: 0.0625rem 0.3125rem;
-  text-decoration: none;
-  white-space: nowrap;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(document-mention:hover),
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(a[href*="/doc/"]:hover) {
-  background: var(--color-primary-50);
-  border-color: var(--color-primary-200);
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(user-mention) {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 0.25rem;
-  border-radius: 0.125rem;
-  font-weight: 500;
-  transition-property: color, background-color, border-color;
-  background: var(--color-primary-50);
-  border: 1px solid var(--color-primary-200);
-  color: var(--color-primary-700);
-  cursor: pointer;
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(user-mention:hover) {
-  background: var(--color-primary-100);
-  border-color: var(--color-primary-300);
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(user-mention[data-self-mention="true"]) {
-  background: var(--color-primary-100);
-  border-color: var(--color-primary-300);
-  color: var(--color-primary-800);
-}
-/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(user-mention[data-self-mention="true"]:hover) {
-  background: var(--color-primary-200);
-  border-color: var(--color-primary-400);
-}
+/* Mention styling comes from #editor/css/mentions.css (imported above). */
 </style>

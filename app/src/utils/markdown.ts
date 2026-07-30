@@ -262,7 +262,10 @@ function nodeToMarkdown(node: HtmlNode): string {
     case "user-mention": {
       const email = getAttr(tag, "email") || "";
       const label = getTextContent(children).replace(/^@/, "");
-      return `[@${label}](mailto:${email})`;
+      if (!email) return `@${label}`;
+      // `mention:` (not `mailto:`) so a mention copied out of a document renders
+      // as a mention again wherever the markdown is rendered back to HTML.
+      return `[@${label}](mention:${encodeURIComponent(email).replace(/[()]/g, "\\$&")})`;
     }
     case "document-mention": {
       const href = getAttr(tag, "data-href") || "";
