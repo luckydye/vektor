@@ -209,3 +209,70 @@ export function getActivityBucketLabel(dateString: string | Date): string {
     return String(dateString);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Grouping
+// ---------------------------------------------------------------------------
+
+/** A run of consecutive entries by one author on one day. */
+export interface ActivityGroup {
+  id: string;
+  userId: string | null;
+  /** Timestamp of the first entry; the group is ordered, so this is its start. */
+  time: string | Date;
+  items: AuditLog[];
+  /** Full day the group falls on. Groups never span days. */
+  date: string;
+  /** Coarser "Today" / "Yesterday" / weekday bucket this group belongs to. */
+  bucketLabel: string;
+  /** True when this group opens a new bucket, i.e. render a heading above it. */
+  showBucket: boolean;
+}
+
+/**
+ * Collapse a chronological entry list into per-author groups.
+ *
+ * An entry joins the previous group when it shares that group's author and
+ * calendar day *and* `isSameBatch` accepts it. Batching is the only thing the
+ * feeds disagree about — the space feed uses a time window, the document feed a
+ * revision id — so it is the only part they pass in.
+ *
+ * `bucketLabel` and `showBucket` are resolved here rather than in a template so
+ * the heading is data, not a comparison against the previous array element.
+ */
+export function groupActivityEntries(
+  entries: readonly AuditLog[],
+  isSameBatch: (entry: AuditLog, group: ActivityGroup) => boolean,
+): ActivityGroup[] {
+  const groups: ActivityGroup[] = [];
+  let groupIndex = 0;
+
+  for (const entry of entries) {
+    const date = getActivityDate(entry.createdAt as string);
+    const userId = entry.userId ?? null;
+    const previous = groups[groups.length - 1];
+
+    if (
+      previous &&
+      previous.userId === userId &&
+      previous.date === date &&
+      isSameBatch(entry, previous)
+    ) {
+      previous.items.push(entry);
+      continue;
+    }
+
+    const bucketLabel = getActivityBucketLabel(entry.createdAt as string);
+    groups.push({
+      id: `group-${groupIndex++}`,
+      userId,
+      time: entry.createdAt,
+      items: [entry],
+      date,
+      bucketLabel,
+      showBucket: bucketLabel !== previous?.bucketLabel,
+    });
+  }
+
+  return groups;
+}

@@ -5,10 +5,10 @@ import { chevronRightThinIcon, documentIcon, usersIcon } from "#assets/icons.ts"
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
-  getActivityBucketLabel,
-  getActivityDate,
+  type ActivityGroup,
   getAuditEventAction,
   getEntryChangeLabel,
+  groupActivityEntries,
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
@@ -27,14 +27,6 @@ interface Document {
   id: string;
   slug: string;
   type?: string;
-}
-
-interface CompactActivityGroup {
-  id: string;
-  userId: string | null;
-  time: string | Date;
-  items: AuditLog[];
-  date: string;
 }
 
 interface CompactActivityBatch {
@@ -124,10 +116,6 @@ function getDocumentHref(docId: string): string | undefined {
   return spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
 }
 
-function getEntryAction(entry: AuditLog): string {
-  return getAuditEventAction(entry.event);
-}
-
 function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
   const batches: CompactActivityBatch[] = [];
   const batchMap = new Map<string, CompactActivityBatch>();
@@ -135,7 +123,7 @@ function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
   for (const entry of items) {
     if (entry.event === "view") continue;
 
-    const action = getEntryAction(entry);
+    const action = getAuditEventAction(entry.event);
     const isPermission = isPermissionEvent(entry.event);
     const key = `${isPermission ? "permissions" : entry.docId}:${action}`;
     let batch = batchMap.get(key);
@@ -194,35 +182,14 @@ function activityTimeMs(dateString: string | Date): number {
   }
 }
 
-const activityGroups = computed((): CompactActivityGroup[] => {
-  const groups: CompactActivityGroup[] = [];
-  let groupIndex = 0;
+/** Space entries batch by proximity: anything within a quarter hour is one visit. */
+function withinActivityWindow(entry: AuditLog, group: ActivityGroup): boolean {
+  return Math.abs(activityTimeMs(group.time) - activityTimeMs(entry.createdAt)) <= 900000;
+}
 
-  for (const entry of activities.value) {
-    const date = getActivityDate(entry.createdAt as string);
-    const last = groups[groups.length - 1];
-    const userId = entry.userId ?? null;
-    const sameUser = last && last.userId === userId;
-    const sameDate = last && last.date === date;
-    const sameActivityWindow =
-      last &&
-      Math.abs(activityTimeMs(last.time) - activityTimeMs(entry.createdAt)) <= 900000;
-
-    if (sameUser && sameDate && sameActivityWindow) {
-      last.items.push(entry);
-    } else {
-      groups.push({
-        id: `group-${groupIndex++}`,
-        userId,
-        time: entry.createdAt,
-        items: [entry],
-        date,
-      });
-    }
-  }
-
-  return groups;
-});
+const activityGroups = computed(() =>
+  groupActivityEntries(activities.value, withinActivityWindow),
+);
 </script>
 
 <template>
@@ -283,12 +250,12 @@ const activityGroups = computed((): CompactActivityGroup[] => {
     </div>
 
     <div v-else class="@container space-y-4">
-      <template v-for="(group, index) in activityGroups" :key="group.id">
+      <template v-for="group in activityGroups" :key="group.id">
         <div
-          v-if="index === 0 || getActivityBucketLabel(activityGroups[index - 1].time) !== getActivityBucketLabel(group.time)"
+          v-if="group.showBucket"
           class="px-1 text-size-small font-medium text-neutral-500"
         >
-          {{ getActivityBucketLabel(group.time) }}
+          {{ group.bucketLabel }}
         </div>
 
         <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->

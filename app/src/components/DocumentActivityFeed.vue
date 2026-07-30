@@ -3,25 +3,17 @@ import { computed, ref } from "vue";
 import type { AuditLog } from "#api/client.ts";
 import { addIcon, confirmationIcon, editEntryIcon } from "#assets/icons.ts";
 import {
-  getActivityBucketLabel,
-  getActivityDate,
+  type ActivityGroup,
   getAuditEventAction,
   getAuditEventLabel,
   getEntryChangeLabel,
+  groupActivityEntries,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
 import { t } from "#utils/lang.ts";
 import type { DisplayUser } from "#utils/userDisplay.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
-
-interface DocumentActivityGroup {
-  id: string;
-  userId: string | null;
-  time: string | Date;
-  items: AuditLog[];
-  date: string;
-}
 
 const props = defineProps<{
   entries: AuditLog[];
@@ -31,12 +23,8 @@ const props = defineProps<{
 
 const expandedGroups = ref(new Set<string>());
 
-function getEntryAction(entry: AuditLog): string {
-  return getAuditEventAction(entry.event);
-}
-
 function getGroupAction(items: AuditLog[]): string {
-  return items[0] ? getEntryAction(items[0]) : t("updated");
+  return items[0] ? getAuditEventAction(items[0].event) : t("updated");
 }
 
 function getDocumentActivityIcon(entry: AuditLog): string {
@@ -44,7 +32,7 @@ function getDocumentActivityIcon(entry: AuditLog): string {
   return editEntryIcon;
 }
 
-function getDocumentEntries(group: DocumentActivityGroup): AuditLog[] {
+function getDocumentEntries(group: ActivityGroup): AuditLog[] {
   const entries = group.items.filter(isVisibleDocumentEntry);
   return isGroupExpanded(group.id) ? entries : entries.slice(0, 3);
 }
@@ -100,51 +88,32 @@ function getDocumentBatchKey(entry: AuditLog | undefined, userId: string | null)
   return [
     userId,
     entry.docId,
-    getEntryAction(entry),
+    getAuditEventAction(entry.event),
     entry.revisionId ?? activityMinute(entry),
   ].join(":");
 }
 
-const activityGroups = computed((): DocumentActivityGroup[] => {
-  const groups: DocumentActivityGroup[] = [];
-  let groupIndex = 0;
+/** Document entries batch by revision, falling back to the minute. */
+function isSameDocumentBatch(entry: AuditLog, group: ActivityGroup): boolean {
+  return (
+    getDocumentBatchKey(group.items[0], group.userId) ===
+    getDocumentBatchKey(entry, entry.userId ?? null)
+  );
+}
 
-  for (const entry of props.entries) {
-    const date = getActivityDate(entry.createdAt as string);
-    const last = groups[groups.length - 1];
-    const userId = entry.userId ?? null;
-    const sameUser = last && last.userId === userId;
-    const sameDate = last && last.date === date;
-    const sameBatch =
-      last &&
-      getDocumentBatchKey(last.items[0], last.userId) ===
-        getDocumentBatchKey(entry, userId);
-
-    if (sameUser && sameDate && sameBatch) {
-      last.items.push(entry);
-    } else {
-      groups.push({
-        id: `group-${groupIndex++}`,
-        userId,
-        time: entry.createdAt,
-        items: [entry],
-        date,
-      });
-    }
-  }
-
-  return groups;
-});
+const activityGroups = computed(() =>
+  groupActivityEntries(props.entries, isSameDocumentBatch),
+);
 </script>
 
 <template>
   <div class="@container space-y-4">
-    <template v-for="(group, index) in activityGroups" :key="group.id">
+    <template v-for="group in activityGroups" :key="group.id">
       <div
-        v-if="index === 0 || getActivityBucketLabel(activityGroups[index - 1].time) !== getActivityBucketLabel(group.time)"
+        v-if="group.showBucket"
         class="px-1 text-size-small font-medium text-neutral-500"
       >
-        {{ getActivityBucketLabel(group.time) }}
+        {{ group.bucketLabel }}
       </div>
 
       <article class="rounded-lg border border-neutral-100 bg-neutral-10 px-3 py-3">
