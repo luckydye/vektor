@@ -76,12 +76,20 @@ import type {
   CanvasToolContext,
   CanvasToolExtension,
 } from "./extensions/types.ts";
+import {
+  isBrowserFindTarget,
+  articleStyle as shapeArticleStyle,
+  editorTagForShape as shapeEditorTag,
+  isContainerShape as shapeIsContainer,
+  suppressesNativePointer as shapeSuppressesNativePointer,
+} from "./shapeQueries.ts";
 import { shapeFromSource, shapeToYMap } from "./shapeSerialization.ts";
 import {
   axisAlignedHandles,
   strokeBounds as boundsOfPoints,
   clampFontScale,
   handleOffsets,
+  isPointInRect,
   MAX_FONT_SCALE,
   MIN_FONT_SCALE,
   type Rect,
@@ -102,6 +110,12 @@ import {
   rotationFromPointer,
   snapRotation,
 } from "./viewport/geometry.ts";
+import {
+  pointerGesture,
+  pointerSample,
+  releasePointerCapture,
+  screenPoint as screenPointIn,
+} from "./viewport/pointer.ts";
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "./viewport/theme.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
@@ -115,6 +129,8 @@ import {
   canvasClipboardToPlainText,
   createCanvasClipboard,
   documentClipboardToCanvasShapes,
+  hasActiveTextSelection,
+  readSystemClipboard,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
@@ -586,20 +602,7 @@ function elementDataForShape(shape: CanvasShape): unknown {
 // content, so they set a font-size variable instead of a fixed box; types that
 // paint their own visual (image) opt out of the card background.
 function articleStyle(shape: CanvasShape): Record<string, string> {
-  const extension = extensionManager.get(shape.type);
-  const frame = shape.frame;
-  const style: Record<string, string> = {
-    left: `${frame.x}px`,
-    top: `${frame.y}px`,
-    transform: `rotate(${frame.rotation}deg)`,
-  };
-  if (extension.behavior.transform.resize !== "font") {
-    style.width = `${frame.width}px`;
-    style.height = `${frame.height}px`;
-  }
-  if (extension.render.article?.background !== false)
-    style.background = shape.style.color;
-  return { ...style, ...extension.render.article?.style?.(shape) };
+  return shapeArticleStyle(shape, extensionManager);
 }
 
 // Sets the host-owned singleton slot for an extension-supplied editor.
@@ -702,7 +705,7 @@ const editingChromeShape = computed(() => {
 });
 
 function editorTagForShape(shape: CanvasShape) {
-  return extensionManager.get(shape.type).render.chrome?.editorTag;
+  return shapeEditorTag(shape, extensionManager);
 }
 
 function elementChromePosition(shape: CanvasShape) {
@@ -860,13 +863,13 @@ function shapeBounds(shape: CanvasShape) {
 
 // Container extensions cascade drag/lock/marquee to their contents.
 function isContainerShape(shape: CanvasShape | undefined): boolean {
-  return Boolean(shape && extensionManager.get(shape.type).behavior.container);
+  return shapeIsContainer(shape, extensionManager);
 }
 
 // Whether the host should preventDefault a shape's pointer interaction. Types
 // whose whole body is a live editor (text) opt out so native focus/caret works.
 function suppressesNativePointer(shape: CanvasShape): boolean {
-  return !extensionManager.get(shape.type).behavior.editableBody;
+  return shapeSuppressesNativePointer(shape, extensionManager);
 }
 
 function shapeAabb(shape: CanvasShape): Rect {
@@ -1093,11 +1096,7 @@ function saveImmediately() {
 let cachedViewportRect: DOMRect | null = null;
 
 function screenPoint(event: MouseEvent) {
-  const rect = cachedViewportRect;
-  return {
-    x: event.clientX - (rect?.left ?? 0),
-    y: event.clientY - (rect?.top ?? 0),
-  };
+  return screenPointIn(event, cachedViewportRect);
 }
 
 const transform = computed(() =>
@@ -1463,23 +1462,15 @@ function insertCanvasStroke(stroke: CanvasStrokeSnapshot) {
 }
 
 function pointerGestureSample(event: PointerEvent) {
-  const screen = screenPoint(event);
-  return { event, screen, world: screenToWorld(screen) };
+  return pointerSample(event, cachedViewportRect, screenToWorld);
 }
 
 function pointerGestureEvent(event: PointerEvent): CanvasPointerGestureEvent {
-  const coalesced = event.getCoalescedEvents?.() ?? [];
-  return {
-    ...pointerGestureSample(event),
-    samples: (coalesced.length > 0 ? coalesced : [event]).map(pointerGestureSample),
-  };
+  return pointerGesture(event, cachedViewportRect, screenToWorld);
 }
 
 function releaseGesturePointer(gesture: ActiveToolPointerGesture) {
-  const target = gesture.captureTarget;
-  if (target?.hasPointerCapture(gesture.pointerId)) {
-    target.releasePointerCapture(gesture.pointerId);
-  }
+  releasePointerCapture(gesture.captureTarget, gesture.pointerId);
 }
 
 function cancelToolPointerGesture(reason: CanvasPointerGestureCancelReason) {
@@ -2149,15 +2140,6 @@ function finishChromeEditing() {
   if (!editingChromeId.value) return;
   editingChromeId.value = null;
   renderScene();
-}
-
-function isPointInRect(point: { x: number; y: number }, rect: Rect) {
-  return (
-    point.x >= rect.x &&
-    point.x <= rect.x + rect.width &&
-    point.y >= rect.y &&
-    point.y <= rect.y + rect.height
-  );
 }
 
 function handleViewportPointerDown(event: PointerEvent) {
@@ -2915,42 +2897,6 @@ function uploadFromContextMenu() {
   input.click();
 }
 
-async function readSystemClipboard() {
-  const result = { canvasJson: "", html: "", text: "" };
-
-  if (navigator.clipboard?.read) {
-    const items = await navigator.clipboard.read().catch(() => []);
-    for (const item of items) {
-      for (const type of item.types) {
-        if (type === CANVAS_CLIPBOARD_MIME && !result.canvasJson) {
-          result.canvasJson = await item
-            .getType(type)
-            .then((blob) => blob.text())
-            .catch(() => "");
-        }
-        if (type === "text/html" && !result.html) {
-          result.html = await item
-            .getType(type)
-            .then((blob) => blob.text())
-            .catch(() => "");
-        }
-        if (type === "text/plain" && !result.text) {
-          result.text = await item
-            .getType(type)
-            .then((blob) => blob.text())
-            .catch(() => "");
-        }
-      }
-    }
-  }
-
-  if (!result.text) {
-    result.text = (await navigator.clipboard?.readText().catch(() => "")) ?? "";
-  }
-
-  return result;
-}
-
 function collectSelection(): {
   shapes: CanvasSerializedShape[];
   strokes: CanvasStrokeSnapshot[];
@@ -2978,13 +2924,6 @@ function selectedCanvasClipboard(): CanvasClipboard | null {
 }
 
 /** True when the user has a real text selection (let the browser copy that instead). */
-function hasActiveTextSelection(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (el?.closest("textarea, input, select, document-view")) return true;
-  const selection = window.getSelection?.();
-  return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
-}
-
 // Native clipboard events are synchronous and land in the system clipboard, so
 // copies work across documents, canvases, tabs, and spaces.
 function handleCopy(event: ClipboardEvent) {
@@ -3199,10 +3138,6 @@ function reservedSidebarWidth(): number {
   if (!window.matchMedia("(min-width: 768px)").matches) return 0;
   const rect = document.querySelector(".sidebar")?.getBoundingClientRect();
   return Math.max(0, rect?.right ?? 0);
-}
-
-function isBrowserFindTarget(shape: CanvasShape): boolean {
-  return shape.type === "text" || shape.type === "note";
 }
 
 function moveCameraToShape(shape: CanvasShape) {

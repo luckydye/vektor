@@ -401,3 +401,62 @@ export function documentClipboardToCanvasShapes(params: {
 
   return shapes;
 }
+
+export interface SystemClipboardPayload {
+  /** Canvas shapes copied from this app, if the clipboard carries them. */
+  canvasJson: string;
+  html: string;
+  text: string;
+}
+
+/**
+ * Everything the system clipboard offers that a canvas paste can use.
+ *
+ * Every read is individually guarded: `navigator.clipboard.read` rejects
+ * outright without permission, and one unreadable item must not lose the
+ * others. Falls back to `readText`, which is permitted more often.
+ */
+export async function readSystemClipboard(): Promise<SystemClipboardPayload> {
+  const result: SystemClipboardPayload = { canvasJson: "", html: "", text: "" };
+
+  if (navigator.clipboard?.read) {
+    const items = await navigator.clipboard.read().catch(() => []);
+    for (const item of items) {
+      for (const type of item.types) {
+        const wanted =
+          (type === CANVAS_CLIPBOARD_MIME && !result.canvasJson) ||
+          (type === "text/html" && !result.html) ||
+          (type === "text/plain" && !result.text);
+        if (!wanted) continue;
+
+        const value = await item
+          .getType(type)
+          .then((blob) => blob.text())
+          .catch(() => "");
+
+        if (type === CANVAS_CLIPBOARD_MIME) result.canvasJson = value;
+        else if (type === "text/html") result.html = value;
+        else result.text = value;
+      }
+    }
+  }
+
+  if (!result.text) {
+    result.text = (await navigator.clipboard?.readText().catch(() => "")) ?? "";
+  }
+
+  return result;
+}
+
+/**
+ * Whether the reader is selecting text rather than canvas objects.
+ *
+ * A copy inside a text field or the document editor belongs to that control,
+ * not to the canvas — intercepting it would break ordinary text copying.
+ */
+export function hasActiveTextSelection(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (element?.closest("textarea, input, select, document-view")) return true;
+  const selection = window.getSelection?.();
+  return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
+}

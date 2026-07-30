@@ -119,3 +119,13 @@ export function scaleHandle(
     y: bounds.y + bounds.height + offset.resize,
   });
 }
+
+/** Whether a point falls inside an axis-aligned box. */
+export function isPointInRect(point: CanvasPoint, rect: Rect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
