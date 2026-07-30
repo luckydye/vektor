@@ -66,12 +66,12 @@ async function uploadFile(
   // (de)serialize documents. A static import would pull the Vue runtime into
   // the server (and every serialization worker) just to build a schema.
   const { useUploads } = await import("#composeables/useUploads.ts");
-  // The editor shows its own inline placeholder/error, so the manager only
-  // drives the progress + success toast (errorToast disabled).
+  // The editor owns the inline placeholder; the manager owns all toasts,
+  // including the error one — a failed upload must never leave text behind
+  // in the document, since that would sync to every collaborator.
   const result = await useUploads().uploadFile(file, {
     spaceId,
     documentId,
-    errorToast: false,
   });
   return result.url;
 }
@@ -147,8 +147,8 @@ function insertPlaceholderAndUpload(
     .then((url) => {
       replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
     })
-    .catch((error) => {
-      replacePlaceholderWithError(editor, placeholderText, error);
+    .catch(() => {
+      removePlaceholder(editor, placeholderText);
     });
 }
 
@@ -345,25 +345,20 @@ function replacePlaceholderWithAttachment(
   }
 }
 
-function replacePlaceholderWithError(
-  editor: Editor,
-  placeholderText: string,
-  error: unknown,
-): void {
+// The failure is reported by the upload manager's error toast; here we only
+// clean up, so a failed upload leaves the document exactly as it was.
+function removePlaceholder(editor: Editor, placeholderText: string): void {
   const placeholder = findPlaceholder(editor, placeholderText);
+  if (!placeholder) return;
 
-  if (placeholder) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    editor
-      .chain()
-      .focus()
-      .deleteRange({
-        from: placeholder.pos,
-        to: placeholder.pos + placeholder.length,
-      })
-      .insertContent(`❌ Failed to upload: ${message}`)
-      .run();
-  }
+  editor
+    .chain()
+    .focus()
+    .deleteRange({
+      from: placeholder.pos,
+      to: placeholder.pos + placeholder.length,
+    })
+    .run();
 }
 
 export async function handleFileAttachmentUpload(
@@ -390,8 +385,8 @@ export async function handleFileAttachmentUpload(
     try {
       const url = await uploadFile(file, spaceId, documentId);
       replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
-    } catch (error) {
-      replacePlaceholderWithError(editor, placeholderText, error);
+    } catch {
+      removePlaceholder(editor, placeholderText);
     }
   };
 

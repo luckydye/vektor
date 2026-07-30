@@ -22,12 +22,12 @@ async function uploadVideo(
   // (de)serialize documents. A static import would pull the Vue runtime into
   // the server (and every serialization worker) just to build a schema.
   const { useUploads } = await import("#composeables/useUploads.ts");
-  // The editor shows its own inline placeholder/error, so the manager only
-  // drives the progress + success toast (errorToast disabled).
+  // The editor owns the inline placeholder; the manager owns all toasts,
+  // including the error one — a failed upload must never leave text behind
+  // in the document, since that would sync to every collaborator.
   const result = await useUploads().uploadFile(file, {
     spaceId,
     documentId,
-    errorToast: false,
   });
   return result.url;
 }
@@ -71,17 +71,12 @@ function replacePlaceholderWithVideo(editor: Editor, url: string): void {
   }
 }
 
-function replacePlaceholderWithError(editor: Editor, error: unknown): void {
+// The failure is reported by the upload manager's error toast; here we only
+// clean up, so a failed upload leaves the document exactly as it was.
+function removePlaceholder(editor: Editor): void {
   const range = findPlaceholder(editor);
   if (range) {
-    editor
-      .chain()
-      .focus()
-      .deleteRange(range)
-      .insertContent(
-        `❌ Failed to upload video: ${error instanceof Error ? error.message : "Unknown error"}`,
-      )
-      .run();
+    editor.chain().focus().deleteRange(range).run();
   }
 }
 
@@ -99,7 +94,7 @@ function insertPlaceholderAndUpload(
 
   uploadVideo(file, spaceId, documentId)
     .then((url) => replacePlaceholderWithVideo(editor, url))
-    .catch((error) => replacePlaceholderWithError(editor, error));
+    .catch(() => removePlaceholder(editor));
 }
 
 export function insertVideoFilesAt(
@@ -289,8 +284,8 @@ export async function handleVideoUpload(
     try {
       const url = await uploadVideo(file, spaceId, documentId);
       replacePlaceholderWithVideo(editor, url);
-    } catch (error) {
-      replacePlaceholderWithError(editor, error);
+    } catch {
+      removePlaceholder(editor);
     }
   };
 
