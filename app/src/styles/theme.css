@@ -489,6 +489,16 @@
   }
 }
 
+/* View Transitions.
+ *
+ * The API snapshots the whole document by default, so without this a list
+ * reorder cross-fades the entire page instead of just the items that moved.
+ * Named items opt in individually; the root stays put. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
 /** The user preferences panel inside the profile popover. */
 @utility preferences-panel {
   opacity: 1;

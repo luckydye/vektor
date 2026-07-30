@@ -5,10 +5,12 @@ import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDateTime } from "#utils/datetime.ts";
 import { spacePath } from "#utils/utils.ts";
+import { viewTransitionName } from "#utils/viewTransition.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import {
   chevronLeftThinIcon,
@@ -20,7 +22,6 @@ import {
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
-import PagerCursor from "./PagerCursor.vue";
 import WorkflowRunHistory from "./WorkflowRunHistory.vue";
 
 const props = defineProps<{
@@ -449,6 +450,10 @@ const recentActivity = computed(() => {
   }));
 });
 
+// A View Transition so new entries push the existing ones down rather than
+// snapping — the FLIP move the old `move-class` provided.
+const visibleActivity = useViewTransitionList(() => recentActivity.value);
+
 // The script has one flat log stream; job messages include their job identifier.
 const allLogs = computed(() => {
   if (!selectedRunDetail.value) return [];
@@ -608,20 +613,13 @@ const statusBadgeClass: Record<string, string> = {
                       updates
                     </span>
                   </div>
-                  <TransitionGroup
-                    tag="div"
-                    class="space-y-1.5"
-                    enter-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
-                    enter-from-class="opacity-0 translate-y-[0.55rem]"
-                    leave-active-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
-                    leave-to-class="opacity-0 translate-y-[0.55rem]"
-                    move-class="transition-[opacity,transform] duration-[280ms] ease-[ease]"
-                  >
+                  <div class="space-y-1.5">
                     <div
-                      v-for="activity in recentActivity"
+                      v-for="activity in visibleActivity"
                       :key="activity.id"
                       class="flex min-w-0 items-center gap-2 text-size-small"
                       :class="activity.isLatest ? 'text-neutral-700' : 'text-neutral-400'"
+                      :style="{ viewTransitionName: viewTransitionName('vt-run-activity', activity.id) }"
                     >
                       <span
                         class="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -631,7 +629,7 @@ const statusBadgeClass: Record<string, string> = {
                         >{{ activity.message }}</span
                       >
                     </div>
-                  </TransitionGroup>
+                  </div>
                 </div>
               </div>
             </section>

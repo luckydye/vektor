@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withViewTransition } from "#utils/viewTransition.ts";
 import Button from "./Button.vue";
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
@@ -24,10 +25,6 @@ import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import CosmeticsPanel from "./cosmetics/CosmeticsPanel.vue";
 import SettingsLayout from "./SettingsLayout.vue";
 import SwitchToggle from "./SwitchToggle.vue";
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (updateCallback: () => void | Promise<void>) => void;
-};
 
 const themePreference = ref<ThemePreference>("system");
 const currentUser = useUserProfile();
@@ -115,17 +112,7 @@ const applyThemePreferenceWithTransition = (preference: ThemePreference) => {
     applyThemePreference(preference);
     await nextTick();
   };
-  const viewTransitionDocument = document as ViewTransitionDocument;
-
-  if (
-    !viewTransitionDocument.startViewTransition ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  ) {
-    void updateTheme();
-    return;
-  }
-
-  viewTransitionDocument.startViewTransition(updateTheme);
+  withViewTransition(updateTheme);
 };
 
 const setThemePreference = (preference: ThemePreference) => {

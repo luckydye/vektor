@@ -2,7 +2,9 @@
 import { computed } from "vue";
 import { useActiveCollaboration } from "#composeables/useCollaboration.ts";
 import { useContributors } from "#composeables/useContributors.ts";
+import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import { viewTransitionName } from "#utils/viewTransition.ts";
 import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
 
@@ -65,6 +67,10 @@ const collaborators = computed(() => {
 
 const displayCollaborators = computed(() => collaborators.value.slice(0, props.max));
 
+// Rendered through a View Transition so reordering avatars animates to their
+// new positions — a FLIP move, which CSS alone cannot do.
+const visibleAvatars = useViewTransitionList(() => displayCollaborators.value);
+
 const remainingCount = computed(() => {
   return Math.max(0, collaborators.value.length - props.max);
 });
@@ -72,6 +78,7 @@ const remainingCount = computed(() => {
 const actualCollaborators = computed(() =>
   collaborators.value.filter((collaborator) => collaborator.isCollaborator),
 );
+const visibleRows = useViewTransitionList(() => actualCollaborators.value);
 </script>
 
 <template>
@@ -88,15 +95,16 @@ const actualCollaborators = computed(() =>
       data-tooltip="Collaborators"
       data-tooltip-pos="bottom"
     >
-      <TransitionGroup name="collaborator" tag="span" class="flex items-center">
+      <span class="flex items-center">
         <span
-          v-for="(collaborator, index) in displayCollaborators"
+          v-for="(collaborator, index) in visibleAvatars"
           :key="collaborator.key"
           class="relative block"
           :class="{ 'z-10': collaborator.isPresent }"
           :style="{
             marginLeft: index > 0 ? `-18px` : '0',
-            zIndex: displayCollaborators.length - index,
+            zIndex: visibleAvatars.length - index,
+            viewTransitionName: viewTransitionName('vt-collab', collaborator.key),
           }"
           :title="collaborator.user.name"
         >
@@ -111,7 +119,7 @@ const actualCollaborators = computed(() =>
             />
           </span>
         </span>
-      </TransitionGroup>
+      </span>
       <div
         v-if="remainingCount > 0"
         class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
@@ -139,15 +147,12 @@ const actualCollaborators = computed(() =>
           <div class="text-size-small font-medium text-neutral-600 px-4xs">
             Collaborators
           </div>
-          <TransitionGroup
-            name="collaborator-row"
-            tag="div"
-            class="overflow-y-auto max-h-[240px] flex flex-col"
-          >
+          <div class="overflow-y-auto max-h-[240px] flex flex-col">
             <div
-              v-for="collaborator in actualCollaborators"
+              v-for="collaborator in visibleRows"
               :key="collaborator.key"
               class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
+              :style="{ viewTransitionName: viewTransitionName('vt-collab-row', collaborator.key) }"
             >
               <div class="relative">
                 <vektor-avatar
@@ -160,7 +165,7 @@ const actualCollaborators = computed(() =>
                 {{ collaborator.user.name }}
               </span>
             </div>
-          </TransitionGroup>
+          </div>
         </div>
       </div>
     </a-popover>
@@ -184,44 +189,5 @@ a-popover-arrow {
 
 [data-placement="top"] .contributors-arrow {
   transform: rotate(225deg);
-}
-
-.collaborator-move,
-.collaborator-row-move,
-.collaborator-enter-active,
-.collaborator-leave-active,
-.collaborator-row-enter-active,
-.collaborator-row-leave-active {
-  transition:
-    opacity 180ms ease,
-    transform 180ms ease;
-}
-
-.collaborator-enter-from,
-.collaborator-leave-to {
-  opacity: 0;
-  transform: scale(0.75);
-}
-
-.collaborator-row-enter-from,
-.collaborator-row-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
-.collaborator-leave-active,
-.collaborator-row-leave-active {
-  position: absolute;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .collaborator-move,
-  .collaborator-row-move,
-  .collaborator-enter-active,
-  .collaborator-leave-active,
-  .collaborator-row-enter-active,
-  .collaborator-row-leave-active {
-    transition: none;
-  }
 }
 </style>
