@@ -1,6 +1,7 @@
 // @ts-check
 
 import node from "@astrojs/node";
+import solid from "@astrojs/solid-js";
 import vue from "@astrojs/vue";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
@@ -81,6 +82,10 @@ export default defineConfig({
         },
       },
     }),
+    // Installed ahead of the port so the two renderers are proven to coexist.
+    // Scoped to `.tsx` so it never tries to claim a `.vue` file; phase 6 removes
+    // the Vue integration and this include can go with it.
+    solid({ include: ["**/*.tsx"] }),
   ],
 
   adapter: node({
