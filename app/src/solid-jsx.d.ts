@@ -18,6 +18,7 @@ declare module "solid-js" {
       // does not know, which is every event a custom element dispatches.
       "on:exit"?: (event: Event) => void;
       "on:change"?: (event: Event) => void;
+      "on:tab-selected"?: (event: Event) => void;
       "attr:hidden"?: string | undefined;
       "attr:enabled"?: string | undefined;
       // `prop:` assigns a DOM property instead of an attribute — the only way
@@ -31,7 +32,12 @@ declare module "solid-js" {
 
     interface IntrinsicElements {
       "a-blur": CustomElementAttributes;
+      "inset-view": CustomElementAttributes;
       "a-shortcut": CustomElementAttributes;
+      "a-tabs": CustomElementAttributes;
+      "a-tabs-list": CustomElementAttributes;
+      "a-tabs-panel": CustomElementAttributes;
+      "a-tabs-tab": CustomElementAttributes;
       "a-color-picker": CustomElementAttributes;
       "a-list": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
