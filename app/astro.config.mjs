@@ -2,7 +2,6 @@
 
 import node from "@astrojs/node";
 import solid from "@astrojs/solid-js";
-import vue from "@astrojs/vue";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
 import pkg from "./package.json";
@@ -74,21 +73,10 @@ export default defineConfig({
   },
 
   integrations: [
-    vue({
-      appEntrypoint: "/src/app.ts",
-      template: {
-        compilerOptions: {
-          isCustomElement: (tag) => tag.includes("-"),
-        },
-      },
-    }),
-    // Installed ahead of the port so the two renderers are proven to coexist.
-    // Scoped to `.tsx` so it never tries to claim a `.vue` file; phase 6 removes
-    // the Vue integration and this include can go with it.
     // `.jsx` as well as `.tsx`: @solidjs/router ships pre-compiled `.jsx` in its
     // dist, and anything the Solid plugin does not claim falls through to the
     // default JSX transform, which resolves `react/jsx-runtime` and fails the
-    // build. Still scoped away from `.vue`; phase 6 removes the Vue entry.
+    // build.
     solid({ include: ["**/*.tsx", "**/*.jsx"] }),
   ],
 

@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type * as Y from "yjs";
 import { api, type ExtensionInfo, type ExtensionRoute } from "#api/client.ts";
-import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.solid.ts";
 import { extensionPresenceRoom, type PresenceMessage } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 
@@ -476,7 +476,7 @@ export class Extensions {
             id: user.id,
             name: user.name,
             image: user.image,
-            color: cursorColorOverride.value ?? getAvatarColor(user.id),
+            color: cursorColorOverride() ?? getAvatarColor(user.id),
           };
           const clientId = crypto.randomUUID();
           const listeners = new Set<(event: PresenceMessage<TState>) => void>();

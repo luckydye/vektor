@@ -1,4 +1,4 @@
-import { editing } from "#composeables/useEditor.ts";
+import { editing, setEditing } from "#composeables/useEditor.solid.ts";
 import docStyles from "./css/document.css?inline";
 import "./elements/textarea.ts";
 import "./elements/expression.ts";
@@ -1065,7 +1065,7 @@ export class DocumentView extends HTMLElement {
           }
         }
 
-        editing.value = true;
+        setEditing(true);
       },
       { capture: true },
     );

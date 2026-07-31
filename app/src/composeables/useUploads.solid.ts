@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { api } from "#api/client.ts";
 import { t } from "#utils/lang.ts";
-import { type ToastAction, useToast } from "./useToast.ts";
+import { type ToastAction, useToast } from "./useToast.solid.ts";
 
 // Generic upload manager. It owns the shared upload feedback — a progress
 // toast (reusing useToast), success/error notifications, and a reactive

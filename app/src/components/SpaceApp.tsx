@@ -4,7 +4,8 @@ import { isServer } from "solid-js/web";
 import { api } from "#api/client.ts";
 import { commandPaletteIcon } from "#assets/icons.ts";
 import shortcuts from "#assets/shortcuts.json";
-import { useQueryClient } from "#composeables/query.solid.ts";
+import { islandQueryClient } from "#composeables/islandQueryClient.ts";
+import { QueryClientContext, useQueryClient } from "#composeables/query.solid.ts";
 import { SsrUrlContext } from "#composeables/useRoute.solid.ts";
 import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.solid.ts";
 import { useSync } from "#composeables/useSync.solid.ts";
@@ -94,9 +95,14 @@ export function SpaceApp(props: Props) {
     (props.initialSpace?.id as string | undefined) ?? null,
   );
 
+  // One client for the island: shared across islands in the browser, fresh per
+  // render on the server. See islandQueryClient for why the binding's
+  // module-level fallback is not good enough — the seeding just below would
+  // otherwise write into a cache shared by every SSR render in the process.
+  const queryClient = islandQueryClient();
+
   // Seed the query cache with SSR-fetched data so children render immediately
   // instead of waiting on their queries.
-  const queryClient = useQueryClient();
   if (props.initialSpace) {
     queryClient.setQueryData(["wiki_spaces"], [props.initialSpace], { stale: true });
   }
@@ -268,21 +274,23 @@ export function SpaceApp(props: Props) {
   );
 
   return (
-    <ActiveSpaceIdContext.Provider value={activeSpaceId}>
-      <SsrUrlContext.Provider value={ssrRelativeUrl}>
-        <Router
-          base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
-          root={Shell}
-        >
-          <Route path="/" component={SpaceHomeView} />
-          <Route path="/search" component={SpaceSearchView} />
-          <Route path="/new" component={NewDocumentRoute} />
-          <Route path="/settings" component={SpaceSettingsView} />
-          <Route path="/doc/*documentSlug" component={DocumentRoute} />
-          <Route path="/x/*" component={ExtensionRouteView} />
-          <Route path="*" component={NotFoundView} />
-        </Router>
-      </SsrUrlContext.Provider>
-    </ActiveSpaceIdContext.Provider>
+    <QueryClientContext.Provider value={queryClient}>
+      <ActiveSpaceIdContext.Provider value={activeSpaceId}>
+        <SsrUrlContext.Provider value={ssrRelativeUrl}>
+          <Router
+            base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
+            root={Shell}
+          >
+            <Route path="/" component={SpaceHomeView} />
+            <Route path="/search" component={SpaceSearchView} />
+            <Route path="/new" component={NewDocumentRoute} />
+            <Route path="/settings" component={SpaceSettingsView} />
+            <Route path="/doc/*documentSlug" component={DocumentRoute} />
+            <Route path="/x/*" component={ExtensionRouteView} />
+            <Route path="*" component={NotFoundView} />
+          </Router>
+        </SsrUrlContext.Provider>
+      </ActiveSpaceIdContext.Provider>
+    </QueryClientContext.Provider>
   );
 }

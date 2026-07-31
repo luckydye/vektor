@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import { activityIcon, addIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
-import type { ChatSession } from "#composeables/useChatSessions.solid.ts";
+import type { ChatSession } from "#composeables/useChatSessions.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
 
 interface Props {

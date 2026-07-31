@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import vue from "@vitejs/plugin-vue";
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
 import { viteAliases } from "./test/helpers/subpathImports.ts";
@@ -52,24 +51,11 @@ export default defineConfig({
     globals: false,
     projects: [
       {
-        // Components, composables and anything reactive. Both renderers are
-        // registered at once so the cutover is a change of which component the
-        // registry returns, not a rewrite of the suite.
+        // Components, composables and anything reactive.
         plugins: [
-          vue({
-            template: {
-              compilerOptions: {
-                // Mirrors astro.config.mjs. Without it the compiler treats
-                // every `<a-popover>` / `<vektor-avatar>` as an unresolved
-                // component and warns on every render.
-                isCustomElement: (tag) => tag.includes("-"),
-              },
-            },
-          }),
           // `.jsx` too: @solidjs/router ships pre-compiled `.jsx`, and what
           // the Solid plugin does not claim falls through to the default JSX
-          // transform and resolves `react/jsx-runtime`. Still scoped away
-          // from `.vue`.
+          // transform and resolves `react/jsx-runtime`.
           solid({ include: ["**/*.tsx", "**/*.jsx"] }),
         ],
         resolve: { alias },

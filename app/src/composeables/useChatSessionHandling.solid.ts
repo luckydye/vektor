@@ -7,7 +7,7 @@ import {
   getSessionsForSpace,
   saveSession,
   type UIMessage,
-} from "./useChatSessions.solid.ts";
+} from "./useChatSessions.ts";
 
 const welcomeMessage = "Hello! I'm here to help you with this document. Ask me anything!";
 

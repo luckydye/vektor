@@ -6,7 +6,7 @@ import {
   linkIcon,
   thinkingIcon,
 } from "#assets/icons.ts";
-import type { UIMessage } from "#composeables/useChatSessions.solid.ts";
+import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import {
   formatCollapsedToolInput,

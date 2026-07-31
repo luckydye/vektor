@@ -14,7 +14,7 @@ import {
   useAIChat,
 } from "#composeables/useAIChat.solid.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.solid.ts";
-import type { UIMessage } from "#composeables/useChatSessions.solid.ts";
+import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.solid.ts";
 import { useSpace } from "#composeables/useSpace.solid.ts";
 import { useUploads } from "#composeables/useUploads.solid.ts";

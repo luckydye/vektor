@@ -1,14 +1,13 @@
 import { createComponent, createSignal } from "solid-js";
 import { render as solidRender } from "solid-js/web";
-import { type App, createApp, h, nextTick, reactive } from "vue";
 
 /**
- * The only file in the suite that knows which framework is live.
+ * How specs mount a component.
  *
- * Specs render through `render()` and assert on the DOM. `registry.ts` decides
- * which implementation comes back; this file adapts to whichever it is — no
- * spec changes. A spec that has to be edited to pass on Solid was testing the
- * wrong thing (plan section 4.2).
+ * This carried a Vue branch as well until the cutover, so the suite could be
+ * run against either renderer and the specs left untouched. Vue is gone, so
+ * only the Solid path remains; the shape of the API is unchanged, which is why
+ * no spec moved when the branch did.
  */
 
 export type Props = Record<string, unknown>;
@@ -17,18 +16,14 @@ export interface RenderResult {
   /** The element the component was mounted into. Query from here, not `document`. */
   container: HTMLElement;
   /**
-   * Whatever the component exposed imperatively — `defineExpose` under Vue, a
-   * `ref` callback prop under Solid (plan section 10). `undefined` for
-   * components that expose nothing.
+   * Whatever the component exposed imperatively, through a `ref` callback prop
+   * (plan section 10). `undefined` for components that expose nothing.
    */
   exposed: Record<string, unknown> | undefined;
   /**
    * Re-render with new props, merged over the originals like a parent
-   * re-render. **Await it**: Vue flushes renders on the next tick, so a
-   * synchronous `update()` would return before the DOM changed and every
-   * assertion after it would read the old tree. Solid updates synchronously
-   * and resolves immediately, so `await` is correct on both and specs do not
-   * change at the cutover.
+   * re-render. Solid applies the update synchronously, so this resolves
+   * immediately; it stays a promise because every spec already awaits it.
    */
   update(next: Props): Promise<void>;
   cleanup(): void;
@@ -37,59 +32,17 @@ export interface RenderResult {
 const mounted = new Set<() => void>();
 
 /**
- * Which framework a registry entry belongs to.
- *
- * A compiled Vue SFC is an object with a render function; a Solid component is
- * a plain function. That is a heuristic, but a stable one — and it keeps the
- * registry a flat name-to-component map rather than making every entry carry a
- * tag the specs would then have to thread through.
- */
-function isSolid(component: unknown): component is (props: Props) => unknown {
-  return typeof component === "function" && !("render" in (component as object));
-}
-
-/**
  * Mount a component and return its DOM.
  *
- * Props go through one mutable source — a `reactive` object for Vue, a signal
- * for Solid — rather than being re-passed on update, so `update()` patches the
- * existing tree the way a parent re-render would instead of tearing down and
- * remounting.
+ * Props go through one mutable source — a signal — rather than being re-passed
+ * on update, so `update()` patches the existing tree the way a parent
+ * re-render would instead of tearing down and remounting.
  */
 export function render(Component: unknown, props: Props = {}): RenderResult {
   const container = document.createElement("div");
   document.body.append(container);
 
-  return isSolid(Component)
-    ? renderSolid(Component, props, container)
-    : renderVue(Component, props, container);
-}
-
-function renderVue(Component: unknown, props: Props, container: HTMLElement) {
-  const state = reactive({ ...props });
-  let exposed: Record<string, unknown> | undefined;
-  // Vue treats `ref` on a vnode specially and hands back the exposed object,
-  // which is the same handle a Solid `ref` callback prop provides.
-  const captureExposed = (instance: unknown) => {
-    exposed = (instance ?? undefined) as Record<string, unknown> | undefined;
-  };
-  // biome-ignore lint/suspicious/noExplicitAny: the registry is deliberately untyped.
-  const app: App = createApp(() =>
-    h(Component as any, { ...state, ref: captureExposed }),
-  );
-  app.mount(container);
-
-  return finish(container, {
-    dispose: () => {
-      app.unmount();
-      container.remove();
-    },
-    update: async (next: Props) => {
-      Object.assign(state, next);
-      await nextTick();
-    },
-    getExposed: () => exposed,
-  });
+  return renderSolid(Component as (props: Props) => unknown, props, container);
 }
 
 function renderSolid(
@@ -195,28 +148,13 @@ export function cleanupAll(): void {
 }
 
 /**
- * Props for a two-way–bound value, in whichever shape the live framework uses.
+ * Props for a two-way–bound value.
  *
- * Vue spells this `modelValue` + `onUpdate:modelValue`; Solid spells it `value`
- * + `onInput` (plan section 10). Specs should never name either directly — that
- * is exactly the kind of detail the swap changes, and a spec rewritten mid-
- * comparison stops being a before/after check.
+ * Solid spells this `value` + `onInput` (plan section 10). It stays a helper
+ * rather than being inlined: specs naming the binding directly is what made
+ * the Vue-to-Solid swap invisible to them, and the same indirection protects
+ * the next one.
  */
 export function modelProps(value: unknown, onChange?: (next: never) => void): Props {
-  return SOLID_REGISTRY
-    ? { value, ...(onChange ? { onInput: onChange } : {}) }
-    : { modelValue: value, ...(onChange ? { "onUpdate:modelValue": onChange } : {}) };
-}
-
-/**
- * Whether the registry serves Solid components.
- *
- * Read once from the registry rather than passed per call, because
- * `modelProps()` has no component to inspect — it is called before the
- * component is known.
- */
-let SOLID_REGISTRY = false;
-
-export function setRegistryFramework(framework: "vue" | "solid"): void {
-  SOLID_REGISTRY = framework === "solid";
+  return { value, ...(onChange ? { onInput: onChange } : {}) };
 }

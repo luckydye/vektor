@@ -1,4 +1,4 @@
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.solid.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 import type { CanvasElementContext } from "./extensions/CanvasElementBase.ts";

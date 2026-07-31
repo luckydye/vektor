@@ -2,7 +2,7 @@ import type { Accessor } from "solid-js";
 import type { SetStoreFunction } from "solid-js/store";
 import { produce } from "solid-js/store";
 import { api } from "#api/client.ts";
-import type { UIMessage } from "#composeables/useChatSessions.solid.ts";
+import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 

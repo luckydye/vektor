@@ -1,7 +1,7 @@
 import { createMemo, createSignal } from "solid-js";
 import { useProperties } from "./useProperties.solid.ts";
 import { useSpace } from "./useSpace.solid.ts";
-import { useUploads } from "./useUploads.ts";
+import { useUploads } from "./useUploads.solid.ts";
 
 const HEADER_IMAGE_PROPERTY = "headerImage";
 
