@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LOCAL_USER_ID } from "#noAuth";
 import {
   createApiRequest,

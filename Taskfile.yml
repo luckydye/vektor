@@ -147,13 +147,15 @@ tasks:
       - bash -c './vektor serve --email-auth --port 4321 --host 127.0.0.1 & echo $! > /tmp/vektor-test-server.pid'
       - defer: kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true
       - until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done
-      - bun test {{.CLI_ARGS}}
+      - bunx --bun vitest run --project server {{.CLI_ARGS}}
 
   test:frontend:
     desc: Frontend component suite (Vitest + happy-dom). No server needed.
     dir: ./app
     cmds:
-      - bunx vitest run --config vitest.config.ts {{.CLI_ARGS}}
+      # `--bun` matters: without it bunx starts vitest on Node, and the server
+      # project loses the Bun global it needs to spawn the app.
+      - bunx --bun vitest run --project frontend {{.CLI_ARGS}}
 
   test:visual:
     desc: >

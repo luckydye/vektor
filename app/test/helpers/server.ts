@@ -7,7 +7,16 @@ export interface TestUserSession {
   name: string;
 }
 
-const APP_DIR = new URL("../..", import.meta.url).pathname;
+/**
+ * Where to spawn the server from.
+ *
+ * `import.meta.url` is not a `file:` URL inside a vitest-transformed module, so
+ * deriving the path from it silently yields the wrong directory — the server
+ * then starts somewhere without `dist/client` and answers every frontend route
+ * with a 404 while the API keeps working. `process.cwd()` is the runner root,
+ * which is `app/`.
+ */
+const APP_DIR = process.cwd();
 
 export function testBaseUrl(port: number): string {
   return `http://127.0.0.1:${port}`;
@@ -46,6 +55,33 @@ export function testServerCommand(port: number): string[] {
     : ["bun", "./src/server.ts", "--port", String(port)];
 }
 
+/**
+ * Vite's injected env vars, which must not reach the server.
+ *
+ * The runner puts these in `process.env`, and spreading it into the child hands
+ * the server `DEV=1` — Bun reads that into `import.meta.env.DEV`, so
+ * `src/server.ts` takes its dev branch and boots `astro dev` instead of loading
+ * the built SSR handler. The API keeps answering and every frontend route
+ * returns 404, which reads like an ACL bug rather than a runner artefact.
+ */
+const VITE_INJECTED = new Set([
+  "BASE_URL",
+  "DEV",
+  "MODE",
+  "PROD",
+  "SSR",
+  "TEST",
+  "VITEST",
+]);
+
+function childEnv(): Record<string, string | undefined> {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) => !VITE_INJECTED.has(key) && !key.startsWith("VITEST_"),
+    ),
+  );
+}
+
 export function startTestServer(
   port: number,
   env: Record<string, string | undefined>,
@@ -57,7 +93,7 @@ export function startTestServer(
 
   const child = Bun.spawn(testServerCommand(port), {
     env: {
-      ...process.env,
+      ...childEnv(),
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       ...env,

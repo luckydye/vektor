@@ -4,7 +4,7 @@
  * role or higher; "viewer" and non-members are denied.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createSessionApiRequest,
   createTestUser,

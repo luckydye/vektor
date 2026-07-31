@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { readXlsxRows, writeXlsx } from "#utils/xlsx.ts";
 import { unzipSync } from "#utils/zip.ts";
 

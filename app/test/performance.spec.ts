@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createApiRequest,
   startTestServer,
@@ -225,7 +225,7 @@ afterAll(() => {
   serverProcess?.kill();
 });
 
-describe.if(import.meta.env.TEST_PERF)(
+describe.runIf(import.meta.env.TEST_PERF)(
   "Performance Benchmark - Document Operations",
   () => {
     const baseline = loadBaseline();

@@ -9,7 +9,7 @@
  *   bun test test/in-memory.spec.ts
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createApiRequest,
   startTestServer,
@@ -86,8 +86,8 @@ describe("in-memory server — spaces", () => {
     expect(res.status).toBe(201);
     const { space } = await res.json();
 
-    expect(space.id).toBeString();
-    expect(space.id).toStartWith("space_");
+    expect(typeof space.id).toBe("string");
+    expect(space.id.startsWith("space_")).toBe(true);
     expect(space.name).toBe("Test Space");
     expect(space.slug).toBe("test-space");
     expect(space.preferences?.brandColor).toBe("#1e293b");
@@ -146,8 +146,8 @@ describe("in-memory server — documents", () => {
     expect(res.status).toBe(201);
     const { document } = await res.json();
 
-    expect(document.id).toBeString();
-    expect(document.id).toStartWith("doc_");
+    expect(typeof document.id).toBe("string");
+    expect(document.id.startsWith("doc_")).toBe(true);
     expect(document.content).toBe("# Getting Started\n\nWelcome to the test space.");
     expect(document.properties.title).toBe("Getting Started");
     expect(document.parentId).toBeNull();
@@ -168,7 +168,7 @@ describe("in-memory server — documents", () => {
     expect(res.status).toBe(201);
     const { document } = await res.json();
 
-    expect(document.id).toStartWith("doc_");
+    expect(document.id.startsWith("doc_")).toBe(true);
     expect(document.content).toBe(
       "# Architecture\n\nThis document describes the system architecture.",
     );
@@ -191,7 +191,7 @@ describe("in-memory server — documents", () => {
     expect(res.status).toBe(201);
     const { document } = await res.json();
 
-    expect(document.id).toStartWith("doc_");
+    expect(document.id.startsWith("doc_")).toBe(true);
     expect(document.content).toBe("# Installation\n\nFollow these steps to install.");
     expect(document.properties.title).toBe("Installation");
     expect(document.parentId).toBe(docIds[0]);

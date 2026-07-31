@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "vitest";
 import { Feature, hasFeature } from "#db/acl.ts";
 import { createSpace, deleteSpace } from "#db/spaces.ts";
 import { LOCAL_USER_ID } from "#noAuth";

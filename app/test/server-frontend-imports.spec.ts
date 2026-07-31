@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { describe, expect, it } from "vitest";
 import { subpathImports } from "./helpers/subpathImports.ts";
 
 /**
@@ -24,7 +24,7 @@ import { subpathImports } from "./helpers/subpathImports.ts";
  * Astro server-renders Vue components, so `server.ts` legitimately loads Vue.
  */
 
-const APP_ROOT = resolve(import.meta.dir, "..");
+const APP_ROOT = resolve(import.meta.dirname, "..");
 
 /** Package names that must never be statically reachable from the roots below. */
 const FRONTEND_PACKAGES = [

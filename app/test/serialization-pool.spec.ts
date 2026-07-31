@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { contentFromDoc } from "#documents/serialization.ts";
 import {

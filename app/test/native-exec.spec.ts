@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { getNativeExec } from "#exec/native.ts";
 import { PRELUDE } from "#jobs/runtime/prelude.ts";
 

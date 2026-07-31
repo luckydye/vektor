@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
 import { generateHTML } from "@tiptap/html";
+import { describe, expect, it } from "vitest";
 import {
   extractMentionsFromHtml,
   getUniqueMentionedEmails,

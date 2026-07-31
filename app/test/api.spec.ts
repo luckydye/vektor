@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createJobToken } from "#jobs/jobToken.ts";
 import { LOCAL_USER_ID } from "#noAuth";
 import { createZipBuffer } from "#utils/zip.ts";
@@ -49,7 +49,7 @@ describe("API Tests - Spaces", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.space.id).toBeDefined();
-    expect(data.space.id).toStartWith("space_");
+    expect(data.space.id.startsWith("space_")).toBe(true);
     expect(data.space.name).toBe("Test Space");
     expect(data.space.slug).toBe("test-space");
 
@@ -88,7 +88,7 @@ describe("API Tests - Spaces", () => {
     const docData = await docResponse.json();
     expect(docData.document).toBeDefined();
     expect(docData.document.id).toBeDefined();
-    expect(docData.document.id).toStartWith("doc_");
+    expect(docData.document.id.startsWith("doc_")).toBe(true);
     expect(docData.document.slug).toBeDefined();
     expect(docData.document.properties.title).toBe("Test Document");
 
@@ -271,7 +271,7 @@ describe("API Tests - Documents", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.document.id).toBeDefined();
-    expect(data.document.id).toStartWith("doc_");
+    expect(data.document.id.startsWith("doc_")).toBe(true);
     expect(data.document.content).toBe("# Test Document\n\nThis is the content.");
     expect(data.document.properties.title).toBe("Test Document");
 
@@ -848,7 +848,7 @@ describe("API Tests - Categories", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.category.id).toBeDefined();
-    expect(data.category.id).toStartWith("category_");
+    expect(data.category.id.startsWith("category_")).toBe(true);
     expect(data.category.name).toBe("Getting Started");
     expect(data.category.slug).toBe("getting-started");
     expect(data.category.color).toBe("#3b82f6");

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
 
 describe("inlineHtmlDiff", () => {

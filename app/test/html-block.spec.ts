@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
 import { generateHTML, generateJSON } from "@tiptap/html";
+import { describe, expect, it } from "vitest";
 import { contentExtensions } from "#editor/extensions.ts";
 
 describe("HTML block parsing", () => {

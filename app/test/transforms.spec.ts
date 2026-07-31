@@ -9,7 +9,7 @@
  *   bun test test/transforms.spec.ts
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getNativeImage } from "#files/native.ts";
 import {
   parseTransformParams,
@@ -184,7 +184,7 @@ describe("transformCachePath", () => {
       format: "jpeg",
       quality: 80,
     });
-    expect(p).toEndWith(".jpg");
+    expect(p.endsWith(".jpg")).toBe(true);
   });
 
   it("preserves the original extension when format is null", () => {
@@ -194,7 +194,7 @@ describe("transformCachePath", () => {
       format: null,
       quality: 80,
     });
-    expect(p).toEndWith(".png");
+    expect(p.endsWith(".png")).toBe(true);
   });
 });
 

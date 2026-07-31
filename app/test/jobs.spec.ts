@@ -18,8 +18,8 @@
  * binary, which is what ships.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { writeXlsx } from "#utils/xlsx.ts";
 import { createZipBuffer } from "#utils/zip.ts";
 import {
@@ -35,7 +35,7 @@ const BASE_URL = testBaseUrl(PORT);
 const apiRequest = createApiRequest(BASE_URL);
 
 const EXTENSION_ZIP = join(
-  import.meta.dir,
+  import.meta.dirname,
   "../../extensions/extensions/workflow-builder/workflow-builder.zip",
 );
 

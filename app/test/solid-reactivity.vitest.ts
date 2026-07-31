@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
  * backstop for those.
  */
 
-// `process.cwd()`, not `import.meta.dir` (Bun-only) and not `import.meta.url`
+// `process.cwd()`, not `import.meta.dirname` (Bun-only) and not `import.meta.url`
 // (vitest transforms modules, so it is not a `file:` URL inside a test).
 // Vitest runs with its config root as the working directory, which is `app/`.
 const APP_ROOT = resolve(process.cwd());

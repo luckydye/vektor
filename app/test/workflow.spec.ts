@@ -13,8 +13,8 @@
  *   bun test test/workflow-script.spec.ts
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createApiRequest,
   testBaseUrl,
@@ -27,7 +27,7 @@ const BASE_URL = testBaseUrl(PORT);
 const apiRequest = createApiRequest(BASE_URL);
 
 const EXTENSION_ZIP = join(
-  import.meta.dir,
+  import.meta.dirname,
   "../../extensions/extensions/workflow-builder/workflow-builder.zip",
 );
 
@@ -157,7 +157,7 @@ beforeAll(async () => {
     },
     stdout: "pipe",
     stderr: "pipe",
-    cwd: `${import.meta.dir}/..`,
+    cwd: `${import.meta.dirname}/..`,
   });
   // Collect server output so we can surface it on failure
   (async () => {
@@ -248,7 +248,7 @@ describe("workflow: sitemap download + HTML-to-markdown conversion", () => {
         body: JSON.stringify({ documentId: workflowDocId }),
       },
     );
-    expect(runId).toBeString();
+    expect(typeof runId).toBe("string");
     expect(runId.length).toBeGreaterThan(0);
 
     // ── 2. Poll until the run settles ───────────────────────────────────

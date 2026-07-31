@@ -1,15 +1,18 @@
-import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { figmaClipboardToFrames, figmaClipboardToSVG } from "#utils/clipboard.ts";
+import { describe, expect, it } from "vitest";
+import { figmaClipboardToFrames, figmaClipboardToSVG } from "#utils/figma.ts";
 
-const html = readFileSync(join(import.meta.dir, "fixtures/figma-clipboard.html"), "utf8");
+const html = readFileSync(
+  join(import.meta.dirname, "fixtures/figma-clipboard.html"),
+  "utf8",
+);
 const svgHtml = readFileSync(
-  join(import.meta.dir, "fixtures/figma-clipboard-svg.html"),
+  join(import.meta.dirname, "fixtures/figma-clipboard-svg.html"),
   "utf8",
 );
 const complexHtml = readFileSync(
-  join(import.meta.dir, "fixtures/figma-clipboard-complex.html"),
+  join(import.meta.dirname, "fixtures/figma-clipboard-complex.html"),
   "utf8",
 );
 

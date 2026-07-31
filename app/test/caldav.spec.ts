@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CalDAVSource } from "./caldav/caldav-client.ts";
 import {
   createApiRequest,
@@ -43,7 +43,7 @@ beforeAll(async () => {
   });
   if (!spaceResp.ok) throw new Error(`Failed to create space: ${spaceResp.statusText}`);
   const spaceBody = await spaceResp.json();
-  expect(spaceBody.space.id).toStartWith("space_");
+  expect(spaceBody.space.id.startsWith("space_")).toBe(true);
   testSpaceId = spaceBody.space.id;
 
   const doc1 = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {

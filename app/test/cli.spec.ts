@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   commandCategoryCreate,
   commandCategoryEdit,
@@ -21,15 +21,16 @@ const TMP = "/tmp/vektor-cli-spec";
 function mockFetch(
   handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
 ) {
-  return spyOn(globalThis, "fetch").mockImplementation(
-    (input: RequestInfo | URL, init?: RequestInit) =>
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation((input: RequestInfo | URL, init?: RequestInit) =>
       Promise.resolve(handler(String(input), init)),
-  );
+    );
 }
 
 async function captureStdout(fn: () => Promise<void>): Promise<string> {
   const written: string[] = [];
-  const spy = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+  const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
     written.push(String(chunk));
     return true;
   });
@@ -57,7 +58,7 @@ afterEach(() => {
   rmSync(TMP, { recursive: true, force: true });
   delete process.env.VEKTOR_HOST;
   delete process.env.VEKTOR_SPACE_ID;
-  mock.restore();
+  vi.restoreAllMocks();
 });
 
 // ---------------------------------------------------------------------------

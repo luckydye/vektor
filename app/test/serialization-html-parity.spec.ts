@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
 import type { JSONContent } from "@tiptap/core";
 import { generateHTML } from "@tiptap/html";
+import { describe, expect, it } from "vitest";
 import { yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { docFromContent, toCleanHtml } from "#documents/serialization.ts";

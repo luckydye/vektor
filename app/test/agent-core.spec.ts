@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
 import type { Bash } from "just-bash";
+import { describe, expect, it } from "vitest";
 import {
   createAgentShell,
   isOpenCodeZenClaudeModel,
@@ -594,9 +594,9 @@ describe("agent model loop", () => {
       modelCaller: async (options) => {
         if (callCount === 1) {
           const modelContent = options.messages.at(-1)?.content ?? "";
-          expect(modelContent).toStartWith("BEGIN\n");
+          expect(modelContent.startsWith("BEGIN\n")).toBe(true);
           expect(modelContent).toContain("middle characters not shown");
-          expect(modelContent).toEndWith("\nEND");
+          expect(modelContent.endsWith("\nEND")).toBe(true);
         }
         callCount += 1;
         const response = responses.shift();
@@ -659,7 +659,7 @@ describe("agent model loop", () => {
     expect(form.get("filename")).toBe("report.txt");
     expect(form.get("documentId")).toBe("document-1");
     const uploadedFile = form.get("file") as File;
-    expect(uploadedFile.type).toStartWith("text/plain");
+    expect(uploadedFile.type.startsWith("text/plain")).toBe(true);
     expect(await uploadedFile.text()).toBe("report body");
   });
 

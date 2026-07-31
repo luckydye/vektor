@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { remoteDocumentPathParts } from "#api/routes/v1/url-metadata.ts";
 import {
   createVektorDocumentAddress,
