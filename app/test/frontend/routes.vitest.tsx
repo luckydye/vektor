@@ -99,6 +99,7 @@ describe("route snapshots", () => {
     await expect(
       await snapshotOf(ExtensionRouteView, {
         at: "/x/reports/monthly",
+        route: "/x/*extensionPath",
         fixture: [
           [
             /\/extensions/,
@@ -122,7 +123,10 @@ describe("route snapshots", () => {
 
   it("extension route, no extension matches the path", async () => {
     await expect(
-      await snapshotOf(ExtensionRouteView, { at: "/x/nothing/here" }),
+      await snapshotOf(ExtensionRouteView, {
+        at: "/x/nothing/here",
+        route: "/x/*extensionPath",
+      }),
     ).toMatchFileSnapshot("./__snapshots__/route-extension-unmatched.html");
   });
 

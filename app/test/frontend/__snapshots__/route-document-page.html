@@ -1,15 +1,24 @@
 <div>
 <inset-view class="block flex-1 md:ml-(--inset-left) md:mr-(--inset-right) min-h-0" style="--inset-left: 280px; --inset-right: 0px;">
-<div data-type="document" data-updated-at="«date»" data-created-at="«date»" data-layout="document" class="flex flex-col h-full max-w-(--document-width) mx-auto relative w-full">
+<div class="flex flex-col h-full max-w-(--document-width) mx-auto relative w-full" data-created-at="«date»" data-layout="document" data-type="document" data-updated-at="«date»">
 <div class="bg-neutral-10 flex flex-row gap-6 items-center justify-between md:px-xl min-h-7 px-xs py-4 sticky top-0 z-10">
 <div>
 </div>
-<div id="document-actions" class="flex flex-none gap-4xs items-start pointer-events-auto">
+<div class="flex flex-none gap-4xs items-start pointer-events-auto" id="document-actions">
 <div class="flex-1 mr-3">
 </div>
+<button class="button-primary max-md:hidden px-3" type="button">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M20.25 6.80078C20.25 6.54297 20.1641 6.32812 19.9922 6.15625L17.8438 4.00781C17.6719 3.83594 17.457 3.75 17.1992 3.75C16.9414 3.75 16.7266 3.83594 16.5547 4.00781L14.8789 5.68359L18.3164 9.12109L19.9922 7.44531C20.1641 7.27344 20.25 7.05859 20.25 6.80078ZM3.75 20.25H7.1875L17.3281 10.1094L13.8906 6.67188L3.75 16.8125V20.25ZM21.3496 6.80078C21.3496 7.33069 21.1612 7.83101 20.7695 8.22266L19.0938 9.89844C18.9058 10.0863 18.6672 10.1913 18.4219 10.2148C18.3984 10.4602 18.2934 10.6988 18.1055 10.8867L7.96484 21.0273C7.75855 21.2336 7.47924 21.3496 7.1875 21.3496H3.75C3.14249 21.3496 2.65039 20.8575 2.65039 20.25V16.8125C2.65039 16.5208 2.76637 16.2414 2.97266 16.0352L13.1133 5.89453L13.1963 5.81836C13.3688 5.67766 13.5742 5.59745 13.7842 5.57715C13.8079 5.33209 13.9139 5.09393 14.1016 4.90625L15.7773 3.23047L15.9287 3.09277C16.2942 2.79431 16.7355 2.65039 17.1992 2.65039C17.7291 2.65039 18.2294 2.83882 18.6211 3.23047L20.7695 5.37891C21.1612 5.77056 21.3496 6.27087 21.3496 6.80078Z" fill="currentColor">
+</path>
+</svg>
+</div>
+<span>Edit</span>
+</button>
 <div class="flex-none relative">
 <a-popover-trigger class="absolute group h-0 left-0 overflow-hidden top-0 w-0">
-<button slot="trigger" type="button" class="block h-0 overflow-hidden w-0" aria-hidden="true" tabindex="-1" aria-haspopup="dialog" aria-expanded="false">
+<button aria-expanded="false" aria-haspopup="dialog" class="block h-0 overflow-hidden w-0" slot="trigger" tabindex="-1" type="button">
 </button>
 <a-popover class="group" placements="bottom-end">
 <div class="duration-100 group-[&amp;[enabled]]:opacity-100 opacity-0 transition-opacity w-max">
@@ -19,29 +28,29 @@
 <h2 class="font-semibold text-neutral-900 text-size-large">Header image</h2>
 <p class="text-neutral-400 text-small">Upload an image for this document</p>
 </div>
-<div class="bg-transparent border-2 border-dashed border-neutral-200 flex flex-col gap-3xs hover:bg-neutral-50 hover:border-neutral-400 items-center justify-center px-m py-l relative rounded-xl transition-colors" listen-paste="">
+<div class="bg-transparent border-2 border-dashed border-neutral-200 flex flex-col gap-3xs hover:bg-neutral-50 hover:border-neutral-400 items-center justify-center px-m py-l relative rounded-xl transition-colors">
 <div class="bg-neutral-100 flex h-14 items-center justify-center rounded-full transition-colors w-14">
-<div class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none h-7 icon text-neutral-500 w-7" aria-hidden="true">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none h-7 icon text-neutral-500 w-7">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M3.55273 19.3477V19.3447L3.5957 4.64941C3.59642 3.87245 3.88384 3.17866 4.43359 2.62891C4.99373 2.06877 5.69606 1.74805 6.5 1.74805V2.84766C6.01302 2.84766 5.58333 3.03385 5.21094 3.40625C4.86719 3.75 4.69531 4.16536 4.69531 4.65234L4.65234 19.3477C4.65234 19.8346 4.83854 20.2643 5.21094 20.6367C5.58333 20.9805 6.01302 21.1523 6.5 21.1523H17.5C17.987 21.1523 18.4167 20.9805 18.7891 20.6367C19.1615 20.2643 19.3477 19.8346 19.3477 19.3477V8.34766L13.8477 2.84766H6.5V1.74805H13.8477C14.1394 1.74805 14.4187 1.86402 14.625 2.07031L20.125 7.57031C20.3313 7.7766 20.4473 8.05592 20.4473 8.34766V19.3477C20.4473 20.1516 20.1265 20.8539 19.5664 21.4141C19.556 21.4244 19.5459 21.4354 19.5352 21.4453C18.9687 21.9681 18.2756 22.252 17.5 22.252H6.5C5.72441 22.252 5.03129 21.9681 4.46484 21.4453C4.45407 21.4354 4.44396 21.4244 4.43359 21.4141C3.87346 20.8539 3.55273 20.1516 3.55273 19.3477ZM11.8027 5.75195H7.59961V13.9434L11.2227 10.3203L11.3057 10.2441C11.5353 10.0569 11.823 9.97595 12.1025 10.002C11.9174 9.8051 11.8027 9.54156 11.8027 9.25V5.75195ZM8.34766 14.75L9.63672 16.0391L11.0977 14.6211V18.4023H12.9023V14.6211L14.3633 16.082L15.6523 14.75L12 11.0977L8.34766 14.75ZM15.1533 16.8467C14.9483 17.0585 14.6669 17.1792 14.3721 17.1816C14.2447 17.1827 14.12 17.1603 14.002 17.1191V18.248H16.4004V15.5576L15.1533 16.8467ZM7.59961 18.248H9.99805V17.0771C9.61189 17.2113 9.16721 17.1242 8.85938 16.8164L7.59961 15.5566V18.248ZM16.4004 13.9434V10.3496H12.9023C12.8684 10.3496 12.8349 10.3477 12.8018 10.3447L16.4004 13.9434ZM17.5 9.25V19.3477H6.5V4.65234H12.9023V9.25H17.5Z" fill="currentColor">
 </path>
 </svg>
 </div>
 </div>
-<p class="text-center text-neutral-700 text-size-normal">Drag &amp; drop here or <button type="button" class="cursor-pointer font-medium hover:text-neutral-900 hover:underline text-neutral-700 underline-offset-2">choose file</button>
+<p class="text-center text-neutral-700 text-size-normal">Drag &amp; drop here or<button class="cursor-pointer font-medium hover:text-neutral-900 hover:underline text-neutral-700 underline-offset-2" type="button">choose file</button>
 </p>
-<p class="-mt-1 text-center text-neutral-400 text-small"> PNG · JPEG · GIF · WebP · SVG </p>
+<p class="-mt-1 text-center text-neutral-400 text-small">PNG · JPEG · GIF · WebP · SVG</p>
 </div>
-<button type="button" class="hover:text-neutral-600 text-center text-neutral-400 text-small transition-colors">Cancel</button>
+<button class="hover:text-neutral-600 text-center text-neutral-400 text-small transition-colors" type="button">Cancel</button>
 </div>
 </div>
 </div>
 </a-popover>
 </a-popover-trigger>
 <a-popover-trigger class="flex-none group relative z-10">
-<button type="button" class="button-secondary" aria-label="Document actions" title="Document actions" slot="trigger" aria-haspopup="dialog" aria-expanded="false">
-<div class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon" aria-hidden="true">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<button aria-expanded="false" aria-haspopup="dialog" aria-label="Document actions" class="button-secondary" slot="trigger" title="Document actions" type="button">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M12 8.34766C12.487 8.34766 12.9167 8.16146 13.2891 7.78906C13.6615 7.41667 13.8477 6.98698 13.8477 6.5C13.8477 6.01302 13.6615 5.58333 13.2891 5.21094C12.9167 4.83854 12.487 4.65234 12 4.65234C11.513 4.65234 11.0833 4.83854 10.7109 5.21094C10.3385 5.58333 10.1523 6.01302 10.1523 6.5C10.1523 6.98698 10.3385 7.41667 10.7109 7.78906C11.0833 8.16146 11.513 8.34766 12 8.34766ZM12 10.1523C11.513 10.1523 11.0833 10.3385 10.7109 10.7109C10.3385 11.0833 10.1523 11.513 10.1523 12C10.1523 12.487 10.3385 12.9167 10.7109 13.2891C11.0833 13.6615 11.513 13.8477 12 13.8477C12.487 13.8477 12.9167 13.6615 13.2891 13.2891C13.6615 12.9167 13.8477 12.487 13.8477 12C13.8477 11.513 13.6615 11.0833 13.2891 10.7109C12.9167 10.3385 12.487 10.1523 12 10.1523ZM12 15.6523C11.513 15.6523 11.0833 15.8385 10.7109 16.2109C10.3385 16.5833 10.1523 17.013 10.1523 17.5C10.1523 17.987 10.3385 18.4167 10.7109 18.7891C11.0833 19.1615 11.513 19.3477 12 19.3477C12.487 19.3477 12.9167 19.1615 13.2891 18.7891C13.6615 18.4167 13.8477 17.987 13.8477 17.5C13.8477 17.013 13.6615 16.5833 13.2891 16.2109C12.9167 15.8385 12.487 15.6523 12 15.6523ZM12 20.4473C11.1961 20.4473 10.4937 20.1265 9.93359 19.5664C9.37346 19.0063 9.05273 18.3039 9.05273 17.5C9.05273 16.6961 9.37346 15.9937 9.93359 15.4336C10.2366 15.1306 10.582 14.9 10.9619 14.75C10.582 14.6 10.2366 14.3694 9.93359 14.0664C9.37346 13.5063 9.05273 12.8039 9.05273 12C9.05273 11.1961 9.37346 10.4937 9.93359 9.93359C10.2366 9.63059 10.582 9.39999 10.9619 9.25C10.582 9.10001 10.2366 8.86941 9.93359 8.56641C9.37346 8.00627 9.05273 7.30394 9.05273 6.5C9.05273 5.69606 9.37346 4.99373 9.93359 4.43359C10.4937 3.87346 11.1961 3.55273 12 3.55273C12.8039 3.55273 13.5063 3.87346 14.0664 4.43359C14.6265 4.99373 14.9473 5.69606 14.9473 6.5C14.9473 7.30394 14.6265 8.00627 14.0664 8.56641C13.7636 8.86919 13.4187 9.09999 13.0391 9.25C13.4187 9.40001 13.7636 9.63081 14.0664 9.93359C14.6265 10.4937 14.9473 11.1961 14.9473 12C14.9473 12.8039 14.6265 13.5063 14.0664 14.0664C13.7636 14.3692 13.4187 14.6 13.0391 14.75C13.4187 14.9 13.7636 15.1308 14.0664 15.4336C14.6265 15.9937 14.9473 16.6961 14.9473 17.5C14.9473 18.3039 14.6265 19.0063 14.0664 19.5664C13.5063 20.1265 12.8039 20.4473 12 20.4473Z" fill="currentColor">
 </path>
 </svg>
@@ -51,11 +60,24 @@
 <div class="duration-100 group-[&amp;[enabled]]:opacity-100 opacity-0 py-2 transition-opacity w-max">
 <div class="bg-background border border-neutral-100 duration-150 group-[&amp;[enabled]]:scale-100 min-w-[100px] origin-top-right p-5xs rounded-lg scale-95 shadow-large transition-all">
 <a-list class="max-h-screen min-w-[150px] outline-none overflow-auto space-y-5xs text-interactive w-full" role="listbox" tabindex="0">
-<a-list-item class="group" role="option">
-<button type="button" class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full">
+<a-list-item class="group md:hidden" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
 <div class="aspect-sqaure flex-none w-[1rem]">
-<div class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon" aria-hidden="true">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M20.25 6.80078C20.25 6.54297 20.1641 6.32812 19.9922 6.15625L17.8438 4.00781C17.6719 3.83594 17.457 3.75 17.1992 3.75C16.9414 3.75 16.7266 3.83594 16.5547 4.00781L14.8789 5.68359L18.3164 9.12109L19.9922 7.44531C20.1641 7.27344 20.25 7.05859 20.25 6.80078ZM3.75 20.25H7.1875L17.3281 10.1094L13.8906 6.67188L3.75 16.8125V20.25ZM21.3496 6.80078C21.3496 7.33069 21.1612 7.83101 20.7695 8.22266L19.0938 9.89844C18.9058 10.0863 18.6672 10.1913 18.4219 10.2148C18.3984 10.4602 18.2934 10.6988 18.1055 10.8867L7.96484 21.0273C7.75855 21.2336 7.47924 21.3496 7.1875 21.3496H3.75C3.14249 21.3496 2.65039 20.8575 2.65039 20.25V16.8125C2.65039 16.5208 2.76637 16.2414 2.97266 16.0352L13.1133 5.89453L13.1963 5.81836C13.3688 5.67766 13.5742 5.59745 13.7842 5.57715C13.8079 5.33209 13.9139 5.09393 14.1016 4.90625L15.7773 3.23047L15.9287 3.09277C16.2942 2.79431 16.7355 2.65039 17.1992 2.65039C17.7291 2.65039 18.2294 2.83882 18.6211 3.23047L20.7695 5.37891C21.1612 5.77056 21.3496 6.27087 21.3496 6.80078Z" fill="currentColor">
+</path>
+</svg>
+</div>
+</div>
+<span class="block mr-2 text-left w-full">Edit</span>
+</button>
+</a-list-item>
+<a-list-item class="group" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M20.2685 12C20.2685 7.1675 16.351 3.25 11.5185 3.25C8.58177 3.25004 6.00856 4.61326 4.39257 6.75H7.01854C7.43276 6.75 7.76854 7.08579 7.76854 7.5C7.76854 7.91421 7.43276 8.25 7.01854 8.25H3.01854C2.60438 8.24993 2.26854 7.91417 2.26854 7.5V3.5C2.26854 3.08583 2.60438 2.75007 3.01854 2.75C3.43276 2.75 3.76854 3.08579 3.76854 3.5V5.15234C5.66934 3.05074 8.42914 1.75003 11.5185 1.75C17.1795 1.75 21.7685 6.33908 21.7685 12C21.7685 17.6609 17.1795 22.25 11.5185 22.25C7.46778 22.25 3.96957 19.8999 2.30663 16.4922C2.12503 16.12 2.2793 15.671 2.65135 15.4893C3.02356 15.3076 3.47258 15.4619 3.65428 15.834C5.07543 18.7464 8.06287 20.75 11.5185 20.75C16.351 20.75 20.2685 16.8325 20.2685 12ZM10.7685 6.5C10.7685 6.08583 11.1044 5.75007 11.5185 5.75C11.9328 5.75 12.2685 6.08579 12.2685 6.5V11.6895L15.5488 14.9697C15.8417 15.2626 15.8417 15.7374 15.5488 16.0303C15.2559 16.3231 14.7811 16.3231 14.4883 16.0303L10.9883 12.5303C10.8477 12.3896 10.7685 12.1989 10.7685 12V6.5Z" fill="currentColor">
 </path>
 </svg>
@@ -67,10 +89,77 @@
 </button>
 </a-list-item>
 <a-list-item class="group" role="option">
-<button type="button" class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
 <div class="aspect-sqaure flex-none w-[1rem]">
-<div class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon" aria-hidden="true">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+</div>
+</div>
+<span class="block mr-2 text-left w-full" data-action="document:share">Share</span>
+<a-shortcut>
+</a-shortcut>
+</button>
+</a-list-item>
+<a-list-item class="group" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M4.49805 13.8477V12C4.49805 11.3925 4.99014 10.9004 5.59766 10.9004C5.899 10.9004 6.14912 10.831 6.37207 10.7061C6.65405 10.5352 6.86543 10.3294 7.02441 10.0869C7.17105 9.83719 7.24805 9.56635 7.24805 9.25V5.74414C6.78153 5.70826 6.37357 5.51371 6.04199 5.22949C6.02065 5.21119 6.00035 5.19176 5.98047 5.17188C5.58882 4.78022 5.40039 4.27991 5.40039 3.75C5.40039 3.22009 5.58882 2.71978 5.98047 2.32812L6.04199 2.27051C6.40968 1.95534 6.87109 1.74805 7.40234 1.74805V2.84766C7.17318 2.84766 6.95833 2.93359 6.75781 3.10547C6.58594 3.27734 6.5 3.49219 6.5 3.75C6.5 4.00781 6.58594 4.22266 6.75781 4.39453C6.95833 4.56641 7.17318 4.65234 7.40234 4.65234H8.34766V9.25C8.34766 9.76562 8.21875 10.2383 7.96094 10.668C7.70312 11.069 7.35938 11.3984 6.92969 11.6562C6.52865 11.8854 6.08464 12 5.59766 12V13.8477H11.0547V20.25L11.957 21.1523L12.9023 20.25V13.8477H18.4023V12C17.9154 12 17.457 11.8854 17.0273 11.6562C16.6263 11.3984 16.2969 11.069 16.0391 10.668C15.7812 10.2383 15.6523 9.76562 15.6523 9.25V4.65234H16.5977C16.8268 4.65234 17.0273 4.56641 17.1992 4.39453C17.3997 4.22266 17.5 4.00781 17.5 3.75C17.5 3.49219 17.3997 3.27734 17.1992 3.10547C17.0273 2.93359 16.8268 2.84766 16.5977 2.84766V1.74805C17.1081 1.74805 17.5584 1.94272 17.9141 2.27148L17.915 2.27051C18.3525 2.6455 18.5996 3.16221 18.5996 3.75C18.5996 4.33779 18.3525 4.8545 17.915 5.22949L17.9141 5.22852C17.5947 5.52372 17.1993 5.70933 16.752 5.74414V9.25C16.752 9.56617 16.8281 9.8373 16.9746 10.0869C17.1375 10.3362 17.3395 10.5388 17.5859 10.7041C17.844 10.8343 18.1109 10.9004 18.4023 10.9004C19.0099 10.9004 19.502 11.3925 19.502 12V13.8477C19.502 14.4552 19.0099 14.9473 18.4023 14.9473H14.002V20.25C14.002 20.5506 13.8795 20.8383 13.6621 21.0459L12.7168 21.9482C12.2846 22.3608 11.6022 22.3522 11.1797 21.9297L10.2773 21.0273C10.0711 20.8211 9.95508 20.5417 9.95508 20.25V14.9473H5.59766C4.99014 14.9473 4.49805 14.4552 4.49805 13.8477ZM16.5977 1.74805V2.84766H7.40234V1.74805H16.5977Z" fill="currentColor">
+</path>
+</svg>
+</div>
+</div>
+<span class="block mr-2 text-left w-full" data-action="document:pin">Pin to Home</span>
+<a-shortcut>
+</a-shortcut>
+</button>
+</a-list-item>
+<a-list-item class="group" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+</div>
+</div>
+<span class="block mr-2 text-left w-full" data-action="document:duplicate">Duplicate Document</span>
+<a-shortcut>
+</a-shortcut>
+</button>
+</a-list-item>
+<a-list-item class="group" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M16.5977 2.84766V5.59766H13.8477V7.40234H16.5977V10.1523H18.4023V7.40234H21.1523V5.59766H18.4023V2.84766H16.5977ZM16.5977 18.4023H5.59766L8.34766 14.75L10.1523 17.5L12.9023 13.8477L16.5977 18.4023ZM11.6787 17.3027H14.2881L12.9346 15.6338L11.6787 17.3027ZM7.80273 17.3027H8.70703L8.28516 16.6611L7.80273 17.3027ZM19.502 4.49805H21.1523C21.7599 4.49805 22.252 4.99014 22.252 5.59766V7.40234C22.252 8.00986 21.7599 8.50195 21.1523 8.50195H19.502V10.1523C19.502 10.3219 19.4621 10.4816 19.3936 10.625C19.4621 10.7684 19.502 10.9281 19.502 11.0977V18.4023C19.502 19.1913 19.1913 19.8806 18.6504 20.4355L18.6523 20.4375C18.1099 21.0251 17.4055 21.3496 16.5977 21.3496H5.59766C4.79371 21.3496 4.09139 21.0289 3.53125 20.4688C2.97111 19.9086 2.65039 19.2063 2.65039 18.4023V7.40234C2.65039 6.59452 2.97489 5.89007 3.5625 5.34766L3.56445 5.34863C4.11927 4.80803 4.80893 4.49805 5.59766 4.49805V5.59766C5.11068 5.59766 4.68099 5.78385 4.30859 6.15625C3.9362 6.5 3.75 6.91536 3.75 7.40234V18.4023C3.75 18.8893 3.9362 19.319 4.30859 19.6914C4.68099 20.0638 5.11068 20.25 5.59766 20.25H16.5977C17.0846 20.25 17.5 20.0638 17.8438 19.6914C18.2161 19.319 18.4023 18.8893 18.4023 18.4023V11.0977H15.6523V8.34766H12.9023V5.59766H5.59766V4.49805H12.9023C13.0717 4.49805 13.2317 4.53707 13.375 4.60547C13.5183 4.53707 13.6783 4.49805 13.8477 4.49805H15.498V2.84766C15.498 2.24014 15.9901 1.74805 16.5977 1.74805H18.4023C19.0099 1.74805 19.502 2.24014 19.502 2.84766V4.49805Z" fill="currentColor">
+</path>
+</svg>
+</div>
+</div>
+<span class="block mr-2 text-left w-full" data-action="document:set-header">Add header image</span>
+<a-shortcut>
+</a-shortcut>
+</button>
+</a-list-item>
+<a-list-item class="group" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+<path d="M10.1523 19.3477C10.1523 19.8633 10.3242 20.293 10.668 20.6367C11.0404 20.9805 11.4844 21.1523 12 21.1523C12.5156 21.1523 12.9453 20.9805 13.2891 20.6367C13.6615 20.293 13.8477 19.8633 13.8477 19.3477H10.1523ZM17.5 11.0977C17.5 9.66536 17.1276 8.41927 16.3828 7.35938C15.6667 6.29948 14.6641 5.61198 13.375 5.29688V4.65234C13.375 4.27995 13.2461 3.96484 12.9883 3.70703C12.7305 3.42057 12.401 3.27734 12 3.27734C11.599 3.27734 11.2695 3.42057 11.0117 3.70703C10.7539 3.96484 10.625 4.27995 10.625 4.65234V5.29688C10.5677 5.29688 10.4961 5.3112 10.4102 5.33984C10.3242 5.36849 10.2669 5.38281 10.2383 5.38281L9.98047 5.51172H9.9375C9.88021 5.54036 9.77995 5.59766 9.63672 5.68359C9.49349 5.74089 9.37891 5.78385 9.29297 5.8125L17.5 14.4492V11.0977ZM18.6001 14.4492C18.6001 14.8 18.432 15.1207 18.1606 15.3252C19.2992 16.5 20.2625 17.5025 21.0493 18.333C21.4592 18.7656 21.4492 19.4458 21.0278 19.8672L19.8677 21.0273C19.4381 21.4569 18.7426 21.4569 18.313 21.0273L16.7876 19.502H14.9409C14.9041 20.2554 14.5998 20.9246 14.0356 21.4453L14.0337 21.4434C13.4751 21.9859 12.7736 22.252 12.0005 22.252C11.2137 22.252 10.5018 21.9801 9.92236 21.4453C9.91159 21.4354 9.90148 21.4244 9.89111 21.4141C9.36465 20.8876 9.09382 20.2287 9.06006 19.502H4.65283C4.04532 19.502 3.55322 19.0099 3.55322 18.4023V17.5C3.55322 17.2083 3.6692 16.9289 3.87549 16.7227L5.40088 15.1973V11.0547C5.40088 10.0247 5.56663 9.05693 5.91162 8.16406L3.88135 6.16699C3.45136 5.74397 3.44213 5.05337 3.86084 4.61914L5.02099 3.41602C5.22827 3.20106 5.51437 3.08013 5.81299 3.08008C6.11153 3.08008 6.39767 3.20117 6.60498 3.41602L8.35888 5.23438C8.49253 5.01838 8.69821 4.85108 8.9458 4.76855C8.99338 4.75268 9.06557 4.72406 9.16845 4.68359C9.2729 4.62199 9.36912 4.56668 9.4458 4.52832L9.53271 4.49023C9.56798 3.91611 9.79135 3.39562 10.1958 2.97266L10.1948 2.9707C10.2041 2.96042 10.2147 2.95149 10.2241 2.94141C10.2278 2.93764 10.2311 2.93344 10.2349 2.92969C10.706 2.42895 11.3207 2.17773 12.0005 2.17773C12.68 2.17773 13.2941 2.43025 13.7651 2.93066L13.7661 2.92969C13.7697 2.93327 13.7723 2.9378 13.7759 2.94141C13.7854 2.95165 13.7967 2.96026 13.8061 2.9707L13.8042 2.97266C14.2082 3.39497 14.4314 3.91414 14.4673 4.4873C15.623 4.93255 16.5717 5.6814 17.2827 6.72656C18.1713 7.99114 18.6001 9.46401 18.6001 11.0977V14.4492ZM6.5 15.6523L4.65234 17.5V18.4023H17.2422L19.0898 20.25L20.25 19.0898C18.7031 17.457 16.4688 15.151 13.5469 12.1719C10.6536 9.19271 8.86328 7.34505 8.17578 6.62891L5.8125 4.17969L4.65234 5.38281L7.23047 7.91797C6.74349 8.83464 6.5 9.88021 6.5 11.0547V15.6523Z" fill="currentColor">
+</path>
+</svg>
+</div>
+</div>
+<span class="block mr-2 text-left w-full" data-action="document:mute-email">Mute email notifications</span>
+<a-shortcut>
+</a-shortcut>
+</button>
+</a-list-item>
+<a-list-item class="group" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M21.1523 16.5977V11.0977C21.1523 10.3529 20.8802 9.70833 20.3359 9.16406C19.7917 8.61979 19.1471 8.34766 18.4023 8.34766H5.59766C4.85286 8.34766 4.20833 8.61979 3.66406 9.16406C3.11979 9.70833 2.84766 10.3529 2.84766 11.0977V16.5977H6.5V20.25H17.5V16.5977H21.1523ZM15.6523 13.8477V18.4023H8.34766V13.8477H15.6523ZM9.44727 17.3027H14.5527V14.9473H9.44727V17.3027ZM18.5996 11.0977C18.5993 11.0937 18.5977 11.0735 18.5859 11.0439C18.5784 11.0251 18.5694 11.0084 18.5605 10.9951L18.5352 10.9648L18.5049 10.9395C18.4916 10.9306 18.4749 10.9216 18.4561 10.9141L18.4023 10.9004C18.3984 10.9007 18.3781 10.9023 18.3486 10.9141C18.3328 10.9204 18.3186 10.9281 18.3066 10.9355C18.2972 10.9484 18.2856 10.9655 18.2754 10.9873C18.2519 11.0378 18.248 11.0801 18.248 11.0977L18.252 11.1338C18.2557 11.154 18.2623 11.1798 18.2754 11.208C18.277 11.2114 18.2796 11.2146 18.2812 11.2178C18.2848 11.2196 18.2882 11.2228 18.292 11.2246C18.3424 11.2481 18.3848 11.252 18.4023 11.252V12C18.1445 12 17.9297 11.9141 17.7578 11.7422C17.5859 11.5703 17.5 11.3555 17.5 11.0977C17.5 10.8398 17.5859 10.625 17.7578 10.4531C17.9297 10.2526 18.1445 10.1523 18.4023 10.1523C18.6602 10.1523 18.875 10.2526 19.0469 10.4531C19.2474 10.625 19.3477 10.8398 19.3477 11.0977C19.3477 11.3555 19.2474 11.5703 19.0469 11.7422C18.875 11.9141 18.6602 12 18.4023 12V11.252C18.4199 11.252 18.4622 11.2481 18.5127 11.2246C18.5344 11.2145 18.5507 11.2018 18.5635 11.1924C18.5709 11.1805 18.5797 11.1671 18.5859 11.1514C18.5977 11.1219 18.5993 11.1016 18.5996 11.0977ZM6.5 3.75V7.40234H17.5V3.75H6.5ZM18.5996 7.25195C19.5655 7.29868 20.4174 7.69087 21.1133 8.38672C21.8561 9.12956 22.252 10.0504 22.252 11.0977V16.5977C22.252 17.2052 21.7599 17.6973 21.1523 17.6973H18.5996V20.25C18.5996 20.8575 18.1075 21.3496 17.5 21.3496H6.5C5.89249 21.3496 5.40039 20.8575 5.40039 20.25V17.6973H2.84766C2.24014 17.6973 1.74805 17.2052 1.74805 16.5977V11.0977C1.74805 10.0504 2.14387 9.12956 2.88672 8.38672C3.58257 7.69087 4.43451 7.29868 5.40039 7.25195V3.75C5.40039 3.14249 5.89249 2.65039 6.5 2.65039H17.5C18.1075 2.65039 18.5996 3.14249 18.5996 3.75V7.25195Z" fill="currentColor">
 </path>
 </svg>
@@ -82,16 +171,25 @@
 </button>
 </a-list-item>
 <a-list-item class="group hover:text-orange-700 text-orange-600" role="option">
-<button type="button" class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
 <div class="aspect-sqaure flex-none w-[1rem]">
-<div class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon" aria-hidden="true">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M20.25 6.97266C20.25 6.54297 20.1068 6.15625 19.8203 5.8125L18.5742 4.26562C18.2878 3.92188 17.9297 3.75 17.5 3.75H6.5C6.07031 3.75 5.71224 3.92188 5.42578 4.26562L4.17969 5.8125C3.89323 6.15625 3.75 6.54297 3.75 6.97266V18.4023C3.75 18.8893 3.9362 19.319 4.30859 19.6914C4.68099 20.0638 5.11068 20.25 5.59766 20.25H18.4023C18.8893 20.25 19.319 20.0638 19.6914 19.6914C20.0638 19.319 20.25 18.8893 20.25 18.4023V6.97266ZM12.748 11.252H11.252V12C11.252 12.6075 10.7599 13.0996 10.1523 13.0996H9.62695L12 15.4727L14.373 13.0996H13.8477C13.2401 13.0996 12.748 12.6075 12.748 12V11.252ZM17.457 4.65234L18.3164 5.59766H5.68359L6.45703 4.65234H17.457ZM17.0273 12L12 17.0273L6.97266 12H10.1523V10.1523H13.8477V12H17.0273ZM21.3496 18.4023C21.3496 19.2063 21.0289 19.9086 20.4688 20.4688C19.9086 21.0289 19.2063 21.3496 18.4023 21.3496H5.59766C4.79371 21.3496 4.09139 21.0289 3.53125 20.4688C2.97111 19.9086 2.65039 19.2063 2.65039 18.4023V6.97266C2.65039 6.28011 2.88745 5.65186 3.32422 5.12207L4.56934 3.5752L4.58105 3.56152C5.06656 2.97897 5.72868 2.65039 6.5 2.65039H17.5C18.2713 2.65039 18.9334 2.97897 19.4189 3.56152C19.4228 3.5661 19.4269 3.57056 19.4307 3.5752L20.6768 5.12207C21.1135 5.65186 21.3496 6.28011 21.3496 6.97266V18.4023Z" fill="currentColor">
 </path>
 </svg>
 </div>
 </div>
 <span>Archive Document</span>
+</button>
+</a-list-item>
+<a-list-item class="group hover:text-orange-700 text-orange-600" role="option">
+<button class="active:bg-primary-100 flex gap-2.5 group-aria-selected:bg-primary-10 hover:bg-primary-50 hover:transition-none items-center pr-4xs px-3xs py-5xs rounded-md transition-colors w-full" type="button">
+<div class="aspect-sqaure flex-none w-[1rem]">
+<div aria-hidden="true" class="[&amp;_svg]:h-full [&amp;_svg]:w-full aspect-square flex-none icon">
+</div>
+</div>
+<span>Unpublish</span>
 </button>
 </a-list-item>
 </a-list>
@@ -104,20 +202,20 @@
 </div>
 <inset-view class="bg-neutral-10 flex flex-row gap-6 justify-between md:gap-4 md:px-xl print:px-0 px-xs py-3xs" style="--inset-left: 280px; --inset-right: 0px;">
 <div class="flex items-start justify-between w-full">
-<page-target class="[&amp;[data-dragging]]:opacity-50 block flex-1 min-w-0" data-document-id="doc_fixture_1" data-document-type="document" data-space-id="space_fixture" data-document-url="/fixture/doc/getting-started" draggable="true">
+<page-target class="[&amp;[data-dragging]]:opacity-50 block flex-1 min-w-0" draggable="true">
 <div class="-ml-1 flex flex-1 gap-3 items-center">
-<div data-document-id="doc_fixture_1" class="pointer-events-auto">
+<div class="pointer-events-auto" data-document-id="doc_fixture_1">
 <h1 class="cursor-text flex font-bold gap-3 hover:bg-neutral-50 items-center px-1 text-neutral-900 text-size-display">Untitled Document</h1>
 </div>
 </div>
 </page-target>
 </div>
 </inset-view>
-<inset-view id="document-properties" class="block mb-l md:px-xl print:px-0 px-xs" style="--inset-left: 280px; --inset-right: 0px;">
+<inset-view class="block mb-l md:px-xl print:px-0 px-xs" id="document-properties" style="--inset-left: 280px; --inset-right: 0px;">
 <div class="flex flex-wrap gap-3xs items-center pointer-events-none">
 <div class="pointer-events-auto">
 <div class="relative">
-<button type="button" data-tooltip="Category" class="bg-primary-50 border border-primary-100 cursor-pointer flex gap-4xs hover:bg-primary-100 items-center px-4xs py-6xs rounded-lg text-interactive transition-colors">
+<button class="bg-primary-50 border border-primary-100 cursor-pointer flex gap-4xs hover:bg-primary-100 items-center px-4xs py-6xs rounded-lg text-interactive transition-colors" data-tooltip="Category" type="button">
 <div class="bg-primary-500 flex h-[18px] items-center justify-center rounded-sm w-[18px]">
 </div>
 <span class="capitalize max-w-[150px] overflow-hidden text-ellipsis text-primary-700 whitespace-nowrap">Category</span>
@@ -126,9 +224,9 @@
 </div>
 <div class="pointer-events-auto">
 <div class="relative">
-<button type="button" data-tooltip="Layout" class="bg-primary-50 border border-primary-100 cursor-pointer flex gap-4xs hover:bg-primary-100 items-center px-4xs py-6xs rounded-lg text-interactive transition-colors">
+<button class="bg-primary-50 border border-primary-100 cursor-pointer flex gap-4xs hover:bg-primary-100 items-center px-4xs py-6xs rounded-lg text-interactive transition-colors" data-tooltip="Layout" type="button">
 <div class="[&amp;_svg]:h-[18px] [&amp;_svg]:inline [&amp;_svg]:text-primary-700 [&amp;_svg]:w-[18px]">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M1.74805 17.5V6.5C1.74805 5.71228 2.02241 4.99712 2.58594 4.43359C3.14607 3.87346 3.8484 3.55273 4.65234 3.55273V4.65234C4.16536 4.65234 3.73568 4.83854 3.36328 5.21094C3.01953 5.55469 2.84766 5.98438 2.84766 6.5V17.5C2.84766 18.0156 3.01953 18.4596 3.36328 18.832C3.73568 19.1758 4.16536 19.3477 4.65234 19.3477H19.3477C19.8346 19.3477 20.25 19.1758 20.5938 18.832C20.9661 18.4596 21.1523 18.0156 21.1523 17.5V6.5C21.1523 5.98438 20.9661 5.55469 20.5938 5.21094C20.25 4.83854 19.8346 4.65234 19.3477 4.65234V3.55273C20.1257 3.55273 20.805 3.85613 21.3389 4.40332L21.3398 4.40234C21.9423 4.95842 22.252 5.68345 22.252 6.5V17.5C22.252 18.3143 21.9448 19.0356 21.3711 19.6094C20.8207 20.1598 20.1258 20.4473 19.3477 20.4473H4.65234C3.87675 20.4473 3.18364 20.1634 2.61719 19.6406C2.59564 19.6207 2.57458 19.5997 2.55469 19.5781C2.01988 18.9987 1.74805 18.2867 1.74805 17.5ZM8.34766 6.5V17.5H4.65234V6.5H8.34766ZM19.3477 6.5V17.5H15.6523V6.5H19.3477ZM16.752 16.4004H18.248V7.59961H16.752V16.4004ZM5.75195 16.4004H7.24805V7.59961H5.75195V16.4004ZM19.3477 3.55273V4.65234H4.65234V3.55273H19.3477Z" fill="currentColor">
 </path>
 </svg>
@@ -138,9 +236,9 @@
 </div>
 </div>
 <div class="pointer-events-auto relative">
-<button type="button" class="[&amp;_svg]:inline [&amp;_svg]:text-primary-600 button-outline button-small justify-center w-full" aria-label="New property" title="New property">
+<button aria-label="New property" class="[&amp;_svg]:inline [&amp;_svg]:text-primary-600 button-outline button-small justify-center w-full" title="New property" type="button">
 <div class="icon">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M11 19.5V13H4.5C3.94772 13 3.5 12.5523 3.5 12C3.5 11.4477 3.94772 11 4.5 11H11V4.5C11 3.94772 11.4477 3.5 12 3.5C12.5523 3.5 13 3.94772 13 4.5V11H19.5C20.0523 11 20.5 11.4477 20.5 12C20.5 12.5523 20.0523 13 19.5 13H13V19.5C13 20.0523 12.5523 20.5 12 20.5C11.4477 20.5 11 20.0523 11 19.5Z" fill="currentColor">
 </path>
 </svg>
@@ -154,7 +252,7 @@
 <div class="h-full max-w-none md:px-xl overflow-x-auto print:px-0 px-xs text-neutral-700">
 <main class="mb-30 relative">
 <div>
-<document-view html="# Getting started A seeded paragraph." space-id="space_fixture" document-id="doc_fixture_1" data-allow-mismatch="children">
+<document-view data-allow-mismatch="children" document-id="doc_fixture_1" space-id="space_fixture">
 </document-view>
 </div>
 <div>

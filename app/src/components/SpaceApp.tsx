@@ -298,7 +298,7 @@ export function SpaceApp(props: Props) {
             <Route path="/new" component={NewDocumentRoute} />
             <Route path="/settings" component={SpaceSettingsView} />
             <Route path="/doc/*documentSlug" component={DocumentRoute} />
-            <Route path="/x/*" component={ExtensionRouteView} />
+            <Route path="/x/*extensionPath" component={ExtensionRouteView} />
             <Route path="*" component={NotFoundView} />
           </Router>
         </SsrUrlContext.Provider>

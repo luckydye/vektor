@@ -116,6 +116,16 @@ function normalizeElement(el: Element, ids: Map<string, string>): void {
     if (attr.value) el.setAttribute(name, normalizeText(attr.value).trim());
   }
 
+  // Attribute order is compiler noise for the same reason class order is: Vue
+  // and Solid emit the same set in different sequences, and a serialized diff
+  // reports that as a change. Re-adding them in name order makes the
+  // serialization canonical; membership and values still diff normally.
+  const ordered = [...el.attributes]
+    .map((attr) => [attr.name, attr.value] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const [name] of ordered) el.removeAttribute(name);
+  for (const [name, value] of ordered) el.setAttribute(name, value);
+
   for (const child of [...el.childNodes]) {
     if (child.nodeType === 8) {
       // Comment: both frameworks use these as render anchors. Vue writes

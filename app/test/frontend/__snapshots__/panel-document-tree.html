@@ -2,7 +2,7 @@
 <div class="px-4xs">
 <div class="border border-dashed border-neutral-200 flex flex-col gap-2 items-center px-4 py-5 rounded-lg text-center">
 <div class="h-6 svg-icon text-neutral-400 w-6">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M12.5 4.75C12.6989 4.75 12.8896 4.82907 13.0303 4.96973L19.5303 11.4697C19.8232 11.7626 19.8232 12.2374 19.5303 12.5303L13.0303 19.0303C12.7374 19.3232 12.2626 19.3232 11.9697 19.0303L4.46973 11.5303C4.32907 11.3896 4.25 11.1989 4.25 11V5.5C4.25 5.08579 4.58579 4.75 5 4.75H12.5ZM5.75 10.6895L12.5 17.4395L17.9395 12L12.1895 6.25H5.75V10.6895ZM8.50977 7.25C8.92398 7.25 9.25977 7.58579 9.25977 8C9.25977 8.41421 8.92398 8.75 8.50977 8.75H8.5C8.08579 8.75 7.75 8.41421 7.75 8C7.75 7.58579 8.08579 7.25 8.5 7.25H8.50977Z" fill="currentColor">
 </path>
 </svg>
@@ -11,9 +11,9 @@
 <p class="font-medium text-neutral-900 text-size-normal">No categories yet</p>
 <p class="mt-0.5 text-neutral-500 text-size-extra-small">Group your documents into categories to organize this space.</p>
 </div>
-<button type="button" class="button-primary gap-1.5 mt-1 text-size-normal">
-<div class="h-4 icon svg-icon w-4">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<button class="bg-blue-600 font-medium gap-1.5 hover:bg-blue-700 inline-flex items-center mt-1 px-3 py-1.5 rounded-md text-size-normal text-white transition-colors" type="button">
+<div class="h-4 svg-icon w-4">
+<svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
 <path d="M11 19.5V13H4.5C3.94772 13 3.5 12.5523 3.5 12C3.5 11.4477 3.94772 11 4.5 11H11V4.5C11 3.94772 11.4477 3.5 12 3.5C12.5523 3.5 13 3.94772 13 4.5V11H19.5C20.0523 11 20.5 11.4477 20.5 12C20.5 12.5523 20.0523 13 19.5 13H13V19.5C13 20.0523 12.5523 20.5 12 20.5C11.4477 20.5 11 20.0523 11 19.5Z" fill="currentColor">
 </path>
 </svg>
@@ -25,7 +25,7 @@
 <div class="px-4xs space-y-1">
 </div>
 <a-popover-trigger class="fixed h-px w-px z-50" style="left: -10000px; top: -10000px;">
-<button slot="trigger" type="button" class="block h-px opacity-0 pointer-events-none w-px" tabindex="-1" aria-hidden="true" aria-haspopup="dialog" aria-expanded="false">
+<button aria-expanded="false" aria-haspopup="dialog" class="block h-px opacity-0 pointer-events-none w-px" slot="trigger" tabindex="-1" type="button">
 </button>
 <a-popover class="group" placements="right-start,left-start">
 <div class="category-context-menu duration-100 group-[&amp;[enabled]]:opacity-100 opacity-0 py-1 transition-opacity w-max">

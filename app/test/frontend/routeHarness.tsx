@@ -1,4 +1,4 @@
-import { MemoryRouter, Route } from "@solidjs/router";
+import { createMemoryHistory, MemoryRouter, Route } from "@solidjs/router";
 import { render } from "solid-js/web";
 import { QueryClient, QueryClientContext } from "#composeables/query.solid.ts";
 import { SsrUrlContext } from "#composeables/useRoute.solid.ts";
@@ -128,9 +128,13 @@ export interface RenderedRoute {
  * Mounts a view inside the context `SpaceApp` normally provides — the active
  * space id, the SSR url and a query client.
  *
- * `at` adds a `MemoryRouter`. Views that read route params need one, and a
+ * `at` adds a `MemoryRouter` entered at that path. Views that read route params need one, and a
  * single wildcard route means any path resolves; the params a view wants come
  * through `props`, exactly as `SpaceApp`'s route wrappers pass them.
+ *
+ * A view that reads a route param needs `route` set to the same pattern
+ * `SpaceApp` mounts it under, so the param is captured under the same name and
+ * with the same prefix stripped.
  */
 export async function renderRoute(
   View: unknown,
@@ -140,6 +144,8 @@ export async function renderRoute(
     settle?: number;
     /** Router path. Supply this for a view that reads route params. */
     at?: string;
+    /** Route pattern to mount under. Mirror `SpaceApp` for param-reading views. */
+    route?: string;
   } = {},
 ): Promise<RenderedRoute> {
   // Overrides first so a spec's pattern wins over the base one it shadows.
@@ -153,14 +159,22 @@ export async function renderRoute(
   const props = options.props ?? {};
   const queryClient = new QueryClient();
 
+  // `createMemoryHistory` starts at "/", and `MemoryRouter` has no prop for an
+  // initial path — the entry is set on the history before the first render.
+  const routerHistory = createMemoryHistory();
+  if (options.at) routerHistory.set({ value: options.at });
+
   const dispose = render(
     () => (
       <QueryClientContext.Provider value={queryClient}>
         <ActiveSpaceIdContext.Provider value={() => SPACE.id}>
           <SsrUrlContext.Provider value={`/${SPACE.slug}`}>
             {options.at ? (
-              <MemoryRouter>
-                <Route path="*" component={() => <Component {...props} />} />
+              <MemoryRouter history={routerHistory}>
+                <Route
+                  path={options.route ?? "*"}
+                  component={() => <Component {...props} />}
+                />
               </MemoryRouter>
             ) : (
               <Component {...props} />
