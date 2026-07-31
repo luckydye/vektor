@@ -20,10 +20,17 @@ declare module "solid-js" {
       "on:change"?: (event: Event) => void;
       "attr:hidden"?: string | undefined;
       "attr:enabled"?: string | undefined;
+      // `prop:` assigns a DOM property instead of an attribute — the only way
+      // to hand a custom element an object.
+      "prop:user"?: unknown;
+      "attr:value"?: string;
+      showdelay?: string;
+      hidedelay?: string;
     }
 
     interface IntrinsicElements {
       "a-blur": CustomElementAttributes;
+      "a-color-picker": CustomElementAttributes;
       "a-list": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
       "a-popover-trigger": CustomElementAttributes;
