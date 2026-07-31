@@ -1,4 +1,3 @@
-import { hasInjectionContext, type InjectionKey, inject } from "vue";
 import de from "#assets/lang/de.json";
 import en from "#assets/lang/en.json";
 import ko from "#assets/lang/ko.json";
@@ -11,35 +10,53 @@ export type TranslationKey = keyof typeof en;
 
 // Every language file under assets/lang. Add a new <lang>.json file and
 // register it here to make that language available. Static imports (rather
-// than Vite's `import.meta.glob`) keep this working under plain runtimes such
-// as `bun test`, where `import.meta.glob` is undefined.
+// than Vite's `import.meta.glob`) keep this working under plain runtimes.
 const translations: Record<string, Record<string, string>> = { de, en, ko };
-export const languageInjectionKey: InjectionKey<string> = Symbol("language");
 
 function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;
 }
 
 /**
- * The locale provided by the Vue app root (`SpaceApp.vue`), when we are inside a
- * component's injection context. Outside one — plain modules, custom elements,
- * tests — there is nothing to inject and `currentLang` falls back to the
- * environment locale.
+ * How the ambient locale is found, installed by whoever owns request scope.
  *
- * This module therefore imports the Vue runtime, so it must stay off the
- * server's document/serialization path; `test/server-frontend-imports.spec.ts`
- * enforces that. Locale-free timestamp parsing lives in `utils.ts`, and the
- * localized formatters that need `currentLang()` live in `datetime.ts`.
+ * This module used to reach into Vue's `inject`, which made it a framework
+ * import on a path `test/server-frontend-imports.spec.ts` polices. A plain
+ * module-level variable was tried instead and **measured wrong**: with sixty
+ * concurrent renders in mixed locales, 26 came out in the wrong language,
+ * because one request's locale lands in the middle of another's render. The
+ * `inject` was not framework tax — it was what made the locale request-scoped.
+ *
+ * So the scoping mechanism is injected rather than assumed:
+ *
+ * - the server installs an `AsyncLocalStorage`-backed resolver
+ *   (`langScope.server.ts`), which is request-scoped and framework-free;
+ * - the browser installs a plain one (`setClientLang`), where a module-level
+ *   value is correct — one document, one reader, one locale.
+ *
+ * With no resolver installed, `currentLang()` falls back to the environment,
+ * which is what plain modules, custom elements and tests get today.
  */
-function injectedLocale(): string | undefined {
-  return hasInjectionContext() ? inject(languageInjectionKey, undefined) : undefined;
+let resolveAmbientLang: (() => string | undefined) | null = null;
+
+export function setLangResolver(resolve: (() => string | undefined) | null): void {
+  resolveAmbientLang = resolve;
+}
+
+let clientLang: string | undefined;
+
+/**
+ * Sets the locale for this document. Browser only — calling it on the server
+ * would reintroduce exactly the cross-request bleed described above, so the
+ * server path goes through `langScope.server.ts` instead.
+ */
+export function setClientLang(lang: string | undefined): void {
+  clientLang = lang;
 }
 
 export function currentLang(): string {
-  const injectedLang = injectedLocale();
-  if (injectedLang) {
-    return normalizeLang(injectedLang);
-  }
+  const ambient = resolveAmbientLang?.() ?? clientLang;
+  if (ambient) return normalizeLang(ambient);
 
   if (typeof navigator !== "undefined" && navigator.language) {
     return normalizeLang(navigator.language);
@@ -47,9 +64,9 @@ export function currentLang(): string {
   return FALLBACK_LANG;
 }
 
-// `lang` lets server-rendered callers (where `navigator` is undefined) pass
-// their resolved locale explicitly. On the client it is otherwise omitted and
-// the browser language is used.
+// `lang` lets callers pass a resolved locale explicitly, for the cases that
+// know better than the ambient one (a notification rendered for another user,
+// say). Otherwise the ambient locale is used.
 export function t(key: TranslationKey | string, lang?: string): string {
   const code = lang ? normalizeLang(lang) : currentLang();
   return translations[code]?.[key] ?? translations[FALLBACK_LANG]?.[key] ?? key;

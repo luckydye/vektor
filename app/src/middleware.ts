@@ -3,6 +3,7 @@ import { auth } from "./auth.ts";
 import { getPublicEnv } from "./config.ts";
 import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "./noAuth.ts";
 import { appLogger } from "./observability/logger.ts";
+import { runWithLang } from "./utils/langScope.server.ts";
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const startTime = Date.now();
@@ -35,7 +36,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
   try {
-    const response = await next();
+    // Everything the render awaits sees this request's locale, and only this
+    // request's — see `langScope.server.ts` for why a plain variable is not
+    // enough here.
+    const response = await runWithLang(context.preferredLocale, next);
     const durationMs = Date.now() - startTime;
     const attributes = {
       method: request.method,

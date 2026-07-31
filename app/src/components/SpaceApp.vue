@@ -17,7 +17,7 @@ import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
-import { currentLang, languageInjectionKey } from "#utils/lang.ts";
+import { setClientLang } from "#utils/lang.ts";
 // Side effect: registers the Vue-injected locale lookup with `lang.ts`, which
 // stays framework-free so server-side document serialization does not load Vue.
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
@@ -51,7 +51,11 @@ const props = defineProps<{
   lang?: string;
 }>();
 
-provide(languageInjectionKey, props.lang ?? currentLang());
+// The island root sets the document's locale rather than providing it: `t()`
+// is called from 427 sites, most of them plain modules with no component
+// context to inject from. On the server the middleware scopes it per request
+// instead — see `utils/langScope.server.ts`.
+if (typeof window !== "undefined") setClientLang(props.lang);
 
 const isServer = typeof window === "undefined";
 

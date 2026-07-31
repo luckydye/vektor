@@ -209,8 +209,13 @@ describe("server document path", () => {
   }
 
   it("detects a frontend import when one is introduced", () => {
-    // Guards the walker itself: a root that legitimately imports Vue must be
-    // reported, otherwise the assertions above could pass vacuously.
-    expect(findViolations("src/utils/lang.ts").length).toBeGreaterThan(0);
+    // Guards the walker itself: a root that legitimately imports a frontend
+    // package must be reported, otherwise the assertions above could pass
+    // vacuously.
+    //
+    // This was `utils/lang.ts` until it stopped importing Vue — the fixture has
+    // to be something that keeps a frontend import on purpose, so it is now the
+    // Solid query binding, which survives the cutover that removes Vue.
+    expect(findViolations("src/composeables/query.solid.ts").length).toBeGreaterThan(0);
   });
 });
