@@ -29,7 +29,14 @@ import type { CanvasShape } from "./extensions/types.ts";
 /**
  * The canvas shell, as lit-html.
  *
- * Converted from `Canvas.vue`'s template (plan section 6). The mapping is
+ * Converted from `Canvas.vue`'s template (plan section 6). Note that
+ * `<canvas-presence-cursor>` takes `x`/`y`/`name`/`companion-id` as
+ * *attributes* — it declares them in `observedAttributes` and reads them with
+ * `getAttribute`. A lit `.x=` property binding sets a field it never looks at,
+ * which leaves every cursor at the origin and its cosmetic companion with
+ * nothing to follow.
+ *
+ * The mapping is otherwise
  * mechanical — `v-if` to a ternary, `:class` to `classMap`, `:style` to
  * `styleMap`, `ref="x"` to the `ref()` directive — with two places where it is
  * not, and both matter:
@@ -679,8 +686,8 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
                 hide-pointer
                 hide-label
                 companion-id=${view.cursorCompanion}
-                .x=${localPointer.x}
-                .y=${localPointer.y}
+                x=${localPointer.x}
+                y=${localPointer.y}
                 style=${styleMap({ "--presence-color": view.cursorColor })}
               ></canvas-presence-cursor>`
             : nothing
@@ -697,8 +704,8 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
               class=${classMap({ "is-instant": view.isCameraMoving })}
               name=${ifDefined(presence.user.name)}
               companion-id=${ifDefined(presence.user.appearance?.cursorCompanion ?? undefined)}
-              .x=${at.x}
-              .y=${at.y}
+              x=${at.x}
+              y=${at.y}
               style=${styleMap({
                 "--presence-color":
                   presence.state?.cursorColor ||

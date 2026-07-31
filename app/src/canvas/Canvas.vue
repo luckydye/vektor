@@ -86,7 +86,7 @@ function createCollaboration(options: {
   };
   scope.run(() => {
     watch(session.presenceProfiles, notify);
-    watch(() => appearance.cursorCompanion, notify);
+    watch(appearance, notify);
   });
 
   return {
@@ -96,7 +96,7 @@ function createCollaboration(options: {
     setupPresence: () => session.setupPresence(),
     updatePresence: () => session.updatePresence(),
     presenceProfiles: () => session.presenceProfiles.value,
-    appearance: () => appearance,
+    appearance: () => appearance.value,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -124,7 +124,7 @@ watchEffect(() => {
   // automatic, so presence matches the user's avatar.
   element.cursorcolor =
     cursorColorOverride.value ?? getAvatarColor(currentUser.value?.id);
-  element.cursorcompanion = appearance.cursorCompanion ?? null;
+  element.cursorcompanion = appearance.value.cursorCompanion ?? null;
   element.canedit = canEdit(currentSpace.value?.userRole);
   element.gridtype = documentData.value?.properties?.gridtype as string | undefined;
   element.documents = () => documents.value;
