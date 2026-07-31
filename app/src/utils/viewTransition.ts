@@ -27,14 +27,21 @@ type ViewTransitionDocument = Document & {
  * per document at a time; a second one interrupts the first and its change
  * lands unanimated, which under no-fallback is cosmetic rather than a bug.
  */
-export function withViewTransition(update: () => void | Promise<void>): void {
+/**
+ * Resolves when the transition is over, and **always resolves** — a skip is not
+ * an error here. Callers use it to know a transition is no longer in flight, so
+ * a rejection would leave them thinking one still is, forever.
+ */
+export async function withViewTransition(
+  update: () => void | Promise<void>,
+): Promise<void> {
   const doc = document as ViewTransitionDocument;
   const reducedMotion =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   if (!doc.startViewTransition || reducedMotion) {
-    void update();
+    await update();
     return;
   }
 
@@ -42,11 +49,11 @@ export function withViewTransition(update: () => void | Promise<void>): void {
 
   // A skipped transition rejects `ready` and `finished`, and only one runs per
   // document — so two lists updating in the same tick guarantees a rejection.
-  // Nothing here awaits either promise, so without these the skip surfaces as
-  // an unhandled "Transition was skipped" page error. The update itself has
-  // already been applied; a skip only costs the animation.
+  // Without these the skip surfaces as an unhandled "Transition was skipped"
+  // page error. The update itself has already been applied; a skip only costs
+  // the animation.
   transition?.ready?.catch(() => {});
-  transition?.finished?.catch(() => {});
+  await transition?.finished?.catch(() => {});
 }
 
 /**

@@ -112,7 +112,7 @@ const applyThemePreferenceWithTransition = (preference: ThemePreference) => {
     applyThemePreference(preference);
     await nextTick();
   };
-  withViewTransition(updateTheme);
+  void withViewTransition(updateTheme);
 };
 
 const setThemePreference = (preference: ThemePreference) => {

@@ -452,7 +452,10 @@ const recentActivity = computed(() => {
 
 // A View Transition so new entries push the existing ones down rather than
 // snapping — the FLIP move the old `move-class` provided.
-const visibleActivity = useViewTransitionList(() => recentActivity.value);
+const visibleActivity = useViewTransitionList(
+  () => recentActivity.value,
+  (activity) => activity.id,
+);
 
 // The script has one flat log stream; job messages include their job identifier.
 const allLogs = computed(() => {

@@ -69,7 +69,10 @@ const displayCollaborators = computed(() => collaborators.value.slice(0, props.m
 
 // Rendered through a View Transition so reordering avatars animates to their
 // new positions — a FLIP move, which CSS alone cannot do.
-const visibleAvatars = useViewTransitionList(() => displayCollaborators.value);
+const visibleAvatars = useViewTransitionList(
+  () => displayCollaborators.value,
+  (collaborator) => collaborator.key,
+);
 
 const remainingCount = computed(() => {
   return Math.max(0, collaborators.value.length - props.max);
@@ -78,7 +81,10 @@ const remainingCount = computed(() => {
 const actualCollaborators = computed(() =>
   collaborators.value.filter((collaborator) => collaborator.isCollaborator),
 );
-const visibleRows = useViewTransitionList(() => actualCollaborators.value);
+const visibleRows = useViewTransitionList(
+  () => actualCollaborators.value,
+  (collaborator) => collaborator.key,
+);
 </script>
 
 <template>
