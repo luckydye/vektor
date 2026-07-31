@@ -1,0 +1,35 @@
+/*
+ * Styles that used to live in a component's `<style>` block.
+ *
+ * Vue SFCs could carry CSS; a `.tsx` cannot, so the rules land here. The
+ * `scoped` ones are re-scoped by hand under a class the component still
+ * renders — `scoped` was doing real work for selectors like
+ * `.overflow-y-auto::-webkit-scrollbar`, which would restyle every scroll
+ * container on the page if it were let out.
+ */
+
+/* ── ExtensionView ──────────────────────────────────────────────────── */
+
+extension-view {
+  display: block;
+}
+
+/* ── Contributors ───────────────────────────────────────────────────── */
+
+a-popover-arrow {
+  z-index: 1;
+}
+
+.contributors-arrow {
+  margin: -4px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-neutral-10);
+  border-left: 1px solid var(--color-neutral-100);
+  border-top: 1px solid var(--color-neutral-100);
+  transform: rotate(45deg);
+}
+
+[data-placement="top"] .contributors-arrow {
+  transform: rotate(225deg);
+}

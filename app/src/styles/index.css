@@ -2,6 +2,7 @@
 
 @import "./theme.css";
 @import "./tooltip.css";
+@import "./components.css";
 @import "./print.css";
 /* Token colors for light-DOM code (the workflow editor). Documents get the same
    rules through editor/css/document.css, inside their shadow roots. */

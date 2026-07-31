@@ -28,6 +28,9 @@ declare module "solid-js" {
       showdelay?: string;
       name?: string;
       hidedelay?: string;
+      size?: string;
+      "asset-id"?: string | undefined;
+      "user-id"?: string | undefined;
     }
 
     interface IntrinsicElements {
@@ -54,6 +57,7 @@ declare module "solid-js" {
       "a-list": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
       "a-popover-trigger": CustomElementAttributes;
+      "a-popover-arrow": CustomElementAttributes;
       "vektor-avatar": CustomElementAttributes;
       "wiki-scroll": CustomElementAttributes;
     }
