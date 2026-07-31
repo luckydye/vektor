@@ -25,8 +25,8 @@ import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Contributors } from "./Contributors.tsx";
 import { DocumentShareDialog } from "./DocumentShareDialog.tsx";
 import { HeaderImageDialog } from "./HeaderImageDialog.tsx";
+import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
-import type { IconName } from "./iconMap.ts";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
 
