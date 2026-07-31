@@ -1,5 +1,5 @@
 // url=https://www.figma.com/design/c4xQJ4HS3Y2rpnziB7zd5W/Atrium-Design-System?node-id=1108-281&t=Z70Af6tzBnqxBU8W-4
-// source=src/components/MenuLink.vue
+// source=src/components/MenuLink.tsx
 // component=MenuLink
 import figma from "figma";
 
@@ -19,8 +19,8 @@ export default {
   href="#"
   text="${text}"
   icon="${icon}"
-  is-active="${isActive}"
+  isActive={${isActive}}
 />`,
-  imports: ['import MenuLink from "#components/MenuLink.vue";'],
+  imports: ['import { MenuLink } from "#components/MenuLink.tsx";'],
   id: "menu-link",
 };

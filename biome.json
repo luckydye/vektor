@@ -95,7 +95,6 @@
     },
     {
       "includes": [
-        "**/*.vue",
         "**/*.astro"
       ],
       "linter": {

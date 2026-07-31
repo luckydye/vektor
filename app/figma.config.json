@@ -9,7 +9,7 @@
       "node_modules/**"
     ],
     "parser": "html",
-    "label": "Vue",
+    "label": "Solid",
     "language": "html"
   }
 }
