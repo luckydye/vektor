@@ -42,11 +42,11 @@ function mount(Component: unknown, props: Props = {}) {
 }
 
 /**
- * Tier 1 contract specs for the dialog stack.
+ * Contract specs for the dialog stack.
  *
  * `Dialog` teleports its panel to `document.body`, so these query the document
  * rather than the render container — the teleport target is part of the
- * contract, and asserting it here means the port cannot quietly drop it.
+ * contract.
  */
 
 /** Dialog mounts through ClientOnly, which renders on mount rather than immediately. */

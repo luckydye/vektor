@@ -76,7 +76,7 @@ export const ExtensionView = Node.create({
         // extension frontend bundles, which only makes sense in the browser.
         // This node is part of `contentExtensions`, which the server builds to
         // (de)serialize documents — a static import would drag the manager (and
-        // its Vue dependencies) into the server for no reason.
+        // its framework dependencies) into the server for no reason.
         import("#extensions/manager.ts")
           .then(({ extensions }) =>
             extensions.renderInlineView(extensionId, routePath, dom),

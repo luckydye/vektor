@@ -7,8 +7,8 @@ import { withViewTransition } from "#utils/viewTransition.ts";
  * A View Transition snapshots the DOM, runs its callback, then snapshots again —
  * so the DOM has to reach its new state *inside* the callback. This keeps a
  * mirror of the source and moves it forward inside the transition. Solid
- * applies a signal write synchronously, so unlike the Vue original there is no
- * tick to await: by the time the setter returns, the DOM is in its new state.
+ * applies a signal write synchronously, so there is no tick to await: by the
+ * time the setter returns, the DOM is in its new state.
  *
  * Render from the returned accessor, not from the source.
  *

@@ -20,12 +20,11 @@ function normalizeLang(lang: string): string {
 /**
  * How the ambient locale is found, installed by whoever owns request scope.
  *
- * This module used to reach into Vue's `inject`, which made it a framework
- * import on a path `test/server-frontend-imports.spec.ts` polices. A plain
- * module-level variable was tried instead and **measured wrong**: with sixty
+ * A plain module-level variable was tried and **measured wrong**: with sixty
  * concurrent renders in mixed locales, 26 came out in the wrong language,
  * because one request's locale lands in the middle of another's render. The
- * `inject` was not framework tax — it was what made the locale request-scoped.
+ * locale has to be request-scoped, and this module cannot import the machinery
+ * that scopes it — `test/server-frontend-imports.spec.ts` polices this path.
  *
  * So the scoping mechanism is injected rather than assumed:
  *

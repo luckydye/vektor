@@ -386,7 +386,7 @@
  * with the element's own classes, which are variously flex or block.
  *
  * Where a browser supports neither, the element simply appears and disappears.
- * That is the accepted outcome (plan §5): no fallback, no polyfill.
+ * That is the accepted outcome: no fallback, no polyfill.
  */
 @utility overlay-fade {
   opacity: 1;

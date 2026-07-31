@@ -16,7 +16,7 @@ import { history } from "#utils/history.ts";
 import { spacePath } from "#utils/utils.ts";
 
 type HistoryEntry = { url: string; lastVisited: number };
-// biome-ignore lint/suspicious/noExplicitAny: documents are untyped at this layer, as in the Vue original.
+// biome-ignore lint/suspicious/noExplicitAny: documents are untyped at this layer.
 type Doc = any;
 type Result =
   | { type: "document"; data: Doc; id?: undefined }

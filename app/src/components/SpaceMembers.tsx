@@ -496,9 +496,7 @@ export function SpaceMembers() {
     // Can't remove yourself
     if (memberId === me.id) return false;
 
-    // Can't remove the original space owner. `Space` spells that `createdBy`;
-    // the Vue original read `space.userId`, which does not exist on the type —
-    // so both of these checks were dead, and every owner looked removable.
+    // Can't remove the original space owner. `Space` spells that `createdBy`.
     if (perm.permission.permission === "owner" && space.createdBy === memberId) {
       return false;
     }
@@ -824,7 +822,7 @@ export function SpaceMembers() {
 
       {/* Add Member Modal */}
       <Show when={showAddMember()}>
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal, matching the Vue original. */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: the Cancel button is the keyboard path. */}
         <div
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"

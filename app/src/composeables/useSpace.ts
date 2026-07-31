@@ -10,8 +10,7 @@ export type { MaybeAccessor };
 /**
  * The space the shell has routed to.
  *
- * Replaces Vue's `provide("space:activeId", …)` from `SpaceApp.vue`. Context
- * rather than a module-level signal because a server render handles several
+ * Context rather than a module-level signal because a server render handles several
  * requests at once, and a module singleton would leak one request's space into
  * another's markup.
  */

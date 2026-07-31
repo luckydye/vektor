@@ -13,7 +13,7 @@ import { useSpace } from "./useSpace.ts";
 export type { ExtensionInfo, ExtensionRoute, ExtensionRouteMenuItem };
 
 /**
- * Vue composable for managing extensions
+ * Composable for managing extensions
  *
  * Usage:
  * ```ts

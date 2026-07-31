@@ -14,7 +14,6 @@ interface Props {
   orientation?: "landscape" | "portrait";
   /** Aspect ratio (width / height) used to size the portrait column. */
   aspectRatio?: number | null;
-  /** Vue let `class` fall through to the root; Solid needs it declared. */
   class?: string;
 }
 

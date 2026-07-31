@@ -12,7 +12,7 @@ import { setLangResolver } from "./lang.ts";
  * the first is still rendering, and a shared variable produced 26 wrong-locale
  * renders out of 60 when this was measured. Storage keyed to the async context
  * gives each request its own value with no framework involved, which is the
- * point — the previous mechanism was Vue's `inject`.
+ * point.
  */
 const storage = new AsyncLocalStorage<string>();
 

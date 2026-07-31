@@ -7,8 +7,7 @@ import { DataTable } from "#components/DataTable.tsx";
  *
  * `test/xlsx.spec.ts` proves the workbook bytes are right, and the visual
  * suite never reaches this UI — it only renders inside a workflow run's
- * results. What is left unverified in between is the wiring the port could
- * break: the toolbar button opening the dialog, and the dialog's confirm
+ * results. What is left unverified in between is the wiring: the toolbar button opening the dialog, and the dialog's confirm
  * reaching `downloadExcelSheets` with the configured columns.
  */
 

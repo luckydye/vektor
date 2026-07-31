@@ -35,7 +35,6 @@ interface Props {
   emptyText?: string;
   showToolbar?: boolean;
   preserveOrder?: boolean;
-  /** Vue's scoped slots; a render prop is Solid's spelling of the same thing. */
   batchActions?: (selectedIds: Set<string>, deselectAll: () => void) => JSX.Element;
   rowActions?: (doc: DocumentWithProperties) => JSX.Element;
 }

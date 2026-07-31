@@ -4,14 +4,7 @@
  * Entries, key hashing, freshness, in-flight de-duplication, invalidation and
  * subscriber notification. A framework binding sits on top and turns
  * `observers` into whatever that framework calls reactive state — see
- * `query.ts` for the Vue one.
- *
- * Split out for the Solid migration (plan §0, Phase 3), but the reason it is a
- * clean split is that the notification boundary already existed: every mutation
- * here ended with an explicit `notify(entry)` even when the entry held Vue refs,
- * and `useQuery` already kept its own refs and copied across on notify. The
- * refs inside the entry were never the channel, so removing them changes
- * nothing about when observers run.
+ * `query.ts`.
  *
  * Keys arrive already resolved to plain values. Unwrapping a framework's
  * reactive boxes is the binding's job, which is what keeps this file — and so

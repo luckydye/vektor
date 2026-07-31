@@ -28,7 +28,7 @@ export type PendingAttachment = {
   previewUrl?: string;
 };
 
-/** Vue's `defineExpose`, as a callback prop (plan §10). */
+/** Imperative handle, handed back through the `ref` prop. */
 export interface MessageInputHandle {
   focus: () => void;
   clearAttachments: () => void;
@@ -38,7 +38,7 @@ export interface MessageInputHandle {
 }
 
 interface Props {
-  /** Two-way bound value. Solid spells this `value` + `onInput` (plan §10). */
+  /** Two-way bound value. */
   value: string;
   onInput?: (value: string) => void;
   onSubmit?: () => void;
@@ -61,7 +61,6 @@ interface Props {
   inlineDocumentReferences?: boolean;
   spaceId?: string;
   documentId?: string;
-  /** Vue's named slots. */
   left?: JSX.Element;
   actions?: JSX.Element;
   below?: JSX.Element;

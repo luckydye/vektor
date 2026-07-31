@@ -80,7 +80,6 @@ export { default as underlineIcon } from "#assets/icons/underline.svg?raw";
 export { default as undoIcon } from "#assets/icons/undo.svg?raw";
 export { default as uploadFileIcon } from "#assets/icons/upload-file.svg?raw";
 export { default as videoIcon } from "#assets/icons/video.svg?raw";
-// Icons extracted from inline SVGs
 export { default as addIcon } from "./icons/add.svg?raw";
 export { default as alertCircleIcon } from "./icons/alert-circle.svg?raw";
 export { default as archiveBoxIcon } from "./icons/archive.svg?raw";

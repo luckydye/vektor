@@ -74,7 +74,7 @@ export function RevisionsSidebar(props: Props) {
   const [publishedRev, setPublishedRev] = createSignal<number | null>(null);
   const [isPublishing, setIsPublishing] = createSignal(false);
   // Tracked but not rendered here: RevisionView owns the banner. Kept so the
-  // close handler can clear it, matching the Vue original.
+  // close handler can clear it.
   const [, setSelectedRevisionNumber] = createSignal<number | null>(null);
 
   const { toggle: toggleWindow, windows } = useDockedWindows();

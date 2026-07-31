@@ -26,11 +26,10 @@ import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 
 /**
- * Vue's `defineExpose`, as a callback prop (plan §10).
+ * Imperative handle, handed back through the `ref` prop.
  *
- * `isEditMode` is a getter so a parent reads it as a value, the way Vue's
- * exposed proxy unwrapped the ref. It stays reactive: the getter reads the
- * signal when the parent reads the property.
+ * `isEditMode` is a getter so a parent reads it as a value. It stays reactive:
+ * the getter reads the signal when the parent reads the property.
  */
 export interface DocumentTreeHandle {
   readonly isEditMode: boolean;

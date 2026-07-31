@@ -12,7 +12,6 @@ import docStyles from "#editor/css/document.css?inline";
 
 interface Props {
   html: string;
-  /** Vue let `class` fall through to the root; Solid needs it declared. */
   class?: string;
 }
 

@@ -3,7 +3,7 @@ import { normalizeTimestamp } from "#utils/utils.ts";
 
 /**
  * Localized date/time rendering. Kept out of `utils.ts` because `currentLang()`
- * reaches the language catalogues (and, through them, the Vue injection seam),
+ * reaches the language catalogues (and, through them, the locale-scope seam),
  * while `utils.ts` is imported by server code on the document/serialization
  * path — see `test/server-frontend-imports.spec.ts`. Timestamp *parsing*
  * (`normalizeTimestamp`) stays in `utils.ts`: it needs no locale.

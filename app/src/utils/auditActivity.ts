@@ -1,6 +1,6 @@
 /**
  * Shared helpers for rendering audit-log / activity entries.
- * Used by activity feed components and RevisionsSidebar.vue.
+ * Used by activity feed components and the revisions sidebar.
  */
 
 import type { AuditLog } from "#api/client.ts";

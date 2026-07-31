@@ -22,8 +22,8 @@ export function DockedWindowLayout() {
       : 0,
   );
 
-  // `createEffect` rather than `on(...)`: the Vue watch was `{ immediate: true }`,
-  // so the insets have to be written on the first run too.
+  // `createEffect` rather than `on(...)`: the insets have to be written on the
+  // first run too.
   createEffect(() => setDockInsets(leftDock(), rightDock()));
 
   return <div class="hidden" aria-hidden="true" />;

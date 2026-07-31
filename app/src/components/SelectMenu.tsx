@@ -9,7 +9,7 @@ export interface SelectMenuItem {
 
 interface Props {
   items?: SelectMenuItem[];
-  /** Two-way bound value. Solid spells this `value` + `onInput` (plan §10). */
+  /** Two-way bound value. */
   value?: string | string[] | null;
   onInput?: (value: string) => void;
   onSelect?: (item: SelectMenuItem) => void;

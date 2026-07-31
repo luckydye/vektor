@@ -10,10 +10,10 @@ import { subpathImports } from "./helpers/subpathImports.ts";
  * (de)serialize documents — on the main thread and inside every serialization
  * pool worker. Editor extensions are shared with the client, so it is very easy
  * for one to statically import a browser-only rendering library (a lit node
- * view, a Vue composable) and drag the whole framework into the server process
- * for no benefit. That happened with lit-html (via `HtmlBlock`) and with the
- * Vue runtime *and compiler* (via `useUploads`, the extension manager, the
- * editor keymap's `useEditor` refs, and `lang.ts`'s injected locale).
+ * view, a composable) and drag the whole framework into the server process for
+ * no benefit. That has happened with lit-html (via `HtmlBlock`) and with the
+ * component runtime (via `useUploads`, the extension manager, the editor
+ * keymap's `useEditor`, and `lang.ts`'s injected locale).
  *
  * Client behaviour belongs in a separate module that the client injects — see
  * `HtmlBlockNodeView.ts` and `editSession.ts` — or behind a
@@ -21,7 +21,7 @@ import { subpathImports } from "./helpers/subpathImports.ts";
  * of the server's *static* graph, which is what this test walks.
  *
  * Scope is deliberately the document/serialization path, not the whole server:
- * Astro server-renders Vue components, so `server.ts` legitimately loads Vue.
+ * Astro server-renders components, so `server.ts` legitimately loads Solid.
  */
 
 const APP_ROOT = resolve(import.meta.dirname, "..");
@@ -35,10 +35,8 @@ const FRONTEND_PACKAGES = [
   "lit-element",
   "@lit",
   "@lit-labs",
-  // Added before any Solid exists, so the first import that would breach the
-  // boundary fails here rather than being discovered at cutover. `solid-js`
-  // covers its subpaths (`solid-js/web`, `solid-js/store`) via the prefix match
-  // in `forbiddenPackage`, and `@solidjs` covers the router.
+  // `solid-js` covers its subpaths (`solid-js/web`, `solid-js/store`) via the
+  // prefix match in `forbiddenPackage`, and `@solidjs` covers the router.
   "solid-js",
   "@solidjs",
 ];
@@ -212,10 +210,7 @@ describe("server document path", () => {
     // Guards the walker itself: a root that legitimately imports a frontend
     // package must be reported, otherwise the assertions above could pass
     // vacuously.
-    //
-    // This was `utils/lang.ts` until it stopped importing Vue — the fixture has
-    // to be something that keeps a frontend import on purpose, so it is now the
-    // Solid query binding, which survives the cutover that removes Vue.
+    // The fixture has to be a module that keeps a frontend import on purpose.
     expect(findViolations("src/composeables/query.ts").length).toBeGreaterThan(0);
   });
 });

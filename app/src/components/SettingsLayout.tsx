@@ -9,9 +9,8 @@ interface Tab {
 interface Props {
   tabs: readonly Tab[];
   initialTab?: string;
-  /** Panel content by tab id — Vue's named slots. */
+  /** Panel content by tab id. */
   panels: Record<string, () => JSX.Element>;
-  /** Vue let `class` fall through to the root; Solid needs it declared. */
   class?: string;
   onTabChange?: (id: string) => void;
 }

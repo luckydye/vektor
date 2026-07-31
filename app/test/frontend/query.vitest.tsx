@@ -11,7 +11,7 @@ import {
 } from "#composeables/query.ts";
 
 /**
- * The Solid port of `query.spec.ts`, test for test.
+ * Contract specs for the query binding.
  *
  * Runs under vitest, not `bun test`, and that is not a style choice: bun
  * resolves `solid-js` to its server build, where `createMemo` computes once and
@@ -20,18 +20,8 @@ import {
  * the browser/development conditions, so the client runtime is what gets
  * tested.
  *
- * Kept as a separate file rather than a parameterised one: the two bindings
- * only coexist until the cutover, when `query.ts` and its spec are deleted and
- * this becomes the only one. Same names and same order as the Vue spec so the
- * two can be read side by side.
- *
- * Two differences are inherent to Solid and not choices:
- *
- * - `effectScope()` becomes `createRoot(dispose => …)`. Disposing the root is
- *   what unregisters observers, the same job `scope.stop()` did.
- * - A reactive key is `() => [...]` rather than a `computed`, and reactive
- *   values are read with `signal()` rather than `.value`. See the binding for
- *   why the whole key is the accessor rather than its parts.
+ * Specs run inside `createRoot(dispose => …)`; disposing the root is what
+ * unregisters observers.
  */
 
 const wait = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));

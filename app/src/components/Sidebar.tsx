@@ -370,9 +370,9 @@ export function Sidebar(props: Props) {
   });
 
   onCleanup(() => {
-    // Solid runs cleanup when it disposes the *server* render tree too, unlike
-    // Vue's `onUnmounted`, which never fires during SSR. Everything below is
-    // browser teardown, and reaching `window` here crashed the render.
+    // Solid runs cleanup when it disposes the *server* render tree too.
+    // Everything below is browser teardown, and reaching `window` during SSR
+    // crashes the render.
     if (isServer) return;
 
     window.removeEventListener("resize", closeMobileDrawerOnDesktop);

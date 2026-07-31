@@ -105,8 +105,7 @@ export function useCursorPagedList<T>(
   // search term — so the reader never lands on a cursor from another list.
   //
   // Compared by hash rather than identity: the key is usually rebuilt inline on
-  // every read, so identity always differs. `defer` skips the initial run,
-  // which is what Vue's non-immediate `watch` gave.
+  // every read, so identity always differs. `defer` skips the initial run.
   // A memo, because `on` re-runs its body whenever a tracked dependency
   // notifies and never compares the value it read. The memo is what turns
   // "the key was rebuilt" into "the key actually changed".

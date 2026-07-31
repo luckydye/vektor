@@ -166,7 +166,7 @@ if (
       // element can be reused for a canvas text node.
       // NOTE: these read the attributes rather than being named `variant` /
       // `standalone`. A getter named after the attribute would make
-      // `"variant" in el` true, so Vue's DOM runtime sets it as a (setter-less)
+      // `"variant" in el` true, so a renderer sets it as a (setter-less)
       // property instead of an attribute — silently dropping it.
       private get isCanvasVariant(): boolean {
         return this.getAttribute("variant") === "canvas";

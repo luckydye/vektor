@@ -311,7 +311,7 @@ export function DataTable(props: Props) {
             <tr class="bg-neutral-50 text-left">
               <For each={columns()}>
                 {(col) => (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: a <th> is the sort control here, matching the Vue original.
+                  // biome-ignore lint/a11y/noStaticElementInteractions: a <th> is the sort control here.
                   // biome-ignore lint/a11y/useKeyWithClickEvents: sorting is a pointer affordance on this table.
                   <th
                     class="relative cursor-pointer select-none overflow-hidden whitespace-nowrap border-neutral-100 border-b px-4 py-2 font-medium text-neutral-500 text-size-small uppercase tracking-wide hover:text-neutral-700"

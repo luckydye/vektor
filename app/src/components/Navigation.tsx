@@ -23,7 +23,7 @@ import { UserProfile } from "./UserProfile.tsx";
 export function Navigation() {
   const navigate = useNavigate();
   // The tree owns rearrange mode; the header button reads and toggles it
-  // through the handle, which is Solid's spelling of Vue's template ref.
+  // through the handle.
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
   const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();

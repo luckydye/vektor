@@ -63,8 +63,8 @@ async function uploadFile(
 ): Promise<string> {
   // Loaded on demand: uploading only ever happens in the browser, and this
   // extension is part of `contentExtensions`, which the server builds to
-  // (de)serialize documents. A static import would pull the Vue runtime into
-  // the server (and every serialization worker) just to build a schema.
+  // (de)serialize documents. A static import would pull the framework runtime
+  // into the server (and every serialization worker) just to build a schema.
   const { useUploads } = await import("#composeables/useUploads.ts");
   // The editor owns the inline placeholder; the manager owns all toasts,
   // including the error one — a failed upload must never leave text behind

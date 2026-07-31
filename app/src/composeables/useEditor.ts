@@ -35,7 +35,7 @@ export const [cancelCount, setCancelCount] = createSignal(0);
 
 // The editor keymap handles Escape inside its shadow-DOM contenteditable, but
 // the extension that owns that keymap is also built on the server to derive the
-// document schema — so it must not import Vue. Register the behaviour from this
+// document schema — so it must not import a framework. Register it from this
 // (client-only) module instead; on the server no handler is ever registered and
 // Escape simply falls through. See `#editor/editSession.ts`.
 setEditSessionCancelHandler(() => {

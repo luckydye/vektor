@@ -19,7 +19,7 @@ import {
 } from "#composeables/useComments.ts";
 import { CommentThread, type Comment as CommentThreadType } from "./CommentThread.tsx";
 
-/** Vue's `defineExpose`, as a callback prop (plan §10). */
+/** Imperative handle, handed back through the `ref` prop. */
 export interface CommentBubbleHandle {
   commentsForOverlays: () => Array<{
     id: string;

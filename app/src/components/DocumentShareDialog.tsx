@@ -311,8 +311,7 @@ export function DocumentShareDialog(props: Props) {
   function canRemoveSpaceMember(perm: PermissionEntry): boolean {
     if (!userIsOwner()) return false;
     if (isSelf(perm)) return false;
-    // The space owner is `createdBy`; the Vue original read `currentSpace.userId`,
-    // which does not exist on `Space`, so this guard never fired.
+    // The space owner is `createdBy`.
     if (
       perm.permission.permission === "owner" &&
       currentSpace()?.createdBy === perm.permission.userId

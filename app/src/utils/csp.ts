@@ -12,11 +12,11 @@
  *
  * Notes / limitations:
  *  - `script-src` needs `'unsafe-inline'` because Astro's astro-island
- *    hydration bootstrap (per-page `<script>` that wires the Vue islands)
+ *    hydration bootstrap (per-page `<script>` that wires the islands)
  *    and `maps.astro`'s inline module script are inlined into the
  *    document. Inline handlers (`<img onerror>…`) therefore STILL
  *    execute under this policy. Until per-request nonces (or hashed
- *    inline scripts) are plumbed end-to-end through Astro + Vue, this
+ *    inline scripts) are plumbed end-to-end through Astro, this
  *    policy is defence-in-depth against cross-origin exfiltration /
  *    resource loading, NOT a full XSS fix.
  *  - `connect-src` is closed down to same-origin + the AI providers the

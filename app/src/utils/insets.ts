@@ -19,8 +19,8 @@
 // Consumption:
 //   • <inset-view> custom element — self-subscribes on connectedCallback,
 //     unsubscribes on disconnectedCallback. No scanning or timing required.
-//   • Vue components: call `bindInsets(el)` / `onInsets(cb)` in `onMounted`
-//     and invoke the returned unsubscribe in `onUnmounted`.
+//   • components: call `bindInsets(el)` / `onInsets(cb)` in `onMount` and
+//     invoke the returned unsubscribe in `onCleanup`.
 
 const SIDEBAR_STORAGE_KEY = "sidebar-width";
 const DEFAULT_SIDEBAR = 280;

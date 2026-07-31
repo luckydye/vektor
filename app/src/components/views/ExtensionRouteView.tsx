@@ -10,9 +10,8 @@ export function ExtensionRouteView() {
   const { extensions } = useExtensions();
   const params = useParams();
 
-  // vue-router's `pathMatch` array is a single wildcard string here. The splat
-  // is named in the route (`/x/*extensionPath`) because an unnamed `*` matches
-  // the path without capturing it, which left this empty and rendered nothing.
+  // The splat is named in the route (`/x/*extensionPath`) because an unnamed
+  // `*` matches the path without capturing it, leaving this empty.
   const routePath = createMemo(() => params.extensionPath ?? "");
 
   const match = createMemo(() => {

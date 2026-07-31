@@ -18,7 +18,7 @@ import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 
 /**
- * Vue's `defineExpose`, as a callback prop (plan §10).
+ * Imperative handle, handed back through the `ref` prop.
  *
  * The panel drives scrolling — it knows when a send or a stream chunk happened —
  * but this component owns the scroll container, so it hands out the verbs.

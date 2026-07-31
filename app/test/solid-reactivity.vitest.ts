@@ -9,9 +9,7 @@ import { describe, expect, it } from "vitest";
  * In Solid, `props` is a proxy whose getters *are* the subscription. Reading a
  * value out of it — by destructuring, or into a local — takes the value once
  * and unsubscribes forever. The component still renders, still type-checks, and
- * simply stops updating. It is the dominant Solid migration bug, and with a
- * single-cutover branch these accumulate unobserved, so they are worth catching
- * at the source level.
+ * simply stops updating, so it is worth catching at the source level.
  *
  * A source scan rather than ESLint, following the precedent
  * `server-frontend-imports.spec.ts` sets: same runner, same `task test`, no

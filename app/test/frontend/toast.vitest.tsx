@@ -4,7 +4,7 @@ import { ToastContainer } from "#components/ToastContainer.tsx";
 import { useToast } from "#composeables/useToast.ts";
 
 /**
- * The one behavioural test the transition work needs (plan section 5.3).
+ * The one behavioural test the toast transitions need.
  *
  * The animation is decorative and deliberately untested. The *removal* is not:
  * `animation.finished` rejects when an animation is cancelled, and if that

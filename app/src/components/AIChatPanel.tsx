@@ -297,10 +297,8 @@ export function AIChatPanel(props: Props) {
     loadUIState();
   });
 
-  // The Vue original also cancelled `scrollAnimationFrame` and
-  // `clearCopiedAssistantMessageTimer` here — neither of which is declared in
-  // this component. Unmounting the panel threw a ReferenceError. Both timers
-  // belong to AIChatMessages, which already clears them on its own cleanup.
+  // The scroll and copied-message timers belong to AIChatMessages, which
+  // clears them on its own cleanup.
   onCleanup(() => {
     Actions.unregister("ai-chat:toggle");
   });

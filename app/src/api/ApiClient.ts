@@ -289,10 +289,7 @@ export interface AccessToken {
 /**
  * One row of the ACL as the permissions endpoint returns it.
  *
- * The response was previously typed `permission: string`, which is the column
- * name, not the payload — the endpoint sends the whole `AclEntry`. Nothing
- * caught it because every reader was a `.vue` file, and `tsc` does not look
- * inside those.
+ * Note this is the whole `AclEntry`, not the `permission` column alone.
  */
 export interface PermissionEntry {
   type: "role" | "feature";

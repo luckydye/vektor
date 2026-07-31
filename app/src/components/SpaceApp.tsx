@@ -205,9 +205,9 @@ export function SpaceApp(props: Props) {
     "--inset-left": `${initialSidebarWidth}px`,
   }));
 
-  // Provided here, as Vue's `SpaceApp.vue` did. The writer is `DocumentPageView`
-  // and the readers are both under it (`DocumentActions`) and beside it in the
-  // shell (`AIChatPanel`), so the only scope that covers everyone is this one.
+  // Provided at this level because the writer is `DocumentPageView` and the
+  // readers are both under it (`DocumentActions`) and beside it in the shell
+  // (`AIChatPanel`), so this is the only scope that covers everyone.
   const documentContext = provideDocumentContext();
 
   const Shell = (shellProps: { children?: unknown }) => (

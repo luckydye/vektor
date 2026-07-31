@@ -18,7 +18,6 @@ interface Props {
   entries: AuditLog[];
   getUserName: (userId?: string | null) => string;
   getUser?: (userId?: string | null) => DisplayUser | undefined;
-  /** Vue's scoped slots; a render prop is Solid's spelling of the same thing. */
   headerActions?: (items: AuditLog[]) => JSX.Element;
   entryActions?: (entry: AuditLog) => JSX.Element;
 }

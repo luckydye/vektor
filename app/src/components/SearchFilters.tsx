@@ -7,7 +7,7 @@ import "@atrium-ui/elements/popover";
 
 interface Props {
   spaceId: string;
-  /** Two-way bound value. Solid spells this `value` + `onInput` (plan §10). */
+  /** Two-way bound value. */
   value: PropertyFilter[];
   onInput?: (filters: PropertyFilter[]) => void;
   onSearch?: () => void;

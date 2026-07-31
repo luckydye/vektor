@@ -9,7 +9,7 @@ import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
  * Space preference keys holding the AI provider config. The provider config is
  * editor-only, but the agent itself is usable by viewers, so the client also
  * checks `ai:provider` / `ai:model` on the space payload it already has
- * (`Space.preferences`) — see `AIChatPanel.vue`. Keep the literals in sync;
+ * (`Space.preferences`) — see `AIChatPanel.tsx`. Keep the literals in sync;
  * they cannot be shared from here without pulling the space DB into the bundle.
  */
 const AI_PROVIDER_KEY = "ai:provider";

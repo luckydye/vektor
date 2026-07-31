@@ -33,9 +33,8 @@ function saveState(id: string, state: DockedWindowState) {
  * in the app, and the layout components render whatever is registered. Browser
  * only — it reads `localStorage` — so there is no SSR isolation concern.
  *
- * The map is replaced rather than mutated on every write. `Map.set` is
- * invisible to a signal, which is the same reason the Vue version reassigned
- * `windows.value` after each `set`.
+ * The map is replaced rather than mutated on every write: `Map.set` is
+ * invisible to a signal.
  */
 const [windows, setWindows] = createSignal(new Map<string, DockedWindowState>());
 

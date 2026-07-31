@@ -40,10 +40,9 @@ export type CollaborationSession<TPresenceState = unknown> = ReturnType<
 /**
  * The session for the subtree below a provider.
  *
- * Vue's `provide`/`inject` becomes a context. The module-level fallback stays
- * for the same reason it existed before: `useActiveCollaboration` is read from
- * places that sit outside the provider — the canvas host among them — and
- * those need the current session without one.
+ * The module-level fallback exists because `useActiveCollaboration` is read
+ * from places that sit outside the provider — the canvas host among them —
+ * and those need the current session without one.
  */
 export const CollaborationContext = createContext<CollaborationSession | null>(null);
 const [activeCollaboration, setActiveCollaboration] =
@@ -166,11 +165,11 @@ export function useActiveCollaboration(): Accessor<CollaborationSession | null> 
 /**
  * A collaboration session.
  *
- * Usable from a Vue component, where it cleans itself up on unmount, and from
+ * Usable from a component, where it cleans itself up on disposal, and from
  * outside one, where the caller owns `dispose()`. The canvas needs the second
- * form: its inline document editor is a plain custom element, and a composable
- * that only tidies up via `onUnmounted` would leak its room membership and its
- * `pagehide`/`beforeunload` listeners there.
+ * form: its inline document editor is a plain custom element that would
+ * otherwise leak its room membership and its `pagehide`/`beforeunload`
+ * listeners.
  */
 export function useCollaboration<TPresenceState>(options: {
   spaceId: string;
@@ -394,9 +393,7 @@ export function useCollaboration<TPresenceState>(options: {
   }
 
   // Solid's owner handles this: inside a component or a `createRoot`, cleanup
-  // runs on disposal, and the canvas host owns its own root. The Vue version
-  // needed a `getCurrentInstance()` guard because `onUnmounted` silently did
-  // nothing outside a component and the session outlived its creator.
+  // runs on disposal, and the canvas host owns its own root.
   onCleanup(dispose);
 
   return {

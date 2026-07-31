@@ -4,8 +4,8 @@
    a document, in a comment and in a chat message. The selectors target the
    custom element tags only, which makes the rules safe to load globally.
 
-   Plain CSS on purpose: this file is also imported from Vue SFCs, which have no
-   Tailwind `@reference` context for `@apply`. */
+   Plain CSS on purpose: imported from contexts with no Tailwind `@reference`
+   context for `@apply`. */
 
 user-mention,
 document-mention {

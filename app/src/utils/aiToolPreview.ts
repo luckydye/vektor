@@ -6,7 +6,7 @@ import type { UIMessage } from "#composeables/useChatSessions.ts";
  *
  * Pure and framework-free: every function here takes the message (and, where a
  * result has to be traced back to its call, the conversation) and returns a
- * string. Nothing reads reactive state, so this survives the Solid port as-is.
+ * string. Nothing reads reactive state.
  */
 
 export function parseToolArguments(content: string): Record<string, unknown> | null {

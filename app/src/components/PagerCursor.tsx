@@ -6,7 +6,6 @@ interface Props {
   disabled?: boolean;
   /** Keep the (disabled) buttons visible when there is only one page. */
   alwaysVisible?: boolean;
-  /** Vue let `class` fall through to the root; Solid needs it declared. */
   class?: string;
   onPrev?: () => void;
   onNext?: () => void;

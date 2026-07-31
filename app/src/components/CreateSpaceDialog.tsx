@@ -103,7 +103,7 @@ export function CreateSpaceDialog(props: Props) {
   }
 
   // Clear the form when the dialog closes, so reopening never shows the last
-  // attempt. `on(..., { defer: true })` matches the non-immediate Vue watch.
+  // attempt.
   createEffect(
     on(
       () => props.show,

@@ -1,6 +1,6 @@
 @media print {
   /*
-   * Keep the app shell's ancestors visible. Astro wraps the Vue app in an
+   * Keep the app shell's ancestors visible. Astro wraps the app in an
    * <astro-island>; hiding it also hides .main-content and therefore the
    * document, even though .main-content itself is excluded below.
    */

@@ -4,11 +4,10 @@ import { QueryClient, setFallbackQueryClient } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 
 /**
- * The two pagination shapes (plan section 3.5). They are not duplicates and
- * both get ported, so both need a contract: a **pager** replaces the visible
- * page and can go back; an **infinite query** accumulates and only moves
- * forward. Nothing else covers them, and they are composables rather than
- * components, so they run inside a throwaway host.
+ * The two pagination shapes. They are not duplicates: a **pager** replaces the
+ * visible page and can go back; an **infinite query** accumulates and only
+ * moves forward. They are composables rather than components, so they run
+ * inside a throwaway host.
  */
 
 const hosts: Array<() => void> = [];
@@ -34,14 +33,6 @@ function pagedFetcher() {
   );
 }
 
-/**
- * The three pager guarantees.
- *
- * This file held a Vue block making the same assertions, so the two could be
- * read side by side as the before/after check. The cutover removed it, as that
- * comment said it would; the infinite-query half it also covered lives on in
- * `query.vitest.tsx`.
- */
 function runInRoot<T>(setup: () => T): T {
   let result!: T;
   const dispose = solidCreateRoot((disposeRoot) => {

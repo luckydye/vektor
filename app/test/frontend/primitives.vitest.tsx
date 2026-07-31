@@ -43,11 +43,10 @@ function mount(Component: unknown, props: Props = {}) {
 }
 
 /**
- * Tier 1 contract specs for the display primitives.
+ * Contract specs for the display primitives.
  *
  * Assertions are on rendered DOM only — role, text, attributes, and what a
- * click actually causes. Nothing here inspects component instances or Vue's
- * emit machinery, because those are precisely what the port replaces.
+ * click actually causes. Nothing here inspects component internals.
  */
 
 describe("Button", () => {

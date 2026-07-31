@@ -3,8 +3,8 @@
  *
  * Prism is loaded lazily for two reasons: the core bundle plus grammars is
  * sizeable, and Prism auto-highlights every `code[class*="language-"]` in the
- * page the moment its module body runs — which would rewrite markup Vue and
- * ProseMirror own. The `manual` flag is read while that module body executes,
+ * page the moment its module body runs — which would rewrite markup the app
+ * and ProseMirror own. The `manual` flag is read while that module body executes,
  * so the import has to stay dynamic to guarantee the flag is set first.
  *
  * Grammars beyond Prism's core bundle (markup, css, clike, javascript) are

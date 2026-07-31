@@ -11,17 +11,13 @@ interface Props {
     isDragging: () => boolean;
     openPicker: () => void;
   }) => JSX.Element;
-  /** Vue let `class` fall through to the root; Solid needs it declared. */
   class?: string;
   /**
-   * Vue's `defineExpose`, as a callback prop (plan §10).
+   * Imperative handle, handed back through the `ref` prop.
    *
-   * `isDragging` is a getter, not an accessor: Vue's exposed proxy unwrapped
-   * refs, so a parent read it as a value, and it stays reactive here because
-   * the getter reads the signal at the point of use. `openPicker` is an action
-   * and stays a function — which is also why this cannot be a blanket
-   * "unwrap every zero-arg function" rule in the test adapter: the two are
-   * indistinguishable by arity.
+   * `isDragging` is a getter, not an accessor: a parent reads it as a value,
+   * and it stays reactive because the getter reads the signal at the point of
+   * use. `openPicker` is an action and stays a function.
    */
   ref?: (handle: { readonly isDragging: boolean; openPicker: () => void }) => void;
 }

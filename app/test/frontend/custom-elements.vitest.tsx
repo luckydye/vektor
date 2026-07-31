@@ -57,8 +57,8 @@ function mount(node: () => unknown): HTMLElement {
 
 describe("custom element binding namespaces", () => {
   it("an un-namespaced dynamic attribute is dropped entirely", () => {
-    // Not "set as a property" and not "set as an attribute" — gone. This is
-    // what silently unhooked every page-target and avatar in the port.
+    // Not "set as a property" and not "set as an attribute" — gone. This
+    // silently unhooks every page-target and avatar.
     const value = () => "doc_1";
     const host = mount(() => <test-attr-only data-document-id={value()} />);
     const el = host.firstElementChild as HTMLElement;

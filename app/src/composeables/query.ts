@@ -23,25 +23,20 @@ import {
 /**
  * The Solid binding over `queryCore.ts`.
  *
- * Same shape as the Vue binding in `query.ts`: the cache, hashing, freshness
- * and invalidation live in the core, and this file only turns an entry's
- * `observers` set into signals. The two bindings never run together — this one
- * replaces the other at the cutover, and `query.ts` is deleted then.
+ * The cache, hashing, freshness and invalidation live in the core; this file
+ * only turns an entry's `observers` set into signals.
  *
- * **Keys differ from the Vue binding on purpose.** There, a key or any value
- * nested inside it could be a `ref`, and `isRef` made that unambiguous. A Solid
- * accessor is just a function, so the same trick would have to guess whether a
- * function in a key is reactive or a value. Instead the *whole* key may be an
- * accessor and its contents are plain:
+ * The *whole* key may be an accessor, and its contents are plain:
  *
  *     useQuery({ queryKey: () => ["documents", spaceId()], ... })
  *
- * which is the idiomatic Solid form anyway, and unambiguous.
+ * Per-value accessors would be ambiguous — a function inside a key could be
+ * reactive or just a value.
  */
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 
-/** Reads a value that may be an accessor. Solid's answer to Vue's `toValue`. */
+/** Reads a value that may be an accessor. */
 export function access<T>(value: MaybeAccessor<T>): T {
   return typeof value === "function" ? (value as Accessor<T>)() : value;
 }
@@ -133,9 +128,9 @@ export class QueryClient {
 /**
  * One client per render, so concurrent SSR requests never share a cache.
  *
- * The fallback exists for the same reason the Vue binding kept one: composables
- * are also used outside any component — in plain modules and in tests — and
- * those need a client without a provider above them.
+ * The fallback exists because composables are also used outside any component
+ * — in plain modules and in tests — and those need a client without a
+ * provider above them.
  */
 export const QueryClientContext = createContext<QueryClient>();
 
@@ -281,9 +276,8 @@ export function useQuery<TData = unknown>(
   };
 
   // A render effect, not `createEffect`: attaching must happen synchronously at
-  // creation so a caller can read `isPending()` on the same tick, which is what
-  // Vue's `watch(..., { immediate: true })` gave. A deferred effect would report
-  // "idle, no data" for one tick on every mount.
+  // creation so a caller can read `isPending()` on the same tick. A deferred
+  // effect would report "idle, no data" for one tick on every mount.
   //
   // Reading the key and `enabled` here is what tracks them; everything attach()
   // does is untracked, so the observer's own writes cannot re-trigger it.
@@ -443,9 +437,8 @@ export function useInfiniteQuery<TPage, TPageParam = unknown>(
   return {
     ...query,
     // A page failure belongs to this helper, not to the cached entry: the
-    // first page is still valid data. The Vue binding wrote it onto the shared
-    // query error, which meant a failed "load more" looked like the whole list
-    // had failed.
+    // first page is still valid data. Writing it onto the shared query error
+    // would make a failed "load more" look like the whole list had failed.
     error: createMemo(() => pageError() ?? query.error()),
     isError: createMemo(() => (pageError() ?? query.error()) !== null),
     fetchNextPage,
