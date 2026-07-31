@@ -1,6 +1,6 @@
-import { ref } from "vue";
 import * as Y from "yjs";
 import { penToolIcon } from "#assets/icons.ts";
+import { createValueStore } from "#canvas/state.ts";
 import {
   buildFreehandStroke,
   createFreehandStrokeBuilder,
@@ -81,7 +81,7 @@ export const DRAW_STROKE_MODES: Array<{
 
 // Tool-specific UI state belongs to the extension. Canvas.vue only binds its
 // toolbar controls to this ref.
-export const activeDrawStrokeMode = ref<DrawStrokeMode>("pen");
+export const activeDrawStrokeMode = createValueStore<DrawStrokeMode>("pen");
 
 // addVelocityWidths measures velocity in world units/ms, so it would otherwise
 // taper differently depending on zoom. Multiplying the scale by the current
@@ -370,7 +370,7 @@ export const drawTool: CanvasToolExtension = {
   onPointerDown: (at, event, ctx) => {
     const started = startCanvasDrawingStroke(event, at, {
       color: ctx.penColor(),
-      mode: activeDrawStrokeMode.value,
+      mode: activeDrawStrokeMode.get(),
       worldToScreenScale: ctx.viewportScale(),
     });
     if (!started) return;

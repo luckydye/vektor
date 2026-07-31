@@ -1,4 +1,4 @@
-import { type Ref, ref } from "vue";
+import { createValueStore } from "#canvas/state.ts";
 import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
@@ -184,7 +184,10 @@ export type DocumentPreviewState = {
   error?: string;
 };
 
-type DocumentPreviewSource = Pick<DocumentWithProperties, "id" | "properties" | "type">;
+export type DocumentPreviewSource = Pick<
+  DocumentWithProperties,
+  "id" | "properties" | "type"
+>;
 
 type LoadedDocumentPreviewSource = DocumentPreviewSource & {
   content?: unknown;
@@ -192,7 +195,7 @@ type LoadedDocumentPreviewSource = DocumentPreviewSource & {
 };
 
 export type DocumentLinkControllerOptions = {
-  documents: Ref<DocumentPreviewSource[]>;
+  documents: () => DocumentPreviewSource[];
   currentOrigin: string;
   currentSpaceId: string;
   fetchDocument: (
@@ -710,21 +713,21 @@ export function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
 }
 
 export function createDocumentLinkController(options: DocumentLinkControllerOptions) {
-  const previews = ref(new Map<string, DocumentPreviewState>());
+  const previews = createValueStore(new Map<string, DocumentPreviewState>());
 
   function setPreview(key: string, preview: DocumentPreviewState) {
-    const next = new Map(previews.value);
+    const next = new Map(previews.get());
     next.set(key, preview);
-    previews.value = next;
+    previews.set(next);
   }
 
   function initialPreview(documentId: string): DocumentPreviewState {
-    return initialDocumentPreview(documentId, options.documents.value);
+    return initialDocumentPreview(documentId, options.documents());
   }
 
   function cachedPreview(shape: CanvasShape): DocumentPreviewState | undefined {
     const ref = referenceForShape(shape);
-    return ref ? previews.value.get(documentReferenceKey(ref)) : undefined;
+    return ref ? previews.get().get(documentReferenceKey(ref)) : undefined;
   }
 
   function referenceForShape(shape: CanvasShape): DocumentLinkReference | null {
@@ -739,7 +742,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     if (!parsed) return;
 
     const key = documentReferenceKey(ref);
-    const existing = previews.value.get(key);
+    const existing = previews.get().get(key);
     if (existing?.status === "loading" || existing?.status === "loaded") return;
 
     setPreview(key, initialPreview(parsed.documentId));
@@ -755,7 +758,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
         readonly: Boolean(doc.readonly),
       });
     } catch (error) {
-      const fallback = previews.value.get(key) ?? initialPreview(parsed.documentId);
+      const fallback = previews.get().get(key) ?? initialPreview(parsed.documentId);
       setPreview(key, {
         ...fallback,
         status: "error",
@@ -791,7 +794,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     const ref = normalizeDocumentReference(refInput);
     if (!ref) return;
     const key = documentReferenceKey(ref);
-    const existing = previews.value.get(key);
+    const existing = previews.get().get(key);
     if (existing?.status !== "loaded") return;
     setPreview(key, { ...existing, content });
   }
@@ -807,8 +810,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     const parsed = parseVektorDocumentAddress(ref.address);
     if (!parsed) return false;
     const doc =
-      docOverride ??
-      options.documents.value.find((entry) => entry.id === parsed.documentId);
+      docOverride ?? options.documents().find((entry) => entry.id === parsed.documentId);
     const shape = createDocumentLinkShape(ref, at, doc);
     if (!shape) return false;
 

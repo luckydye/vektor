@@ -1,5 +1,4 @@
 import { pointInRotatedShape } from "#canvas/viewport/geometry.ts";
-import { useUploads } from "#composeables/useUploads.ts";
 import { isMediaFile, mediaTypeForFile, toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import {
@@ -400,11 +399,29 @@ export function dragHasMediaFiles(transfer: DataTransfer | null) {
   return transfer.types.includes("Files");
 }
 
+/**
+ * Uploads through whatever the host supplies.
+ *
+ * The uploader is a parameter rather than an import so the canvas does not
+ * depend on the app's upload composable — it is the same reason the six
+ * host-supplied values in `CanvasHost` are properties.
+ */
+export type CanvasUploader = (
+  file: File,
+  target: { spaceId: string; documentId?: string },
+) => Promise<{ url: string }>;
+
+export interface MediaUploadOptions {
+  spaceId: string;
+  documentId?: string;
+  uploadFile: CanvasUploader;
+}
+
 export async function uploadMediaFile(
   file: File,
-  options: { spaceId: string; documentId?: string },
+  options: MediaUploadOptions,
 ): Promise<string> {
-  const result = await useUploads().uploadFile(file, {
+  const result = await options.uploadFile(file, {
     spaceId: options.spaceId,
     documentId: options.documentId,
   });
@@ -466,7 +483,7 @@ export function fitMediaSize(width: number, height: number) {
 export async function createUploadedMediaShape(
   file: File,
   at: { x: number; y: number },
-  options: { spaceId: string; documentId?: string },
+  options: MediaUploadOptions,
 ): Promise<CanvasShape | null> {
   const type = mediaTypeForFile(file);
   if (!type) return null;

@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { createValueStore } from "#canvas/state.ts";
 import { canvasClipboardFromDataTransfer } from "#utils/clipboard.ts";
 import { canvasFilesFromList } from "./files.ts";
 import { mediaFilesFromList } from "./media.ts";
@@ -22,7 +22,7 @@ export const canvasClipboardInput: CanvasInputHandler = {
 export function createUploadPlaceholderStore(options: {
   sizeFor: (type: UploadShapeType) => { width: number; height: number };
 }) {
-  const items = ref<
+  const items = createValueStore<
     Array<{
       id: string;
       x: number;
@@ -37,8 +37,8 @@ export function createUploadPlaceholderStore(options: {
     add(type: UploadShapeType, filename: string, at: CanvasPoint) {
       const size = options.sizeFor(type);
       const id = `upload-${crypto.randomUUID()}`;
-      items.value = [
-        ...items.value,
+      items.set([
+        ...items.get(),
         {
           id,
           x: Math.round(at.x - size.width / 2),
@@ -47,11 +47,11 @@ export function createUploadPlaceholderStore(options: {
           height: size.height,
           filename,
         },
-      ];
+      ]);
       return id;
     },
     remove(id: string) {
-      items.value = items.value.filter((item) => item.id !== id);
+      items.set(items.get().filter((item) => item.id !== id));
     },
   };
 }

@@ -1,6 +1,6 @@
-import { ref } from "vue";
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
+import { createValueStore } from "#canvas/state.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
@@ -34,7 +34,7 @@ export const linkElement: CanvasElementExtension = {
         )
           return null;
         const src = linkSource(shape);
-        const preview = src ? linkPreviews.previews.value.get(src) : undefined;
+        const preview = src ? linkPreviews.previews.get().get(src) : undefined;
         if (!preview || preview.status === "loading") return null;
         const height = Math.max(
           linkElement.defaults.minSize.height,
@@ -311,16 +311,16 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-link"))
 // content-addressed by URL, and the only dependency is the api client), so the
 // canvas host neither creates nor owns it — the link element loads its own
 // preview and resolveData reads from here.
-const previews = ref(new Map<string, LinkPreviewState>());
+const previews = createValueStore(new Map<string, LinkPreviewState>());
 
 function setPreview(url: string, state: LinkPreviewState) {
-  const next = new Map(previews.value);
+  const next = new Map(previews.get());
   next.set(url, state);
-  previews.value = next;
+  previews.set(next);
 }
 
 async function loadLinkPreview(url: string) {
-  const existing = previews.value.get(url);
+  const existing = previews.get().get(url);
   // Error states are cached too. Retrying from every reactive canvas update
   // creates an unbounded request loop for URLs the endpoint cannot resolve.
   if (existing) return;
@@ -334,12 +334,14 @@ async function loadLinkPreview(url: string) {
 
 function linkPreviewForShape(shape: CanvasShape): LinkPreviewState | undefined {
   const src = linkSource(shape);
-  return src ? previews.value.get(src) : undefined;
+  return src ? previews.get().get(src) : undefined;
 }
 
-// Reactive preview state used by this extension's data and measurement hooks.
+// Preview state used by this extension's data and measurement hooks. The host
+// subscribes so an async preview landing repaints the card.
 export const linkPreviews = {
   previews,
+  subscribe: previews.subscribe,
   loadPreview: loadLinkPreview,
   previewForShape: linkPreviewForShape,
 };

@@ -1,7 +1,16 @@
+import { render } from "lit-html";
 import type * as Y from "yjs";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import { type CanvasController, createCanvasController } from "./CanvasController.ts";
+import type { CanvasDomRefs } from "./CanvasView.ts";
+import "./CanvasPresenceCursorElement.ts";
+import "./css/canvas.css";
+import { HostElement } from "./extensions/CanvasElementBase.ts";
+import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
+import type { CanvasUploader } from "./extensions/media.ts";
 import type { CanvasElementExtension, CanvasToolExtension } from "./extensions/types.ts";
+import { canvasTemplate } from "./template.ts";
 
 export const canvasHostTag = "vektor-canvas";
 
@@ -10,150 +19,212 @@ export const canvasHostTag = "vektor-canvas";
  *
  * Follows the editor's precedent — `DocumentView extends HTMLElement`
  * (`editor/document.ts`) — and the lifecycle `CanvasElementBase` already
- * implements for the 13 element bodies inside the canvas: light DOM, build once
- * in `mount()`, patch in `update()`, coalesce work onto a microtask.
+ * implements for the element bodies inside the canvas: light DOM, build once,
+ * patch on change, coalesce work onto a microtask.
  *
  * Why the canvas leaves the framework entirely (plan section 6): the element
- * bodies are already custom elements, the host is 3,700 lines of viewport
+ * bodies are already custom elements, the host was 3,700 lines of viewport
  * maths, pointer handling and Yjs wiring that needs no framework, and doing it
  * before the Solid port means one framework in the tree at a time rather than
  * two coexisting for the whole migration.
  *
- * This is the skeleton. It owns the lifecycle and the property surface; the
- * viewport, rendering and interaction move into it in the following tickets,
- * and `Canvas.vue` remains the live host until they do.
+ * Everything the canvas cannot resolve for itself — the current user, the space
+ * role, the document's grid setting, an uploader — arrives as a property. The
+ * canvas never reaches back into the app, which is what lets it outlive the
+ * app's framework.
+ *
+ * Extends `HostElement` rather than `HTMLElement` directly: the class body is
+ * evaluated at module load, `HTMLElement` does not exist during SSR, and this
+ * module is reachable from the server render through the Vue adapter.
  */
-export class CanvasHostElement extends HTMLElement {
-  private root: HTMLDivElement | null = null;
-  private mounted = false;
+export class CanvasHostElement extends HostElement {
+  private controller: CanvasController | null = null;
   private renderQueued = false;
+  private started = false;
 
-  private spaceIdValue = "";
-  private documentIdValue: string | undefined;
-  private ydocValue: Y.Doc | undefined;
-  private presenceProfilesValue: CollaborationPresenceProfile<CanvasPresenceState>[] = [];
-  private extensionsValue: readonly CanvasElementExtension[] = [];
-  private toolsValue: readonly CanvasToolExtension[] = [];
+  private readonly dom: CanvasDomRefs = {
+    viewport: null,
+    scene: null,
+    activeInk: null,
+    selection: null,
+    shapePopover: null,
+    canvasToolbar: null,
+    activeEditorElement: null,
+  };
 
   /**
    * Properties, not attributes.
    *
-   * A `Y.Doc` and an extension list cannot be serialised into markup, so the
-   * host sets these as DOM properties. Single-word names on purpose — the same
-   * reason `CanvasElementBase` uses `shape`/`context`/`data`: Vue lowercases
-   * kebab-cased bindings on an unknown element, so a camelCase property would
-   * silently never be written while the port still runs through a Vue template.
+   * A `Y.Doc`, an extension list and an uploader cannot be serialised into
+   * markup. Single-word names on purpose — the same reason `CanvasElementBase`
+   * uses `shape`/`context`/`data`: a template that lowercases kebab-cased
+   * bindings reaches a single-word setter and silently misses a camelCase one.
    */
-  set spaceid(value: string) {
-    if (this.spaceIdValue === value) return;
-    this.spaceIdValue = value;
-    this.scheduleRender();
-  }
-  get spaceid(): string {
-    return this.spaceIdValue;
-  }
+  spaceid = "";
+  documentid: string | undefined;
+  ydoc: Y.Doc | undefined;
+  currentuserid: string | undefined;
+  cursorcolor = "#3b82f6";
+  cursorcompanion: string | null = null;
+  canedit = false;
+  gridtype: string | undefined;
+  uploadfile: CanvasUploader | undefined;
+  documents: (() => DocumentPreviewSource[]) | undefined;
+  spaces:
+    | (() => ReadonlyArray<{ id: string; slug?: string | null }> | undefined)
+    | undefined;
+  save: ((snapshot: unknown) => Promise<unknown>) | undefined;
+  error: ((message: string) => void) | undefined;
+  onpresence: ((states: CanvasPresenceState[]) => void) | undefined;
 
-  set documentid(value: string | undefined) {
-    if (this.documentIdValue === value) return;
-    this.documentIdValue = value;
-    this.scheduleRender();
-  }
-  get documentid(): string | undefined {
-    return this.documentIdValue;
-  }
-
-  set ydoc(value: Y.Doc | undefined) {
-    if (this.ydocValue === value) return;
-    this.ydocValue = value;
-    this.scheduleRender();
-  }
-  get ydoc(): Y.Doc | undefined {
-    return this.ydocValue;
-  }
+  #presence: CollaborationPresenceProfile<CanvasPresenceState>[] = [];
+  #extensions: readonly CanvasElementExtension[] | undefined;
+  #tools: readonly CanvasToolExtension[] | undefined;
 
   set presence(value: CollaborationPresenceProfile<CanvasPresenceState>[] | undefined) {
-    this.presenceProfilesValue = value ?? [];
-    this.scheduleRender();
+    this.#presence = value ?? [];
+    this.requestRender();
   }
+
   get presence(): CollaborationPresenceProfile<CanvasPresenceState>[] {
-    return this.presenceProfilesValue;
+    return this.#presence;
   }
 
   set extensions(value: readonly CanvasElementExtension[] | undefined) {
-    this.extensionsValue = value ?? [];
-    this.scheduleRender();
+    this.#extensions = value;
+    this.requestRender();
   }
-  get extensions(): readonly CanvasElementExtension[] {
-    return this.extensionsValue;
+  get extensions(): readonly CanvasElementExtension[] | undefined {
+    return this.#extensions;
   }
 
   set tools(value: readonly CanvasToolExtension[] | undefined) {
-    this.toolsValue = value ?? [];
-    this.scheduleRender();
+    this.#tools = value;
+    this.requestRender();
   }
-  get tools(): readonly CanvasToolExtension[] {
-    return this.toolsValue;
-  }
-
-  connectedCallback(): void {
-    this.flush();
+  get tools(): readonly CanvasToolExtension[] | undefined {
+    return this.#tools;
   }
 
   /**
-   * Deliberately does **not** reset `mounted` or clear children.
+   * Call after writing several properties at once.
+   *
+   * Plain fields cannot notify on their own; the shell sets a batch and then
+   * says so. The render is still microtask-batched, so saying so twice costs
+   * one render.
+   */
+  changed(): void {
+    // Also the start signal. The shell sets `ydoc` after the element is in the
+    // document, so `connectedCallback` alone is too early — whichever of the
+    // two happens last is the one that starts the canvas.
+    this.start();
+    this.requestRender();
+  }
+
+  connectedCallback(): void {
+    this.start();
+  }
+
+  /**
+   * Deliberately does **not** tear down.
    *
    * A parent reordering its children disconnects and reconnects this element,
-   * and rebuilding on every reconnect duplicates the canvas body — the same
-   * trap `CanvasElementBase` documents. Teardown belongs in an explicit
-   * `destroy()`, not in a lifecycle callback that fires on a move.
+   * and rebuilding on every reconnect would destroy the Yjs wiring and every
+   * element body inside — the same trap `CanvasElementBase` documents. Teardown
+   * belongs in an explicit `destroy()`, not in a callback that fires on a move.
    */
   disconnectedCallback(): void {}
 
-  private scheduleRender(): void {
-    if (!this.isConnected || this.renderQueued) return;
+  private start(): void {
+    const ydoc = this.ydoc;
+    if (this.started || !ydoc) return;
+    this.started = true;
+
+    // Getters, not a snapshot: the reactions compare each of these against the
+    // previous flush, so a property the shell rewrites later has to be visible
+    // through the same reference the controller captured at construction.
+    const element = this;
+    this.controller = createCanvasController(
+      {
+        get spaceId() {
+          return element.spaceid;
+        },
+        get documentId() {
+          return element.documentid;
+        },
+        ydoc,
+        get presenceProfiles() {
+          return element.#presence;
+        },
+        get extensions() {
+          return element.#extensions;
+        },
+        get tools() {
+          return element.#tools;
+        },
+        get currentUserId() {
+          return element.currentuserid;
+        },
+        get cursorColor() {
+          return element.cursorcolor;
+        },
+        get canEdit() {
+          return element.canedit;
+        },
+        get cursorCompanion() {
+          return element.cursorcompanion;
+        },
+        get gridType() {
+          return element.gridtype;
+        },
+        get documents() {
+          return element.documents?.() ?? [];
+        },
+        get spaces() {
+          return element.spaces?.();
+        },
+        get uploadFile() {
+          return element.uploadfile;
+        },
+        save: (snapshot) => element.save?.(snapshot) ?? Promise.resolve(),
+        error: (message) => element.error?.(message),
+        presenceChanged: (states) => element.onpresence?.(states),
+        requestRender: () => element.requestRender(),
+      },
+      this.dom,
+    );
+
+    // First paint has to happen before mount: the controller measures the
+    // viewport and attaches observers to the canvas layers, and none of those
+    // elements exist until the template has run once.
+    this.renderNow();
+    this.controller.mount();
+    this.renderNow();
+  }
+
+  private requestRender(): void {
+    if (this.renderQueued || !this.controller) return;
     this.renderQueued = true;
     queueMicrotask(() => {
       this.renderQueued = false;
-      this.flush();
+      this.renderNow();
     });
   }
 
-  private flush(): void {
-    if (!this.mounted) {
-      this.mount();
-      this.mounted = true;
-      return;
-    }
-    this.update();
-  }
-
-  /** Builds the canvas shell once. Idempotent: any stray children are cleared. */
-  private mount(): void {
-    this.replaceChildren();
-
-    const root = document.createElement("div");
-    root.className = "canvas-root";
-    root.dataset.canvasRoot = "";
-    this.root = root;
-    this.replaceChildren(root);
-
-    this.update();
-  }
-
-  /** Patches the existing shell in place. Never rebuilds it. */
-  private update(): void {
-    if (!this.root) return;
-    this.root.dataset.spaceId = this.spaceIdValue;
-    if (this.documentIdValue) this.root.dataset.documentId = this.documentIdValue;
-    else delete this.root.dataset.documentId;
-    this.root.dataset.ready = this.ydocValue ? "true" : "false";
+  private renderNow(): void {
+    const controller = this.controller;
+    if (!controller) return;
+    controller.flush();
+    render(canvasTemplate(controller.view, this.dom), this);
+    controller.afterRender();
   }
 
   /** Explicit teardown. Not called on disconnect — see `disconnectedCallback`. */
   destroy(): void {
+    this.controller?.destroy();
+    this.controller = null;
+    this.started = false;
     this.replaceChildren();
-    this.root = null;
-    this.mounted = false;
   }
 }
 

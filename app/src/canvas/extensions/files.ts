@@ -5,7 +5,11 @@ import {
   CanvasElementBase,
   dragOnPointerDown,
 } from "./CanvasElementBase.ts";
-import { mediaFilesFromDataTransfer, uploadMediaFile } from "./media.ts";
+import {
+  type MediaUploadOptions,
+  mediaFilesFromDataTransfer,
+  uploadMediaFile,
+} from "./media.ts";
 import { createModelShape } from "./model.ts";
 import type { CanvasElementExtension, CanvasInputHandler, CanvasShape } from "./types.ts";
 
@@ -232,7 +236,7 @@ export function createFileShape(params: {
 export async function createUploadedFileShape(
   file: File,
   at: { x: number; y: number },
-  options: { spaceId: string; documentId?: string },
+  options: MediaUploadOptions,
 ): Promise<CanvasShape | null> {
   if (!isCanvasFile(file)) return null;
   const src = await uploadMediaFile(file, options);

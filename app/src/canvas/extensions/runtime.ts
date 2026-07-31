@@ -1,12 +1,11 @@
 import { api } from "#api/client.ts";
-import { useDocuments } from "#composeables/useDocuments.ts";
-import { useSpace } from "#composeables/useSpace.ts";
 import { mediaTypeForFile } from "#files/fileTypes.ts";
 import {
   createDocumentLinkController,
   DOCUMENT_CANVAS_SERVICE,
   type DocumentCanvasService,
   type DocumentLinkReference,
+  type DocumentPreviewSource,
   documentAddressForShape,
   documentUrlPartsFromUrl,
   fetchRemoteDocumentByAddress,
@@ -22,6 +21,7 @@ import {
   splitCanvasFiles,
 } from "./inputs.ts";
 import { createLinkShape } from "./link.ts";
+import type { CanvasUploader } from "./media.ts";
 import { createUploadedMediaShape, imageFileFromUrl, uploadMediaFile } from "./media.ts";
 import type {
   CanvasEditSession,
@@ -49,16 +49,19 @@ export type CanvasExtensionRuntimeOptions = {
   wasDragged: () => boolean;
   beginEdit: (session: CanvasEditSession) => void;
   reportError: (error: unknown) => void;
+  // Server-backed data the app already has loaded. Passed in rather than read
+  // from a query composable, so the canvas keeps no framework dependency.
+  documents: () => DocumentPreviewSource[];
+  spaces: () => ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
+  uploadFile: CanvasUploader;
 };
 
 export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
-  const { documents } = useDocuments();
-  const { spaces } = useSpace();
   const placeholders = createUploadPlaceholderStore({ sizeFor: options.sizeFor });
   const currentOrigin = options.currentOrigin;
 
   const documentController = createDocumentLinkController({
-    documents,
+    documents: options.documents,
     currentOrigin,
     currentSpaceId: options.spaceId,
     fetchDocument: (ref) =>
@@ -99,11 +102,13 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
       createUploadedMediaShape(file, at, {
         spaceId: options.spaceId,
         documentId: options.documentId,
+        uploadFile: options.uploadFile,
       }),
     createFile: (file, at) =>
       createUploadedFileShape(file, at, {
         spaceId: options.spaceId,
         documentId: options.documentId,
+        uploadFile: options.uploadFile,
       }),
     mediaType: mediaTypeForFile,
     addPlaceholder: placeholders.add,
@@ -131,7 +136,7 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
       insertDocumentUrl(url, at, {
         currentOrigin,
         defaultSpaceId: options.spaceId,
-        spaces: spaces.value,
+        spaces: options.spaces(),
         loadSpaces: () => api.spaces.get(),
         fetchDocument: (ref) =>
           isRemoteDocumentAddress(ref.address, currentOrigin)
@@ -154,6 +159,7 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
       pasteFigmaIntoCanvas(html, at, {
         uploadMediaFile: (file) =>
           uploadMediaFile(file, {
+            uploadFile: options.uploadFile,
             spaceId: options.spaceId,
             documentId: options.documentId,
           }),
