@@ -396,6 +396,7 @@ export function DatabaseView(props: Props) {
                               }
                             >
                               {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the cell's own click from restarting the edit it opened. */}
+                              {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
                               <div
                                 class="flex items-center"
                                 onClick={(event) => event.stopPropagation()}
