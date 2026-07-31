@@ -39,7 +39,7 @@ const DEFAULT_DOCUMENT_CONTEXT: DocumentContext = {
  * A context, like the active space id: SSR-safe because nothing is shared at
  * module level, and it removes the need for a renderless provider component.
  */
-const DocumentContextContext = createContext<
+export const DocumentContextContext = createContext<
   [Accessor<DocumentContext>, (next: DocumentContext) => void] | null
 >(null);
 
@@ -64,10 +64,13 @@ function sameDocumentContext(a: DocumentContext, b: DocumentContext): boolean {
 }
 
 /**
- * Create and provide a document context ref, scoped to the current Vue app
- * instance. This mirrors the `space:activeId` provide/inject pattern used for
- * the space ID, making it SSR-safe (no module-level shared state) and
- * eliminating the need for a renderless DocumentContextProvider component.
+ * Create the signal pair a `DocumentContextContext.Provider` carries.
+ *
+ * Owned by whoever renders the provider, so nothing lives at module level and
+ * SSR renders stay isolated from each other. A component that both writes the
+ * context and renders readers has to split: the writer's own
+ * `useDocumentContext()` runs outside the provider it creates and would get a
+ * private signal instead.
  */
 export function provideDocumentContext(
   initial?: DocumentContextInput,

@@ -27,7 +27,11 @@ import { RevisionView } from "#components/RevisionView.tsx";
 import { TitleEditor } from "#components/TitleEditor.tsx";
 import { WorkflowView } from "#components/WorkflowView.tsx";
 import { useQuery } from "#composeables/query.solid.ts";
-import { useDocumentContext } from "#composeables/useDocument.solid.ts";
+import {
+  DocumentContextContext,
+  provideDocumentContext,
+  useDocumentContext,
+} from "#composeables/useDocument.solid.ts";
 import { editing, resetEditingState } from "#composeables/useEditor.solid.ts";
 import { useExtensions } from "#composeables/useExtensions.solid.ts";
 import { usePageTitle } from "#composeables/usePageTitle.solid.ts";
@@ -59,7 +63,21 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
 const STICKY_HEADER_CLASS =
   "flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-xl sticky top-0 z-10";
 
+/**
+ * Owns the document context for everything below it, including the header
+ * actions. Split from the body because `DocumentPage` is both the writer and a
+ * parent of the readers, and a writer that called `useDocumentContext()`
+ * outside this provider would silently get a private signal of its own.
+ */
 export function DocumentPageView(props: Props) {
+  return (
+    <DocumentContextContext.Provider value={provideDocumentContext()}>
+      <DocumentPage {...props} />
+    </DocumentContextContext.Provider>
+  );
+}
+
+function DocumentPage(props: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const [now, setNow] = createSignal(props.ssrNow ?? Date.now());

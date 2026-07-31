@@ -277,7 +277,19 @@ export function SpaceApp(props: Props) {
     <QueryClientContext.Provider value={queryClient}>
       <ActiveSpaceIdContext.Provider value={activeSpaceId}>
         <SsrUrlContext.Provider value={ssrRelativeUrl}>
+          {/* `url` is the server's only route source. `Router` delegates to
+              `StaticRouter` when `isServer`, and that reads `props.url`,
+              falling back to SolidStart's request event — which does not exist
+              under Astro — and then to `""`. Without this every SSR matched
+              `/` and served the space home for every path, so hydrating any
+              other route walked markup for a tree that was never rendered and
+              threw. The client ignores it and reads `window.location`.
+
+              It gets the full path, not the base-relative one: the client
+              source is `window.location.pathname`, and the router strips
+              `base` itself. Handing it a pre-stripped path strips twice. */}
           <Router
+            url={props.url ?? "/"}
             base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
             root={Shell}
           >
