@@ -19,6 +19,10 @@ declare module "solid-js" {
       "on:exit"?: (event: Event) => void;
       "on:change"?: (event: Event) => void;
       "on:tab-selected"?: (event: Event) => void;
+      "on:presence-change"?: (event: Event) => void;
+      "on:selection-change"?: (event: Event) => void;
+      "on:editor-focus"?: (event: Event) => void;
+      "on:editor-blur"?: (event: Event) => void;
       "attr:hidden"?: string | undefined;
       "attr:enabled"?: string | undefined;
       // `prop:` assigns a DOM property instead of an attribute — the only way
@@ -26,6 +30,7 @@ declare module "solid-js" {
       "prop:user"?: unknown;
       "attr:value"?: string;
       snap?: boolean;
+      language?: string;
       mode?: string;
       "week-start"?: string;
       "attr:opened"?: string | undefined;
@@ -45,6 +50,7 @@ declare module "solid-js" {
       "vektor-canvas": CustomElementAttributes;
       "extension-view": CustomElementAttributes;
       "rich-text-editor": CustomElementAttributes;
+      "code-editor": CustomElementAttributes;
       "document-toolbar": CustomElementAttributes;
       "vektor-cosmetic": CustomElementAttributes;
       "wiki-drawer": CustomElementAttributes;

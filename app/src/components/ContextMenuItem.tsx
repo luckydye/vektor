@@ -3,12 +3,14 @@ import "@atrium-ui/elements/list";
 
 interface Props {
   onClick: (event: Event) => void;
+  /** Vue let `class` fall through to the root; Solid needs it declared. */
+  class?: string;
   children?: JSX.Element;
 }
 
 export function ContextMenuItem(props: Props) {
   return (
-    <a-list-item class="group">
+    <a-list-item class={`group ${props.class ?? ""}`}>
       <button
         type="button"
         onClick={(event) => {
