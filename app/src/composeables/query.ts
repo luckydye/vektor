@@ -10,36 +10,94 @@ import {
   toValue,
   watch,
 } from "vue";
+import {
+  fetchEntry,
+  queryHash as hashResolvedKey,
+  QueryCache,
+  type QueryCacheOptions,
+  type QueryDataUpdater,
+  type QueryDefaults,
+  type QueryEntry,
+  type QueryKey,
+  toError,
+} from "./queryCore.ts";
 
-type QueryKey = readonly unknown[];
+/**
+ * The Vue binding over `queryCore.ts`.
+ *
+ * The cache, hashing, freshness and invalidation all live in the core; this
+ * file is what turns an entry's `observers` set into refs, and what accepts
+ * Vue's `MaybeRef` keys. A Solid binding is the same shape over the same cache.
+ */
+
 type QueryKeyInput = MaybeRef<QueryKey>;
-type QueryDataUpdater<T> = T | ((old: T | undefined) => T | undefined);
 
-interface QueryDefaults {
-  gcTime?: number;
-  staleTime?: number;
+/**
+ * Resolves a key to plain values before it reaches the core.
+ *
+ * Refs are unwrapped at any depth, not just the top level: keys are written
+ * inline at call sites (`["documents", spaceId, { filter }]`) and a ref can sit
+ * anywhere in that structure. The core deliberately knows nothing about them.
+ */
+function deepUnwrap(value: unknown): unknown {
+  if (isRef(value)) return deepUnwrap(value.value);
+  if (Array.isArray(value)) return value.map(deepUnwrap);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, deepUnwrap(item)]),
+    );
+  }
+  return value;
 }
 
-interface QueryClientOptions {
-  defaultOptions?: {
-    queries?: QueryDefaults;
-  };
+function resolveKey(queryKey: QueryKeyInput): QueryKey {
+  return [...toValue(queryKey)].map(deepUnwrap);
 }
 
-interface QueryEntry<T = unknown> {
-  data: ShallowRef<T | undefined>;
-  error: ShallowRef<Error | null>;
-  fetchers: Set<() => Promise<unknown>>;
-  gcTimer: ReturnType<typeof setTimeout> | null;
-  hasData: Ref<boolean>;
-  hash: string;
-  isFetching: Ref<boolean>;
-  key: unknown[];
-  observers: Set<() => void>;
-  promise: Promise<T> | null;
-  queryFn: (() => Promise<T>) | null;
-  staleTime: number;
-  updatedAt: number;
+function queryHash(queryKey: QueryKeyInput): string {
+  return hashResolvedKey(resolveKey(queryKey));
+}
+
+/**
+ * The Vue-facing cache handle.
+ *
+ * Identical surface to before the core split, so every call site is unchanged;
+ * it resolves `MaybeRef` keys and delegates.
+ */
+export class QueryClient {
+  private readonly cache: QueryCache;
+
+  constructor(options: QueryCacheOptions = {}) {
+    this.cache = new QueryCache(options);
+  }
+
+  getDefaultOptions(): QueryDefaults {
+    return this.cache.getDefaultOptions();
+  }
+
+  getEntry<T>(queryKey: QueryKeyInput): QueryEntry<T> {
+    return this.cache.getEntry<T>(resolveKey(queryKey));
+  }
+
+  setQueryData<T>(
+    queryKey: QueryKeyInput,
+    updater: QueryDataUpdater<T>,
+    options?: { stale?: boolean },
+  ): void {
+    this.cache.setQueryData(resolveKey(queryKey), updater, options);
+  }
+
+  getQueryData<T>(queryKey: QueryKeyInput): T | undefined {
+    return this.cache.getQueryData<T>(resolveKey(queryKey));
+  }
+
+  invalidateQueries(options: { queryKey: QueryKeyInput }): void {
+    this.cache.invalidateQueries({ queryKey: resolveKey(options.queryKey) });
+  }
+
+  removeEntry(hash: string): void {
+    this.cache.removeEntry(hash);
+  }
 }
 
 interface UseQueryOptions<TData> {
@@ -89,137 +147,8 @@ export interface InfiniteData<TPage, TPageParam = unknown> {
   pageParams: TPageParam[];
 }
 
-function normalizeForKey(value: unknown): unknown {
-  if (isRef(value)) {
-    return normalizeForKey(value.value);
-  }
-
-  if (value === undefined) {
-    return { __type: "undefined" };
-  }
-
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(normalizeForKey);
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, item]) => [key, normalizeForKey(item)]),
-  );
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(normalizeForKey(value));
-}
-
-function resolveQueryKey(queryKey: QueryKeyInput): unknown[] {
-  return [...toValue(queryKey)].map(normalizeForKey);
-}
-
-function queryHash(queryKey: QueryKeyInput): string {
-  return stableStringify(resolveQueryKey(queryKey));
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-function keysMatch(key: unknown[], prefix: unknown[]): boolean {
-  if (prefix.length > key.length) return false;
-
-  return prefix.every(
-    (part, index) => stableStringify(part) === stableStringify(key[index]),
-  );
-}
-
 function resolveEnabled(enabled: MaybeRef<boolean> | undefined): boolean {
   return enabled === undefined ? true : toValue(enabled);
-}
-
-export class QueryClient {
-  private readonly cache = new Map<string, QueryEntry>();
-  private readonly defaultOptions: QueryDefaults;
-
-  constructor(options: QueryClientOptions = {}) {
-    this.defaultOptions = options.defaultOptions?.queries ?? {};
-  }
-
-  getDefaultOptions(): QueryDefaults {
-    return this.defaultOptions;
-  }
-
-  getEntry<T>(queryKey: QueryKeyInput): QueryEntry<T> {
-    const key = resolveQueryKey(queryKey);
-    const hash = stableStringify(key);
-    const existing = this.cache.get(hash) as QueryEntry<T> | undefined;
-
-    if (existing) {
-      return existing;
-    }
-
-    const entry: QueryEntry<T> = {
-      data: shallowRef<T | undefined>(undefined),
-      error: shallowRef<Error | null>(null),
-      fetchers: new Set(),
-      gcTimer: null,
-      hasData: ref(false),
-      hash,
-      isFetching: ref(false),
-      key,
-      observers: new Set(),
-      promise: null,
-      queryFn: null,
-      staleTime: this.defaultOptions.staleTime ?? 0,
-      updatedAt: 0,
-    };
-
-    this.cache.set(hash, entry as QueryEntry);
-    return entry;
-  }
-
-  setQueryData<T>(
-    queryKey: QueryKeyInput,
-    updater: QueryDataUpdater<T>,
-    options?: { stale?: boolean },
-  ): void {
-    const entry = this.getEntry<T>(queryKey);
-    const nextData =
-      typeof updater === "function"
-        ? (updater as (old: T | undefined) => T | undefined)(entry.data.value)
-        : updater;
-
-    entry.data.value = nextData;
-    entry.hasData.value = true;
-    entry.error.value = null;
-    entry.updatedAt = options?.stale ? 0 : Date.now();
-    notify(entry);
-  }
-
-  getQueryData<T>(queryKey: QueryKeyInput): T | undefined {
-    return this.getEntry<T>(queryKey).data.value;
-  }
-
-  invalidateQueries(options: { queryKey: QueryKeyInput }): void {
-    const prefix = resolveQueryKey(options.queryKey);
-
-    for (const entry of this.cache.values()) {
-      if (!keysMatch(entry.key, prefix)) continue;
-
-      entry.updatedAt = 0;
-      for (const fetch of entry.fetchers) {
-        void fetch();
-      }
-    }
-  }
-
-  removeEntry(hash: string): void {
-    this.cache.delete(hash);
-  }
 }
 
 let activeQueryClient = new QueryClient();
@@ -244,58 +173,6 @@ export function useQueryClient(): QueryClient {
   return getCurrentInstance()
     ? inject(QUERY_CLIENT_KEY, activeQueryClient)
     : activeQueryClient;
-}
-
-function notify(entry: QueryEntry): void {
-  for (const observer of entry.observers) {
-    observer();
-  }
-}
-
-function isFresh(entry: QueryEntry): boolean {
-  return entry.hasData.value && Date.now() - entry.updatedAt < entry.staleTime;
-}
-
-async function fetchEntry<T>(
-  entry: QueryEntry<T>,
-  force = false,
-): Promise<T | undefined> {
-  if (!force && isFresh(entry)) {
-    return entry.data.value;
-  }
-
-  if (!entry.queryFn) {
-    return entry.data.value;
-  }
-
-  if (entry.promise) {
-    return entry.promise;
-  }
-
-  entry.isFetching.value = true;
-  notify(entry);
-
-  entry.promise = entry
-    .queryFn()
-    .then((result) => {
-      entry.data.value = result;
-      entry.hasData.value = true;
-      entry.error.value = null;
-      entry.updatedAt = Date.now();
-      return result;
-    })
-    .catch((error: unknown) => {
-      entry.error.value = toError(error);
-      throw entry.error.value;
-    })
-    .finally(() => {
-      entry.isFetching.value = false;
-      entry.promise = null;
-      notify(entry);
-    });
-
-  notify(entry);
-  return entry.promise;
 }
 
 export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
@@ -347,7 +224,7 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
   const attach = () => {
     const enabled = resolveEnabled(options.enabled);
     const entry = queryClient.getEntry<TData>(options.queryKey);
-    const hadCachedData = entry.hasData.value;
+    const hadCachedData = entry.hasData;
 
     if (entry.gcTimer) {
       clearTimeout(entry.gcTimer);
@@ -370,10 +247,10 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
     }
 
     currentObserver = () => {
-      if (entry.hasData.value) {
+      if (entry.hasData) {
         hasPlaceholder = false;
         placeholderData = undefined;
-        data.value = entry.data.value;
+        data.value = entry.data;
         hasData.value = true;
       } else if (hasPlaceholder) {
         data.value = placeholderData;
@@ -382,8 +259,8 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
         data.value = undefined;
         hasData.value = false;
       }
-      error.value = entry.error.value;
-      isFetching.value = entry.isFetching.value;
+      error.value = entry.error;
+      isFetching.value = entry.isFetching;
     };
 
     currentFetcher = async () => {
@@ -400,7 +277,7 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
         .initialData()
         .then((initialData) => {
           // A remote response is always newer than IndexedDB hydration.
-          if (entry !== currentEntry || entry.hasData.value || initialData === undefined)
+          if (entry !== currentEntry || entry.hasData || initialData === undefined)
             return;
           queryClient.setQueryData(options.queryKey, initialData);
         })
