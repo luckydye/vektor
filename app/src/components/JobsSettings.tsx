@@ -1,9 +1,9 @@
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
 import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
-import { useInfiniteQuery } from "#composeables/query.solid.ts";
-import { useCursorPagedList } from "#composeables/useCursorPagedList.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { formatDateTime } from "#utils/datetime.ts";
 import { Button } from "./Button.tsx";

@@ -1,9 +1,9 @@
 import { useParams } from "@solidjs/router";
 import { createMemo, Show } from "solid-js";
 import { ExtensionView } from "#components/ExtensionView.tsx";
-import { useExtensions } from "#composeables/useExtensions.solid.ts";
-import { usePageTitle } from "#composeables/usePageTitle.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useExtensions } from "#composeables/useExtensions.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 export function ExtensionRouteView() {
   const { currentSpace } = useSpace();

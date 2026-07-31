@@ -1,7 +1,7 @@
 import { createMemo } from "solid-js";
 import { api } from "#api/client.ts";
-import { useCursorPagedList } from "./useCursorPagedList.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
+import { useCursorPagedList } from "./useCursorPagedList.ts";
+import { useSpace } from "./useSpace.ts";
 
 export function useAuditLogs(documentId: string, pageSize = 50) {
   const { currentSpaceId } = useSpace();

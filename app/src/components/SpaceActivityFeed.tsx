@@ -1,7 +1,7 @@
 import { createMemo, For, Index, mergeProps, Show } from "solid-js";
 import type { AuditLog } from "#api/client.ts";
 import { chevronRightThinIcon, documentIcon, usersIcon } from "#assets/icons.ts";
-import { useSpaceActivity } from "#composeables/useSpaceActivity.solid.ts";
+import { useSpaceActivity } from "#composeables/useSpaceActivity.ts";
 import {
   type ActivityGroup,
   getAuditEventAction,

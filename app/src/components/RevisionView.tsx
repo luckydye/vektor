@@ -10,7 +10,7 @@ import {
   Switch,
 } from "solid-js";
 import { activityIcon } from "#assets/icons.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { AppView } from "./AppView.tsx";
 
 interface Props {

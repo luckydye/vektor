@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, on, onMount, Show } from "solid-js";
 import { type AccessToken, api } from "#api/client.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
 import { Button } from "./Button.tsx";
 

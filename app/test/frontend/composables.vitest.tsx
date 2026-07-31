@@ -33,12 +33,10 @@ vi.mock("#api/client.ts", () => ({
   },
 }));
 
-const { QueryClient, setFallbackQueryClient } = await import(
-  "#composeables/query.solid.ts"
-);
-const { useSpace } = await import("#composeables/useSpace.solid.ts");
-const { useDocuments } = await import("#composeables/useDocuments.solid.ts");
-const { useMembers } = await import("#composeables/useMembers.solid.ts");
+const { QueryClient, setFallbackQueryClient } = await import("#composeables/query.ts");
+const { useSpace } = await import("#composeables/useSpace.ts");
+const { useDocuments } = await import("#composeables/useDocuments.ts");
+const { useMembers } = await import("#composeables/useMembers.ts");
 
 const disposers: Array<() => void> = [];
 afterEach(() => {
@@ -91,7 +89,7 @@ describe("ported query composables", () => {
   });
 });
 
-const { useToast } = await import("#composeables/useToast.solid.ts");
+const { useToast } = await import("#composeables/useToast.ts");
 
 describe("useToast", () => {
   it("keeps a dismissed toast in the list until it is dropped", () => {

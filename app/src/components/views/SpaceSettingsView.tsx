@@ -1,9 +1,9 @@
 import { createMemo, Show } from "solid-js";
 import { NoAccess } from "#components/NoAccess.tsx";
 import { SpaceSettings } from "#components/SpaceSettings.tsx";
-import { usePageTitle } from "#composeables/usePageTitle.solid.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canAccessSettings } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 export function SpaceSettingsView() {
   const { currentSpace } = useSpace();

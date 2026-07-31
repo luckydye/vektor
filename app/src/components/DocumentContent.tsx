@@ -13,22 +13,22 @@ import { twMerge } from "tailwind-merge";
 import type * as Y from "yjs";
 import { api } from "#api/client.ts";
 import { Canvas } from "#canvas/Canvas.tsx";
-import { useQuery } from "#composeables/query.solid.ts";
+import { useQuery } from "#composeables/query.ts";
 import {
   type CollaborationPresenceProfile,
   provideCollaboration,
   useCollaboration,
-} from "#composeables/useCollaboration.solid.ts";
-import { useCosmetics } from "#composeables/useCosmetics.solid.ts";
+} from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import {
   resetEditingState,
   setEditing,
   setHasChanges,
   useEditor,
-} from "#composeables/useEditor.solid.ts";
-import { useInlineSuggestions } from "#composeables/useInlineSuggestions.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useSync } from "#composeables/useSync.solid.ts";
+} from "#composeables/useEditor.ts";
+import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";

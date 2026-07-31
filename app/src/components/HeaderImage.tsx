@@ -1,6 +1,6 @@
 import { createMemo, Show } from "solid-js";
-import { useDocument } from "#composeables/useDocument.solid.ts";
-import { uploadingDocumentId } from "#composeables/useHeaderImage.solid.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { uploadingDocumentId } from "#composeables/useHeaderImage.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 
 interface Props {

@@ -10,7 +10,7 @@ import {
 } from "solid-js";
 import { api } from "#api/client.ts";
 import { prettyPrintHtml } from "#utils/html.ts";
-import { useRevisions } from "./useRevisions.solid.ts";
+import { useRevisions } from "./useRevisions.ts";
 
 export function useInlineSuggestions(options: {
   spaceId: Accessor<string | null | undefined>;

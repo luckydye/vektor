@@ -14,7 +14,7 @@ import {
   unlockElementIcon,
   uploadFileIcon,
 } from "#assets/icons.ts";
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.solid.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   activeDrawStrokeMode,

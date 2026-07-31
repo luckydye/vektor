@@ -1,7 +1,7 @@
 import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastContainer } from "#components/ToastContainer.tsx";
-import { useToast } from "#composeables/useToast.solid.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 /**
  * The one behavioural test the transition work needs (plan section 5.3).

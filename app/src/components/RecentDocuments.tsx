@@ -1,8 +1,8 @@
 import "@atrium-ui/elements/track";
 import { createMemo, For, Index, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { useQuery } from "#composeables/query.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useQuery } from "#composeables/query.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { DocumentTeaser } from "./DocumentTeaser.tsx";

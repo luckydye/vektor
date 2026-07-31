@@ -2,9 +2,9 @@ import { type Accessor, createMemo } from "solid-js";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useQuery } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
-import { useSync } from "./useSync.solid.ts";
+import { useQuery } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
+import { useSync } from "./useSync.ts";
 
 export function useCategoryDocuments(categorySlugs: Accessor<string[]>) {
   const { currentSpaceId } = useSpace();

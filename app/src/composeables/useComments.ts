@@ -2,8 +2,8 @@ import { type Accessor, createMemo, createSignal } from "solid-js";
 import type { Comment } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useMutation, useQuery } from "./query.solid.ts";
-import { useSync } from "./useSync.solid.ts";
+import { useMutation, useQuery } from "./query.ts";
+import { useSync } from "./useSync.ts";
 
 /**
  * Comment references come in three shapes:

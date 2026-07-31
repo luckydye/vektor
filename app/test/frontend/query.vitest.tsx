@@ -8,7 +8,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-} from "#composeables/query.solid.ts";
+} from "#composeables/query.ts";
 
 /**
  * The Solid port of `query.spec.ts`, test for test.

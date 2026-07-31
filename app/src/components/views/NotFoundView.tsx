@@ -1,4 +1,4 @@
-import { usePageTitle } from "#composeables/usePageTitle.solid.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 
 export function NotFoundView() {
   usePageTitle("Not found");

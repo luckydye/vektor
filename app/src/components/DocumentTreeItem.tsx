@@ -1,8 +1,8 @@
 import { createMemo, For, Show } from "solid-js";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { chevronRightThinIcon } from "#assets/icons.ts";
-import { useDocumentDrag } from "#composeables/useDocumentDrag.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import {
   propertyValueIncludes,
   propertyValueToScalar,

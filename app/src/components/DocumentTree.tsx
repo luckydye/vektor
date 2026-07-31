@@ -21,12 +21,12 @@ import {
   dragDotsIcon,
   editEntryIcon,
 } from "#assets/icons.ts";
-import { useCategories } from "#composeables/useCategories.solid.ts";
-import { useCategoryDocuments } from "#composeables/useCategoryDocuments.solid.ts";
+import { useCategories } from "#composeables/useCategories.ts";
+import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
-import { useRoute } from "#composeables/useRoute.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useToast } from "#composeables/useToast.solid.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";

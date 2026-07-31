@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { AgentSettings } from "./AgentSettings.tsx";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
 import { ExtensionSettings } from "./ExtensionSettings.tsx";

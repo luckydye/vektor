@@ -7,8 +7,8 @@ import {
   type ExtensionRouteMenuItem,
 } from "#api/client.ts";
 import { extensions } from "#extensions/manager.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
+import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
 
 export type { ExtensionInfo, ExtensionRoute, ExtensionRouteMenuItem };
 

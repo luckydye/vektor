@@ -20,9 +20,9 @@ import {
   refreshIcon,
   spinnerIcon,
 } from "#assets/icons.ts";
-import { useCursorPagedList } from "#composeables/useCursorPagedList.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useViewTransitionList } from "#composeables/useViewTransitionList.solid.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDateTime } from "#utils/datetime.ts";

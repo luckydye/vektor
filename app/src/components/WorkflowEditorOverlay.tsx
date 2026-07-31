@@ -1,7 +1,7 @@
 import { createEffect, createSignal, onMount } from "solid-js";
 import "#editor/elements/code-editor.ts";
-import { useCollaboration } from "#composeables/useCollaboration.solid.ts";
-import { useCosmetics } from "#composeables/useCosmetics.solid.ts";
+import { useCollaboration } from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
 import {
   currentEditorPresenceState,
   type DocumentPresenceProfile,

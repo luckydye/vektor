@@ -5,14 +5,14 @@ import { api } from "#api/client.ts";
 import { commandPaletteIcon } from "#assets/icons.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
-import { QueryClientContext, useQueryClient } from "#composeables/query.solid.ts";
+import { QueryClientContext, useQueryClient } from "#composeables/query.ts";
 import {
   DocumentContextContext,
   provideDocumentContext,
-} from "#composeables/useDocument.solid.ts";
-import { SsrUrlContext } from "#composeables/useRoute.solid.ts";
-import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.solid.ts";
-import { useSync } from "#composeables/useSync.solid.ts";
+} from "#composeables/useDocument.ts";
+import { SsrUrlContext } from "#composeables/useRoute.ts";
+import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";

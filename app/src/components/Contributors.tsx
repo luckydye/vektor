@@ -1,7 +1,7 @@
 import { createMemo, For, mergeProps, Show } from "solid-js";
-import { useActiveCollaboration } from "#composeables/useCollaboration.solid.ts";
-import { useContributors } from "#composeables/useContributors.solid.ts";
-import { useViewTransitionList } from "#composeables/useViewTransitionList.solid.ts";
+import { useActiveCollaboration } from "#composeables/useCollaboration.ts";
+import { useContributors } from "#composeables/useContributors.ts";
+import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
 import "./AvatarElement.ts";

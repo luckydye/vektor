@@ -1,6 +1,6 @@
 import { createRoot } from "solid-js";
 import { describe, expect, it } from "vitest";
-import { useUserProfile } from "#composeables/useUserProfile.solid.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 
 describe("SSR state isolation", () => {
   it("does not share user profile state between server renders", () => {

@@ -1,7 +1,7 @@
 import { Show } from "solid-js";
 import { Search } from "#components/Search.tsx";
-import { usePageTitle } from "#composeables/usePageTitle.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 export function SpaceSearchView() {
   const { currentSpace } = useSpace();

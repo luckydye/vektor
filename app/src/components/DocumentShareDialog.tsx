@@ -11,8 +11,8 @@ import "@atrium-ui/elements/tabs";
 import type { Category, PermissionEntry, User } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { isOwner } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useUserProfile } from "#composeables/useUserProfile.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Dialog } from "./Dialog.tsx";
 import "./AvatarElement.ts";
 

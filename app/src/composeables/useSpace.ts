@@ -3,7 +3,7 @@ import { api, type Space } from "#api/client.ts";
 
 export type { Space };
 
-import { type MaybeAccessor, useMutation, useQuery } from "./query.solid.ts";
+import { type MaybeAccessor, useMutation, useQuery } from "./query.ts";
 
 export type { MaybeAccessor };
 

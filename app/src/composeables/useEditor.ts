@@ -9,10 +9,10 @@ import {
 import { supportsDocumentEditor } from "#documents/types.ts";
 import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
-import type { CollaborationSession } from "./useCollaboration.solid.ts";
-import { type SaveStatus, useDocument } from "./useDocument.solid.ts";
-import { useRevisions } from "./useRevisions.solid.ts";
-import { useToast } from "./useToast.solid.ts";
+import type { CollaborationSession } from "./useCollaboration.ts";
+import { type SaveStatus, useDocument } from "./useDocument.ts";
+import { useRevisions } from "./useRevisions.ts";
+import { useToast } from "./useToast.ts";
 
 export type SaveMode = "revision" | "suggestion";
 

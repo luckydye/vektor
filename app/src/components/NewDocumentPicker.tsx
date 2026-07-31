@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "#assets/icons.ts";
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 

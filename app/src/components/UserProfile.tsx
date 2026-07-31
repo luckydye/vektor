@@ -6,8 +6,8 @@ import {
   sourceCodeIcon,
 } from "#assets/icons.ts";
 import { authClient } from "#composeables/auth-client.ts";
-import { useCosmetics } from "#composeables/useCosmetics.solid.ts";
-import { useUserProfile } from "#composeables/useUserProfile.solid.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { t } from "#utils/lang.ts";
 import {
   applyThemePreference,

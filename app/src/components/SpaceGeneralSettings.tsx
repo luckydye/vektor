@@ -1,7 +1,7 @@
 import { createEffect, createSignal, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useToast } from "#composeables/useToast.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import {
   isWorkflowCreationEnabled,
   spacePreferenceKeys,

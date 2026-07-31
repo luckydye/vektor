@@ -12,12 +12,12 @@ import {
   type ChatAttachment,
   type ImageChatAttachment,
   useAIChat,
-} from "#composeables/useAIChat.solid.ts";
-import { useChatSessionHandling } from "#composeables/useChatSessionHandling.solid.ts";
+} from "#composeables/useAIChat.ts";
+import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
-import { useDockedWindows } from "#composeables/useDockedWindows.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useUploads } from "#composeables/useUploads.solid.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { formatFileSize } from "#utils/utils.ts";

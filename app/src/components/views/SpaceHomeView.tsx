@@ -3,10 +3,10 @@ import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
 import { PinnedDocument } from "#components/PinnedDocument.tsx";
 import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
-import { usePageTitle } from "#composeables/usePageTitle.solid.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useUploads } from "#composeables/useUploads.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUploads } from "#composeables/useUploads.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 import { t } from "#utils/lang.ts";
 

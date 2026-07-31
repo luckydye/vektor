@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { addIcon, cancelIcon, chevronRightThinIcon, dateIcon } from "#assets/icons.ts";
-import { useQuery } from "#composeables/query.solid.ts";
+import { useQuery } from "#composeables/query.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 

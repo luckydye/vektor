@@ -216,6 +216,6 @@ describe("server document path", () => {
     // This was `utils/lang.ts` until it stopped importing Vue — the fixture has
     // to be something that keeps a frontend import on purpose, so it is now the
     // Solid query binding, which survives the cutover that removes Vue.
-    expect(findViolations("src/composeables/query.solid.ts").length).toBeGreaterThan(0);
+    expect(findViolations("src/composeables/query.ts").length).toBeGreaterThan(0);
   });
 });

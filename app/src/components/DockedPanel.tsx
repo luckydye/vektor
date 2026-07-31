@@ -12,8 +12,8 @@ import { cancelIcon, dragDotsIcon, resizeHandleIcon } from "#assets/icons.ts";
 import {
   type DockedWindowState,
   useDockedWindows,
-} from "#composeables/useDockedWindows.solid.ts";
-import { useIsDesktop } from "#composeables/useIsDesktop.solid.ts";
+} from "#composeables/useDockedWindows.ts";
+import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
 import { Dialog } from "./Dialog.tsx";
 

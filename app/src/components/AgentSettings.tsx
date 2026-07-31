@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import { type AIConfigMeta, api } from "#api/client.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { Button } from "./Button.tsx";
 
 type Provider = "anthropic" | "openai" | "openrouter" | "opencode-zen" | "ollama";

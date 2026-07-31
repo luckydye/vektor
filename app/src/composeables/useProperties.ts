@@ -1,9 +1,9 @@
 import { createMemo } from "solid-js";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
-import { useSync } from "./useSync.solid.ts";
+import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
+import { useSync } from "./useSync.ts";
 
 export interface PropertyInfo {
   name: string;

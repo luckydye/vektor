@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type * as Y from "yjs";
 import { api, type ExtensionInfo, type ExtensionRoute } from "#api/client.ts";
-import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.solid.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { extensionPresenceRoom, type PresenceMessage } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 

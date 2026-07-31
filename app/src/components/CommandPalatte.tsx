@@ -7,8 +7,8 @@ import {
   documentIcon,
   searchIcon,
 } from "#assets/icons.ts";
-import { useDocuments } from "#composeables/useDocuments.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";

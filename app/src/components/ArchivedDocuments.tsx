@@ -1,7 +1,7 @@
 import { createMemo, Show } from "solid-js";
 import { api } from "#api/client.ts";
 import { deleteElementIcon, spinnerIcon } from "#assets/icons.ts";
-import { useQuery } from "#composeables/query.solid.ts";
+import { useQuery } from "#composeables/query.ts";
 import { DocumentGroupedList } from "./DocumentGroupedList.tsx";
 
 interface Props {

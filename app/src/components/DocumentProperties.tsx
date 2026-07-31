@@ -11,10 +11,10 @@ import {
   gridGridIcon,
   peopleIcon,
 } from "#assets/icons.ts";
-import { useCategories } from "#composeables/useCategories.solid.ts";
-import { useDocument } from "#composeables/useDocument.solid.ts";
-import { useMembers } from "#composeables/useMembers.solid.ts";
-import { useProperties } from "#composeables/useProperties.solid.ts";
+import { useCategories } from "#composeables/useCategories.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { useMembers } from "#composeables/useMembers.ts";
+import { useProperties } from "#composeables/useProperties.ts";
 import type { Property } from "#documents/properties.ts";
 import {
   isHiddenDocumentPropertyKey,

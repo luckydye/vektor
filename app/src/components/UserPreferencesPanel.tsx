@@ -7,10 +7,10 @@ import {
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
 import { chevronLeftLargeIcon } from "#assets/icons.ts";
-import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.solid.ts";
-import { useCosmetics } from "#composeables/useCosmetics.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useUserProfile } from "#composeables/useUserProfile.solid.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
 import {

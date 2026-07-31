@@ -9,10 +9,10 @@ import {
   searchIcon,
   spinnerIcon,
 } from "#assets/icons.ts";
-import { useInfiniteQuery } from "#composeables/query.solid.ts";
-import { useCursorPagedList } from "#composeables/useCursorPagedList.solid.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { DocumentGroupedList } from "./DocumentGroupedList.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 import { SearchFilters } from "./SearchFilters.tsx";

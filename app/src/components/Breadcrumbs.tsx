@@ -1,5 +1,5 @@
 import { createEffect, For, Show } from "solid-js";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 
 interface BreadcrumbItem {

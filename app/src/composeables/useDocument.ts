@@ -9,9 +9,9 @@ import {
 import { api } from "#api/client.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useMutation, useQuery } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
-import { useSync } from "./useSync.solid.ts";
+import { useMutation, useQuery } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
+import { useSync } from "./useSync.ts";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 

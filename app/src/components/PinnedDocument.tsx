@@ -2,7 +2,7 @@ import { createEffect, createSignal, onMount, Show } from "solid-js";
 import { api, type DocumentWithProperties } from "#api/client.ts";
 import { pinToHomeIcon } from "#assets/icons.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { spacePath } from "#utils/utils.ts";

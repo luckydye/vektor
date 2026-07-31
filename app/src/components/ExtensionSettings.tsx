@@ -1,5 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
-import { useExtensions } from "#composeables/useExtensions.solid.ts";
+import { useExtensions } from "#composeables/useExtensions.ts";
 import { config } from "#config";
 import { formatDate } from "#utils/datetime.ts";
 import { FileDrop } from "./FileDrop.tsx";

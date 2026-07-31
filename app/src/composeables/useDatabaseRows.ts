@@ -2,9 +2,9 @@ import { createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
-import { useSync } from "./useSync.solid.ts";
+import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
+import { useSync } from "./useSync.ts";
 
 export interface DatabaseColumn {
   name: string;

@@ -5,8 +5,8 @@ import {
   createSignal,
   on,
 } from "solid-js";
-import type { MaybeAccessor } from "./query.solid.ts";
-import { useQuery } from "./query.solid.ts";
+import type { MaybeAccessor } from "./query.ts";
+import { useQuery } from "./query.ts";
 import { type QueryKey, queryHash } from "./queryCore.ts";
 
 export interface CursorPagedListOptions<T> {

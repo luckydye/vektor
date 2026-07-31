@@ -1,4 +1,4 @@
-import { QueryClient } from "./query.solid.ts";
+import { QueryClient } from "./query.ts";
 
 /**
  * The query client an island renders against.

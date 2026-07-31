@@ -11,9 +11,9 @@ import * as Y from "yjs";
 import { api } from "#api/client.ts";
 import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import { useCanvasCursorColor } from "./useCanvasCursorColor.solid.ts";
-import { useCosmetics } from "./useCosmetics.solid.ts";
-import { useUserProfile } from "./useUserProfile.solid.ts";
+import { useCanvasCursorColor } from "./useCanvasCursorColor.ts";
+import { useCosmetics } from "./useCosmetics.ts";
+import { useUserProfile } from "./useUserProfile.ts";
 
 export type CollaborationPresenceProfile<TState> = {
   clientId: string;

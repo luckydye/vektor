@@ -1,7 +1,7 @@
 import { createMemo } from "solid-js";
 import { api } from "#api/client.ts";
-import { useQuery } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
+import { useQuery } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
 
 export function useMembers() {
   const { currentSpaceId: spaceId } = useSpace();

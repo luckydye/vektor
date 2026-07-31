@@ -4,7 +4,7 @@ import {
   isInlineAnchorReference,
   isPositionReference,
   resolveReferenceSelector,
-} from "#composeables/useComments.solid.ts";
+} from "#composeables/useComments.ts";
 import "./AvatarElement.ts";
 
 interface CommentUser {

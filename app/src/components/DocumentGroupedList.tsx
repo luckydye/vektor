@@ -18,7 +18,7 @@ import {
   dateIcon,
   documentIcon,
 } from "#assets/icons.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
 import { formatDate } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";

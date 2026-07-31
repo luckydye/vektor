@@ -8,8 +8,8 @@ import {
   settingsIcon,
 } from "#assets/icons.ts";
 import { canAccessSettings, canEdit } from "#composeables/usePermissions.ts";
-import { useRoute } from "#composeables/useRoute.solid.ts";
-import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.solid.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";

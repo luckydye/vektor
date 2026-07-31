@@ -1,8 +1,8 @@
 import { type Accessor, createSignal } from "solid-js";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
 import { parseCsvRows } from "#utils/xlsx.ts";
-import type { DatabaseColumn } from "./useDatabaseRows.solid.ts";
-import { useToast } from "./useToast.solid.ts";
+import type { DatabaseColumn } from "./useDatabaseRows.ts";
+import { useToast } from "./useToast.ts";
 
 interface DatabaseCsvImportOptions {
   derivedColumns: Accessor<DatabaseColumn[]>;

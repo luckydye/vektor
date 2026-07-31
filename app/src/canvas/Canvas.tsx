@@ -1,18 +1,18 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import type * as Y from "yjs";
-import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.solid.ts";
+import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import {
   type CollaborationPresenceProfile,
   useCollaboration,
-} from "#composeables/useCollaboration.solid.ts";
-import { useCosmetics } from "#composeables/useCosmetics.solid.ts";
-import { useDocument } from "#composeables/useDocument.solid.ts";
-import { useDocuments } from "#composeables/useDocuments.solid.ts";
+} from "#composeables/useCollaboration.ts";
+import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useToast } from "#composeables/useToast.solid.ts";
-import { useUploads } from "#composeables/useUploads.solid.ts";
-import { useUserProfile } from "#composeables/useUserProfile.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
+import { useUploads } from "#composeables/useUploads.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import type {
   CanvasPresenceState,
   DocumentPresenceState,

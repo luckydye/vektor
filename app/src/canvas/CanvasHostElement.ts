@@ -1,6 +1,6 @@
 import { render } from "lit-html";
 import type * as Y from "yjs";
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.solid.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import { type CanvasController, createCanvasController } from "./CanvasController.ts";
 import type { CanvasDomRefs } from "./CanvasView.ts";

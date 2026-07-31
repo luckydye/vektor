@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { alertCircleIcon, confirmationIcon, infoIcon } from "#assets/icons.ts";
-import { type Toast, useToast } from "#composeables/useToast.solid.ts";
+import { type Toast, useToast } from "#composeables/useToast.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
 
 const icons = {

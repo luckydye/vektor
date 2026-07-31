@@ -10,7 +10,7 @@ import {
   Show,
 } from "solid-js";
 import { downloadIcon } from "#assets/icons.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/xlsx.ts";
 import { downloadExcelSheets, sanitizeSheetName } from "#utils/xlsx.ts";

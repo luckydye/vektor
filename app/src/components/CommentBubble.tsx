@@ -16,7 +16,7 @@ import {
   isInlineAnchorReference,
   resolveReferenceSelector,
   useComments,
-} from "#composeables/useComments.solid.ts";
+} from "#composeables/useComments.ts";
 import { CommentThread, type Comment as CommentThreadType } from "./CommentThread.tsx";
 
 /** Vue's `defineExpose`, as a callback prop (plan §10). */

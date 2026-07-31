@@ -1,6 +1,6 @@
 import { createEffect, createMemo } from "solid-js";
-import { useDockedWindows } from "#composeables/useDockedWindows.solid.ts";
-import { useIsDesktop } from "#composeables/useIsDesktop.solid.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { setDockInsets } from "#utils/insets.ts";
 
 const RIGHT_DOCK_MARGIN = 6;

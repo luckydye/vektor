@@ -2,11 +2,11 @@ import "@atrium-ui/elements/popover";
 import { createEffect, createSignal, For, type JSX, on, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { addIcon, csvFileIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
-import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.solid.ts";
-import type { DatabaseColumn } from "#composeables/useDatabaseRows.solid.ts";
-import { useDatabaseRows } from "#composeables/useDatabaseRows.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
-import { useToast } from "#composeables/useToast.solid.ts";
+import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.ts";
+import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
+import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,

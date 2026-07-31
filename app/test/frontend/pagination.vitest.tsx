@@ -1,7 +1,7 @@
 import { createSignal, createRoot as solidCreateRoot } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { QueryClient, setFallbackQueryClient } from "#composeables/query.solid.ts";
-import { useCursorPagedList } from "#composeables/useCursorPagedList.solid.ts";
+import { QueryClient, setFallbackQueryClient } from "#composeables/query.ts";
+import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 
 /**
  * The two pagination shapes (plan section 3.5). They are not duplicates and

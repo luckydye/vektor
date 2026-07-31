@@ -1,6 +1,6 @@
 import { createEffect, createSignal } from "solid-js";
 import { api, type DocumentContributor } from "#api/client.ts";
-import { useSpace } from "./useSpace.solid.ts";
+import { useSpace } from "./useSpace.ts";
 
 export function useContributors(documentId?: string) {
   const { currentSpaceId } = useSpace();

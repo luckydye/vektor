@@ -18,9 +18,9 @@ import {
   publishIcon,
   refreshIcon,
 } from "#assets/icons.ts";
-import { useAuditLogs } from "#composeables/useAuditLogs.solid.ts";
-import { useRevisions } from "#composeables/useRevisions.solid.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useAuditLogs } from "#composeables/useAuditLogs.ts";
+import { useRevisions } from "#composeables/useRevisions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
@@ -29,9 +29,9 @@ import { DockedPanel } from "./DockedPanel.tsx";
 import { DocumentActivityFeed } from "./DocumentActivityFeed.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 import "@atrium-ui/elements/popover";
-import { useDockedWindows } from "#composeables/useDockedWindows.solid.ts";
-import { useMembers } from "#composeables/useMembers.solid.ts";
-import { useSync } from "#composeables/useSync.solid.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { useMembers } from "#composeables/useMembers.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 
 interface Props {

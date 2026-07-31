@@ -3,8 +3,8 @@ import { type AuditLog, api } from "#api/client.ts";
 import { t } from "#utils/lang.ts";
 import { userDisplayName } from "#utils/userDisplay.ts";
 import { spacePath } from "#utils/utils.ts";
-import { access, type MaybeAccessor, useQuery } from "./query.solid.ts";
-import { useSpace } from "./useSpace.solid.ts";
+import { access, type MaybeAccessor, useQuery } from "./query.ts";
+import { useSpace } from "./useSpace.ts";
 
 interface ActivityUser {
   id: string;

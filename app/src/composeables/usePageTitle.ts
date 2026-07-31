@@ -1,5 +1,5 @@
 import { createEffect } from "solid-js";
-import { type MaybeAccessor, useSpace } from "./useSpace.solid.ts";
+import { type MaybeAccessor, useSpace } from "./useSpace.ts";
 
 /**
  * Keeps the browser tab title in sync with the current view.

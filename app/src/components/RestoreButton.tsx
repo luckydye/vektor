@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { api } from "#api/client.ts";
-import { useSpace } from "#composeables/useSpace.solid.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 interface Props {
   documentId: string;

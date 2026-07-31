@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, Show } from "solid-js";
-import { useUserProfile } from "#composeables/useUserProfile.solid.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
