@@ -1,0 +1,131 @@
+import { createMemo } from "solid-js";
+import { api } from "#api/client.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import { useMutation, useQuery, useQueryClient } from "./query.solid.ts";
+import { useSpace } from "./useSpace.solid.ts";
+import { useSync } from "./useSync.solid.ts";
+
+export interface PropertyInfo {
+  name: string;
+  type: string | null;
+  values: string[];
+}
+
+export function useProperties() {
+  const { currentSpaceId: spaceId } = useSpace();
+  const queryClient = useQueryClient();
+
+  const {
+    data: propertiesData,
+    isPending: isLoading,
+    error,
+    refetch: refresh,
+  } = useQuery({
+    queryKey: createMemo(() => ["wiki_properties", spaceId()]),
+    queryFn: async () => {
+      const spaceIdValue = spaceId();
+      if (!spaceIdValue) {
+        throw new Error("No space ID");
+      }
+      return await api.properties.get(spaceIdValue);
+    },
+    enabled: createMemo(() => !!spaceId()),
+  });
+
+  const properties = createMemo(() => propertiesData() || []);
+
+  const getPropertyKeys = createMemo(() => {
+    return properties().map((p) => p.name);
+  });
+
+  const getProperty = (name: string): PropertyInfo | undefined => {
+    return properties().find((p) => p.name === name);
+  };
+
+  const getValuesForProperty = (name: string): string[] => {
+    const property = getProperty(name);
+    return property?.values || [];
+  };
+
+  const hasProperty = (name: string): boolean => {
+    return properties().some((p) => p.name === name);
+  };
+
+  const updatePropertyMutation = useMutation({
+    mutationFn: async (params: {
+      documentId: string;
+      name: string;
+      value: string | string[] | null | undefined;
+      type?: string | null;
+    }) => {
+      const spaceIdValue = spaceId();
+      if (!spaceIdValue) {
+        throw new Error("No space ID");
+      }
+      await api.document.patch(spaceIdValue, params.documentId, {
+        properties: {
+          [params.name]: {
+            value: params.value || "",
+            type: params.type,
+          },
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["wiki_properties", spaceId()],
+      });
+    },
+  });
+
+  const deletePropertyMutation = useMutation({
+    mutationFn: async (params: { documentId: string; name: string }) => {
+      const spaceIdValue = spaceId();
+      if (!spaceIdValue) {
+        throw new Error("No space ID");
+      }
+      await api.document.patch(spaceIdValue, params.documentId, {
+        properties: {
+          [params.name]: null,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["wiki_properties", spaceId()],
+      });
+    },
+  });
+
+  async function updateProperty(
+    documentId: string,
+    name: string,
+    value: string | string[] | null | undefined,
+    type?: string | null,
+  ) {
+    await updatePropertyMutation.mutateAsync({ documentId, name, value, type });
+  }
+
+  async function deleteProperty(documentId: string, name: string) {
+    await deletePropertyMutation.mutateAsync({ documentId, name });
+  }
+
+  // TODO: syncs are not scopped to documents,
+  // one prop updates will send a sync event to all users anywhere in the space
+  useSync(spaceId, [realtimeTopics.properties], (keys) => {
+    if (keys.includes(realtimeTopics.properties)) refresh();
+  });
+
+  return {
+    properties,
+    isLoading,
+    error,
+    refresh,
+    getPropertyKeys,
+    getProperty,
+    getValuesForProperty,
+    hasProperty,
+    updateProperty,
+    deleteProperty,
+  };
+}

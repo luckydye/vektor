@@ -41,7 +41,8 @@ import {
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 
-function access<T>(value: MaybeAccessor<T>): T {
+/** Reads a value that may be an accessor. Solid's answer to Vue's `toValue`. */
+export function access<T>(value: MaybeAccessor<T>): T {
   return typeof value === "function" ? (value as Accessor<T>)() : value;
 }
 
