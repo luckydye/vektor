@@ -1,6 +1,10 @@
 import { createMemoryHistory, MemoryRouter, Route } from "@solidjs/router";
 import { render } from "solid-js/web";
 import { QueryClient, QueryClientContext } from "#composeables/query.solid.ts";
+import {
+  DocumentContextContext,
+  provideDocumentContext,
+} from "#composeables/useDocument.solid.ts";
 import { SsrUrlContext } from "#composeables/useRoute.solid.ts";
 import { ActiveSpaceIdContext } from "#composeables/useSpace.solid.ts";
 import { normalizeDom } from "./normalize.ts";
@@ -126,7 +130,7 @@ export interface RenderedRoute {
 
 /**
  * Mounts a view inside the context `SpaceApp` normally provides — the active
- * space id, the SSR url and a query client.
+ * space id, the SSR url, the document context and a query client.
  *
  * `at` adds a `MemoryRouter` entered at that path. Views that read route params need one, and a
  * single wildcard route means any path resolves; the params a view wants come
@@ -169,16 +173,18 @@ export async function renderRoute(
       <QueryClientContext.Provider value={queryClient}>
         <ActiveSpaceIdContext.Provider value={() => SPACE.id}>
           <SsrUrlContext.Provider value={`/${SPACE.slug}`}>
-            {options.at ? (
-              <MemoryRouter history={routerHistory}>
-                <Route
-                  path={options.route ?? "*"}
-                  component={() => <Component {...props} />}
-                />
-              </MemoryRouter>
-            ) : (
-              <Component {...props} />
-            )}
+            <DocumentContextContext.Provider value={provideDocumentContext()}>
+              {options.at ? (
+                <MemoryRouter history={routerHistory}>
+                  <Route
+                    path={options.route ?? "*"}
+                    component={() => <Component {...props} />}
+                  />
+                </MemoryRouter>
+              ) : (
+                <Component {...props} />
+              )}
+            </DocumentContextContext.Provider>
           </SsrUrlContext.Provider>
         </ActiveSpaceIdContext.Provider>
       </QueryClientContext.Provider>

@@ -6,6 +6,10 @@ import { commandPaletteIcon } from "#assets/icons.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext, useQueryClient } from "#composeables/query.solid.ts";
+import {
+  DocumentContextContext,
+  provideDocumentContext,
+} from "#composeables/useDocument.solid.ts";
 import { SsrUrlContext } from "#composeables/useRoute.solid.ts";
 import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.solid.ts";
 import { useSync } from "#composeables/useSync.solid.ts";
@@ -15,8 +19,11 @@ import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
 import { setClientLang } from "#utils/lang.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
+import { AIChatPanel } from "./AIChatPanel.tsx";
+import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
+import { DocumentOverlay } from "./DocumentOverlay.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
 import { DocumentPageView } from "./views/DocumentPageView.tsx";
@@ -198,6 +205,11 @@ export function SpaceApp(props: Props) {
     "--inset-left": `${initialSidebarWidth}px`,
   }));
 
+  // Provided here, as Vue's `SpaceApp.vue` did. The writer is `DocumentPageView`
+  // and the readers are both under it (`DocumentActions`) and beside it in the
+  // shell (`AIChatPanel`), so the only scope that covers everyone is this one.
+  const documentContext = provideDocumentContext();
+
   const Shell = (shellProps: { children?: unknown }) => (
     <>
       <div
@@ -267,7 +279,10 @@ export function SpaceApp(props: Props) {
           post-hydration flag. `isServer` is for code paths that must not run on
           the server, not for withholding markup. */}
       <Show when={hasMounted()}>
+        <CalDAVSetupDialog />
         <ToastContainer />
+        <DocumentOverlay />
+        <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />
         <CommandPalatte />
       </Show>
     </>
@@ -277,7 +292,8 @@ export function SpaceApp(props: Props) {
     <QueryClientContext.Provider value={queryClient}>
       <ActiveSpaceIdContext.Provider value={activeSpaceId}>
         <SsrUrlContext.Provider value={ssrRelativeUrl}>
-          {/* `url` is the server's only route source. `Router` delegates to
+          <DocumentContextContext.Provider value={documentContext}>
+            {/* `url` is the server's only route source. `Router` delegates to
               `StaticRouter` when `isServer`, and that reads `props.url`,
               falling back to SolidStart's request event — which does not exist
               under Astro — and then to `""`. Without this every SSR matched
@@ -288,19 +304,20 @@ export function SpaceApp(props: Props) {
               It gets the full path, not the base-relative one: the client
               source is `window.location.pathname`, and the router strips
               `base` itself. Handing it a pre-stripped path strips twice. */}
-          <Router
-            url={props.url ?? "/"}
-            base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
-            root={Shell}
-          >
-            <Route path="/" component={SpaceHomeView} />
-            <Route path="/search" component={SpaceSearchView} />
-            <Route path="/new" component={NewDocumentRoute} />
-            <Route path="/settings" component={SpaceSettingsView} />
-            <Route path="/doc/*documentSlug" component={DocumentRoute} />
-            <Route path="/x/*extensionPath" component={ExtensionRouteView} />
-            <Route path="*" component={NotFoundView} />
-          </Router>
+            <Router
+              url={props.url ?? "/"}
+              base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
+              root={Shell}
+            >
+              <Route path="/" component={SpaceHomeView} />
+              <Route path="/search" component={SpaceSearchView} />
+              <Route path="/new" component={NewDocumentRoute} />
+              <Route path="/settings" component={SpaceSettingsView} />
+              <Route path="/doc/*documentSlug" component={DocumentRoute} />
+              <Route path="/x/*extensionPath" component={ExtensionRouteView} />
+              <Route path="*" component={NotFoundView} />
+            </Router>
+          </DocumentContextContext.Provider>
         </SsrUrlContext.Provider>
       </ActiveSpaceIdContext.Provider>
     </QueryClientContext.Provider>
