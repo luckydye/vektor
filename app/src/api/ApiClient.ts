@@ -56,6 +56,8 @@ export interface Document {
   currentRev: number;
   publishedRev: number | null;
   readonly?: boolean;
+  /** Archived documents are hidden from listings but still readable. */
+  archived?: boolean;
   parentId?: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
