@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { describe, expect, it } from "vitest";
 
 /**
  * Guards Solid components against the destructuring that silently kills
@@ -23,7 +23,10 @@ import { join, relative, resolve } from "node:path";
  * backstop for those.
  */
 
-const APP_ROOT = resolve(import.meta.dir, "..");
+// `process.cwd()`, not `import.meta.dir` (Bun-only) and not `import.meta.url`
+// (vitest transforms modules, so it is not a `file:` URL inside a test).
+// Vitest runs with its config root as the working directory, which is `app/`.
+const APP_ROOT = resolve(process.cwd());
 const SOURCE_DIR = join(APP_ROOT, "src");
 
 /** Opt out on the offending line: `// solid-reactivity-ok: forwarded verbatim`. */
