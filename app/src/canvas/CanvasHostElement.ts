@@ -16,6 +16,32 @@ import { canvasTemplate } from "./template.ts";
 export const canvasHostTag = "vektor-canvas";
 
 /**
+ * Events after which the canvas may need to draw.
+ *
+ * Deliberately broad: a spurious frame is a no-op diff, a missing one is a
+ * canvas that stopped responding.
+ */
+const INPUT_EVENTS = [
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "pointercancel",
+  "click",
+  "dblclick",
+  "contextmenu",
+  "keydown",
+  "keyup",
+  "wheel",
+  "input",
+  "change",
+  "focusin",
+  "focusout",
+  "drop",
+  "dragover",
+  "paste",
+] as const;
+
+/**
  * The canvas host, as a framework-free custom element.
  *
  * Follows the editor's precedent — `DocumentView extends HTMLElement`
@@ -208,6 +234,8 @@ export class CanvasHostElement extends HostElement {
       this.dom,
     );
 
+    this.watchInput();
+
     // First paint has to happen before mount: the controller measures the
     // viewport and attaches observers to the canvas layers, and none of those
     // elements exist until the template has run once.
@@ -215,6 +243,28 @@ export class CanvasHostElement extends HostElement {
     this.controller.mount();
     this.renderNow();
   }
+
+  /**
+   * Input, update, draw.
+   *
+   * The canvas keeps no track of what a handler touched, so anything that can
+   * be an interaction asks for a frame. One listener per event type on the host
+   * replaces a redraw call at every write site, and cannot be forgotten by the
+   * next person to add a handler.
+   *
+   * Capture phase for two reasons: chrome inside the canvas calls
+   * `stopPropagation` to keep clicks away from the viewport, which would hide
+   * those interactions from a bubble listener; and the render is batched onto a
+   * microtask, so asking for it before the handlers run still paints after
+   * them.
+   */
+  private watchInput(): void {
+    for (const type of INPUT_EVENTS) {
+      this.addEventListener(type, this.boundRequestRender, { capture: true });
+    }
+  }
+
+  private readonly boundRequestRender = () => this.requestRender();
 
   private requestRender(): void {
     if (this.renderQueued || !this.controller) return;

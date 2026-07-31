@@ -130,7 +130,7 @@ import type { CanvasDomRefs, CanvasToolDef } from "./CanvasView.ts";
 import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
-import { createCanvasState, createWatchers, indexById, registerCanvas } from "./state.ts";
+import { createWatchers, indexById, registerCanvas } from "./state.ts";
 
 /**
  * Everything the canvas needs from the page around it.
@@ -307,54 +307,58 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   // --- state -------------------------------------------------------------
   // Everything a render reads. Values are replaced rather than mutated, so the
   // store can compare by identity; see `state.ts` for why invalidation is coarse.
-  const store = createCanvasState(
-    {
-      shapes: [] as CanvasShape[],
-      strokes: [] as CanvasStroke[],
-      selectedShapeIds: new Set<string>(),
-      selectedStrokeIds: new Set<string>(),
-      // Locked elements are intentionally excluded from normal hit testing. Keep a
-      // separate hover target so their small unlock control remains reachable.
-      hoveredLockedElement: null as LockedCanvasElement | null,
-      // Section chrome is painted on the canvas. This transient input only appears
-      // while its title is actively being edited.
-      editingChromeId: null as string | null,
-      // Live screen-space rectangle while drag-selecting; null when not marqueeing.
-      marqueeRect: null as Rect | null,
-      // True only while a pan drag is in progress, so the viewport shows the
-      // grabbing hand during panning and a resting cursor otherwise.
-      isPanning: false,
-      activeTool: "select" as CanvasTool,
-      // Active swatch per color-capable element type (used when creating new
-      // shapes), seeded from each extension's palette. Recoloring a selected shape
-      // writes here too. Data-driven from the registry — no per-type fields.
-      activeColors: Object.fromEntries(
-        colorPalettes.map((entry) => [entry.type, entry.palette[0]]),
-      ) as Record<string, string>,
-      penColor: PEN_COLORS[0] as string,
-      // Backdrop grid style, driven by the document's "gridtype" property.
-      gridType: "dots" as GridType,
-      saveState: "idle" as "idle" | "saving" | "saved",
-      isDarkMode: false,
-      localPointerScreen: null as { x: number; y: number } | null,
-      camera: { centerX: 0, centerY: 0, zoom: 1 } as ViewportCamera,
-      screen: { width: 1, height: 1 } as ScreenSize,
-      // Singleton extension-owned editor session. The host only mounts the
-      // supplied tag/props and invokes its finish callback.
-      activeEditSession: null as CanvasEditSession | null,
-      // Screen-space position of the long-press context menu, null when hidden.
-      contextMenuPos: null as { x: number; y: number } | null,
-      intrinsicShapeSizes: new Map<string, { width: number; height: number }>(),
-      // Remote pointers arrive as discrete presence updates; a CSS transition on
-      // the cursor smooths the jumps. While the local camera moves the transition
-      // is suspended, so cursors stay locked to the canvas instead of lagging.
-      isCameraMoving: false,
-      canUndo: false,
-      canRedo: false,
-    },
-    () => host.requestRender(),
-  );
-  const { state } = store;
+  /**
+   * Plain state. Writing a field does nothing on its own — exactly like
+   * writing a local — and the entry points that change it ask for a frame
+   * when they are done.
+   */
+  const state = {
+    shapes: [] as CanvasShape[],
+    strokes: [] as CanvasStroke[],
+    selectedShapeIds: new Set<string>(),
+    selectedStrokeIds: new Set<string>(),
+    // Locked elements are intentionally excluded from normal hit testing. Keep a
+    // separate hover target so their small unlock control remains reachable.
+    hoveredLockedElement: null as LockedCanvasElement | null,
+    // Section chrome is painted on the canvas. This transient input only appears
+    // while its title is actively being edited.
+    editingChromeId: null as string | null,
+    // Live screen-space rectangle while drag-selecting; null when not marqueeing.
+    marqueeRect: null as Rect | null,
+    // True only while a pan drag is in progress, so the viewport shows the
+    // grabbing hand during panning and a resting cursor otherwise.
+    isPanning: false,
+    activeTool: "select" as CanvasTool,
+    // Active swatch per color-capable element type (used when creating new
+    // shapes), seeded from each extension's palette. Recoloring a selected shape
+    // writes here too. Data-driven from the registry — no per-type fields.
+    activeColors: Object.fromEntries(
+      colorPalettes.map((entry) => [entry.type, entry.palette[0]]),
+    ) as Record<string, string>,
+    penColor: PEN_COLORS[0] as string,
+    // Backdrop grid style, driven by the document's "gridtype" property.
+    gridType: "dots" as GridType,
+    saveState: "idle" as "idle" | "saving" | "saved",
+    isDarkMode: false,
+    localPointerScreen: null as { x: number; y: number } | null,
+    camera: { centerX: 0, centerY: 0, zoom: 1 } as ViewportCamera,
+    screen: { width: 1, height: 1 } as ScreenSize,
+    // Singleton extension-owned editor session. The host only mounts the
+    // supplied tag/props and invokes its finish callback.
+    activeEditSession: null as CanvasEditSession | null,
+    // Screen-space position of the long-press context menu, null when hidden.
+    contextMenuPos: null as { x: number; y: number } | null,
+    intrinsicShapeSizes: new Map<string, { width: number; height: number }>(),
+    // Remote pointers arrive as discrete presence updates; a CSS transition on
+    // the cursor smooths the jumps. While the local camera moves the transition
+    // is suspended, so cursors stay locked to the canvas instead of lagging.
+    isCameraMoving: false,
+    canUndo: false,
+    canRedo: false,
+  };
+
+  /** Ask for a frame. Batched onto a microtask by the host. */
+  const invalidate = () => host.requestRender();
   const watch = createWatchers();
   const watchPost = createWatchers();
 
@@ -1014,6 +1018,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       if (state.saveState === "saved") {
         state.saveState = "idle";
         dispatchSaveStatus();
+        invalidate();
       }
     }, 1600);
   }
@@ -1110,6 +1115,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
   function updateThemeMode() {
     state.isDarkMode = resolveDarkMode();
+    invalidate();
     queueMicrotask(renderThemeChanged);
   }
 
@@ -3292,6 +3298,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       cameraMoveTimer = setTimeout(() => {
         state.isCameraMoving = false;
         renderSelections(true);
+        invalidate();
       }, 150);
     });
 
@@ -3369,12 +3376,40 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   }
 
   // --- lifecycle ---------------------------------------------------------
+  /**
+   * Input handled on `window` rather than on the element.
+   *
+   * A drag has to keep tracking once the pointer leaves the canvas, and the
+   * keyboard has no position at all. These sit outside the host, so the host's
+   * own input listener never sees them and each one asks for a frame itself.
+   */
+  const windowHandlers = (
+    [
+      ["keydown", handleKeydown],
+      ["pointermove", handlePointerMove],
+      ["pointerup", handlePointerUp],
+      ["pointercancel", handlePointerCancel],
+      ["copy", handleCopy],
+      ["cut", handleCut],
+      ["paste", handlePaste],
+    ] as const
+  ).map(([type, handler]) => {
+    const draws = (event: Event) => {
+      (handler as (event: never) => void)(event as never);
+      invalidate();
+    };
+    return [type, draws] as const;
+  });
+
   function mount(): void {
     void import("#editor/document.ts");
     refreshCssVars();
 
     const observe = (transaction: Y.Transaction, sync: () => void) => {
       sync();
+      // Nobody touched the canvas — the document changed underneath it, whether
+      // from a peer, an undo, or the room state arriving on load.
+      invalidate();
       // Persist only this client's own edits (local edits have origin null; undo/
       // redo carry the UndoManager origin). Remote changes are persisted by their
       // originator — the peer that made them, or the server for agent edits — so
@@ -3413,7 +3448,12 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       maxZoom: 10,
     });
 
-    resizeObserver = new ResizeObserver(resize);
+    // Neither the viewport resizing nor the theme flipping is an interaction,
+    // so both say so themselves.
+    resizeObserver = new ResizeObserver(() => {
+      resize();
+      invalidate();
+    });
     if (dom.viewport) resizeObserver.observe(dom.viewport);
 
     updateThemeMode();
@@ -3435,13 +3475,9 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     // screen has been measured; otherwise the Yjs observer frames it on first
     // sync. Either way the first content to land counts as initial.
     fitInitialViewIfNeeded(true);
-    window.addEventListener("keydown", handleKeydown);
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerCancel);
-    window.addEventListener("copy", handleCopy);
-    window.addEventListener("cut", handleCut);
-    window.addEventListener("paste", handlePaste);
+    for (const [type, handler] of windowHandlers) {
+      window.addEventListener(type, handler);
+    }
   }
 
   function destroy(): void {
@@ -3452,13 +3488,9 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     colorSchemeMedia?.removeEventListener("change", updateThemeMode);
     host.presenceChanged([]);
     undoManager.destroy();
-    window.removeEventListener("keydown", handleKeydown);
-    window.removeEventListener("pointermove", handlePointerMove);
-    window.removeEventListener("pointerup", handlePointerUp);
-    window.removeEventListener("pointercancel", handlePointerCancel);
-    window.removeEventListener("copy", handleCopy);
-    window.removeEventListener("cut", handleCut);
-    window.removeEventListener("paste", handlePaste);
+    for (const [type, handler] of windowHandlers) {
+      window.removeEventListener(type, handler);
+    }
     if (saveTimer) clearTimeout(saveTimer);
     if (saveStateTimer) clearTimeout(saveStateTimer);
     if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
@@ -3582,7 +3614,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
   // Page-level values live outside this host's revision counter, so the host
   // says once that it is on screen and wants repainting when any of them move.
-  const unregister = registerCanvas(store.invalidate);
+  const unregister = registerCanvas(invalidate);
 
   return {
     /** The live view model the template reads. */
@@ -3594,7 +3626,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
      * For host properties: they live on the element rather than in the state
      * proxy, so writing one schedules nothing on its own.
      */
-    invalidate: store.invalidate,
+    invalidate,
     /** Runs the reactions that must observe the pre-render state, then renders. */
     flush() {
       runReactions();

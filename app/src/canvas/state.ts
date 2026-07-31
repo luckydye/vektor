@@ -1,60 +1,16 @@
 /**
- * The canvas host's dirty-marking, in about twenty lines.
+ * What is left of the canvas host's state handling.
  *
  * The canvas draws immediate-mode: every frame rebuilds the whole tree from
- * whatever the state says right now, and lit-html diffs it into the DOM. So
- * there is nothing to track — no dependency graph, no cached computations, no
- * subscriptions. The only question is *when* to draw, and the answer is "after
- * anything was written".
+ * whatever the state says right now, and lit-html diffs it into the DOM. State
+ * is a plain object on the controller — writing a field does nothing on its
+ * own, exactly like writing a local — and the entry points that change it ask
+ * for a frame when they are done. There is nothing here that tracks, caches or
+ * subscribes.
  *
- * The batching matches `CanvasElementBase`: many writes in one turn coalesce
- * into a single microtask render, so a drag that touches six values still
- * paints once.
+ * Renders coalesce onto a microtask in `CanvasHostElement`, so a drag that
+ * touches six values still paints once.
  */
-
-export interface CanvasStateStore<T extends object> {
-  /** Read and write freely; every write bumps the revision and schedules a render. */
-  state: T;
-  /** Marks dirty by hand, for state that lives outside the proxy. */
-  invalidate: () => void;
-}
-
-export function createCanvasState<T extends object>(
-  initial: T,
-  onChange: () => void,
-): CanvasStateStore<T> {
-  const invalidate = onChange;
-
-  const state = new Proxy(initial, {
-    set(target, key, value) {
-      // Identical writes are common — a pointermove that re-assigns the same
-      // hovered id, a Yjs event that replays a value. Bumping on those would
-      // re-render for nothing.
-      if (Object.is(Reflect.get(target, key), value)) return true;
-      Reflect.set(target, key, value);
-      invalidate();
-      return true;
-    },
-    deleteProperty(target, key) {
-      if (!Reflect.has(target, key)) return true;
-      Reflect.deleteProperty(target, key);
-      invalidate();
-      return true;
-    },
-  });
-
-  return { state, invalidate };
-}
-
-/**
- * Mutation through a proxied value does not go through the `set` trap — pushing
- * to an array or adding to a Set changes it in place. Callers either replace the
- * value (`state.shapes = [...state.shapes, one]`) or say so explicitly with
- * this. Named for what it is, so the two cases read differently at a glance.
- */
-export function mutated(store: Pick<CanvasStateStore<object>, "invalidate">): void {
-  store.invalidate();
-}
 
 /**
  * A `watch`, minus the dependency tracking.
