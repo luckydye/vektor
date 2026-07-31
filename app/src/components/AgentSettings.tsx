@@ -7,7 +7,7 @@ import { Button } from "./Button.tsx";
 type Provider = "anthropic" | "openai" | "openrouter" | "opencode-zen" | "ollama";
 
 export function AgentSettings() {
-  const { currentSpace } = useSpace();
+  const { currentSpace, currentSpaceId } = useSpace();
 
   const [meta, setMeta] = createSignal<AIConfigMeta | null>(null);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -106,12 +106,9 @@ export function AgentSettings() {
   }
 
   createEffect(
-    on(
-      () => currentSpace()?.id,
-      (id) => {
-        if (id) void load();
-      },
-    ),
+    on(currentSpaceId, (id) => {
+      if (id) void load();
+    }),
   );
 
   const configured = () => {

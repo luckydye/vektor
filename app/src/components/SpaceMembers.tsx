@@ -91,7 +91,7 @@ function isScopedGrant(grant: PermissionEntry): boolean {
 }
 
 export function SpaceMembers() {
-  const { currentSpace } = useSpace();
+  const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
 
   const [permissions, setPermissions] = createSignal<PermissionEntry[]>([]);
@@ -173,13 +173,10 @@ export function SpaceMembers() {
   }
 
   createEffect(
-    on(
-      () => currentSpace()?.id,
-      () => {
-        void fetchPermissions();
-        void fetchUsers();
-      },
-    ),
+    on(currentSpaceId, () => {
+      void fetchPermissions();
+      void fetchUsers();
+    }),
   );
 
   createEffect(

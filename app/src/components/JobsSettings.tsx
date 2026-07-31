@@ -55,7 +55,7 @@ function formatDuration(run: JobRun): string {
 }
 
 export function JobsSettings() {
-  const { currentSpace } = useSpace();
+  const { currentSpace, currentSpaceId } = useSpace();
   const navigate = useNavigate();
 
   // Schedules state
@@ -260,7 +260,7 @@ export function JobsSettings() {
 
   createEffect(
     on(
-      () => currentSpace()?.id,
+      currentSpaceId,
       (id) => {
         if (id) loadAll();
       },

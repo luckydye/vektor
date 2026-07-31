@@ -72,9 +72,11 @@ export function CommentThread(props: Props) {
     }
   }
 
+  const commentCount = createMemo(() => props.comments.length);
+
   createEffect(
     on(
-      () => props.comments.length,
+      commentCount,
       () => {
         // Solid has already rendered the new comment by the time this runs.
         if (commentListRef) commentListRef.scrollTop = commentListRef.scrollHeight;

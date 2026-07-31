@@ -107,9 +107,14 @@ export function useCursorPagedList<T>(
   // Compared by hash rather than identity: the key is usually rebuilt inline on
   // every read, so identity always differs. `defer` skips the initial run,
   // which is what Vue's non-immediate `watch` gave.
+  // A memo, because `on` re-runs its body whenever a tracked dependency
+  // notifies and never compares the value it read. The memo is what turns
+  // "the key was rebuilt" into "the key actually changed".
+  const baseKeyHash = createMemo(() => queryHash(baseKey()));
+
   createRenderEffect(
     on(
-      () => queryHash(baseKey()),
+      baseKeyHash,
       () => {
         setCursors([undefined]);
         setPageIndex(0);

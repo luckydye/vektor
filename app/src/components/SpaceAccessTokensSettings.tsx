@@ -22,7 +22,7 @@ function resourceLabel(resource: {
 }
 
 export function SpaceAccessTokensSettings() {
-  const { currentSpace } = useSpace();
+  const { currentSpace, currentSpaceId } = useSpace();
 
   const [accessTokens, setAccessTokens] = createSignal<AccessToken[]>([]);
   const [isLoadingTokens, setIsLoadingTokens] = createSignal(false);
@@ -140,7 +140,7 @@ export function SpaceAccessTokensSettings() {
   onMount(() => void loadAccessTokens());
   createEffect(
     on(
-      () => currentSpace()?.id,
+      currentSpaceId,
       (id) => {
         if (id) void loadAccessTokens();
       },

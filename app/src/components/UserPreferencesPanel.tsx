@@ -108,7 +108,7 @@ export function UserPreferencesPanel(props: Props) {
   const [notificationPreferenceError, setNotificationPreferenceError] = createSignal<
     string | null
   >(null);
-  const { currentSpace } = useSpace();
+  const { currentSpace, currentSpaceId } = useSpace();
 
   const activeSpaceName = createMemo(() => currentSpace()?.name || null);
 
@@ -275,7 +275,7 @@ export function UserPreferencesPanel(props: Props) {
 
   createEffect(
     on(
-      () => currentSpace()?.id,
+      currentSpaceId,
       () => {
         void loadIntegrations();
         void loadNotificationPreference();

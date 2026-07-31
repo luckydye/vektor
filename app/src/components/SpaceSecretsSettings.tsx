@@ -8,7 +8,7 @@ type SecretPermission = { userId?: string; groupId?: string; permission: string 
 type AssignableUser = { id: string; name: string; email: string };
 
 export function SpaceSecretsSettings() {
-  const { currentSpace } = useSpace();
+  const { currentSpace, currentSpaceId } = useSpace();
 
   const [secrets, setSecrets] = createSignal<SpaceSecret[]>([]);
   const [isLoadingSecrets, setIsLoadingSecrets] = createSignal(false);
@@ -261,7 +261,7 @@ export function SpaceSecretsSettings() {
   onMount(reload);
   createEffect(
     on(
-      () => currentSpace()?.id,
+      currentSpaceId,
       (id) => {
         if (id) reload();
       },

@@ -374,9 +374,11 @@ export function WorkflowView(props: Props) {
   // Router navigations don't fire `popstate`, so the query param is watched
   // separately. This is how a run started from the header button (a different
   // part of the tree) switches the view over to it.
+  const runParam = createMemo(() => new URLSearchParams(location.search).get("run"));
+
   createEffect(
     on(
-      () => new URLSearchParams(location.search).get("run"),
+      runParam,
       (value) => {
         const runId = value?.trim() || null;
         if (!runId || runId === selectedRunId()) return;
