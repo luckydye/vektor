@@ -133,10 +133,13 @@ describe("solid reactivity", () => {
     ).toEqual([]);
   });
 
-  it("passes trivially while the tree is still Vue", () => {
-    // Phase 1 has no `.tsx` components yet, so the scan above proves nothing on
-    // its own. The detector cases below are what keep it honest until it does.
-    expect(collectTsxFiles(SOURCE_DIR)).toEqual([]);
+  it("has something to scan", () => {
+    // Phase 1 wrote this as `toEqual([])` — there were no `.tsx` components, so
+    // the scan above proved nothing and the detector cases below were the only
+    // real check. Phase 3 landed the primitives, so the assertion inverts: the
+    // scan is now load-bearing, and an empty result would mean the guard had
+    // quietly stopped looking rather than that the tree was clean.
+    expect(collectTsxFiles(SOURCE_DIR).length).toBeGreaterThan(0);
   });
 });
 

@@ -13,6 +13,6 @@
   ],
   "compilerOptions": {
     "jsx": "preserve",
-    "jsxImportSource": "vue"
+    "jsxImportSource": "solid-js"
   }
 }

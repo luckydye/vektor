@@ -1,15 +1,17 @@
-import Button from "#components/Button.vue";
-import ContextMenu from "#components/ContextMenu.vue";
-import Dialog from "#components/Dialog.vue";
-import DialogFooter from "#components/DialogFooter.vue";
-import FormField from "#components/FormField.vue";
-import Icon from "#components/Icon.vue";
-import Input from "#components/Input.vue";
-import MenuLink from "#components/MenuLink.vue";
-import PagerCursor from "#components/PagerCursor.vue";
-import SelectItem from "#components/SelectItem.vue";
-import SelectMenu from "#components/SelectMenu.vue";
-import SwitchToggle from "#components/SwitchToggle.vue";
+import { Button } from "#components/Button.tsx";
+import { ContextMenu } from "#components/ContextMenu.tsx";
+import { Dialog } from "#components/Dialog.tsx";
+import { DialogFooter } from "#components/DialogFooter.tsx";
+import { FormField } from "#components/FormField.tsx";
+import { Icon } from "#components/Icon.tsx";
+import { Input } from "#components/Input.tsx";
+import { MenuLink } from "#components/MenuLink.tsx";
+import { PagerCursor } from "#components/PagerCursor.tsx";
+import { SelectItem } from "#components/SelectItem.tsx";
+import { SelectMenu } from "#components/SelectMenu.tsx";
+import { SwitchToggle } from "#components/SwitchToggle.tsx";
+
+import { setRegistryFramework } from "./render.ts";
 
 /**
  * Logical name to current implementation.
@@ -37,6 +39,12 @@ const components = {
   SelectMenu,
   SwitchToggle,
 } as const;
+
+// Solid as of Phase 3 (ticket 1350). Flipping this line back to the `.vue`
+// imports above is the whole of the before/after comparison — the specs are
+// not touched either way, which is what makes them a check rather than a
+// description.
+setRegistryFramework("solid");
 
 export type ComponentName = keyof typeof components;
 
