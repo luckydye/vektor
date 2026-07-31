@@ -48,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSpace } from "#composeables/useSpace.ts";
 import AgentSettings from "./AgentSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
@@ -56,6 +57,8 @@ import SettingsLayout from "./SettingsLayout.vue";
 import SpaceAccessTokensSettings from "./SpaceAccessTokensSettings.vue";
 import SpaceGeneralSettings from "./SpaceGeneralSettings.vue";
 import SpaceSecretsSettings from "./SpaceSecretsSettings.vue";
+
+const { currentSpace } = useSpace();
 
 const tabs = [
   { id: "general", label: "General" },
