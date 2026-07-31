@@ -1,5 +1,8 @@
 import { type Accessor, createContext, createMemo, useContext } from "solid-js";
 import { api, type Space } from "#api/client.ts";
+
+export type { Space };
+
 import { type MaybeAccessor, useMutation, useQuery } from "./query.solid.ts";
 
 export type { MaybeAccessor };

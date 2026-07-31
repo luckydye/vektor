@@ -7,6 +7,7 @@ interface Props {
   isActive?: boolean;
   href?: string;
   badge?: number;
+  class?: string;
   children?: JSX.Element;
 }
 
@@ -16,6 +17,7 @@ export function MenuLink(props: Props) {
     <a
       href={props.href}
       class={twMerge(
+        props.class,
         "button-with-icon inline-flex cursor-pointer items-center rounded-md px-4xs font-normal text-neutral-800 transition-colors hover:transition-none",
         "@max-xs:justify-center",
         props.isActive

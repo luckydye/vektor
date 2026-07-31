@@ -25,16 +25,19 @@ declare module "solid-js" {
       "prop:user"?: unknown;
       "attr:value"?: string;
       showdelay?: string;
+      name?: string;
       hidedelay?: string;
     }
 
     interface IntrinsicElements {
       "a-blur": CustomElementAttributes;
+      "a-shortcut": CustomElementAttributes;
       "a-color-picker": CustomElementAttributes;
       "a-list": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
       "a-popover-trigger": CustomElementAttributes;
       "vektor-avatar": CustomElementAttributes;
+      "wiki-scroll": CustomElementAttributes;
     }
   }
 }
