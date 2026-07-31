@@ -1,6 +1,6 @@
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
-import { createValueStore } from "#canvas/state.ts";
+import { shared } from "#canvas/state.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
@@ -311,7 +311,7 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-link"))
 // content-addressed by URL, and the only dependency is the api client), so the
 // canvas host neither creates nor owns it — the link element loads its own
 // preview and resolveData reads from here.
-const previews = createValueStore(new Map<string, LinkPreviewState>());
+const previews = shared(new Map<string, LinkPreviewState>());
 
 function setPreview(url: string, state: LinkPreviewState) {
   const next = new Map(previews.get());
@@ -337,11 +337,10 @@ function linkPreviewForShape(shape: CanvasShape): LinkPreviewState | undefined {
   return src ? previews.get().get(src) : undefined;
 }
 
-// Preview state used by this extension's data and measurement hooks. The host
-// subscribes so an async preview landing repaints the card.
+// Preview state used by this extension's data and measurement hooks. Writing a
+// resolved preview repaints the canvases, so a card fills in when it lands.
 export const linkPreviews = {
   previews,
-  subscribe: previews.subscribe,
   loadPreview: loadLinkPreview,
   previewForShape: linkPreviewForShape,
 };

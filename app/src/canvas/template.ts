@@ -21,7 +21,8 @@ import {
 } from "#assets/icons.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
-import type { CanvasDomRefs, CanvasView } from "./CanvasView.ts";
+import type { CanvasView } from "./CanvasController.ts";
+import type { CanvasDomRefs } from "./CanvasView.ts";
 import { DRAW_STROKE_MODES, PEN_COLORS } from "./extensions/drawing.ts";
 import { SHAPE_LIBRARY } from "./extensions/shape.ts";
 import type { CanvasShape } from "./extensions/types.ts";
@@ -29,17 +30,13 @@ import type { CanvasShape } from "./extensions/types.ts";
 /**
  * The canvas shell, as lit-html.
  *
- * Converted from `Canvas.vue`'s template (plan section 6). Note that
- * `<canvas-presence-cursor>` takes `x`/`y`/`name`/`companion-id` as
+ * Note that `<canvas-presence-cursor>` takes `x`/`y`/`name`/`companion-id` as
  * *attributes* — it declares them in `observedAttributes` and reads them with
  * `getAttribute`. A lit `.x=` property binding sets a field it never looks at,
  * which leaves every cursor at the origin and its cosmetic companion with
  * nothing to follow.
  *
- * The mapping is otherwise
- * mechanical — `v-if` to a ternary, `:class` to `classMap`, `:style` to
- * `styleMap`, `ref="x"` to the `ref()` directive — with two places where it is
- * not, and both matter:
+ * Two rendering choices here are load-bearing:
  *
  * 1. Shape articles are rendered with `repeat()` keyed by shape id. lit's
  *    default list handling patches by index, which would move a shape's data
@@ -47,7 +44,7 @@ import type { CanvasShape } from "./extensions/types.ts";
  *    since a drag bumps `updatedAt`. `repeat()` moves the DOM node instead,
  *    which is what keeps the element bodies (and their focus, editors and
  *    upload state) alive across a move.
- * 2. `<component :is>` becomes `lit-html/static.js`. A lit template is
+ * 2. Varying element tags go through `lit-html/static.js`. A lit template is
  *    identified by its string literal, so a tag name that varies cannot be an
  *    ordinary binding — `unsafeStatic` makes the tag part of the literal, and a
  *    different tag produces a different template and therefore a fresh element,
@@ -57,12 +54,12 @@ import type { CanvasShape } from "./extensions/types.ts";
 const svgIcon = (markup: string, className = "svg-icon") =>
   html`<div class=${className} aria-hidden="true">${unsafeSVG(markup)}</div>`;
 
-/** `@pointerdown.stop` — keeps chrome clicks away from the viewport marquee. */
+/** Keeps chrome clicks away from the viewport marquee. */
 const stopPointer = (event: Event) => event.stopPropagation();
 
 function toolPropertiesBar(view: CanvasView) {
   if (!view.hasToolProperties()) return nothing;
-  const drawing = view.activeTool === "draw";
+  const drawing = view.state.activeTool === "draw";
   const palettes = view.activeToolColorPalettes();
 
   return html`
@@ -101,7 +98,7 @@ function toolPropertiesBar(view: CanvasView) {
                     type="button"
                     class=${classMap({
                       "canvas-color-swatch": true,
-                      active: view.activeColors[cp.type] === color,
+                      active: view.state.activeColors[cp.type] === color,
                     })}
                     style=${styleMap({ background: color })}
                     aria-label=${`${t(cp.label)} color ${color}`}
@@ -122,7 +119,7 @@ function toolPropertiesBar(view: CanvasView) {
                       type="button"
                       class=${classMap({
                         "canvas-color-swatch": true,
-                        active: view.penColor === color,
+                        active: view.state.penColor === color,
                       })}
                       style=${styleMap({ background: color })}
                       aria-label=${`${t("Set pen color")} ${color}`}
@@ -177,7 +174,7 @@ function propertiesSidebar(view: CanvasView) {
           : nothing
       }
       ${
-        view.selectedStrokeIds.size > 0
+        view.state.selectedStrokeIds.size > 0
           ? html`<section class="canvas-property-section" aria-label=${t("Pen color")}>
               <span class="canvas-property-label">${t("Color")}</span>
               <div class="canvas-property-colors">
@@ -210,9 +207,9 @@ function toolbar(view: CanvasView, dom: CanvasDomRefs) {
         (tool) => html`
           <button
             type="button"
-            class=${classMap({ "canvas-tool": true, active: view.activeTool === tool.id })}
+            class=${classMap({ "canvas-tool": true, active: view.state.activeTool === tool.id })}
             aria-label=${t(tool.label)}
-            aria-pressed=${view.activeTool === tool.id}
+            aria-pressed=${view.state.activeTool === tool.id}
             data-tooltip=${`${t(tool.label)} · ${tool.shortcut}`}
             @click=${() => view.setActiveTool(tool.id)}
           >
@@ -229,9 +226,9 @@ function toolbar(view: CanvasView, dom: CanvasDomRefs) {
         <button
           slot="trigger"
           type="button"
-          class=${classMap({ "canvas-tool": true, active: view.activeTool === "shape" })}
+          class=${classMap({ "canvas-tool": true, active: view.state.activeTool === "shape" })}
           aria-label=${t("Shape")}
-          aria-pressed=${view.activeTool === "shape"}
+          aria-pressed=${view.state.activeTool === "shape"}
           data-tooltip=${`${t("Shape")} · R`}
         >
           ${svgIcon(shapesToolIcon, "svg-icon canvas-tool-icon")}
@@ -246,7 +243,8 @@ function toolbar(view: CanvasView, dom: CanvasDomRefs) {
                     class=${classMap({
                       "canvas-shape-option": true,
                       active:
-                        view.activeTool === "shape" && view.activeShapeId === item.id,
+                        view.state.activeTool === "shape" &&
+                        view.activeShapeId === item.id,
                     })}
                     aria-label=${t(item.label)}
                     @click=${() => view.pickShapeLibraryItem(item)}
@@ -266,7 +264,7 @@ function toolbar(view: CanvasView, dom: CanvasDomRefs) {
         class="canvas-tool"
         aria-label=${t("Undo")}
         data-tooltip=${`${t("Undo")} · ⌘Z`}
-        ?disabled=${!view.canUndo}
+        ?disabled=${!view.state.canUndo}
         @click=${() => view.undo()}
       >
         ${svgIcon(undoIcon, "svg-icon canvas-tool-icon")}
@@ -276,7 +274,7 @@ function toolbar(view: CanvasView, dom: CanvasDomRefs) {
         class="canvas-tool"
         aria-label=${t("Redo")}
         data-tooltip=${`${t("Redo")} · ⌘⇧Z`}
-        ?disabled=${!view.canRedo}
+        ?disabled=${!view.state.canRedo}
         @click=${() => view.redo()}
       >
         ${svgIcon(redoIcon, "svg-icon canvas-tool-icon")}
@@ -304,7 +302,7 @@ function toolbar(view: CanvasView, dom: CanvasDomRefs) {
  */
 function shapeArticle(view: CanvasView, shape: CanvasShape) {
   const tag = view.elementTagForShape(shape);
-  const session = view.activeEditSession;
+  const session = view.state.activeEditSession;
 
   let body: unknown = nothing;
   if (tag) {
@@ -343,7 +341,7 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
       class=${classMap({
         "canvas-shape": true,
         [shape.type]: true,
-        selected: view.selectedShapeIds.has(shape.id),
+        selected: view.state.selectedShapeIds.has(shape.id),
       })}
       style=${styleMap(view.articleStyle(shape))}
       data-shape-id=${shape.id}
@@ -481,9 +479,10 @@ const handleAt = (point: { x: number; y: number }) => ({
 });
 
 function contextMenu(view: CanvasView) {
-  const position = view.contextMenuPos;
+  const position = view.state.contextMenuPos;
   if (!position) return nothing;
-  const hasSelection = view.selectedShapeIds.size > 0 || view.selectedStrokeIds.size > 0;
+  const hasSelection =
+    view.state.selectedShapeIds.size > 0 || view.state.selectedStrokeIds.size > 0;
   const run = (action: () => void) => () => {
     action();
     view.closeContextMenu();
@@ -566,11 +565,11 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
   const transform = view.transform();
   const chromeShape = view.editingChromeShape();
   const lockPosition = view.hoveredLockedElementPosition();
-  const localPointer = view.localPointerScreen;
-  const marquee = view.marqueeRect;
+  const localPointer = view.state.localPointerScreen;
+  const marquee = view.state.marqueeRect;
 
   return html`
-    <div class=${classMap({ "canvas-root": true, "is-dark": view.isDarkMode })}>
+    <div class=${classMap({ "canvas-root": true, "is-dark": view.state.isDarkMode })}>
       ${toolPropertiesBar(view)} ${propertiesSidebar(view)} ${toolbar(view, dom)}
 
       <div
@@ -583,7 +582,7 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
         @contextmenu=${(event: MouseEvent) => view.handleContextMenu(event)}
         @pointerdown=${(event: PointerEvent) => view.handleViewportPointerDown(event)}
         @pointercancel=${(event: PointerEvent) => view.handlePointerCancel(event)}
-        @pointerleave=${(event: PointerEvent) => view.handlePointerLeave(event)}
+        @pointerleave=${() => view.handlePointerLeave()}
         @dblclick=${(event: MouseEvent) => view.handleViewportDoubleClick(event)}
         @dragover=${(event: DragEvent) => view.handleDragOver(event)}
         @drop=${(event: DragEvent) => view.handleDrop(event)}
@@ -701,7 +700,7 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
             if (!pointer) return nothing;
             const at = view.worldToScreen(pointer);
             return html`<canvas-presence-cursor
-              class=${classMap({ "is-instant": view.isCameraMoving })}
+              class=${classMap({ "is-instant": view.state.isCameraMoving })}
               name=${ifDefined(presence.user.name)}
               companion-id=${ifDefined(presence.user.appearance?.cursorCompanion ?? undefined)}
               x=${at.x}

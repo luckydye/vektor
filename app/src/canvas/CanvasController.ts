@@ -2,6 +2,7 @@ import * as Y from "yjs";
 import { penToolIcon, selectToolIcon } from "#assets/icons.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import type { DrawStrokeMode } from "./extensions/drawing.ts";
 import {
   activeDrawStrokeMode,
   activeShapeId,
@@ -125,18 +126,17 @@ import {
 } from "./viewport/index.ts";
 import "./CanvasPresenceCursorElement.ts";
 import "./css/canvas.css";
-import type { CanvasDomRefs, CanvasToolDef, CanvasView } from "./CanvasView.ts";
+import type { CanvasDomRefs, CanvasToolDef } from "./CanvasView.ts";
 import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
-import { linkPreviews } from "./extensions/link.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
-import { createCanvasState, createWatchers } from "./state.ts";
+import { createCanvasState, createWatchers, registerCanvas } from "./state.ts";
 
 /**
  * Everything the canvas needs from the page around it.
  *
  * The canvas is framework-free, so it cannot call `useSpace`, `useUserProfile`
- * or the other four composables `Canvas.vue` used to reach for. Their resolved
+ * or any other composable. Their resolved
  * values arrive here instead, set as properties on `<vektor-canvas>` by whatever
  * shell is hosting it. That keeps the dependency pointing one way — the shell
  * knows about the canvas, never the reverse — which is what lets the canvas
@@ -174,29 +174,17 @@ export interface CanvasHost {
   requestRender(): void;
 }
 
-export interface CanvasController {
-  /** Runs the reactions that must observe the pre-render state, then renders. */
-  flush(): void;
-  /** Runs the reactions that need the DOM to already reflect the new state. */
-  afterRender(): void;
-  mount(): void;
-  destroy(): void;
-  /**
-   * Drops the cached `derived` values.
-   *
-   * For host properties: they live on the element, not in the state proxy, so
-   * writing one bumps nothing and a `derived` that reads it would serve the
-   * previous revision's value forever.
-   */
-  invalidate(): void;
-  /** The live view model the template reads. */
-  readonly view: CanvasView;
-}
+/**
+ * Both public types are read off the factory rather than declared beside it.
+ *
+ * `CanvasView` in particular listed every member the template reads — a second
+ * copy of the view object below, in the same order, that had to be edited twice
+ * for every change and whose only failure mode was drifting silently.
+ */
+export type CanvasController = ReturnType<typeof createCanvasController>;
+export type CanvasView = CanvasController["view"];
 
-export function createCanvasController(
-  host: CanvasHost,
-  dom: CanvasDomRefs,
-): CanvasController {
+export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   type DragState =
     | {
         type: "shape";
@@ -1096,8 +1084,8 @@ export function createCanvasController(
 
   // The canvas moves shapes by transforming the viewport, which fires no
   // scroll/resize event — so the fixed-position formatting toolbar won't follow
-  // on its own. Re-anchor it after each transform is painted (flush: "post" so
-  // the editor DOM reflects the new position when we read its coords).
+  // on its own. Re-anchor it after each transform is painted, so the editor DOM
+  // reflects the new position when we read its coords.
   // Panning (middle/right-drag) shows the grabbing hand; otherwise the canvas uses
   // a local colored cursor that matches the color broadcast to collaborators.
   const viewportCursor = derived(() => {
@@ -3375,9 +3363,9 @@ export function createCanvasController(
   /**
    * Reactions that need the DOM to already show the new state.
    *
-   * These were Vue's `{ flush: "post" }` watches. The canvas layers are drawn from
-   * measured element geometry, so running them before the template is patched
-   * would paint against the previous frame's layout.
+   * The canvas layers are drawn from measured element geometry, so running
+   * them before the template is patched would paint against the previous
+   * frame's layout.
    */
   function runPostRenderReactions(): void {
     watchPost("transform", transform(), () => dom.canvasToolbar?.reposition());
@@ -3505,46 +3493,15 @@ export function createCanvasController(
    * only place that lists what rendering actually depends on, and it is what
    * makes the template a module instead of three thousand lines of the same file.
    */
-  const view: CanvasView = {
+  const view = {
     // state
-    get isDarkMode() {
-      return state.isDarkMode;
-    },
-    get activeTool() {
-      return state.activeTool;
-    },
-    get activeColors() {
-      return state.activeColors;
-    },
-    get penColor() {
-      return state.penColor;
-    },
-    get selectedShapeIds() {
-      return state.selectedShapeIds;
-    },
-    get selectedStrokeIds() {
-      return state.selectedStrokeIds;
-    },
-    get canUndo() {
-      return state.canUndo;
-    },
-    get canRedo() {
-      return state.canRedo;
-    },
-    get marqueeRect() {
-      return state.marqueeRect;
-    },
-    get contextMenuPos() {
-      return state.contextMenuPos;
-    },
-    get localPointerScreen() {
-      return state.localPointerScreen;
-    },
-    get isCameraMoving() {
-      return state.isCameraMoving;
-    },
-    get activeEditSession() {
-      return state.activeEditSession;
+    /**
+     * Read wholesale rather than through one forwarding getter per field. The
+     * proxy is already the live object, and a getter list has to be extended
+     * by hand every time the state gains a field.
+     */
+    get state(): Readonly<typeof state> {
+      return state;
     },
     get activeDrawStrokeMode() {
       return activeDrawStrokeMode.get();
@@ -3595,10 +3552,10 @@ export function createCanvasController(
     worldToScreen,
 
     // commands
-    setActiveTool: (tool) => {
+    setActiveTool: (tool: CanvasTool) => {
       state.activeTool = tool;
     },
-    setActiveDrawStrokeMode: (mode) => activeDrawStrokeMode.set(mode),
+    setActiveDrawStrokeMode: (mode: DrawStrokeMode) => activeDrawStrokeMode.set(mode),
     setActiveElementColor,
     setActivePenColor,
     setSelectedElementColor,
@@ -3640,27 +3597,32 @@ export function createCanvasController(
     handleBrowserFindMatch,
   };
 
-  // Extension-owned stores live outside the host's revision counter, so their
-  // changes have to be forwarded by hand.
-  const unsubscribes = [
-    activeDrawStrokeMode.subscribe(store.invalidate),
-    activeShapeId.subscribe(store.invalidate),
-    uploadPlaceholders.subscribe(store.invalidate),
-    linkPreviews.subscribe(store.invalidate),
-  ];
+  // Page-level values live outside this host's revision counter, so the host
+  // says once that it is on screen and wants repainting when any of them move.
+  const unregister = registerCanvas(store.invalidate);
 
   return {
+    /** The live view model the template reads. */
     view,
     mount,
+    /**
+     * Drops the cached `derived` values.
+     *
+     * For host properties: they live on the element, not in the state proxy, so
+     * writing one bumps nothing and a `derived` that reads it would serve the
+     * previous revision's value forever.
+     */
     invalidate: store.invalidate,
+    /** Runs the reactions that must observe the pre-render state, then renders. */
     flush() {
       runReactions();
     },
+    /** Runs the reactions that need the DOM to already reflect the new state. */
     afterRender() {
       runPostRenderReactions();
     },
     destroy() {
-      for (const unsubscribe of unsubscribes) unsubscribe();
+      unregister();
       destroy();
     },
   };

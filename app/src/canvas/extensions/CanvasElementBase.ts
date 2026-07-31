@@ -84,8 +84,7 @@ function borderBoxExtra(element: HTMLElement) {
  * property change, so embedded editors keep their focus/selection state.
  *
  * The element renders into its own light DOM (no shadow root) and sets
- * `display: contents` so the existing global canvas CSS keeps matching exactly
- * as if the markup were still inline in Canvas.vue.
+ * `display: contents` so the global canvas CSS keeps matching.
  */
 export abstract class CanvasElementBase extends HostElement {
   protected shapeData: CanvasShape | null = null;
@@ -102,16 +101,12 @@ export abstract class CanvasElementBase extends HostElement {
     return this.shapeData;
   }
 
-  // Single-word property name on purpose: Vue's HTML template lowercases kebab
-  // prop bindings, so a `:context.prop` binding reaches this setter while a
-  // camelCase/kebab one (e.g. canvasContext / canvas-context) silently would not.
   set context(value: CanvasElementContext | null) {
     this.services = value;
     this.scheduleRender();
   }
 
-  // Per-type reactive view model (preview state, editing flags, …). Named
-  // `data` on the property so the host binds `:data.prop`.
+  // Per-type reactive view model (preview state, editing flags, …).
   set data(value: unknown) {
     this.extra = value;
     this.scheduleRender();
@@ -122,7 +117,7 @@ export abstract class CanvasElementBase extends HostElement {
     this.flush();
   }
 
-  // Deliberately does NOT reset `mounted` or clear children. Vue reorders
+  // Deliberately does NOT reset `mounted` or clear children. The host reorders
   // shapes by remove+reinsert (e.g. a drag bumps updatedAt, which re-sorts the
   // shapes array), firing disconnect→connect on this same element instance.
   // Rebuilding would duplicate our imperatively-created children; keeping the
@@ -132,7 +127,7 @@ export abstract class CanvasElementBase extends HostElement {
   // custom elements clean themselves up via their own disconnectedCallback.
   disconnectedCallback() {}
 
-  // Coalesce the several property writes Vue performs per update into one
+  // Coalesce the several property writes the host performs per update into one
   // render, on a microtask so there is no visible lag.
   private scheduleRender() {
     if (!this.isConnected || this.renderQueued) return;

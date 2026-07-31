@@ -9,9 +9,6 @@ import { loadTwitterWidgets } from "./twitterWidgets.ts";
 // The hydrated tweet has a deterministic natural height (tweet + media at the
 // current width), which we measure and report via an `embed-resize` event so
 // the canvas grows the shape to fit instead of clipping it.
-//
-// Was `CanvasTwitterEmbed.vue`; converted to a custom element so Canvas.vue is
-// the only Vue component in the canvas tree.
 class CanvasTwitterEmbedElement extends HostElement {
   private container: HTMLDivElement | null = null;
   private observer: ResizeObserver | null = null;

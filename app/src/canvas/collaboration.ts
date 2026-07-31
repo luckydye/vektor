@@ -8,11 +8,12 @@ import type {
 /**
  * A collaboration session, as the canvas sees it.
  *
- * The app's session is `useCollaboration`, which exposes Vue refs. The canvas
- * cannot read a ref, so this is the same session behind a plain interface:
- * getters for the current values and one subscription for "something changed".
- * The Vue shell adapts one to the other, the same way it already resolves the
- * user, the space role and the uploader into properties.
+ * The app's session is `useCollaboration`, which exposes reactive accessors.
+ * The canvas cannot read those, so this is the same session behind a plain
+ * interface: getters for the current values and one subscription for
+ * "something changed". The component shell adapts one to the other, the same
+ * way it already resolves the user, the space role and the uploader into
+ * properties.
  *
  * Only the inline document editor needs this — the canvas embeds a document,
  * and that document has its own Yjs room and its own presence.

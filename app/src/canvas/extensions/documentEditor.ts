@@ -3,9 +3,7 @@
 // Yjs room and joins its presence room lazily — on the first editor focus — so
 // idle embeds never hold an editor or appear as present.
 //
-// Was `CanvasDocumentEditor.vue`, then a Vue `defineCustomElement`. Now a plain
-// custom element rendering with lit-html, like the rest of the canvas (plan
-// §6): the collaboration session arrives as a property from the app shell, so
+// The collaboration session arrives as a property from the app shell, so
 // nothing here imports a framework. Light DOM so the global .canvas-doc-editor
 // styles apply and the --canvas-* variables inherit, as with every other canvas
 // element.

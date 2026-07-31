@@ -1,7 +1,7 @@
 /**
  * The canvas host's reactivity, in about forty lines.
  *
- * The canvas is framework-free (plan section 6), so it needs its own answer to
+ * The canvas is framework-free, so it needs its own answer to
  * "something changed, re-render". This is that answer, and it is deliberately
  * the crudest one that works: a single revision counter, bumped on any write,
  * with derived values cached until it moves.
@@ -94,7 +94,7 @@ export function mutated(store: Pick<CanvasStateStore<object>, "invalidate">): vo
 }
 
 /**
- * Vue's `watch`, minus the dependency tracking.
+ * A `watch`, minus the dependency tracking.
  *
  * Reactions are re-declared on every flush and fire when the value they are
  * given differs from last time. Declaring them in a list that runs top to
@@ -118,45 +118,51 @@ export function createWatchers() {
     const before = previous.get(key) as T | undefined;
     previous.set(key, value);
     if (seen && Object.is(before, value)) return;
-    // Vue's default is to skip the first run; `immediate` opts in, and the
+    // The default is to skip the first run; `immediate` opts in, and the
     // handful of reactions that seed state from a property rely on it.
     if (!seen && !options?.immediate) return;
     run(value, before);
   };
 }
 
-export interface ValueStore<T> {
+/**
+ * Who to repaint when page-level canvas state changes.
+ *
+ * A few values are shared by every canvas on the page rather than owned by one
+ * host — the pen mode, the shape the shape tool stamps next, in-flight uploads,
+ * link previews that resolve later. A host does not need to know which of them
+ * changed, only that it should draw again, so there is one registry of live
+ * canvases instead of a listener set per value.
+ */
+const liveCanvases = new Set<() => void>();
+
+export function registerCanvas(repaint: () => void): () => void {
+  liveCanvases.add(repaint);
+  return () => {
+    liveCanvases.delete(repaint);
+  };
+}
+
+export interface SharedValue<T> {
   get(): T;
   set(value: T): void;
-  /** Returns an unsubscribe function. */
-  subscribe(listener: () => void): () => void;
 }
 
 /**
- * A single observable value, for state an extension owns rather than the host.
+ * A page-level value that repaints every canvas when it changes.
  *
- * The canvas extensions used a Vue `ref` for this — the pen mode, the shape the
- * shape-tool stamps next, the link-preview cache that fills in asynchronously.
- * None of them needed a reactive library; they needed "tell me when this
- * changes", which is this.
- *
- * Deliberately not the proxy above: these are module-level singletons shared by
- * every canvas on the page, so they carry their own listeners instead of being
- * bound to one host's revision counter.
+ * Not an observable: nothing subscribes and nothing propagates. Writing marks
+ * the canvases dirty, exactly as writing to a host's own state does, and the
+ * next frame reads the new value along with everything else.
  */
-export function createValueStore<T>(initial: T): ValueStore<T> {
+export function shared<T>(initial: T): SharedValue<T> {
   let current = initial;
-  const listeners = new Set<() => void>();
   return {
     get: () => current,
     set(value: T) {
       if (Object.is(current, value)) return;
       current = value;
-      for (const listener of [...listeners]) listener();
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+      for (const repaint of [...liveCanvases]) repaint();
     },
   };
 }

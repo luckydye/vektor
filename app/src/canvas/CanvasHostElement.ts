@@ -23,11 +23,9 @@ export const canvasHostTag = "vektor-canvas";
  * implements for the element bodies inside the canvas: light DOM, build once,
  * patch on change, coalesce work onto a microtask.
  *
- * Why the canvas leaves the framework entirely (plan section 6): the element
- * bodies are already custom elements, the host was 3,700 lines of viewport
- * maths, pointer handling and Yjs wiring that needs no framework, and doing it
- * before the Solid port means one framework in the tree at a time rather than
- * two coexisting for the whole migration.
+ * Why the canvas sits outside the framework: the element bodies are already
+ * custom elements, and the host is 3,700 lines of viewport maths, pointer
+ * handling and Yjs wiring that needs no framework.
  *
  * Everything the canvas cannot resolve for itself — the current user, the space
  * role, the document's grid setting, an uploader — arrives as a property. The
@@ -36,7 +34,7 @@ export const canvasHostTag = "vektor-canvas";
  *
  * Extends `HostElement` rather than `HTMLElement` directly: the class body is
  * evaluated at module load, `HTMLElement` does not exist during SSR, and this
- * module is reachable from the server render through the Vue adapter.
+ * module is reachable from the server render through the component adapter.
  */
 export class CanvasHostElement extends HostElement {
   private controller: CanvasController | null = null;

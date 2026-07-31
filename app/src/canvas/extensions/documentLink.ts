@@ -1,4 +1,4 @@
-import { createValueStore } from "#canvas/state.ts";
+import { shared } from "#canvas/state.ts";
 import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
@@ -388,8 +388,8 @@ export const documentLinkElement: CanvasElementExtension = {
 };
 
 // Static preview card. Delegates to the existing <document-attachment> custom
-// element; the inline editor (<CanvasDocumentEditor>, a Vue component) stays
-// host-owned and is swapped in by the host while a card is being edited. A
+// element; the inline editor (<canvas-document-editor>) stays host-owned and
+// is swapped in by the host while a card is being edited. A
 // plain click bubbles up as `document-click` for the host to enter edit mode;
 // the card's own `open-document` event already bubbles (composed) to the host.
 class CanvasDocumentElement extends CanvasElementBase {
@@ -722,7 +722,7 @@ export function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
 }
 
 export function createDocumentLinkController(options: DocumentLinkControllerOptions) {
-  const previews = createValueStore(new Map<string, DocumentPreviewState>());
+  const previews = shared(new Map<string, DocumentPreviewState>());
 
   function setPreview(key: string, preview: DocumentPreviewState) {
     const next = new Map(previews.get());

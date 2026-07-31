@@ -6,10 +6,9 @@ import { unionBounds } from "./viewport/bounds.ts";
 /**
  * What is selected, and what the selection can be asked to do.
  *
- * Extracted from `Canvas.vue` (plan section 6). None of this touches the DOM or
- * a framework — it is a question about two id sets and two element maps, which
- * is why it can be answered the same way from a component, the custom-element
- * host, or a test.
+ * Touches neither the DOM nor a framework — it is a question about two id sets
+ * and two element maps, so it can be answered the same way from a component,
+ * the custom-element host, or a test.
  */
 
 export interface SelectionContext {

@@ -86,8 +86,8 @@ export type CanvasRect = CanvasPoint & CanvasSize;
 // Extension contract
 //
 // Each element TYPE is described by one `CanvasElementExtension`, mirroring the
-// rich-text-editor's Tiptap extensions. Canvas.vue is a host/engine that
-// delegates all per-type behavior to these objects via the registry, instead of
+// rich-text-editor's Tiptap extensions. The canvas host delegates all per-type
+// behavior to these objects via the registry, instead of
 // branching on `shape.type === "..."` inline. Optional fields describe
 // capabilities; they do not trigger element-specific host fallbacks.
 // ---------------------------------------------------------------------------

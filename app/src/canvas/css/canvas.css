@@ -3,10 +3,7 @@
  *
  * Unscoped by necessity, not by accident: the element bodies inside the canvas
  * are light-DOM custom elements that set `display: contents`, so scoping these
- * rules to a component would stop them matching. Moving the block out of the
- * SFC (plan section 6) therefore changes nothing about how it applies — it just
- * stops the stylesheet depending on a framework, the same way
- * `editor/css/document.css` does.
+ * rules to a component would stop them matching.
  */
 
 .canvas-root {
@@ -678,9 +675,8 @@
   height: 100%;
 }
 
-/* Body of the <canvas-document-editor> custom element (was the scoped styles of
-   CanvasDocumentEditor.vue). Descendant-scoped under .canvas-doc-editor so the
-   generic child class names don't leak now that the block is global. */
+/* Body of the <canvas-document-editor> custom element. Descendant-scoped under
+   .canvas-doc-editor so the generic child class names don't leak. */
 .canvas-doc-editor {
   display: flex;
   width: 100%;

@@ -13,9 +13,8 @@ import { normalizeRotation } from "./viewport/geometry.ts";
  * manager. Keeping them apart stops the extension graph following the seeder
  * onto the server.
  *
- * Extracted from `Canvas.vue` (plan section 6). Everything the SFC closed over
- * — the extension manager instance, the page origin, the space id — is a
- * parameter here, so the same code runs in a component, a custom element, or a
+ * The extension manager instance, the page origin and the space id are all
+ * parameters, so the same code runs in a component, a custom element, or a
  * test. The manager is per-canvas rather than a module singleton, which is why
  * it is threaded through rather than imported.
  */

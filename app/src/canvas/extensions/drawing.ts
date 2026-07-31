@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { penToolIcon } from "#assets/icons.ts";
-import { createValueStore } from "#canvas/state.ts";
+import { shared } from "#canvas/state.ts";
 import {
   buildFreehandStroke,
   createFreehandStrokeBuilder,
@@ -79,9 +79,9 @@ export const DRAW_STROKE_MODES: Array<{
   },
 ];
 
-// Tool-specific UI state belongs to the extension. Canvas.vue only binds its
-// toolbar controls to this ref.
-export const activeDrawStrokeMode = createValueStore<DrawStrokeMode>("pen");
+// Tool-specific UI state belongs to the extension; the host only binds its
+// toolbar controls to this store.
+export const activeDrawStrokeMode = shared<DrawStrokeMode>("pen");
 
 // addVelocityWidths measures velocity in world units/ms, so it would otherwise
 // taper differently depending on zoom. Multiplying the scale by the current

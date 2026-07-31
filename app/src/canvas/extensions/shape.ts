@@ -1,5 +1,5 @@
 import { shapeCircleIcon, shapeRectangleIcon } from "#assets/icons.ts";
-import { createValueStore } from "#canvas/state.ts";
+import { shared } from "#canvas/state.ts";
 import type { FreehandPoint } from "#canvas/viewport/index.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 import { FREEHAND_STYLE } from "./drawing.ts";
@@ -118,7 +118,7 @@ export function createShapeStroke(
 
 // Extension-owned shape-tool state: which library item the tool stamps next.
 // The toolbar picker sets it; the host neither creates nor owns it.
-export const activeShapeId = createValueStore<string>(SHAPE_LIBRARY[0].id);
+export const activeShapeId = shared<string>(SHAPE_LIBRARY[0].id);
 export function setActiveShapeId(id: string) {
   activeShapeId.set(id);
 }

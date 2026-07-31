@@ -4,8 +4,8 @@ import type { CanvasShape } from "./extensions/types.ts";
 /**
  * Questions about a shape that only its extension can answer.
  *
- * Extracted from `Canvas.vue` (plan section 6). The extension manager is
- * created per canvas rather than being a module singleton, so it is passed in.
+ * The extension manager is created per canvas rather than being a module
+ * singleton, so it is passed in.
  */
 
 /** Inline CSS for a shape's article wrapper. */

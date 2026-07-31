@@ -1,4 +1,4 @@
-import { createValueStore } from "#canvas/state.ts";
+import { shared } from "#canvas/state.ts";
 import { canvasClipboardFromDataTransfer } from "#utils/clipboard.ts";
 import { canvasFilesFromList } from "./files.ts";
 import { mediaFilesFromList } from "./media.ts";
@@ -22,7 +22,7 @@ export const canvasClipboardInput: CanvasInputHandler = {
 export function createUploadPlaceholderStore(options: {
   sizeFor: (type: UploadShapeType) => { width: number; height: number };
 }) {
-  const items = createValueStore<
+  const items = shared<
     Array<{
       id: string;
       x: number;
