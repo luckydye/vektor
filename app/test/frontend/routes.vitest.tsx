@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
-import CommandPalatte from "#components/CommandPalatte.vue";
-import Dialog from "#components/Dialog.vue";
-import DocumentTree from "#components/DocumentTree.vue";
-import DocumentPageView from "#components/views/DocumentPageView.vue";
-import ExtensionRouteView from "#components/views/ExtensionRouteView.vue";
-import NotFoundView from "#components/views/NotFoundView.vue";
-import SpaceHomeView from "#components/views/SpaceHomeView.vue";
-import SpaceSearchView from "#components/views/SpaceSearchView.vue";
-import SpaceSettingsView from "#components/views/SpaceSettingsView.vue";
-import { renderRoute } from "./routeHarness.ts";
+import { CommandPalatte } from "#components/CommandPalatte.tsx";
+import { Dialog } from "#components/Dialog.tsx";
+import { DocumentTree } from "#components/DocumentTree.tsx";
+import { DocumentPageView } from "#components/views/DocumentPageView.tsx";
+import { ExtensionRouteView } from "#components/views/ExtensionRouteView.tsx";
+import { NotFoundView } from "#components/views/NotFoundView.tsx";
+import { SpaceHomeView } from "#components/views/SpaceHomeView.tsx";
+import { SpaceSearchView } from "#components/views/SpaceSearchView.tsx";
+import { SpaceSettingsView } from "#components/views/SpaceSettingsView.tsx";
+import { renderRoute } from "./routeHarness.tsx";
 
 /**
  * Tier 2: the literal before/after diff.

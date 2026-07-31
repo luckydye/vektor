@@ -1904,7 +1904,9 @@ describe("API Tests - Audit Logs", () => {
     expect(createLog).toBeDefined();
     expect(createLog.docId).toBe(auditTestDocId);
     expect(createLog.userId).toBe(LOCAL_USER_ID);
-    expect(createLog.revisionId).toBeUndefined();
+    // A create event has no revision. `createAuditLog` returns the inserted
+    // row, so the unset column comes back as SQL NULL — not `undefined`.
+    expect(createLog.revisionId).toBeNull();
   });
 
   it("should track save events in audit logs", async () => {

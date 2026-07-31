@@ -1,4 +1,4 @@
-import { Route, Router } from "@solidjs/router";
+import { Route, Router, useParams, useSearchParams } from "@solidjs/router";
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { isServer } from "solid-js/web";
 import { api } from "#api/client.ts";
@@ -18,7 +18,12 @@ import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
+import { DocumentPageView } from "./views/DocumentPageView.tsx";
+import { ExtensionRouteView } from "./views/ExtensionRouteView.tsx";
 import { NotFoundView } from "./views/NotFoundView.tsx";
+import { SpaceHomeView } from "./views/SpaceHomeView.tsx";
+import { SpaceSearchView } from "./views/SpaceSearchView.tsx";
+import { SpaceSettingsView } from "./views/SpaceSettingsView.tsx";
 import "#utils/insets.ts";
 
 type InitialSpace = Record<string, unknown> & { id?: string; slug?: string };
@@ -53,12 +58,23 @@ function stripRouterBase(url: string, base: string) {
  * blank", and a route that renders nothing is indistinguishable from one that
  * failed to match.
  */
-function PendingView(props: { name: string }) {
+/**
+ * `/new` and `/doc/:slug` are the same view; the draft is the case with no
+ * slug. The route params are read here rather than inside the view so the view
+ * stays a plain component the snapshot harness can mount directly.
+ */
+function DocumentRoute() {
+  const params = useParams<{ documentSlug?: string }>();
+  return <DocumentPageView documentSlug={params.documentSlug} />;
+}
+
+function NewDocumentRoute() {
+  const [searchParams] = useSearchParams<{ type?: string; category?: string }>();
   return (
-    <div class="flex min-h-[60vh] flex-col items-center justify-center gap-2 text-neutral-400">
-      <p class="text-size-medium">{props.name}</p>
-      <p class="text-size-small">This view lands in phase 5.</p>
-    </div>
+    <DocumentPageView
+      draftType={searchParams.type}
+      draftCategory={searchParams.category}
+    />
   );
 }
 
@@ -258,15 +274,12 @@ export function SpaceApp(props: Props) {
           base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
           root={Shell}
         >
-          <Route path="/" component={() => <PendingView name="Space home" />} />
-          <Route path="/search" component={() => <PendingView name="Search" />} />
-          <Route path="/new" component={() => <PendingView name="New document" />} />
-          <Route path="/settings" component={() => <PendingView name="Settings" />} />
-          <Route
-            path="/doc/*documentSlug"
-            component={() => <PendingView name="Document" />}
-          />
-          <Route path="/x/*" component={() => <PendingView name="Extension" />} />
+          <Route path="/" component={SpaceHomeView} />
+          <Route path="/search" component={SpaceSearchView} />
+          <Route path="/new" component={NewDocumentRoute} />
+          <Route path="/settings" component={SpaceSettingsView} />
+          <Route path="/doc/*documentSlug" component={DocumentRoute} />
+          <Route path="/x/*" component={ExtensionRouteView} />
           <Route path="*" component={NotFoundView} />
         </Router>
       </SsrUrlContext.Provider>

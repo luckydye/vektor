@@ -1,6 +1,8 @@
-import { createApp, defineComponent, h, nextTick, provide, ref } from "vue";
-import { createMemoryHistory, createRouter } from "vue-router";
-import { QueryClient, QueryPlugin } from "#composeables/query.ts";
+import { MemoryRouter, Route } from "@solidjs/router";
+import { render } from "solid-js/web";
+import { QueryClient, QueryClientContext } from "#composeables/query.solid.ts";
+import { SsrUrlContext } from "#composeables/useRoute.solid.ts";
+import { ActiveSpaceIdContext } from "#composeables/useSpace.solid.ts";
 import { normalizeDom } from "./normalize.ts";
 
 /**
@@ -116,40 +118,6 @@ export function installFixture(fixture: Fixture): void {
   }) as typeof fetch;
 }
 
-/**
- * A router for views that need one.
- *
- * `DocumentPageView` and `ExtensionRouteView` read `useRoute()`/`useRouter()`,
- * so they cannot mount without one. Memory history mirrors what `SpaceApp` uses
- * on the server, and the single wildcard route means any `at` path resolves and
- * supplies its params.
- */
-async function installRouter(
-  app: ReturnType<typeof createApp>,
-  at: string,
-  View: unknown,
-) {
-  const router = createRouter({
-    history: createMemoryHistory("/"),
-    routes: [
-      {
-        path: "/doc/:documentSlug(.*)",
-        // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
-        component: View as any,
-        props: (route) => ({ documentSlug: route.params.documentSlug }),
-      },
-      // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
-      { path: "/x/:pathMatch(.*)*", component: View as any },
-      // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
-      { path: "/:pathMatch(.*)*", component: View as any },
-    ],
-  });
-  app.use(router);
-  await router.push(at);
-  await router.isReady();
-  return router;
-}
-
 export interface RenderedRoute {
   container: HTMLElement;
   snapshot(): string;
@@ -158,7 +126,11 @@ export interface RenderedRoute {
 
 /**
  * Mounts a view inside the context `SpaceApp` normally provides — the active
- * space id and a query client — without pulling in the router.
+ * space id, the SSR url and a query client.
+ *
+ * `at` adds a `MemoryRouter`. Views that read route params need one, and a
+ * single wildcard route means any path resolves; the params a view wants come
+ * through `props`, exactly as `SpaceApp`'s route wrappers pass them.
  */
 export async function renderRoute(
   View: unknown,
@@ -176,24 +148,34 @@ export async function renderRoute(
   const container = document.createElement("div");
   document.body.append(container);
 
-  const Host = defineComponent({
-    setup() {
-      provide("space:activeId", ref(SPACE.id));
-      provide("ssr:url", `/${SPACE.slug}`);
-      // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
-      return () => h(View as any, options.props ?? {});
-    },
-  });
+  // biome-ignore lint/suspicious/noExplicitAny: views are resolved dynamically.
+  const Component = View as any;
+  const props = options.props ?? {};
+  const queryClient = new QueryClient();
 
-  const app = createApp(Host);
-  app.use(QueryPlugin, { queryClient: new QueryClient() });
-  if (options.at) await installRouter(app, options.at, View);
-  app.mount(container);
+  const dispose = render(
+    () => (
+      <QueryClientContext.Provider value={queryClient}>
+        <ActiveSpaceIdContext.Provider value={() => SPACE.id}>
+          <SsrUrlContext.Provider value={`/${SPACE.slug}`}>
+            {options.at ? (
+              <MemoryRouter>
+                <Route path="*" component={() => <Component {...props} />} />
+              </MemoryRouter>
+            ) : (
+              <Component {...props} />
+            )}
+          </SsrUrlContext.Provider>
+        </ActiveSpaceIdContext.Provider>
+      </QueryClientContext.Provider>
+    ),
+    container,
+  );
 
   // Queries resolve over several microtask hops; a snapshot taken too early
   // captures a loading state and is stable but useless.
   for (let i = 0; i < (options.settle ?? 12); i++) {
-    await nextTick();
+    await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
@@ -201,7 +183,7 @@ export async function renderRoute(
     container,
     snapshot: () => normalizeDom(container),
     cleanup() {
-      app.unmount();
+      dispose();
       container.remove();
     },
   };

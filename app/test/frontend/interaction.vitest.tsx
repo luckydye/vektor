@@ -1,7 +1,7 @@
 import { fireEvent, getByRole, getByText } from "@testing-library/dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import DocumentTree from "#components/DocumentTree.vue";
-import FileDrop from "#components/FileDrop.vue";
+import { DocumentTree } from "#components/DocumentTree.tsx";
+import { FileDrop } from "#components/FileDrop.tsx";
 import { cleanupAll, render } from "./render.ts";
 
 afterEach(cleanupAll);
