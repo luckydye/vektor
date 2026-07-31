@@ -51,6 +51,10 @@ function animatePanel(index: number, direction: "next" | "previous") {
 
 function onTabSelected(e: Event) {
   const { index } = (e as CustomEvent<{ index: number }>).detail;
+  // a-tabs binds its own tab-selected listener in the constructor but drops it on
+  // disconnect, so it stops switching panels once something moves it in the DOM
+  // (a-popover portals its content out). Driving the selection here works either way.
+  tabsEl.value?.selectTabByIndex(index, false);
   if (index !== selectedIndex.value) {
     const direction = index > selectedIndex.value ? "next" : "previous";
     selectedIndex.value = index;
