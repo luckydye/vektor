@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import ToastContainer from "#components/ToastContainer.vue";
-import { useToast } from "#composeables/useToast.ts";
+// Pointed at the Solid pair by phase 4. Only the imports changed — the
+// assertions below are the ones written against Vue, which is what makes this
+// a before/after check rather than a description of the new implementation.
+import { ToastContainer } from "#components/ToastContainer.tsx";
+import { useToast } from "#composeables/useToast.solid.ts";
 import { cleanupAll, render } from "./render.ts";
 
 /**
@@ -12,6 +15,12 @@ import { cleanupAll, render } from "./render.ts";
  * always leaves, whatever the animation does — including when there is no
  * animation at all, which is exactly the case happy-dom gives us for free since
  * it implements no `element.animate`.
+ *
+ * Phase 4 pointed this at the Solid pair. Only the imports and the two harness
+ * lines that read the composable changed — `.value` became a call, because a
+ * spec cannot reach into a store without naming its shape. Every assertion
+ * below is the one written against Vue, so the DOM behaviour is still compared
+ * rather than redescribed.
  */
 
 function toastNodes(): Element[] {
@@ -26,13 +35,13 @@ let toast: ReturnType<typeof useToast>;
 
 beforeEach(async () => {
   toast = useToast();
-  for (const t of [...toast.toasts.value]) toast.drop(t.id);
+  for (const t of [...toast.toasts()]) toast.drop(t.id);
   render(ToastContainer, {});
   await settle();
 });
 
 afterEach(() => {
-  for (const t of [...toast.toasts.value]) toast.drop(t.id);
+  for (const t of [...toast.toasts()]) toast.drop(t.id);
   cleanupAll();
 });
 
