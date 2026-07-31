@@ -1,9 +1,45 @@
 import { getByRole, queryByRole, queryByText } from "@testing-library/dom";
+import { createComponent, createSignal, type JSX } from "solid-js";
+import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { component } from "./registry.ts";
-import { cleanupAll, render } from "./render.ts";
+import { ContextMenu } from "#components/ContextMenu.tsx";
+import { Dialog } from "#components/Dialog.tsx";
+import { DialogFooter } from "#components/DialogFooter.tsx";
+import { SelectItem } from "#components/SelectItem.tsx";
 
-afterEach(cleanupAll);
+const disposers: Array<() => void> = [];
+
+afterEach(() => {
+  // happy-dom keeps one document per file, so a leaked mount leaks into the
+  // next spec.
+  for (const dispose of disposers.splice(0)) dispose();
+});
+
+type Props = Record<string, unknown>;
+
+/**
+ * Mount a component and return its container.
+ *
+ * Props are a plain object; a test that needs one to change declares it as a
+ * getter over a signal, which is what a real parent's JSX compiles to.
+ */
+function mount(Component: unknown, props: Props = {}) {
+  const container = document.createElement("div");
+  document.body.append(container);
+  // `render`'s own disposer, not an outer `createRoot`: a `Portal` in the tree
+  // attaches to `document.body`, and disposing an outer root leaves that
+  // content behind for the next spec to find.
+  const unmount = render(
+    () => createComponent(Component as (props: Props) => JSX.Element, props),
+    container,
+  );
+  const cleanup = () => {
+    unmount();
+    container.remove();
+  };
+  disposers.push(cleanup);
+  return { container, cleanup };
+}
 
 /**
  * Tier 1 contract specs for the dialog stack.
@@ -35,14 +71,14 @@ function isOpen(): boolean {
 
 describe("Dialog", () => {
   it("stays mounted but hidden while closed", async () => {
-    render(component("Dialog"), { show: false, title: "Settings" });
+    mount(Dialog, { show: false, title: "Settings" });
     await settle();
     expect(layer()).toBeTruthy();
     expect(isOpen()).toBe(false);
   });
 
   it("teleports its panel to the body and shows the title when open", async () => {
-    render(component("Dialog"), { show: true, title: "Delete space" });
+    mount(Dialog, { show: true, title: "Delete space" });
     await settle();
     expect(isOpen()).toBe(true);
     expect(document.body.querySelector(".dialog-panel")).toBeTruthy();
@@ -50,33 +86,45 @@ describe("Dialog", () => {
   });
 
   it("only enables the blur trap while open", async () => {
-    const { update } = render(component("Dialog"), { show: false, title: "Trap" });
+    const [show, setShow] = createSignal(false);
+    mount(Dialog, {
+      get show() {
+        return show();
+      },
+      title: "Trap",
+    });
     await settle();
     // A focus trap live behind a hidden overlay would swallow keyboard input.
     expect(layer()?.hasAttribute("enabled")).toBe(false);
 
-    await update({ show: true });
+    setShow(true);
     await settle();
     expect(layer()?.hasAttribute("enabled")).toBe(true);
   });
 
   it("opens and closes as the show prop changes", async () => {
-    const { update } = render(component("Dialog"), { show: false, title: "Later" });
+    const [show, setShow] = createSignal(false);
+    mount(Dialog, {
+      get show() {
+        return show();
+      },
+      title: "Later",
+    });
     await settle();
     expect(isOpen()).toBe(false);
 
-    await update({ show: true });
+    setShow(true);
     await settle();
     expect(isOpen()).toBe(true);
 
-    await update({ show: false });
+    setShow(false);
     await settle();
     expect(isOpen()).toBe(false);
   });
 
   it("reports a close from the header button", async () => {
     const onClose = vi.fn();
-    render(component("Dialog"), { show: true, title: "Closable", onClose });
+    mount(Dialog, { show: true, title: "Closable", onClose });
     await settle();
     getByRole(document.body, "button", { name: "Close" }).click();
     expect(onClose).toHaveBeenCalled();
@@ -84,14 +132,16 @@ describe("Dialog", () => {
 
   it("dismisses on a backdrop click, and not when that is disabled", async () => {
     const dismissible = vi.fn();
-    render(component("Dialog"), { show: true, title: "A", onClose: dismissible });
+    const first = mount(Dialog, { show: true, title: "A", onClose: dismissible });
     await settle();
     getByRole(document.body, "button", { name: "Close dialog" }).click();
     expect(dismissible).toHaveBeenCalled();
-    cleanupAll();
+    // Both dialogs teleport to the body, so the first has to go before the
+    // second mounts or the query below finds two backdrops.
+    first.cleanup();
 
     const sticky = vi.fn();
-    render(component("Dialog"), {
+    mount(Dialog, {
       show: true,
       title: "B",
       closeOnBackdrop: false,
@@ -103,7 +153,7 @@ describe("Dialog", () => {
   });
 
   it("cleans the body up when unmounted", async () => {
-    const { cleanup } = render(component("Dialog"), { show: true, title: "Transient" });
+    const { cleanup } = mount(Dialog, { show: true, title: "Transient" });
     await settle();
     expect(layer()).toBeTruthy();
     cleanup();
@@ -114,7 +164,7 @@ describe("Dialog", () => {
 
 describe("DialogFooter", () => {
   it("renders a cancel and a confirm action", () => {
-    const { container } = render(component("DialogFooter"), { confirmLabel: "Create" });
+    const { container } = mount(DialogFooter, { confirmLabel: "Create" });
     expect(getByRole(container, "button", { name: "Cancel" })).toBeTruthy();
     expect(getByRole(container, "button", { name: "Create" })).toBeTruthy();
   });
@@ -122,7 +172,7 @@ describe("DialogFooter", () => {
   it("reports cancel and confirm separately", () => {
     const onCancel = vi.fn();
     const onConfirm = vi.fn();
-    const { container } = render(component("DialogFooter"), {
+    const { container } = mount(DialogFooter, {
       confirmLabel: "Create",
       onCancel,
       onConfirm,
@@ -136,7 +186,7 @@ describe("DialogFooter", () => {
   });
 
   it("swaps in the pending label and disables both actions", () => {
-    const { container } = render(component("DialogFooter"), {
+    const { container } = mount(DialogFooter, {
       confirmLabel: "Delete",
       pendingLabel: "Deleting…",
       pending: true,
@@ -150,7 +200,7 @@ describe("DialogFooter", () => {
   });
 
   it("disables only confirm for an incomplete form", () => {
-    const { container } = render(component("DialogFooter"), {
+    const { container } = mount(DialogFooter, {
       confirmLabel: "Save",
       disabled: true,
     });
@@ -164,7 +214,7 @@ describe("DialogFooter", () => {
 
   it("submits a named form instead of emitting confirm", () => {
     const onConfirm = vi.fn();
-    const { container } = render(component("DialogFooter"), {
+    const { container } = mount(DialogFooter, {
       confirmLabel: "Create",
       form: "create-thing",
       onConfirm,
@@ -178,7 +228,7 @@ describe("DialogFooter", () => {
   });
 
   it("applies the danger tone to confirm only", () => {
-    const { container } = render(component("DialogFooter"), {
+    const { container } = mount(DialogFooter, {
       confirmLabel: "Delete",
       tone: "danger",
     });
@@ -191,8 +241,8 @@ describe("DialogFooter", () => {
   });
 
   it("right-aligns instead of splitting when asked", () => {
-    const split = render(component("DialogFooter"), { confirmLabel: "A" });
-    const end = render(component("DialogFooter"), { confirmLabel: "A", layout: "end" });
+    const split = mount(DialogFooter, { confirmLabel: "A" });
+    const end = mount(DialogFooter, { confirmLabel: "A", layout: "end" });
     expect(getByRole(split.container, "button", { name: "A" }).className).toContain(
       "flex-1",
     );
@@ -204,20 +254,20 @@ describe("DialogFooter", () => {
 
 describe("SelectItem", () => {
   it("renders its label as a button", () => {
-    const { container } = render(component("SelectItem"), { label: "Text" });
+    const { container } = mount(SelectItem, { label: "Text" });
     expect(getByRole(container, "button", { name: "Text" })).toBeTruthy();
   });
 
   it("reports a click natively, with no relay", () => {
     const onClick = vi.fn();
-    const { container } = render(component("SelectItem"), { label: "Text", onClick });
+    const { container } = mount(SelectItem, { label: "Text", onClick });
     getByRole(container, "button").click();
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it("marks selection visually", () => {
-    const on = render(component("SelectItem"), { label: "T", selected: true });
-    const off = render(component("SelectItem"), { label: "T", selected: false });
+    const on = mount(SelectItem, { label: "T", selected: true });
+    const off = mount(SelectItem, { label: "T", selected: false });
     expect(queryByRole(on.container, "button")?.className).not.toBe(
       queryByRole(off.container, "button")?.className,
     );
@@ -226,7 +276,7 @@ describe("SelectItem", () => {
 
 describe("ContextMenu", () => {
   it("exposes a labelled trigger button", () => {
-    const { container } = render(component("ContextMenu"), {});
+    const { container } = mount(ContextMenu, {});
     const trigger = getByRole(container, "button", { name: "Document actions" });
     // The trigger is slotted into the popover custom element; losing the slot
     // would leave the menu unopenable without failing anything else.
@@ -234,7 +284,7 @@ describe("ContextMenu", () => {
   });
 
   it("renders its slotted items inside the popover", () => {
-    const { container } = render(component("ContextMenu"), {});
+    const { container } = mount(ContextMenu, {});
     expect(container.querySelector("a-popover")).toBeTruthy();
     expect(container.querySelector("a-list")).toBeTruthy();
   });

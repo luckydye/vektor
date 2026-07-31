@@ -77,8 +77,7 @@ export default defineConfig({
           name: "server",
           environment: "node",
           include: ["test/**/*.spec.ts"],
-          // Playwright drives its own runner; `run.ts` boots a server.
-          exclude: ["test/visual/**", "**/node_modules/**"],
+          exclude: ["**/node_modules/**"],
           restoreMocks: true,
           // Sequential, and sharing one process. These specs boot real servers
           // on fixed ports and several assert on rows they just created, so

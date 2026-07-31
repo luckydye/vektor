@@ -1,10 +1,7 @@
+import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// Pointed at the Solid pair by phase 4. Only the imports changed — the
-// assertions below are the ones written against Vue, which is what makes this
-// a before/after check rather than a description of the new implementation.
 import { ToastContainer } from "#components/ToastContainer.tsx";
 import { useToast } from "#composeables/useToast.solid.ts";
-import { cleanupAll, render } from "./render.ts";
 
 /**
  * The one behavioural test the transition work needs (plan section 5.3).
@@ -16,11 +13,6 @@ import { cleanupAll, render } from "./render.ts";
  * animation at all, which is exactly the case happy-dom gives us for free since
  * it implements no `element.animate`.
  *
- * Phase 4 pointed this at the Solid pair. Only the imports and the two harness
- * lines that read the composable changed — `.value` became a call, because a
- * spec cannot reach into a store without naming its shape. Every assertion
- * below is the one written against Vue, so the DOM behaviour is still compared
- * rather than redescribed.
  */
 
 function toastNodes(): Element[] {
@@ -32,17 +24,27 @@ async function settle(ms = 0) {
 }
 
 let toast: ReturnType<typeof useToast>;
+let dispose: () => void;
 
 beforeEach(async () => {
   toast = useToast();
   for (const t of [...toast.toasts()]) toast.drop(t.id);
-  render(ToastContainer, {});
+  const host = document.createElement("div");
+  document.body.append(host);
+  // `render`'s own disposer, not an outer `createRoot`: the container teleports
+  // to the body, and disposing an outer root leaves that content behind for the
+  // next spec to find.
+  const unmount = render(() => <ToastContainer />, host);
+  dispose = () => {
+    unmount();
+    host.remove();
+  };
   await settle();
 });
 
 afterEach(() => {
   for (const t of [...toast.toasts()]) toast.drop(t.id);
-  cleanupAll();
+  dispose();
 });
 
 describe("toast removal", () => {

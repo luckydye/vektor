@@ -1,9 +1,46 @@
 import { getByRole, getByText, queryByRole } from "@testing-library/dom";
+import { createComponent, createSignal, type JSX } from "solid-js";
+import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { component } from "./registry.ts";
-import { cleanupAll, render } from "./render.ts";
+import { Button } from "#components/Button.tsx";
+import { FormField } from "#components/FormField.tsx";
+import { Icon } from "#components/Icon.tsx";
+import { MenuLink } from "#components/MenuLink.tsx";
+import { PagerCursor } from "#components/PagerCursor.tsx";
 
-afterEach(cleanupAll);
+const disposers: Array<() => void> = [];
+
+afterEach(() => {
+  // happy-dom keeps one document per file, so a leaked mount leaks into the
+  // next spec.
+  for (const dispose of disposers.splice(0)) dispose();
+});
+
+type Props = Record<string, unknown>;
+
+/**
+ * Mount a component and return its container.
+ *
+ * Props are a plain object; a test that needs one to change declares it as a
+ * getter over a signal, which is what a real parent's JSX compiles to.
+ */
+function mount(Component: unknown, props: Props = {}) {
+  const container = document.createElement("div");
+  document.body.append(container);
+  // `render`'s own disposer, not an outer `createRoot`: a `Portal` in the tree
+  // attaches to `document.body`, and disposing an outer root leaves that
+  // content behind for the next spec to find.
+  const unmount = render(
+    () => createComponent(Component as (props: Props) => JSX.Element, props),
+    container,
+  );
+  const cleanup = () => {
+    unmount();
+    container.remove();
+  };
+  disposers.push(cleanup);
+  return { container, cleanup };
+}
 
 /**
  * Tier 1 contract specs for the display primitives.
@@ -15,17 +52,17 @@ afterEach(cleanupAll);
 
 describe("Button", () => {
   it("renders its text as an accessible button", () => {
-    const { container } = render(component("Button"), { text: "Save" });
+    const { container } = mount(Button, { text: "Save" });
     expect(getByRole(container, "button", { name: "Save" })).toBeTruthy();
   });
 
   it("defaults to type=button so it never submits a form by accident", () => {
-    const { container } = render(component("Button"), { text: "Save" });
+    const { container } = mount(Button, { text: "Save" });
     expect(getByRole(container, "button").getAttribute("type")).toBe("button");
   });
 
   it("takes an explicit type", () => {
-    const { container } = render(component("Button"), { text: "Go", type: "submit" });
+    const { container } = mount(Button, { text: "Go", type: "submit" });
     expect(getByRole(container, "button").getAttribute("type")).toBe("submit");
   });
 
@@ -36,14 +73,14 @@ describe("Button", () => {
       ["ghost", "button-ghost"],
       ["outline", "button-outline"],
     ] as const) {
-      const { container, cleanup } = render(component("Button"), { text: "x", variant });
+      const { container, cleanup } = mount(Button, { text: "x", variant });
       expect(getByRole(container, "button").className, variant).toContain(expected);
       cleanup();
     }
   });
 
   it("layers tone and size on top of the variant", () => {
-    const { container } = render(component("Button"), {
+    const { container } = mount(Button, {
       text: "Delete",
       tone: "danger",
       size: "small",
@@ -56,14 +93,14 @@ describe("Button", () => {
 
   it("calls its click handler", async () => {
     const onClick = vi.fn();
-    const { container } = render(component("Button"), { text: "Hit", onClick });
+    const { container } = mount(Button, { text: "Hit", onClick });
     getByRole(container, "button").click();
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it("does not fire when disabled", () => {
     const onClick = vi.fn();
-    const { container } = render(component("Button"), {
+    const { container } = mount(Button, {
       text: "No",
       disabled: true,
       onClick,
@@ -75,28 +112,42 @@ describe("Button", () => {
   });
 
   it("uses ariaLabel as both accessible name and tooltip", () => {
-    const { container } = render(component("Button"), { ariaLabel: "Close panel" });
+    const { container } = mount(Button, { ariaLabel: "Close panel" });
     const button = getByRole(container, "button", { name: "Close panel" });
     expect(button.getAttribute("title")).toBe("Close panel");
   });
 
   it("renders no icon element when given no icon", () => {
-    const { container } = render(component("Button"), { text: "Plain" });
+    const { container } = mount(Button, { text: "Plain" });
     expect(container.querySelector(".icon")).toBeNull();
   });
 
   it("renders the icon markup when given one", () => {
-    const { container } = render(component("Button"), {
+    const { container } = mount(Button, {
       text: "With",
       icon: '<svg data-testid="i"></svg>',
     });
     expect(container.querySelector(".icon svg")).toBeTruthy();
   });
 
-  it("reflects a prop change without remounting", async () => {
-    const { container, update } = render(component("Button"), { text: "Before" });
-    await update({ text: "After", disabled: true });
+  it("reflects a prop change without remounting", () => {
+    const [text, setText] = createSignal("Before");
+    const [disabled, setDisabled] = createSignal(false);
+    const { container } = mount(Button, {
+      get text() {
+        return text();
+      },
+      get disabled() {
+        return disabled();
+      },
+    });
+    const before = getByRole(container, "button");
+
+    setText("After");
+    setDisabled(true);
+
     const button = getByRole(container, "button");
+    expect(button, "the same element, patched in place").toBe(before);
     expect(button.textContent?.trim()).toBe("After");
     expect(button.hasAttribute("disabled")).toBe(true);
   });
@@ -104,19 +155,19 @@ describe("Button", () => {
 
 describe("Icon", () => {
   it("renders the named icon's svg", () => {
-    const { container } = render(component("Icon"), { name: "plus" });
+    const { container } = mount(Icon, { name: "plus" });
     expect(container.querySelector("svg")).toBeTruthy();
   });
 
   it("is hidden from assistive technology", () => {
-    const { container } = render(component("Icon"), { name: "plus" });
+    const { container } = mount(Icon, { name: "plus" });
     expect(container.querySelector("[aria-hidden='true']")).toBeTruthy();
   });
 });
 
 describe("MenuLink", () => {
   it("renders a link with its text and href", () => {
-    const { container } = render(component("MenuLink"), {
+    const { container } = mount(MenuLink, {
       text: "Settings",
       href: "/space/settings",
     });
@@ -125,36 +176,36 @@ describe("MenuLink", () => {
   });
 
   it("marks the active item distinctly from the inactive one", () => {
-    const active = render(component("MenuLink"), {
+    const active = mount(MenuLink, {
       text: "A",
       href: "#",
       isActive: true,
     });
-    const idle = render(component("MenuLink"), { text: "A", href: "#", isActive: false });
+    const idle = mount(MenuLink, { text: "A", href: "#", isActive: false });
     expect(getByRole(active.container, "link").className).not.toBe(
       getByRole(idle.container, "link").className,
     );
   });
 
   it("shows a badge only for a positive count", () => {
-    const zero = render(component("MenuLink"), { text: "Inbox", href: "#", badge: 0 });
+    const zero = mount(MenuLink, { text: "Inbox", href: "#", badge: 0 });
     expect(zero.container.textContent).not.toContain("0");
 
-    const some = render(component("MenuLink"), { text: "Inbox", href: "#", badge: 3 });
+    const some = mount(MenuLink, { text: "Inbox", href: "#", badge: 3 });
     expect(getByText(some.container, "3")).toBeTruthy();
   });
 });
 
 describe("FormField", () => {
   it("renders its label and its slotted control", () => {
-    const { container } = render(component("FormField"), { label: "Email" });
+    const { container } = mount(FormField, { label: "Email" });
     expect(getByText(container, "Email")).toBeTruthy();
   });
 });
 
 describe("PagerCursor", () => {
   it("renders nothing when there is only one page", () => {
-    const { container } = render(component("PagerCursor"), {
+    const { container } = mount(PagerCursor, {
       hasPrevPage: false,
       hasNextPage: false,
     });
@@ -162,7 +213,7 @@ describe("PagerCursor", () => {
   });
 
   it("stays visible but disabled when asked to", () => {
-    const { container } = render(component("PagerCursor"), {
+    const { container } = mount(PagerCursor, {
       hasPrevPage: false,
       hasNextPage: false,
       alwaysVisible: true,
@@ -176,7 +227,7 @@ describe("PagerCursor", () => {
   });
 
   it("enables only the directions that exist", () => {
-    const { container } = render(component("PagerCursor"), {
+    const { container } = mount(PagerCursor, {
       hasPrevPage: false,
       hasNextPage: true,
     });
@@ -191,7 +242,7 @@ describe("PagerCursor", () => {
   it("reports the direction the reader chose", () => {
     const onPrev = vi.fn();
     const onNext = vi.fn();
-    const { container } = render(component("PagerCursor"), {
+    const { container } = mount(PagerCursor, {
       hasPrevPage: true,
       hasNextPage: true,
       onPrev,
@@ -206,7 +257,7 @@ describe("PagerCursor", () => {
   });
 
   it("disables both directions while a page is loading", () => {
-    const { container } = render(component("PagerCursor"), {
+    const { container } = mount(PagerCursor, {
       hasPrevPage: true,
       hasNextPage: true,
       disabled: true,
