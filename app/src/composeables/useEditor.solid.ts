@@ -59,7 +59,13 @@ type UseEditorOptions = {
   documentType: Accessor<string>;
   readonly: Accessor<boolean>;
   getEditorHtml: () => string | null;
-  collaboration: CollaborationSession;
+  /**
+   * Only the room lifecycle is used here, so the presence payload type is
+   * irrelevant. Picking the two methods keeps a `CollaborationSession<T>` for
+   * any `T` assignable — the full `CollaborationSession<unknown>` would not be,
+   * because `setPresenceState` is contravariant in `T`.
+   */
+  collaboration: Pick<CollaborationSession, "joinUntilReady" | "leave">;
   onSessionStarted?: () => void;
 };
 

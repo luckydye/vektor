@@ -23,12 +23,22 @@ declare module "solid-js" {
       "on:selection-change"?: (event: Event) => void;
       "on:editor-focus"?: (event: Event) => void;
       "on:editor-blur"?: (event: Event) => void;
+      "on:content-change"?: (event: Event) => void;
+      "on:editor-keydown"?: (event: Event) => void;
+      "on:editor-paste"?: (event: Event) => void;
+      "on:task-toggle-request"?: (event: Event) => void;
       "attr:hidden"?: string | undefined;
       "attr:enabled"?: string | undefined;
       // `prop:` assigns a DOM property instead of an attribute — the only way
       // to hand a custom element an object.
       "prop:user"?: unknown;
-      "attr:value"?: string;
+      "attr:value"?: string | undefined;
+      "attr:placeholder"?: string | undefined;
+      "attr:mentions"?: string | undefined;
+      "attr:inline-document-references"?: string | undefined;
+      "attr:space-id"?: string | undefined;
+      "attr:document-id"?: string | undefined;
+      "attr:html"?: string | undefined;
       snap?: boolean;
       language?: string;
       mode?: string;
@@ -52,6 +62,8 @@ declare module "solid-js" {
       "rich-text-editor": CustomElementAttributes;
       "code-editor": CustomElementAttributes;
       "document-toolbar": CustomElementAttributes;
+      "table-view": CustomElementAttributes;
+      "document-statusbar": CustomElementAttributes;
       "vektor-cosmetic": CustomElementAttributes;
       "wiki-drawer": CustomElementAttributes;
       "category-target": CustomElementAttributes;

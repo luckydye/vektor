@@ -196,16 +196,19 @@ export function useInlineSuggestions(options: {
     syncInlineSuggestions();
   }
 
-  async function handleInlineSuggestionAccept(
-    event: CustomEvent<{ revisionRev: number; hunkIndex: number }>,
-  ) {
-    await acceptSuggestionHunk(event.detail.revisionRev, event.detail.hunkIndex);
+  // Typed as `Event` rather than `CustomEvent<…>`: these are attached with
+  // `addEventListener`, which hands the listener an `Event`, and a narrower
+  // parameter makes the handler unassignable to `EventListener`.
+  type InlineSuggestionEvent = CustomEvent<{ revisionRev: number; hunkIndex: number }>;
+
+  async function handleInlineSuggestionAccept(event: Event) {
+    const { detail } = event as InlineSuggestionEvent;
+    await acceptSuggestionHunk(detail.revisionRev, detail.hunkIndex);
   }
 
-  async function handleInlineSuggestionDecline(
-    event: CustomEvent<{ revisionRev: number; hunkIndex: number }>,
-  ) {
-    await declineSuggestion(event.detail.revisionRev);
+  async function handleInlineSuggestionDecline(event: Event) {
+    const { detail } = event as InlineSuggestionEvent;
+    await declineSuggestion(detail.revisionRev);
   }
 
   createEffect(async () => {

@@ -33,3 +33,28 @@ a-popover-arrow {
 [data-placement="top"] .contributors-arrow {
   transform: rotate(225deg);
 }
+
+/* ── CommentThread ──────────────────────────────────────────────────── */
+
+.comment-markdown p {
+  margin: 0.2rem 0;
+}
+.comment-markdown ul {
+  list-style: disc;
+  padding-left: 1.1rem;
+}
+.comment-markdown ol {
+  list-style: decimal;
+  padding-left: 1.1rem;
+}
+.comment-markdown strong {
+  font-weight: 600;
+}
+.comment-markdown em {
+  font-style: italic;
+}
+.comment-markdown a {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
+/* Mention styling comes from #editor/css/mentions.css. */

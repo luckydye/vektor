@@ -283,6 +283,8 @@ export function useComments(options: {
   return {
     comments,
     activeReference,
+    // CommentBubble closes a thread it did not open, so it needs the setter.
+    setActiveReference,
     threadPosition,
     isLoading,
     error,

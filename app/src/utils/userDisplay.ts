@@ -23,7 +23,8 @@ export interface DisplayUser {
 
 /** A space membership row, as `useMembers()` returns them. */
 interface Membership {
-  userId: string;
+  /** Optional: a group membership has a groupId instead. */
+  userId?: string;
   user?: DisplayUser | null;
 }
 
