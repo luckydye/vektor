@@ -3,32 +3,25 @@
 // Yjs room and joins its presence room lazily — on the first editor focus — so
 // idle embeds never hold an editor or appear as present.
 //
-// Was `CanvasDocumentEditor.vue`. Ported to a custom element via
-// defineCustomElement so Canvas.vue is the only Vue component in the canvas
-// tree, while keeping the Vue-backed collaboration/lifecycle logic intact.
-// Light DOM (shadowRoot: false) so it uses the global .canvas-doc-editor styles
-// and inherits the --canvas-* variables like the other canvas elements.
+// Was `CanvasDocumentEditor.vue`, then a Vue `defineCustomElement`. Now a plain
+// custom element rendering with lit-html, like the rest of the canvas (plan
+// §6): the collaboration session arrives as a property from the app shell, so
+// nothing here imports a framework. Light DOM so the global .canvas-doc-editor
+// styles apply and the --canvas-* variables inherit, as with every other canvas
+// element.
 import type { Editor } from "@tiptap/core";
-import {
-  computed,
-  defineCustomElement,
-  h,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  shallowRef,
-  watch,
-} from "vue";
+import { html, render } from "lit-html";
+import { ref } from "lit-html/directives/ref.js";
+import { unsafeSVG } from "lit-html/directives/unsafe-svg.js";
 import type * as Y from "yjs";
 import { documentIcon } from "#assets/icons.ts";
-import { useCollaboration } from "#composeables/useCollaboration.ts";
-import { useCosmetics } from "#composeables/useCosmetics.ts";
+import type { CanvasDocumentCollaboration } from "#canvas/collaboration.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   currentEditorPresenceState,
   type DocumentPresenceProfile,
-  type DocumentPresenceState,
 } from "#editor/collaboration.ts";
+import { HostElement } from "./CanvasElementBase.ts";
 
 type DocumentViewElement = HTMLElement & {
   editorInstance?: Editor;
@@ -37,259 +30,284 @@ type DocumentViewElement = HTMLElement & {
   setLocalAppearance?: (appearance: PublicUserAppearance | undefined) => void;
 };
 
-const CanvasDocumentEditorElement = defineCustomElement(
-  {
-    props: {
-      spaceId: { type: String, default: "" },
-      documentId: { type: String, default: "" },
-      title: { type: String, default: "" },
-      headerImage: { type: String, default: "" },
-      // When the edit session was started by clicking a checkbox on the
-      // read-only card, this is that checkbox's ordinal so the toggle is
-      // replayed in the editor (the read-only preview can't persist it).
-      toggleTaskIndex: { type: Number, default: null },
-    },
-    emits: ["exit-edit", "drag-start"],
-    setup(props, { emit, expose }) {
-      const viewEl = shallowRef<DocumentViewElement | null>(null);
-      const editor = shallowRef<Editor>();
-      const status = ref<"connecting" | "ready" | "error">("connecting");
-      const errorMessage = ref("");
+export class CanvasDocumentEditorElement extends HostElement {
+  /**
+   * Single-word property names, set by the host as `session.props`. Assigning
+   * any of them schedules a render; the element starts once it has both a
+   * collaboration session and has been connected.
+   */
+  spaceId = "";
+  documentId = "";
+  /**
+   * Not `title`: that is an `HTMLElement` accessor, and writing it would set the
+   * attribute and give the whole editor a native browser tooltip.
+   */
+  documentTitle = "";
+  headerImage = "";
+  /**
+   * When the edit session was started by clicking a checkbox on the read-only
+   * card, this is that checkbox's ordinal so the toggle is replayed in the
+   * editor (the read-only preview cannot persist it).
+   */
+  toggleTaskIndex: number | null = null;
 
-      const collaboration = useCollaboration<DocumentPresenceState>({
-        spaceId: props.spaceId,
-        documentId: computed(() => props.documentId),
-      });
-      const { appearance } = useCosmetics();
+  #collaboration: CanvasDocumentCollaboration | null = null;
 
-      let leaveEditorSubscriptions: (() => void) | null = null;
-      let pendingTaskToggle: number | null = props.toggleTaskIndex ?? null;
+  /**
+   * Also the start signal.
+   *
+   * The host assigns properties from a lit `ref` callback, which runs after the
+   * element is already connected — so `connectedCallback` alone is always too
+   * early. Whichever of the two happens last starts the editor.
+   */
+  set collaboration(value: CanvasDocumentCollaboration | null) {
+    this.#collaboration = value;
+    // On a microtask so the rest of the property batch lands first, whatever
+    // order the host assigns it in.
+    queueMicrotask(() => this.start());
+  }
+  get collaboration(): CanvasDocumentCollaboration | null {
+    return this.#collaboration;
+  }
 
-      // Toggle the checked state of the Nth task item, matching the checkbox
-      // the user clicked on the read-only card. Task items render one checkbox
-      // each in document order, so the ordinal maps directly onto the editor.
-      function applyPendingTaskToggle(activeEditor: Editor) {
-        const index = pendingTaskToggle;
-        pendingTaskToggle = null;
-        if (index === null || index < 0) return;
+  private view: DocumentViewElement | null = null;
+  private editor: Editor | undefined;
+  private status: "connecting" | "ready" | "error" = "connecting";
+  private errorMessage = "";
+  private started = false;
+  private disposed = false;
+  private renderQueued = false;
+  private pendingTaskToggle: number | null = null;
+  private leaveEditorSubscriptions: (() => void) | null = null;
+  private unsubscribeCollaboration: (() => void) | null = null;
 
-        const positions: number[] = [];
-        activeEditor.state.doc.descendants((node, pos) => {
-          if (node.type.name === "taskItem") positions.push(pos);
-        });
-        const pos = positions[index];
-        if (pos === undefined) return;
+  connectedCallback(): void {
+    this.start();
+  }
 
-        activeEditor
-          .chain()
-          .command(({ tr }) => {
-            const node = tr.doc.nodeAt(pos);
-            if (node?.type.name !== "taskItem") return false;
-            tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              checked: !node.attrs.checked,
-            });
-            return true;
-          })
-          .run();
-      }
+  /** See `CanvasElementBase`: a reorder disconnects and reconnects the node. */
+  disconnectedCallback(): void {}
 
-      function broadcastEditorPresence() {
-        const state = currentEditorPresenceState(editor.value);
-        collaboration.setPresenceState(state);
-        // Join the presence room only once the editor actually holds focus.
-        if (state.focused) void collaboration.setupPresence();
-        collaboration.updatePresence();
-      }
+  private start(): void {
+    if (this.started || !this.#collaboration || !this.isConnected) return;
+    this.started = true;
+    this.pendingTaskToggle = this.toggleTaskIndex ?? null;
 
-      function setEditor(nextEditor: Editor | undefined) {
-        if (editor.value === nextEditor) return;
+    this.unsubscribeCollaboration = this.#collaboration.subscribe(() => {
+      this.pushCollaborationState();
+    });
 
-        leaveEditorSubscriptions?.();
-        leaveEditorSubscriptions = null;
-        editor.value = nextEditor;
-        if (!nextEditor) return;
+    this.renderNow();
+    void this.join();
+  }
 
-        applyPendingTaskToggle(nextEditor);
+  private async join(): Promise<void> {
+    try {
+      // document-view is loaded lazily so the canvas chunk stays lean; the
+      // canvas prefetches it on mount, making this await effectively instant.
+      await import("#editor/document.ts");
+      await customElements.whenDefined("document-view");
+      await this.collaboration?.joinUntilReady();
+      if (this.disposed) return;
+      this.status = "ready";
+    } catch (error) {
+      if (this.disposed) return;
+      this.status = "error";
+      this.errorMessage = error instanceof Error ? error.message : String(error);
+    }
+    this.scheduleRender();
+  }
 
-        nextEditor.on("focus", broadcastEditorPresence);
-        nextEditor.on("blur", broadcastEditorPresence);
-        nextEditor.on("selectionUpdate", broadcastEditorPresence);
-        nextEditor.on("transaction", broadcastEditorPresence);
-        broadcastEditorPresence();
+  private scheduleRender(): void {
+    if (this.renderQueued || this.disposed) return;
+    this.renderQueued = true;
+    queueMicrotask(() => {
+      this.renderQueued = false;
+      this.renderNow();
+    });
+  }
 
-        leaveEditorSubscriptions = () => {
-          nextEditor.off("focus", broadcastEditorPresence);
-          nextEditor.off("blur", broadcastEditorPresence);
-          nextEditor.off("selectionUpdate", broadcastEditorPresence);
-          nextEditor.off("transaction", broadcastEditorPresence);
-        };
-      }
+  private renderNow(): void {
+    render(this.template(), this);
+  }
 
-      watch(
-        viewEl,
-        (view, _previousView, onCleanup) => {
-          if (!view) return;
+  /** Attaches to the `<document-view>` once lit has created it. */
+  private adoptView(view: DocumentViewElement | undefined): void {
+    if (this.view === view) return;
 
-          view.setEditorEnabled?.(true, collaboration.ydoc.value);
-          setEditor(view.editorInstance);
+    this.view = view ?? null;
+    if (!view) return;
 
-          const handleEditorReady = (event: Event) => {
-            setEditor((event as CustomEvent<{ editor: Editor }>).detail.editor);
-          };
-          const handleEditorDestroyed = () => {
-            setEditor(undefined);
-          };
+    view.setEditorEnabled?.(true, this.collaboration?.ydoc());
+    this.setEditor(view.editorInstance);
+    this.pushCollaborationState();
 
-          view.addEventListener("editor-ready", handleEditorReady);
-          view.addEventListener("editor-destroyed", handleEditorDestroyed);
-          onCleanup(() => {
-            view.removeEventListener("editor-ready", handleEditorReady);
-            view.removeEventListener("editor-destroyed", handleEditorDestroyed);
-          });
-        },
-        { immediate: true },
-      );
+    view.addEventListener("editor-ready", (event) => {
+      this.setEditor((event as CustomEvent<{ editor: Editor }>).detail.editor);
+    });
+    view.addEventListener("editor-destroyed", () => this.setEditor(undefined));
+  }
 
-      watch(
-        [collaboration.presenceProfiles, editor],
-        ([profiles]) => {
-          viewEl.value?.setPresenceProfiles?.(profiles);
-        },
-        { immediate: true },
-      );
+  private pushCollaborationState(): void {
+    this.view?.setPresenceProfiles?.(this.collaboration?.presenceProfiles() ?? []);
+    this.view?.setLocalAppearance?.(this.collaboration?.appearance());
+  }
 
-      watch(
-        [viewEl, appearance],
-        ([view, currentAppearance]) => {
-          view?.setLocalAppearance?.(currentAppearance);
-        },
-        { immediate: true },
-      );
+  private broadcastEditorPresence = (): void => {
+    const state = currentEditorPresenceState(this.editor);
+    this.collaboration?.setPresenceState(state);
+    // Join the presence room only once the editor actually holds focus.
+    if (state.focused) void this.collaboration?.setupPresence();
+    this.collaboration?.updatePresence();
+  };
 
-      let disposed = false;
+  private setEditor(next: Editor | undefined): void {
+    if (this.editor === next) return;
 
-      onMounted(async () => {
-        try {
-          // document-view is loaded lazily so the canvas chunk stays lean;
-          // Canvas prefetches it on mount, making this await effectively instant.
-          await import("#editor/document.ts");
-          await customElements.whenDefined("document-view");
-          await collaboration.joinUntilReady();
-          if (disposed) return;
-          status.value = "ready";
-        } catch (error) {
-          if (disposed) return;
-          status.value = "error";
-          errorMessage.value = error instanceof Error ? error.message : String(error);
+    this.leaveEditorSubscriptions?.();
+    this.leaveEditorSubscriptions = null;
+    this.editor = next;
+    if (!next) return;
+
+    this.applyPendingTaskToggle(next);
+
+    const events = ["focus", "blur", "selectionUpdate", "transaction"] as const;
+    for (const event of events) next.on(event, this.broadcastEditorPresence);
+    this.broadcastEditorPresence();
+
+    this.leaveEditorSubscriptions = () => {
+      for (const event of events) next.off(event, this.broadcastEditorPresence);
+    };
+  }
+
+  /**
+   * Toggles the Nth task item, matching the checkbox the user clicked on the
+   * read-only card. Task items render one checkbox each in document order, so
+   * the ordinal maps directly onto the editor.
+   */
+  private applyPendingTaskToggle(editor: Editor): void {
+    const index = this.pendingTaskToggle;
+    this.pendingTaskToggle = null;
+    if (index === null || index < 0) return;
+
+    const positions: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === "taskItem") positions.push(pos);
+    });
+    const pos = positions[index];
+    if (pos === undefined) return;
+
+    editor
+      .chain()
+      .command(({ tr }) => {
+        const node = tr.doc.nodeAt(pos);
+        if (node?.type.name !== "taskItem") return false;
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: !node.attrs.checked });
+        return true;
+      })
+      .run();
+  }
+
+  private onKeydown = (event: KeyboardEvent): void => {
+    // Keep typing from triggering canvas shortcuts (tool switches, Delete).
+    event.stopPropagation();
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      // Collaborative edits persist automatically; swallow the save dialog.
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Escape") this.emit("exit-edit");
+  };
+
+  private emit(name: string, detail?: unknown): void {
+    this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
+  }
+
+  /** Read by the host's `finish` callback to persist the edited preview. */
+  getHtml(): string | null {
+    return this.editor?.getHTML() ?? null;
+  }
+
+  /** Explicit teardown — see `disconnectedCallback`. */
+  destroy(): void {
+    this.disposed = true;
+    this.setEditor(undefined);
+    this.view?.setEditorEnabled?.(false);
+    this.unsubscribeCollaboration?.();
+    this.unsubscribeCollaboration = null;
+    this.#collaboration?.dispose();
+    this.#collaboration = null;
+  }
+
+  private template() {
+    const stop = (event: Event) => event.stopPropagation();
+
+    return html`
+      <div
+        class="canvas-doc-editor"
+        @pointerdown=${stop}
+        @dblclick=${stop}
+        @contextmenu=${stop}
+        @wheel=${stop}
+        @keydown=${this.onKeydown}
+        @keyup=${stop}
+        @copy=${stop}
+        @cut=${stop}
+        @paste=${stop}
+      >
+        <div
+          class="editor-header"
+          @pointerdown=${(event: PointerEvent) => {
+            event.stopPropagation();
+            this.emit("drag-start", event);
+          }}
+        >
+          <span class="svg-icon icon" aria-hidden="true">${unsafeSVG(documentIcon)}</span>
+          <span class="title-wrap"><span class="title">${this.documentTitle}</span></span>
+          <button
+            type="button"
+            class="done"
+            @pointerdown=${stop}
+            @click=${() => this.emit("exit-edit")}
+          >
+            Done
+          </button>
+        </div>
+        ${
+          this.headerImage
+            ? html`<div class="editor-header-image-frame">
+                <img
+                  class="editor-header-image"
+                  src=${this.headerImage}
+                  alt=""
+                  draggable="false"
+                />
+              </div>`
+            : ""
         }
-      });
-
-      onBeforeUnmount(() => {
-        disposed = true;
-        setEditor(undefined);
-        viewEl.value?.setEditorEnabled?.(false);
-      });
-
-      function onKeydown(event: KeyboardEvent) {
-        // Keep typing from triggering canvas shortcuts (tool switches, Delete).
-        event.stopPropagation();
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-          // Collaborative edits persist automatically; swallow the save dialog.
-          event.preventDefault();
-          return;
-        }
-        if (event.key === "Escape") emit("exit-edit");
-      }
-
-      expose({
-        getHtml(): string | null {
-          return editor.value?.getHTML() ?? null;
-        },
-      });
-
-      const stop = (event: Event) => event.stopPropagation();
-
-      return () =>
-        h(
-          "div",
-          {
-            class: "canvas-doc-editor",
-            onPointerdown: stop,
-            onDblclick: stop,
-            onContextmenu: stop,
-            onWheel: stop,
-            onKeydown,
-            onKeyup: stop,
-            onCopy: stop,
-            onCut: stop,
-            onPaste: stop,
-          },
-          [
-            h(
-              "div",
-              {
-                class: "editor-header",
-                onPointerdown: (event: PointerEvent) => {
-                  event.stopPropagation();
-                  emit("drag-start", event);
-                },
-              },
-              [
-                h("span", {
-                  class: "svg-icon icon",
-                  "aria-hidden": "true",
-                  innerHTML: documentIcon,
-                }),
-                h("span", { class: "title-wrap" }, [
-                  h("span", { class: "title" }, props.title),
-                ]),
-                h(
-                  "button",
-                  {
-                    type: "button",
-                    class: "done",
-                    onPointerdown: stop,
-                    onClick: () => emit("exit-edit"),
-                  },
-                  "Done",
-                ),
-              ],
-            ),
-            props.headerImage
-              ? h("div", { class: "editor-header-image-frame" }, [
-                  h("img", {
-                    class: "editor-header-image",
-                    src: props.headerImage,
-                    alt: "",
-                    draggable: false,
-                  }),
-                ])
-              : null,
-            h("div", { class: "editor-body" }, [
-              status.value === "connecting"
-                ? h("p", { class: "editor-hint" }, "Connecting…")
-                : status.value === "error"
-                  ? h(
-                      "p",
-                      { class: "editor-hint" },
-                      errorMessage.value || "Unable to open the editor.",
-                    )
-                  : h("document-view", {
-                      ref: viewEl,
-                      "space-id": props.spaceId,
-                      "document-id": props.documentId,
-                    }),
-            ]),
-          ],
-        );
-    },
-  },
-  { shadowRoot: false },
-);
+        <div class="editor-body">
+          ${
+            this.status === "connecting"
+              ? html`<p class="editor-hint">Connecting…</p>`
+              : this.status === "error"
+                ? html`<p class="editor-hint">
+                    ${this.errorMessage || "Unable to open the editor."}
+                  </p>`
+                : html`<document-view
+                    space-id=${this.spaceId}
+                    document-id=${this.documentId}
+                    ${ref((element) => this.adoptView(element as DocumentViewElement))}
+                  ></document-view>`
+          }
+        </div>
+      </div>
+    `;
+  }
+}
 
 if (
   typeof customElements !== "undefined" &&
+  typeof HTMLElement !== "undefined" &&
   !customElements.get("canvas-document-editor")
 ) {
   customElements.define("canvas-document-editor", CanvasDocumentEditorElement);

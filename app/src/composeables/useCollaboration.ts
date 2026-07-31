@@ -1,4 +1,6 @@
 import {
+  effectScope,
+  getCurrentInstance,
   type InjectionKey,
   inject,
   onUnmounted,
@@ -136,11 +138,15 @@ export function provideCollaboration<TPresenceState>(
 ) {
   provide(CollaborationKey, collaboration as CollaborationSession);
   activeCollaboration.value = collaboration as CollaborationSession;
-  onUnmounted(() => {
-    if (activeCollaboration.value === collaboration) {
-      activeCollaboration.value = null;
-    }
-  });
+  // `provide` already requires a component instance, so this one is guarded
+  // only for symmetry with `useCollaboration`.
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      if (activeCollaboration.value === collaboration) {
+        activeCollaboration.value = null;
+      }
+    });
+  }
 }
 
 export function injectCollaboration() {
@@ -154,12 +160,25 @@ export function useActiveCollaboration(): ShallowRef<CollaborationSession | null
     : activeCollaboration;
 }
 
+/**
+ * A collaboration session.
+ *
+ * Usable from a Vue component, where it cleans itself up on unmount, and from
+ * outside one, where the caller owns `dispose()`. The canvas needs the second
+ * form: its inline document editor is a plain custom element, and a composable
+ * that only tidies up via `onUnmounted` would leak its room membership and its
+ * `pagehide`/`beforeunload` listeners there.
+ */
 export function useCollaboration<TPresenceState>(options: {
   spaceId: string;
   documentId: Ref<string | undefined>;
   presenceRoomId?: Ref<string | undefined>;
 }) {
   const { spaceId, documentId } = options;
+  // Watchers created outside a component are never stopped on their own. The
+  // scope collects them so `dispose()` can, and it is inert for the component
+  // callers, whose `onUnmounted` runs `dispose()` for them.
+  const scope = effectScope(true);
   const presenceRoomId = options.presenceRoomId ?? documentId;
   const user = useUserProfile();
   const { appearance } = useCosmetics();
@@ -327,13 +346,15 @@ export function useCollaboration<TPresenceState>(options: {
     ydoc.value = new Y.Doc();
   }
 
-  watch(user, () => {
-    if (presenceRequested) void setupPresence();
-  });
+  scope.run(() => {
+    watch(user, () => {
+      if (presenceRequested) void setupPresence();
+    });
 
-  watch(documentId, (currentDocumentId, previousDocumentId) => {
-    if (currentDocumentId === previousDocumentId) return;
-    leave();
+    watch(documentId, (currentDocumentId, previousDocumentId) => {
+      if (currentDocumentId === previousDocumentId) return;
+      leave();
+    });
   });
 
   // The presence `user` (and its color) is only sent on join, so re-announce
@@ -346,21 +367,29 @@ export function useCollaboration<TPresenceState>(options: {
     void setupPresence();
   }
 
-  watch(cursorColorOverride, handleCursorColorPreferenceChange);
-  watch(appearance, handleCursorColorPreferenceChange);
+  scope.run(() => {
+    watch(cursorColorOverride, handleCursorColorPreferenceChange);
+    watch(appearance, handleCursorColorPreferenceChange);
+  });
 
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", clearPresence);
     window.addEventListener("beforeunload", clearPresence);
   }
 
-  onUnmounted(() => {
+  function dispose() {
     if (typeof window !== "undefined") {
       window.removeEventListener("pagehide", clearPresence);
       window.removeEventListener("beforeunload", clearPresence);
     }
+    scope.stop();
     leave();
-  });
+  }
+
+  // Only when there is an instance to hook: called outside a component, Vue
+  // logs a warning and silently drops the callback, and the session would
+  // outlive whatever created it.
+  if (getCurrentInstance()) onUnmounted(dispose);
 
   return {
     ydoc,
@@ -373,5 +402,6 @@ export function useCollaboration<TPresenceState>(options: {
     clearPresence,
     setPresenceState,
     updatePresence,
+    dispose,
   };
 }

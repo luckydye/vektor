@@ -302,6 +302,12 @@ export const documentLinkElement: CanvasElementExtension = {
       if (!documents.canEdit() || documents.isRemote(shape)) return;
       if (documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
       if (!documents.inlineEditable(shape)) return;
+      // The editor is a plain custom element, so its session is created here
+      // and torn down in `finish` — there is no unmount hook to do it.
+      const collaboration = host.createCollaboration?.({
+        spaceId: host.spaceId,
+        documentId,
+      });
       host.beginEdit({
         shapeId: shape.id,
         tag: "canvas-document-editor",
@@ -309,15 +315,18 @@ export const documentLinkElement: CanvasElementExtension = {
         props: {
           spaceId: host.spaceId,
           documentId,
-          title: documents.shapeTitle(shape),
+          documentTitle: documents.shapeTitle(shape),
           headerImage: documents.shapeHeaderImage(shape),
           toggleTaskIndex: clickedTaskCheckboxIndex(event),
+          collaboration,
         },
         finish: (element) => {
-          const html = (
-            element as (HTMLElement & { getHtml?: () => string | null }) | null
-          )?.getHtml?.();
+          const editor = element as
+            | (HTMLElement & { getHtml?: () => string | null; destroy?: () => void })
+            | null;
+          const html = editor?.getHtml?.();
           if (typeof html === "string") documents.setPreviewContent(address, html);
+          editor?.destroy?.();
         },
       });
     },

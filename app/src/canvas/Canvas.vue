@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, useTemplateRef, watchEffect } from "vue";
+import {
+  effectScope,
+  onBeforeUnmount,
+  onMounted,
+  shallowRef,
+  useTemplateRef,
+  watch,
+  watchEffect,
+} from "vue";
 import type * as Y from "yjs";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import {
+  type CollaborationPresenceProfile,
+  useCollaboration,
+} from "#composeables/useCollaboration.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
@@ -11,9 +22,13 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import type {
+  CanvasPresenceState,
+  DocumentPresenceState,
+} from "#editor/collaboration.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { type CanvasHostElement, canvasHostTag } from "./CanvasHostElement.ts";
+import type { CanvasDocumentCollaboration } from "./collaboration.ts";
 
 /**
  * The Vue adapter for `<vektor-canvas>`.
@@ -43,6 +58,57 @@ const { appearance } = useCosmetics();
 const { cursorColorOverride } = useCanvasCursorColor();
 const { uploadFile } = useUploads();
 
+/**
+ * Adapts `useCollaboration` to the plain interface the canvas can read.
+ *
+ * Called per embedded document when the reader opens one for editing, which is
+ * outside any component's setup — hence the explicit scope and `dispose`. The
+ * canvas owns the lifetime and calls `dispose` when the edit session ends.
+ */
+function createCollaboration(options: {
+  spaceId: string;
+  documentId: string;
+}): CanvasDocumentCollaboration {
+  const scope = effectScope(true);
+  const documentId = shallowRef<string | undefined>(options.documentId);
+
+  const session = scope.run(() =>
+    useCollaboration<DocumentPresenceState>({
+      spaceId: options.spaceId,
+      documentId,
+    }),
+  );
+  if (!session) throw new Error("Could not open a collaboration session");
+
+  const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  scope.run(() => {
+    watch(session.presenceProfiles, notify);
+    watch(() => appearance.cursorCompanion, notify);
+  });
+
+  return {
+    ydoc: () => session.ydoc.value,
+    joinUntilReady: () => session.joinUntilReady(),
+    setPresenceState: (state) => session.setPresenceState(state),
+    setupPresence: () => session.setupPresence(),
+    updatePresence: () => session.updatePresence(),
+    presenceProfiles: () => session.presenceProfiles.value,
+    appearance: () => appearance,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    dispose() {
+      listeners.clear();
+      session.dispose();
+      scope.stop();
+    },
+  };
+}
+
 // One effect for the whole property surface: every value below is reactive, and
 // the element coalesces the writes into a single render anyway.
 watchEffect(() => {
@@ -64,6 +130,7 @@ watchEffect(() => {
   element.documents = () => documents.value;
   element.spaces = () => spaces.value;
   element.uploadfile = (file, target) => uploadFile(file, target);
+  element.createcollaboration = createCollaboration;
   element.save = (snapshot) => saveDocument(snapshot as string);
   element.error = (message) => toast.error(message);
   element.onpresence = (states) => emit("presence", states);

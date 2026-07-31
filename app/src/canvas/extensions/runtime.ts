@@ -1,4 +1,5 @@
 import { api } from "#api/client.ts";
+import type { CanvasCollaborationFactory } from "#canvas/collaboration.ts";
 import { mediaTypeForFile } from "#files/fileTypes.ts";
 import {
   createDocumentLinkController,
@@ -54,6 +55,7 @@ export type CanvasExtensionRuntimeOptions = {
   documents: () => DocumentPreviewSource[];
   spaces: () => ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
   uploadFile: CanvasUploader;
+  createCollaboration?: CanvasCollaborationFactory;
 };
 
 export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
@@ -88,6 +90,7 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
     spaceId: options.spaceId,
     wasDragged: options.wasDragged,
     beginEdit: options.beginEdit,
+    createCollaboration: options.createCollaboration,
     openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
     dispatch: (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail })),
     service: <T>(key: symbol) => {

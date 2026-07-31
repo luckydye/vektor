@@ -6,6 +6,7 @@ import { type CanvasController, createCanvasController } from "./CanvasControlle
 import type { CanvasDomRefs } from "./CanvasView.ts";
 import "./CanvasPresenceCursorElement.ts";
 import "./css/canvas.css";
+import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import { HostElement } from "./extensions/CanvasElementBase.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
@@ -69,6 +70,7 @@ export class CanvasHostElement extends HostElement {
   canedit = false;
   gridtype: string | undefined;
   uploadfile: CanvasUploader | undefined;
+  createcollaboration: CanvasCollaborationFactory | undefined;
   documents: (() => DocumentPreviewSource[]) | undefined;
   spaces:
     | (() => ReadonlyArray<{ id: string; slug?: string | null }> | undefined)
@@ -185,6 +187,9 @@ export class CanvasHostElement extends HostElement {
         },
         get uploadFile() {
           return element.uploadfile;
+        },
+        get createCollaboration() {
+          return element.createcollaboration;
         },
         save: (snapshot) => element.save?.(snapshot) ?? Promise.resolve(),
         error: (message) => element.error?.(message),

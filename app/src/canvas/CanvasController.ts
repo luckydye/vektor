@@ -149,6 +149,7 @@ import {
 import "./CanvasPresenceCursorElement.ts";
 import "./css/canvas.css";
 import type { CanvasDomRefs, CanvasToolDef, CanvasView } from "./CanvasView.ts";
+import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import { linkPreviews } from "./extensions/link.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
@@ -186,6 +187,8 @@ export interface CanvasHost {
   readonly documents: DocumentPreviewSource[];
   readonly spaces: ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
   readonly uploadFile: CanvasUploader | undefined;
+  /** Opens a collaboration session for a document embedded on the canvas. */
+  readonly createCollaboration: CanvasCollaborationFactory | undefined;
 
   save(snapshot: unknown): Promise<unknown>;
   error(message: string): void;
@@ -458,6 +461,12 @@ export function createCanvasController(
       host.uploadFile
         ? host.uploadFile(file, uploadOptions)
         : Promise.reject(new Error("No uploader configured for this canvas")),
+    createCollaboration: (collaborationOptions) => {
+      if (!host.createCollaboration) {
+        throw new Error("No collaboration factory configured for this canvas");
+      }
+      return host.createCollaboration(collaborationOptions);
+    },
     persistShape: (shape) => yShapes.set(shape.id, shapeToYMap(shape, extensionManager)),
     insertNewShape,
     selectShape: selectOnlyShape,
@@ -3177,20 +3186,31 @@ export function createCanvasController(
   }
 
   function fitView(maxZoom = 5) {
-    const xs = [
-      ...state.shapes.flatMap((shape) => {
-        const bounds = shapeAabb(shape);
-        return [bounds.x, bounds.x + bounds.width];
-      }),
-      ...state.strokes.flatMap((stroke) => stroke.points.map((point) => point.x)),
-    ];
-    const ys = [
-      ...state.shapes.flatMap((shape) => {
-        const bounds = shapeAabb(shape);
-        return [bounds.y, bounds.y + bounds.height];
-      }),
-      ...state.strokes.flatMap((stroke) => stroke.points.map((point) => point.y)),
-    ];
+    // Accumulated rather than spread into Math.min/max: a freehand stroke can
+    // carry tens of thousands of points, which overflows the argument stack.
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    let hasContent = false;
+
+    for (const shape of state.shapes) {
+      const bounds = shapeAabb(shape);
+      if (bounds.x < minX) minX = bounds.x;
+      if (bounds.y < minY) minY = bounds.y;
+      if (bounds.x + bounds.width > maxX) maxX = bounds.x + bounds.width;
+      if (bounds.y + bounds.height > maxY) maxY = bounds.y + bounds.height;
+      hasContent = true;
+    }
+    for (const stroke of state.strokes) {
+      for (const point of stroke.points) {
+        if (point.x < minX) minX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y > maxY) maxY = point.y;
+        hasContent = true;
+      }
+    }
 
     const inset = reservedSidebarWidth();
     const baseScale = Math.min(
@@ -3198,16 +3218,12 @@ export function createCanvasController(
       state.screen.height / FIT_REFERENCE.height,
     );
 
-    if (xs.length === 0 || ys.length === 0) {
+    if (!hasContent) {
       // Center the world origin within the visible region (right of the nav).
       state.camera = { centerX: -inset / (2 * baseScale), centerY: 0, zoom: 1 };
       return;
     }
 
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    const maxX = Math.max(...xs);
-    const maxY = Math.max(...ys);
     const width = Math.max(1, maxX - minX + 160);
     const height = Math.max(1, maxY - minY + 160);
     // Fit the content into the visible width, not the full (occluded) viewport.

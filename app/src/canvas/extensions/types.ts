@@ -1,3 +1,4 @@
+import type { CanvasCollaborationFactory } from "#canvas/collaboration.ts";
 import type {
   FreehandPoint,
   FreehandStroke,
@@ -225,6 +226,11 @@ export type CanvasEditSession = {
 export interface CanvasExtensionHost {
   spaceId: string;
   wasDragged: () => boolean;
+  /**
+   * Opens a collaboration session for an embedded document. Supplied by the app
+   * shell; the canvas has no framework to read one from.
+   */
+  createCollaboration?: CanvasCollaborationFactory;
   beginEdit: (session: CanvasEditSession) => void;
   openUrl: (url: string) => void;
   dispatch: (name: string, detail: unknown) => void;
