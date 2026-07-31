@@ -1,4 +1,5 @@
 <script setup>
+import { useIsMounted } from "#composeables/useIsMounted.ts";
 import "@atrium-ui/elements/popover";
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
@@ -63,7 +64,7 @@ function saveExpandedItems(items) {
   localStorage.setItem(`wiki-expanded-items`, JSON.stringify(Array.from(items)));
 }
 
-const isMounted = ref(false);
+const isMounted = useIsMounted();
 const expandedItems = ref(new Set());
 
 // Get slugs of expanded categories
@@ -474,7 +475,6 @@ async function handleDocumentCategoryChange(event) {
 onMounted(() => {
   // Defer reading client-only state (localStorage, cached query data) until after
   // hydration so server and client render the same initial markup.
-  isMounted.value = true;
   expandedItems.value = loadExpandedItems();
 
   window.addEventListener("document-parent-change", handleDocumentParentChange);

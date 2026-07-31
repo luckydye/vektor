@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useDocument } from "#composeables/useDocument.ts";
 import { uploadingDocumentId } from "#composeables/useHeaderImage.ts";
+import { useIsMounted } from "#composeables/useIsMounted.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 
 const props = defineProps<{
@@ -34,10 +35,7 @@ const src = computed(() => {
   return url ? withTransformParams(url, { w: 1600, format: "webp", q: 85 }) : null;
 });
 
-const isMounted = ref(false);
-onMounted(() => {
-  isMounted.value = true;
-});
+const isMounted = useIsMounted();
 
 const isUploadingHeader = computed(() => uploadingDocumentId.value === props.documentId);
 const showSkeleton = computed(

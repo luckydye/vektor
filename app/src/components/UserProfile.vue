@@ -5,6 +5,7 @@ import {
   signOutIcon,
   sourceCodeIcon,
 } from "#assets/icons.ts";
+import { useIsMounted } from "#composeables/useIsMounted.ts";
 import "./AvatarElement.ts";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";
@@ -21,10 +22,7 @@ import {
 const profileUser = useUserProfile();
 const { appearance } = useCosmetics();
 applyThemePreference(getStoredThemePreference());
-const isMounted = ref(false);
-onMounted(() => {
-  isMounted.value = true;
-});
+const isMounted = useIsMounted();
 const user = computed(() =>
   isMounted.value && profileUser.value
     ? { ...profileUser.value, appearance: appearance.value }

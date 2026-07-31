@@ -13,6 +13,7 @@ import {
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { resetEditingState, useEditor } from "#composeables/useEditor.ts";
 import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
+import { useIsMounted } from "#composeables/useIsMounted.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
@@ -67,7 +68,7 @@ const supportsRichTextDocument = computed(() =>
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
-const isMounted = ref(false);
+const isMounted = useIsMounted();
 const commentBubble = ref<InstanceType<typeof CommentBubble> | null>(null);
 type DocumentViewElement = HTMLElement & {
   editorInstance?: Editor;
@@ -425,7 +426,6 @@ watch(editing, (isEditing) => {
 onMounted(() => {
   extensions.setActiveCollaboration(collaboration.ydoc.value);
   extensions.setActiveDocumentId(documentId.value ?? null);
-  isMounted.value = true;
 
   window.addEventListener(
     "inline-suggestion:accept",
