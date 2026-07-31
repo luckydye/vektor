@@ -1,5 +1,5 @@
 import { useLocation, useParams } from "@solidjs/router";
-import { type Accessor, createContext, createMemo, useContext } from "solid-js";
+import { type Accessor, createContext, useContext } from "solid-js";
 
 /**
  * The URL the server rendered, for the window before the router has matched.
@@ -15,13 +15,23 @@ export function useRoute(): {
   pathname: Accessor<string>;
   documentSlug: Accessor<string>;
 } {
-  const location = useLocation();
-  const params = useParams<{ documentSlug?: string }>();
   const ssrUrl = useContext(SsrUrlContext);
 
+  // Plain accessors, not memos.
+  //
+  // `useLocation()` throws outside a `Route`. Vue's `computed` was lazy, so a
+  // component that never rendered a route-dependent branch never evaluated it
+  // and never needed a router — `DocumentTree` in the sidebar is exactly that
+  // when its category list is empty. A Solid `createMemo` computes eagerly on
+  // creation, so it would throw for every caller; a plain function defers the
+  // read to the point of use the way the `computed` did, and stays reactive
+  // because it reads the location signal inside whatever tracks it.
+  //
+  // Both are cheap enough that losing memoisation costs nothing.
   return {
-    pathname: createMemo(() => location.pathname || ssrUrl),
-    documentSlug: createMemo(() => {
+    pathname: () => useLocation().pathname || ssrUrl,
+    documentSlug: () => {
+      const params = useParams<{ documentSlug?: string }>();
       if (params.documentSlug) return params.documentSlug;
       // Only fall back to the SSR URL before the router has matched anything
       // (the pre-hydration window). Once a route is resolved, an empty
@@ -30,11 +40,11 @@ export function useRoute(): {
       //
       // `vue-route.matched.length` becomes an empty pathname here: Solid's
       // location has no `matched`, and an unresolved location reports `""`.
-      if (!location.pathname) {
+      if (!useLocation().pathname) {
         const match = ssrUrl.match(/\/doc\/(.+)$/);
         return match ? match[1] : "";
       }
       return "";
-    }),
+    },
   };
 }

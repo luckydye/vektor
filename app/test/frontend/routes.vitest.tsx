@@ -40,10 +40,13 @@ describe("route snapshots", () => {
     );
   });
 
+  // `at`, because Search calls useNavigate/useLocation at setup and those throw
+  // outside a Route. The Vue original reached the router through a lazy
+  // computed, so it rendered without one.
   it("space search", async () => {
-    await expect(await snapshotOf(SpaceSearchView)).toMatchFileSnapshot(
-      "./__snapshots__/route-space-search.html",
-    );
+    await expect(
+      await snapshotOf(SpaceSearchView, { at: "/search" }),
+    ).toMatchFileSnapshot("./__snapshots__/route-space-search.html");
   });
 
   it("space settings", async () => {

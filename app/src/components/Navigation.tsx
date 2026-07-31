@@ -188,7 +188,7 @@ export function Navigation() {
               <h3 class="font-medium text-neutral-900 text-size-extra-small uppercase tracking-wider opacity-50">
                 {t("Categories")}
               </h3>
-              <Show when={documentTree()?.isEditMode()}>
+              <Show when={documentTree()?.isEditMode}>
                 <button
                   type="button"
                   onClick={() => documentTree()?.toggleEditMode()}

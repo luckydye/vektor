@@ -44,7 +44,7 @@ export function PropertyChip(props: Props) {
   const valueLabels = createMemo(() => props.valueLabels ?? []);
 
   const handleClick = async () => {
-    const property = props.property;
+    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
     if (props.readonly || !property) return;
 
     setIsEditPopoverOpen(!isEditPopoverOpen());
@@ -90,7 +90,7 @@ export function PropertyChip(props: Props) {
   };
 
   const handleValueSelect = (item: SelectMenuItem) => {
-    const property = props.property;
+    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
     if (!property) return;
 
     const itemValue = item.id === "__new__" ? searchInput().trim() : item.id;
@@ -124,7 +124,7 @@ export function PropertyChip(props: Props) {
 
   const handleDateChange = (event: Event) => {
     const target = event.target as HTMLInputElement;
-    const property = props.property;
+    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
     if (!property) return;
     props.onUpdate?.({
       ...property,
@@ -136,7 +136,7 @@ export function PropertyChip(props: Props) {
   };
 
   const handleDelete = () => {
-    const property = props.property;
+    const property = props.property; // solid-reactivity-ok: handler, re-reads per call
     if (!property) return;
     props.onDelete?.(property);
     handleExit();

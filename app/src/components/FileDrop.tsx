@@ -13,8 +13,17 @@ interface Props {
   }) => JSX.Element;
   /** Vue let `class` fall through to the root; Solid needs it declared. */
   class?: string;
-  /** Vue's `defineExpose`, as a callback prop (plan §10). */
-  ref?: (handle: { isDragging: () => boolean; openPicker: () => void }) => void;
+  /**
+   * Vue's `defineExpose`, as a callback prop (plan §10).
+   *
+   * `isDragging` is a getter, not an accessor: Vue's exposed proxy unwrapped
+   * refs, so a parent read it as a value, and it stays reactive here because
+   * the getter reads the signal at the point of use. `openPicker` is an action
+   * and stays a function — which is also why this cannot be a blanket
+   * "unwrap every zero-arg function" rule in the test adapter: the two are
+   * indistinguishable by arity.
+   */
+  ref?: (handle: { readonly isDragging: boolean; openPicker: () => void }) => void;
 }
 
 export function FileDrop(props: Props) {
@@ -49,7 +58,12 @@ export function FileDrop(props: Props) {
     input.click();
   }
 
-  props.ref?.({ isDragging, openPicker });
+  props.ref?.({
+    get isDragging() {
+      return isDragging();
+    },
+    openPicker,
+  });
 
   return (
     /* biome-ignore lint/a11y/noStaticElementInteractions: the drop zone is the control. */

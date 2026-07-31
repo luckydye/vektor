@@ -34,9 +34,15 @@ import { spacePath } from "#utils/utils.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 
-/** Vue's `defineExpose`, as a callback prop (plan §10). */
+/**
+ * Vue's `defineExpose`, as a callback prop (plan §10).
+ *
+ * `isEditMode` is a getter so a parent reads it as a value, the way Vue's
+ * exposed proxy unwrapped the ref. It stays reactive: the getter reads the
+ * signal when the parent reads the property.
+ */
 export interface DocumentTreeHandle {
-  isEditMode: () => boolean;
+  readonly isEditMode: boolean;
   toggleEditMode: () => void;
 }
 
@@ -461,7 +467,12 @@ export function DocumentTree(props: Props) {
     });
   });
 
-  props.ref?.({ isEditMode, toggleEditMode });
+  props.ref?.({
+    get isEditMode() {
+      return isEditMode();
+    },
+    toggleEditMode,
+  });
 
   const categoryIndex = (id: string) => categories().findIndex((c) => c.id === id);
 

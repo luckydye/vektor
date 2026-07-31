@@ -123,7 +123,7 @@ export function DocumentGroupedList(props: Props) {
   }
 
   const filtered = createMemo(() => {
-    let docs = props.items;
+    let docs = props.items; // solid-reactivity-ok: memo body, re-reads per recompute
     const rangeStart = dateRangeStart();
     const rangeEnd = dateRangeEnd();
     if (rangeStart) {

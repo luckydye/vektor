@@ -255,7 +255,7 @@ export function CommentBubble(props: Props) {
   }
 
   function removeCommentAnchorMark(reference: string) {
-    const editor = props.editor;
+    const editor = props.editor; // solid-reactivity-ok: handler, re-reads per call
     if (!editor || editor.isDestroyed) return;
     const match = reference.match(/\[data-comment-id="([^"]+)"\]/);
     if (!match) return;

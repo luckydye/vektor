@@ -174,9 +174,17 @@ export async function renderRoute(
 
   // Queries resolve over several microtask hops; a snapshot taken too early
   // captures a loading state and is stable but useless.
+  //
+  // A frame has to be part of each turn, not just a macrotask. Components that
+  // reveal themselves after first paint schedule that with
+  // `requestAnimationFrame` — `SettingsLayout` gates its tabs on it — and a
+  // loop of bare `setTimeout(0)` never lets those run, so the snapshot captures
+  // the skeleton. Vue's `nextTick` happened to cover this because its scheduler
+  // drained on the same turn; Solid has no scheduler to drain.
   for (let i = 0; i < (options.settle ?? 12); i++) {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
   }
 
   return {

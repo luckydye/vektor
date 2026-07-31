@@ -29,7 +29,7 @@ export function ExcelExportDialog(props: Props) {
   );
 
   createEffect(() => {
-    const cols = props.columns;
+    const cols = props.columns; // solid-reactivity-ok: effect body, re-reads per run
     if (!cols.includes(sheetNameColumn())) setSheetNameColumn(cols[0] ?? "");
     if (!cols.includes(splitColumn())) setSplitColumn(cols[cols.length - 1] ?? "");
   });
