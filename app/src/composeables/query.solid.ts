@@ -287,14 +287,28 @@ export function useQuery<TData = unknown>(
   //
   // Reading the key and `enabled` here is what tracks them; everything attach()
   // does is untracked, so the observer's own writes cannot re-trigger it.
+  // Depend on the hash rather than the array, so an equal key rebuilt inline on
+  // every render does not detach and refetch.
+  //
+  // This has to be a memo over the hash *string*. `createMemo` compares with
+  // `===`, and a key built inline — `createMemo(() => ["docs", props.spaceId])`
+  // — is a new array on every recomputation, so the array itself always reads
+  // as changed. Calling `queryHash` inside the effect (as this once did) tracks
+  // nothing at all: it is a pure function, and the dependency had already been
+  // taken on the key.
+  //
+  // The difference is not just wasted fetches. A re-attach calls `fetchEntry`,
+  // which notifies every observer of the shared cache entry — including one
+  // whose data feeds this key. Rendering a list of components that each read
+  // such a query then loops: attach, fetch, notify, re-render, attach.
+  const keyHash = createMemo(() => queryHash(access(options.queryKey)));
+
   createRenderEffect(() => {
-    const queryKey = access(options.queryKey);
+    void keyHash();
     const enabled = resolveEnabled(options.enabled);
-    // Depend on the hash rather than the array, so an equal key rebuilt inline
-    // on every render does not detach and refetch.
-    void queryHash(queryKey);
 
     untrack(() => {
+      const queryKey = access(options.queryKey);
       previousData = data();
       cleanup();
       attach(queryKey, enabled);
