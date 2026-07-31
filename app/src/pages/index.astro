@@ -1,5 +1,5 @@
 ---
-import FirstSpacePrompt from "#components/FirstSpacePrompt.vue";
+import { FirstSpacePrompt } from "#components/FirstSpacePrompt.tsx";
 import { config } from "#config";
 import { getUserGroups, hasPermission, ResourceType } from "#db/acl.ts";
 import { getSpaceBySlug, listUserSpaces } from "#db/spaces.ts";
@@ -47,5 +47,5 @@ if (userSpaces.length !== 0) {
 
 <BaseLayout>
   <!-- First Space Onboarding Prompt -->
-  <FirstSpacePrompt client:only="vue" />
+  <FirstSpacePrompt client:only="solid-js" />
 </BaseLayout>

@@ -58,3 +58,270 @@ a-popover-arrow {
   text-decoration: underline;
 }
 /* Mention styling comes from #editor/css/mentions.css. */
+
+/* ── AIChatMessages ─────────────────────────────────────────────────── */
+/*
+ * `scoped` was load-bearing for the scrollbar rules: as written they matched
+ * every `.overflow-y-auto` on the page. They are re-scoped to the message
+ * container, which is the element they were always meant for.
+ */
+
+/* Disable browser scroll anchoring so it doesn't fight our manual scroll management.
+   We handle "stick to bottom" ourselves via scrollToBottomIfFollowing(). */
+.messages-container {
+  overflow-anchor: none;
+}
+
+.animate-message-slide-in {
+  animation: messageSlideIn 0.2s ease-out;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.typing-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  color: var(--color-neutral-400, #a3a3a3);
+  animation: typingBounce 1s ease-in-out infinite;
+}
+
+@keyframes typingBounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.messages-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.messages-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-container::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-200);
+  border-radius: 4px;
+}
+
+details[open] .details-chevron {
+  transform: rotate(90deg);
+}
+
+.markdown-content p {
+  margin: 0.25rem 0;
+}
+.markdown-content :is(h1, h2, h3, h4) {
+  margin: 0.5rem 0;
+  font-weight: 600;
+}
+.markdown-content ul {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+.markdown-content ol {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+  list-style-type: decimal;
+}
+.markdown-content li {
+  margin: 0.125rem 0;
+}
+.markdown-content code {
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+.markdown-content pre {
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-100);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.markdown-content pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.markdown-content a {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
+/* Mention styling comes from #editor/css/mentions.css (imported above). */
+.markdown-content blockquote {
+  border-left: 3px solid var(--color-neutral-200);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--color-neutral-500);
+}
+.markdown-content strong {
+  font-weight: 600;
+}
+.markdown-content em {
+  font-style: italic;
+}
+.markdown-content hr {
+  margin: 0.75rem 0;
+  border-color: var(--color-neutral-200);
+}
+.markdown-content table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.75rem 0;
+  border: 1px solid var(--color-neutral-200);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow-x: auto;
+  table-layout: auto;
+}
+.markdown-content :is(th, td) {
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-right: 1px solid var(--color-neutral-200);
+  border-bottom: 1px solid var(--color-neutral-200);
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  word-break: normal;
+}
+.markdown-content th {
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  font-weight: 600;
+}
+.markdown-content tr > :last-child {
+  border-right: 0;
+}
+.markdown-content tr:last-child > * {
+  border-bottom: 0;
+}
+.markdown-content :is(th, td:first-child) {
+  width: 1%;
+  white-space: nowrap;
+}
+.markdown-content td code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.user-markdown a {
+  color: inherit;
+}
+
+/* ── Chat bubble theming ────────────────────────────────────────────── */
+
+.status-bubble {
+  background-color: #0b0c10;
+  color: #e2e5eb;
+  border: 1px solid #2b3140;
+}
+
+.status-bubble-label {
+  color: var(--color-neutral-400);
+}
+
+.tool-message-bg {
+  background-color: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.tool-message-header {
+  border-color: #e5e7eb;
+}
+
+.tool-message-name {
+  color: #52525b;
+}
+
+.tool-message-label {
+  color: #a1a1aa;
+}
+
+.tool-error-bg {
+  background-color: rgba(254, 242, 242, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .markdown-content pre {
+    background: var(--color-neutral-200);
+    color: var(--color-neutral-800);
+  }
+  .status-bubble {
+    background-color: var(--color-neutral-100);
+    color: var(--color-neutral-700);
+    border-color: var(--color-neutral-200);
+  }
+  .status-bubble-label {
+    color: var(--color-neutral-500);
+  }
+  .tool-message-bg {
+    background-color: var(--color-neutral-100);
+    border-color: var(--color-neutral-200);
+  }
+  .tool-message-header {
+    border-color: var(--color-neutral-200);
+  }
+  .tool-message-name {
+    color: var(--color-neutral-600);
+  }
+  .tool-message-label {
+    color: var(--color-neutral-500);
+  }
+  .tool-error-bg {
+    background-color: rgba(33, 33, 33, 0.4);
+  }
+}
+
+:root[data-theme="dark"] .markdown-content pre {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-800);
+}
+:root[data-theme="dark"] .status-bubble {
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  border-color: var(--color-neutral-200);
+}
+:root[data-theme="dark"] .status-bubble-label {
+  color: var(--color-neutral-500);
+}
+:root[data-theme="dark"] .tool-message-bg {
+  background-color: var(--color-neutral-100);
+  border-color: var(--color-neutral-200);
+}
+:root[data-theme="dark"] .tool-message-header {
+  border-color: var(--color-neutral-200);
+}
+:root[data-theme="dark"] .tool-message-name {
+  color: var(--color-neutral-600);
+}
+:root[data-theme="dark"] .tool-message-label {
+  color: var(--color-neutral-500);
+}
+:root[data-theme="dark"] .tool-error-bg {
+  background-color: rgba(33, 33, 33, 0.4);
+}
