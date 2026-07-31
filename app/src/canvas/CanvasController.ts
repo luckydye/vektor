@@ -204,6 +204,14 @@ export interface CanvasController {
   afterRender(): void;
   mount(): void;
   destroy(): void;
+  /**
+   * Drops the cached `derived` values.
+   *
+   * For host properties: they live on the element, not in the state proxy, so
+   * writing one bumps nothing and a `derived` that reads it would serve the
+   * previous revision's value forever.
+   */
+  invalidate(): void;
   /** The live view model the template reads. */
   readonly view: CanvasView;
 }
@@ -3681,6 +3689,7 @@ export function createCanvasController(
   return {
     view,
     mount,
+    invalidate: store.invalidate,
     flush() {
       runReactions();
     },

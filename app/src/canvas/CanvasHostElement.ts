@@ -85,7 +85,7 @@ export class CanvasHostElement extends HostElement {
 
   set presence(value: CollaborationPresenceProfile<CanvasPresenceState>[] | undefined) {
     this.#presence = value ?? [];
-    this.requestRender();
+    this.hostPropertyChanged();
   }
 
   get presence(): CollaborationPresenceProfile<CanvasPresenceState>[] {
@@ -94,7 +94,7 @@ export class CanvasHostElement extends HostElement {
 
   set extensions(value: readonly CanvasElementExtension[] | undefined) {
     this.#extensions = value;
-    this.requestRender();
+    this.hostPropertyChanged();
   }
   get extensions(): readonly CanvasElementExtension[] | undefined {
     return this.#extensions;
@@ -102,7 +102,7 @@ export class CanvasHostElement extends HostElement {
 
   set tools(value: readonly CanvasToolExtension[] | undefined) {
     this.#tools = value;
-    this.requestRender();
+    this.hostPropertyChanged();
   }
   get tools(): readonly CanvasToolExtension[] | undefined {
     return this.#tools;
@@ -120,6 +120,20 @@ export class CanvasHostElement extends HostElement {
     // document, so `connectedCallback` alone is too early — whichever of the
     // two happens last is the one that starts the canvas.
     this.start();
+    this.hostPropertyChanged();
+  }
+
+  /**
+   * A host property changed, so the controller's cached `derived` values are
+   * stale and the canvas needs another frame.
+   *
+   * Host properties sit on the element rather than in the controller's state
+   * proxy, which is what bumps the revision those caches compare against. A
+   * bare `requestRender` would repaint from the previous revision's values —
+   * that is how remote presence cursors stopped rendering.
+   */
+  private hostPropertyChanged(): void {
+    this.controller?.invalidate();
     this.requestRender();
   }
 
