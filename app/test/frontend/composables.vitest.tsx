@@ -90,3 +90,36 @@ describe("ported query composables", () => {
     expect(members.members()).toEqual([{ id: "member_space_1" }]);
   });
 });
+
+const { useToast } = await import("#composeables/useToast.solid.ts");
+
+describe("useToast", () => {
+  it("keeps a dismissed toast in the list until it is dropped", () => {
+    const toast = useToast();
+    const id = toast.show("Saved", "success", 0);
+
+    expect(toast.toasts().map((t) => t.message)).toContain("Saved");
+    expect(toast.toasts().find((t) => t.id === id)?.exiting).toBeUndefined();
+
+    // The whole point of the two-step: the container needs the element to
+    // survive `dismiss` long enough to animate out.
+    toast.dismiss(id);
+    expect(toast.toasts().find((t) => t.id === id)?.exiting).toBe(true);
+
+    toast.drop(id);
+    expect(toast.toasts().find((t) => t.id === id)).toBeUndefined();
+  });
+
+  it("patches an existing toast and ignores an unknown id", () => {
+    const toast = useToast();
+    const id = toast.show("Uploading", "info", 0, { progress: 0 });
+
+    toast.update(id, { progress: 50 });
+    expect(toast.toasts().find((t) => t.id === id)?.progress).toBe(50);
+
+    toast.update(9999, { message: "ghost" });
+    expect(toast.toasts().some((t) => t.message === "ghost")).toBe(false);
+
+    toast.drop(id);
+  });
+});
