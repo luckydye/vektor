@@ -32,6 +32,16 @@ declare module "solid-js" {
 
     interface IntrinsicElements {
       "a-blur": CustomElementAttributes;
+      "document-attachment": CustomElementAttributes;
+      "canvas-presence-cursor": CustomElementAttributes;
+      "vektor-canvas": CustomElementAttributes;
+      "extension-view": CustomElementAttributes;
+      "rich-text-editor": CustomElementAttributes;
+      "document-toolbar": CustomElementAttributes;
+      "vektor-cosmetic": CustomElementAttributes;
+      "wiki-drawer": CustomElementAttributes;
+      "category-target": CustomElementAttributes;
+      "page-target": CustomElementAttributes;
       "document-view": CustomElementAttributes;
       "a-list-item": CustomElementAttributes;
       "inset-view": CustomElementAttributes;
