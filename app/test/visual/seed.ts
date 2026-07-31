@@ -18,12 +18,63 @@ export const SEED = {
     { title: "Second page", content: "# Second page\n\nMore seeded content." },
   ],
   category: { name: "Guidelines", slug: "guidelines", color: "#4ECDC4" },
+  /**
+   * A canvas with fixed geometry.
+   *
+   * Ids and timestamps are literals rather than generated, because the canvas
+   * sorts shapes by `updatedAt` and paints selection chrome per id — either one
+   * varying would move pixels between runs for no reason.
+   */
+  canvas: {
+    title: "Canvas fixture",
+    shapes: [
+      {
+        id: "shape-fixture-note",
+        type: "note",
+        frame: { x: -220, y: -140, width: 220, height: 140, rotation: 0 },
+        style: { color: "#fde68a" },
+        data: { text: "A seeded note." },
+        updatedAt: 1_000,
+      },
+      {
+        id: "shape-fixture-text",
+        type: "text",
+        frame: { x: 80, y: -120, width: 240, height: 60, rotation: 0 },
+        style: { color: "transparent" },
+        data: { text: "Seeded text" },
+        updatedAt: 2_000,
+      },
+      {
+        id: "shape-fixture-section",
+        type: "section",
+        frame: { x: -260, y: 60, width: 560, height: 220, rotation: 0 },
+        style: { color: "#bfdbfe" },
+        data: { title: "Seeded section" },
+        updatedAt: 3_000,
+      },
+    ],
+    strokes: [
+      {
+        id: "stroke-fixture",
+        kind: "freehand",
+        rotation: 0,
+        style: { color: "#111827", width: 3 },
+        points: [
+          { x: 340, y: 120, pressure: 0.5 },
+          { x: 400, y: 160, pressure: 0.5 },
+          { x: 460, y: 110, pressure: 0.5 },
+        ],
+        updatedAt: 4_000,
+      },
+    ],
+  },
 } as const;
 
 export interface SeededSpace {
   spaceId: string;
   slug: string;
   documentSlugs: string[];
+  canvasSlug: string;
 }
 
 export async function seed(baseUrl: string): Promise<SeededSpace> {
@@ -52,5 +103,20 @@ export async function seed(baseUrl: string): Promise<SeededSpace> {
     documentSlugs.push(document.slug);
   }
 
-  return { spaceId: space.id, slug: space.slug, documentSlugs };
+  const { document: canvas } = await post(`/spaces/${space.id}/documents`, {
+    title: SEED.canvas.title,
+    type: "canvas",
+    content: JSON.stringify({
+      version: 1,
+      shapes: SEED.canvas.shapes,
+      strokes: SEED.canvas.strokes,
+    }),
+  });
+
+  return {
+    spaceId: space.id,
+    slug: space.slug,
+    documentSlugs,
+    canvasSlug: canvas.slug,
+  };
 }

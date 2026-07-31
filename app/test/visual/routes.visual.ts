@@ -1,4 +1,4 @@
-import { expect, MASKS, test, waitForApp } from "./fixture.ts";
+import { expect, MASKS, test, waitForApp, waitForCanvas } from "./fixture.ts";
 
 /**
  * One screenshot per route, at two viewports.
@@ -12,6 +12,7 @@ import { expect, MASKS, test, waitForApp } from "./fixture.ts";
 
 const SPACE = process.env.VEKTOR_VISUAL_SPACE ?? "visual";
 const DOCUMENT = process.env.VEKTOR_VISUAL_DOCUMENT ?? "getting-started";
+const CANVAS = process.env.VEKTOR_VISUAL_CANVAS ?? "canvas-fixture";
 
 const ROUTES: Array<[name: string, path: string]> = [
   ["login", "/login"],
@@ -20,12 +21,16 @@ const ROUTES: Array<[name: string, path: string]> = [
   ["space-settings", `/${SPACE}/settings`],
   ["document", `/${SPACE}/doc/${DOCUMENT}`],
   ["not-found", `/${SPACE}/doc/does-not-exist`],
+  ["canvas", `/${SPACE}/doc/${CANVAS}`],
 ];
 
 for (const [name, path] of ROUTES) {
   test(name, async ({ page }) => {
     await page.goto(path);
     await waitForApp(page);
+    // The canvas paints its layers from measured geometry after hydration, so
+    // the island being interactive is not yet the same as the scene being drawn.
+    if (name === "canvas") await waitForCanvas(page);
     await expect(page).toHaveScreenshot(`${name}.png`, {
       fullPage: true,
       mask: MASKS.map((selector) => page.locator(selector)),
