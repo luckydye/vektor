@@ -384,7 +384,7 @@ export function UserPreferencesPanel(props: Props) {
                       slot="trigger"
                       type="button"
                       class="mt-3 flex w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-background px-3 py-2 text-foreground text-size-medium transition-colors hover:bg-neutral-50"
-                      aria-label={t("Cursor color")}
+                      attr:aria-label={t("Cursor color")}
                     >
                       <span class="flex items-center gap-2">
                         <span

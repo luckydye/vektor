@@ -123,7 +123,7 @@ export function DocumentActivityFeed(props: Props) {
               <div class="flex items-start gap-3">
                 <vektor-avatar
                   size="small"
-                  user-id={group.userId ?? undefined}
+                  attr:user-id={group.userId ?? undefined}
                   prop:user={props.getUser?.(group.userId)}
                 />
 

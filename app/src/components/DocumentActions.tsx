@@ -623,7 +623,7 @@ export function DocumentActions(props: Props) {
                   {options.title}
                 </span>
                 <a-shortcut
-                  data-shortcut={
+                  attr:data-shortcut={
                     Actions.getShortcutsForAction(name)?.values().next().value
                   }
                 />

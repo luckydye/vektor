@@ -38,10 +38,10 @@ export function DocumentTeaser(props: Props) {
 
   return (
     <page-target
-      data-document-id={props.doc.id}
-      data-document-type={props.doc.type ?? undefined}
-      data-space-id={currentSpace()?.id}
-      data-document-url={spacePath(currentSpace()?.slug, `/doc/${props.doc.slug}`)}
+      attr:data-document-id={props.doc.id}
+      attr:data-document-type={props.doc.type ?? undefined}
+      attr:data-space-id={currentSpace()?.id}
+      attr:data-document-url={spacePath(currentSpace()?.slug, `/doc/${props.doc.slug}`)}
       class="block w-60 flex-none pr-4 [&[data-dragging]]:opacity-50"
     >
       {/* biome-ignore lint/a11y/useValidAnchor: href is computed. */}

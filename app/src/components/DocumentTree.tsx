@@ -549,8 +549,8 @@ export function DocumentTree(props: Props) {
                 <div>
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: the drag, long-press and context-menu gestures live on the row; the button inside is the control. */}
                   <category-target
-                    data-category-id={category.id}
-                    data-space-id={currentSpace()?.id}
+                    attr:data-category-id={category.id}
+                    attr:data-space-id={currentSpace()?.id}
                     class="block [&[data-drag-over]]:bg-neutral-100"
                     draggable={isEditMode()}
                     onDragStart={(e) => isEditMode() && handleDragStart(e, category)}

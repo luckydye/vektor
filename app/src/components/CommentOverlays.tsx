@@ -268,7 +268,7 @@ export function CommentOverlays(props: Props) {
                   <span classList={{ "-ml-4": avatarIndex() > 0 }}>
                     <vektor-avatar
                       size="36"
-                      user-id={participant.userId}
+                      attr:user-id={participant.userId}
                       prop:user={participant.user}
                       class="pointer-events-none"
                     />

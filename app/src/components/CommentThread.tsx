@@ -131,7 +131,7 @@ export function CommentThread(props: Props) {
             <div class="group flex gap-2">
               <vektor-avatar
                 size="24"
-                user-id={comment.createdBy}
+                attr:user-id={comment.createdBy}
                 prop:user={getUser(comment)}
                 class="mt-0.5 shrink-0"
               />

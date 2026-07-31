@@ -89,7 +89,7 @@ export function CosmeticsPanel(props: Props) {
                 </svg>
                 <vektor-cosmetic
                   class="absolute top-0 left-5 h-9 w-11"
-                  asset-id={props.appearance.cursorCompanion ?? undefined}
+                  attr:asset-id={props.appearance.cursorCompanion ?? undefined}
                 />
               </span>
               <span
@@ -98,7 +98,7 @@ export function CosmeticsPanel(props: Props) {
               >
                 <vektor-cosmetic
                   class="absolute bottom-0 left-[-7px] h-8 w-4"
-                  asset-id={props.appearance.caret ?? undefined}
+                  attr:asset-id={props.appearance.caret ?? undefined}
                 />
               </span>
             </div>

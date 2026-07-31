@@ -609,7 +609,7 @@ export function SpaceMembers() {
                               {(userId) => (
                                 <vektor-avatar
                                   size="28"
-                                  user-id={userId()}
+                                  attr:user-id={userId()}
                                   prop:user={getMemberUser(member.primaryPermission)}
                                 />
                               )}

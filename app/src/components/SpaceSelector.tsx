@@ -81,7 +81,7 @@ export function SpaceSelector(props: Props) {
             type="button"
             slot="trigger"
             class="w-full"
-            aria-label={t("Select Space")}
+            attr:aria-label={t("Select Space")}
           >
             <div class="flex items-center gap-3xs rounded-md px-4xs py-4xs transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50">
               <div class="flex w-full cursor-pointer gap-3xs">

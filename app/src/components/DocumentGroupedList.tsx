@@ -379,10 +379,10 @@ export function DocumentGroupedList(props: Props) {
                   <For each={group.docs}>
                     {(doc, idx) => (
                       <page-target
-                        data-document-id={doc.id}
-                        data-document-type={doc.type ?? undefined}
-                        data-space-id={currentSpace()?.id}
-                        data-document-url={spacePath(
+                        attr:data-document-id={doc.id}
+                        attr:data-document-type={doc.type ?? undefined}
+                        attr:data-space-id={currentSpace()?.id}
+                        attr:data-document-url={spacePath(
                           currentSpace()?.slug,
                           `/doc/${doc.slug}`,
                         )}

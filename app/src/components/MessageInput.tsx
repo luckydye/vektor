@@ -305,7 +305,7 @@ export function MessageInput(props: Props) {
 
         <rich-text-editor
           ref={setEditorElement as never}
-          attr:value={merged.value}
+          prop:value={merged.value}
           attr:placeholder={merged.placeholder}
           attr:mentions={merged.mentions ? "" : undefined}
           attr:inline-document-references={

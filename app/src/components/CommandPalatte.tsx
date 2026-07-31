@@ -281,7 +281,7 @@ export function CommandPalatte() {
                       <div class="flex flex-none items-center gap-1">
                         <Show when={result.type === "action"}>
                           <a-shortcut
-                            data-shortcut={
+                            attr:data-shortcut={
                               result.id
                                 ? Actions.getShortcutsForAction(result.id)
                                     ?.values()

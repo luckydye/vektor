@@ -123,7 +123,7 @@ export function Contributors(props: Props) {
                   >
                     <vektor-avatar
                       size="small"
-                      user-id={collaborator.key}
+                      attr:user-id={collaborator.key}
                       prop:user={collaborator.user}
                     />
                   </span>
@@ -170,7 +170,7 @@ export function Contributors(props: Props) {
                       <div class="relative">
                         <vektor-avatar
                           size="small"
-                          user-id={collaborator.key}
+                          attr:user-id={collaborator.key}
                           prop:user={collaborator.user}
                         />
                       </div>

@@ -34,7 +34,27 @@ declare module "solid-js" {
       // `prop:` assigns a DOM property instead of an attribute — the only way
       // to hand a custom element an object.
       "prop:user"?: unknown;
+      // `html` and `value` on our own elements are property-only setters, not
+      // observed attributes — `attr:` would be silently dropped.
+      "prop:html"?: string;
+      "prop:payload"?: string;
+      "attr:payload"?: string;
+      "attr:mode"?: string;
+      mode?: string;
+      "prop:value"?: string;
       "attr:value"?: string | undefined;
+      // Every dynamic attribute on a custom element needs the namespace: Solid
+      // drops an un-namespaced one entirely. See custom-elements.vitest.tsx.
+      "attr:user-id"?: string | undefined;
+      "attr:asset-id"?: string | undefined;
+      "attr:data-document-id"?: string | undefined;
+      "attr:data-document-type"?: string | undefined;
+      "attr:data-space-id"?: string | undefined;
+      "attr:data-document-url"?: string | undefined;
+      "attr:data-category-id"?: string | undefined;
+      "attr:data-shortcut"?: string | undefined;
+      "attr:data-comments-enabled"?: string | undefined;
+      "attr:aria-label"?: string | undefined;
       "attr:placeholder"?: string | undefined;
       "attr:mentions"?: string | undefined;
       "attr:inline-document-references"?: string | undefined;
@@ -88,6 +108,9 @@ declare module "solid-js" {
       "a-popover-trigger": CustomElementAttributes;
       "a-popover-arrow": CustomElementAttributes;
       "vektor-avatar": CustomElementAttributes;
+      // Fixtures for test/frontend/custom-elements.vitest.tsx.
+      "test-prop-only": CustomElementAttributes;
+      "test-attr-only": CustomElementAttributes;
       "wiki-scroll": CustomElementAttributes;
     }
   }

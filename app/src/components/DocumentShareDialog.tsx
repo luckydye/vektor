@@ -331,7 +331,7 @@ export function DocumentShareDialog(props: Props) {
     <div class="flex items-center gap-2.5 py-2">
       <vektor-avatar
         size="28"
-        user-id={rowProps.perm.permission.userId || undefined}
+        attr:user-id={rowProps.perm.permission.userId || undefined}
         prop:user={getMemberUser(rowProps.perm)}
       />
       <div class="min-w-0 flex-1">

@@ -201,7 +201,7 @@ export function SpaceActivityFeed(props: Props) {
                         <div class="flex min-w-0 items-center gap-3">
                           <vektor-avatar
                             size="medium"
-                            user-id={group.userId ?? undefined}
+                            attr:user-id={group.userId ?? undefined}
                             prop:user={getUser(group.userId)}
                           />
 

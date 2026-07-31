@@ -66,10 +66,10 @@ export function DocumentTreeItem(props: Props) {
 
   return (
     <page-target
-      data-document-id={props.doc.id}
-      data-document-type={props.doc.type ?? undefined}
-      data-space-id={currentSpace()?.id}
-      data-document-url={getDocumentUrl(props.doc.slug)}
+      attr:data-document-id={props.doc.id}
+      attr:data-document-type={props.doc.type ?? undefined}
+      attr:data-space-id={currentSpace()?.id}
+      attr:data-document-url={getDocumentUrl(props.doc.slug)}
       class="block pl-[0.535rem] [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
     >
       {/* Only the row dims: descendants may still be valid drop targets. */}

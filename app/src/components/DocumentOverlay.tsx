@@ -292,7 +292,7 @@ export function DocumentOverlay() {
                           <div class="flex gap-3">
                             <vektor-avatar
                               size="small"
-                              user-id={comment.createdBy}
+                              attr:user-id={comment.createdBy}
                               prop:user={comment.createdByUser}
                             />
 

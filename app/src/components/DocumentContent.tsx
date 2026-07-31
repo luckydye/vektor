@@ -535,7 +535,7 @@ export function DocumentContent(props: Props) {
       <main class={twMerge("relative", documentType() !== "canvas" && "mb-30")}>
         {/* CSV Spreadsheet View */}
         <Show when={!editing() && documentType() === "csv"}>
-          <table-view attr:html={renderedHtml()} class="block min-h-0 flex-1" />
+          <table-view prop:html={renderedHtml()} class="block min-h-0 flex-1" />
         </Show>
 
         {/* Document View (read + edit, single persistent instance) */}
@@ -543,7 +543,7 @@ export function DocumentContent(props: Props) {
           <div classList={{ "h-full": editing() }}>
             <document-view
               ref={setDocumentViewEl as never}
-              attr:html={renderedHtml()}
+              prop:html={renderedHtml()}
               attr:space-id={props.spaceId}
               attr:document-id={documentId()}
               data-allow-mismatch="children"
@@ -599,7 +599,7 @@ export function DocumentContent(props: Props) {
 
       <document-toolbar
         ref={setDocumentToolbar as never}
-        data-comments-enabled={supportsComments(documentType()) ? "" : undefined}
+        attr:data-comments-enabled={supportsComments(documentType()) ? "" : undefined}
       />
     </>
   );
