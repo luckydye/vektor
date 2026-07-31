@@ -12,6 +12,8 @@ import docStyles from "#editor/css/document.css?inline";
 
 interface Props {
   html: string;
+  /** Vue let `class` fall through to the root; Solid needs it declared. */
+  class?: string;
 }
 
 // The excerpt is a two-line teaser, not a document: flatten the block markup
@@ -89,5 +91,5 @@ export function SearchSnippet(props: Props) {
     render();
   });
 
-  return <document-view ref={el} />;
+  return <document-view ref={el} class={props.class} />;
 }

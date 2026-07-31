@@ -284,7 +284,28 @@ export interface AccessToken {
   }>;
 }
 
-type PermissionResourceType =
+/**
+ * One row of the ACL as the permissions endpoint returns it.
+ *
+ * The response was previously typed `permission: string`, which is the column
+ * name, not the payload — the endpoint sends the whole `AclEntry`. Nothing
+ * caught it because every reader was a `.vue` file, and `tsc` does not look
+ * inside those.
+ */
+export interface PermissionEntry {
+  type: "role" | "feature";
+  permission: {
+    resourceType?: PermissionResourceType;
+    resourceId?: string;
+    userId?: string;
+    groupId?: string;
+    permission: string;
+    createdAt?: string | Date;
+    updatedAt?: string | Date;
+  };
+}
+
+export type PermissionResourceType =
   | "space"
   | "document"
   | "document_tree"
@@ -1199,12 +1220,7 @@ export class ApiClient {
       if (options?.allResources) query.set("allResources", "true");
       const queryString = query.toString();
       const url = `/api/v1/spaces/${spaceId}/permissions${queryString ? `?${queryString}` : ""}`;
-      return await this.apiGet<{
-        permissions: Array<{
-          type: "role" | "feature";
-          permission: string;
-        }>;
-      }>(this.baseUrl, url);
+      return await this.apiGet<{ permissions: PermissionEntry[] }>(this.baseUrl, url);
     },
 
     /**

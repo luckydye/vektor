@@ -11,6 +11,8 @@ interface Props {
     isDragging: () => boolean;
     openPicker: () => void;
   }) => JSX.Element;
+  /** Vue let `class` fall through to the root; Solid needs it declared. */
+  class?: string;
   /** Vue's `defineExpose`, as a callback prop (plan §10). */
   ref?: (handle: { isDragging: () => boolean; openPicker: () => void }) => void;
 }
@@ -54,7 +56,7 @@ export function FileDrop(props: Props) {
     /* biome-ignore lint/a11y/useKeyWithClickEvents: the inner button is the keyboard path. */
     <div
       ref={dropZone}
-      class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors hover:border-neutral-400 hover:bg-neutral-50"
+      class={`relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors hover:border-neutral-400 hover:bg-neutral-50 ${props.class ?? ""}`}
       classList={{
         "border-neutral-400 bg-neutral-50": isDragging(),
         "border-neutral-200 bg-transparent": !isDragging(),

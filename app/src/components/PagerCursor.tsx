@@ -6,6 +6,8 @@ interface Props {
   disabled?: boolean;
   /** Keep the (disabled) buttons visible when there is only one page. */
   alwaysVisible?: boolean;
+  /** Vue let `class` fall through to the root; Solid needs it declared. */
+  class?: string;
   onPrev?: () => void;
   onNext?: () => void;
 }
@@ -13,7 +15,9 @@ interface Props {
 export function PagerCursor(props: Props) {
   return (
     <Show when={props.alwaysVisible || props.hasPrevPage || props.hasNextPage}>
-      <div class="flex items-center justify-between border-neutral-100 border-t">
+      <div
+        class={`flex items-center justify-between border-neutral-100 border-t ${props.class ?? ""}`}
+      >
         <button
           type="button"
           disabled={props.disabled || !props.hasPrevPage}

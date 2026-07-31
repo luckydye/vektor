@@ -25,6 +25,11 @@ declare module "solid-js" {
       // to hand a custom element an object.
       "prop:user"?: unknown;
       "attr:value"?: string;
+      snap?: boolean;
+      mode?: string;
+      "week-start"?: string;
+      "attr:opened"?: string | undefined;
+      fill?: boolean;
       showdelay?: string;
       name?: string;
       hidedelay?: string;
@@ -55,6 +60,9 @@ declare module "solid-js" {
       "a-tabs-tab": CustomElementAttributes;
       "a-color-picker": CustomElementAttributes;
       "a-list": CustomElementAttributes;
+      "a-calendar": CustomElementAttributes;
+      "a-expandable": CustomElementAttributes;
+      "a-track": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
       "a-popover-trigger": CustomElementAttributes;
       "a-popover-arrow": CustomElementAttributes;
