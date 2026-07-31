@@ -17,6 +17,8 @@ declare module "solid-js" {
       // `on:` bindings are how Solid attaches a listener for an event name it
       // does not know, which is every event a custom element dispatches.
       "on:exit"?: (event: Event) => void;
+      "on:hide"?: (event: Event) => void;
+      "on:show"?: (event: Event) => void;
       "on:change"?: (event: Event) => void;
       "on:tab-selected"?: (event: Event) => void;
       "on:presence-change"?: (event: Event) => void;

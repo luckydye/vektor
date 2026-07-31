@@ -151,7 +151,9 @@ export function generatePaletteCss(baseColor: string) {
   };
 }
 
-export function getTextColor(bgColor: string) {
+// Accepts undefined: a category may have no colour, and the guard below is
+// already the answer for that case.
+export function getTextColor(bgColor: string | undefined) {
   if (!bgColor) {
     return "#1F2937";
   }

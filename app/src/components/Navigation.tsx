@@ -15,13 +15,16 @@ import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
-import { DocumentTree } from "./DocumentTree.tsx";
+import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
 import { MenuLink } from "./MenuLink.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
 
 export function Navigation() {
   const navigate = useNavigate();
+  // The tree owns rearrange mode; the header button reads and toggles it
+  // through the handle, which is Solid's spelling of Vue's template ref.
+  const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
   const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
 
@@ -185,12 +188,19 @@ export function Navigation() {
               <h3 class="font-medium text-neutral-900 text-size-extra-small uppercase tracking-wider opacity-50">
                 {t("Categories")}
               </h3>
-              {/* The "Done rearranging" button reads the tree's edit mode
-                  through a template ref. It returns with the real DocumentTree
-                  in phase 5 — a ref into a placeholder would assert nothing. */}
+              <Show when={documentTree()?.isEditMode()}>
+                <button
+                  type="button"
+                  onClick={() => documentTree()?.toggleEditMode()}
+                  class="rounded-sm px-1 py-0.5 font-medium text-blue-600 text-size-extra-small transition-colors hover:text-blue-700"
+                  title={t("Done rearranging")}
+                >
+                  {t("Done")}
+                </button>
+              </Show>
             </div>
 
-            <DocumentTree />
+            <DocumentTree ref={setDocumentTree} />
           </div>
         </nav>
       </wiki-scroll>

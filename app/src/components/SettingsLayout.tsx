@@ -11,6 +11,8 @@ interface Props {
   initialTab?: string;
   /** Panel content by tab id — Vue's named slots. */
   panels: Record<string, () => JSX.Element>;
+  /** Vue let `class` fall through to the root; Solid needs it declared. */
+  class?: string;
   onTabChange?: (id: string) => void;
 }
 
@@ -74,7 +76,7 @@ export function SettingsLayout(props: Props) {
   });
 
   return (
-    <div class="flex h-full min-h-0 flex-col p-2">
+    <div class={`flex h-full min-h-0 flex-col p-2 ${props.class ?? ""}`}>
       <Show
         when={ready()}
         fallback={
