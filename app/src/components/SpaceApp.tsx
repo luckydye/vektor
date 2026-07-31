@@ -5,7 +5,7 @@ import { api } from "#api/client.ts";
 import { commandPaletteIcon } from "#assets/icons.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
-import { QueryClientContext, useQueryClient } from "#composeables/query.ts";
+import { QueryClientContext } from "#composeables/query.ts";
 import {
   DocumentContextContext,
   provideDocumentContext,

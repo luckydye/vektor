@@ -171,10 +171,6 @@ export function DocumentGroupedList(props: Props) {
 
   const [selectedIds, setSelectedIds] = createSignal(new Set<string>());
   const allIds = createMemo(() => filtered().map((d) => d.id));
-  const allSelected = createMemo(
-    () => allIds().length > 0 && allIds().every((id) => selectedIds().has(id)),
-  );
-
   let lastClickedId: string | null = null;
 
   function toggleSelect(id: string, event: MouseEvent) {

@@ -1,14 +1,5 @@
 import "@atrium-ui/elements/popover";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Index,
-  onCleanup,
-  onMount,
-  Show,
-} from "solid-js";
+import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import {

@@ -1,5 +1,5 @@
 import "@atrium-ui/elements/popover";
-import { createEffect, createSignal, For, type JSX, on, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, type JSX, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { addIcon, csvFileIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
 import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.ts";

@@ -31,7 +31,6 @@ export class PresenceConnection {
 
   constructor(
     private readonly spaceId: string,
-    private readonly userId: string,
     private readonly websocket: WebSocket,
     private readonly authorizeRoom: (room: string) => Promise<boolean>,
   ) {}

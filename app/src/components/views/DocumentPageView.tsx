@@ -4,7 +4,6 @@ import {
   createMemo,
   createSignal,
   type JSX,
-  on,
   onCleanup,
   onMount,
   Show,

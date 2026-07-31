@@ -1,38 +1,21 @@
 import * as Y from "yjs";
-import {
-  copyIcon,
-  cutIcon,
-  deleteElementIcon,
-  fitViewToElementsIcon,
-  lockElementIcon,
-  pasteIcon,
-  penToolIcon,
-  redoIcon,
-  selectToolIcon,
-  shapesToolIcon,
-  undoIcon,
-  unlockElementIcon,
-  uploadFileIcon,
-} from "#assets/icons.ts";
+import { penToolIcon, selectToolIcon } from "#assets/icons.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   activeDrawStrokeMode,
   activeShapeId,
   type CanvasElementContext,
-  type CanvasSelectionSnapshot,
   type CanvasShapeLibraryItem,
   cloneFreehandPoint,
   createCanvasExtensionManager,
   createCanvasInkRenderer,
   createCanvasSelectionRenderer,
   createStrokeMap,
-  DRAW_STROKE_MODES,
   FREEHAND_STYLE,
   hitTestCanvasStroke,
   PEN_COLORS,
   renderCanvasInkOverlay,
-  SHAPE_LIBRARY,
   setActiveShapeId,
   strokeStyleFromUnknown,
   toCanvasStroke,
@@ -62,7 +45,6 @@ import {
   type ScalableSelection,
   type SelectionContext,
   selectedGroupBounds as selectionGroupBounds,
-  selectedCanvasItems as selectionItems,
   selectedResizeOnlyShape as selectionResizeOnlyShape,
   selectedScalableSelection as selectionScalable,
   selectedShape as selectionShape,
@@ -82,13 +64,11 @@ import {
   clampFontScale,
   handleOffsets,
   isPointInRect,
-  MAX_FONT_SCALE,
   MIN_FONT_SCALE,
   type Rect,
   rectContains,
   rectsIntersect,
   scaleHandle,
-  toNumber,
   unionBounds,
 } from "./viewport/bounds.ts";
 import { makeCanvasCursor } from "./viewport/cursor.ts";
@@ -104,7 +84,6 @@ import {
 } from "./viewport/geometry.ts";
 import {
   pointerGesture,
-  pointerSample,
   releasePointerCapture,
   screenPoint as screenPointIn,
 } from "./viewport/pointer.ts";
@@ -127,7 +106,6 @@ import {
 import { type TranslationKey, t } from "#utils/lang.ts";
 import {
   buildTransform,
-  computeSnapGuides,
   createViewportControls,
   drawWorldDots,
   drawWorldGrid,
@@ -143,7 +121,6 @@ import {
   screenToWorld as viewportScreenToWorld,
   worldToScreen as viewportWorldToScreen,
   type WorldRect,
-  type WorldTransform,
   worldViewportBounds,
 } from "./viewport/index.ts";
 import "./CanvasPresenceCursorElement.ts";
@@ -334,13 +311,6 @@ export function createCanvasController(
   // True only while a pan drag is in progress, so the viewport shows the grabbing
   // hand during panning and a resting cursor otherwise.
 
-  // Shared inline-formatting toolbar (<document-toolbar variant="canvas">),
-  // retargeted to whichever text shape's editor is focused.
-  type CanvasFormatToolbarEl = HTMLElement & {
-    editor: unknown;
-    dismiss: () => void;
-    reposition: () => void;
-  };
   // Active swatch per color-capable element type (used when creating new shapes),
   // seeded from each extension's palette. Recoloring a selected shape writes here
   // too. Data-driven from the registry — no per-type refs.
@@ -571,7 +541,6 @@ export function createCanvasController(
   const selectedResizeOnlyShape = derived(() =>
     selectionResizeOnlyShape(selectionContext()),
   );
-  const selectedCanvasItems = derived(() => selectionItems(selectionContext()));
   const selectedGroupBounds = derived(() => selectionGroupBounds(selectionContext()));
   const selectedScalableSelection = derived(() => selectionScalable(selectionContext()));
 
@@ -1479,10 +1448,6 @@ export function createCanvasController(
     inkRenderer.commitAddedStroke(completedStroke, () => {
       yStrokes.set(stroke.id, createStrokeMap(stroke));
     });
-  }
-
-  function pointerGestureSample(event: PointerEvent) {
-    return pointerSample(event, cachedViewportRect, screenToWorld);
   }
 
   function pointerGestureEvent(event: PointerEvent): CanvasPointerGestureEvent {
@@ -2769,8 +2734,6 @@ export function createCanvasController(
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     if (cancelTransformDrag()) return;
     if (dragState.type === "marquee") {
-      // Captured so the narrowing survives the closures below.
-      const drag = dragState;
       state.marqueeRect = null;
       renderSelections();
     }

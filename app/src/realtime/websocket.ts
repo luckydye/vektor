@@ -114,7 +114,7 @@ async function handleRealtimeWebSocket(
   // Rooms this connection may mutate (editor role). Viewers can join to receive
   // state but may not send updates.
   const yjsEditableRooms = new Set<string>();
-  const presence = new PresenceConnection(spaceId, userId, websocket, async (room) => {
+  const presence = new PresenceConnection(spaceId, websocket, async (room) => {
     const extensionId = extensionIdFromPresenceRoom(room);
     if (extensionId !== null) {
       // A malformed extension room must not fall through to document ACLs.

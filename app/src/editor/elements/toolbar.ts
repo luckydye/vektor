@@ -132,7 +132,6 @@ if (
     class DocumentToolbarElement extends HTMLElement {
       private root: ShadowRoot;
       private shouldShow = false;
-      private interacting = false;
       private secondaryOpen = false;
       private headingLevel = 0;
       private inColumnLayout = false;
@@ -308,7 +307,6 @@ if (
         this.editorSelectionPointerDown = false;
         this.elementDragInProgress = false;
         this.secondaryOpen = false;
-        this.interacting = false;
         this.imageActive = false;
         this.dismissedSelectionKey = null;
         this.paint();
@@ -340,7 +338,6 @@ if (
         this.editorSelectionPointerDown = false;
         this.elementDragInProgress = false;
         this.secondaryOpen = false;
-        this.interacting = false;
         this.paint();
       }
 
@@ -376,7 +373,6 @@ if (
         if (targetNode && this.tableMenu?.contains(targetNode)) return;
 
         window.setTimeout(() => {
-          this.interacting = false;
           this.paint();
         }, 100);
       };
@@ -1162,13 +1158,9 @@ if (
           <div
             class=${`floating-menu${this.editorSelectionPointerDown || this.elementDragInProgress ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
-            @mousedown=${() => {
-              this.interacting = true;
-            }}
+            @mousedown=${() => {}}
             @mouseup=${() => {
-              window.setTimeout(() => {
-                this.interacting = false;
-              }, 100);
+              window.setTimeout(() => {}, 100);
             }}
           >
             <div class="toolbar-section">
@@ -1239,13 +1231,9 @@ if (
           <div
             class=${`floating-menu${this.tableSelectionPointerDown || this.editorSelectionPointerDown || this.elementDragInProgress ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
-            @mousedown=${() => {
-              this.interacting = true;
-            }}
+            @mousedown=${() => {}}
             @mouseup=${() => {
-              window.setTimeout(() => {
-                this.interacting = false;
-              }, 100);
+              window.setTimeout(() => {}, 100);
             }}
           >
             <div class="toolbar-section">

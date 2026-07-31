@@ -714,7 +714,6 @@ async function measureColdStart(): Promise<ColdStartResult> {
     }
 
     // Time until it can handle a real document-list request
-    const _t1 = performance.now();
     const deadline2 = Date.now() + 10_000;
     while (Date.now() < deadline2) {
       try {

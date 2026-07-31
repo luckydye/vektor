@@ -18,7 +18,7 @@ import type {
   DocumentPresenceState,
 } from "#editor/collaboration.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import { type CanvasHostElement, canvasHostTag } from "./CanvasHostElement.ts";
+import type { CanvasHostElement } from "./CanvasHostElement.ts";
 import type { CanvasDocumentCollaboration } from "./collaboration.ts";
 
 /**
