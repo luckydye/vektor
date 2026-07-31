@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
@@ -369,6 +370,11 @@ export function Sidebar(props: Props) {
   });
 
   onCleanup(() => {
+    // Solid runs cleanup when it disposes the *server* render tree too, unlike
+    // Vue's `onUnmounted`, which never fires during SSR. Everything below is
+    // browser teardown, and reaching `window` here crashed the render.
+    if (isServer) return;
+
     window.removeEventListener("resize", closeMobileDrawerOnDesktop);
     document.removeEventListener("touchstart", startDrawerFromScreen, true);
     document.removeEventListener("touchmove", handleScreenDrawerMove, true);

@@ -37,3 +37,7 @@ if (typeof customElements !== "undefined" && !customElements.get("figma-embed"))
     },
   );
 }
+
+// Side-effect module: the empty export is what makes it a module rather than a
+// script, which `import "…"` requires.
+export {};

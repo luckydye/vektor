@@ -85,7 +85,11 @@ export default defineConfig({
     // Installed ahead of the port so the two renderers are proven to coexist.
     // Scoped to `.tsx` so it never tries to claim a `.vue` file; phase 6 removes
     // the Vue integration and this include can go with it.
-    solid({ include: ["**/*.tsx"] }),
+    // `.jsx` as well as `.tsx`: @solidjs/router ships pre-compiled `.jsx` in its
+    // dist, and anything the Solid plugin does not claim falls through to the
+    // default JSX transform, which resolves `react/jsx-runtime` and fails the
+    // build. Still scoped away from `.vue`; phase 6 removes the Vue entry.
+    solid({ include: ["**/*.tsx", "**/*.jsx"] }),
   ],
 
   adapter: node({

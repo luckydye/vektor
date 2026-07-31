@@ -66,8 +66,11 @@ export default defineConfig({
               },
             },
           }),
-          // Scoped to `.tsx` so it never contends with plugin-vue over a `.vue`.
-          solid({ include: ["**/*.tsx"] }),
+          // `.jsx` too: @solidjs/router ships pre-compiled `.jsx`, and what
+          // the Solid plugin does not claim falls through to the default JSX
+          // transform and resolves `react/jsx-runtime`. Still scoped away
+          // from `.vue`.
+          solid({ include: ["**/*.tsx", "**/*.jsx"] }),
         ],
         resolve: { alias },
         test: {
