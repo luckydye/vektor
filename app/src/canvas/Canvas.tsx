@@ -18,16 +18,19 @@ import type {
   DocumentPresenceState,
 } from "#editor/collaboration.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
+// Side-effect import: the module registers <vektor-canvas>. Importing only the
+// type erases the statement at build time, and then the element never upgrades
+// — `host.changed()` throws and the canvas renders nothing.
+import "./CanvasHostElement.ts";
 import type { CanvasHostElement } from "./CanvasHostElement.ts";
 import type { CanvasDocumentCollaboration } from "./collaboration.ts";
 
 /**
  * The Solid adapter for `<vektor-canvas>`.
  *
- * The canvas is framework-free (plan section 6) and cannot call a composable,
- * so this resolves the ones it needs and writes them as properties. Nothing
- * else belongs here — no state, no rendering, no event handling. It replaces
- * the Vue adapter of the same size; the canvas itself is untouched.
+ * The canvas is framework-free and cannot call a composable, so this resolves
+ * the ones it needs and writes them as properties. Nothing else belongs here —
+ * no state, no rendering, no event handling.
  */
 interface Props {
   spaceId: string;

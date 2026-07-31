@@ -157,6 +157,15 @@ tasks:
       # project loses the Bun global it needs to spawn the app.
       - bunx --bun vitest run --project frontend {{.CLI_ARGS}}
 
+  test:e2e:
+    desc: >
+      Browser tests (Playwright). Builds the client, boots a disposable
+      in-memory server, seeds it, and drives a real browser. Covers what
+      happy-dom cannot — the canvas custom element above all.
+    dir: ./app
+    cmds:
+      - bun ./test/e2e/run.ts {{.CLI_ARGS}}
+
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.
     deps: [compile]
