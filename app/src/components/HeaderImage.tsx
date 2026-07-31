@@ -1,0 +1,73 @@
+import { createMemo, Show } from "solid-js";
+import { useDocument } from "#composeables/useDocument.solid.ts";
+import { uploadingDocumentId } from "#composeables/useHeaderImage.solid.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
+
+interface Props {
+  documentId: string;
+  initialSrc?: string | null;
+  /**
+   * Layout orientation, derived from the image aspect ratio by the parent.
+   * "portrait" renders a narrow column sized by `aspectRatio`; "landscape"
+   * (default) keeps the full-width banner.
+   */
+  orientation?: "landscape" | "portrait";
+  /** Aspect ratio (width / height) used to size the portrait column. */
+  aspectRatio?: number | null;
+}
+
+export function HeaderImage(props: Props) {
+  const isPortrait = () => props.orientation === "portrait";
+  const aspectStyle = () =>
+    isPortrait() && props.aspectRatio && props.aspectRatio > 0
+      ? { "aspect-ratio": String(props.aspectRatio) }
+      : undefined;
+
+  const { document: doc, isLoading } = useDocument(props.documentId);
+
+  const src = createMemo(() => {
+    const headerImage = doc()?.properties?.headerImage;
+    const url = Array.isArray(headerImage)
+      ? headerImage[0]
+      : (headerImage ?? props.initialSrc);
+    return url ? withTransformParams(url, { w: 1600, format: "webp", q: 85 }) : null;
+  });
+
+  const isUploadingHeader = () => uploadingDocumentId() === props.documentId;
+  // No mounted guard: the upload registry and the query both start empty on the
+  // server, so the skeleton is already absent from the server render.
+  const showSkeleton = createMemo(
+    () => isUploadingHeader() || (isLoading() && !!props.initialSrc),
+  );
+
+  return (
+    <Show when={src() || showSkeleton()}>
+      <div class={isPortrait() ? "" : "px-xs md:px-xl print:px-0"}>
+        <Show when={showSkeleton() && !src()}>
+          <div
+            class={
+              isPortrait()
+                ? "w-full animate-pulse rounded-lg bg-neutral-50"
+                : "h-[240px] w-full animate-pulse rounded-lg bg-neutral-50"
+            }
+            style={aspectStyle()}
+          />
+        </Show>
+        <Show when={src()}>
+          {(url) => (
+            <img
+              src={url()}
+              alt=""
+              class={
+                isPortrait()
+                  ? "h-auto w-full rounded-lg object-cover"
+                  : "h-[240px] w-full rounded-lg object-cover"
+              }
+              style={aspectStyle()}
+            />
+          )}
+        </Show>
+      </div>
+    </Show>
+  );
+}

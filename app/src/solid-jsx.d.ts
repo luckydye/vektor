@@ -32,6 +32,8 @@ declare module "solid-js" {
 
     interface IntrinsicElements {
       "a-blur": CustomElementAttributes;
+      "document-view": CustomElementAttributes;
+      "a-list-item": CustomElementAttributes;
       "inset-view": CustomElementAttributes;
       "a-shortcut": CustomElementAttributes;
       "a-tabs": CustomElementAttributes;
