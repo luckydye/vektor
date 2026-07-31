@@ -122,13 +122,10 @@ export class CanvasHostElement extends HostElement {
   }
 
   /**
-   * A host property changed, so the controller's cached `derived` values are
-   * stale and the canvas needs another frame.
+   * A host property changed, so the canvas needs another frame.
    *
    * Host properties sit on the element rather than in the controller's state
-   * proxy, which is what bumps the revision those caches compare against. A
-   * bare `requestRender` would repaint from the previous revision's values —
-   * that is how remote presence cursors stopped rendering.
+   * proxy, so writing one does not mark the canvas dirty by itself.
    */
   private hostPropertyChanged(): void {
     this.controller?.invalidate();

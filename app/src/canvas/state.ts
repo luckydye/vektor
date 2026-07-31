@@ -1,17 +1,11 @@
 /**
- * The canvas host's reactivity, in about forty lines.
+ * The canvas host's dirty-marking, in about twenty lines.
  *
- * The canvas is framework-free, so it needs its own answer to
- * "something changed, re-render". This is that answer, and it is deliberately
- * the crudest one that works: a single revision counter, bumped on any write,
- * with derived values cached until it moves.
- *
- * Coarse invalidation is the right trade here. The alternative — per-value
- * dependency tracking — buys nothing, because the canvas renders one tree from
- * essentially all of its state on every frame anyway. What it would cost is a
- * dependency graph to get wrong. A missed invalidation in a canvas is a stale
- * shape on screen with no error anywhere, which is exactly the bug class worth
- * designing out.
+ * The canvas draws immediate-mode: every frame rebuilds the whole tree from
+ * whatever the state says right now, and lit-html diffs it into the DOM. So
+ * there is nothing to track — no dependency graph, no cached computations, no
+ * subscriptions. The only question is *when* to draw, and the answer is "after
+ * anything was written".
  *
  * The batching matches `CanvasElementBase`: many writes in one turn coalesce
  * into a single microtask render, so a drag that touches six values still
@@ -21,17 +15,7 @@
 export interface CanvasStateStore<T extends object> {
   /** Read and write freely; every write bumps the revision and schedules a render. */
   state: T;
-  /** Increments on every write. Derived values compare against it. */
-  revision: () => number;
-  /**
-   * Wraps a computation so it runs at most once per revision.
-   *
-   * Use it for anything a render reads more than once or that allocates —
-   * `shapesById` builds a Map over every shape, and the template asks for it
-   * per shape.
-   */
-  derived: <R>(compute: () => R) => () => R;
-  /** Bumps the revision by hand, for state that lives outside the proxy. */
+  /** Marks dirty by hand, for state that lives outside the proxy. */
   invalidate: () => void;
 }
 
@@ -39,12 +23,7 @@ export function createCanvasState<T extends object>(
   initial: T,
   onChange: () => void,
 ): CanvasStateStore<T> {
-  let revision = 0;
-
-  const invalidate = () => {
-    revision++;
-    onChange();
-  };
+  const invalidate = onChange;
 
   const state = new Proxy(initial, {
     set(target, key, value) {
@@ -64,23 +43,7 @@ export function createCanvasState<T extends object>(
     },
   });
 
-  /**
-   * A first read at revision 0 must still compute, so the stamp starts at -1
-   * rather than 0.
-   */
-  const derived = <R>(compute: () => R): (() => R) => {
-    let cachedAt = -1;
-    let cache: R;
-    return () => {
-      if (cachedAt !== revision) {
-        cache = compute();
-        cachedAt = revision;
-      }
-      return cache;
-    };
-  };
-
-  return { state, revision: () => revision, derived, invalidate };
+  return { state, invalidate };
 }
 
 /**
@@ -122,6 +85,32 @@ export function createWatchers() {
     // handful of reactions that seed state from a property rely on it.
     if (!seen && !options?.immediate) return;
     run(value, before);
+  };
+}
+
+/**
+ * Index a list by id, rebuilt only when the list itself is replaced.
+ *
+ * Not a reactive cache. The key is the array's identity, so the index is
+ * correct the instant a caller swaps the list in — there is no revision
+ * counter to bump and no frame boundary to be on the wrong side of. The canvas
+ * replaces `shapes` and `strokes` rather than mutating them in place, which is
+ * what makes identity enough.
+ *
+ * Worth the machinery for exactly these two: the template asks for a shape by
+ * id once per shape, so rebuilding the map per lookup is quadratic.
+ */
+export function indexById<T extends { id: string }>(): (
+  items: readonly T[],
+) => ReadonlyMap<string, T> {
+  let source: readonly T[] | null = null;
+  let index: ReadonlyMap<string, T> = new Map();
+  return (items) => {
+    if (items !== source) {
+      source = items;
+      index = new Map(items.map((item) => [item.id, item]));
+    }
+    return index;
   };
 }
 

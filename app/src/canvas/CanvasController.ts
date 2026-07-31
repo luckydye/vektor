@@ -130,7 +130,7 @@ import type { CanvasDomRefs, CanvasToolDef } from "./CanvasView.ts";
 import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
-import { createCanvasState, createWatchers, registerCanvas } from "./state.ts";
+import { createCanvasState, createWatchers, indexById, registerCanvas } from "./state.ts";
 
 /**
  * Everything the canvas needs from the page around it.
@@ -354,7 +354,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     },
     () => host.requestRender(),
   );
-  const { state, derived } = store;
+  const { state } = store;
   const watch = createWatchers();
   const watchPost = createWatchers();
 
@@ -455,13 +455,12 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   });
   const uploadPlaceholders = extensionRuntime.uploadPlaceholders;
 
-  const remoteCanvasPresences = derived(() => host.presenceProfiles ?? []);
+  const remoteCanvasPresences = () => host.presenceProfiles ?? [];
 
-  const remoteCanvasPointerPresences = derived(() =>
-    remoteCanvasPresences().filter((presence) => presence.state?.pointer),
-  );
+  const remoteCanvasPointerPresences = () =>
+    remoteCanvasPresences().filter((presence) => presence.state?.pointer);
 
-  const remoteCanvasSelections = derived(() =>
+  const remoteCanvasSelections = () =>
     remoteCanvasPresences().flatMap((presence) => {
       const state = presence.state;
       if (!state?.selectionIds.length) return [];
@@ -482,10 +481,9 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
           },
         ];
       });
-    }),
-  );
+    });
 
-  const remoteCanvasStrokeSelections = derived(() =>
+  const remoteCanvasStrokeSelections = () =>
     remoteCanvasPresences().map((presence) => ({
       ids: new Set(
         presence.state?.selectionIds.filter((id) => strokesById().has(id)) ?? [],
@@ -494,8 +492,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
         presence.state?.cursorColor ||
         presence.user.color ||
         getAvatarColor(presence.user.id),
-    })),
-  );
+    }));
 
   // Remote pointers arrive as discrete presence updates; a CSS transition on the
   // cursor smooths the jumps. While the local camera moves, the transition is
@@ -522,15 +519,11 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     };
   }
 
-  const selectedShape = derived(() => selectionShape(selectionContext()));
-  const selectedTransformShape = derived(() =>
-    selectionTransformShape(selectionContext()),
-  );
-  const selectedResizeOnlyShape = derived(() =>
-    selectionResizeOnlyShape(selectionContext()),
-  );
-  const selectedGroupBounds = derived(() => selectionGroupBounds(selectionContext()));
-  const selectedScalableSelection = derived(() => selectionScalable(selectionContext()));
+  const selectedShape = () => selectionShape(selectionContext());
+  const selectedTransformShape = () => selectionTransformShape(selectionContext());
+  const selectedResizeOnlyShape = () => selectionResizeOnlyShape(selectionContext());
+  const selectedGroupBounds = () => selectionGroupBounds(selectionContext());
+  const selectedScalableSelection = () => selectionScalable(selectionContext());
 
   function transformControlPositions(shape: CanvasShape) {
     // Text auto-sizes, so anchor the handles to its measured box.
@@ -666,21 +659,19 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
   // DOM-surface elements stay mounted; content-visibility lets the browser skip
   // off-screen painting.
-  const domShapes = derived(() =>
-    state.shapes.filter((shape) => extensionManager.rendersInDom(shape)),
-  );
+  const domShapes = () =>
+    state.shapes.filter((shape) => extensionManager.rendersInDom(shape));
 
   // Shapes painted via a canvas-2d extension hook, drawn behind the DOM.
-  const paintedShapes = derived(() =>
-    state.shapes.filter((shape) => extensionManager.paint(shape.type)),
-  );
+  const paintedShapes = () =>
+    state.shapes.filter((shape) => extensionManager.paint(shape.type));
 
-  const editingChromeShape = derived(() => {
+  const editingChromeShape = () => {
     const id = state.editingChromeId;
     if (!id) return null;
     const shape = shapesById().get(id);
     return shape && extensionManager.get(shape.type).render.chrome ? shape : null;
-  });
+  };
 
   function editorTagForShape(shape: CanvasShape) {
     return shapeEditorTag(shape, extensionManager);
@@ -706,14 +697,14 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
   // Canvas-rasterized shapes within the current viewport. Used only by
   // raster rendering to avoid paint calls for off-screen elements.
-  const visibleRasterShapes = derived(() => {
+  const visibleRasterShapes = () => {
     const vr = worldViewportBounds(state.camera, state.screen, FIT_REFERENCE, 400);
     return state.shapes.filter(
       (shape) => extensionManager.rasters(shape) && rectsIntersect(vr, shapeAabb(shape)),
     );
-  });
+  };
 
-  const selectedStrokeColor = derived(() => {
+  const selectedStrokeColor = () => {
     if (state.selectedStrokeIds.size === 0) return null;
     let color: string | null = null;
     for (const id of state.selectedStrokeIds) {
@@ -723,11 +714,13 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       else if (stroke.style.color !== color) return null;
     }
     return color;
-  });
+  };
 
-  const shapesById = derived(() => new Map(state.shapes.map((s) => [s.id, s])));
-  const strokesById = derived(() => new Map(state.strokes.map((s) => [s.id, s])));
-  const hasLockedStrokes = derived(() => state.strokes.some((stroke) => stroke.locked));
+  const shapeIndex = indexById<CanvasShape>();
+  const strokeIndex = indexById<CanvasStroke>();
+  const shapesById = () => shapeIndex(state.shapes);
+  const strokesById = () => strokeIndex(state.strokes);
+  const hasLockedStrokes = () => state.strokes.some((stroke) => stroke.locked);
 
   function isShapeLocked(id: string): boolean {
     return shapesById().get(id)?.locked === true;
@@ -752,7 +745,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     return !stroke.locked && canMoveUserScopedElement(stroke.authorId);
   }
 
-  const hoveredLockedElementPosition = derived(() => {
+  const hoveredLockedElementPosition = () => {
     const element = state.hoveredLockedElement;
     if (!element) return null;
 
@@ -767,20 +760,20 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     const bounds = stroke ? strokeBounds(stroke) : null;
     if (!stroke?.locked || !bounds) return null;
     return worldToScreen({ x: bounds.x + bounds.width, y: bounds.y });
-  });
+  };
 
-  const selectedBasicShapeStroke = derived(() => {
+  const selectedBasicShapeStroke = () => {
     if (state.selectedShapeIds.size > 0 || state.selectedStrokeIds.size !== 1)
       return null;
     const [id] = state.selectedStrokeIds;
     const stroke = strokesById().get(id);
     return stroke?.kind === "shape" && canMoveStroke(stroke) ? stroke : null;
-  });
+  };
 
-  const selectedBasicShapeStrokeControls = derived(() => {
+  const selectedBasicShapeStrokeControls = () => {
     const stroke = selectedBasicShapeStroke();
     return stroke ? strokeTransformControlPositions(stroke) : null;
-  });
+  };
 
   function selectOnlyShape(id: string) {
     if (isShapeLocked(id)) return;
@@ -1078,9 +1071,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     return screenPointIn(event, cachedViewportRect);
   }
 
-  const transform = derived(() =>
-    buildTransform(state.camera, state.screen, FIT_REFERENCE),
-  );
+  const transform = () => buildTransform(state.camera, state.screen, FIT_REFERENCE);
 
   // The canvas moves shapes by transforming the viewport, which fires no
   // scroll/resize event — so the fixed-position formatting toolbar won't follow
@@ -1088,10 +1079,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   // reflects the new position when we read its coords.
   // Panning (middle/right-drag) shows the grabbing hand; otherwise the canvas uses
   // a local colored cursor that matches the color broadcast to collaborators.
-  const viewportCursor = derived(() => {
+  const viewportCursor = () => {
     if (state.isPanning) return "grabbing";
     return makeCanvasCursor(host.cursorColor);
-  });
+  };
 
   function screenToWorld(point: { x: number; y: number }) {
     return viewportScreenToWorld(point.x, point.y, transform());
@@ -1152,7 +1143,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   // This snapshot deliberately excludes camera state. Its identity therefore
   // stays stable through pan/zoom frames and changes only when the selection
   // geometry itself needs to be rebuilt.
-  const selectionSnapshot = derived(() => ({
+  const selectionSnapshot = () => ({
     strokes: state.strokes,
     selectedStrokeIds: state.selectedStrokeIds,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections(),
@@ -1170,7 +1161,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       type: selection.bounds.type,
       color: selection.cursorColor,
     })),
-  }));
+  });
 
   // The camera changes every input frame. Keep the static world in one backing
   // store so a pan produces one compositor update instead of one per visual layer.
@@ -1598,21 +1589,17 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     if (shape?.type === type) updateShapeStyle(shape.id, { color });
   }
 
-  const activeToolColorPalettes = derived(() =>
-    colorPalettes.filter((entry) => state.activeTool === entry.type),
-  );
+  const activeToolColorPalettes = () =>
+    colorPalettes.filter((entry) => state.activeTool === entry.type);
 
-  const selectedShapeColorPalette = derived(() =>
-    colorPalettes.find((entry) => entry.type === selectedShape()?.type),
-  );
+  const selectedShapeColorPalette = () =>
+    colorPalettes.find((entry) => entry.type === selectedShape()?.type);
 
-  const hasSelectedElementProperties = derived(
-    () => selectedShapeColorPalette() !== undefined || state.selectedStrokeIds.size > 0,
-  );
+  const hasSelectedElementProperties = () =>
+    selectedShapeColorPalette() !== undefined || state.selectedStrokeIds.size > 0;
 
-  const hasToolProperties = derived(
-    () => state.activeTool === "draw" || activeToolColorPalettes().length > 0,
-  );
+  const hasToolProperties = () =>
+    state.activeTool === "draw" || activeToolColorPalettes().length > 0;
 
   function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
     setActiveShapeId(item.id);
@@ -3273,7 +3260,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   // Inline document editing ends as soon as the card leaves the (single)
   // selection — clicking the canvas, selecting another shape, or deleting the
   // card all funnel through here and tear the editor (and its presence) down.
-  const extensionPreparationKey = derived(() =>
+  const extensionPreparationKey = () =>
     state.shapes
       .map((shape) => {
         const extension = extensionManager.get(shape.type);
@@ -3282,8 +3269,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       })
       .filter((key): key is string => Boolean(key))
       .sort()
-      .join("\u001f"),
-  );
+      .join("\u001f");
 
   // Moving a card changes updatedAt and refreshes the shapes array. Watch a
   // stable key of the actual preview inputs instead, so those visual edits never
@@ -3313,7 +3299,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       if (state.editingChromeId && (ids.size !== 1 || !ids.has(state.editingChromeId))) {
         finishChromeEditing();
       }
-      renderSelections();
       updatePresence();
     });
 
@@ -3334,15 +3319,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       }
     });
 
-    watch("strokeSelection", state.selectedStrokeIds, () => {
-      renderSelections();
-      updatePresence();
-    });
-
-    watch("remoteStrokeSelections", remoteCanvasStrokeSelections(), () =>
-      renderSelections(),
-    );
-    watch("remoteSelections", remoteCanvasSelections(), () => renderSelections());
+    watch("strokeSelection", state.selectedStrokeIds, () => updatePresence());
 
     watch("gridType", host.gridType, (value) => applyGridType(value), {
       immediate: true,
@@ -3358,6 +3335,12 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       },
       { immediate: true },
     );
+
+    // Drawn every frame rather than watched. The selection overlay is part of
+    // painting, and four reactions used to exist only to ask for it — two of
+    // which fired on every frame anyway, because the arrays they compared were
+    // freshly built on each read.
+    renderSelections();
   }
 
   /**
@@ -3606,11 +3589,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     view,
     mount,
     /**
-     * Drops the cached `derived` values.
+     * Marks the canvas dirty.
      *
-     * For host properties: they live on the element, not in the state proxy, so
-     * writing one bumps nothing and a `derived` that reads it would serve the
-     * previous revision's value forever.
+     * For host properties: they live on the element rather than in the state
+     * proxy, so writing one schedules nothing on its own.
      */
     invalidate: store.invalidate,
     /** Runs the reactions that must observe the pre-render state, then renders. */
