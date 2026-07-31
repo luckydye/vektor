@@ -185,5 +185,3 @@ export function PropertyPopover(props: Props) {
     </Show>
   );
 }
-
-export default PropertyPopover;

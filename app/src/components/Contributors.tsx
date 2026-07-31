@@ -188,5 +188,3 @@ export function Contributors(props: Props) {
     </Show>
   );
 }
-
-export default Contributors;

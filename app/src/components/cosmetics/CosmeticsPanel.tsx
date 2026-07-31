@@ -183,5 +183,3 @@ export function CosmeticsPanel(props: Props) {
     </section>
   );
 }
-
-export default CosmeticsPanel;

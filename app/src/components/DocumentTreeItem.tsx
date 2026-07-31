@@ -139,5 +139,3 @@ export function DocumentTreeItem(props: Props) {
     </page-target>
   );
 }
-
-export default DocumentTreeItem;

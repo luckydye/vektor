@@ -157,5 +157,3 @@ export function ExcelExportDialog(props: Props) {
     </Dialog>
   );
 }
-
-export default ExcelExportDialog;

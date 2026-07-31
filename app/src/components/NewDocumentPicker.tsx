@@ -142,5 +142,3 @@ export function NewDocumentPicker() {
     </div>
   );
 }
-
-export default NewDocumentPicker;
