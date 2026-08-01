@@ -135,9 +135,12 @@ export function DocumentPageView(props: Props) {
   createEffect(() => {
     const d = doc();
     if (!d || props.documentSlug === d.slug) return;
+    // `location.pathname` already carries the router base ("/{space}/"), so the
+    // target must not be resolved against it again — that yields "/space/space/…".
     const fullPath = `${location.pathname}${location.search}${location.hash}`;
     navigate(fullPath.replace(`/doc/${props.documentSlug}`, `/doc/${d.slug}`), {
       replace: true,
+      resolve: false,
     });
   });
 

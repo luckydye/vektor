@@ -84,7 +84,12 @@ export function Search(props: Props) {
       query.delete("filters");
     }
     const search = query.toString();
-    navigate(`${location.pathname}${search ? `?${search}` : ""}`, { replace: true });
+    // `location.pathname` already carries the router base ("/{space}/"), so the
+    // target must not be resolved against it again — that yields "/space/space/…".
+    navigate(`${location.pathname}${search ? `?${search}` : ""}`, {
+      replace: true,
+      resolve: false,
+    });
   };
 
   // Infinite query for documents (when not searching)

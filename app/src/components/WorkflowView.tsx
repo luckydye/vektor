@@ -221,7 +221,12 @@ export function WorkflowView(props: Props) {
     if (runIdFromUrl() === runId) return;
     const query = new URLSearchParams(location.search);
     query.set("run", runId);
-    navigate(`${location.pathname}?${query.toString()}`, { replace: true });
+    // `location.pathname` already carries the router base ("/{space}/"), so the
+    // target must not be resolved against it again — that yields "/space/space/…".
+    navigate(`${location.pathname}?${query.toString()}`, {
+      replace: true,
+      resolve: false,
+    });
   }
 
   // Follow the selected run with a per-run realtime subscription.

@@ -147,6 +147,11 @@ export function RevisionsSidebar(props: Props) {
 
   // ── Revision actions ────────────────────────────────────────────────────────
 
+  /**
+   * The returned path carries the router base ("/{space}/") — it comes from
+   * `location.pathname` — so `navigate()` must pass `resolve: false` or the base
+   * lands twice ("/space/space/…").
+   */
   function withRevisionQuery(revisionId: number): string {
     const query = new URLSearchParams(location.search);
     query.set("revision", String(revisionId));
@@ -159,7 +164,7 @@ export function RevisionsSidebar(props: Props) {
     if (!revision) return;
 
     setSelectedRevisionNumber(revisionId);
-    navigate(withRevisionQuery(revisionId), { replace: true });
+    navigate(withRevisionQuery(revisionId), { replace: true, resolve: false });
 
     dispatchWindowEvent(
       new CustomEvent("revision:view", {
@@ -230,7 +235,10 @@ export function RevisionsSidebar(props: Props) {
     const query = new URLSearchParams(location.search);
     query.delete("revision");
     const search = query.toString();
-    navigate(`${location.pathname}${search ? `?${search}` : ""}`, { replace: true });
+    navigate(`${location.pathname}${search ? `?${search}` : ""}`, {
+      replace: true,
+      resolve: false,
+    });
   }
 
   // A `?revision=` in the URL opens that revision once the space is known. On a
