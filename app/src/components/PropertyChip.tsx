@@ -154,7 +154,7 @@ export function PropertyChip(props: Props) {
   });
 
   const chipClass = () => ({
-    "text-interactive flex items-center gap-4xs py-6xs px-4xs rounded-lg transition-colors": true,
+    "text-interactive flex items-center gap-4xs py-7xs pl-5xs pr-4xs rounded-md transition-colors": true,
     "bg-primary-50 hover:bg-primary-100 border border-primary-100":
       props.variant === "special",
     "bg-background hover:bg-primary-10 border border-primary-200":
@@ -227,10 +227,10 @@ export function PropertyChip(props: Props) {
                 </span>
               }
             >
-              <span class="flex min-w-0 max-w-[260px] items-center gap-4xs overflow-hidden">
+              <span class="flex min-w-0 max-w-[260px] items-center gap-5xs overflow-hidden">
                 <For each={valueLabels()}>
                   {(valueLabel) => (
-                    <span class="max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap rounded-md bg-primary-50 px-4xs text-primary-600 capitalize">
+                    <span class="max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap rounded-sm bg-primary-50 px-5xs py-5xs leading-none text-primary-600 capitalize">
                       {valueLabel}
                     </span>
                   )}

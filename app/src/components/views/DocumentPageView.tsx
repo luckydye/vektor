@@ -472,11 +472,11 @@ export function DocumentPageView(props: Props) {
               <Show when={isCanvas()}>
                 <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
                   <div class={STICKY_HEADER_CLASS}>
-                    <div>{breadcrumbs()}</div>
+                    <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                     <DocumentActions title={title()} headerImage={headerImageSrc()} />
                   </div>
 
-                  <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-xl print:px-0">
+                  <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-m print:px-0">
                     {titleRow()}
                   </inset-view>
 
@@ -492,7 +492,7 @@ export function DocumentPageView(props: Props) {
               {/* Portrait header image: image column beside the title/properties */}
               <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
                 <div class={`${STICKY_HEADER_CLASS} bg-neutral-10`}>
-                  <div>{breadcrumbs()}</div>
+                  <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                   <DocumentActions title={title()} headerImage={headerImageSrc()} />
                 </div>
 
@@ -529,8 +529,11 @@ export function DocumentPageView(props: Props) {
                 </Show>
 
                 <div class={`${STICKY_HEADER_CLASS} bg-neutral-10`}>
-                  <Show when={isWorkflow()} fallback={<div>{breadcrumbs()}</div>}>
-                    <div id="workflow-breadcrumb-slot" />
+                  <Show
+                    when={isWorkflow()}
+                    fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
+                  >
+                    <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
                   </Show>
                   <DocumentActions title={title()} headerImage={headerImageSrc()} />
                 </div>

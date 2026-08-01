@@ -95,40 +95,46 @@ export function DocumentTree(props: Props) {
     sensitivity: "base",
   });
 
-  const categoriesWithDocs = createMemo(() =>
-    categories().map((category) => {
-      const categoryDocs = [...(documentsBySlug().get(category.slug) || [])].sort(
-        (left, right) =>
-          documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
-      );
+  /**
+   * The document lists for one category, derived per row rather than merged
+   * into the category objects up front.
+   *
+   * `For` keys on object identity, so handing it `{...category, docs}` would
+   * mint a new identity for every category each time the batch query resolves
+   * — expanding one category would tear down and rebuild the entire tree, and
+   * the sidebar would lose its scroll position on the way.
+   */
+  function categoryDocuments(category: Category) {
+    const docs = [...(documentsBySlug().get(category.slug) || [])].sort((left, right) =>
+      documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
+    );
 
-      // Root docs are docs that belong to this category and whose parent is not
-      // in this category's doc list (so they can't be rendered as a nested child).
-      const rootDocs = categoryDocs.filter((doc) => {
-        const docCategory = doc.properties?.category;
-        const docCollection = doc.properties?.collection;
+    // Root docs are docs that belong to this category and whose parent is not
+    // in this category's doc list (so they can't be rendered as a nested child).
+    const rootDocs = docs.filter((doc) => {
+      const docCategory = doc.properties?.category;
+      const docCollection = doc.properties?.collection;
 
-        // A doc with an explicit different category belongs only to that
-        // category's tree, never as a root (or child) here — it was included
-        // only for descendant traversal.
-        if (
-          (docCategory || docCollection) &&
-          !propertyValueIncludes(docCategory, category.slug) &&
-          !propertyValueIncludes(docCollection, category.slug)
-        ) {
-          return false;
-        }
+      // A doc with an explicit different category belongs only to that
+      // category's tree, never as a root (or child) here — it was included
+      // only for descendant traversal.
+      if (
+        (docCategory || docCollection) &&
+        !propertyValueIncludes(docCategory, category.slug) &&
+        !propertyValueIncludes(docCollection, category.slug)
+      ) {
+        return false;
+      }
 
-        if (!doc.parentId) return true;
+      if (!doc.parentId) return true;
 
-        const parent = categoryDocs.find((d) => d.id === doc.parentId);
-        // If parent is in this category's docs, this doc renders as a child there.
-        return !parent;
-      });
+      const parent = docs.find((d) => d.id === doc.parentId);
+      // If parent is in this category's docs, this doc renders as a child there.
+      return !parent;
+    });
 
-      return { ...category, docs: categoryDocs, rootDocs };
-    }),
-  );
+    return { docs, rootDocs };
+  }
 
   // Category edit mode state
   const [isEditMode, setIsEditMode] = createSignal(false);
@@ -522,142 +528,156 @@ export function DocumentTree(props: Props) {
         {/* Categories List and Documents */}
         <Show when={!isLoading()}>
           <div class="space-y-1 px-4xs">
-            <For each={categoriesWithDocs()}>
-              {(category) => (
-                <div>
-                  {/* biome-ignore lint/a11y/noStaticElementInteractions: the drag, long-press and context-menu gestures live on the row; the button inside is the control. */}
-                  <category-target
-                    attr:data-category-id={category.id}
-                    attr:data-space-id={currentSpace()?.id}
-                    class="block [&[data-drag-over]]:bg-neutral-100"
-                    draggable={isEditMode()}
-                    onDragStart={(e) => isEditMode() && handleDragStart(e, category)}
-                    onDragOver={(e) =>
-                      isEditMode() && handleDragOver(e, categoryIndex(category.id))
-                    }
-                    onDragLeave={() => isEditMode() && setDragOverIndex(null)}
-                    onDrop={(e) =>
-                      isEditMode() && void handleDrop(e, categoryIndex(category.id))
-                    }
-                    onTouchStart={(e) => handleTouchStart(e, category)}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    onTouchCancel={clearLongPress}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      openContextMenu(e.clientX, e.clientY, category);
-                    }}
-                  >
-                    <div
-                      class="group/category flex items-center gap-2 rounded-md text-neutral-900 text-size-normal hover:bg-neutral-100 active:bg-neutral-200"
-                      classList={{
-                        "border border-blue-300 bg-blue-50":
-                          dragOverIndex() === categoryIndex(category.id) && isEditMode(),
-                        "cursor-move": isEditMode(),
+            {/*
+              `Index`, not `For`: `For` keys on object identity, and the
+              categories query hands back a fresh array of fresh objects every
+              time it resolves — IndexedDB first, then the network. `For` would
+              tear the whole tree down and rebuild it, which empties the
+              sidebar's scroll container for a frame and leaves the browser to
+              clamp its scroll position back to the top.
+            */}
+            <Index each={categories()}>
+              {(category) => {
+                const documents = createMemo(() => categoryDocuments(category()));
+
+                return (
+                  <div>
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: the drag, long-press and context-menu gestures live on the row; the button inside is the control. */}
+                    <category-target
+                      attr:data-category-id={category().id}
+                      attr:data-space-id={currentSpace()?.id}
+                      class="block [&[data-drag-over]]:bg-neutral-100"
+                      draggable={isEditMode()}
+                      onDragStart={(e) => isEditMode() && handleDragStart(e, category())}
+                      onDragOver={(e) =>
+                        isEditMode() && handleDragOver(e, categoryIndex(category().id))
+                      }
+                      onDragLeave={() => isEditMode() && setDragOverIndex(null)}
+                      onDrop={(e) =>
+                        isEditMode() && void handleDrop(e, categoryIndex(category().id))
+                      }
+                      onTouchStart={(e) => handleTouchStart(e, category())}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchCancel={clearLongPress}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        openContextMenu(e.clientX, e.clientY, category());
                       }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => !isEditMode() && toggleItem(category.id)}
-                        class="flex flex-1 items-center gap-2 px-1 py-1 text-left"
+                      <div
+                        class="group/category flex items-center gap-2 rounded-md text-neutral-900 text-size-normal hover:bg-neutral-100 active:bg-neutral-200"
+                        classList={{
+                          "border border-blue-300 bg-blue-50":
+                            dragOverIndex() === categoryIndex(category().id) &&
+                            isEditMode(),
+                          "cursor-move": isEditMode(),
+                        }}
                       >
-                        <div
-                          class="relative flex h-6 w-6 flex-none items-center justify-center rounded-sm font-semibold text-size-extra-small"
-                          style={{
-                            "background-color": category.color || "#E5E7EB",
-                            color: getTextColor(category.color),
-                          }}
+                        <button
+                          type="button"
+                          onClick={() => !isEditMode() && toggleItem(category().id)}
+                          class="flex flex-1 items-center gap-2 px-1 py-1 text-left"
                         >
-                          <span class="block transition-opacity group-hover/category:opacity-0">
-                            {category.icon || category.name.charAt(0).toUpperCase()}
-                          </span>
-
-                          <Icon
-                            class={twMerge(
-                              "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100",
-                              expandedItems().has(category.id) && "rotate-90",
-                            )}
-                            name="chevron-right-thin"
-                          />
-                        </div>
-
-                        <span class="font-medium">{category.name}</span>
-                      </button>
-
-                      {/* Hover actions: new document + options menu */}
-                      <Show when={!isEditMode() && canManageCategories()}>
-                        <div
-                          class="mr-2 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/category:opacity-100 group-hover/category:opacity-100"
-                          classList={{
-                            "opacity-100": contextMenu()?.category?.id === category.id,
-                          }}
-                        >
-                          <a
-                            href={spacePath(
-                              currentSpace()?.slug,
-                              `/new?category=${category.slug}`,
-                            )}
-                            class="flex items-center rounded-sm p-1 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-900"
-                            title={t("New document in this category")}
-                            onClick={(e) => e.stopPropagation()}
+                          <div
+                            class="relative flex h-6 w-6 flex-none items-center justify-center rounded-sm font-semibold text-size-extra-small"
+                            style={{
+                              "background-color": category().color || "#E5E7EB",
+                              color: getTextColor(category().color),
+                            }}
                           >
-                            <Icon class="h-3.5 w-3.5" name="add" />
-                            <span class="sr-only">
-                              {t("New document in this category")}
+                            <span class="block transition-opacity group-hover/category:opacity-0">
+                              {category().icon || category().name.charAt(0).toUpperCase()}
                             </span>
-                          </a>
-                          <button
-                            type="button"
-                            class="flex items-center rounded-sm p-1 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-900"
+
+                            <Icon
+                              class={twMerge(
+                                "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100",
+                                expandedItems().has(category().id) && "rotate-90",
+                              )}
+                              name="chevron-right-thin"
+                            />
+                          </div>
+
+                          <span class="font-medium">{category().name}</span>
+                        </button>
+
+                        {/* Hover actions: new document + options menu */}
+                        <Show when={!isEditMode() && canManageCategories()}>
+                          <div
+                            class="mr-2 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/category:opacity-100 group-hover/category:opacity-100"
                             classList={{
-                              "bg-neutral-200 text-neutral-900":
-                                contextMenu()?.category?.id === category.id,
-                            }}
-                            title={t("Category options")}
-                            aria-label={t("Category options")}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleMenuButton(e, category);
+                              "opacity-100":
+                                contextMenu()?.category?.id === category().id,
                             }}
                           >
-                            <Icon class="h-3.5 w-3.5" name="context-menu-more" />
-                          </button>
-                        </div>
-                      </Show>
+                            <a
+                              href={spacePath(
+                                currentSpace()?.slug,
+                                `/new?category=${category().slug}`,
+                              )}
+                              class="flex items-center rounded-sm p-1 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-900"
+                              title={t("New document in this category")}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Icon class="h-3.5 w-3.5" name="add" />
+                              <span class="sr-only">
+                                {t("New document in this category")}
+                              </span>
+                            </a>
+                            <button
+                              type="button"
+                              class="flex items-center rounded-sm p-1 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-900"
+                              classList={{
+                                "bg-neutral-200 text-neutral-900":
+                                  contextMenu()?.category?.id === category().id,
+                              }}
+                              title={t("Category options")}
+                              aria-label={t("Category options")}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMenuButton(e, category());
+                              }}
+                            >
+                              <Icon class="h-3.5 w-3.5" name="context-menu-more" />
+                            </button>
+                          </div>
+                        </Show>
 
-                      {/* Drag handle (shown in rearrange mode) */}
-                      <Show when={isEditMode()}>
-                        <div
-                          class="flex shrink-0 items-center pr-2 text-neutral-400"
-                          title={t("Drag to reorder")}
-                        >
-                          <Icon class="h-4 w-4" name="drag-dots" />
-                        </div>
-                      </Show>
-                    </div>
-                  </category-target>
+                        {/* Drag handle (shown in rearrange mode) */}
+                        <Show when={isEditMode()}>
+                          <div
+                            class="flex shrink-0 items-center pr-2 text-neutral-400"
+                            title={t("Drag to reorder")}
+                          >
+                            <Icon class="h-4 w-4" name="drag-dots" />
+                          </div>
+                        </Show>
+                      </div>
+                    </category-target>
 
-                  {/* `hidden`, not an unmount: collapsing must not tear down the
+                    {/* `hidden`, not an unmount: collapsing must not tear down the
                       subtree's drop targets, which the drag layer holds on to. */}
-                  <div
-                    class="space-y-1 pt-1 pb-1.5"
-                    hidden={!(expandedItems().has(category.id) && !isEditMode())}
-                  >
-                    <For each={category.rootDocs}>
-                      {(doc) => (
-                        <DocumentTreeItem
-                          doc={doc}
-                          allDocs={category.docs}
-                          activeDocId={activeDocSlug()}
-                          expandedItems={expandedItems()}
-                          onToggle={toggleItem}
-                        />
-                      )}
-                    </For>
+                    <div
+                      class="space-y-1 pt-1 pb-1.5"
+                      hidden={!(expandedItems().has(category().id) && !isEditMode())}
+                    >
+                      <For each={documents().rootDocs}>
+                        {(doc) => (
+                          <DocumentTreeItem
+                            doc={doc}
+                            allDocs={documents().docs}
+                            activeDocId={activeDocSlug()}
+                            expandedItems={expandedItems()}
+                            onToggle={toggleItem}
+                          />
+                        )}
+                      </For>
+                    </div>
                   </div>
-                </div>
-              )}
-            </For>
+                );
+              }}
+            </Index>
 
             {/* Add Category Button (shown in edit mode) */}
             <Show when={isEditMode()}>
@@ -771,7 +791,7 @@ export function DocumentTree(props: Props) {
                         requestDelete(category);
                       }}
                       disabled={deletingIds().has(menu().category.id)}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-red-600 text-size-normal transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-red-600 text-size-normal transition-colors hover:bg-red-500 active:bg-red-500 hover:text-white disabled:opacity-50"
                     >
                       <Icon class="h-4 w-4 flex-none" name="delete-entry" />
                       <span>{t("Delete category")}</span>
