@@ -89,36 +89,36 @@ export function UserProfile() {
                 </div>
               </div>
 
-              <div class="p-[4px]">
+              <div class="p-[4px] space-y-5xs">
                 <button
                   type="button"
                   onClick={() => setPreferencesOpen(true)}
-                  class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-foreground text-size-small transition-colors duration-200 hover:bg-neutral-50"
+                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
                 >
                   <Icon class="h-4 w-4" name="preferences" />
-                  <span class="font-medium leading-none">{t("Preferences")}</span>
+                  <span class="text-interactive">{t("Preferences")}</span>
                 </button>
                 <a
                   href="mailto:t.havlicek@s-v.de"
-                  class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-foreground text-size-small transition-colors duration-200 hover:bg-neutral-50"
+                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
                 >
                   <Icon class="h-4 w-4" name="send-feedback" />
-                  <span class="font-medium leading-none">{t("Send feedback")}</span>
+                  <span class="text-interactive">{t("Send feedback")}</span>
                 </a>
                 <a
                   href="https://github.com/luckydye/vektor"
-                  class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-foreground text-size-small transition-colors duration-200 hover:bg-neutral-50"
+                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
                 >
                   <Icon class="h-4 w-4" name="source-code" />
-                  <span class="font-medium leading-none">{t("Source")}</span>
+                  <span class="text-interactive">{t("Source")}</span>
                 </a>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-red-600 text-size-small transition-colors duration-200 hover:bg-red-500 hover:text-white"
+                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs text-left text-red-600 text-size-small transition-colors hover:bg-red-500 hover:text-white"
                 >
                   <Icon class="h-4 w-4" name="sign-out" />
-                  <span class="font-medium leading-none">{t("Sign Out")}</span>
+                  <span class="text-interactive">{t("Sign Out")}</span>
                 </button>
               </div>
             </Show>

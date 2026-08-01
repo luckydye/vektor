@@ -490,11 +490,24 @@
 /* View Transitions.
  *
  * The API snapshots the whole document by default, so without this a list
- * reorder cross-fades the entire page instead of just the items that moved.
- * Named items opt in individually; the root stays put. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
+ * reorder takes the entire page with it. Named items opt in individually.
+ *
+ * Dropping the root's name — rather than only its animation — is what keeps the
+ * page usable. A captured root paints a full-viewport snapshot into the
+ * transition overlay, and that overlay is hit-tested: for as long as the
+ * transition runs, the page is a picture that swallows every click, while
+ * `animation: none` makes it look like nothing is happening at all. Presence
+ * arriving after a document switch fires several of these back to back.
+ *
+ * `pointer-events` covers what is left: named items still put snapshots in the
+ * overlay, and those must not intercept clicks meant for the live DOM either,
+ * which by then has already moved on to the new state. */
+:root {
+  view-transition-name: none;
+}
+
+::view-transition {
+  pointer-events: none;
 }
 
 /** The user preferences panel inside the profile popover. */
