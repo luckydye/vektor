@@ -68,7 +68,36 @@ export function Spreadsheet(props: Props) {
     }
   };
 
-  const focusRoot = () => root.focus({ preventScroll: true });
+  /**
+   * Puts the keyboard on the grid.
+   *
+   * The collapsed selection inside the root is not cosmetic: a `copy` or `cut`
+   * event only fires for a document selection, and everything the grid shows is
+   * painted on a canvas, so there is never a natural one.
+   */
+  const focusRoot = () => {
+    root.focus({ preventScroll: true });
+    const selection = window.getSelection();
+    const anchor = root.firstChild;
+    if (!selection || !anchor) return;
+    selection.removeAllRanges();
+    const range = document.createRange();
+    range.setStart(anchor, 0);
+    range.setEnd(anchor, 0);
+    selection.addRange(range);
+  };
+
+  /**
+   * An edit finished. Focus was on the editor's textarea, which is now gone, so
+   * the keyboard has to be handed back to the grid — otherwise typing after
+   * pressing Enter goes nowhere. Only when the focus was still ours: ending the
+   * edit by clicking elsewhere in the app must not drag it back.
+   */
+  const endEditing = () => {
+    const hadFocus = root.contains(document.activeElement);
+    mutated();
+    if (hadFocus && !workbookState.getEditingCell()) focusRoot();
+  };
 
   const startEditing = (initialText?: string) => {
     const { sheet, row, column } = props.model.getSelectedView(); // solid-reactivity-ok: destructures the engine's return value, not props
@@ -367,11 +396,14 @@ export function Spreadsheet(props: Props) {
       onCopy={onCopy}
       onCut={onCut}
       onPaste={onPaste}
-      onPointerDown={() => {
+      onClick={(event) => {
         // Clicking the grid must put focus back on the root, or the keyboard
-        // handler above never sees anything. While a cell is being edited the
-        // editor owns focus, so leave it alone.
-        if (!workbookState.getEditingCell()) focusRoot();
+        // handler above never sees anything. This has to be `click`, not
+        // `pointerdown`: the browser's own focus handling runs on the mousedown
+        // that follows, and would move focus straight back off again. While a
+        // cell is being edited the editor owns focus, so leave it alone.
+        if (workbookState.getEditingCell()) event.stopPropagation();
+        else focusRoot();
       }}
     >
       <div class="flex h-8 flex-none items-center gap-5xs border-neutral-100 border-b px-4xs">
@@ -412,6 +444,7 @@ export function Spreadsheet(props: Props) {
         canEdit={props.canEdit}
         revision={revision}
         refresh={mutated}
+        onEditEnd={endEditing}
         onError={setError}
       />
 
@@ -421,6 +454,7 @@ export function Spreadsheet(props: Props) {
         canEdit={props.canEdit}
         revision={revision}
         refresh={mutated}
+        onEditEnd={endEditing}
         onCanvas={setCanvas}
         onStartEditing={() => startEditing()}
         onContextMenu={(target) => {

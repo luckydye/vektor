@@ -36,6 +36,8 @@ interface Props {
   canEdit: boolean;
   revision: () => number;
   refresh: () => void;
+  /** An edit committed or was abandoned; focus goes back to the grid. */
+  onEditEnd: () => void;
   onCanvas: (canvas: WorksheetCanvas | null) => void;
   onContextMenu: (target: HeaderTarget) => void;
   onStartEditing: () => void;
@@ -347,7 +349,7 @@ export function Worksheet(props: Props) {
             type="cell"
             canEdit={props.canEdit}
             revision={props.revision}
-            onEditEnd={props.refresh}
+            onEditEnd={props.onEditEnd}
             onTextUpdated={props.refresh}
             onError={props.onError}
           />

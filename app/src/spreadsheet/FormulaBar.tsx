@@ -9,6 +9,7 @@ interface Props {
   canEdit: boolean;
   revision: () => number;
   refresh: () => void;
+  onEditEnd: () => void;
   onError: (message: string) => void;
 }
 
@@ -51,7 +52,7 @@ export function FormulaBar(props: Props) {
           type="formula-bar"
           canEdit={props.canEdit}
           revision={props.revision}
-          onEditEnd={props.refresh}
+          onEditEnd={props.onEditEnd}
           onTextUpdated={props.refresh}
           onError={props.onError}
         />
