@@ -58,7 +58,7 @@ import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { getLiveDocumentContent, replaceYRoomContent } from "#realtime/yjsRooms.ts";
+import { getLiveDocumentContent } from "#realtime/yjsRooms.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { stripScriptTags } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
@@ -520,10 +520,6 @@ export const PUT: ApiRouteHandler = (context) =>
     if (!document) {
       throw notFoundResponse("Document");
     }
-
-    // An open room holds the document in memory and would persist over this
-    // write on its next tick, so the new content has to go through it.
-    await replaceYRoomContent(spaceId, id, nextType, contentSanitized);
 
     if (userId) {
       const revision = await createRevision(spaceId, id, contentSanitized, userId, {
