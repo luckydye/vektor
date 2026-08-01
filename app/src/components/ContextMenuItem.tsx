@@ -10,9 +10,15 @@ interface Props {
 export function ContextMenuItem(props: Props) {
   return (
     <a-list-item class={`group ${props.class ?? ""}`}>
+      {/* `on:click`, not `onClick`: Solid delegates `onClick` to the document,
+          so `stopPropagation` there fires long after the event has bubbled
+          through `a-list`. The list would select the item, emit `change`, and
+          `ContextMenu` would click this button a second time — running the
+          action twice, which reads as "nothing happened" for any action that
+          toggles. A native listener stops the event before the list sees it. */}
       <button
         type="button"
-        onClick={(event) => {
+        on:click={(event) => {
           event.preventDefault();
           event.stopPropagation();
           props.onClick(event);

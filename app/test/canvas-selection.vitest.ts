@@ -8,7 +8,7 @@ import {
   selectedScalableSelection,
   selectedShape,
   selectedTransformShape,
-} from "#canvas/selectionModel.ts";
+} from "#canvas/model/selectionModel.ts";
 
 /** Transform affordances per type — the only extension data the model reads. */
 const TRANSFORMS: Record<string, { move: boolean; rotate: boolean; resize: string }> = {

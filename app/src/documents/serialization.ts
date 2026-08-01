@@ -4,7 +4,7 @@ import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
 import { prosemirrorToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
-import { parseCanvasContent, seedCanvasDoc } from "#canvas/canvasYjs.ts";
+import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/canvasYjs.ts";
 import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { parseHtml, SyntaxKind } from "#utils/html.ts";

@@ -449,7 +449,7 @@ export function Sidebar(props: Props) {
           class="absolute -right-3 bottom-7 z-50 hidden rounded-full bg-background p-2 text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 md:block"
           title={currentWidth() === minWidth() ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <Icon name="collapse" />
+          <Icon name="collapse" class="w-4" />
         </button>
 
         {/* The grain pseudo-element paints after the blur one, so it also lands
