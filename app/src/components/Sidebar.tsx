@@ -452,7 +452,9 @@ export function Sidebar(props: Props) {
           <Icon name="collapse" />
         </button>
 
-        <div class="before:backdrop-surface-blur relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90">
+        {/* The grain pseudo-element paints after the blur one, so it also lands
+            above in-flow content — the children need a z-index to stay on top. */}
+        <div class="relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 before:backdrop-surface-blur after:surface-noise [&>*]:relative [&>*]:z-10">
           <Navigation />
         </div>
 

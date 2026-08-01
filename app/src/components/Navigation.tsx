@@ -34,14 +34,19 @@ export function Navigation() {
   >([]);
 
   const activeRoute = createMemo(() => {
-    const path = pathname();
+    const path = pathname().replace(/\/+$/, "");
     if (path.includes("/search")) return "search";
     if (path.includes("/x/")) {
       const match = path.match(/\/x\/(.+)/);
       return match ? `x/${match[1]}` : "";
     }
     if (path.includes("/settings")) return "settings";
-    if (path === "/" || path.split("/").filter(Boolean).length === 0) return "home";
+    // The router keeps its base ("/{space}/") in `location.pathname`, so the
+    // space home is "/{space}" — only the pre-hydration SSR fallback is
+    // base-relative and reports a bare "/".
+    if (path === "" || path === spacePath(currentSpace()?.slug, "").replace(/\/+$/, "")) {
+      return "home";
+    }
     return "";
   });
 

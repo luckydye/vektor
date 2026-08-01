@@ -175,8 +175,9 @@ export function SpaceSelector(props: Props) {
               event.stopPropagation();
               props.onCreateDoc?.();
             }}
+            class="px-5xs"
           >
-            <Icon name="plus" />
+            <Icon name="new-document" />
           </Button>
         </Show>
       </div>

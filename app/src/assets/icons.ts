@@ -56,6 +56,7 @@ export { default as listIcon } from "#assets/icons/list.svg?raw";
 export { default as lockElementIcon } from "#assets/icons/lock-element.svg?raw";
 export { default as mergeCellsIcon } from "#assets/icons/merge-cells.svg?raw";
 export { default as muteNotificationsIcon } from "#assets/icons/mute-notifications.svg?raw";
+export { default as newDocumentIcon } from "#assets/icons/new-document.svg?raw";
 export { default as noteToolIcon } from "#assets/icons/note-tool.svg?raw";
 export { default as numberedListIcon } from "#assets/icons/numbered-list.svg?raw";
 export { default as outdentIcon } from "#assets/icons/outdent.svg?raw";
