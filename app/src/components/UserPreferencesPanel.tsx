@@ -33,7 +33,7 @@ type ViewTransitionDocument = Document & {
 
 const tabs = [
   { id: "appearance", label: t("Appearance") },
-  { id: "cosmetics", label: t("Cosmetics") },
+  { id: "cosmetics", label: t("Profile") },
   { id: "notifications", label: t("Notifications") },
   { id: "integrations", label: t("Integrations") },
 ];
@@ -316,8 +316,6 @@ export function UserPreferencesPanel(props: Props) {
                   </p>
                 </div>
                 <div class="rounded-lg border border-neutral-200 bg-background p-3">
-                  <p class="font-medium text-foreground text-size-small">{t("Theme")}</p>
-                  {/* biome-ignore lint/a11y/useSemanticElements: a <fieldset> would bring a legend and its own layout; this is a labelled group of buttons, not a form control set. */}
                   <div
                     class="mt-3 grid grid-cols-3 gap-3"
                     role="group"
