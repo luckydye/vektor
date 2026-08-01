@@ -1,5 +1,6 @@
 import "@atrium-ui/elements/popover";
 import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useCategories } from "#composeables/useCategories.ts";
@@ -576,8 +577,10 @@ export function DocumentTree(props: Props) {
                           </span>
 
                           <Icon
-                            class="absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100"
-                            classList={{ "rotate-90": expandedItems().has(category.id) }}
+                            class={twMerge(
+                              "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100",
+                              expandedItems().has(category.id) && "rotate-90",
+                            )}
                             name="chevron-right-thin"
                           />
                         </div>

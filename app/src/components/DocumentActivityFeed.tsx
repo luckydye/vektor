@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import type { AuditLog } from "#api/client.ts";
 import {
   type ActivityGroup,
@@ -201,8 +202,10 @@ export function DocumentActivityFeed(props: Props) {
                         onClick={() => toggleGroup(group.id)}
                       >
                         <Icon
-                          class="h-4 w-4 shrink-0 text-neutral-400 transition-transform"
-                          classList={{ "rotate-45": isGroupExpanded(group.id) }}
+                          class={twMerge(
+                            "h-4 w-4 shrink-0 text-neutral-400 transition-transform",
+                            isGroupExpanded(group.id) && "rotate-45",
+                          )}
                           name="add"
                         />
                         <span>

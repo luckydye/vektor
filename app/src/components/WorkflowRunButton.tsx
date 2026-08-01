@@ -1,5 +1,6 @@
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Button } from "./Button.tsx";
@@ -76,8 +77,7 @@ export function WorkflowRunButton(props: Props) {
       fallback={
         <Button disabled={starting()} onClick={startRun}>
           <Icon
-            class="icon"
-            classList={{ "animate-spin": starting() }}
+            class={twMerge(starting() && "animate-spin")}
             name={starting() ? "spinner" : "play-circle-filled"}
           />
           <span>{starting() ? "Starting…" : "Run workflow"}</span>
@@ -86,8 +86,7 @@ export function WorkflowRunButton(props: Props) {
     >
       <Button tone="danger" disabled={cancelling()} onClick={cancelRun}>
         <Icon
-          class="icon"
-          classList={{ "animate-spin": cancelling() }}
+          class={twMerge(cancelling() && "animate-spin")}
           name={cancelling() ? "spinner" : "cancel"}
         />
         <span>{cancelling() ? "Cancelling…" : "Cancel"}</span>

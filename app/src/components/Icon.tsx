@@ -1,5 +1,6 @@
 import { createRenderEffect } from "solid-js";
 import { isServer } from "solid-js/web";
+import { twMerge } from "tailwind-merge";
 import {
   activityIcon,
   addAttachmentsIcon,
@@ -324,33 +325,28 @@ interface Props {
    * artwork. Anything in the set is named, never passed as bytes.
    */
   svg?: string;
-  /** Size and colour, merged onto the root; attributes do not fall through. */
+  /**
+   * Size and colour, merged onto the root; attributes do not fall through.
+   * Conditionals belong in the caller's own `twMerge`, which also lets a
+   * caller's utility beat the base class rather than land beside it.
+   */
   class?: string;
-  classList?: Record<string, boolean | undefined>;
 }
 
 export function Icon(props: Props) {
   const svg = () => props.svg ?? (props.name ? (icons[props.name] ?? "") : "");
-  const className = () => (props.class ? `${BASE_CLASS} ${props.class}` : BASE_CLASS);
+  const className = () => twMerge(BASE_CLASS, props.class);
 
   // The server has no DOM to clone from, and the markup has to reach the
   // response so the shell paints its icons before hydration. Both branches
   // render the same element, so hydration adopts it either way.
   if (isServer) {
-    return (
-      <span
-        class={className()}
-        classList={props.classList}
-        innerHTML={svg()}
-        aria-hidden="true"
-      />
-    );
+    return <span class={className()} innerHTML={svg()} aria-hidden="true" />;
   }
 
   return (
     <span
       class={className()}
-      classList={props.classList}
       aria-hidden="true"
       ref={(element) => createRenderEffect(() => stamp(element, svg()))}
     />
