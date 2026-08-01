@@ -1,5 +1,5 @@
 import { api } from "#api/client.ts";
-import type { CanvasCollaborationFactory } from "#canvas/collaboration.ts";
+import type { CanvasCollaborationFactory } from "#canvas/document/collaboration.ts";
 import { mediaTypeForFile } from "#files/fileTypes.ts";
 import {
   createDocumentLinkController,

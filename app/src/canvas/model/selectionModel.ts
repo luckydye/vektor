@@ -1,7 +1,7 @@
-import type { CanvasExtensionManager } from "./extensions/registry.ts";
-import type { CanvasShape, CanvasStroke } from "./extensions/types.ts";
-import type { Rect } from "./viewport/bounds.ts";
-import { unionBounds } from "./viewport/bounds.ts";
+import type { CanvasExtensionManager } from "#canvas/extensions/registry.ts";
+import type { CanvasShape, CanvasStroke } from "#canvas/extensions/types.ts";
+import type { Rect } from "#canvas/viewport/bounds.ts";
+import { unionBounds } from "#canvas/viewport/bounds.ts";
 
 /**
  * What is selected, and what the selection can be asked to do.

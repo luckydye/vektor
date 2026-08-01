@@ -1,5 +1,5 @@
+import type { CanvasTool } from "#canvas/extensions/types.ts";
 import type { TranslationKey } from "#utils/lang.ts";
-import type { CanvasTool } from "./extensions/types.ts";
 
 /** A toolbar entry. Assembled per canvas, since extensions contribute tools. */
 export interface CanvasToolDef {

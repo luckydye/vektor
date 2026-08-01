@@ -1,5 +1,5 @@
-import type { CanvasExtensionManager } from "./extensions/registry.ts";
-import type { CanvasShape } from "./extensions/types.ts";
+import type { CanvasExtensionManager } from "#canvas/extensions/registry.ts";
+import type { CanvasShape } from "#canvas/extensions/types.ts";
 
 /**
  * Questions about a shape that only its extension can answer.

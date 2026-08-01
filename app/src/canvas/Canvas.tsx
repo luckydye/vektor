@@ -23,7 +23,7 @@ import { getAvatarColor } from "#utils/avatarColor.ts";
 // — `host.changed()` throws and the canvas renders nothing.
 import "./CanvasHostElement.ts";
 import type { CanvasHostElement } from "./CanvasHostElement.ts";
-import type { CanvasDocumentCollaboration } from "./collaboration.ts";
+import type { CanvasDocumentCollaboration } from "./document/collaboration.ts";
 
 /**
  * The Solid adapter for `<vektor-canvas>`.

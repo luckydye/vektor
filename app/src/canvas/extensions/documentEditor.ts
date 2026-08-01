@@ -13,7 +13,7 @@ import { ref } from "lit-html/directives/ref.js";
 import { unsafeSVG } from "lit-html/directives/unsafe-svg.js";
 import type * as Y from "yjs";
 import { documentIcon } from "#assets/icons.ts";
-import type { CanvasDocumentCollaboration } from "#canvas/collaboration.ts";
+import type { CanvasDocumentCollaboration } from "#canvas/document/collaboration.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   currentEditorPresenceState,

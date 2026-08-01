@@ -1,8 +1,8 @@
 import * as Y from "yjs";
-import type { CanvasExtensionManager } from "./extensions/registry.ts";
-import type { CanvasSerializedShape, CanvasShape } from "./extensions/types.ts";
-import { toNumber } from "./viewport/bounds.ts";
-import { normalizeRotation } from "./viewport/geometry.ts";
+import type { CanvasExtensionManager } from "#canvas/extensions/registry.ts";
+import type { CanvasSerializedShape, CanvasShape } from "#canvas/extensions/types.ts";
+import { toNumber } from "#canvas/viewport/bounds.ts";
+import { normalizeRotation } from "#canvas/viewport/geometry.ts";
 
 /**
  * Reading and writing canvas shapes as Yjs structures.

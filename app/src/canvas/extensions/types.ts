@@ -1,4 +1,4 @@
-import type { CanvasCollaborationFactory } from "#canvas/collaboration.ts";
+import type { CanvasCollaborationFactory } from "#canvas/document/collaboration.ts";
 import type {
   FreehandPoint,
   FreehandStroke,

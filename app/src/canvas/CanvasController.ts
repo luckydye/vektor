@@ -2,6 +2,7 @@ import * as Y from "yjs";
 import { penToolIcon, selectToolIcon } from "#assets/icons.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import { shapeFromSource, shapeToYMap } from "./document/shapeSerialization.ts";
 import type { DrawStrokeMode } from "./extensions/drawing.ts";
 import {
   activeDrawStrokeMode,
@@ -50,15 +51,14 @@ import {
   selectedScalableSelection as selectionScalable,
   selectedShape as selectionShape,
   selectedTransformShape as selectionTransformShape,
-} from "./selectionModel.ts";
+} from "./model/selectionModel.ts";
 import {
   isBrowserFindTarget,
   articleStyle as shapeArticleStyle,
   editorTagForShape as shapeEditorTag,
   isContainerShape as shapeIsContainer,
   suppressesNativePointer as shapeSuppressesNativePointer,
-} from "./shapeQueries.ts";
-import { shapeFromSource, shapeToYMap } from "./shapeSerialization.ts";
+} from "./model/shapeQueries.ts";
 import {
   axisAlignedHandles,
   strokeBounds as boundsOfPoints,
@@ -124,12 +124,12 @@ import {
   type WorldRect,
   worldViewportBounds,
 } from "./viewport/index.ts";
-import "./CanvasPresenceCursorElement.ts";
-import type { CanvasDomRefs, CanvasToolDef } from "./CanvasView.ts";
-import type { CanvasCollaborationFactory } from "./collaboration.ts";
+import "./view/CanvasPresenceCursorElement.ts";
+import type { CanvasCollaborationFactory } from "./document/collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
 import { createWatchers, indexById, registerCanvas } from "./state.ts";
+import type { CanvasDomRefs, CanvasToolDef } from "./view/CanvasView.ts";
 
 /**
  * Everything the canvas needs from the page around it.

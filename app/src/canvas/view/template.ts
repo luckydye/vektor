@@ -19,13 +19,13 @@ import {
   unlockElementIcon,
   uploadFileIcon,
 } from "#assets/icons.ts";
+import type { CanvasView } from "#canvas/CanvasController.ts";
+import { DRAW_STROKE_MODES, PEN_COLORS } from "#canvas/extensions/drawing.ts";
+import { SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
+import type { CanvasShape } from "#canvas/extensions/types.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
-import type { CanvasView } from "./CanvasController.ts";
 import type { CanvasDomRefs } from "./CanvasView.ts";
-import { DRAW_STROKE_MODES, PEN_COLORS } from "./extensions/drawing.ts";
-import { SHAPE_LIBRARY } from "./extensions/shape.ts";
-import type { CanvasShape } from "./extensions/types.ts";
 
 /**
  * The canvas shell, as lit-html.

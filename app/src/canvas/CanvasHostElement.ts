@@ -3,18 +3,18 @@ import type * as Y from "yjs";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import { type CanvasController, createCanvasController } from "./CanvasController.ts";
-import type { CanvasDomRefs } from "./CanvasView.ts";
-import "./CanvasPresenceCursorElement.ts";
+import type { CanvasDomRefs } from "./view/CanvasView.ts";
+import "./view/CanvasPresenceCursorElement.ts";
 // The stylesheet for the light-DOM tree this element builds. Imported here
 // rather than in the controller: the controller is logic, and is only ever
 // loaded through this module anyway.
 import "./css/canvas.css";
-import type { CanvasCollaborationFactory } from "./collaboration.ts";
+import type { CanvasCollaborationFactory } from "./document/collaboration.ts";
 import { HostElement } from "./extensions/CanvasElementBase.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
 import type { CanvasElementExtension, CanvasToolExtension } from "./extensions/types.ts";
-import { canvasTemplate } from "./template.ts";
+import { canvasTemplate } from "./view/template.ts";
 
 export const canvasHostTag = "vektor-canvas";
 
