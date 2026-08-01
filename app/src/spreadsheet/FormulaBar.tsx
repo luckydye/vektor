@@ -1,5 +1,6 @@
 import { columnNameFromNumber, type Model } from "@ironcalc/wasm";
 import { createMemo } from "solid-js";
+import { Icon } from "#components/Icon.tsx";
 import { CellEditor } from "#spreadsheet/CellEditor.tsx";
 import type { WorkbookState } from "#spreadsheet/grid/workbookState.ts";
 
@@ -40,11 +41,13 @@ export function FormulaBar(props: Props) {
   });
 
   return (
-    <div class="flex h-8 flex-none items-stretch border-neutral-100 border-b">
-      <div class="flex w-24 flex-none items-center justify-center border-neutral-100 border-r text-neutral-600 text-size-small tabular-nums">
+    <div class="ic-formula-bar">
+      <div class="ic-name-box">
         {address()}
+        <Icon name="chevron-down" />
       </div>
-      <div class="relative min-w-0 flex-1 px-4xs">
+      <span class="ic-fx">fx</span>
+      <div class="ic-formula-bar-input">
         <CellEditor
           model={props.model}
           workbookState={props.workbookState}

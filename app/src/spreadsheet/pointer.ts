@@ -24,6 +24,12 @@ interface PointerSettings {
   model: Model;
   workbookState: WorkbookState;
   refresh: () => void;
+  /**
+   * Local addition: clicking a different cell while editing commits the edit,
+   * which changes the document. `refresh` alone only repaints, and selection
+   * must not mark the document dirty.
+   */
+  onContentChanged: () => void;
 }
 
 interface PointerEvents {
@@ -319,6 +325,7 @@ export function createPointerHandlers(options: PointerSettings): PointerEvents {
           workbookState.getEditingText(),
         );
         workbookState.clearEditingCell();
+        options.onContentChanged();
         // we continue to select the new cell
       }
       if (event.shiftKey) {

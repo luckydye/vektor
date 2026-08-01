@@ -1,5 +1,4 @@
 import { createEffect, For, onCleanup, Show } from "solid-js";
-import { ContextMenuItem } from "#components/ContextMenuItem.tsx";
 
 export interface GridMenuAction {
   label: string;
@@ -12,13 +11,18 @@ interface Props {
   /** Where the right-click landed, in client coordinates; null when closed. */
   at: { x: number; y: number } | null;
   actions: GridMenuAction[];
+  /** The root this menu lives in; see the dismiss handler below. */
+  shadowRoot: ShadowRoot;
   onClose: () => void;
 }
 
 /**
- * The grid's right-click menu. `#components/ContextMenu.tsx` hangs off a trigger
- * button, so this positions its own panel at the pointer, but reuses the same
- * item so the two menus look and behave alike.
+ * The grid's right-click menu, positioned at the pointer.
+ *
+ * `#components/ContextMenu.tsx` hangs off a trigger button and is styled with
+ * Tailwind, neither of which works here: this opens at a point, and it lives in
+ * the spreadsheet's shadow root where the app's utility classes do not reach.
+ * Its look is reproduced in `spreadsheet.css` instead.
  */
 export function GridContextMenu(props: Props) {
   let panel: HTMLDivElement | undefined;
@@ -30,7 +34,11 @@ export function GridContextMenu(props: Props) {
       if (event.key === "Escape") close();
     };
     const onPointerDown = (event: PointerEvent) => {
-      if (panel && !panel.contains(event.target as Node)) close();
+      // On a document listener `event.target` is retargeted to the shadow host,
+      // so `panel.contains(target)` is false even for a click on the menu
+      // itself — which would dismiss it before the item could run. The composed
+      // path still lists the real nodes.
+      if (panel && !event.composedPath().includes(panel)) close();
     };
     // Capture, so a click anywhere closes the menu before that click is acted on.
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -54,23 +62,24 @@ export function GridContextMenu(props: Props) {
 
   return (
     <Show when={props.at}>
-      <div
-        ref={panel}
-        class="fixed z-50 min-w-[180px] rounded-lg border border-neutral-100 bg-background p-5xs text-interactive shadow-large"
-      >
-        <For each={props.actions}>
-          {(action) => (
-            <ContextMenuItem
-              class={action.separated ? "mt-5xs border-neutral-100 border-t pt-5xs" : ""}
-              onClick={() => {
-                action.run();
-                props.onClose();
-              }}
-            >
-              <span class="text-size-normal">{action.label}</span>
-            </ContextMenuItem>
-          )}
-        </For>
+      <div class="ic-menu" ref={panel}>
+        <ul>
+          <For each={props.actions}>
+            {(action) => (
+              <li classList={{ "ic-menu-separated": action.separated }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    action.run();
+                    props.onClose();
+                  }}
+                >
+                  {action.label}
+                </button>
+              </li>
+            )}
+          </For>
+        </ul>
       </div>
     </Show>
   );

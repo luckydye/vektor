@@ -164,6 +164,8 @@ export function attachOutlineHandle(worksheet: WorksheetCanvas): HTMLDivElement 
     );
     worksheet.workbookState.clearExtendToArea();
     worksheet.renderSheet();
+    // Local addition: autofill writes cells, so the document is now dirty.
+    worksheet.onContentChanged();
   };
 
   cellOutlineHandle.addEventListener("pointerdown", () => {
@@ -238,6 +240,8 @@ export function attachOutlineHandle(worksheet: WorksheetCanvas): HTMLDivElement 
     worksheet.model.autoFillRows(area, lastUsedRow);
     worksheet.model.setSelectedRange(rowStart, columnStart, lastUsedRow, columnEnd);
     worksheet.renderSheet();
+    // Local addition: as above.
+    worksheet.onContentChanged();
   });
   return cellOutlineHandle;
 }

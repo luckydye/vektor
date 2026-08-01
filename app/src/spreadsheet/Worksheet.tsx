@@ -35,10 +35,12 @@ interface Props {
   workbookState: WorkbookState;
   canEdit: boolean;
   revision: () => number;
+  /** Repaint only. Selection, scrolling and resizing go here. */
   refresh: () => void;
+  /** Cell contents changed, so the document needs saving. */
+  mutated: () => void;
   /** An edit committed or was abandoned; focus goes back to the grid. */
   onEditEnd: () => void;
-  onCanvas: (canvas: WorksheetCanvas | null) => void;
   onContextMenu: (target: HeaderTarget) => void;
   onStartEditing: () => void;
   onError: (message: string) => void;
@@ -114,9 +116,9 @@ export function Worksheet(props: Props) {
         sheet.renderSheet();
       },
       refresh: () => props.refresh(),
+      onContentChanged: () => props.mutated(),
     });
     setCanvas(sheet);
-    props.onCanvas(sheet);
     return sheet;
   };
 
@@ -161,7 +163,6 @@ export function Worksheet(props: Props) {
       resizeObserver.disconnect();
       themeObserver.disconnect();
       colorScheme.removeEventListener("change", rebuildForTheme);
-      props.onCanvas(null);
     });
   });
 
@@ -199,6 +200,7 @@ export function Worksheet(props: Props) {
     model: props.model,
     workbookState: props.workbookState,
     refresh: () => props.refresh(),
+    onContentChanged: () => props.mutated(),
     canvasElement: () => canvasElement,
     worksheetElement: () => sheetContainer,
     worksheetCanvas: () => canvas(),

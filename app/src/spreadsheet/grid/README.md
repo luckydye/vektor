@@ -37,6 +37,12 @@ files renamed (`util.ts` collides twice upstream). Beyond that:
 - **`colors.ts`** drops the unused `name` fields, and fixes an upstream
   copy-paste: "Wasabi" carried Burgundy's `rgba` while its `hex` said otherwise,
   so a translucent Wasabi range came out the wrong colour.
+- **`onContentChanged`**, a callback added alongside upstream's `refresh`.
+  Upstream redraws and saves on the same signal; here saving is a document
+  write, so the two had to be told apart — otherwise selecting a cell rewrote
+  the document. `refresh` repaints; `onContentChanged` fires only where cells
+  actually change, which in the ported code means the two autofill paths in
+  `outlineHandle.ts` and the commit-on-click-away in `../pointer.ts`.
 - **Two performance fixes** carried over from `~/source/sheets/patches/`, neither
   of which is fixed upstream in 0.8.3. They were written against v0.7.1 and no
   longer apply as patches, so they are re-implemented here:

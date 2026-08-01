@@ -12,7 +12,7 @@
 // holds one sheet of values, so those controls would offer to change things
 // that could not be saved.
 
-import { columnNameFromNumber, type Model } from "@ironcalc/wasm";
+import type { Model } from "@ironcalc/wasm";
 import { createSignal, Show } from "solid-js";
 import { Icon } from "#components/Icon.tsx";
 import { FormulaBar } from "#spreadsheet/FormulaBar.tsx";
@@ -24,7 +24,6 @@ import {
   ROW_HEIGH_SCALE,
 } from "#spreadsheet/grid/constants.ts";
 import { WorkbookState } from "#spreadsheet/grid/workbookState.ts";
-import type { WorksheetCanvas } from "#spreadsheet/grid/worksheetCanvas.ts";
 import { createNavigationKeyHandler } from "#spreadsheet/navigationKeys.ts";
 import { type HeaderTarget, Worksheet } from "#spreadsheet/Worksheet.tsx";
 import { t } from "#utils/lang.ts";
@@ -35,6 +34,12 @@ interface Props {
   canEdit: boolean;
   /** Called after anything that changed the workbook's contents. */
   onChange: () => void;
+  /**
+   * The shadow root this is rendered into. `document.activeElement` reports the
+   * host, not what is focused inside, so anything asking "do we have focus?"
+   * has to ask the root itself.
+   */
+  shadowRoot: ShadowRoot;
 }
 
 /** The shape IronCalc's own copy/paste puts on the clipboard. */
@@ -44,7 +49,6 @@ export function Spreadsheet(props: Props) {
   let root!: HTMLDivElement;
   const workbookState = new WorkbookState();
   const [revision, setRevision] = createSignal(0);
-  const [canvas, setCanvas] = createSignal<WorksheetCanvas | null>(null);
   const [menuAt, setMenuAt] = createSignal<{ x: number; y: number } | null>(null);
   const [menuKind, setMenuKind] = createSignal<HeaderTarget["kind"]>("cell");
   const [error, setError] = createSignal<string | null>(null);
@@ -94,7 +98,7 @@ export function Spreadsheet(props: Props) {
    * edit by clicking elsewhere in the app must not drag it back.
    */
   const endEditing = () => {
-    const hadFocus = root.contains(document.activeElement);
+    const hadFocus = root.contains(props.shadowRoot.activeElement);
     mutated();
     if (hadFocus && !workbookState.getEditingCell()) focusRoot();
   };
@@ -373,12 +377,6 @@ export function Spreadsheet(props: Props) {
     ];
   };
 
-  const selectedAddress = () => {
-    revision();
-    const { row, column } = props.model.getSelectedView(); // solid-reactivity-ok: destructures the engine's return value, not props
-    return `${columnNameFromNumber(column)}${row}`;
-  };
-
   return (
     <div
       class="ic-root"
@@ -406,10 +404,9 @@ export function Spreadsheet(props: Props) {
         else focusRoot();
       }}
     >
-      <div class="flex h-8 flex-none items-center gap-5xs border-neutral-100 border-b px-4xs">
+      <div class="ic-toolbar">
         <button
           type="button"
-          class="rounded p-6xs text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
           disabled={!props.canEdit}
           title={t("Undo")}
           onClick={() => {
@@ -422,7 +419,6 @@ export function Spreadsheet(props: Props) {
         </button>
         <button
           type="button"
-          class="rounded p-6xs text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
           disabled={!props.canEdit}
           title={t("Redo")}
           onClick={() => {
@@ -433,9 +429,6 @@ export function Spreadsheet(props: Props) {
         >
           <Icon name="redo" />
         </button>
-        <span class="ml-auto text-neutral-400 text-size-extra-small tabular-nums">
-          {selectedAddress()}
-        </span>
       </div>
 
       <FormulaBar
@@ -443,7 +436,7 @@ export function Spreadsheet(props: Props) {
         workbookState={workbookState}
         canEdit={props.canEdit}
         revision={revision}
-        refresh={mutated}
+        refresh={refresh}
         onEditEnd={endEditing}
         onError={setError}
       />
@@ -453,9 +446,9 @@ export function Spreadsheet(props: Props) {
         workbookState={workbookState}
         canEdit={props.canEdit}
         revision={revision}
-        refresh={mutated}
+        refresh={refresh}
+        mutated={mutated}
         onEditEnd={endEditing}
-        onCanvas={setCanvas}
         onStartEditing={() => startEditing()}
         onContextMenu={(target) => {
           setMenuKind(target.kind);
@@ -467,6 +460,7 @@ export function Spreadsheet(props: Props) {
       <GridContextMenu
         at={menuAt()}
         actions={menuActions()}
+        shadowRoot={props.shadowRoot}
         onClose={() => {
           setMenuAt(null);
           focusRoot();
@@ -475,8 +469,8 @@ export function Spreadsheet(props: Props) {
 
       <Show when={error()}>
         <button
+          class="ic-error"
           type="button"
-          class="absolute right-4xs bottom-4xs z-50 max-w-sm rounded-lg bg-neutral-900 px-3xs py-4xs text-left text-neutral-10 text-size-small shadow-large"
           title={t("Dismiss")}
           onClick={() => setError(null)}
         >

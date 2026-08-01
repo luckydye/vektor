@@ -1,7 +1,42 @@
-/* The grid renderer reads its palette from these custom properties (see
+/* The spreadsheet's entire stylesheet. It is adopted into a shadow root (see
+ * SpreadsheetHost.tsx), so nothing here leaks out and — the reason for the
+ * isolation — none of the app's Tailwind reset reaches in. Preflight's
+ * `box-sizing: border-box` in particular breaks the grid: the renderer sizes the
+ * selection outline and the column headers as content-box, and under the reset
+ * every one of them came out short by its own border.
+ *
+ * Consequence: no Tailwind utilities are available in here. Every class the
+ * spreadsheet components use is defined below, in terms of the app's design
+ * tokens — those are custom properties on :root, and custom properties inherit
+ * straight through a shadow boundary, so theming and the space's brand colour
+ * still apply. */
+
+/* Scoped reset. Only what the components actually rely on; the point is to be
+ * predictable, not to reimplement preflight. */
+.ic-root *,
+.ic-root *::before,
+.ic-root *::after {
+  box-sizing: content-box;
+}
+
+.ic-root button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.ic-root canvas {
+  display: block;
+}
+
+/* The renderer reads its palette from these custom properties (see
  * `readThemeFromCSS` in grid/canvasUtil.ts), so pointing them at vektor's tokens
- * is what makes the spreadsheet follow the app's light/dark theme. The canvas
- * snapshots them when it is built; `Worksheet.tsx` rebuilds it on a theme change. */
+ * is what makes the spreadsheet follow the app's light/dark theme and its
+ * space's brand colour. The canvas snapshots them when it is built;
+ * `Worksheet.tsx` rebuilds it on a theme change. */
 .ic-root {
   --palette-common-white: var(--color-neutral-10);
   --palette-primary-main: var(--color-primary-600);
@@ -20,7 +55,12 @@
   --palette-sheet-header-selected-color: var(--color-neutral-900);
 
   --palette-sheet-outline-color: var(--color-primary-600);
-  --palette-sheet-outline-background-color: rgb(153 73 182 / 8%);
+  /* The selection wash follows the accent, whatever the space's brand is. */
+  --palette-sheet-outline-background-color: color-mix(
+    in srgb,
+    var(--color-primary-600) 8%,
+    transparent
+  );
   --palette-sheet-outline-editing-color: var(--color-primary-200);
   --palette-sheet-cell-array-structure-color: var(--color-primary-300);
   --palette-sheet-header-font: 500 11px var(--font-sans);
@@ -32,13 +72,172 @@
   min-height: 0;
   background: var(--color-neutral-10);
   color: var(--color-forground);
+  font-family: var(--font-sans);
   font-size: var(--text-size-small);
+  line-height: 1.35;
 }
 
 /* Focus lives on the root, which owns keyboard navigation; the ring would
  * otherwise trace the whole grid on every click. */
 .ic-root:focus {
   outline: none;
+}
+
+/* --- toolbar and formula bar -------------------------------------------- */
+
+.ic-toolbar,
+.ic-formula-bar {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  height: 32px;
+  border-bottom: 1px solid var(--color-neutral-100);
+}
+
+.ic-toolbar {
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.ic-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.ic-toolbar button:hover:not(:disabled) {
+  background: var(--color-neutral-50);
+}
+
+.ic-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* `#components/Icon.tsx` sizes itself with Tailwind arbitrary variants, which do
+ * not cross into here — so the wrapper and its svg are sized locally. Using the
+ * shared component anyway keeps the glyphs in step with the rest of the app. */
+.ic-root .icon {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.ic-root .icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The cell reference, in the box to the left of the formula input. */
+.ic-name-box {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  border-right: 1px solid var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  font-size: var(--text-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.ic-name-box .icon {
+  width: 12px;
+  height: 12px;
+  color: var(--color-neutral-400);
+}
+
+/* The `fx` marker between the reference and the formula itself. */
+.ic-fx {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--color-neutral-400);
+  font-size: var(--text-size-normal);
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  user-select: none;
+}
+
+.ic-formula-bar-input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+/* --- context menu ------------------------------------------------------- */
+
+.ic-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--color-neutral-100);
+  border-radius: 8px;
+  background: var(--color-background);
+  box-shadow: 0 10px 20px rgb(15 23 42 / 15%);
+}
+
+.ic-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 6px;
+  color: var(--color-forground);
+  font-size: var(--text-size-normal);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 100ms;
+}
+
+.ic-menu button:hover {
+  background: var(--color-primary-50);
+  transition: none;
+}
+
+.ic-menu button:active {
+  background: var(--color-primary-100);
+}
+
+.ic-menu li + li.ic-menu-separated {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-neutral-100);
+  padding-top: 4px;
+}
+
+.ic-menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* --- error toast -------------------------------------------------------- */
+
+.ic-error {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 50;
+  max-width: 24rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-10);
+  font-size: var(--text-size-small);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgb(15 23 42 / 15%);
 }
 
 /* --- worksheet ---------------------------------------------------------- */

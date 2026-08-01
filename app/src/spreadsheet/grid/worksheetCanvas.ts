@@ -49,6 +49,12 @@ export interface CanvasSettings {
   onRowHeightChanges: (sheet: number, row: number, height: number) => void;
   refresh: () => void;
   /**
+   * Local addition (see ./README.md): cell *contents* changed, as opposed to
+   * `refresh`, which only asks for a repaint. The host saves on this and must
+   * not save on the other, or selecting a cell would rewrite the document.
+   */
+  onContentChanged: () => void;
+  /**
    * Sub-cell scroll offset, in pixels. See `WorksheetCanvas.scrollOffset`.
    * Owned by the caller so that it survives the canvas being recreated.
    */
@@ -127,6 +133,9 @@ export class WorksheetCanvas {
 
   refresh: () => void;
 
+  /** See `CanvasSettings.onContentChanged`. */
+  onContentChanged: () => void;
+
   cells: TextProperties[];
   spills: Map<string, number>;
 
@@ -174,6 +183,7 @@ export class WorksheetCanvas {
     this.workbookState = options.workbookState;
     this.editor = options.elements.editor;
     this.refresh = options.refresh;
+    this.onContentChanged = options.onContentChanged;
     this.scrollOffset = options.scrollOffset ?? { x: 0, y: 0 };
 
     const rootRef = this.canvas.closest(".ic-root");
