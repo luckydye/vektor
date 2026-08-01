@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
+import { toHtmlIfMarkdown } from "#documents/content.ts";
 import {
   cellsToHtmlTable,
   htmlTableToCells,
@@ -169,6 +170,36 @@ describe("csvDocument", () => {
   });
 });
 
+describe("toHtmlIfMarkdown for csv documents", () => {
+  const csv = "a,b\n1,2\n";
+  const table = rowsToHtmlTable([
+    ["a", "b"],
+    ["1", "2"],
+  ]);
+
+  it("converts a csv upload", () => {
+    expect(toHtmlIfMarkdown(csv, "text/csv")).toBe(table);
+  });
+
+  it("converts csv text sent without a useful content type", () => {
+    // Creating a spreadsheet posts a JSON body; the content type describes the
+    // envelope, so the document's type is what says the body is CSV.
+    expect(toHtmlIfMarkdown(csv, "application/json", "csv")).toBe(table);
+    expect(toHtmlIfMarkdown(csv, null, "csv")).toBe(table);
+  });
+
+  it("leaves an html body alone even when the document is a csv", () => {
+    // Converting again would read the markup as CSV text and bury the whole
+    // table inside one escaped cell.
+    expect(toHtmlIfMarkdown(table, "text/html", "csv")).toBe(table);
+    expect(toHtmlIfMarkdown(table, "text/html", "csv")).not.toContain("&lt;table&gt;");
+  });
+
+  it("still converts markdown for a plain document", () => {
+    expect(toHtmlIfMarkdown("# Title", "text/markdown")).toContain("<h1>");
+  });
+});
+
 describe("sheetDoc", () => {
   it("round-trips the stored markup through a collaborative document", () => {
     const original = cellsToHtmlTable(
@@ -240,8 +271,7 @@ describe("sheetDoc", () => {
 
     // The row keeps its identity through the insert, so B's edit lands on the
     // row it was made on rather than on whatever ends up at that index.
-    const values = (doc: Y.Doc) =>
-      sheetRows(doc).map((row) => readCell(row, 0)?.v ?? "");
+    const values = (doc: Y.Doc) => sheetRows(doc).map((row) => readCell(row, 0)?.v ?? "");
     expect(values(peerA)).toEqual(["a", "inserted", "edited"]);
     expect(values(peerA)).toEqual(values(peerB));
   });
@@ -251,7 +281,9 @@ describe("sheetDoc", () => {
     const row = sheetRows(doc).get(0) as Y.Map<unknown>;
     expect([...row.keys()].sort()).toEqual(["0", "2"]);
     // It still comes back as a cell, so the table stays rectangular.
-    expect(htmlFromSheetDoc(doc)).toBe("<table><thead><tr><th>a</th><th></th><th>c</th></tr></thead><tbody></tbody></table>");
+    expect(htmlFromSheetDoc(doc)).toBe(
+      "<table><thead><tr><th>a</th><th></th><th>c</th></tr></thead><tbody></tbody></table>",
+    );
   });
 });
 

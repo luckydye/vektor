@@ -41,13 +41,17 @@ export function CellEditor(props: Props) {
   let mask: HTMLDivElement | undefined;
   const [cursor, setCursor] = createSignal(props.originalText.length);
 
-  const editingCell = createMemo(() => {
+  // Plain functions, not memos. `getEditingCell()` hands back the *same* object
+  // every time — it is mutated in place as the user types — so a memo over it
+  // compares equal and never propagates: the mask would render the first
+  // keystroke and then freeze while the textarea filled up behind it. Reading
+  // the revision on each call is what makes these track.
+  const editingCell = () => {
     props.revision();
     return props.workbookState.getEditingCell();
-  });
-  const text = createMemo(() =>
-    editingCell() ? props.workbookState.getEditingText() : props.originalText,
-  );
+  };
+  const text = () =>
+    editingCell() ? props.workbookState.getEditingText() : props.originalText;
 
   // Only rewrite the textarea (and snap the caret to the end) when the value
   // changed from the OUTSIDE — a different cell selected, or a new edit session.

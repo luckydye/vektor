@@ -94,6 +94,16 @@ function mergeStyle(base: Json, diff: Json): Json {
   return merged;
 }
 
+/** The width a column has when nobody has resized it. */
+export function defaultColumnWidth(): number {
+  return getDefaults().columnWidth;
+}
+
+/** The height a row has when nobody has resized it. */
+export function defaultRowHeight(): number {
+  return getDefaults().rowHeight;
+}
+
 function escapeTsvCell(value: string): string {
   return /["\t\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }

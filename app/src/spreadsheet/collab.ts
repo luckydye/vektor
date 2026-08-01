@@ -17,7 +17,11 @@ import type { Model } from "@ironcalc/wasm";
 // biome-ignore lint/suspicious/noExplicitAny: `observeDeep` is typed with `YEvent<any>[]`; narrowing it here would not type-check against yjs.
 import * as Y from "yjs";
 import type { TableCell, TableLayout } from "#documents/htmlTable.ts";
-import { readSheet } from "#spreadsheet/csvDocument.ts";
+import {
+  defaultColumnWidth,
+  defaultRowHeight,
+  readSheet,
+} from "#spreadsheet/csvDocument.ts";
 import {
   readCell,
   rowHeight,
@@ -159,10 +163,11 @@ export function connectSheet(options: Options): {
         if (event.target === columns) {
           for (const key of event.changes.keys.keys()) {
             const column = Number.parseInt(key, 10);
-            const width = columns.get(key);
-            if (Number.isInteger(column) && width !== undefined) {
-              model.setColumnsWidth(SHEET, FIRST + column, FIRST + column, width);
-            }
+            if (!Number.isInteger(column)) continue;
+            // A deleted key means "back to the default" — without this, a width
+            // could be widened everywhere but never narrowed again.
+            const width = columns.get(key) ?? defaultColumnWidth();
+            model.setColumnsWidth(SHEET, FIRST + column, FIRST + column, width);
           }
           continue;
         }
@@ -206,11 +211,15 @@ export function connectSheet(options: Options): {
       for (let column = 0; column < width; column++) {
         applyCell(rowIndex, column, readCell(row, column));
       }
-      const height = rowHeight(row);
-      if (height !== undefined) {
-        model.setRowsHeight(SHEET, FIRST + rowIndex, FIRST + rowIndex, height);
-      }
+      const height = rowHeight(row) ?? defaultRowHeight();
+      model.setRowsHeight(SHEET, FIRST + rowIndex, FIRST + rowIndex, height);
     });
+    // Sizes too: a rewrite that restored only the cells would leave the grid
+    // laid out the way this client happened to have it.
+    for (let column = 0; column < Math.max(width, clearColumns); column++) {
+      const stored = columns.get(String(column)) ?? defaultColumnWidth();
+      model.setColumnsWidth(SHEET, FIRST + column, FIRST + column, stored);
+    }
   };
 
   rows.observeDeep(onUpdate);
