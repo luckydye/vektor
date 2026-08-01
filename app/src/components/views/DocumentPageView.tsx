@@ -468,7 +468,7 @@ export function DocumentPageView(props: Props) {
                 <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
                   <div class={STICKY_HEADER_CLASS}>
                     <div>{breadcrumbs()}</div>
-                    <DocumentActions title={title()} />
+                    <DocumentActions title={title()} headerImage={headerImageSrc()} />
                   </div>
 
                   <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-xl print:px-0">
@@ -488,7 +488,7 @@ export function DocumentPageView(props: Props) {
               <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
                 <div class={`${STICKY_HEADER_CLASS} bg-neutral-10`}>
                   <div>{breadcrumbs()}</div>
-                  <DocumentActions title={title()} />
+                  <DocumentActions title={title()} headerImage={headerImageSrc()} />
                 </div>
 
                 <div class="mb-4 flex flex-col gap-xl px-xs md:flex-row md:items-start md:px-xl print:px-0">
@@ -527,7 +527,7 @@ export function DocumentPageView(props: Props) {
                   <Show when={isWorkflow()} fallback={<div>{breadcrumbs()}</div>}>
                     <div id="workflow-breadcrumb-slot" />
                   </Show>
-                  <DocumentActions title={title()} />
+                  <DocumentActions title={title()} headerImage={headerImageSrc()} />
                 </div>
 
                 {/* A spreadsheet carries its name in the breadcrumb instead: the
