@@ -10,6 +10,7 @@ import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
+import { documentTitle } from "#documents/title.ts";
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
@@ -60,11 +61,6 @@ function loadExpandedItems(): Set<string> {
 function saveExpandedItems(items: Set<string>) {
   if (typeof window === "undefined") return;
   localStorage.setItem("wiki-expanded-items", JSON.stringify([...items]));
-}
-
-function documentTitle(doc: DocumentWithProperties): string {
-  const title = doc.properties?.title;
-  return title ? propertyValueToText(title) : t("Untitled");
 }
 
 export function DocumentTree(props: Props) {

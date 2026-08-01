@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
@@ -356,6 +356,59 @@ export function decodeSearchCursor(cursor: string): { index: number } | null {
   }
 }
 
+/**
+ * How many ids one `IN (…)` carries. Search filters run over every accessible
+ * result, which can be the whole space, and SQLite binds one parameter per id.
+ */
+const ID_BATCH = 500;
+
+function batches<T>(items: T[]): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < items.length; index += ID_BATCH) {
+    result.push(items.slice(index, index + ID_BATCH));
+  }
+  return result;
+}
+
+/** Every document's properties in one read, grouped by document. */
+async function readProperties(
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  documentIds: string[],
+): Promise<Map<string, Record<string, DocumentPropertyValue>>> {
+  const byDocument = new Map<string, Record<string, DocumentPropertyValue>>();
+
+  for (const ids of batches(documentIds)) {
+    const rows = await db
+      .select()
+      .from(property)
+      .where(inArray(property.documentId, ids))
+      .all();
+
+    for (const row of rows) {
+      const properties = byDocument.get(row.documentId) ?? {};
+      properties[row.key] = parseStoredPropertyValue(row.value);
+      byDocument.set(row.documentId, properties);
+    }
+  }
+
+  return byDocument;
+}
+
+/** The document rows behind a page of results, keyed by id. */
+async function readDocuments(
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  documentIds: string[],
+): Promise<Map<string, typeof document.$inferSelect>> {
+  const byId = new Map<string, typeof document.$inferSelect>();
+
+  for (const ids of batches(documentIds)) {
+    const rows = await db.select().from(document).where(inArray(document.id, ids)).all();
+    for (const row of rows) byId.set(row.id, row);
+  }
+
+  return byId;
+}
+
 export async function searchDocuments(
   spaceId: string,
   userId: string | null,
@@ -673,6 +726,10 @@ export async function searchDocuments(
   const hasPropertyOrTypeFilters = typeFilters.length > 0 || propertyFilters.length > 0;
   if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
+    const propertiesByDocument = await readProperties(
+      db,
+      accessibleResults.filter((row) => !row.file).map((row) => row.id),
+    );
 
     for (const row of accessibleResults) {
       if (row.file) {
@@ -682,18 +739,7 @@ export async function searchDocuments(
         continue;
       }
 
-      const props = await db
-        .select()
-        .from(property)
-        .where(eq(property.documentId, row.id))
-        .all();
-
-      const properties: Record<string, DocumentPropertyValue> = {};
-      for (const prop of props) {
-        properties[prop.key] = parseStoredPropertyValue(prop.value);
-      }
-
-      if (matchesFilters(properties, row.type)) {
+      if (matchesFilters(propertiesByDocument.get(row.id) ?? {}, row.type)) {
         filteredResults.push(row);
       }
     }
@@ -714,6 +760,11 @@ export async function searchDocuments(
     startIndex + limit < total ? encodeSearchCursor(startIndex + limit) : null;
 
   const results: SearchResult[] = [];
+  const pageDocumentIds = rawResults.filter((row) => !row.file).map((row) => row.id);
+  const [propertiesByDocument, documentsById] = await Promise.all([
+    readProperties(db, pageDocumentIds),
+    readDocuments(db, pageDocumentIds),
+  ]);
 
   for (const row of rawResults) {
     if (row.file) {
@@ -725,18 +776,8 @@ export async function searchDocuments(
       continue;
     }
 
-    const props = await db
-      .select()
-      .from(property)
-      .where(eq(property.documentId, row.id))
-      .all();
-
-    const properties: Record<string, DocumentPropertyValue> = {};
-    for (const prop of props) {
-      properties[prop.key] = parseStoredPropertyValue(prop.value);
-    }
-
-    const doc = await db.select().from(document).where(eq(document.id, row.id)).get();
+    const properties = propertiesByDocument.get(row.id) ?? {};
+    const doc = documentsById.get(row.id);
 
     results.push({
       id: row.id,

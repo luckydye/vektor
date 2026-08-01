@@ -5,6 +5,7 @@ import { twMerge } from "tailwind-merge";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { history } from "#utils/history.ts";
@@ -50,11 +51,6 @@ function resultDescription(result: Result): string | undefined {
   if (result.type === "action") return result.data.description;
   if (result.type === "create") return "Open a new document with this title";
   return undefined;
-}
-
-function documentTitle(doc: Doc): string {
-  const title = doc.properties?.title;
-  return title ? propertyValueToText(title) : "Untitled Document";
 }
 
 export function CommandPalatte() {

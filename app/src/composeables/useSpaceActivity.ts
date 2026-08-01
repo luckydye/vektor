@@ -1,9 +1,11 @@
 import { createMemo } from "solid-js";
 import { type AuditLog, api } from "#api/client.ts";
+import { documentTitle } from "#documents/title.ts";
 import { t } from "#utils/lang.ts";
 import { userDisplayName } from "#utils/userDisplay.ts";
 import { spacePath } from "#utils/utils.ts";
 import { access, type MaybeAccessor, useQuery } from "./query.ts";
+import { useDocuments } from "./useDocuments.ts";
 import { useSpace } from "./useSpace.ts";
 
 interface ActivityUser {
@@ -13,25 +15,22 @@ interface ActivityUser {
   image?: string | null;
 }
 
-/** Only the slug is read — it is both the label and the href segment. */
-interface ActivityDocument {
-  slug: string;
-}
-
 /**
  * A space's recent audit log, resolved for display.
  *
  * Audit entries reference users and documents by id only, so this fetches the
- * space's members alongside the log and looks up each referenced document,
- * then hands back resolvers rather than raw maps. Document lookups are
- * best-effort: one that fails (deleted, or not visible to this user) leaves
- * that entry rendering a placeholder instead of failing the whole feed.
+ * space's members alongside the log and hands back resolvers rather than raw
+ * maps. Documents are *not* fetched: a link needs only the id, and the title
+ * comes from the space's document listing, which the shell has already loaded.
+ * An id missing from that listing — deleted, or not visible to this user —
+ * renders a placeholder instead of failing the feed.
  */
 export function useSpaceActivity(
   spaceId: MaybeAccessor<string>,
   limit: MaybeAccessor<number> = 10,
 ) {
   const { currentSpace } = useSpace();
+  const { documents } = useDocuments();
 
   const {
     data,
@@ -53,25 +52,13 @@ export function useSpaceActivity(
         if (member.user) usersMap.set(member.user.id, member.user);
       }
 
-      const docIds = new Set<string>();
-      for (const activity of activities) {
-        if (activity.docId && activity.docId !== id) docIds.add(activity.docId);
-      }
-
-      const docsMap = new Map<string, ActivityDocument>();
-      await Promise.all(
-        Array.from(docIds).map(async (docId) => {
-          try {
-            docsMap.set(docId, await api.document.get(id, docId));
-          } catch {
-            // best-effort
-          }
-        }),
-      );
-
-      return { activities, usersMap, docsMap };
+      return { activities, usersMap };
     },
   });
+
+  const documentsById = createMemo(
+    () => new Map(documents().map((document) => [document.id, document])),
+  );
 
   function getUser(userId?: string | null): ActivityUser | undefined {
     if (!userId) return undefined;
@@ -81,14 +68,16 @@ export function useSpaceActivity(
   /** Entries against the space itself are shown as its home page. */
   function getDocumentName(docId: string): string {
     if (docId === access(spaceId)) return t("Home");
-    return data()?.docsMap.get(docId)?.slug ?? t("Unknown document");
+    const document = documentsById().get(docId);
+    return document ? documentTitle(document) : t("Unknown document");
   }
 
-  function getDocumentHref(docId: string): string | undefined {
+  function getDocumentHref(docId: string): string {
     if (docId === access(spaceId)) return spacePath(currentSpace()?.slug, "/");
-    const doc = data()?.docsMap.get(docId);
-    if (!doc?.slug) return undefined;
-    return spacePath(currentSpace()?.slug, `/doc/${doc.slug}`);
+    // The id addresses the document as well as its slug does: the API resolves
+    // either, and the page redirects an id to the canonical slug URL. Linking
+    // by id keeps the feed from having to know a document to link to it.
+    return spacePath(currentSpace()?.slug, `/doc/${docId}`);
   }
 
   return {
