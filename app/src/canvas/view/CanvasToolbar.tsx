@@ -19,7 +19,9 @@ import type { CanvasChrome } from "./chrome.ts";
  * discrete actions, so it re-renders when those change rather than every frame.
  */
 export function CanvasToolbar(props: { chrome: CanvasChrome }) {
-  const { view, frame, run } = props.chrome;
+  // `chrome` is one object built in Canvas.tsx and never replaced, so reading it
+  // once at setup is the same as reading it per use.
+  const { view, frame, run } = props.chrome; // solid-reactivity-ok: stable object
 
   const activeTool = frame(() => view()?.state.activeTool);
   const canUndo = frame(() => view()?.state.canUndo ?? false);

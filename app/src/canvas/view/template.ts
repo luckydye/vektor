@@ -10,18 +10,12 @@ import {
   copyIcon,
   cutIcon,
   deleteElementIcon,
-  fitViewToElementsIcon,
   lockElementIcon,
   pasteIcon,
-  redoIcon,
-  shapesToolIcon,
-  undoIcon,
   unlockElementIcon,
   uploadFileIcon,
 } from "#assets/icons.ts";
 import type { CanvasView } from "#canvas/CanvasController.ts";
-import { DRAW_STROKE_MODES, PEN_COLORS } from "#canvas/extensions/drawing.ts";
-import { SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
 import type { CanvasShape } from "#canvas/extensions/types.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
@@ -56,149 +50,6 @@ const svgIcon = (markup: string, className = "svg-icon") =>
 
 /** Keeps chrome clicks away from the viewport marquee. */
 const stopPointer = (event: Event) => event.stopPropagation();
-
-function toolPropertiesBar(view: CanvasView) {
-  if (!view.hasToolProperties()) return nothing;
-  const drawing = view.state.activeTool === "draw";
-  const palettes = view.activeToolColorPalettes();
-
-  return html`
-    <div class="canvas-properties-bar">
-      <div class="canvas-tool-properties" @pointerdown=${stopPointer}>
-        ${
-          drawing
-            ? html`<span class="canvas-draw-modes" aria-label=${t("Draw mode")}>
-                ${DRAW_STROKE_MODES.map(
-                  (mode) => html`
-                    <button
-                      type="button"
-                      class=${classMap({
-                        "canvas-draw-mode": true,
-                        active: view.activeDrawStrokeMode === mode.id,
-                      })}
-                      aria-label=${t(mode.label)}
-                      aria-pressed=${view.activeDrawStrokeMode === mode.id}
-                      title=${t(mode.label)}
-                      @click=${() => view.setActiveDrawStrokeMode(mode.id)}
-                    >
-                      ${svgIcon(mode.icon, "svg-icon canvas-draw-mode-icon")}
-                    </button>
-                  `,
-                )}
-              </span>
-              <span class="canvas-divider"></span>`
-            : nothing
-        }
-        ${palettes.map(
-          (cp) => html`
-            <span class="canvas-note-colors" aria-label=${`${t(cp.label)} color`}>
-              ${cp.palette.map(
-                (color) => html`
-                  <button
-                    type="button"
-                    class=${classMap({
-                      "canvas-color-swatch": true,
-                      active: view.state.activeColors[cp.type] === color,
-                    })}
-                    style=${styleMap({ background: color })}
-                    aria-label=${`${t(cp.label)} color ${color}`}
-                    @click=${() => view.setActiveElementColor(cp.type, color)}
-                  ></button>
-                `,
-              )}
-            </span>
-          `,
-        )}
-        ${drawing && palettes.length > 0 ? html`<span class="canvas-divider"></span>` : nothing}
-        ${
-          drawing
-            ? html`<span class="canvas-note-colors" aria-label=${t("Pen color")}>
-                ${PEN_COLORS.map(
-                  (color) => html`
-                    <button
-                      type="button"
-                      class=${classMap({
-                        "canvas-color-swatch": true,
-                        active: view.state.penColor === color,
-                      })}
-                      style=${styleMap({ background: color })}
-                      aria-label=${`${t("Set pen color")} ${color}`}
-                      @click=${() => view.setActivePenColor(color)}
-                    ></button>
-                  `,
-                )}
-              </span>`
-            : nothing
-        }
-      </div>
-    </div>
-  `;
-}
-
-function propertiesSidebar(view: CanvasView) {
-  if (!view.hasSelectedElementProperties()) return nothing;
-  const shapePalette = view.selectedShapeColorPalette();
-  const selectedColor = view.selectedShape()?.style.color;
-
-  return html`
-    <aside
-      class="canvas-properties-sidebar"
-      aria-label=${t("Appearance")}
-      @pointerdown=${stopPointer}
-    >
-      <h2 class="canvas-properties-sidebar-title">${t("Appearance")}</h2>
-      ${
-        shapePalette
-          ? html`<section
-              class="canvas-property-section"
-              aria-label=${`${t(shapePalette.label)} color`}
-            >
-              <span class="canvas-property-label">${t("Color")}</span>
-              <div class="canvas-property-colors">
-                ${shapePalette.palette.map(
-                  (color) => html`
-                    <button
-                      type="button"
-                      class=${classMap({
-                        "canvas-color-swatch": true,
-                        active: selectedColor === color,
-                      })}
-                      style=${styleMap({ background: color })}
-                      aria-label=${`${t(shapePalette.label)} color ${color}`}
-                      @click=${() => view.setSelectedElementColor(shapePalette.type, color)}
-                    ></button>
-                  `,
-                )}
-              </div>
-            </section>`
-          : nothing
-      }
-      ${
-        view.state.selectedStrokeIds.size > 0
-          ? html`<section class="canvas-property-section" aria-label=${t("Pen color")}>
-              <span class="canvas-property-label">${t("Color")}</span>
-              <div class="canvas-property-colors">
-                ${PEN_COLORS.map(
-                  (color) => html`
-                    <button
-                      type="button"
-                      class=${classMap({
-                        "canvas-color-swatch": true,
-                        active: view.selectedStrokeColor() === color,
-                      })}
-                      style=${styleMap({ background: color })}
-                      aria-label=${`${t("Set pen color")} ${color}`}
-                      @click=${() => view.setSelectedStrokeColor(color)}
-                    ></button>
-                  `,
-                )}
-              </div>
-            </section>`
-          : nothing
-      }
-    </aside>
-  `;
-}
 
 /**
  * One shape article.
@@ -477,8 +328,6 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
 
   return html`
     <div class=${classMap({ "canvas-root": true, "is-dark": view.state.isDarkMode })}>
-      ${toolPropertiesBar(view)} ${propertiesSidebar(view)}
-
       <div
         class="canvas-viewport"
         tabindex="-1"

@@ -27,9 +27,7 @@ import type {
   CanvasElementExtension,
   CanvasFrame,
   CanvasHitTestHelpers,
-  CanvasInputKind,
   CanvasPaintHelpers,
-  CanvasPoint,
   CanvasPointerGestureCancelReason,
   CanvasPointerGestureEvent,
   CanvasPointerGestureHandlers,
@@ -93,17 +91,6 @@ import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import {
-  CANVAS_CLIPBOARD_MIME,
-  type CanvasClipboard,
-  canvasClipboardToDocumentHtml,
-  canvasClipboardToPlainText,
-  createCanvasClipboard,
-  documentClipboardToCanvasShapes,
-  hasActiveTextSelection,
-  readSystemClipboard,
-  serializeCanvasClipboard,
-} from "#utils/clipboard.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import {
   buildTransform,

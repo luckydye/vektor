@@ -18,7 +18,9 @@ import type {
   DocumentPresenceState,
 } from "#editor/collaboration.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
+import { CanvasProperties } from "./view/CanvasProperties.tsx";
 import { CanvasToolbar } from "./view/CanvasToolbar.tsx";
+import { CanvasToolProperties } from "./view/CanvasToolProperties.tsx";
 import { createCanvasChrome } from "./view/chrome.ts";
 // Side-effect import: the module registers <vektor-canvas>. Importing only the
 // type erases the statement at build time, and then the element never upgrades
@@ -139,6 +141,8 @@ export function Canvas(props: Props) {
   // viewport inside it.
   return (
     <div classList={{ "canvas-root": true, "is-dark": isDark() }}>
+      <CanvasToolProperties chrome={chrome} />
+      <CanvasProperties chrome={chrome} />
       <CanvasToolbar chrome={chrome} />
       {/* A static tag, not `<Dynamic>`: the element name is fixed, and Dynamic
           would re-create it on every render of the parent. */}

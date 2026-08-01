@@ -234,6 +234,42 @@ test("undo and redo buttons follow the document", async ({ page }) => {
   await expect.poll(() => noteLeft(page)).toBeLessThan(grab.x);
 });
 
+test("shows tool properties only while a tool has them", async ({ page }) => {
+  await openCanvas(page);
+  const bar = page.locator(".canvas-tool-properties");
+  await expect(bar, "the select tool configures nothing").toHaveCount(0);
+
+  await page.keyboard.press("d");
+  await expect(bar).toBeVisible();
+  await expect(page.locator(".canvas-draw-mode")).not.toHaveCount(0);
+
+  const swatches = page.locator(".canvas-tool-properties .canvas-color-swatch");
+  await swatches.nth(2).click();
+  await expect(
+    page.locator(".canvas-tool-properties .canvas-color-swatch.active"),
+    "picking a colour must mark it active",
+  ).toHaveCount(1);
+
+  await page.keyboard.press("v");
+  await expect(bar).toHaveCount(0);
+});
+
+test("shows the appearance panel only while something is selected", async ({ page }) => {
+  await openCanvas(page);
+  const sidebar = page.locator(".canvas-properties-sidebar");
+  await expect(sidebar).toHaveCount(0);
+
+  const grab = await grabPoint(page);
+  await page.mouse.click(grab.x, grab.y);
+
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.locator(".canvas-color-swatch")).not.toHaveCount(0);
+
+  const box = await viewport(page);
+  await page.mouse.click(box.x + box.width - 40, box.y + 40);
+  await expect(sidebar, "clearing the selection must hide it").toHaveCount(0);
+});
+
 test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) => {
   await openCanvas(page);
   const shapes = page.locator("vektor-canvas .canvas-shape");
