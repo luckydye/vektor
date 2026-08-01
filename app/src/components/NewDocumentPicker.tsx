@@ -1,13 +1,19 @@
 import { useLocation, useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "#assets/icons.ts";
+import {
+  boltIcon,
+  canvasIcon,
+  databaseIcon,
+  documentIcon,
+  tableIcon,
+} from "#assets/icons.ts";
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import { useSpace } from "#composeables/useSpace.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
-type DocumentType = "document" | "canvas" | "workflow" | "database";
+type DocumentType = "document" | "canvas" | "workflow" | "database" | "csv";
 
 const documentOptions: Array<{
   type: DocumentType;
@@ -42,6 +48,13 @@ const documentOptions: Array<{
     description: "Organize and manage data in structured tables.",
     icon: databaseIcon,
   },
+  {
+    // The document type stays "csv" — "Spreadsheet" is the product name for it.
+    type: "csv",
+    title: "Spreadsheet",
+    description: "Lay out numbers and records in rows and columns.",
+    icon: tableIcon,
+  },
 ];
 
 export function NewDocumentPicker() {
@@ -51,11 +64,15 @@ export function NewDocumentPicker() {
   const [visible, setVisible] = createSignal(true);
 
   const availableDocumentOptions = createMemo(() =>
-    documentOptions.filter(
-      (option) =>
-        option.type !== "workflow" ||
-        isWorkflowCreationEnabled(currentSpace()?.preferences),
-    ),
+    documentOptions.filter((option) => {
+      // Spreadsheets are still read-only once created, so keep them out of
+      // production until csv documents can be edited or imported into.
+      if (option.type === "csv") return import.meta.env.DEV;
+      if (option.type === "workflow") {
+        return isWorkflowCreationEnabled(currentSpace()?.preferences);
+      }
+      return true;
+    }),
   );
 
   function focusEditor() {
