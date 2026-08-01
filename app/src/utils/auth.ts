@@ -147,7 +147,7 @@ export function spaceAccessToViewer(access: SpaceAccess): AclViewer | null {
  * // Gate + identity for ACL filtering:
  * const access = await authenticateSpaceAccess(context, spaceId, "viewer");
  * const viewer = spaceAccessToViewer(access);
- * const docs = await listDocuments(spaceId, 50, undefined, viewer);
+ * const docs = await listDocuments(spaceId, { limit: 50, viewer });
  * ```
  */
 export async function authenticateSpaceAccess(

@@ -107,6 +107,9 @@ export function Search(props: Props) {
       await api.documents.get(props.spaceId, {
         limit: documentsPageSize,
         cursor: pageParam,
+        // The browse list stands in for search with no query, so it lists
+        // uploads next to documents the way a search result set does.
+        includeFiles: true,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     initialPageParam: undefined,

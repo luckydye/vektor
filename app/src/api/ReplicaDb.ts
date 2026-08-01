@@ -242,6 +242,9 @@ export class ReplicaDb {
   private backend: ReplicaBackend | null = null;
   private scope: string | null = null;
   private readonly subscriptions = new Set<Subscription>();
+  /** Subscriptions a write has touched, awaiting the coalesced notification. */
+  private readonly pending = new Set<Subscription>();
+  private notificationScheduled = false;
   private writeChain: Promise<unknown> = Promise.resolve();
 
   /**
@@ -374,6 +377,11 @@ export class ReplicaDb {
    * Re-run `read` whenever any of `stores` changes in `spaceId` (or in any
    * space when it is null). The callback does not fire on subscription;
    * callers hydrate with a direct read first.
+   *
+   * One read runs at a time. `read` answers a whole query — a space's document
+   * list, say — so writes landing while one is in flight would otherwise each
+   * start their own pass over the same rows, and deliver the same answer
+   * several times over. They collapse into a single re-read instead.
    */
   subscribe<T>(
     stores: ReplicaStore[],
@@ -382,22 +390,39 @@ export class ReplicaDb {
     callback: (value: T) => void,
   ): () => void {
     let disposed = false;
+    let reading = false;
+    let missedWrite = false;
+
+    const runRead = () => {
+      if (reading) {
+        missedWrite = true;
+        return;
+      }
+      reading = true;
+      void read()
+        .then((value) => {
+          if (!disposed) callback(value);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          reading = false;
+          if (!missedWrite || disposed) return;
+          missedWrite = false;
+          runRead();
+        });
+    };
+
     const subscription: Subscription = {
       stores: new Set(stores),
       spaceId,
-      listener: () => {
-        void read()
-          .then((value) => {
-            if (!disposed) callback(value);
-          })
-          .catch(() => undefined);
-      },
+      listener: runRead,
     };
 
     this.subscriptions.add(subscription);
     return () => {
       disposed = true;
       this.subscriptions.delete(subscription);
+      this.pending.delete(subscription);
     };
   }
 
@@ -438,9 +463,27 @@ export class ReplicaDb {
       }
       for (const store of stores) {
         if (!subscription.stores.has(store)) continue;
-        subscription.listener();
+        this.pending.add(subscription);
         break;
       }
+    }
+
+    // A single flush can touch several stores one subscription watches, and a
+    // response can produce several flushes. Each notification re-reads the
+    // subscribed query in full and re-renders whatever draws it, so matched
+    // subscriptions are collected and fired once, after the writes settle.
+    if (this.pending.size > 0 && !this.notificationScheduled) {
+      this.notificationScheduled = true;
+      queueMicrotask(() => this.drainNotifications());
+    }
+  }
+
+  private drainNotifications(): void {
+    this.notificationScheduled = false;
+    const due = [...this.pending];
+    this.pending.clear();
+    for (const subscription of due) {
+      if (this.subscriptions.has(subscription)) subscription.listener();
     }
   }
 }

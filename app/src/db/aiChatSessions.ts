@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
 import { aiChatSession } from "./schema/space.ts";
 
@@ -11,6 +11,23 @@ export type StoredAIChatSession = {
   messages: unknown[];
   conversationHistory: unknown[];
   shellSnapshot: string | null;
+};
+
+/**
+ * A session as the picker lists it: what a row renders, and nothing else.
+ *
+ * The transcript is the bulk of a session and only the resumed one needs it —
+ * a space with a long chat history otherwise ships megabytes of messages to
+ * draw a list of titles.
+ */
+export type AIChatSessionSummary = {
+  id: string;
+  title: string;
+  spaceId: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Role of the last turn: "user" means the session is awaiting a reply. */
+  lastMessageRole: string | null;
 };
 
 export type AIChatSessionInput = {
@@ -47,18 +64,35 @@ function toStoredAIChatSession(
   };
 }
 
-export async function listAIChatSessions(
+export async function listAIChatSessionSummaries(
   spaceId: string,
   userId: string,
-): Promise<StoredAIChatSession[]> {
+): Promise<AIChatSessionSummary[]> {
   const db = await getSpaceDb(spaceId);
   const rows = await db
-    .select()
+    .select({
+      id: aiChatSession.id,
+      title: aiChatSession.title,
+      createdAt: aiChatSession.createdAt,
+      updatedAt: aiChatSession.updatedAt,
+      // The status dot needs the last turn's role, not the turns. SQLite reads
+      // it out of the stored JSON so the column never leaves the database.
+      lastMessageRole: sql<
+        string | null
+      >`json_extract(${aiChatSession.conversationHistory}, '$[#-1].role')`,
+    })
     .from(aiChatSession)
     .where(eq(aiChatSession.createdBy, userId))
     .orderBy(desc(aiChatSession.updatedAt));
 
-  return rows.map((row) => toStoredAIChatSession(spaceId, row));
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    spaceId,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+    lastMessageRole: row.lastMessageRole ?? null,
+  }));
 }
 
 export async function getAIChatSession(

@@ -1,5 +1,5 @@
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { listAIChatSessions } from "#db/aiChatSessions.ts";
+import { listAIChatSessionSummaries } from "#db/aiChatSessions.ts";
 import {
   jsonResponse,
   requireParam,
@@ -15,6 +15,6 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const sessions = await listAIChatSessions(spaceId, user.id);
+    const sessions = await listAIChatSessionSummaries(spaceId, user.id);
     return jsonResponse({ sessions });
   }, "Failed to list AI chat sessions");

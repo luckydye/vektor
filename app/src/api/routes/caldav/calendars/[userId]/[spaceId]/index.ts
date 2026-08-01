@@ -25,9 +25,11 @@ export const ALL: ApiRouteHandler = async (context) => {
   if (method === "REPORT") {
     // Filter by per-document ACL so the calendar feed doesn't expose
     // documents the authenticated user cannot read.
-    const { documents } = await listDocuments(spaceId, undefined, undefined, {
-      userId: caldavUser.id,
-      userGroups: await getUserGroups(caldavUser.id),
+    const { documents } = await listDocuments(spaceId, {
+      viewer: {
+        userId: caldavUser.id,
+        userGroups: await getUserGroups(caldavUser.id),
+      },
     });
 
     const eventEntries = documents
@@ -66,9 +68,11 @@ ${eventEntries}
     // Scope the collection tag to the documents this user can actually read,
     // matching the REPORT feed — otherwise the ctag leaks the space-wide
     // document count and desyncs from the filtered event list.
-    const { total } = await listDocuments(spaceId, undefined, undefined, {
-      userId: caldavUser.id,
-      userGroups: await getUserGroups(caldavUser.id),
+    const { total } = await listDocuments(spaceId, {
+      viewer: {
+        userId: caldavUser.id,
+        userGroups: await getUserGroups(caldavUser.id),
+      },
     });
 
     const body = `<?xml version="1.0" encoding="utf-8" ?>

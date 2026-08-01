@@ -93,6 +93,25 @@ function byId<T extends { id: string }>(records: T[]): Map<string, T> {
   return new Map(records.map((record) => [record.id, record]));
 }
 
+/**
+ * Property rows grouped by the document they belong to.
+ *
+ * Built once per read: a space's rows are held in one flat store, and picking
+ * each document's properties out of it by scanning costs one pass over every
+ * property in the space, per document.
+ */
+function propertiesByDocument(
+  properties: PropertyRecord[],
+): Map<string, PropertyRecord[]> {
+  const grouped = new Map<string, PropertyRecord[]>();
+  for (const property of properties) {
+    const existing = grouped.get(property.documentId);
+    if (existing) existing.push(property);
+    else grouped.set(property.documentId, [property]);
+  }
+  return grouped;
+}
+
 /** Rows in the order the server listed them, skipping ids we no longer hold. */
 function inCollectionOrder<T extends { id: string }>(
   collection: CollectionRecord | null,
@@ -303,13 +322,15 @@ export class ReplicaCache {
     if (collectionRecords.some((collection) => collection === null)) return undefined;
 
     const [documents, properties] = await this.documentRows(spaceId);
+    const grouped = propertiesByDocument(properties);
+    // Built once and shared: each category is an ordering over the same rows.
+    const all = documents.map((record) =>
+      this.toDocument(record, grouped.get(record.id) ?? []),
+    );
+
     const result: Record<string, DocumentWithProperties[]> = {};
     slugs.forEach((slug, index) => {
-      result[slug] =
-        inCollectionOrder(
-          collectionRecords[index],
-          documents.map((record) => this.toDocument(record, properties)),
-        ) ?? [];
+      result[slug] = inCollectionOrder(collectionRecords[index], all) ?? [];
     });
     return result;
   }
@@ -749,6 +770,7 @@ export class ReplicaCache {
     return { store: replicaStores.space, put: { ...space, spaceId: ROOT_SPACE } };
   }
 
+  /** `properties` are this document's own rows, not the space's. */
   private toDocument(
     record: DocumentRecord,
     properties: PropertyRecord[],
@@ -759,9 +781,7 @@ export class ReplicaCache {
       // A listing reports an absent body as empty, and so do we.
       content: fields.content ?? "",
       properties: Object.fromEntries(
-        properties
-          .filter((property) => property.documentId === record.id)
-          .map((property) => [property.key, property.value]),
+        properties.map((property) => [property.key, property.value]),
       ),
     };
   }
@@ -780,9 +800,10 @@ export class ReplicaCache {
     collection: CollectionRecord,
   ): Promise<DocumentWithProperties[] | undefined> {
     const [documents, properties] = await this.documentRows(spaceId);
+    const grouped = propertiesByDocument(properties);
     return inCollectionOrder(
       collection,
-      documents.map((record) => this.toDocument(record, properties)),
+      documents.map((record) => this.toDocument(record, grouped.get(record.id) ?? [])),
     );
   }
 
@@ -821,9 +842,8 @@ export class ReplicaCache {
     const stored = byId(
       await this.db.getSpace<DocumentRecord>(replicaStores.document, spaceId),
     );
-    const storedProperties = await this.db.getSpace<PropertyRecord>(
-      replicaStores.property,
-      spaceId,
+    const storedProperties = propertiesByDocument(
+      await this.db.getSpace<PropertyRecord>(replicaStores.property, spaceId),
     );
     const writes: ReplicaWrite[] = [];
 
@@ -848,8 +868,8 @@ export class ReplicaCache {
       }
       // A property the response no longer carries has been deleted.
       const keys = new Set(Object.keys(properties ?? {}));
-      for (const property of storedProperties) {
-        if (property.documentId !== document.id || keys.has(property.key)) continue;
+      for (const property of storedProperties.get(document.id) ?? []) {
+        if (keys.has(property.key)) continue;
         writes.push({
           store: replicaStores.property,
           remove: [spaceId, document.id, property.key],

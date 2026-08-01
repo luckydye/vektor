@@ -1,19 +1,19 @@
 import { For, Show } from "solid-js";
 import { activityIcon, addIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
-import type { ChatSession } from "#composeables/useChatSessions.ts";
+import type { ChatSessionSummary } from "#composeables/useChatSessions.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
 
 interface Props {
-  sessions: ChatSession[];
+  sessions: ChatSessionSummary[];
   currentSessionId: string | null;
   /** Picker replaces the transcript; the toolbar shows when it is closed. */
   showPicker: boolean;
   isGenerating: boolean;
-  getSessionStatus: (session: ChatSession) => string;
+  getSessionStatus: (session: ChatSessionSummary) => string;
   onUpdateShowPicker?: (value: boolean) => void;
   onNewChat?: () => void;
-  onResume?: (session: ChatSession) => void;
-  onRemove?: (session: ChatSession) => void;
+  onResume?: (session: ChatSessionSummary) => void;
+  onRemove?: (session: ChatSessionSummary) => void;
 }
 
 export function AIChatSessions(props: Props) {

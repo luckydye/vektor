@@ -36,6 +36,15 @@ const RESULT_ICONS: Record<Result["type"], string> = {
   create: newDocumentIcon,
 };
 
+/**
+ * How many documents the list may show at once. Filtering runs over the whole
+ * space first, so typing still reaches every document; this only bounds what
+ * gets built into the DOM. A space with a few hundred documents otherwise
+ * renders a few hundred rows — each one a custom element with `innerHTML`
+ * icons — every time the document list changes.
+ */
+const MAX_DOCUMENT_RESULTS = 50;
+
 function resultLabel(result: Result): string {
   if (result.type === "document") return documentTitle(result.data);
   if (result.type === "action") return result.data.title || result.id;
@@ -65,10 +74,19 @@ export function CommandPalatte() {
   let searchInput: HTMLInputElement | undefined;
   let resultsContainer: HTMLDivElement | undefined;
 
+  const lastVisitedByUrl = createMemo(
+    () => new Map(historyEntries().map((entry) => [entry.url, entry.lastVisited])),
+  );
+
   const getLastVisited = (doc: Doc) =>
-    historyEntries().find((h) => h.url === `/doc/${doc.slug}`)?.lastVisited ?? null;
+    lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
 
   const filteredResults = createMemo<Result[]>(() => {
+    // Nothing is visible while the palette is closed, and the document list it
+    // renders changes on every cache write. Deriving it here keeps those writes
+    // from rebuilding a hidden list.
+    if (!isOpen()) return [];
+
     const typed = searchQuery().trim();
     const query = typed.toLowerCase();
     const results: Result[] = [];
@@ -85,16 +103,18 @@ export function CommandPalatte() {
     }
 
     // Most recently visited first, then everything never visited.
+    const visited = lastVisitedByUrl();
     const sorted = [...docs].sort((a: Doc, b: Doc) => {
-      const aHistory = historyEntries().find((e) => e.url === `/doc/${a.slug}`);
-      const bHistory = historyEntries().find((e) => e.url === `/doc/${b.slug}`);
-      if (aHistory && bHistory) return bHistory.lastVisited - aHistory.lastVisited;
-      if (aHistory) return -1;
-      if (bHistory) return 1;
+      const aVisited = visited.get(`/doc/${a.slug}`);
+      const bVisited = visited.get(`/doc/${b.slug}`);
+      if (aVisited !== undefined && bVisited !== undefined) return bVisited - aVisited;
+      if (aVisited !== undefined) return -1;
+      if (bVisited !== undefined) return 1;
       return 0;
     });
 
-    for (const doc of sorted) results.push({ type: "document", data: doc });
+    for (const doc of sorted.slice(0, MAX_DOCUMENT_RESULTS))
+      results.push({ type: "document", data: doc });
 
     for (const [id, action] of Actions.entries()) {
       if (id === "ui:toggle:palatte") continue;
@@ -246,7 +266,7 @@ export function CommandPalatte() {
           </div>
 
           <div ref={resultsContainer} class="max-h-[400px] overflow-y-auto py-1">
-            <Show when={filteredResults().length === 0}>
+            <Show when={isOpen() && filteredResults().length === 0}>
               <div class="px-4 py-10 text-center">
                 <p class="text-neutral text-size-medium">No results found</p>
               </div>

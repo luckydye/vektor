@@ -495,6 +495,16 @@ export interface AIChatSession {
   shellSnapshot?: string | null;
 }
 
+/** A session as the picker lists it — see `AIChatSessionSummary` on the server. */
+export interface AIChatSessionListEntry {
+  id: string;
+  title: string;
+  spaceId: string;
+  createdAt: number;
+  updatedAt: number;
+  lastMessageRole: string | null;
+}
+
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
   callback: (event: RealtimeEventMessage) => void;
@@ -1095,10 +1105,13 @@ export class ApiClient {
      */
     get: async (
       spaceId: string,
-      query?: { limit?: number; cursor?: string; type?: string } & Record<
-        string,
-        string | number | boolean | undefined
-      >,
+      query?: {
+        limit?: number;
+        cursor?: string;
+        type?: string;
+        /** Uploaded files, as pseudo-documents, alongside the first page. */
+        includeFiles?: boolean;
+      } & Record<string, string | number | boolean | undefined>,
     ) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
@@ -2389,8 +2402,8 @@ export class ApiClient {
   };
 
   aiChatSessions = {
-    list: async (spaceId: string): Promise<AIChatSession[]> => {
-      const { sessions } = await this.apiFetch<{ sessions: AIChatSession[] }>(
+    list: async (spaceId: string): Promise<AIChatSessionListEntry[]> => {
+      const { sessions } = await this.apiFetch<{ sessions: AIChatSessionListEntry[] }>(
         this.baseUrl,
         `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions`,
         { credentials: "same-origin" },

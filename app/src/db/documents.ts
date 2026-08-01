@@ -508,15 +508,25 @@ export function decodeListCursor(cursor: string): { updatedAt: Date; id: string 
 
 export async function listDocuments(
   spaceId: string,
-  limit?: number,
-  type?: string,
-  viewer?: AclViewer | null,
-  cursor?: string,
+  options: {
+    limit?: number;
+    type?: string;
+    viewer?: AclViewer | null;
+    cursor?: string;
+    /**
+     * Append the space's uploaded files, as pseudo-documents, to the first
+     * page. Opt-in: the file index is unpaginated — it ships in full whatever
+     * `limit` says — and producing it scans the upload directory. Listings that
+     * only want documents must not pay for either.
+     */
+    includeFiles?: boolean;
+  } = {},
 ): Promise<{
   documents: DocumentWithProperties[];
   total: number;
   nextCursor: string | null;
 }> {
+  const { limit, type, viewer, cursor, includeFiles = false } = options;
   const db = await getSpaceDb(spaceId);
   const baseCondition = type
     ? and(nonArchivedDocumentCondition, eq(document.type, type))
@@ -658,7 +668,7 @@ export async function listDocuments(
     archived: doc.archived,
   }));
 
-  if (!type || type === "file") {
+  if (type === "file" || (includeFiles && !type)) {
     await syncFileIndex(spaceId, db).catch(() => {});
 
     let visibleFiles = await db
