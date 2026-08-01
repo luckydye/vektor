@@ -125,11 +125,13 @@ import {
   worldViewportBounds,
 } from "./viewport/index.ts";
 import "./view/CanvasPresenceCursorElement.ts";
+import { createClipboard } from "./document/clipboard.ts";
 import type { CanvasCollaborationFactory } from "./document/collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";
 import type { CanvasUploader } from "./extensions/media.ts";
 import { createWatchers, indexById, registerCanvas } from "./state.ts";
 import type { CanvasDomRefs, CanvasToolDef } from "./view/CanvasView.ts";
+import { createCamera } from "./view/camera.ts";
 
 /**
  * Everything the canvas needs from the page around it.
@@ -407,7 +409,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   // Screen-space position of the long-press context menu, null when hidden.
 
   // World-space insertion point captured when the context menu was opened.
-  let contextMenuInsertWorld: { x: number; y: number } | null = null;
+  // A ref, because `document/clipboard.ts` consumes and clears it too.
+  const contextMenuInsertWorld: { current: { x: number; y: number } | null } = {
+    current: null,
+  };
   let isReady = false;
   let savePrunedInvalidShapesWhenReady = false;
   let viewportControls: ViewportControls | null = null;
@@ -1076,6 +1081,47 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   }
 
   const transform = () => buildTransform(state.camera, state.screen, FIT_REFERENCE);
+
+  const camera = createCamera({
+    state,
+    dom,
+    fitReference: FIT_REFERENCE,
+    transform,
+    shapeAabb,
+    shapesById,
+    isReady: () => isReady,
+    invalidate,
+  });
+  const { fitView, handleBrowserFindMatch } = camera;
+  const fitInitialViewIfNeeded = camera.fitInitialView;
+  const moveCameraToShape = camera.moveToShape;
+
+  const clipboard = createClipboard({
+    state,
+    host,
+    ydoc,
+    yShapes,
+    yStrokes,
+    extensionManager,
+    extensionRuntime,
+    insertionPointFromEvent,
+    contextMenuInsertWorld,
+    deleteSelectedShape,
+    renderScene,
+    renderInk,
+  });
+  const {
+    collectSelection,
+    selectedCanvasClipboard,
+    handleCopy,
+    handleCut,
+    handlePaste,
+    copySelectionToClipboard,
+    cutSelectionToClipboard,
+    pasteCanvasClipboard,
+    pasteFromContextMenu,
+    routeExtensionInput,
+  } = clipboard;
 
   // The canvas moves shapes by transforming the viewport, which fires no
   // scroll/resize event — so the fixed-position formatting toolbar won't follow
@@ -2123,7 +2169,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     // propagation with @pointerdown.stop so taps inside it don't reach here).
     if (state.contextMenuPos) {
       state.contextMenuPos = null;
-      contextMenuInsertWorld = null;
+      contextMenuInsertWorld.current = null;
       return;
     }
 
@@ -2803,42 +2849,14 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     selectContextMenuTarget(event);
     const rect = dom.viewport.getBoundingClientRect();
     const pos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    contextMenuInsertWorld = screenToWorld(pos);
+    contextMenuInsertWorld.current = screenToWorld(pos);
     state.contextMenuPos = pos;
   }
 
-  async function pasteFromContextMenu() {
-    const insertAt = contextMenuInsertWorld ?? insertionPointFromEvent();
-    state.contextMenuPos = null;
-    contextMenuInsertWorld = null;
-    const clipboard = await readSystemClipboard();
-    const data = {
-      getData: (type: string) =>
-        type === CANVAS_CLIPBOARD_MIME
-          ? clipboard.canvasJson
-          : type === "text/html"
-            ? clipboard.html
-            : type === "text/plain"
-              ? clipboard.text
-              : "",
-      files: [] as unknown as FileList,
-      items: [] as unknown as DataTransferItemList,
-      types: [CANVAS_CLIPBOARD_MIME, "text/html", "text/plain"],
-      // Only the four members the paste path reads; a real DataTransfer cannot be
-      // constructed with content.
-    } as unknown as DataTransfer;
-    routeExtensionInput(
-      "paste",
-      { preventDefault: () => {} } as ClipboardEvent,
-      data,
-      insertAt,
-    );
-  }
-
   function uploadFromContextMenu() {
-    const insertAt = contextMenuInsertWorld ?? insertionPointFromEvent();
+    const insertAt = contextMenuInsertWorld.current ?? insertionPointFromEvent();
     state.contextMenuPos = null;
-    contextMenuInsertWorld = null;
+    contextMenuInsertWorld.current = null;
 
     const input = document.createElement("input");
     input.type = "file";
@@ -2855,355 +2873,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     input.click();
   }
 
-  function collectSelection(): {
-    shapes: CanvasSerializedShape[];
-    strokes: CanvasStrokeSnapshot[];
-  } {
-    const selShapes = state.shapes
-      .filter((shape) => state.selectedShapeIds.has(shape.id) && !shape.locked)
-      .map((shape) => extensionManager.serialize(shape));
-    const selStrokes = state.strokes
-      .filter((stroke) => state.selectedStrokeIds.has(stroke.id) && !stroke.locked)
-      .map((stroke) => ({
-        id: stroke.id,
-        points: stroke.points.map(cloneFreehandPoint),
-        style: { ...stroke.style },
-        kind: stroke.kind,
-        rotation: stroke.rotation,
-        authorId: stroke.authorId,
-        locked: stroke.locked,
-        updatedAt: stroke.updatedAt,
-      }));
-    return { shapes: selShapes, strokes: selStrokes };
-  }
-
-  function selectedCanvasClipboard(): CanvasClipboard | null {
-    return createCanvasClipboard(collectSelection());
-  }
-
-  /** True when the user has a real text selection (let the browser copy that instead). */
-  // Native clipboard events are synchronous and land in the system clipboard, so
-  // copies work across documents, canvases, tabs, and spaces.
-  function handleCopy(event: ClipboardEvent) {
-    if (hasActiveTextSelection(event.target)) return;
-    const payload = selectedCanvasClipboard();
-    if (!payload) return;
-    const json = serializeCanvasClipboard(payload);
-    event.preventDefault();
-    event.clipboardData?.setData(CANVAS_CLIPBOARD_MIME, json);
-    event.clipboardData?.setData(
-      "text/html",
-      canvasClipboardToDocumentHtml(payload, { includeMetadata: true }),
-    );
-    event.clipboardData?.setData("text/plain", canvasClipboardToPlainText(payload));
-  }
-
-  function handleCut(event: ClipboardEvent) {
-    if (hasActiveTextSelection(event.target)) return;
-    const payload = selectedCanvasClipboard();
-    if (!payload) return;
-    const json = serializeCanvasClipboard(payload);
-    event.preventDefault();
-    event.clipboardData?.setData(CANVAS_CLIPBOARD_MIME, json);
-    event.clipboardData?.setData(
-      "text/html",
-      canvasClipboardToDocumentHtml(payload, { includeMetadata: true }),
-    );
-    event.clipboardData?.setData("text/plain", canvasClipboardToPlainText(payload));
-    deleteSelectedShape();
-  }
-
-  function copySelectionToClipboard() {
-    const payload = selectedCanvasClipboard();
-    if (!payload) return;
-    const html = canvasClipboardToDocumentHtml(payload, { includeMetadata: true });
-    const text = canvasClipboardToPlainText(payload);
-    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-      navigator.clipboard
-        .write([
-          new ClipboardItem({
-            "text/html": new Blob([html], { type: "text/html" }),
-            "text/plain": new Blob([text], { type: "text/plain" }),
-          }),
-        ])
-        .catch(() => navigator.clipboard?.writeText(text).catch(() => {}));
-      return;
-    }
-    navigator.clipboard?.writeText(text).catch(() => {});
-  }
-
-  function cutSelectionToClipboard() {
-    const payload = selectedCanvasClipboard();
-    if (!payload) return;
-    const html = canvasClipboardToDocumentHtml(payload, { includeMetadata: true });
-    const text = canvasClipboardToPlainText(payload);
-    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-      navigator.clipboard
-        .write([
-          new ClipboardItem({
-            "text/html": new Blob([html], { type: "text/html" }),
-            "text/plain": new Blob([text], { type: "text/plain" }),
-          }),
-        ])
-        .catch(() => navigator.clipboard?.writeText(text).catch(() => {}));
-    } else {
-      navigator.clipboard?.writeText(text).catch(() => {});
-    }
-    deleteSelectedShape();
-  }
-
-  /**
-   * Recreates clipboard shapes/strokes with fresh ids, translated so the group's
-   * top-left lands at the insertion point. One transaction = one undo step.
-   */
-  function pasteCanvasClipboard(
-    payload: CanvasClipboard,
-    at: { x: number; y: number },
-  ): void {
-    const xs = [
-      ...payload.shapes.map((shape) => shape.frame.x),
-      ...payload.strokes.flatMap((stroke) => stroke.points.map((point) => point.x)),
-    ];
-    const ys = [
-      ...payload.shapes.map((shape) => shape.frame.y),
-      ...payload.strokes.flatMap((stroke) => stroke.points.map((point) => point.y)),
-    ];
-    if (xs.length === 0 || ys.length === 0) return;
-    const dx = at.x - Math.min(...xs);
-    const dy = at.y - Math.min(...ys);
-    const now = Date.now();
-    const pastedShapeIds = new Set<string>();
-    const pastedStrokeIds = new Set<string>();
-
-    ydoc.transact(() => {
-      for (const shape of payload.shapes) {
-        const id = `shape-${crypto.randomUUID()}`;
-        pastedShapeIds.add(id);
-        yShapes.set(
-          id,
-          shapeToYMap(
-            {
-              ...shape,
-              id,
-              frame: {
-                ...shape.frame,
-                x: Math.round(shape.frame.x + dx),
-                y: Math.round(shape.frame.y + dy),
-              },
-              // A pasted personal element belongs to the person who pasted it,
-              // never the author of the source clipboard item.
-              authorId: shape.authorId ? host.currentUserId : undefined,
-              updatedAt: now,
-            },
-            extensionManager,
-          ),
-        );
-      }
-      for (const stroke of payload.strokes) {
-        const id = `stroke-${crypto.randomUUID()}`;
-        pastedStrokeIds.add(id);
-        yStrokes.set(
-          id,
-          createStrokeMap({
-            id,
-            points: stroke.points.map((point) => ({
-              ...point,
-              x: point.x + dx,
-              y: point.y + dy,
-            })),
-            style: { ...stroke.style },
-            kind: stroke.kind,
-            rotation: stroke.rotation,
-            authorId: stroke.authorId ? host.currentUserId : undefined,
-            updatedAt: now,
-          }),
-        );
-      }
-    });
-
-    state.selectedShapeIds = pastedShapeIds;
-    state.selectedStrokeIds = pastedStrokeIds;
-    state.activeTool = "select";
-    renderInk();
-  }
-
-  function insertConvertedShapes(nextShapes: CanvasShape[]): boolean {
-    if (nextShapes.length === 0) return false;
-    const pastedShapeIds = new Set<string>();
-
-    ydoc.transact(() => {
-      for (const shape of nextShapes) {
-        pastedShapeIds.add(shape.id);
-        yShapes.set(
-          shape.id,
-          shapeToYMap({ ...shape, updatedAt: Date.now() }, extensionManager),
-        );
-      }
-    });
-
-    state.selectedShapeIds = pastedShapeIds;
-    state.selectedStrokeIds = new Set();
-    state.activeTool = "select";
-    renderScene();
-    return true;
-  }
-
-  function routeExtensionInput(
-    kind: CanvasInputKind,
-    event: ClipboardEvent | DragEvent,
-    data: DataTransfer | null,
-    at: { x: number; y: number },
-    phase: "preview" | "commit" = "commit",
-  ) {
-    return extensionManager.handleInput(kind, event, {
-      data,
-      at: () => at,
-      phase,
-      command: (name, payload) => {
-        const value = payload as Record<string, unknown> | undefined;
-        if (name === "paste-canvas") {
-          pasteCanvasClipboard(
-            value?.payload as CanvasClipboard,
-            value?.at as CanvasPoint,
-          );
-          return true;
-        }
-        if (name === "paste-rich") {
-          const html = String(value?.html ?? "");
-          const text = String(value?.text ?? "");
-          return insertConvertedShapes(
-            documentClipboardToCanvasShapes(
-              html.trim()
-                ? { html, text, at: value?.at as CanvasPoint }
-                : { text, at: value?.at as CanvasPoint },
-            ),
-          );
-        }
-        return extensionRuntime.command(name, payload);
-      },
-    });
-  }
-
-  function handlePaste(event: ClipboardEvent) {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("textarea, input, select, document-view")) return;
-    routeExtensionInput("paste", event, event.clipboardData, insertionPointFromEvent());
-  }
-
-  // The canvas renders full-bleed behind the fixed navigation sidebar, so the
-  // left `inset` px of the viewport are occluded by the nav. Fit-to-view must
-  // frame content within the *visible* region instead of the full viewport.
-  function reservedSidebarWidth(): number {
-    if (typeof window === "undefined") return 0;
-    // Below the md breakpoint the sidebar is an overlay drawer and reserves no space.
-    if (!window.matchMedia("(min-width: 768px)").matches) return 0;
-    const rect = document.querySelector(".sidebar")?.getBoundingClientRect();
-    return Math.max(0, rect?.right ?? 0);
-  }
-
-  function moveCameraToShape(shape: CanvasShape) {
-    const bounds = shapeAabb(shape);
-    const inset = reservedSidebarWidth();
-    const scale = transform().scale;
-    state.camera = {
-      ...state.camera,
-      // Center within the unobscured part of the canvas, not behind the sidebar.
-      centerX: bounds.x + bounds.width / 2 - inset / (2 * scale),
-      centerY: bounds.y + bounds.height / 2,
-    };
-  }
-
-  function handleBrowserFindMatch(event: Event) {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-
-    const article = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
-    const shapeId = article?.dataset.shapeId;
-    const shape = shapeId ? shapesById().get(shapeId) : null;
-    if (!article || !shape || !isBrowserFindTarget(shape)) return;
-
-    moveCameraToShape(shape);
-
-    // The browser removes hidden=until-found after beforematch. Restore the
-    // marker once it has finished revealing this match so advancing to another
-    // result in the same shape emits beforematch again. The author-level
-    // content-visibility:auto rule keeps these marked shapes normally visible.
-    requestAnimationFrame(() => {
-      if (article.isConnected) article.setAttribute("hidden", "until-found");
-      // Native find may try to scroll the overflow-hidden viewport as well as
-      // revealing the match. Camera state is the canvas's only scroll model.
-      dom.viewport?.scrollTo(0, 0);
-    });
-  }
-
-  function fitView(maxZoom = 5) {
-    // Accumulated rather than spread into Math.min/max: a freehand stroke can
-    // carry tens of thousands of points, which overflows the argument stack.
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    let hasContent = false;
-
-    for (const shape of state.shapes) {
-      const bounds = shapeAabb(shape);
-      if (bounds.x < minX) minX = bounds.x;
-      if (bounds.y < minY) minY = bounds.y;
-      if (bounds.x + bounds.width > maxX) maxX = bounds.x + bounds.width;
-      if (bounds.y + bounds.height > maxY) maxY = bounds.y + bounds.height;
-      hasContent = true;
-    }
-    for (const stroke of state.strokes) {
-      for (const point of stroke.points) {
-        if (point.x < minX) minX = point.x;
-        if (point.y < minY) minY = point.y;
-        if (point.x > maxX) maxX = point.x;
-        if (point.y > maxY) maxY = point.y;
-        hasContent = true;
-      }
-    }
-
-    const inset = reservedSidebarWidth();
-    const baseScale = Math.min(
-      state.screen.width / FIT_REFERENCE.width,
-      state.screen.height / FIT_REFERENCE.height,
-    );
-
-    if (!hasContent) {
-      // Center the world origin within the visible region (right of the nav).
-      state.camera = { centerX: -inset / (2 * baseScale), centerY: 0, zoom: 1 };
-      return;
-    }
-
-    const width = Math.max(1, maxX - minX + 160);
-    const height = Math.max(1, maxY - minY + 160);
-    // Fit the content into the visible width, not the full (occluded) viewport.
-    const availableWidth = Math.max(1, state.screen.width - inset);
-    const fitScale = Math.min(availableWidth / width, state.screen.height / height);
-    const zoom = Math.max(0.25, Math.min(maxZoom, fitScale / baseScale));
-    const appliedScale = baseScale * zoom;
-
-    state.camera = {
-      // Shift the camera left by half the inset so the content centers in the
-      // visible region rather than the full viewport.
-      centerX: (minX + maxX) / 2 - inset / (2 * appliedScale),
-      centerY: (minY + maxY) / 2,
-      zoom,
-    };
-  }
-
   // Centers the viewport on the document's content the first time it loads, so a
   // saved canvas opens framed instead of pinned to world origin. Fires at most
   // once: `isInitialContent` is false for the user's own first edit (Yjs origin
   // null), which only disarms the one-shot rather than recentering their view.
-  let hasFitInitialView = false;
-  function fitInitialViewIfNeeded(isInitialContent: boolean) {
-    if (hasFitInitialView || !isReady) return;
-    if (state.shapes.length === 0 && state.strokes.length === 0) return;
-    hasFitInitialView = true;
-    // Frame the content but never magnify past 100% on load.
-    if (isInitialContent) fitView(1);
-  }
 
   function refreshUndoState() {
     state.canUndo = undoManager.canUndo();
