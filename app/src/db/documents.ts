@@ -62,6 +62,12 @@ async function updateDocumentEmbeddingBestEffort(
   }
 }
 
+/**
+ * A title with nothing sluggable in it (e.g. "-----") leaves no usable URL, so
+ * it is a bad request rather than a server fault.
+ */
+export class EmptyDocumentSlugError extends Error {}
+
 async function generateUniqueSlug(
   spaceId: string,
   baseTitle: string,
@@ -71,7 +77,7 @@ async function generateUniqueSlug(
 
   const baseSlug = slugify(baseTitle);
   if (!baseSlug) {
-    throw new Error("slug is empty");
+    throw new EmptyDocumentSlugError("Title must contain at least one letter or number");
   }
 
   // Get all existing slugs in the space
@@ -911,12 +917,19 @@ export async function updateDocumentProperty(
   });
 
   if (key === "title" && typeof value === "string" && value) {
-    const newSlug = await generateUniqueSlug(spaceId, value, documentId);
+    // An unsluggable title still renames the document; only the derived slug
+    // can't follow, so it stays where it was.
+    const newSlug = await generateUniqueSlug(spaceId, value, documentId).catch(
+      (error: unknown) => {
+        if (error instanceof EmptyDocumentSlugError) return undefined;
+        throw error;
+      },
+    );
     await db
       .update(document)
-      .set({ slug: newSlug, updatedAt: now })
+      .set({ ...(newSlug ? { slug: newSlug } : {}), updatedAt: now })
       .where(eq(document.id, documentId));
-    payload.slug = newSlug;
+    if (newSlug) payload.slug = newSlug;
   } else {
     await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
   }

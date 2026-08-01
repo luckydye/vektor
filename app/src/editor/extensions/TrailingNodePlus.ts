@@ -143,7 +143,14 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       description: "Create a new document and insert a link to it",
       icon: iconMarkup("document"),
       command: (editor) => {
-        void createDocumentAndInsertMention(editor, spaceId);
+        void createDocumentAndInsertMention(editor, spaceId).catch(async (error) => {
+          // Imported lazily: this module is also built to derive the schema,
+          // where the browser-only toast store must stay out of the graph.
+          const { useToast } = await import("#composeables/useToast.ts");
+          useToast().error(
+            error instanceof Error ? error.message : "Failed to create the document",
+          );
+        });
       },
     },
   ];

@@ -5,6 +5,7 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
+import { useToast } from "./useToast.ts";
 
 export interface DatabaseColumn {
   name: string;
@@ -42,6 +43,7 @@ function parseSchema(raw: string | undefined): DatabaseSchema {
 export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   const { currentSpaceId: spaceId } = useSpace();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const queryKey = createMemo(() => ["database_rows", spaceId(), databaseDocumentId()]);
 
   const { data, isPending: isLoading } = useQuery({
@@ -94,6 +96,9 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
       if (variables.invalidate) {
         queryClient.invalidateQueries({ queryKey: queryKey() });
       }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to add row");
     },
   });
 

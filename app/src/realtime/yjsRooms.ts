@@ -8,6 +8,7 @@ import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
+import { htmlTableToTable } from "#documents/htmlTable.ts";
 import {
   canvasSnapshotFromDoc,
   contentFromDoc,
@@ -21,6 +22,7 @@ import { contentIsHtml } from "#documents/types.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
+import { fillSheetDoc, htmlFromSheetDoc } from "#spreadsheet/sheetDoc.ts";
 import { stripScriptTags } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
@@ -187,10 +189,16 @@ export function getLiveDocumentContent(
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
     if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
+    if (type === "csv") return htmlFromSheetDoc(room.doc);
     if (type === "workflow") return contentFromDoc(spaceId, documentId, type, room.doc);
     return toCleanHtml(room.doc, contentExtensions({ spaceId, documentId }));
   }
-  if (type === "canvas" || type === "workflow" || isJsonContent(persisted))
+  if (
+    type === "canvas" ||
+    type === "csv" ||
+    type === "workflow" ||
+    isJsonContent(persisted)
+  )
     return persisted;
   return normalizeHtmlContent(spaceId, documentId, persisted);
 }
@@ -210,6 +218,49 @@ const COLLABORATION_REVISION_INTERVAL_MS = 3 * 60 * 60 * 1000;
 // for ~100ms+, so cap how often it runs during sustained editing. Clean
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
 const MIN_PERSIST_INTERVAL_MS = 5000;
+
+/**
+ * Replays content written outside the room back into it.
+ *
+ * A REST write goes straight to the database, but an open room holds the
+ * document in memory and persists over it on the next tick — so without this a
+ * `PUT` to a document somebody has open is silently discarded, and anyone
+ * watching sees it revert. Rebuilding the room's doc broadcasts to every client
+ * as an ordinary update.
+ *
+ * Only `csv` for now: prose documents route external edits through
+ * `transformDocumentContent`, which merges rather than replaces.
+ */
+export async function replaceYRoomContent(
+  spaceId: string,
+  documentId: string,
+  type: string | null | undefined,
+  content: string,
+): Promise<void> {
+  if (type !== "csv") return;
+  const room = yRooms.get(roomKey(spaceId, documentId));
+  if (!room?.doc) return;
+
+  const table = htmlTableToTable(content);
+  if (!table) return;
+
+  // The websocket handler broadcasts updates it *receives*; one made here has
+  // to be sent on deliberately, or connected clients keep the old grid until
+  // they reload.
+  const updates: Uint8Array[] = [];
+  const capture = (update: Uint8Array) => updates.push(update);
+  room.doc.on("update", capture);
+  try {
+    // `fillSheetDoc` clears and refills in one transaction, so clients see a
+    // single update rather than a teardown followed by a rebuild.
+    fillSheetDoc(room.doc, table.cells, table.layout);
+  } finally {
+    room.doc.off("update", capture);
+  }
+  for (const update of updates) {
+    broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+  }
+}
 
 export async function persistYRoomDraft(key: string): Promise<void> {
   const timer = persistTimers.get(key);

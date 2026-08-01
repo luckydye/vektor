@@ -12,6 +12,7 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
+import { useToast } from "./useToast.ts";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -124,6 +125,7 @@ export function useDocumentContext() {
 export function useDocument(documentId: string | undefined, documentType = "document") {
   const { currentSpaceId, currentSpace } = useSpace();
   const navigate = useNavigate();
+  const toast = useToast();
   const [saveStatus, setSaveStatus] = createSignal<SaveStatus>("idle");
   const [saveError, setSaveError] = createSignal<string | null>(null);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -216,7 +218,10 @@ export function useDocument(documentId: string | undefined, documentType = "docu
     },
     onError: (error) => {
       setSaveStatus("error");
-      setSaveError(error instanceof Error ? error.message : "Unknown error");
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSaveError(message);
+      // `saveError` is only read for status; without this the failure is silent.
+      toast.error(message);
     },
   });
 

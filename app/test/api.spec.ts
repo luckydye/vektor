@@ -295,6 +295,20 @@ describe("API Tests - Documents", () => {
     expect(data.document.properties.title).toBe("Wrapped Title Document");
   });
 
+  it("should reject a title with nothing sluggable in it", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>No usable slug</p>",
+        properties: { title: "-----------------------" },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("letter or number");
+  });
+
   it("should list documents", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`);
     expect(response.status).toBe(200);
