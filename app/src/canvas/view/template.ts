@@ -200,99 +200,6 @@ function propertiesSidebar(view: CanvasView) {
   `;
 }
 
-function toolbar(view: CanvasView, dom: CanvasDomRefs) {
-  return html`
-    <div class="canvas-toolbar" @pointerdown=${stopPointer}>
-      ${view.tools.map(
-        (tool) => html`
-          <button
-            type="button"
-            class=${classMap({ "canvas-tool": true, active: view.state.activeTool === tool.id })}
-            aria-label=${t(tool.label)}
-            aria-pressed=${view.state.activeTool === tool.id}
-            data-tooltip=${`${t(tool.label)} · ${tool.shortcut}`}
-            @click=${() => view.setActiveTool(tool.id)}
-          >
-            ${svgIcon(tool.icon, "svg-icon canvas-tool-icon")}
-          </button>
-        `,
-      )}
-      <a-popover-trigger
-        class="canvas-shape-trigger"
-        ${ref((element) => {
-          dom.shapePopover = (element as CanvasDomRefs["shapePopover"]) ?? null;
-        })}
-      >
-        <button
-          slot="trigger"
-          type="button"
-          class=${classMap({ "canvas-tool": true, active: view.state.activeTool === "shape" })}
-          aria-label=${t("Shape")}
-          aria-pressed=${view.state.activeTool === "shape"}
-          data-tooltip=${`${t("Shape")} · R`}
-        >
-          ${svgIcon(shapesToolIcon, "svg-icon canvas-tool-icon")}
-        </button>
-        <a-popover placements="top">
-          <div class="canvas-shape-popover" @pointerdown=${stopPointer}>
-            <div class="canvas-shape-popover-panel">
-              ${SHAPE_LIBRARY.map(
-                (item) => html`
-                  <button
-                    type="button"
-                    class=${classMap({
-                      "canvas-shape-option": true,
-                      active:
-                        view.state.activeTool === "shape" &&
-                        view.activeShapeId === item.id,
-                    })}
-                    aria-label=${t(item.label)}
-                    @click=${() => view.pickShapeLibraryItem(item)}
-                  >
-                    ${svgIcon(item.icon, "svg-icon canvas-shape-option-icon")}
-                    <span class="canvas-shape-option-label">${t(item.label)}</span>
-                  </button>
-                `,
-              )}
-            </div>
-          </div>
-        </a-popover>
-      </a-popover-trigger>
-      <span class="canvas-divider"></span>
-      <button
-        type="button"
-        class="canvas-tool"
-        aria-label=${t("Undo")}
-        data-tooltip=${`${t("Undo")} · ⌘Z`}
-        ?disabled=${!view.state.canUndo}
-        @click=${() => view.undo()}
-      >
-        ${svgIcon(undoIcon, "svg-icon canvas-tool-icon")}
-      </button>
-      <button
-        type="button"
-        class="canvas-tool"
-        aria-label=${t("Redo")}
-        data-tooltip=${`${t("Redo")} · ⌘⇧Z`}
-        ?disabled=${!view.state.canRedo}
-        @click=${() => view.redo()}
-      >
-        ${svgIcon(redoIcon, "svg-icon canvas-tool-icon")}
-      </button>
-      <span class="canvas-divider"></span>
-      <button
-        type="button"
-        class="canvas-tool"
-        aria-label=${t("Fit to view")}
-        data-tooltip=${`${t("Fit to view")} · F`}
-        @click=${() => view.fitView()}
-      >
-        ${svgIcon(fitViewToElementsIcon, "svg-icon canvas-tool-icon")}
-      </button>
-    </div>
-  `;
-}
-
 /**
  * One shape article.
  *
@@ -570,7 +477,7 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
 
   return html`
     <div class=${classMap({ "canvas-root": true, "is-dark": view.state.isDarkMode })}>
-      ${toolPropertiesBar(view)} ${propertiesSidebar(view)} ${toolbar(view, dom)}
+      ${toolPropertiesBar(view)} ${propertiesSidebar(view)}
 
       <div
         class="canvas-viewport"

@@ -6,6 +6,17 @@
  * rules to a component would stop them matching.
  */
 
+/**
+ * The element now renders only the viewport and its layers; `.canvas-root` and
+ * the chrome around it belong to the Solid component. Custom elements are
+ * inline by default, so it has to be told to fill the root it sits in.
+ */
+vektor-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
 .canvas-root {
   --canvas-bg: var(--color-neutral-50);
   --canvas-text: var(--color-neutral-900);

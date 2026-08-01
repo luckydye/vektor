@@ -2,6 +2,7 @@ import { render } from "lit-html";
 import type * as Y from "yjs";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import type { CanvasView } from "./CanvasController.ts";
 import { type CanvasController, createCanvasController } from "./CanvasController.ts";
 import type { CanvasDomRefs } from "./view/CanvasView.ts";
 import "./view/CanvasPresenceCursorElement.ts";
@@ -105,6 +106,16 @@ export class CanvasHostElement extends HostElement {
   save: ((snapshot: unknown) => Promise<unknown>) | undefined;
   error: ((message: string) => void) | undefined;
   onpresence: ((states: CanvasPresenceState[]) => void) | undefined;
+
+  /**
+   * Called after every frame this element paints.
+   *
+   * The canvas is immediate-mode and tracks nothing, so it cannot say *what*
+   * changed — only that it drew. Solid chrome outside the element turns that
+   * into a signal and lets its own memos decide whether anything it renders
+   * actually moved.
+   */
+  onframe: (() => void) | undefined;
 
   #presence: CollaborationPresenceProfile<CanvasPresenceState>[] = [];
   #extensions: readonly CanvasElementExtension[] | undefined;
@@ -269,6 +280,16 @@ export class CanvasHostElement extends HostElement {
 
   private readonly boundRequestRender = () => this.requestRender();
 
+  /**
+   * Ask for a frame from outside the element.
+   *
+   * The Solid chrome renders beside this element, not inside it, so its clicks
+   * never reach the capture listener above — it says so itself instead.
+   */
+  requestFrame(): void {
+    this.requestRender();
+  }
+
   private requestRender(): void {
     if (this.renderQueued || !this.controller) return;
     this.renderQueued = true;
@@ -284,6 +305,18 @@ export class CanvasHostElement extends HostElement {
     controller.flush();
     render(canvasTemplate(controller.view, this.dom), this);
     controller.afterRender();
+    this.onframe?.();
+  }
+
+  /**
+   * The view model the chrome reads.
+   *
+   * Null until the element starts. The Solid chrome rendered beside this
+   * element reads state through here and calls commands on it, the same object
+   * the lit template inside gets.
+   */
+  get view(): CanvasView | null {
+    return this.controller?.view ?? null;
   }
 
   /** Explicit teardown. Not called on disconnect — see `disconnectedCallback`. */

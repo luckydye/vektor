@@ -18,6 +18,8 @@ import type {
   DocumentPresenceState,
 } from "#editor/collaboration.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
+import { CanvasToolbar } from "./view/CanvasToolbar.tsx";
+import { createCanvasChrome } from "./view/chrome.ts";
 // Side-effect import: the module registers <vektor-canvas>. Importing only the
 // type erases the statement at build time, and then the element never upgrades
 // — `host.changed()` throws and the canvas renders nothing.
@@ -99,6 +101,9 @@ export function Canvas(props: Props) {
     };
   }
 
+  const chrome = createCanvasChrome(() => host);
+  const isDark = chrome.frame(() => chrome.view()?.state.isDarkMode ?? false);
+
   // One effect for the whole property surface: every value is reactive, and the
   // element coalesces the writes into a single render anyway.
   createEffect(() => {
@@ -122,13 +127,22 @@ export function Canvas(props: Props) {
     host.save = (snapshot) => saveDocument(snapshot as string);
     host.error = (message) => toast.error(message);
     host.onpresence = (states) => props.onPresence?.(states);
+    host.onframe = chrome.onFrame;
     host.changed();
   });
 
   onMount(() => host?.changed());
   onCleanup(() => host?.destroy());
 
-  // A static tag, not `<Dynamic>`: the element name is fixed, and Dynamic would
-  // re-create it on every render of the parent.
-  return <vektor-canvas ref={host as never} />;
+  // `.canvas-root` is Solid's, not the element's: it is the positioning context
+  // and the CSS-variable scope for both the chrome beside the element and the
+  // viewport inside it.
+  return (
+    <div classList={{ "canvas-root": true, "is-dark": isDark() }}>
+      <CanvasToolbar chrome={chrome} />
+      {/* A static tag, not `<Dynamic>`: the element name is fixed, and Dynamic
+          would re-create it on every render of the parent. */}
+      <vektor-canvas ref={host as never} />
+    </div>
+  );
 }

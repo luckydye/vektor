@@ -187,16 +187,51 @@ test("undo repaints the shape back", async ({ page }) => {
     .toBeLessThan(before + 20);
 });
 
-test("switches the active tool from the keyboard", async ({ page }) => {
+/**
+ * The toolbar is a Solid component rendered beside the element, not inside it,
+ * so it is asserted by name. Counting `[aria-pressed]` anywhere under
+ * `vektor-canvas` used to pass on the tool-properties bar instead.
+ */
+function activeToolLabel(page: Page) {
+  return page
+    .locator('.canvas-toolbar [aria-pressed="true"]')
+    .first()
+    .getAttribute("aria-label");
+}
+
+test("reflects the active tool in the toolbar, by key and by click", async ({ page }) => {
   await openCanvas(page);
-  const pressed = page.locator("vektor-canvas [aria-pressed=true]");
-  const before = await pressed.count();
+  expect(await activeToolLabel(page)).toBe("Select");
 
-  await page.keyboard.press("d");
-
+  await page.keyboard.press("n");
   await expect
-    .poll(() => pressed.count(), { message: "the toolbar must reflect the new tool" })
-    .not.toBe(before);
+    .poll(() => activeToolLabel(page), { message: "a shortcut must update the toolbar" })
+    .toBe("Note");
+
+  // Chrome sits outside the element, so its clicks never reach the host's own
+  // input listener — the command has to ask for the frame itself.
+  await page.locator('.canvas-toolbar button[aria-label="Select"]').first().click();
+  await expect
+    .poll(() => activeToolLabel(page), { message: "a toolbar click must take effect" })
+    .toBe("Select");
+});
+
+test("undo and redo buttons follow the document", async ({ page }) => {
+  await openCanvas(page);
+  const undo = page.locator('.canvas-toolbar button[aria-label="Undo"]');
+  await expect(undo).toBeDisabled();
+
+  const grab = await grabPoint(page);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step++) {
+    await page.mouse.move(grab.x + step * 14, grab.y + step * 6);
+  }
+  await page.mouse.up();
+
+  await expect(undo, "a completed drag must enable undo").toBeEnabled();
+  await undo.click();
+  await expect.poll(() => noteLeft(page)).toBeLessThan(grab.x);
 });
 
 test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) => {
