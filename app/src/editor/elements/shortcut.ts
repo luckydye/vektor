@@ -1,6 +1,14 @@
 import { html, render } from "lit-html";
-import * as ICON from "#assets/icons.ts";
+import { type IconName, iconMarkup } from "#components/Icon.tsx";
 import { isMac } from "#utils/actions.ts";
+
+/** Modifier keys that render as a glyph rather than their name. */
+const KEY_ICONS: Record<string, IconName | undefined> = {
+  meta: "cmd",
+  cmd: "cmd",
+  ctrl: "ctrl",
+  shift: "shift",
+};
 
 customElements.define(
   "a-shortcut",
@@ -40,8 +48,9 @@ customElements.define(
         const key = rawKey.toLowerCase() === "mod" ? (isMac ? "meta" : "ctrl") : rawKey;
         const icon = document.createElement("span");
         icon.className = "key";
-        const icons = ICON as Record<string, string>;
-        icon.innerHTML = icons[`${key.toLowerCase()}Icon`] || key.toUpperCase();
+        // Only modifiers have a glyph; everything else prints as its letter.
+        const glyph = KEY_ICONS[key.toLowerCase()];
+        icon.innerHTML = glyph ? iconMarkup(glyph) : key.toUpperCase();
         return icon;
       });
 

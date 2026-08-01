@@ -8,7 +8,6 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { cancelIcon, dragDotsIcon, resizeHandleIcon } from "#assets/icons.ts";
 import {
   type DockedWindowState,
   useDockedWindows,
@@ -16,6 +15,7 @@ import {
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
 import { Dialog } from "./Dialog.tsx";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   id: string;
@@ -310,10 +310,7 @@ export function DockedPanel(props: Props) {
             onMouseDown={onDragStart}
           >
             {/* Drag dots */}
-            <div
-              class="svg-icon h-3.5 w-3.5 shrink-0 text-neutral-400"
-              innerHTML={dragDotsIcon}
-            />
+            <Icon class="h-3.5 w-3.5 shrink-0 text-neutral-400" name="drag-dots" />
             <span class="flex-1 font-semibold text-neutral-800 text-size-medium">
               {props.title}
             </span>
@@ -324,7 +321,7 @@ export function DockedPanel(props: Props) {
                 class="rounded-sm p-1 text-neutral-500 transition-colors hover:text-neutral-800"
                 onClick={onClose}
               >
-                <div class="svg-icon h-3.5 w-3.5" innerHTML={cancelIcon} />
+                <Icon class="h-3.5 w-3.5" name="cancel" />
               </button>
             </div>
           </div>
@@ -341,10 +338,7 @@ export function DockedPanel(props: Props) {
                 class="absolute right-0 bottom-0 h-4 w-4 cursor-se-resize"
                 onMouseDown={onResizeCornerStart}
               >
-                <div
-                  class="svg-icon h-4 w-4 text-neutral-400"
-                  innerHTML={resizeHandleIcon}
-                />
+                <Icon class="h-4 w-4 text-neutral-400" name="resize-handle" />
               </div>
             }
           >

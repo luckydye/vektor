@@ -1,7 +1,6 @@
 import "@atrium-ui/elements/popover";
 import { createEffect, createSignal, For, type JSX, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { addIcon, csvFileIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
 import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.ts";
 import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
@@ -12,6 +11,7 @@ import {
   propertyValueToText,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   databaseDocumentId: string;
@@ -175,7 +175,7 @@ export function DatabaseView(props: Props) {
 
   return (
     <>
-      <div class="relative flex h-full min-h-0 flex-col overflow-hidden px-xs lg:px-xl">
+      <div class="relative flex h-full min-h-0 flex-col overflow-hidden px-xs lg:px-m">
         {/* Toolbar */}
         <div class="flex h-10 shrink-0 items-center justify-between gap-3 rounded-t-md border border-neutral-100 border-b-0 bg-neutral-50 px-4">
           <span class="text-neutral-500 text-size-small">{rows().length} rows</span>
@@ -194,7 +194,7 @@ export function DatabaseView(props: Props) {
               disabled={isImportingCsv()}
               onClick={openCsvPicker}
             >
-              <div class="svg-icon h-3.5 w-3.5" innerHTML={csvFileIcon} />
+              <Icon class="h-3.5 w-3.5" name="csv-file" />
               Import CSV
             </button>
           </div>
@@ -243,10 +243,7 @@ export function DatabaseView(props: Props) {
                             title="Delete column"
                             onClick={(event) => openDeleteColumn(col.name, event)}
                           >
-                            <div
-                              class="svg-icon h-3.5 w-3.5"
-                              innerHTML={deleteEntryIcon}
-                            />
+                            <Icon class="h-3.5 w-3.5" name="delete-entry" />
                           </button>
                         </div>
                       </th>
@@ -263,7 +260,7 @@ export function DatabaseView(props: Props) {
                         title="Add column"
                         onClick={onAddColumnTrigger}
                       >
-                        <div class="svg-icon h-3.5 w-3.5" innerHTML={addIcon} />
+                        <Icon class="h-3.5 w-3.5" name="add" />
                       </button>
                       <a-popover class="group" placements="bottom-end">
                         <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
@@ -339,10 +336,7 @@ export function DatabaseView(props: Props) {
                                   startEdit(row.id, "title", rowTitle(row.properties))
                                 }
                               >
-                                <div
-                                  class="svg-icon h-3.5 w-3.5"
-                                  innerHTML={editEntryIcon}
-                                />
+                                <Icon class="h-3.5 w-3.5" name="edit-entry" />
                               </button>
                             </div>
                           }
@@ -430,7 +424,7 @@ export function DatabaseView(props: Props) {
                           title="Delete row"
                           onClick={(event) => openDeleteRow(row.id, event)}
                         >
-                          <div class="svg-icon h-3.5 w-3.5" innerHTML={deleteEntryIcon} />
+                          <Icon class="h-3.5 w-3.5" name="delete-entry" />
                         </button>
                       </td>
                     </tr>
@@ -460,7 +454,7 @@ export function DatabaseView(props: Props) {
             class="inline-flex items-center gap-1.5 text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
             onClick={() => void addRow()}
           >
-            <div class="svg-icon h-3.5 w-3.5" innerHTML={addIcon} />
+            <Icon class="h-3.5 w-3.5" name="add" />
             New row
           </button>
         </div>

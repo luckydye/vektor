@@ -1,17 +1,11 @@
 import { useLocation, useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import {
-  boltIcon,
-  canvasIcon,
-  databaseIcon,
-  documentIcon,
-  tableIcon,
-} from "#assets/icons.ts";
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import { useSpace } from "#composeables/useSpace.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import { Icon, type IconName } from "./Icon.tsx";
 
 type DocumentType = "document" | "canvas" | "workflow" | "database" | "csv";
 
@@ -19,41 +13,41 @@ const documentOptions: Array<{
   type: DocumentType;
   title: TranslationKey;
   description: TranslationKey;
-  icon: string;
+  icon: IconName;
   illustration?: string;
 }> = [
   {
     type: "document",
     title: "Doc",
     description: "Write, organize, and collaborate in a structured document.",
-    icon: documentIcon,
+    icon: "document",
     illustration: documentPreview,
   },
   {
     type: "canvas",
     title: "Canvas",
     description: "Visualize ideas and connect things on a flexible canvas.",
-    icon: canvasIcon,
+    icon: "canvas",
     illustration: canvasPreview,
   },
   {
     type: "workflow",
     title: "Workflow",
     description: "Map steps and automate processes with ease.",
-    icon: boltIcon,
+    icon: "bolt",
   },
   {
     type: "database",
     title: "Database",
     description: "Organize and manage data in structured tables.",
-    icon: databaseIcon,
+    icon: "database",
   },
   {
     // The document type stays "csv" — "Spreadsheet" is the product name for it.
     type: "csv",
     title: "Spreadsheet",
     description: "Lay out numbers and records in rows and columns.",
-    icon: tableIcon,
+    icon: "table",
   },
 ];
 
@@ -130,7 +124,7 @@ export function NewDocumentPicker() {
               >
                 <span class="flex min-w-0 items-start gap-4">
                   <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 transition-colors group-hover:bg-primary-100">
-                    <span class="svg-icon h-6 w-6" innerHTML={option.icon} />
+                    <Icon class="h-6 w-6" name={option.icon} />
                   </span>
                   <span class="min-w-0 pt-1">
                     <span class="block font-semibold text-[21px] text-neutral-900 leading-7">
@@ -144,10 +138,9 @@ export function NewDocumentPicker() {
 
                 <Show when={option.illustration}>
                   {(illustration) => (
-                    <span
-                      class="block min-h-[116px] overflow-hidden max-[640px]:hidden [&_svg]:block [&_svg]:h-full [&_svg]:w-full"
-                      aria-hidden="true"
-                      innerHTML={illustration()}
+                    <Icon
+                      class="min-h-[116px] w-full overflow-hidden max-[640px]:hidden"
+                      svg={illustration()}
                     />
                   )}
                 </Show>

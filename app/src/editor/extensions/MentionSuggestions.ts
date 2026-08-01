@@ -2,7 +2,7 @@ import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { DocumentWithProperties, SpaceMember } from "#api/ApiClient.ts";
-import { documentIcon } from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import "#components/AvatarElement.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { Mentions } from "./Mentions.ts";
@@ -312,7 +312,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                         @click=${(e: MouseEvent) => onItemClick(e, props, gi)}
                       >
                         <div class="w-6 h-6 rounded-sm flex items-center justify-center text-size-small text-neutral-500 bg-neutral-100">
-                          <span class="svg-icon w-3.5 h-3.5">${unsafeHTML(documentIcon)}</span>
+                          <span class="svg-icon w-3.5 h-3.5">${unsafeHTML(iconMarkup("document"))}</span>
                         </div>
                         <span class="min-w-0 flex-1 truncate font-medium leading-4">${item.label}</span>
                       </li>`;

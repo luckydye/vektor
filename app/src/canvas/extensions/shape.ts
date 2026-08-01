@@ -1,6 +1,6 @@
-import { shapeCircleIcon, shapeRectangleIcon } from "#assets/icons.ts";
 import { shared } from "#canvas/state.ts";
 import type { FreehandPoint } from "#canvas/viewport/index.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import type { TranslationKey } from "#utils/lang.ts";
 import { FREEHAND_STYLE } from "./drawing.ts";
 import type { CanvasSize, CanvasStrokeSnapshot, CanvasToolExtension } from "./types.ts";
@@ -79,14 +79,14 @@ export const SHAPE_LIBRARY: CanvasShapeLibraryItem[] = [
   {
     id: "rectangle",
     label: "Rectangle",
-    icon: shapeRectangleIcon,
+    icon: iconMarkup("shape-rectangle"),
     size: { width: 220, height: 160 },
     outline: rectangleOutline,
   },
   {
     id: "circle",
     label: "Circle",
-    icon: shapeCircleIcon,
+    icon: iconMarkup("shape-circle"),
     size: { width: 180, height: 180 },
     outline: ellipseOutline,
   },

@@ -17,12 +17,7 @@ import docStyles from "#editor/css/document.css?inline";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import "./AvatarElement.ts";
-import {
-  cancelIcon,
-  commentIcon,
-  documentIcon,
-  warningTriangleIcon,
-} from "#assets/icons.ts";
+import { Icon } from "./Icon.tsx";
 
 interface OverlayState {
   documentId: string;
@@ -188,10 +183,7 @@ export function DocumentOverlay() {
               {/* Header */}
               <div class="flex shrink-0 items-center justify-between border-neutral-100 border-b px-6 py-4">
                 <div class="flex min-w-0 items-center gap-3">
-                  <div
-                    class="svg-icon h-5 w-5 shrink-0 text-neutral-400"
-                    innerHTML={documentIcon}
-                  />
+                  <Icon class="h-5 w-5 shrink-0 text-neutral-400" name="document" />
                   <Show
                     when={documentData()}
                     fallback={
@@ -225,7 +217,7 @@ export function DocumentOverlay() {
                     class="rounded-sm p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-foreground"
                     title="Close (Esc)"
                   >
-                    <div class="svg-icon h-5 w-5" innerHTML={cancelIcon} />
+                    <Icon class="h-5 w-5" name="cancel" />
                   </button>
                 </div>
               </div>
@@ -244,10 +236,7 @@ export function DocumentOverlay() {
                 <Show when={!loading() && error()}>
                   <div class="p-6 text-center">
                     <div class="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-                      <div
-                        class="svg-icon h-6 w-6 text-red-600"
-                        innerHTML={warningTriangleIcon}
-                      />
+                      <Icon class="h-6 w-6 text-red-600" name="warning-triangle" />
                     </div>
                     <p class="text-neutral-600">{error()}</p>
                     <button
@@ -269,10 +258,7 @@ export function DocumentOverlay() {
                 <Show when={documentData()}>
                   <div class="border-neutral-100 border-t bg-neutral-50">
                     <div class="flex items-center gap-2 px-6 py-4">
-                      <div
-                        class="svg-icon h-4 w-4 text-neutral-600"
-                        innerHTML={commentIcon}
-                      />
+                      <Icon class="h-4 w-4 text-neutral-600" name="comment" />
                       <h3 class="font-semibold text-foreground text-size-medium">
                         Comments ({comments().length})
                       </h3>

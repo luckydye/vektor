@@ -1,11 +1,11 @@
 import { createEffect, createSignal, onMount, Show } from "solid-js";
 import { api, type DocumentWithProperties } from "#api/client.ts";
-import { pinToHomeIcon } from "#assets/icons.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { spacePath } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   spaceId: string;
@@ -73,10 +73,7 @@ export function PinnedDocument(props: Props) {
           }
           class="group flex items-center gap-2"
         >
-          <div
-            class="svg-icon h-3.5 w-3.5 shrink-0 text-amber-500"
-            innerHTML={pinToHomeIcon}
-          />
+          <Icon class="h-3.5 w-3.5 shrink-0 text-amber-500" name="pin-to-home" />
           <span class="font-semibold text-amber-600 text-size-small uppercase tracking-wide">
             Pinned
           </span>

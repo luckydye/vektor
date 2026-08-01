@@ -14,10 +14,10 @@ import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
-import { sendMessageIcon, stopIcon } from "#assets/icons.ts";
 import { AIChatMessages, type AIChatMessagesHandle } from "./AIChatMessages.tsx";
 import { AIChatSessions } from "./AIChatSessions.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
+import { Icon } from "./Icon.tsx";
 import { MessageInput, type MessageInputHandle } from "./MessageInput.tsx";
 
 interface Props {
@@ -346,7 +346,7 @@ export function AIChatPanel(props: Props) {
                       class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-primary-500 disabled:opacity-40"
                       title="Send (↵)"
                     >
-                      <div class="svg-icon h-4 w-4" innerHTML={sendMessageIcon} />
+                      <Icon class="h-4 w-4" name="send-message" />
                     </button>
                   }
                 >
@@ -356,7 +356,7 @@ export function AIChatPanel(props: Props) {
                     class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 transition-colors hover:text-red-500"
                     title="Stop generating"
                   >
-                    <div class="svg-icon h-4 w-4" innerHTML={stopIcon} />
+                    <Icon class="h-4 w-4" name="stop" />
                   </button>
                 </Show>
               }

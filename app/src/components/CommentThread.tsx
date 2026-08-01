@@ -5,9 +5,9 @@ import { formatRelativeTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import "#editor/css/mentions.css";
-import { cancelIcon, confirmationIcon, deleteEntryIcon } from "#assets/icons.ts";
 import "./AvatarElement.ts";
 import { Button } from "./Button.tsx";
+import { Icon } from "./Icon.tsx";
 import { MessageInput } from "./MessageInput.tsx";
 
 export interface Comment {
@@ -105,7 +105,7 @@ export function CommentThread(props: Props) {
               class="h-6 w-6 p-1 text-neutral-400 hover:text-green-600"
               ariaLabel="Resolve thread"
             >
-              <div class="svg-icon h-4 w-4" innerHTML={confirmationIcon} />
+              <Icon class="h-4 w-4" name="confirmation" />
             </Button>
           </Show>
           <Button
@@ -114,7 +114,7 @@ export function CommentThread(props: Props) {
             class="-mr-1 h-6 w-6 p-1 text-neutral-400 hover:text-neutral-700"
             ariaLabel="Close thread"
           >
-            <div class="svg-icon h-4 w-4" innerHTML={cancelIcon} />
+            <Icon class="h-4 w-4" name="cancel" />
           </Button>
         </div>
       </div>
@@ -154,7 +154,7 @@ export function CommentThread(props: Props) {
                       class="ml-auto h-5 w-5 p-0.5 text-neutral-400 opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
                       ariaLabel="Delete comment"
                     >
-                      <div class="svg-icon h-3 w-3" innerHTML={deleteEntryIcon} />
+                      <Icon class="h-3 w-3" name="delete-entry" />
                     </Button>
                   </Show>
                 </div>

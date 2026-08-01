@@ -1,11 +1,4 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import {
-  agentChatIcon,
-  confirmationIcon,
-  copyIcon,
-  linkIcon,
-  thinkingIcon,
-} from "#assets/icons.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import {
@@ -16,6 +9,7 @@ import {
 import { formatTime } from "#utils/datetime.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
 
 /**
  * Imperative handle, handed back through the `ref` prop.
@@ -234,10 +228,7 @@ export function AIChatMessages(props: Props) {
 
               <Show when={message.role === "thinking"}>
                 <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-100">
-                  <div
-                    class="svg-icon h-4 w-4 text-neutral-500"
-                    innerHTML={thinkingIcon}
-                  />
+                  <Icon class="h-4 w-4 text-neutral-500" name="thinking" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="flex max-h-72 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-sm">
@@ -254,10 +245,7 @@ export function AIChatMessages(props: Props) {
               <Show when={message.role === "assistant"}>
                 {/* Robot avatar */}
                 <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50">
-                  <div
-                    class="svg-icon h-4 w-4 text-primary-500"
-                    innerHTML={agentChatIcon}
-                  />
+                  <Icon class="h-4 w-4 text-primary-500" name="agent-chat" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="group relative w-max max-w-full overflow-hidden rounded-xl border border-neutral-100 bg-neutral-10 shadow-sm">
@@ -276,14 +264,9 @@ export function AIChatMessages(props: Props) {
                     >
                       <Show
                         when={copiedAssistantMessageTimestamp() === message.timestamp}
-                        fallback={
-                          <div class="svg-icon h-3.5 w-3.5" innerHTML={copyIcon} />
-                        }
+                        fallback={<Icon class="h-3.5 w-3.5" name="copy" />}
                       >
-                        <div
-                          class="svg-icon h-3.5 w-3.5 text-green-600"
-                          innerHTML={confirmationIcon}
-                        />
+                        <Icon class="h-3.5 w-3.5 text-green-600" name="confirmation" />
                       </Show>
                     </button>
                     <div
@@ -307,10 +290,7 @@ export function AIChatMessages(props: Props) {
                   classList={{ "flex-1": isToolMessageExpanded(message, index()) }}
                 >
                   <div class="mr-1.5 shrink-0 pt-1.5">
-                    <div
-                      class="svg-icon tool-message-icon h-4 w-4"
-                      innerHTML={linkIcon}
-                    />
+                    <Icon class="tool-message-icon h-4 w-4" name="link" />
                   </div>
                   <div class="min-w-0 flex-1">
                     <button
@@ -405,10 +385,7 @@ export function AIChatMessages(props: Props) {
           return (
             <div class="flex animate-message-slide-in justify-start">
               <div class="tool-message-bg mt-0.5 ml-9 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-3 py-1.5 text-size-extra-small">
-                <div
-                  class="svg-icon tool-message-icon h-4 w-4 shrink-0"
-                  innerHTML={linkIcon}
-                />
+                <Icon class="tool-message-icon h-4 w-4 shrink-0" name="link" />
                 <span class="tool-message-label shrink-0">Running</span>
                 <span class="tool-message-name truncate font-semibold">
                   {state.tool.toolName}
@@ -431,7 +408,7 @@ export function AIChatMessages(props: Props) {
       <Show when={waitingState()?.kind === "waiting"}>
         <div class="flex animate-message-slide-in justify-start gap-2">
           <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50">
-            <div class="svg-icon h-4 w-4 text-primary-500" innerHTML={agentChatIcon} />
+            <Icon class="h-4 w-4 text-primary-500" name="agent-chat" />
           </div>
           <div class="mt-0.5 flex items-center gap-1 rounded-xl border border-neutral-100 bg-neutral-10 px-3.5 py-3">
             <TypingDots />

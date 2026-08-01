@@ -2,17 +2,18 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { twMerge } from "tailwind-merge";
 import type { Property } from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
-import { Icon } from "./Icon.tsx";
+import { Icon, type IconName } from "./Icon.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
-import { addIcon } from "#assets/icons.ts";
 
 interface Props {
   label?: string;
   nameLabel?: string;
   valueLabels?: string[];
-  icon?: string;
+  icon?: IconName;
+  /** Generated artwork — a category's colour badge — rather than a set icon. */
+  iconSvg?: string;
   variant?: "default" | "special";
   readonly?: boolean;
   property?: Property | null;
@@ -66,7 +67,7 @@ export function PropertyChip(props: Props) {
     }
   };
 
-  const filteredValueOptions = createMemo(() => {
+  const filteredValueOptions = createMemo<SelectMenuItem[]>(() => {
     const searchTerm = searchInput().toLowerCase();
     const items = valueOptions().filter((item) =>
       item.label?.toLowerCase().includes(searchTerm),
@@ -76,7 +77,7 @@ export function PropertyChip(props: Props) {
         {
           id: "__new__",
           label: t("Add {value}").replace("{value}", searchInput()),
-          icon: addIcon,
+          icon: "add",
         },
       ];
     }
@@ -176,9 +177,9 @@ export function PropertyChip(props: Props) {
             onClick={() => void handleClick()}
           >
             <Show when={props.icon}>
-              <div
-                innerHTML={props.icon}
+              <Icon
                 class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
+                name={props.icon}
               />
             </Show>
             <span
@@ -207,9 +208,9 @@ export function PropertyChip(props: Props) {
                 <div class="flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-primary-500" />
               }
             >
-              <div
-                innerHTML={props.icon}
+              <Icon
                 class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
+                name={props.icon}
               />
             </Show>
             <Show
@@ -251,9 +252,10 @@ export function PropertyChip(props: Props) {
             {/* Property name input with delete button */}
             <div class="flex w-full items-center gap-4xs px-3xs">
               <Show when={props.icon}>
-                <div
-                  innerHTML={props.icon}
-                  class="[&_svg]:h-[18px] [&_svg]:w-[18px] [&_svg]:text-neutral-950"
+                <Icon
+                  class="h-[18px] w-[18px] text-neutral-950"
+                  name={props.icon}
+                  svg={props.iconSvg}
                 />
               </Show>
               <div class="flex-1 overflow-hidden whitespace-nowrap py-5xs">
@@ -276,7 +278,7 @@ export function PropertyChip(props: Props) {
                 aria-label={t("Delete property")}
                 onClick={handleDelete}
               >
-                <Icon name="trash" class="h-[18px] w-[18px]" />
+                <Icon name="delete-element" class="h-[18px] w-[18px]" />
               </button>
             </div>
 

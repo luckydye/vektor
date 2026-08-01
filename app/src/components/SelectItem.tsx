@@ -1,7 +1,10 @@
 import { type JSX, mergeProps, Show } from "solid-js";
+import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
-  icon?: string;
+  icon?: IconName;
+  /** Generated artwork — a category's colour badge — rather than a set icon. */
+  iconSvg?: string;
   label?: string;
   selected?: boolean;
   onClick?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>;
@@ -20,8 +23,12 @@ export function SelectItem(props: Props) {
       }}
       onClick={merged.onClick}
     >
-      <Show when={merged.icon}>
-        <div innerHTML={merged.icon} class="h-[18px] w-[18px] shrink-0" />
+      <Show when={merged.icon || merged.iconSvg}>
+        <Icon
+          class="h-[18px] w-[18px] shrink-0"
+          name={merged.icon}
+          svg={merged.iconSvg}
+        />
       </Show>
       <span class="font-normal text-neutral-950 text-size-normal capitalize leading-[1rem]">
         {merged.label}

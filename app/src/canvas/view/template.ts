@@ -6,17 +6,9 @@ import { repeat } from "lit-html/directives/repeat.js";
 import { styleMap } from "lit-html/directives/style-map.js";
 import { unsafeSVG } from "lit-html/directives/unsafe-svg.js";
 import { html as staticHtml, unsafeStatic } from "lit-html/static.js";
-import {
-  copyIcon,
-  cutIcon,
-  deleteElementIcon,
-  lockElementIcon,
-  pasteIcon,
-  unlockElementIcon,
-  uploadFileIcon,
-} from "#assets/icons.ts";
 import type { CanvasView } from "#canvas/CanvasController.ts";
 import type { CanvasShape } from "#canvas/extensions/types.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
 import type { CanvasDomRefs } from "./CanvasView.ts";
@@ -261,7 +253,7 @@ function contextMenu(view: CanvasView) {
                 aria-label=${t("Lock")}
                 @click=${run(() => view.lockSelectedElements())}
               >
-                ${svgIcon(lockElementIcon, "svg-icon canvas-tool-icon")}
+                ${svgIcon(iconMarkup("lock-element"), "svg-icon canvas-tool-icon")}
               </button>
               <span class="canvas-divider"></span>
               <button
@@ -270,7 +262,7 @@ function contextMenu(view: CanvasView) {
                 aria-label=${t("Copy")}
                 @click=${run(() => view.copySelectionToClipboard())}
               >
-                ${svgIcon(copyIcon, "svg-icon canvas-tool-icon")}
+                ${svgIcon(iconMarkup("copy"), "svg-icon canvas-tool-icon")}
               </button>
               <button
                 type="button"
@@ -278,7 +270,7 @@ function contextMenu(view: CanvasView) {
                 aria-label=${t("Cut")}
                 @click=${run(() => view.cutSelectionToClipboard())}
               >
-                ${svgIcon(cutIcon, "svg-icon canvas-tool-icon")}
+                ${svgIcon(iconMarkup("cut"), "svg-icon canvas-tool-icon")}
               </button>
               <span class="canvas-divider"></span>
             `
@@ -290,7 +282,7 @@ function contextMenu(view: CanvasView) {
         aria-label=${t("Paste")}
         @click=${() => view.pasteFromContextMenu()}
       >
-        ${svgIcon(pasteIcon, "svg-icon canvas-tool-icon")}
+        ${svgIcon(iconMarkup("paste"), "svg-icon canvas-tool-icon")}
       </button>
       <button
         type="button"
@@ -298,7 +290,7 @@ function contextMenu(view: CanvasView) {
         aria-label=${t("Upload file")}
         @click=${() => view.uploadFromContextMenu()}
       >
-        ${svgIcon(uploadFileIcon, "svg-icon canvas-tool-icon")}
+        ${svgIcon(iconMarkup("upload-file"), "svg-icon canvas-tool-icon")}
       </button>
       ${
         hasSelection
@@ -310,7 +302,7 @@ function contextMenu(view: CanvasView) {
                 aria-label=${t("Delete")}
                 @click=${run(() => view.deleteSelectedShape())}
               >
-                ${svgIcon(deleteElementIcon, "svg-icon canvas-tool-icon")}
+                ${svgIcon(iconMarkup("delete-element"), "svg-icon canvas-tool-icon")}
               </button>
             `
           : nothing
@@ -430,7 +422,7 @@ export function canvasTemplate(view: CanvasView, dom: CanvasDomRefs): TemplateRe
                   view.unlockHoveredElement();
                 }}
               >
-                ${svgIcon(unlockElementIcon)}
+                ${svgIcon(iconMarkup("unlock-element"))}
               </button>`
             : nothing
         }

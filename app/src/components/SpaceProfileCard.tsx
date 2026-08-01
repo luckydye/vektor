@@ -1,8 +1,8 @@
 import { Show } from "solid-js";
-import { editEntryIcon } from "#assets/icons.ts";
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { Button } from "./Button.tsx";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   name: string;
@@ -76,14 +76,11 @@ export function SpaceProfileCard(props: Props) {
                   <img src={props.logo} alt="" class="h-full w-full object-cover" />
                 }
               >
-                <div
-                  innerHTML={props.logo}
-                  class="h-full w-full p-1.5 [&>svg]:h-full [&>svg]:w-full"
-                />
+                <Icon svg={props.logo} class="h-full w-full p-1.5" />
               </Show>
             </Show>
             <div class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-              <div class="svg-icon h-4 w-4 text-white" innerHTML={editEntryIcon} />
+              <Icon class="h-4 w-4 text-white" name="edit-entry" />
             </div>
           </label>
           <Show when={props.logo}>

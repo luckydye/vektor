@@ -11,18 +11,12 @@ import {
   Show,
 } from "solid-js";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
-import {
-  activityIcon,
-  cancelIcon,
-  chevronDownIcon,
-  dateIcon,
-  documentIcon,
-} from "#assets/icons.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
 import { formatDate } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
 
 type DocumentListItem = DocumentWithProperties & {
@@ -248,7 +242,7 @@ export function DocumentGroupedList(props: Props) {
         class="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
         title={t("Deselect all")}
       >
-        <div class="svg-icon h-3.5 w-3.5" innerHTML={cancelIcon} />
+        <Icon class="h-3.5 w-3.5" name="cancel" />
       </button>
       {props.batchActions?.(selectedIds(), deselectAll)}
     </Show>
@@ -270,7 +264,7 @@ export function DocumentGroupedList(props: Props) {
                 "border-neutral-200 text-neutral-700": !dateRangeLabel(),
               }}
             >
-              <div class="svg-icon h-3.5 w-3.5" innerHTML={dateIcon} />
+              <Icon class="h-3.5 w-3.5" name="date" />
               <span>{dateRangeLabel() ?? t("Date range")}</span>
               <Show when={dateRangeLabel()}>
                 {/* biome-ignore lint/a11y/useFocusableInteractive: a nested control inside the popover trigger; the trigger itself takes the focus. */}
@@ -288,7 +282,7 @@ export function DocumentGroupedList(props: Props) {
                   }}
                   class="ml-0.5 text-primary-400 hover:text-primary-700"
                 >
-                  <div class="svg-icon h-3 w-3" innerHTML={cancelIcon} />
+                  <Icon class="h-3 w-3" name="cancel" />
                 </span>
               </Show>
             </button>
@@ -347,10 +341,7 @@ export function DocumentGroupedList(props: Props) {
                   class="mb-2 flex w-full items-center gap-2 text-left"
                   onClick={() => toggleCollapse(group.id)}
                 >
-                  <div
-                    class="svg-icon h-3.5 w-3.5 text-neutral-400"
-                    innerHTML={activityIcon}
-                  />
+                  <Icon class="h-3.5 w-3.5 text-neutral-400" name="activity" />
                   <span class="font-semibold text-neutral-700 text-size-small">
                     {group.label}
                   </span>
@@ -358,10 +349,10 @@ export function DocumentGroupedList(props: Props) {
                     {group.docs.length}
                   </span>
                   <div class="flex-1" />
-                  <div
-                    class="svg-icon h-4 w-4 text-neutral-400 transition-transform"
+                  <Icon
+                    class="h-4 w-4 text-neutral-400 transition-transform"
                     classList={{ "-rotate-90": collapsed().has(group.id) }}
-                    innerHTML={chevronDownIcon}
+                    name="chevron-down"
                   />
                 </button>
 
@@ -413,9 +404,9 @@ export function DocumentGroupedList(props: Props) {
                           rel={doc.fileUrl ? "noopener noreferrer" : undefined}
                           class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
                         >
-                          <div
-                            class="svg-icon h-4 w-4 shrink-0 text-neutral-300"
-                            innerHTML={documentIcon}
+                          <Icon
+                            class="h-4 w-4 shrink-0 text-neutral-300"
+                            name="document"
                           />
 
                           <div class="min-w-0 flex-1">

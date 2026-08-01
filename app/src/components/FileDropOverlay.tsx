@@ -1,7 +1,7 @@
 import { createSignal, type JSX, mergeProps, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { uploadFileIcon } from "#assets/icons.ts";
 import { t } from "#utils/lang.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   disabled?: boolean;
@@ -71,9 +71,9 @@ export function FileDropOverlay(props: Props) {
             class="overlay-fade pointer-events-none fixed inset-xs z-40 flex items-center justify-center rounded-2xl border-2 border-primary-300 border-dashed bg-background/95 shadow-large backdrop-blur-sm md:right-[calc(var(--inset-right,0px)+var(--spacing-xs))] md:left-[calc(var(--inset-left,0px)+var(--spacing-xs))]"
           >
             <div class="flex flex-col items-center gap-xs text-center text-primary-700">
-              <div
-                class="svg-icon h-12 w-12 rounded-full bg-primary-50 p-3xs"
-                innerHTML={uploadFileIcon}
+              <Icon
+                class="h-12 w-12 rounded-full bg-primary-50 p-3xs"
+                name="upload-file"
               />
               <p class="font-semibold text-size-large">{t("Drop file to upload")}</p>
             </div>

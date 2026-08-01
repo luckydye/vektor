@@ -1,12 +1,5 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import {
-  commandPaletteIcon,
-  extensionIcon,
-  homeIcon,
-  searchIcon,
-  settingsIcon,
-} from "#assets/icons.ts";
 import { canAccessSettings, canEdit } from "#composeables/usePermissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
@@ -16,6 +9,7 @@ import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
+import { Icon } from "./Icon.tsx";
 import { MenuLink } from "./MenuLink.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
@@ -138,7 +132,7 @@ export function Navigation() {
             <div class="flex items-center gap-px">
               <MenuLink
                 class="flex-1"
-                icon={homeIcon}
+                icon="home"
                 text={t("Home")}
                 href={spacePath(currentSpace()?.slug, "/")}
                 isActive={activeRoute() === "home"}
@@ -149,19 +143,19 @@ export function Navigation() {
                 title={t("Command Palette")}
                 onClick={() => Actions.run("ui:toggle:palatte")}
               >
-                <span innerHTML={commandPaletteIcon} class="icon inline flex-none" />
+                <Icon class="icon inline flex-none" name="command-palette" />
               </button>
             </div>
             <Show when={userCanAccessSettings()}>
               <MenuLink
-                icon={settingsIcon}
+                icon="settings"
                 text={t("Settings")}
                 href={spacePath(currentSpace()?.slug, "/settings")}
                 isActive={activeRoute() === "settings"}
               />
             </Show>
             <MenuLink
-              icon={searchIcon}
+              icon="search"
               text={t("Find")}
               href={spacePath(currentSpace()?.slug, "/search")}
               isActive={activeRoute() === "search"}
@@ -178,7 +172,8 @@ export function Navigation() {
               <For each={extensionMenuLinks()}>
                 {(link) => (
                   <MenuLink
-                    icon={link.icon || extensionIcon}
+                    icon="extension"
+                    iconSvg={link.icon}
                     text={link.title}
                     href={spacePath(currentSpace()?.slug, `/x/${link.route}`)}
                     isActive={activeRoute() === `x/${link.route}`}

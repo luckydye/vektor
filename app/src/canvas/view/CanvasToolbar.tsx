@@ -1,13 +1,8 @@
 import { For } from "solid-js";
-import {
-  fitViewToElementsIcon,
-  redoIcon,
-  shapesToolIcon,
-  undoIcon,
-} from "#assets/icons.ts";
 import { SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
 import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/popover";
+import { Icon } from "#components/Icon.tsx";
 import { type CanvasChrome, swallowPointer } from "./chrome.ts";
 
 /**
@@ -41,11 +36,7 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
             data-tooltip={`${t(tool.label)} · ${tool.shortcut}`}
             onClick={() => run((canvas) => canvas.setActiveTool(tool.id))}
           >
-            <div
-              class="svg-icon canvas-tool-icon"
-              aria-hidden="true"
-              innerHTML={tool.icon}
-            />
+            <Icon class="canvas-tool-icon" svg={tool.icon} />
           </button>
         )}
       </For>
@@ -59,11 +50,7 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
           aria-pressed={activeTool() === "shape"}
           data-tooltip={`${t("Shape")} · R`}
         >
-          <div
-            class="svg-icon canvas-tool-icon"
-            aria-hidden="true"
-            innerHTML={shapesToolIcon}
-          />
+          <Icon class="canvas-tool-icon" name="shapes-tool" />
         </button>
         <a-popover placements="top">
           <div class="canvas-shape-popover" onPointerDown={swallowPointer}>
@@ -79,11 +66,7 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
                     aria-label={t(item.label)}
                     onClick={() => run((canvas) => canvas.pickShapeLibraryItem(item))}
                   >
-                    <div
-                      class="svg-icon canvas-shape-option-icon"
-                      aria-hidden="true"
-                      innerHTML={item.icon}
-                    />
+                    <Icon class="canvas-shape-option-icon" svg={item.icon} />
                     <span class="canvas-shape-option-label">{t(item.label)}</span>
                   </button>
                 )}
@@ -103,7 +86,7 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
         disabled={!canUndo()}
         onClick={() => run((canvas) => canvas.undo())}
       >
-        <div class="svg-icon canvas-tool-icon" aria-hidden="true" innerHTML={undoIcon} />
+        <Icon class="canvas-tool-icon" name="undo" />
       </button>
       <button
         type="button"
@@ -113,7 +96,7 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
         disabled={!canRedo()}
         onClick={() => run((canvas) => canvas.redo())}
       >
-        <div class="svg-icon canvas-tool-icon" aria-hidden="true" innerHTML={redoIcon} />
+        <Icon class="canvas-tool-icon" name="redo" />
       </button>
 
       <span class="canvas-divider" />
@@ -125,11 +108,7 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
         data-tooltip={`${t("Fit to view")} · F`}
         onClick={() => run((canvas) => canvas.fitView())}
       >
-        <div
-          class="svg-icon canvas-tool-icon"
-          aria-hidden="true"
-          innerHTML={fitViewToElementsIcon}
-        />
+        <Icon class="canvas-tool-icon" name="fit-view-to-elements" />
       </button>
     </div>
   );

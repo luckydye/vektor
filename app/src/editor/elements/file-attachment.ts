@@ -8,14 +8,7 @@
 // Usage in HTML:
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
-import {
-  archiveBoxIcon,
-  csvFileIcon,
-  documentIcon,
-  fileIcon,
-  imageIcon,
-  presentationIcon,
-} from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
 import { escapeHtml } from "#utils/html.ts";
 
@@ -54,14 +47,14 @@ function getFileType(filename: string): FileType {
 }
 
 const ICONS: Record<FileType, string> = {
-  document: documentIcon,
-  presentation: presentationIcon,
-  spreadsheet: csvFileIcon,
-  archive: archiveBoxIcon,
-  text: fileIcon,
-  image: imageIcon,
-  model: fileIcon,
-  unknown: fileIcon,
+  document: iconMarkup("document"),
+  presentation: iconMarkup("presentation"),
+  spreadsheet: iconMarkup("csv-file"),
+  archive: iconMarkup("archive"),
+  text: iconMarkup("file"),
+  image: iconMarkup("image"),
+  model: iconMarkup("file"),
+  unknown: iconMarkup("file"),
 };
 
 const FILE_COLORS: Record<FileType, string> = {

@@ -1,5 +1,5 @@
 import * as Y from "yjs";
-import { penToolIcon, selectToolIcon } from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import { shapeFromSource, shapeToYMap } from "./document/shapeSerialization.ts";
@@ -268,8 +268,8 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   // collected from the registry, so adding an element type surfaces its tool
   // without editing the host.
   const CANVAS_TOOLS: ToolDef[] = [
-    { id: "select", label: "Select", shortcut: "V", icon: selectToolIcon },
-    { id: "draw", label: "Draw", shortcut: "D", icon: penToolIcon },
+    { id: "select", label: "Select", shortcut: "V", icon: iconMarkup("select-tool") },
+    { id: "draw", label: "Draw", shortcut: "D", icon: iconMarkup("pen-tool") },
     ...extensionManager.elementTools(),
   ];
 

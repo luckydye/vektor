@@ -1,9 +1,9 @@
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "#assets/icons.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Button } from "./Button.tsx";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   documentId: string;
@@ -75,20 +75,20 @@ export function WorkflowRunButton(props: Props) {
       when={isActiveRun()}
       fallback={
         <Button disabled={starting()} onClick={startRun}>
-          <div
+          <Icon
             class="icon"
             classList={{ "animate-spin": starting() }}
-            innerHTML={starting() ? spinnerIcon : playCircleFilledIcon}
+            name={starting() ? "spinner" : "play-circle-filled"}
           />
           <span>{starting() ? "Starting…" : "Run workflow"}</span>
         </Button>
       }
     >
       <Button tone="danger" disabled={cancelling()} onClick={cancelRun}>
-        <div
+        <Icon
           class="icon"
           classList={{ "animate-spin": cancelling() }}
-          innerHTML={cancelling() ? spinnerIcon : cancelIcon}
+          name={cancelling() ? "spinner" : "cancel"}
         />
         <span>{cancelling() ? "Cancelling…" : "Cancel"}</span>
       </Button>

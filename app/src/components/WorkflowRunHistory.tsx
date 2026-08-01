@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
-import { spinnerIcon } from "#assets/icons.ts";
 import { formatDateTime } from "#utils/datetime.ts";
+import { Icon } from "./Icon.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 
 type RunSummary = {
@@ -72,10 +72,7 @@ export function WorkflowRunHistory(props: Props) {
                     }`}
                   >
                     <Show when={run.status === "running" || run.status === "pending"}>
-                      <span
-                        class="svg-icon h-2.5 w-2.5 animate-spin"
-                        innerHTML={spinnerIcon}
-                      />
+                      <Icon class="h-2.5 w-2.5 animate-spin" name="spinner" />
                     </Show>
                     {run.status}
                   </span>

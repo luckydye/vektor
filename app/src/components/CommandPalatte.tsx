@@ -1,13 +1,6 @@
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import {
-  boltIcon,
-  chevronRightThinIcon,
-  documentIcon,
-  newDocumentIcon,
-  searchIcon,
-} from "#assets/icons.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -15,6 +8,7 @@ import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { history } from "#utils/history.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Icon, type IconName } from "./Icon.tsx";
 
 type HistoryEntry = { url: string; lastVisited: number };
 // biome-ignore lint/suspicious/noExplicitAny: documents are untyped at this layer.
@@ -30,10 +24,10 @@ const SECTION_LABELS: Record<Result["type"], string> = {
   create: "Create",
 };
 
-const RESULT_ICONS: Record<Result["type"], string> = {
-  document: documentIcon,
-  action: boltIcon,
-  create: newDocumentIcon,
+const RESULT_ICONS: Record<Result["type"], IconName> = {
+  document: "document",
+  action: "bolt",
+  create: "new-document",
 };
 
 /**
@@ -78,8 +72,7 @@ export function CommandPalatte() {
     () => new Map(historyEntries().map((entry) => [entry.url, entry.lastVisited])),
   );
 
-  const getLastVisited = (doc: Doc) =>
-    lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
+  const getLastVisited = (doc: Doc) => lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
 
   const filteredResults = createMemo<Result[]>(() => {
     // Nothing is visible while the palette is closed, and the document list it
@@ -250,7 +243,7 @@ export function CommandPalatte() {
           onClick={(event) => event.stopPropagation()}
         >
           <div class="flex items-center gap-3 border-neutral-100 border-b px-4 py-3">
-            <div class="svg-icon h-4 w-4 flex-none text-neutral" innerHTML={searchIcon} />
+            <Icon class="h-4 w-4 flex-none text-neutral" name="search" />
             <input
               ref={searchInput}
               type="text"
@@ -311,13 +304,13 @@ export function CommandPalatte() {
                       onClick={() => runResult(result)}
                       onMouseEnter={() => setSelectedIndex(index())}
                     >
-                      <div
-                        class="svg-icon icon h-4 w-4 flex-none"
+                      <Icon
+                        class="icon h-4 w-4 flex-none"
                         classList={{
                           "text-primary-600": index() === selectedIndex(),
                           "text-neutral-400": index() !== selectedIndex(),
                         }}
-                        innerHTML={RESULT_ICONS[result.type]}
+                        name={RESULT_ICONS[result.type]}
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
                         <span class="truncate font-normal text-size-medium">
@@ -353,13 +346,13 @@ export function CommandPalatte() {
                           />
                         </Show>
                       </div>
-                      <div
-                        class="svg-icon h-3.5 w-3.5 flex-none text-neutral transition-opacity"
+                      <Icon
+                        class="h-3.5 w-3.5 flex-none text-neutral transition-opacity"
                         classList={{
                           "opacity-100": index() === selectedIndex(),
                           "opacity-0": index() !== selectedIndex(),
                         }}
-                        innerHTML={chevronRightThinIcon}
+                        name="chevron-right-thin"
                       />
                     </button>
                   </Dynamic>

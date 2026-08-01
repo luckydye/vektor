@@ -1,6 +1,5 @@
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
 import type { AuditLog } from "#api/client.ts";
-import { addIcon, confirmationIcon, editEntryIcon } from "#assets/icons.ts";
 import {
   type ActivityGroup,
   getAuditEventAction,
@@ -13,6 +12,7 @@ import { t } from "#utils/lang.ts";
 import type { DisplayUser } from "#utils/userDisplay.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
+import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
   entries: AuditLog[];
@@ -26,9 +26,9 @@ function getGroupAction(items: AuditLog[]): string {
   return items[0] ? getAuditEventAction(items[0].event) : t("updated");
 }
 
-function getDocumentActivityIcon(entry: AuditLog): string {
-  if (entry.event === "publish") return confirmationIcon;
-  return editEntryIcon;
+function getDocumentActivityIcon(entry: AuditLog): IconName {
+  if (entry.event === "publish") return "confirmation";
+  return "edit-entry";
 }
 
 function getMoreChangesLabel(count: number): string {
@@ -143,9 +143,9 @@ export function DocumentActivityFeed(props: Props) {
                     <For each={getDocumentEntries(group)}>
                       {(entry) => (
                         <div class="flex min-w-0 items-center gap-3">
-                          <div
-                            class="svg-icon h-4 w-4 shrink-0 text-neutral-400"
-                            innerHTML={getDocumentActivityIcon(entry)}
+                          <Icon
+                            class="h-4 w-4 shrink-0 text-neutral-400"
+                            name={getDocumentActivityIcon(entry)}
                           />
                           <div class="min-w-0 flex-1 truncate font-medium text-neutral-600 text-size-small">
                             {getEntryChangeLabel(entry) ??
@@ -200,10 +200,10 @@ export function DocumentActivityFeed(props: Props) {
                         class="flex items-center gap-3 font-medium text-neutral-500 text-size-small hover:text-neutral-700"
                         onClick={() => toggleGroup(group.id)}
                       >
-                        <div
-                          class="svg-icon h-4 w-4 shrink-0 text-neutral-400 transition-transform"
+                        <Icon
+                          class="h-4 w-4 shrink-0 text-neutral-400 transition-transform"
                           classList={{ "rotate-45": isGroupExpanded(group.id) }}
-                          innerHTML={addIcon}
+                          name="add"
                         />
                         <span>
                           {isGroupExpanded(group.id)

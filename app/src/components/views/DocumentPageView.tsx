@@ -65,8 +65,21 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
   csv: { title: "Untitled Spreadsheet", content: "A,B,C\n,,\n,,\n,,\n" },
 };
 
-const STICKY_HEADER_CLASS =
-  "flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-xl sticky top-0 z-10";
+/**
+ * The side inset every part of a document shares — breadcrumb, chips and the
+ * content itself — so they line up down the page.
+ *
+ * Named rather than repeated because it cannot be overridden after the fact:
+ * the project's spacing tokens (`px-xs`, `md:px-xl`) are not in
+ * tailwind-merge's scale, so `twMerge("px-xs", "px-0")` keeps both classes and
+ * the original still wins. Compose it, do not try to merge it away.
+ */
+const CONTENT_INSET_CLASS = "px-xs md:px-m";
+
+const STICKY_HEADER_BASE_CLASS =
+  "flex min-h-7 flex-row items-center justify-between gap-6 py-4 sticky top-0 z-10";
+
+const STICKY_HEADER_CLASS = `${STICKY_HEADER_BASE_CLASS} ${CONTENT_INSET_CLASS}`;
 
 export function DocumentPageView(props: Props) {
   const navigate = useNavigate();
@@ -178,8 +191,11 @@ export function DocumentPageView(props: Props) {
   const isCsv = createMemo(() => documentType() === "csv");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
+  // A spreadsheet is a full-width document, not a full-bleed surface like the
+  // canvas: the container spans the window but the grid keeps the same side
+  // inset as the breadcrumb and the chips above it.
   const isPaddedDocument = createMemo(
-    () => !isCanvas() && !isApp() && !isCsv() && !isWorkflow() && !isDatabase(),
+    () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
   );
 
   const documentRightViews = createMemo(() => {
@@ -388,10 +404,15 @@ export function DocumentPageView(props: Props) {
           </Show>
         }
       >
-        <div>
+        {/* A spreadsheet sizes itself to what is left of the window rather than
+            to its content, so for `csv` every box between here and the grid is
+            a flex column that may shrink. Without an unbroken chain the grid has
+            no height to resolve against and has to guess one. */}
+        <div class={twMerge(isCsv() && "flex h-full min-h-0 flex-col")}>
           <inset-view
             class={twMerge(
               "block min-h-0 flex-1",
+              isCsv() && "flex flex-col",
               !isCanvas() && "md:mr-(--inset-right) md:ml-(--inset-left)",
             )}
           >
@@ -402,6 +423,7 @@ export function DocumentPageView(props: Props) {
               data-layout={effectiveLayout()}
               class={twMerge(
                 "relative mx-auto flex h-full w-full flex-col",
+                isCsv() && "min-h-0",
                 isCsv() || isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
@@ -437,7 +459,7 @@ export function DocumentPageView(props: Props) {
 
                   <inset-view
                     id="document-properties"
-                    class="mb-l block px-xs md:px-xl print:px-0"
+                    class="mb-l block px-xs md:px-m print:px-0"
                   >
                     {documentPropertiesBlock()}
                   </inset-view>
@@ -490,13 +512,20 @@ export function DocumentPageView(props: Props) {
                   <DocumentActions title={title()} />
                 </div>
 
-                <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-xl print:px-0">
-                  {titleRow()}
-                </inset-view>
+                {/* A spreadsheet carries its name in the breadcrumb instead: the
+                    grid wants the vertical space, and a heading above a formula
+                    bar reads as a cell rather than a title. */}
+                <Show when={!isCsv()}>
+                  <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
+                    {titleRow()}
+                  </inset-view>
+                </Show>
 
+                {/* A spreadsheet brings its own toolbar right underneath, so the
+                    chips sit closer to it than prose content would. */}
                 <inset-view
                   id="document-properties"
-                  class="mb-l block px-xs md:px-xl print:px-0"
+                  class={`block print:px-0 ${CONTENT_INSET_CLASS} ${isCsv() ? "mb-3xs" : "mb-l"}`}
                 >
                   {documentPropertiesBlock()}
                 </inset-view>
@@ -504,18 +533,26 @@ export function DocumentPageView(props: Props) {
 
               <div
                 class={twMerge(
+                  // Continues the flex column down to the grid; see the wrapper
+                  // at the top of this view.
+                  isCsv() && "flex min-h-0 flex-1 flex-col",
                   documentRightViews().length > 0 &&
                     "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6",
                 )}
               >
-                <div class="min-w-0">
+                <div
+                  class={twMerge("min-w-0", isCsv() && "flex min-h-0 flex-1 flex-col")}
+                >
                   <div
                     class={twMerge(
                       "h-full max-w-none overflow-x-auto text-neutral-700",
                       isCsv() || isDatabase()
                         ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                         : "h-full overflow-x-auto",
-                      isPaddedDocument() && "px-xs md:px-xl print:px-0",
+                      isPaddedDocument() && "px-xs md:px-m print:px-0",
+                      // The grid ends the page, so it closes it with the same
+                      // gap the sticky header opens it with (`py-4`).
+                      isCsv() && "pb-4",
                       isWorkflow() && "overflow-inherit",
                     )}
                   >
@@ -584,8 +621,13 @@ export function DocumentPageView(props: Props) {
                     </Show>
                   </div>
 
-                  <Show when={!isDraft() && !editing() && !isCanvas()}>
-                    <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-xl print:px-0">
+                  {/* Not under a spreadsheet: it is the last flex child, so its
+                      ~90px of margins came straight off the grid's height and
+                      left it hanging short of the window. The grid runs to the
+                      bottom edge instead, and "Updated …" lives in the ⋮ menu's
+                      document info. */}
+                  <Show when={!isDraft() && !editing() && !isCanvas() && !isCsv()}>
+                    <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
                       <Show when={doc()?.updatedAt}>
                         <div class="mb-12 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
                           <Show when={hasMounted() && updatedAtStr()}>

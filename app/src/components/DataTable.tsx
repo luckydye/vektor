@@ -9,13 +9,13 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { downloadIcon } from "#assets/icons.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/xlsx.ts";
 import { downloadExcelSheets, sanitizeSheetName } from "#utils/xlsx.ts";
 import type { ExcelExportConfig } from "./ExcelExportDialog.tsx";
 import { ExcelExportDialog } from "./ExcelExportDialog.tsx";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   data: Record<string, unknown>[];
@@ -297,7 +297,7 @@ export function DataTable(props: Props) {
             title="Download as Excel"
             onClick={() => setShowExportDialog(true)}
           >
-            <div class="svg-icon h-3.5 w-3.5" innerHTML={downloadIcon} />
+            <Icon class="h-3.5 w-3.5" name="download" />
             Excel
           </button>
         </div>

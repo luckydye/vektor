@@ -71,7 +71,7 @@ export function HeaderImageDialog(props: Props) {
                         "bg-neutral-100": !isDragging(),
                       }}
                     >
-                      <Icon name="upload" class="h-7 w-7 text-neutral-500" />
+                      <Icon name="upload-file" class="h-7 w-7 text-neutral-500" />
                     </div>
 
                     <p class="text-center text-neutral-700 text-size-normal">

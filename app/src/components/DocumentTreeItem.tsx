@@ -1,6 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
-import { chevronRightThinIcon } from "#assets/icons.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import {
@@ -11,6 +10,7 @@ import {
 import { allowsChildDocumentType } from "#documents/types.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   doc: DocumentWithProperties;
@@ -84,10 +84,10 @@ export function DocumentTreeItem(props: Props) {
             class="rounded-sm p-0.5 hover:bg-neutral-300 active:bg-neutral-200"
             aria-label={isExpanded() ? t("Collapse") : t("Expand")}
           >
-            <div
-              class="svg-icon h-3 w-3 text-neutral transition-transform"
+            <Icon
+              class="h-3 w-3 text-neutral transition-transform"
               classList={{ "rotate-90": isExpanded() }}
-              innerHTML={chevronRightThinIcon}
+              name="chevron-right-thin"
             />
           </button>
         </Show>

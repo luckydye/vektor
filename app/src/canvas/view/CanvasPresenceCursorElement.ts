@@ -1,5 +1,5 @@
 import "#cosmetics/CosmeticElement.ts";
-import { selectToolIcon } from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 
 const canvasPresenceCursorTag = "canvas-presence-cursor";
 
@@ -114,7 +114,7 @@ const CanvasPresenceCursorElement =
 
           this.cursor = document.createElement("div");
           this.cursor.className = "cursor";
-          this.cursor.innerHTML = selectToolIcon;
+          this.cursor.innerHTML = iconMarkup("select-tool");
 
           this.label = document.createElement("span");
           this.label.className = "label";

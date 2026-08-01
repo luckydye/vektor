@@ -2,16 +2,6 @@ import "@atrium-ui/elements/popover";
 import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { api } from "#api/client.ts";
-import {
-  addIcon,
-  categoryIcon,
-  chevronRightThinIcon,
-  contextMenuMoreIcon,
-  deleteEntryIcon,
-  documentIcon,
-  dragDotsIcon,
-  editEntryIcon,
-} from "#assets/icons.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
@@ -24,6 +14,7 @@ import { currentLang, t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
+import { Icon } from "./Icon.tsx";
 
 /**
  * Imperative handle, handed back through the `ref` prop.
@@ -509,7 +500,7 @@ export function DocumentTree(props: Props) {
               }
             >
               <div class="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 border-dashed px-4 py-5 text-center">
-                <div class="svg-icon h-6 w-6 text-neutral-400" innerHTML={categoryIcon} />
+                <Icon class="h-6 w-6 text-neutral-400" name="category" />
                 <div>
                   <p class="font-medium text-neutral-900 text-size-normal">
                     {t("No categories yet")}
@@ -523,7 +514,7 @@ export function DocumentTree(props: Props) {
                   onClick={startCreating}
                   class="mt-1 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 font-medium text-size-normal text-white transition-colors hover:bg-blue-700"
                 >
-                  <div class="svg-icon h-4 w-4" innerHTML={addIcon} />
+                  <Icon class="h-4 w-4" name="add" />
                   <span>{t("Create category")}</span>
                 </button>
               </div>
@@ -584,10 +575,10 @@ export function DocumentTree(props: Props) {
                             {category.icon || category.name.charAt(0).toUpperCase()}
                           </span>
 
-                          <div
-                            class="svg-icon absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100"
+                          <Icon
+                            class="absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100"
                             classList={{ "rotate-90": expandedItems().has(category.id) }}
-                            innerHTML={chevronRightThinIcon}
+                            name="chevron-right-thin"
                           />
                         </div>
 
@@ -611,11 +602,7 @@ export function DocumentTree(props: Props) {
                             title={t("New document in this category")}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div
-                              class="svg-icon h-3.5 w-3.5"
-                              aria-hidden="true"
-                              innerHTML={addIcon}
-                            />
+                            <Icon class="h-3.5 w-3.5" name="add" />
                             <span class="sr-only">
                               {t("New document in this category")}
                             </span>
@@ -634,10 +621,7 @@ export function DocumentTree(props: Props) {
                               handleMenuButton(e, category);
                             }}
                           >
-                            <div
-                              class="svg-icon h-3.5 w-3.5"
-                              innerHTML={contextMenuMoreIcon}
-                            />
+                            <Icon class="h-3.5 w-3.5" name="context-menu-more" />
                           </button>
                         </div>
                       </Show>
@@ -648,7 +632,7 @@ export function DocumentTree(props: Props) {
                           class="flex shrink-0 items-center pr-2 text-neutral-400"
                           title={t("Drag to reorder")}
                         >
-                          <div class="svg-icon h-4 w-4" innerHTML={dragDotsIcon} />
+                          <Icon class="h-4 w-4" name="drag-dots" />
                         </div>
                       </Show>
                     </div>
@@ -683,7 +667,7 @@ export function DocumentTree(props: Props) {
                 onClick={startCreating}
                 class="mt-2 flex w-full items-center gap-3 rounded-md px-3 py-2 text-neutral-900 text-size-medium transition-colors duration-200 hover:bg-neutral-100 hover:text-neutral"
               >
-                <div class="svg-icon h-4 w-4 shrink-0" innerHTML={addIcon} />
+                <Icon class="h-4 w-4 shrink-0" name="add" />
                 <span>{t("Add category")}</span>
               </button>
             </Show>
@@ -737,7 +721,7 @@ export function DocumentTree(props: Props) {
                       }}
                       class={MENU_ITEM_CLASS}
                     >
-                      <div class="svg-icon h-4 w-4 flex-none" innerHTML={documentIcon} />
+                      <Icon class="h-4 w-4 flex-none" name="document" />
                       <span>{t("New document")}</span>
                     </button>
                     <button
@@ -749,7 +733,7 @@ export function DocumentTree(props: Props) {
                       }}
                       class={MENU_ITEM_CLASS}
                     >
-                      <div class="svg-icon h-4 w-4 flex-none" innerHTML={editEntryIcon} />
+                      <Icon class="h-4 w-4 flex-none" name="edit-entry" />
                       <span>{t("Edit category")}</span>
                     </button>
 
@@ -763,7 +747,7 @@ export function DocumentTree(props: Props) {
                       }}
                       class={MENU_ITEM_CLASS}
                     >
-                      <div class="svg-icon h-4 w-4 flex-none" innerHTML={addIcon} />
+                      <Icon class="h-4 w-4 flex-none" name="add" />
                       <span>{t("New category")}</span>
                     </button>
                     <button
@@ -774,7 +758,7 @@ export function DocumentTree(props: Props) {
                       }}
                       class={MENU_ITEM_CLASS}
                     >
-                      <div class="svg-icon h-4 w-4 flex-none" innerHTML={dragDotsIcon} />
+                      <Icon class="h-4 w-4 flex-none" name="drag-dots" />
                       <span>{t("Rearrange categories")}</span>
                     </button>
 
@@ -790,10 +774,7 @@ export function DocumentTree(props: Props) {
                       disabled={deletingIds().has(menu().category.id)}
                       class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-red-600 text-size-normal transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
                     >
-                      <div
-                        class="svg-icon h-4 w-4 flex-none"
-                        innerHTML={deleteEntryIcon}
-                      />
+                      <Icon class="h-4 w-4 flex-none" name="delete-entry" />
                       <span>{t("Delete category")}</span>
                     </button>
                   </div>
