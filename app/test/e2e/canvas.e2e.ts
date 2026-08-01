@@ -222,7 +222,9 @@ test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) 
     .toBe(before + 1);
 
   // Put the document back: every test in this file shares one seeded server.
-  await page.keyboard.press("Escape");
+  // The click is what makes the undo land — a new note opens for editing and
+  // keeps focus, so the keystroke would otherwise go to its text editor.
+  await page.mouse.click(box.x + 40, box.y + 40);
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(() => shapes.count()).toBe(before);
 });
