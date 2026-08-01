@@ -1,4 +1,4 @@
-import { QueryClient } from "./query.ts";
+import { QueryClient, setFallbackQueryClient } from "./query.ts";
 
 /**
  * The query client an island renders against.
@@ -25,6 +25,13 @@ function createQueryClient() {
 }
 
 const browserQueryClient = typeof window === "undefined" ? null : createQueryClient();
+
+// A composable called from an island's *own body* sits above the provider that
+// island renders, so it resolves to the binding's fallback client. In the
+// browser that has to be this same client, or the two caches each fetch, each
+// store, and each re-render the same query. The server keeps its per-request
+// fallback: there, one client per process is precisely the leak to avoid.
+if (browserQueryClient) setFallbackQueryClient(browserQueryClient);
 
 /** Shared across islands in the browser; a fresh one per render on the server. */
 export function islandQueryClient(): QueryClient {

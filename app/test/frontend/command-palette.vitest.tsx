@@ -33,6 +33,7 @@ afterEach(() => {
   for (const [id] of [...Actions.entries()]) Actions.unregister(id);
 });
 
+/** Mounted and opened: a closed palette deliberately renders no rows at all. */
 function mountPalette(): HTMLElement {
   const container = document.createElement("div");
   document.body.append(container);
@@ -41,6 +42,7 @@ function mountPalette(): HTMLElement {
     unmount();
     container.remove();
   });
+  Actions.run("ui:toggle:palatte");
   return container;
 }
 
@@ -108,5 +110,52 @@ describe("command palette create-with-title", () => {
     await type(container, "  API Reference  ");
 
     expect(rowLabels(container)).toEqual(['Create Document with title "API Reference"']);
+  });
+});
+
+/**
+ * The palette stays mounted for its keyboard shortcut, so its list is what the
+ * document cache re-renders on every write. Both of these bound that cost.
+ */
+describe("command palette list size", () => {
+  const manyDocuments = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `doc_${index}`,
+      slug: `doc-${index}`,
+      properties: { title: `Doc ${index}` },
+    }));
+
+  it("renders nothing while closed", () => {
+    setDocuments(manyDocuments(30));
+
+    const container = document.createElement("div");
+    document.body.append(container);
+    const unmount = render(() => (<CommandPalatte />) as JSX.Element, container);
+    disposers.push(() => {
+      unmount();
+      container.remove();
+    });
+
+    expect(rowLabels(container)).toEqual([]);
+  });
+
+  it("caps the documents it lists", () => {
+    setDocuments(manyDocuments(120));
+
+    const container = mountPalette();
+
+    expect(rowLabels(container)).toHaveLength(50);
+  });
+
+  it("filters the whole space before capping, so search reaches past the cap", async () => {
+    setDocuments(manyDocuments(120));
+
+    const container = mountPalette();
+    await type(container, "Doc 117");
+
+    expect(rowLabels(container)).toEqual([
+      "Doc 117",
+      'Create Document with title "Doc 117"',
+    ]);
   });
 });

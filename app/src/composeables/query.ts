@@ -136,7 +136,10 @@ export const QueryClientContext = createContext<QueryClient>();
 
 let fallbackQueryClient = new QueryClient();
 
-/** Replaces the no-provider client. Server entry points call this per request. */
+/**
+ * Replaces the no-provider client, so callers above a provider — or outside
+ * any component — share the cache the app actually renders against.
+ */
 export function setFallbackQueryClient(client: QueryClient): void {
   fallbackQueryClient = client;
 }

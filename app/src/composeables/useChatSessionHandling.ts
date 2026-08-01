@@ -2,6 +2,7 @@ import { type Accessor, createEffect, createMemo, createSignal } from "solid-js"
 import type { SetStoreFunction } from "solid-js/store";
 import {
   type ChatSession,
+  type ChatSessionSummary,
   deleteSession,
   getSession,
   getSessionsForSpace,
@@ -13,8 +14,27 @@ const welcomeMessage = "Hello! I'm here to help you with this document. Ask me a
 
 type SessionStatus = "generating" | "awaiting" | "idle";
 
+/** The list's view of a session we happen to hold in full. */
+function toSummary(session: ChatSession): ChatSessionSummary {
+  const lastMessage = (session.conversationHistory as Array<{ role: string }>).at(-1);
+  return {
+    id: session.id,
+    title: session.title,
+    spaceId: session.spaceId,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    lastMessageRole: lastMessage?.role ?? null,
+  };
+}
+
 export function useChatSessionHandling(options: {
   currentSpaceId: Accessor<string | null | undefined>;
+  /**
+   * Whether the panel is showing. The session list is only worth fetching for
+   * a panel someone is looking at — the chat mounts with the shell on every
+   * page load, and its history is the largest thing the space can hand out.
+   */
+  isActive: Accessor<boolean>;
   /**
    * The transcript, as a Solid store. A store rather than a signal because the
    * stream appends to it token by token: `setMessages(i, "content", …)` touches
@@ -28,7 +48,7 @@ export function useChatSessionHandling(options: {
   reconnectSession: (pendingUserMessage: string) => void | Promise<void>;
 }) {
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
-  const [sessions, setSessions] = createSignal<ChatSession[]>([]);
+  const [sessions, setSessions] = createSignal<ChatSessionSummary[]>([]);
   const [showSessionPicker, setShowSessionPicker] = createSignal(false);
   const sessionStartedAt = createMemo(() => {
     const session = sessions().find((item) => item.id === currentSessionId());
@@ -71,14 +91,15 @@ export function useChatSessionHandling(options: {
     if (!refreshed) return;
 
     setSessions((list) =>
-      list.map((session) => (session.id === refreshed.id ? refreshed : session)),
+      list.map((session) =>
+        session.id === refreshed.id ? toSummary(refreshed) : session,
+      ),
     );
   }
 
-  function getSessionStatus(session: ChatSession): SessionStatus {
+  function getSessionStatus(session: ChatSessionSummary): SessionStatus {
     if (session.id === currentSessionId() && options.isGenerating()) return "generating";
-    const lastMessage = (session.conversationHistory as Array<{ role: string }>).at(-1);
-    return lastMessage?.role === "user" ? "awaiting" : "idle";
+    return session.lastMessageRole === "user" ? "awaiting" : "idle";
   }
 
   function startNewChat() {
@@ -89,7 +110,12 @@ export function useChatSessionHandling(options: {
     addWelcomeMessage();
   }
 
-  function resumeSession(session: ChatSession) {
+  async function resumeSession(summary: ChatSessionSummary) {
+    // The list carries no transcript, so the picked session is read in full
+    // here — one session, rather than every session on every page load.
+    const session = await getSession(summary.spaceId, summary.id);
+    if (!session) return;
+
     setCurrentSessionId(session.id);
     options.resetDraft();
     options.setMessages((session.messages as UIMessage[]).map(normalizeSavedMessage));
@@ -124,7 +150,7 @@ export function useChatSessionHandling(options: {
       messages: [],
       conversationHistory: [],
     };
-    setSessions((list) => [session, ...list]);
+    setSessions((list) => [toSummary(session), ...list]);
     setCurrentSessionId(session.id);
     await saveSession(session);
   }
@@ -148,7 +174,7 @@ export function useChatSessionHandling(options: {
 
   createEffect(() => {
     const spaceId = options.currentSpaceId();
-    if (!spaceId) return;
+    if (!spaceId || !options.isActive()) return;
     void loadSessions().then(() => {
       if (sessions().length > 0) {
         setShowSessionPicker(true);

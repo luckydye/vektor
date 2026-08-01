@@ -61,6 +61,9 @@ export const GET: ApiRouteHandler = (context) =>
       new URL(context.req.url).searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = new URL(context.req.url).searchParams.get("categorySlugs");
     const grouped = new URL(context.req.url).searchParams.get("grouped") === "true";
+    // Uploaded files are unpaginated, so a listing only gets them on request.
+    const includeFiles =
+      new URL(context.req.url).searchParams.get("includeFiles") === "true";
     const parentIdParam =
       new URL(context.req.url).searchParams.get("parentId")?.trim() || undefined;
 
@@ -125,13 +128,13 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     // Always return documents without content (content fetched separately when viewing)
-    const { documents, total, nextCursor } = await listDocuments(
-      spaceId,
+    const { documents, total, nextCursor } = await listDocuments(spaceId, {
       limit,
-      typeParam,
+      type: typeParam,
       viewer,
       cursor,
-    );
+      includeFiles,
+    });
     return jsonResponse({ documents, total, limit, nextCursor });
   }, "Failed to list documents");
 

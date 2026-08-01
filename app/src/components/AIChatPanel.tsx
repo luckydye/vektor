@@ -93,6 +93,7 @@ export function AIChatPanel(props: Props) {
     removeSession,
   } = useChatSessionHandling({
     currentSpaceId,
+    isActive: isOpen,
     messages: () => messages,
     setMessages,
     isGenerating,

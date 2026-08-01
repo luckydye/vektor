@@ -1,9 +1,18 @@
-import { type AIChatMessage, type AIChatSession, api } from "#api/client.ts";
+import {
+  type AIChatMessage,
+  type AIChatSession,
+  type AIChatSessionListEntry,
+  api,
+} from "#api/client.ts";
 
 export type UIMessage = AIChatMessage;
 export type ChatSession = AIChatSession;
+/** What the picker lists: a session without its transcript. */
+export type ChatSessionSummary = AIChatSessionListEntry;
 
-export async function getSessionsForSpace(spaceId: string): Promise<ChatSession[]> {
+export async function getSessionsForSpace(
+  spaceId: string,
+): Promise<ChatSessionSummary[]> {
   return api.aiChatSessions.list(spaceId);
 }
 
