@@ -96,18 +96,26 @@
 
 .ic-toolbar {
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  height: 40px;
   padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ic-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 .ic-toolbar button {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 4px;
-  color: var(--color-neutral-600);
+  color: var(--color-neutral-700);
   cursor: pointer;
 }
 
@@ -116,21 +124,104 @@
 }
 
 .ic-toolbar button:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: default;
 }
 
-/* `#components/Icon.tsx` sizes itself with Tailwind arbitrary variants, which do
- * not cross into here — so the wrapper and its svg are sized locally. Using the
- * shared component anyway keeps the glyphs in step with the rest of the app. */
-.ic-root .icon {
-  display: block;
+/* The control reflects the selected cell: bold is lit when the cell is bold. */
+.ic-toolbar-button--active {
+  background: var(--color-neutral-100);
+  color: var(--color-forground);
+}
+
+.ic-toolbar-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--color-neutral-100);
+}
+
+/* Controls whose label is the glyph — $, %, .00, the font-size stepper. */
+.ic-toolbar-glyph {
+  font-size: var(--text-size-normal);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ic-toolbar-glyph--small {
+  font-size: var(--text-size-extra-small);
+}
+
+.ic-toolbar-glyph--wide {
+  gap: 4px;
+  width: auto !important;
+  padding: 0 6px;
+}
+
+.ic-font-size {
+  flex: none;
+  min-width: 26px;
+  padding: 3px 0;
+  border: 1px solid var(--color-neutral-100);
+  border-radius: 4px;
+  color: var(--color-neutral-700);
+  font-size: var(--text-size-small);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ic-caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid currentColor;
+  border-right: 3px solid transparent;
+  border-left: 3px solid transparent;
+  opacity: 0.6;
+}
+
+/* The colour controls carry a swatch of what they would apply. */
+.ic-color-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ic-color-button .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.ic-color-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--color-neutral-200);
+}
+
+/* `inline-flex`, not `contents`: the panel is positioned from this element's
+ * box, and an element with `display: contents` generates none — every popover
+ * would open in the top-left corner of the window. */
+.ic-popover-anchor {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+/* `#components/Icon.tsx` renders `.svg-icon`, whose sizing is a Tailwind
+ * `@utility` — and utilities do not cross into here. This is that utility,
+ * restated, plus the size the toolbar wants. Using the shared component anyway
+ * keeps the glyphs in step with the rest of the app. */
+.ic-root .svg-icon {
+  display: inline-block;
   flex: none;
   width: 16px;
   height: 16px;
 }
 
-.ic-root .icon svg {
+.ic-root .svg-icon svg {
+  display: block;
   width: 100%;
   height: 100%;
 }
@@ -149,7 +240,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ic-name-box .icon {
+.ic-name-box .svg-icon {
   width: 12px;
   height: 12px;
   color: var(--color-neutral-400);
@@ -220,6 +311,61 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.ic-menu--wide {
+  min-width: 240px;
+}
+
+.ic-menu--wide button {
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.ic-menu-sample {
+  color: var(--color-neutral-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.ic-menu-item--active {
+  background: var(--color-primary-10);
+}
+
+/* --- colour palette ----------------------------------------------------- */
+
+.ic-menu--palette {
+  min-width: 0;
+}
+
+.ic-palette {
+  display: grid;
+  grid-template-columns: repeat(6, 20px);
+  gap: 4px;
+  padding: 4px;
+}
+
+.ic-swatch {
+  width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
+  cursor: pointer;
+}
+
+.ic-swatch:hover {
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 12%),
+    0 0 0 2px var(--color-primary-200);
+}
+
+.ic-palette-reset {
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px solid var(--color-neutral-100);
+  padding: 6px 12px !important;
+  color: var(--color-neutral-600) !important;
+  font-size: var(--text-size-small);
 }
 
 /* --- error toast -------------------------------------------------------- */

@@ -8,9 +8,8 @@
 // revision counter — that `refresh()` bumps after any such call, and everything
 // reading either of them subscribes to it. That is the whole reactivity story.
 //
-// There is deliberately no formatting toolbar and no sheet tabs: a csv document
-// holds one sheet of values, so those controls would offer to change things
-// that could not be saved.
+// No sheet tabs: a csv document holds a single sheet. The formatting toolbar is
+// in Toolbar.tsx, and everything it offers is persisted — see csvDocument.ts.
 
 import type { Model } from "@ironcalc/wasm";
 import { createSignal, Show } from "solid-js";
@@ -25,6 +24,7 @@ import {
 } from "#spreadsheet/grid/constants.ts";
 import { WorkbookState } from "#spreadsheet/grid/workbookState.ts";
 import { createNavigationKeyHandler } from "#spreadsheet/navigationKeys.ts";
+import { Toolbar } from "#spreadsheet/Toolbar.tsx";
 import { type HeaderTarget, Worksheet } from "#spreadsheet/Worksheet.tsx";
 import { t } from "#utils/lang.ts";
 import "#spreadsheet/spreadsheet.css";
@@ -404,32 +404,13 @@ export function Spreadsheet(props: Props) {
         else focusRoot();
       }}
     >
-      <div class="ic-toolbar">
-        <button
-          type="button"
-          disabled={!props.canEdit}
-          title={t("Undo")}
-          onClick={() => {
-            props.model.undo();
-            mutated();
-            focusRoot();
-          }}
-        >
-          <Icon name="undo" />
-        </button>
-        <button
-          type="button"
-          disabled={!props.canEdit}
-          title={t("Redo")}
-          onClick={() => {
-            props.model.redo();
-            mutated();
-            focusRoot();
-          }}
-        >
-          <Icon name="redo" />
-        </button>
-      </div>
+      <Toolbar
+        model={props.model}
+        canEdit={props.canEdit}
+        revision={revision}
+        apply={attempt}
+        focusGrid={focusRoot}
+      />
 
       <FormulaBar
         model={props.model}
@@ -460,7 +441,6 @@ export function Spreadsheet(props: Props) {
       <GridContextMenu
         at={menuAt()}
         actions={menuActions()}
-        shadowRoot={props.shadowRoot}
         onClose={() => {
           setMenuAt(null);
           focusRoot();

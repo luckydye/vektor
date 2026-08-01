@@ -1,4 +1,5 @@
-import { createEffect, For, onCleanup, Show } from "solid-js";
+import { createEffect, For, Show } from "solid-js";
+import { dismissOnOutsidePress } from "#spreadsheet/Popover.tsx";
 
 export interface GridMenuAction {
   label: string;
@@ -11,8 +12,6 @@ interface Props {
   /** Where the right-click landed, in client coordinates; null when closed. */
   at: { x: number; y: number } | null;
   actions: GridMenuAction[];
-  /** The root this menu lives in; see the dismiss handler below. */
-  shadowRoot: ShadowRoot;
   onClose: () => void;
 }
 
@@ -27,29 +26,11 @@ interface Props {
 export function GridContextMenu(props: Props) {
   let panel: HTMLDivElement | undefined;
 
-  createEffect(() => {
-    if (!props.at) return;
-    const close = () => props.onClose();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      // On a document listener `event.target` is retargeted to the shadow host,
-      // so `panel.contains(target)` is false even for a click on the menu
-      // itself — which would dismiss it before the item could run. The composed
-      // path still lists the real nodes.
-      if (panel && !event.composedPath().includes(panel)) close();
-    };
-    // Capture, so a click anywhere closes the menu before that click is acted on.
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("resize", close);
-    onCleanup(() => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("resize", close);
-    });
-  });
+  dismissOnOutsidePress(
+    () => props.at !== null,
+    () => panel,
+    () => props.onClose(),
+  );
 
   // Keep the panel on screen when the click lands near an edge.
   createEffect(() => {
