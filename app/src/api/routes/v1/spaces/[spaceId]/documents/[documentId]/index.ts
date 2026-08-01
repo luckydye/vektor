@@ -491,7 +491,11 @@ export const PUT: ApiRouteHandler = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
+      // Only the request's own content type may say the body needs converting.
+      // The document's type must not: a csv document's content *is* the table,
+      // so passing it here would run the stored markup through the CSV
+      // converter again and bury the whole document in one escaped cell.
+      content = toHtmlIfMarkdown(jsonContent, contentType);
       nextType = existingDoc.type;
     } else {
       if (documentIsReadonly(existingDoc)) {
@@ -504,7 +508,10 @@ export const PUT: ApiRouteHandler = (context) =>
       }
 
       nextType = existingDoc.type;
-      content = toHtmlIfMarkdown(rawContent, contentType, nextType);
+      // As above: the body is described by `contentType` alone. Re-uploading a
+      // `text/csv` body over a csv document still converts, which is the case
+      // the document type was standing in for.
+      content = toHtmlIfMarkdown(rawContent, contentType);
     }
 
     // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.

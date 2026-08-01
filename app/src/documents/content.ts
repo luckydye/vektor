@@ -1,5 +1,6 @@
 import { marked } from "marked";
-import { escapeHtml } from "#utils/html.ts";
+import { rowsToHtmlTable } from "#documents/htmlTable.ts";
+import { parseCsvRows } from "#utils/xlsx.ts";
 
 // Custom renderer so task lists produce TipTap-compatible markup:
 //   <ul data-type="taskList">
@@ -80,97 +81,16 @@ export function getMimeType(contentType: string | null): string | null {
   return contentType.split(";")[0]?.trim().toLowerCase() || null;
 }
 
-function parseCsv(content: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  const pushField = () => {
-    row.push(field);
-    field = "";
-  };
-
-  const pushRow = () => {
-    // Ignore trailing empty rows.
-    if (row.length === 1 && row[0] === "") {
-      row = [];
-      return;
-    }
-    rows.push(row);
-    row = [];
-  };
-
-  for (let i = 0; i < content.length; i++) {
-    const char = content[i];
-
-    if (inQuotes) {
-      if (char === '"') {
-        if (content[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += char;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inQuotes = true;
-      continue;
-    }
-
-    if (char === ",") {
-      pushField();
-      continue;
-    }
-
-    if (char === "\r") {
-      pushField();
-      pushRow();
-      if (content[i + 1] === "\n") i++;
-      continue;
-    }
-
-    if (char === "\n") {
-      pushField();
-      pushRow();
-      continue;
-    }
-
-    field += char;
-  }
-
-  pushField();
-  if (row.length > 1 || row[0] !== "") {
-    pushRow();
-  }
-
-  return rows;
+function isBlankRow(row: string[]): boolean {
+  return row.length === 1 && row[0] === "";
 }
 
 function csvToHtmlTable(content: string): string {
-  const rows = parseCsv(content);
-  if (rows.length === 0) {
-    return "<table><tbody></tbody></table>";
-  }
-
-  const [header, ...dataRows] = rows;
-
-  const thead = `<thead><tr>${header
-    .map((cell) => `<th>${escapeHtml(cell)}</th>`)
-    .join("")}</tr></thead>`;
-  const tbody = `<tbody>${dataRows
-    .map(
-      (cells) =>
-        `<tr>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
-    )
-    .join("")}</tbody>`;
-
-  return `<table>${thead}${tbody}</table>`;
+  // A file ending in one or more newlines parses to trailing single-empty-cell
+  // rows; they are punctuation, not data, so they do not become table rows.
+  const rows = parseCsvRows(content);
+  while (rows.length > 0 && isBlankRow(rows[rows.length - 1] as string[])) rows.pop();
+  return rowsToHtmlTable(rows);
 }
 
 function isCsvContent(contentType: string | null, documentType?: string | null): boolean {

@@ -1,7 +1,7 @@
 /** Hidden, immutable system document created for each workflow execution. */
 export const workflowRunDocumentType = "workflow-run";
 
-export const readOnlyDocumentTypes: readonly string[] = ["csv", workflowRunDocumentType];
+export const readOnlyDocumentTypes: readonly string[] = [workflowRunDocumentType];
 
 /** Whether a document is locked explicitly or immutable because of its type. */
 export function documentIsReadonly(document: {

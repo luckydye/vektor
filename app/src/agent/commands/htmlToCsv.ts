@@ -1,86 +1,5 @@
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
-import { type HtmlNode, type HtmlTagNode, parseHtml, SyntaxKind } from "#utils/html.ts";
-
-function isTag(node: HtmlNode, name?: string): node is HtmlTagNode {
-  return node.type === SyntaxKind.Tag && (name ? node.name.toLowerCase() === name : true);
-}
-
-function getNodeText(node: HtmlNode): string {
-  if (node.type === SyntaxKind.Text) {
-    return node.value;
-  }
-  if (!isTag(node) || !node.body) {
-    return "";
-  }
-  return node.body.map(getNodeText).join("");
-}
-
-function normalizeHtmlText(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function findFirstTag(nodes: HtmlNode[], name: string): HtmlTagNode | null {
-  for (const node of nodes) {
-    if (!isTag(node)) continue;
-    if (node.name.toLowerCase() === name) {
-      return node;
-    }
-    if (node.body) {
-      const nested = findFirstTag(node.body, name);
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-  return null;
-}
-
-function collectChildTags(node: HtmlTagNode, names: string[]): HtmlTagNode[] {
-  const result: HtmlTagNode[] = [];
-  const allowed = new Set(names.map((n) => n.toLowerCase()));
-  for (const child of node.body ?? []) {
-    if (isTag(child) && allowed.has(child.name.toLowerCase())) {
-      result.push(child);
-    }
-  }
-  return result;
-}
-
-function escapeCsvCell(value: string): string {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-function tableNodeToCsv(table: HtmlTagNode): string {
-  const rows = (table.body ?? []).flatMap((child) => {
-    if (isTag(child, "thead") || isTag(child, "tbody") || isTag(child, "tfoot")) {
-      return collectChildTags(child, ["tr"]);
-    }
-    return isTag(child, "tr") ? [child] : [];
-  });
-
-  if (rows.length === 0) {
-    throw new Error("HTML table contains no rows");
-  }
-
-  return rows
-    .map((row) =>
-      collectChildTags(row, ["th", "td"])
-        .map((cell) => escapeCsvCell(normalizeHtmlText(getNodeText(cell))))
-        .join(","),
-    )
-    .join("\n");
-}
+import { htmlTableToCsv } from "#documents/htmlTable.ts";
 
 async function readInput(
   args: string[],
@@ -118,40 +37,35 @@ async function writeOutput(
 }
 
 /**
+ * Both commands extract the first `<table>` and convert it to CSV; they differ
+ * only in the name they report. Cells are whitespace-collapsed, since the input
+ * is arbitrary markup whose own indentation is not cell content.
+ */
+async function runHtmlToCsv(
+  name: string,
+  args: string[],
+  ctx: Parameters<Parameters<typeof defineCommand>[1]>[1],
+) {
+  const { html, outputFile } = await readInput(args, ctx);
+  const csv = htmlTableToCsv(html, { collapseWhitespace: true });
+  if (csv === null) {
+    return { stdout: "", stderr: `${name}: no <table> found in input\n`, exitCode: 1 };
+  }
+  return writeOutput(csv, outputFile, ctx);
+}
+
+/**
  * html-to-csv [input-file] [-o output-file]
  * Extracts the first <table> from an HTML document and converts it to CSV.
  */
-export const htmlToCsvCommand = defineCommand("html-to-csv", async (args, ctx) => {
-  const { html, outputFile } = await readInput(args, ctx);
-  const ast = parseHtml(html);
-  const table = findFirstTag(ast, "table");
-  if (!table) {
-    return {
-      stdout: "",
-      stderr: "html-to-csv: no <table> found in input\n",
-      exitCode: 1,
-    };
-  }
-  return writeOutput(tableNodeToCsv(table), outputFile, ctx);
-});
+export const htmlToCsvCommand = defineCommand("html-to-csv", (args, ctx) =>
+  runHtmlToCsv("html-to-csv", args, ctx),
+);
 
 /**
  * html-table-to-csv [input-file] [-o output-file]
  * Converts an HTML fragment that is itself a <table> to CSV.
  */
-export const htmlTableToCsvCommand = defineCommand(
-  "html-table-to-csv",
-  async (args, ctx) => {
-    const { html, outputFile } = await readInput(args, ctx);
-    const ast = parseHtml(html);
-    const table = findFirstTag(ast, "table");
-    if (!table) {
-      return {
-        stdout: "",
-        stderr: "html-table-to-csv: no <table> found in input\n",
-        exitCode: 1,
-      };
-    }
-    return writeOutput(tableNodeToCsv(table), outputFile, ctx);
-  },
+export const htmlTableToCsvCommand = defineCommand("html-table-to-csv", (args, ctx) =>
+  runHtmlToCsv("html-table-to-csv", args, ctx),
 );

@@ -578,6 +578,7 @@ export function DocumentPageView(props: Props) {
                           <CsvView
                             documentId={doc()?.id as string}
                             initialHtml={doc()?.content}
+                            canEdit={userCanEdit() && !isReadonly()}
                           />
                         </Match>
                       </Switch>
