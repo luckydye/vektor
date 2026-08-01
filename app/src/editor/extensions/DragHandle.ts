@@ -386,6 +386,11 @@ export const DragHandle = Extension.create<DragHandleOptions>({
           wrapper.style.position = "absolute";
           wrapper.style.inset = "0";
           wrapper.style.pointerEvents = "none";
+          // Take the handle out of flow up front. Measured while still static
+          // inside the stretched wrapper it reports the wrapper's width, and
+          // `positionHandle` subtracts that width — throwing the very first
+          // placement a whole editor-width off to the left.
+          element.style.position = options.computePositionConfig?.strategy ?? "absolute";
           element.draggable = !locked;
           hide();
           wrapper.appendChild(element);

@@ -1,5 +1,4 @@
-import { type Editor, mergeAttributes } from "@tiptap/core";
-import Image from "@tiptap/extension-image";
+import { type Editor, mergeAttributes, Node, nodeInputRule } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -10,6 +9,20 @@ export interface ImageUploadOptions {
   spaceId: string;
   documentId?: string;
   uploadUrl?: string;
+}
+
+export interface ImageAttributes {
+  src: string;
+  alt?: string;
+  title?: string;
+}
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    image: {
+      setImage: (attributes: ImageAttributes) => ReturnType;
+    };
+  }
 }
 
 const PLACEHOLDER_TEXT = "⏳ Uploading image...";
@@ -154,16 +167,62 @@ class ResizableImageView extends ResizableNodeView {
   }
 }
 
-export const ImageUpload = Image.extend<ImageUploadOptions>({
+/**
+ * Block image node, with upload handling for pasted and dropped files.
+ *
+ * Sibling of `VideoUpload` / `FileAttachment`: same node shape, same
+ * `ResizableNodeView`, same placeholder-then-upload flow.
+ */
+export const ImageUpload = Node.create<ImageUploadOptions>({
+  name: "image",
+  group: "block",
+  draggable: true,
+
   addOptions() {
     return {
-      ...this.parent?.(),
       spaceId: "",
       documentId: undefined,
       uploadUrl: undefined,
-      inline: false,
-      allowBase64: false,
     };
+  },
+
+  addAttributes() {
+    return {
+      src: { default: null },
+      alt: { default: null },
+      title: { default: null },
+      // width / height / display, shared with the other resizable nodes.
+      ...createResizableAttributes(),
+    };
+  },
+
+  parseHTML() {
+    // `data:` sources are deliberately not parsed: an inlined image would be
+    // copied into every collaborator's document and every stored revision.
+    return [{ tag: 'img[src]:not([src^="data:"])' }];
+  },
+
+  addCommands() {
+    return {
+      setImage:
+        (attributes) =>
+        ({ commands }) =>
+          commands.insertContent({ type: this.name, attrs: attributes }),
+    };
+  },
+
+  addInputRules() {
+    return [
+      nodeInputRule({
+        // `![alt](src)`, optionally followed by a quoted title.
+        find: /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/,
+        type: this.type,
+        getAttributes: (match) => {
+          const [, , alt, src, title] = match;
+          return { src, alt, title };
+        },
+      }),
+    ];
   },
 
   addNodeView() {
@@ -180,13 +239,6 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
     };
   },
 
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      ...createResizableAttributes(),
-    };
-  },
-
   renderHTML({ HTMLAttributes }) {
     return ["img", mergeAttributes(HTMLAttributes)];
   },
@@ -197,7 +249,6 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
     const documentId = this.options.documentId;
 
     return [
-      ...(this.parent?.() || []),
       new Plugin({
         key: new PluginKey("imageUploadPlugin"),
         props: {

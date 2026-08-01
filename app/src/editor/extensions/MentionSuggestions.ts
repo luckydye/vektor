@@ -1,11 +1,15 @@
-import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { DocumentWithProperties, SpaceMember } from "#api/ApiClient.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import "#components/AvatarElement.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import { Mentions } from "./Mentions.ts";
+import type {
+  SuggestionConfig,
+  SuggestionKeyDownProps,
+  SuggestionProps,
+} from "#editor/suggestion.ts";
+import { type MentionOptions as MentionNodeOptions, Mentions } from "./Mentions.ts";
 
 type MentionItem = {
   id: string;
@@ -17,9 +21,11 @@ type MentionItem = {
   userId?: string;
 };
 
-type MentionProps = SuggestionProps<MentionItem, MentionItem>;
+type MentionProps = SuggestionProps<MentionItem>;
 
-export interface MentionOptions {
+export interface MentionOptions extends MentionNodeOptions {
+  /** Narrows the node's config to the items this popup produces. */
+  suggestion: SuggestionConfig<MentionItem>;
   spaceId: string;
   documentId: string | undefined;
   /** Emit `@[title](doc:id)` instead of a navigable document URL. */
@@ -53,13 +59,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
       suggestion: {
         char: "@",
         allowSpaces: true,
-        items: async ({
-          query,
-          editor,
-        }: {
-          query: string;
-          editor: object;
-        }): Promise<MentionItem[]> => {
+        items: async ({ query, editor }): Promise<MentionItem[]> => {
           const state = editorState.get(editor);
           if (!state?.spaceId) {
             return [];
@@ -125,18 +125,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
           let currentItems: MentionItem[] = [];
           let lastProps: MentionProps | null = null;
 
-          function assertClientRect(
-            props: MentionProps,
-          ): asserts props is MentionProps & { clientRect: () => DOMRect | null } {
-            if (!props.clientRect) {
-              throw new Error(
-                "Mention suggestion requires clientRect to position the popup.",
-              );
-            }
-          }
-
           function movePopup(props: MentionProps) {
-            assertClientRect(props);
             const rect = props.clientRect();
             if (!rect || !popup) return;
             const popupRect = popup.getBoundingClientRect();
