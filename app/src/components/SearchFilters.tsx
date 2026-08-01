@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
 import "@atrium-ui/elements/calendar";
@@ -253,10 +254,10 @@ export function SearchFilters(props: Props) {
                           class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-neutral-700 text-size-small transition-colors hover:bg-primary-50 hover:transition-none"
                         >
                           <Icon
-                            class="h-3 w-3 flex-none text-neutral transition-transform duration-150"
-                            classList={{
-                              "rotate-90": expandedProperties().has(prop.name),
-                            }}
+                            class={twMerge(
+                              "h-3 w-3 flex-none text-neutral transition-transform duration-150",
+                              expandedProperties().has(prop.name) && "rotate-90",
+                            )}
                             name="chevron-right-thin"
                           />
                           <span class="flex-1 truncate">{prop.name}</span>

@@ -184,7 +184,7 @@ export function Navigation() {
           </Show>
 
           <div class="@max-xs:hidden px-5xs py-s">
-            <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-5xs">
+            <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
               <h3 class="font-medium text-neutral-900 text-size-extra-small uppercase tracking-wider opacity-50">
                 {t("Categories")}
               </h3>

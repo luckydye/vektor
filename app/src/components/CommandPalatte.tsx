@@ -1,9 +1,11 @@
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { twMerge } from "tailwind-merge";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { history } from "#utils/history.ts";
@@ -49,11 +51,6 @@ function resultDescription(result: Result): string | undefined {
   if (result.type === "action") return result.data.description;
   if (result.type === "create") return "Open a new document with this title";
   return undefined;
-}
-
-function documentTitle(doc: Doc): string {
-  const title = doc.properties?.title;
-  return title ? propertyValueToText(title) : "Untitled Document";
 }
 
 export function CommandPalatte() {
@@ -305,11 +302,12 @@ export function CommandPalatte() {
                       onMouseEnter={() => setSelectedIndex(index())}
                     >
                       <Icon
-                        class="icon h-4 w-4 flex-none"
-                        classList={{
-                          "text-primary-600": index() === selectedIndex(),
-                          "text-neutral-400": index() !== selectedIndex(),
-                        }}
+                        class={twMerge(
+                          "h-4 w-4 flex-none",
+                          index() === selectedIndex()
+                            ? "text-primary-600"
+                            : "text-neutral-400",
+                        )}
                         name={RESULT_ICONS[result.type]}
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
@@ -347,11 +345,10 @@ export function CommandPalatte() {
                         </Show>
                       </div>
                       <Icon
-                        class="h-3.5 w-3.5 flex-none text-neutral transition-opacity"
-                        classList={{
-                          "opacity-100": index() === selectedIndex(),
-                          "opacity-0": index() !== selectedIndex(),
-                        }}
+                        class={twMerge(
+                          "h-3.5 w-3.5 flex-none text-neutral transition-opacity",
+                          index() === selectedIndex() ? "opacity-100" : "opacity-0",
+                        )}
                         name="chevron-right-thin"
                       />
                     </button>

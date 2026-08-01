@@ -1,4 +1,5 @@
 import { createMemo, For, Index, mergeProps, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import type { AuditLog } from "#api/client.ts";
 import { useSpaceActivity } from "#composeables/useSpaceActivity.ts";
 import {
@@ -235,8 +236,10 @@ export function SpaceActivityFeed(props: Props) {
                         {/* Permission cards are not links, but keep the column so the
                             middle column stays aligned with the document cards. */}
                         <Icon
-                          class="@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
-                          classList={{ invisible: batch.isPermission }}
+                          class={twMerge(
+                            "@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400",
+                            batch.isPermission && "invisible",
+                          )}
                           name="chevron-right-thin"
                         />
                       </div>

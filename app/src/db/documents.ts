@@ -265,6 +265,60 @@ export async function getDocument(
 }
 
 /**
+ * `getDocument` for many ids: two queries instead of two per document.
+ *
+ * For callers that resolve a list of references — a page of workflow runs, an
+ * activity log — where the metadata is wanted and the bodies are not.
+ */
+export async function getDocumentsByIds(
+  spaceId: string,
+  ids: string[],
+): Promise<Map<string, DocumentMeta>> {
+  const byId = new Map<string, DocumentMeta>();
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return byId;
+
+  const db = await getSpaceDb(spaceId);
+  const [docs, props] = await Promise.all([
+    db
+      .select({
+        id: document.id,
+        slug: document.slug,
+        type: document.type,
+        currentRev: document.currentRev,
+        publishedRev: document.publishedRev,
+        parentId: document.parentId,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        createdBy: document.createdBy,
+        readonly: document.readonly,
+        archived: document.archived,
+      })
+      .from(document)
+      .where(inArray(document.id, unique))
+      .all(),
+    db.select().from(property).where(inArray(property.documentId, unique)).all(),
+  ]);
+
+  const propertiesByDocument = new Map<string, Record<string, DocumentPropertyValue>>();
+  for (const prop of props) {
+    const properties = propertiesByDocument.get(prop.documentId) ?? {};
+    properties[prop.key] = parseStoredPropertyValue(prop.value);
+    propertiesByDocument.set(prop.documentId, properties);
+  }
+
+  for (const doc of docs) {
+    byId.set(doc.id, {
+      ...doc,
+      parentId: doc.parentId || null,
+      properties: propertiesByDocument.get(doc.id) ?? {},
+    });
+  }
+
+  return byId;
+}
+
+/**
  * Loads only a document's `content` column. Pair with `getDocument` when both
  * metadata and body are needed.
  */

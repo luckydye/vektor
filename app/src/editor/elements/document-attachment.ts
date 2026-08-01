@@ -314,7 +314,7 @@ if (
               padding: 10px 12px;
               cursor: move;
             }
-            .icon {
+            .svg-icon {
               width: 18px;
               height: 18px;
               flex: 0 0 auto;

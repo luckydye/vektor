@@ -9,7 +9,7 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getDocument } from "#db/documents.ts";
+import { getDocument, getDocumentsByIds } from "#db/documents.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import {
   ensureSpaceRecovered,
@@ -38,16 +38,20 @@ export const GET: ApiRouteHandler = (context) =>
     // see everything.
     const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
     const viewerGroups = aclUserId ? await getUserGroups(aclUserId) : undefined;
-    const canReadDocument = async (docId: string): Promise<boolean> => {
-      if (!aclUserId) return true;
-      const readable = await filterReadableResources(
+    /**
+     * Readable ids out of a whole set at once. `filterReadableResources`
+     * rebuilds the space's ACL picture per call — the document tree included —
+     * so asking it about one id at a time costs that walk once per document.
+     */
+    const readableDocuments = async (docIds: string[]): Promise<Set<string>> => {
+      if (!aclUserId) return new Set(docIds);
+      return await filterReadableResources(
         spaceId,
         ResourceType.DOCUMENT,
-        [docId],
+        [...new Set(docIds)],
         aclUserId,
         viewerGroups,
       );
-      return readable.has(docId);
     };
 
     const documentId = new URL(context.req.url).searchParams.get("documentId");
@@ -64,7 +68,8 @@ export const GET: ApiRouteHandler = (context) =>
       if (!runId) return notFoundResponse("Run");
       const run = await getRunForRead(spaceId, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
-      if (!(await canReadDocument(run.documentId))) return notFoundResponse("Run");
+      const readable = await readableDocuments([run.documentId]);
+      if (!readable.has(run.documentId)) return notFoundResponse("Run");
       return jsonResponse({ runId, status: run.status });
     }
 
@@ -82,29 +87,32 @@ export const GET: ApiRouteHandler = (context) =>
       cursor,
       limit,
     });
-    const readableRuns: typeof spaceRuns = [];
-    for (const entry of spaceRuns) {
-      if (await canReadDocument(entry.run.documentId)) readableRuns.push(entry);
-    }
-    const allRuns = await Promise.all(
-      readableRuns.map(async ({ runId, run }) => {
-        const doc = await getDocument(spaceId, run.documentId);
-        return {
-          runId,
-          documentId: run.documentId,
-          documentSlug: doc?.slug ?? null,
-          documentTitle: doc?.properties.title
-            ? propertyValueToText(doc.properties.title)
-            : run.documentId,
-          status: run.status,
-          createdAt: run.createdAt.toISOString(),
-          startedAt: run.startedAt?.toISOString() ?? null,
-          finishedAt: run.completedAt?.toISOString() ?? null,
-          sourceExtensionId: run.sourceExtensionId,
-          runtimeInputs: run.runtimeInputs,
-        };
-      }),
+    const readable = await readableDocuments(
+      spaceRuns.map((entry) => entry.run.documentId),
     );
+    const readableRuns = spaceRuns.filter((entry) => readable.has(entry.run.documentId));
+    const documentsById = await getDocumentsByIds(
+      spaceId,
+      readableRuns.map((entry) => entry.run.documentId),
+    );
+
+    const allRuns = readableRuns.map(({ runId, run }) => {
+      const doc = documentsById.get(run.documentId);
+      return {
+        runId,
+        documentId: run.documentId,
+        documentSlug: doc?.slug ?? null,
+        documentTitle: doc?.properties.title
+          ? propertyValueToText(doc.properties.title)
+          : run.documentId,
+        status: run.status,
+        createdAt: run.createdAt.toISOString(),
+        startedAt: run.startedAt?.toISOString() ?? null,
+        finishedAt: run.completedAt?.toISOString() ?? null,
+        sourceExtensionId: run.sourceExtensionId,
+        runtimeInputs: run.runtimeInputs,
+      };
+    });
 
     return jsonResponse({ runs: allRuns, limit, nextCursor });
   }, "Failed to get runs");

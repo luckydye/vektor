@@ -266,11 +266,27 @@ export function useQuery<TData = unknown>(
         .catch(() => undefined);
     }
 
+    // Joins the entry's one subscription rather than opening another; see
+    // `QueryEntry.subscription`. The write needs no `entry === currentEntry`
+    // guard the way a per-observer subscription did: the subscription belongs
+    // to the entry, so it is already closed by the time that could differ.
     if (options.subscribe) {
-      currentDataSubscription = options.subscribe((nextData) => {
-        if (entry !== currentEntry || nextData === undefined) return;
-        queryClient.setQueryData(queryKey, nextData);
-      });
+      let shared = entry.subscription;
+      if (!shared) {
+        shared = { dispose: () => {}, observers: 0 };
+        entry.subscription = shared;
+        shared.dispose = options.subscribe((nextData) => {
+          if (nextData === undefined) return;
+          queryClient.setQueryData(queryKey, nextData);
+        });
+      }
+      shared.observers += 1;
+      currentDataSubscription = () => {
+        shared.observers -= 1;
+        if (shared.observers > 0) return;
+        entry.subscription = null;
+        shared.dispose();
+      };
     }
 
     if (enabled) {

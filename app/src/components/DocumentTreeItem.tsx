@@ -1,4 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -85,8 +86,10 @@ export function DocumentTreeItem(props: Props) {
             aria-label={isExpanded() ? t("Collapse") : t("Expand")}
           >
             <Icon
-              class="h-3 w-3 text-neutral transition-transform"
-              classList={{ "rotate-90": isExpanded() }}
+              class={twMerge(
+                "h-3 w-3 text-neutral transition-transform",
+                isExpanded() && "rotate-90",
+              )}
               name="chevron-right-thin"
             />
           </button>

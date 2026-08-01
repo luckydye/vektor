@@ -1209,12 +1209,21 @@ export async function filterReadableResources(
       )
       .all();
 
-    categoryDocumentBestLevel = new Map<string, number>();
+    // Expanded per permission level rather than per grant: the expansion walks
+    // the category tree and every document's properties, and only the level a
+    // root was granted at matters to the result. That is at most one walk per
+    // level in the hierarchy instead of one per grant.
+    const rootsByLevel = new Map<number, string[]>();
     for (const row of categoryRows) {
       const level = PERMISSION_HIERARCHY[row.permission] || 0;
-      const categoryDocumentIds = await getDocumentIdsForCategoryRoots(spaceId, [
-        row.resourceId,
-      ]);
+      const roots = rootsByLevel.get(level) ?? [];
+      roots.push(row.resourceId);
+      rootsByLevel.set(level, roots);
+    }
+
+    categoryDocumentBestLevel = new Map<string, number>();
+    for (const [level, roots] of rootsByLevel) {
+      const categoryDocumentIds = await getDocumentIdsForCategoryRoots(spaceId, roots);
       for (const documentId of categoryDocumentIds) {
         const previous = categoryDocumentBestLevel.get(documentId);
         if (previous === undefined || level > previous) {

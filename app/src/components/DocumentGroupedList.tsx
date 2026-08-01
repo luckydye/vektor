@@ -10,6 +10,7 @@ import {
   onMount,
   Show,
 } from "solid-js";
+import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
@@ -350,8 +351,10 @@ export function DocumentGroupedList(props: Props) {
                   </span>
                   <div class="flex-1" />
                   <Icon
-                    class="h-4 w-4 text-neutral-400 transition-transform"
-                    classList={{ "-rotate-90": collapsed().has(group.id) }}
+                    class={twMerge(
+                      "h-4 w-4 text-neutral-400 transition-transform",
+                      collapsed().has(group.id) && "-rotate-90",
+                    )}
                     name="chevron-down"
                   />
                 </button>
