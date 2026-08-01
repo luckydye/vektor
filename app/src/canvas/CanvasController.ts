@@ -125,7 +125,6 @@ import {
   worldViewportBounds,
 } from "./viewport/index.ts";
 import "./CanvasPresenceCursorElement.ts";
-import "./css/canvas.css";
 import type { CanvasDomRefs, CanvasToolDef } from "./CanvasView.ts";
 import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import type { DocumentPreviewSource } from "./extensions/documentLink.ts";

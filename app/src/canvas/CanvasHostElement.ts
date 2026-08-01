@@ -5,6 +5,9 @@ import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import { type CanvasController, createCanvasController } from "./CanvasController.ts";
 import type { CanvasDomRefs } from "./CanvasView.ts";
 import "./CanvasPresenceCursorElement.ts";
+// The stylesheet for the light-DOM tree this element builds. Imported here
+// rather than in the controller: the controller is logic, and is only ever
+// loaded through this module anyway.
 import "./css/canvas.css";
 import type { CanvasCollaborationFactory } from "./collaboration.ts";
 import { HostElement } from "./extensions/CanvasElementBase.ts";
