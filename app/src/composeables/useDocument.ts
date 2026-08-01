@@ -179,8 +179,12 @@ export function useDocument(documentId: string | undefined, documentType = "docu
       } else {
         const defaultTitle =
           documentType === "canvas" ? "Untitled Canvas" : "Untitled Document";
-        const title = pendingTitle || defaultTitle;
-        const category = new URLSearchParams(window.location.search).get("category");
+        const params = new URLSearchParams(window.location.search);
+        // `?title=` is how the command palette seeds a draft. It is a fallback
+        // behind `pendingTitle` — the title editor only reports a change when the
+        // user actually edits, so an untouched seeded title never arrives there.
+        const title = pendingTitle || params.get("title")?.trim() || defaultTitle;
+        const category = params.get("category");
         const response = await api.documents.post(spaceId, {
           content,
           type: documentType,

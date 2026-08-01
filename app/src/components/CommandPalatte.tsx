@@ -5,6 +5,7 @@ import {
   boltIcon,
   chevronRightThinIcon,
   documentIcon,
+  newDocumentIcon,
   searchIcon,
 } from "#assets/icons.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
@@ -20,7 +21,32 @@ type HistoryEntry = { url: string; lastVisited: number };
 type Doc = any;
 type Result =
   | { type: "document"; data: Doc; id?: undefined }
-  | { type: "action"; id: string; data: { title?: string; description?: string } };
+  | { type: "action"; id: string; data: { title?: string; description?: string } }
+  | { type: "create"; title: string; id?: undefined };
+
+const SECTION_LABELS: Record<Result["type"], string> = {
+  document: "Documents",
+  action: "Actions",
+  create: "Create",
+};
+
+const RESULT_ICONS: Record<Result["type"], string> = {
+  document: documentIcon,
+  action: boltIcon,
+  create: newDocumentIcon,
+};
+
+function resultLabel(result: Result): string {
+  if (result.type === "document") return documentTitle(result.data);
+  if (result.type === "action") return result.data.title || result.id;
+  return `Create Document with title "${result.title}"`;
+}
+
+function resultDescription(result: Result): string | undefined {
+  if (result.type === "action") return result.data.description;
+  if (result.type === "create") return "Open a new document with this title";
+  return undefined;
+}
 
 function documentTitle(doc: Doc): string {
   const title = doc.properties?.title;
@@ -43,7 +69,8 @@ export function CommandPalatte() {
     historyEntries().find((h) => h.url === `/doc/${doc.slug}`)?.lastVisited ?? null;
 
   const filteredResults = createMemo<Result[]>(() => {
-    const query = searchQuery().toLowerCase().trim();
+    const typed = searchQuery().trim();
+    const query = typed.toLowerCase();
     const results: Result[] = [];
 
     let docs: Doc[] = documents();
@@ -76,12 +103,22 @@ export function CommandPalatte() {
       }
     }
 
+    // Offered for whatever was typed, matches or not: the query that finds
+    // nothing is exactly the title of the document that does not exist yet.
+    // Last, so it never steals Enter from a document that does match.
+    if (typed && currentSpace()) results.push({ type: "create", title: typed });
+
     return results;
   });
 
-  const firstActionIndex = createMemo(() =>
-    filteredResults().findIndex((r) => r.type === "action"),
-  );
+  /** First index per result type — the row that carries its section heading. */
+  const sectionStarts = createMemo(() => {
+    const starts = new Map<Result["type"], number>();
+    filteredResults().forEach((result, index) => {
+      if (!starts.has(result.type)) starts.set(result.type, index);
+    });
+    return starts;
+  });
 
   async function loadHistory() {
     try {
@@ -133,6 +170,21 @@ export function CommandPalatte() {
     Actions.run(actionId);
   }
 
+  /**
+   * Opens the draft with the title seeded rather than creating the document —
+   * the user still picks a type and writes before anything is persisted.
+   */
+  function createDocumentWithTitle(title: string) {
+    closePalette();
+    navigate(`/new?title=${encodeURIComponent(title)}`);
+  }
+
+  function runResult(result: Result) {
+    if (result.type === "document") void navigateToDocument(result.data);
+    else if (result.type === "action") executeAction(result.id);
+    else createDocumentWithTitle(result.title);
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -149,8 +201,7 @@ export function CommandPalatte() {
     } else if (event.key === "Enter") {
       event.preventDefault();
       const selected = filteredResults()[selectedIndex()];
-      if (selected?.type === "document") void navigateToDocument(selected.data);
-      else if (selected?.type === "action") executeAction(selected.id);
+      if (selected) runResult(selected);
     }
   }
 
@@ -204,15 +255,10 @@ export function CommandPalatte() {
             <For each={filteredResults()}>
               {(result, index) => (
                 <>
-                  <Show
-                    when={
-                      (index() === 0 && result.type === "document") ||
-                      (result.type === "action" && index() === firstActionIndex())
-                    }
-                  >
+                  <Show when={sectionStarts().get(result.type) === index()}>
                     <div class="px-3 pt-2 pb-0.5">
                       <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
-                        {result.type === "document" ? "Documents" : "Actions"}
+                        {SECTION_LABELS[result.type]}
                       </span>
                     </div>
                   </Show>
@@ -242,11 +288,7 @@ export function CommandPalatte() {
                         "hover:bg-primary-50": index() !== selectedIndex(),
                         "cursor-grab active:cursor-grabbing": result.type === "document",
                       }}
-                      onClick={() =>
-                        result.type === "document"
-                          ? void navigateToDocument(result.data)
-                          : executeAction(result.id)
-                      }
+                      onClick={() => runResult(result)}
                       onMouseEnter={() => setSelectedIndex(index())}
                     >
                       <div
@@ -255,13 +297,11 @@ export function CommandPalatte() {
                           "text-primary-600": index() === selectedIndex(),
                           "text-neutral-400": index() !== selectedIndex(),
                         }}
-                        innerHTML={result.type === "document" ? documentIcon : boltIcon}
+                        innerHTML={RESULT_ICONS[result.type]}
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
                         <span class="truncate font-normal text-size-medium">
-                          {result.type === "document"
-                            ? documentTitle(result.data)
-                            : result.data.title || result.id}
+                          {resultLabel(result)}
                         </span>
                         <Show
                           when={result.type === "document" && getLastVisited(result.data)}
@@ -272,10 +312,12 @@ export function CommandPalatte() {
                             </span>
                           )}
                         </Show>
-                        <Show when={result.type === "action" && result.data.description}>
-                          <span class="truncate text-neutral text-size-small opacity-50">
-                            {result.data.description}
-                          </span>
+                        <Show when={resultDescription(result)}>
+                          {(description) => (
+                            <span class="truncate text-neutral text-size-small opacity-50">
+                              {description()}
+                            </span>
+                          )}
                         </Show>
                       </div>
                       <div class="flex flex-none items-center gap-1">

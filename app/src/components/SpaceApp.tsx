@@ -77,11 +77,16 @@ function DocumentRoute() {
 }
 
 function NewDocumentRoute() {
-  const [searchParams] = useSearchParams<{ type?: string; category?: string }>();
+  const [searchParams] = useSearchParams<{
+    type?: string;
+    category?: string;
+    title?: string;
+  }>();
   return (
     <DocumentPageView
       draftType={searchParams.type}
       draftCategory={searchParams.category}
+      draftTitle={searchParams.title}
     />
   );
 }

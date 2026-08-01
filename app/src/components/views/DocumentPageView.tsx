@@ -46,6 +46,8 @@ interface Props {
   documentSlug?: string;
   draftType?: string;
   draftCategory?: string;
+  /** Seeds the title of a draft — the command palette's "create with title". */
+  draftTitle?: string;
   /** The server's clock, so the first "Updated …" matches the SSR output. */
   ssrNow?: number;
 }
@@ -57,6 +59,9 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
     content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
   },
   workflow: { title: "Untitled Workflow", content: "" },
+  // Spreadsheets are backed by CSV — the create route renders it to the table
+  // HTML that gets stored, so this is a header row plus three empty rows.
+  csv: { title: "Untitled Spreadsheet", content: "A,B,C\n,,\n,,\n,,\n" },
 };
 
 const STICKY_HEADER_CLASS =
@@ -77,6 +82,9 @@ export function DocumentPageView(props: Props) {
   const showPicker = createMemo(() => isDraft() && !draftTypeParam());
   const draftCategory = createMemo(() =>
     isDraft() ? props.draftCategory || undefined : undefined,
+  );
+  const draftTitle = createMemo(() =>
+    isDraft() ? props.draftTitle?.trim() || undefined : undefined,
   );
 
   const docQuery = useQuery({
@@ -201,9 +209,8 @@ export function DocumentPageView(props: Props) {
 
   const title = createMemo(() =>
     isDraft()
-      ? documentType() === "canvas"
-        ? "Untitled Canvas"
-        : "Untitled Document"
+      ? (draftTitle() ??
+        (documentType() === "canvas" ? "Untitled Canvas" : "Untitled Document"))
       : (doc()?.properties?.title as string) || "Untitled Document",
   );
 
@@ -257,7 +264,7 @@ export function DocumentPageView(props: Props) {
         type: documentType(),
         content: autoCreate.content,
         properties: {
-          title: autoCreate.title,
+          title: draftTitle() ?? autoCreate.title,
           ...(draftCategory() ? { category: draftCategory() } : {}),
         },
       });
