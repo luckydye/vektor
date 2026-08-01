@@ -13,9 +13,10 @@ bun bench/perf.ts
 ## `seed-space.ts` — large space database
 Writes a space straight through the DB layer (bulk inserts, no HTTP): tens of
 thousands of documents in a department/section tree, a long-tailed revision
-history where a few documents reach `--max-revisions`, hundreds of members with
-space, group and document-scoped grants. The defaults produce ~30k documents,
-~310k revisions and 300 members in about 25s (~550 MB) under `bench/data`.
+history where a few documents reach `--max-revisions`, an audit trail matching
+that history, and hundreds of members with space, group and document-scoped
+grants. The defaults produce ~30k documents, ~310k revisions, ~350k audit
+entries and 300 members in about 30s (~600 MB) under `bench/data`.
 
 ```
 bun bench/seed-space.ts                          # → bench/data, prints the space id
@@ -30,7 +31,8 @@ as (and serves for) the local super-user, which is what makes the space
 browsable without signing in; seeded members are auth users without
 credentials. Same `--seed` value, same database. Full flag list is in the file
 header. Search text is populated; embeddings are left empty because they need
-the native model.
+the native model, and `--no-audit` drops the audit trail when only the document
+side matters.
 
 ## Collaboration / canvas benchmarks
 

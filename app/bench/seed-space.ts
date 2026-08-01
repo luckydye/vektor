@@ -35,6 +35,9 @@
  *   --seed <n>           PRNG seed (default 1) — same seed, same database
  *   --quality <0-11>     brotli quality for revision snapshots (default 4). Only
  *                        trades seed time against file size; any level reads back.
+ *   --no-audit           skip the audit trail (one row per document creation,
+ *                        revision, publish and grant — the largest table by row
+ *                        count after `revision`)
  */
 
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
@@ -53,6 +56,7 @@ export interface SeedOptions {
   slug: string;
   seed: number;
   quality: number;
+  audit: boolean;
 }
 
 interface CliOptions extends SeedOptions {
@@ -70,6 +74,7 @@ export interface SeedResult {
   documents: number;
   revisions: number;
   properties: number;
+  auditEntries: number;
   members: number;
   elapsedMs: number;
 }
@@ -93,6 +98,7 @@ function parseOptions(args: string[]): CliOptions {
     slug: opt("slug", "bench"),
     seed: int("seed", 1),
     quality: int("quality", 4),
+    audit: !flag("no-audit"),
     inMemory,
     dir: opt("dir", "bench"),
     // An in-memory database exists only inside this process, so seeding it and
@@ -444,10 +450,12 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   type DocRow = typeof space.document.$inferInsert;
   type PropRow = typeof space.property.$inferInsert;
   type RevRow = typeof space.revision.$inferInsert;
+  type AuditRow = typeof space.auditLog.$inferInsert;
 
   let documentsWritten = 0;
   let revisionsWritten = 0;
   let propertiesWritten = 0;
+  let auditWritten = 0;
   let lastReport = Date.now();
 
   interface DocPlan {
@@ -465,6 +473,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   async function writeDocuments(plans: DocPlan[]): Promise<string[]> {
     const docRows: DocRow[] = [];
     const propRows: PropRow[] = [];
+    const auditRows: AuditRow[] = [];
     const ids: string[] = [];
 
     interface RevisionPlan {
@@ -545,10 +554,24 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
         createdBy,
       });
 
+      if (options.audit) {
+        auditRows.push({
+          docId: id,
+          userId: createdBy,
+          event: "create",
+          details: JSON.stringify({ message: "Document created" }),
+          createdAt,
+        });
+      }
+
       // Revision bodies march from the document's creation to its last update;
       // the head revision holds exactly the document's current content.
       const span = Math.max(1, updatedAt.getTime() - createdAt.getTime());
       for (let rev = 1; rev <= revisions; rev++) {
+        const revisionAt = new Date(
+          createdAt.getTime() + Math.floor((span * rev) / revisions),
+        );
+        const revisionBy = pick(rng, authorIds);
         revisionPlans.push({
           documentId: id,
           slug: plan.slug,
@@ -559,9 +582,33 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
               : generateHtml(rng, plan.title, intBetween(rng, 2, 7)),
           status: null,
           parentRev: rev === 1 ? null : rev - 1,
-          createdAt: new Date(createdAt.getTime() + Math.floor((span * rev) / revisions)),
-          createdBy: pick(rng, authorIds),
+          createdAt: revisionAt,
+          createdBy: revisionBy,
         });
+
+        if (!options.audit) continue;
+        auditRows.push({
+          docId: id,
+          revisionId: rev,
+          userId: revisionBy,
+          event: "save",
+          details: JSON.stringify({
+            message: "Revision created",
+            parentRev: rev === 1 ? null : rev - 1,
+            status: null,
+          }),
+          createdAt: revisionAt,
+        });
+        if (rev === publishedRev) {
+          auditRows.push({
+            docId: id,
+            revisionId: rev,
+            userId: revisionBy,
+            event: "publish",
+            details: JSON.stringify({ message: `Published revision ${rev}` }),
+            createdAt: revisionAt,
+          });
+        }
       }
 
       // Open suggestions sit past the head revision without moving currentRev,
@@ -569,6 +616,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
       if (rng() < 0.03) {
         const suggestions = intBetween(rng, 1, 2);
         for (let i = 1; i <= suggestions; i++) {
+          const suggestionBy = pick(rng, authorIds);
           revisionPlans.push({
             documentId: id,
             slug: plan.slug,
@@ -577,7 +625,21 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
             status: "open",
             parentRev: revisions,
             createdAt: updatedAt,
-            createdBy: pick(rng, authorIds),
+            createdBy: suggestionBy,
+          });
+
+          if (!options.audit) continue;
+          auditRows.push({
+            docId: id,
+            revisionId: revisions + i,
+            userId: suggestionBy,
+            event: "suggest",
+            details: JSON.stringify({
+              message: "Suggestion created",
+              parentRev: revisions,
+              status: "open",
+            }),
+            createdAt: updatedAt,
           });
         }
       }
@@ -605,10 +667,12 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
     await insertChunked(db, space.property, propRows);
     // Snapshots are blobs; fewer rows per statement keeps each one small.
     await insertChunked(db, space.revision, revRows, 100);
+    await insertChunked(db, space.auditLog, auditRows);
 
     documentsWritten += docRows.length;
     propertiesWritten += propRows.length;
     revisionsWritten += revRows.length;
+    auditWritten += auditRows.length;
 
     if (Date.now() - lastReport > 2000) {
       const elapsed = Date.now() - startedAt;
@@ -726,6 +790,46 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   }
 
   await insertChunked(db, space.acl, aclRows);
+
+  if (options.audit) {
+    // Mirrors logAclChange: space-wide grants are logged against the space,
+    // document-scoped ones against the document they apply to.
+    const memberNames = new Map(members.map((member) => [member.id, member.name]));
+    await insertChunked(
+      db,
+      space.auditLog,
+      aclRows.map((row) => {
+        const documentScoped =
+          row.resourceType === ResourceType.DOCUMENT ||
+          row.resourceType === ResourceType.DOCUMENT_TREE;
+        const targetName = row.userId ? memberNames.get(row.userId) : undefined;
+        const target = row.userId
+          ? `user ${targetName ?? row.userId}`
+          : `group ${row.groupId}`;
+        const scope =
+          row.resourceType === ResourceType.SPACE
+            ? "the space"
+            : `${row.resourceType} ${row.resourceId}`;
+        return {
+          docId: documentScoped ? row.resourceId : spaceId,
+          userId: ownerId,
+          event: "acl_grant",
+          details: JSON.stringify({
+            message: `Granted ${row.permission} permission on ${scope} to ${target}`,
+            permission: row.permission,
+            targetUserId: row.userId ?? undefined,
+            targetGroupId: row.groupId ?? undefined,
+            targetName,
+            resourceType: row.resourceType,
+            resourceId: row.resourceId,
+          }),
+          createdAt: now,
+        };
+      }),
+    );
+    auditWritten += aclRows.length;
+  }
+
   console.log(
     `ACL:     ${aclRows.length} grants (${GROUPS.length} group, ${scopedGrantees.length} document-scoped)`,
   );
@@ -743,6 +847,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
     documents: documentsWritten,
     revisions: revisionsWritten,
     properties: propertiesWritten,
+    auditEntries: auditWritten,
     members: members.length,
     elapsedMs: Date.now() - startedAt,
   };
@@ -795,7 +900,7 @@ async function main(): Promise<void> {
   console.log(
     `\nDone in ${formatDuration(result.elapsedMs)}: ${result.documents} documents,` +
       ` ${result.revisions} revisions, ${result.properties} properties,` +
-      ` ${result.members} members.`,
+      ` ${result.auditEntries} audit entries, ${result.members} members.`,
   );
   console.log(`Space id: ${result.spaceId}`);
 
