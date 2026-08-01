@@ -8,6 +8,7 @@ import {
   untrack,
   useContext,
 } from "solid-js";
+import { isServer } from "solid-js/web";
 import {
   fetchEntry,
   QueryCache,
@@ -246,6 +247,7 @@ export function useQuery<TData = unknown>(
     };
 
     currentFetcher = async () => {
+      if (isServer) return undefined;
       if (!untrack(() => resolveEnabled(options.enabled))) return undefined;
       return await fetchEntry(entry, true).catch(() => undefined);
     };
@@ -289,8 +291,33 @@ export function useQuery<TData = unknown>(
       };
     }
 
-    if (enabled) {
+    // Never on the server. Solid's server build runs `createRenderEffect`
+    // eagerly, so attaching *is* fetching there — and nothing can consume the
+    // result: the render is not waiting on it (a query is signals, not a
+    // resource, so `Suspense` does not track it) and there is no dehydration
+    // step, so the answer lands in a cache that is thrown away with the
+    // request. Astro's Solid renderer also renders every island twice — once in
+    // `check()` to detect the framework, once for real — so each query fired
+    // twice per page for markup that always rendered its loading state anyway.
+    // Measured on a space home: 13 API calls per SSR, every one of them waste.
+    if (enabled && !isServer) {
       void fetchEntry(entry).catch(() => undefined);
+      return;
+    }
+
+    // Reports pending anyway, without a request behind it. The markup a server
+    // render produces for a query it never resolved is the loading state, and
+    // the client's first pass — where the fetch has only just started — renders
+    // the same thing. Leave this out and the two disagree: the server says
+    // "loaded, empty", the client says "loading", and Solid fails hydration
+    // outright rather than patching it up. `RecentDocuments` took the whole
+    // island down that way.
+    //
+    // The signal, not `entry.isFetching`: this is one observer's view for one
+    // render, and the entry is shared — on the server by every request in the
+    // process, through the binding's fallback client.
+    if (enabled && !entry.hasData) {
+      setIsFetching(true);
     }
   };
 

@@ -1,14 +1,12 @@
 import "@atrium-ui/elements/track";
 import { createMemo, For, Index, Show } from "solid-js";
-import { api } from "#api/client.ts";
-import { useQuery } from "#composeables/query.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { DocumentTeaser } from "./DocumentTeaser.tsx";
 
 interface Props {
-  spaceId: string;
   limit?: number;
 }
 
@@ -18,15 +16,22 @@ export function RecentDocuments(props: Props) {
   const { currentSpace } = useSpace();
   const count = props.limit ?? 5;
 
-  const { data: docsData, isPending: loading } = useQuery({
-    queryKey: createMemo(() => ["wiki_documents_recent", props.spaceId, count]),
-    queryFn: async () => {
-      const result = await api.documents.get(props.spaceId, { limit: count });
-      return result.documents.filter((d) => TEASER_TYPES.has(d.type ?? "document"));
-    },
-  });
+  // The shell's document listing, not a listing of its own: both are ordered
+  // `updatedAt desc`, so the newest N here are the first N there. A second
+  // request also cost a second full ACL pass over every document in the space —
+  // `listDocuments` filters before it paginates, so a `limit=10` read is as
+  // expensive as the unlimited one.
+  //
+  // Taking the slice *after* the type filter is also what the row wants: the
+  // old query filtered the 10 rows it had fetched, so a space whose newest
+  // documents were files showed fewer than `count` teasers.
+  const { documents, isLoading: loading } = useDocuments();
 
-  const docs = createMemo(() => docsData() ?? []);
+  const docs = createMemo(() =>
+    documents()
+      .filter((doc) => TEASER_TYPES.has(doc.type ?? "document"))
+      .slice(0, count),
+  );
 
   return (
     <div>

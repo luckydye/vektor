@@ -54,7 +54,7 @@ export function SpaceHomeView() {
             </Show>
 
             <div>
-              <RecentDocuments spaceId={space().id} limit={10} />
+              <RecentDocuments limit={10} />
             </div>
 
             <div class="mb-20">

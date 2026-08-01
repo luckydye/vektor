@@ -505,6 +505,15 @@ export interface AIChatSessionListEntry {
   lastMessageRole: string | null;
 }
 
+/**
+ * How long an unsubscribed realtime connection is kept before it is closed.
+ *
+ * Long enough to cover an unsubscribe and resubscribe that straddle a task —
+ * an effect re-running, a route swapping the only subscriber — and short enough
+ * that leaving a space does not hold a socket anyone would notice.
+ */
+const REALTIME_IDLE_GRACE_MS = 2_000;
+
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
   callback: (event: RealtimeEventMessage) => void;
@@ -531,6 +540,8 @@ interface RealtimeConnection {
   closed: boolean;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  /** Pending idle teardown; see `REALTIME_IDLE_GRACE_MS`. */
+  idleTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface PresenceSubscription<TState = unknown> {
@@ -2483,6 +2494,13 @@ export class ApiClient {
   private getRealtimeConnection(spaceId: string): RealtimeConnection {
     const existingConnection = this.realtimeConnections.get(spaceId);
     if (existingConnection) {
+      // A subscriber is arriving, so the connection is no longer idle. Every
+      // subscribe path comes through here, which is what makes this the one
+      // place a pending teardown has to be called off.
+      if (existingConnection.idleTimer !== null) {
+        clearTimeout(existingConnection.idleTimer);
+        existingConnection.idleTimer = null;
+      }
       return existingConnection;
     }
 
@@ -2503,6 +2521,7 @@ export class ApiClient {
       closed: false,
       reconnectAttempts: 0,
       reconnectTimer: null,
+      idleTimer: null,
     };
 
     this.openRealtimeSocket(connection);
@@ -2671,6 +2690,10 @@ export class ApiClient {
       clearTimeout(connection.reconnectTimer);
       connection.reconnectTimer = null;
     }
+    if (connection.idleTimer !== null) {
+      clearTimeout(connection.idleTimer);
+      connection.idleTimer = null;
+    }
     if (this.realtimeConnections.get(connection.spaceId) === connection) {
       this.realtimeConnections.delete(connection.spaceId);
     }
@@ -2681,15 +2704,38 @@ export class ApiClient {
     }
   }
 
-  /** Tear down the connection once nothing is subscribed to it anymore. */
-  private maybeCloseRealtimeConnection(connection: RealtimeConnection): void {
-    if (
+  private isRealtimeConnectionIdle(connection: RealtimeConnection): boolean {
+    return (
       connection.subscriptions.size === 0 &&
       connection.presenceSubscriptions.size === 0 &&
       connection.yjsRooms.size === 0
-    ) {
+    );
+  }
+
+  /**
+   * Tear down the connection once nothing is subscribed to it anymore — after a
+   * grace period, not immediately.
+   *
+   * Subscribers are Solid effects, and an effect that re-runs unsubscribes
+   * before it subscribes again. When the last one does that — `useSync` on a
+   * space-id change, a route swap unmounting the only subscriber a tick before
+   * the next view mounts one — an immediate teardown closed the socket and the
+   * resubscribe opened a fresh one, which then has to replay every
+   * subscription. Booting a space home did exactly this: connect, close,
+   * reconnect, before a single event had arrived.
+   *
+   * Deferring costs an idle socket for the grace period; closing early costs a
+   * reconnect *and* the events that fall in the gap.
+   */
+  private maybeCloseRealtimeConnection(connection: RealtimeConnection): void {
+    if (!this.isRealtimeConnectionIdle(connection)) return;
+    if (connection.idleTimer !== null) return;
+
+    connection.idleTimer = setTimeout(() => {
+      connection.idleTimer = null;
+      if (!this.isRealtimeConnectionIdle(connection)) return;
       this.teardownRealtimeConnection(connection);
-    }
+    }, REALTIME_IDLE_GRACE_MS);
   }
 
   /**
