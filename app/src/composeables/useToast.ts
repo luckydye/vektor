@@ -1,5 +1,6 @@
 import { play } from "cuelume";
-import { type Accessor, createSignal } from "solid-js";
+import type { Accessor } from "solid-js";
+import { createStore } from "solid-js/store";
 
 export interface Toast {
   id: number;
@@ -26,7 +27,18 @@ export interface ToastAction {
  * is browser-only state — nothing on the server raises a toast — so a shared
  * signal carries no SSR isolation risk.
  */
-const [toasts, setToasts] = createSignal<Toast[]>([]);
+const [state, setState] = createStore<{ list: Toast[] }>({ list: [] });
+
+/**
+ * A store, not a signal of plain objects.
+ *
+ * `For` keys by reference. Replacing a toast to mark it exiting — or to move a
+ * progress bar — handed `For` a different object, so it destroyed the row and
+ * built a new one: the enter animation replayed on top of the leave, and an
+ * uploading toast re-animated on every tick. A store mutates the item in place,
+ * so the element survives its own updates.
+ */
+const toasts: Accessor<Toast[]> = () => state.list;
 let nextId = 0;
 
 export function useToast(): {
@@ -54,14 +66,12 @@ export function useToast(): {
    * animate — nothing else may depend on the toast being gone after this.
    */
   function dismiss(id: number) {
-    setToasts((list) =>
-      list.map((toast) => (toast.id === id ? { ...toast, exiting: true } : toast)),
-    );
+    setState("list", (toast) => toast.id === id, "exiting", true);
   }
 
   /** Remove the toast for real. Safe to call twice. */
   function drop(id: number) {
-    setToasts((list) => list.filter((toast) => toast.id !== id));
+    setState("list", (list) => list.filter((toast) => toast.id !== id));
   }
 
   function show(
@@ -71,10 +81,13 @@ export function useToast(): {
     options?: { progress?: number; action?: ToastAction },
   ) {
     const id = ++nextId;
-    setToasts((list) => [
-      ...list,
-      { id, message, type, progress: options?.progress, action: options?.action },
-    ]);
+    setState("list", state.list.length, {
+      id,
+      message,
+      type,
+      progress: options?.progress,
+      action: options?.action,
+    });
     if (duration > 0) setTimeout(() => dismiss(id), duration);
 
     switch (type) {
@@ -96,9 +109,7 @@ export function useToast(): {
   ) {
     if (!toasts().some((toast) => toast.id === id)) return;
 
-    setToasts((list) =>
-      list.map((toast) => (toast.id === id ? { ...toast, ...patch } : toast)),
-    );
+    setState("list", (toast) => toast.id === id, patch);
     if (options?.duration && options.duration > 0) {
       setTimeout(() => dismiss(id), options.duration);
     }

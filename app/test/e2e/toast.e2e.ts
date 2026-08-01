@@ -69,6 +69,32 @@ test("a toast fades in, stays readable, then leaves", async ({ page }) => {
   await page.waitForTimeout(600);
   expect(await toastOpacity(page)).toBeGreaterThan(0.9);
 
-  // And it still expires on its own: 4s, plus the leave animation.
-  await expect(toast).toHaveCount(0, { timeout: 15_000 });
+  // Sampled every frame until it is gone, because the interesting failure is
+  // in the middle. Marking a toast exiting used to replace the object, and
+  // `For` keys by reference — so the row was destroyed and rebuilt mid-leave
+  // and the enter animation replayed on top of the fade.
+  const opacities = await page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const samples: number[] = [];
+        const started = performance.now();
+        const tick = () => {
+          const el = document.querySelector("#toast-container > div");
+          if (!el || performance.now() - started > 12_000) return resolve(samples);
+          samples.push(Number(getComputedStyle(el).opacity));
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+
+  // It expired on its own: 4s, plus the leave animation.
+  await expect(toast).toHaveCount(0);
+
+  const fadeStart = opacities.findIndex((value) => value < 0.5);
+  expect(fadeStart, "the toast must visibly fade before it goes").toBeGreaterThan(-1);
+  expect(
+    Math.max(...opacities.slice(fadeStart)),
+    "once fading, it must not come back — that is the leave playing twice",
+  ).toBeLessThan(0.5);
 });
