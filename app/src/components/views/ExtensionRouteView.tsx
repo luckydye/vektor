@@ -29,23 +29,35 @@ export function ExtensionRouteView() {
 
   usePageTitle(() => match()?.route.title ?? null);
 
+  /** Everything the view needs, recomputed together so none of it can go stale. */
+  const target = createMemo(() => {
+    const found = match();
+    const space = currentSpace();
+    if (!found || !space) return null;
+    return {
+      extensionId: found.extension.id,
+      routePath: routePath(),
+      spaceId: space.id,
+    };
+  });
+
   return (
     <div class="relative flex h-dvh flex-col overflow-x-hidden">
       <inset-view class="relative my-1.5 block h-full flex-1 overflow-hidden md:mr-(--inset-right) md:ml-(--inset-left)">
-        <Show when={currentSpace() && match()}>
-          {(_) => {
-            const resolved = match();
-            const space = currentSpace();
-            if (!resolved || !space) return null;
-            return (
-              <ExtensionView
-                extensionId={resolved.extension.id}
-                routePath={routePath()}
-                spaceId={space.id}
-                fill
-              />
-            );
-          }}
+        {/* `target()`, not a value captured from the callback. `Show` runs its
+            body once, when `when` first becomes truthy — and navigating from
+            one extension route to another leaves it truthy, so a captured
+            extension id would stay pointed at whichever route was opened
+            first while `routePath` kept updating. */}
+        <Show when={target()}>
+          {(resolved) => (
+            <ExtensionView
+              extensionId={resolved().extensionId}
+              routePath={resolved().routePath}
+              spaceId={resolved().spaceId}
+              fill
+            />
+          )}
         </Show>
       </inset-view>
     </div>
