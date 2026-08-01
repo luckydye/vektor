@@ -23,18 +23,6 @@ const TYPE_STYLES: Record<string, string> = {
   document: "bg-neutral-100 text-neutral-600",
 };
 
-const chipBase =
-  "flex items-center gap-1 py-1 px-3xs text-interactive rounded-lg border transition-colors text-size-small";
-const chipInactive =
-  "bg-background border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-primary-10";
-const chipActive =
-  "bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100";
-
-const popoverPanel =
-  "w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100";
-const popoverInner =
-  "bg-background border border-neutral-100 rounded-lg origin-top-left scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 overflow-hidden";
-
 export function SearchFilters(props: Props) {
   const activeDateFilter = createMemo(
     () => props.value.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
@@ -126,7 +114,7 @@ export function SearchFilters(props: Props) {
         <button
           type="button"
           slot="trigger"
-          class={`${chipBase} ${activeDateRange() ? chipActive : chipInactive}`}
+          class={`flex items-center gap-1 rounded-lg border px-3xs py-1 text-interactive text-size-small transition-colors ${activeDateRange() ? "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100" : "border-neutral-200 bg-background text-neutral-600 hover:border-neutral-300 hover:bg-primary-10"}`}
         >
           <Icon class="h-3 w-3 opacity-60" name="date" />
           <span>{dateRangeLabel() ?? "Modified"}</span>
@@ -149,8 +137,8 @@ export function SearchFilters(props: Props) {
         </button>
 
         <a-popover class="group" placements="bottom-start">
-          <div class={popoverPanel}>
-            <div class={`${popoverInner} p-3`}>
+          <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
+            <div class="origin-top-left scale-95 overflow-hidden rounded-lg border border-neutral-100 bg-background p-3 shadow-large transition-all duration-150 group-[[enabled]]:scale-100">
               <a-calendar
                 mode="range"
                 week-start="1"
@@ -174,10 +162,10 @@ export function SearchFilters(props: Props) {
           <button
             type="button"
             onClick={() => toggleFilter("type", tv)}
-            class={`${chipBase} capitalize ${
+            class={`flex items-center gap-1 rounded-lg border px-3xs py-1 text-interactive text-size-small capitalize transition-colors ${
               hasActiveFilter("type", tv)
                 ? `${TYPE_STYLES[tv] ?? "bg-neutral-100 text-neutral-600"} border-transparent`
-                : chipInactive
+                : "border-neutral-200 bg-background text-neutral-600 hover:border-neutral-300 hover:bg-primary-10"
             }`}
           >
             {tv}
@@ -207,7 +195,7 @@ export function SearchFilters(props: Props) {
       {/* Active property filter chips */}
       <For each={activePropertyFilters()}>
         {(filter) => (
-          <div class={`${chipBase} ${chipActive}`}>
+          <div class="flex items-center gap-1 rounded-lg border border-primary-200 bg-primary-50 px-3xs py-1 text-interactive text-primary-700 text-size-small transition-colors hover:bg-primary-100">
             <span class="font-medium">{filter.key}</span>
             <span class="opacity-40">:</span>
             <span classList={{ "italic opacity-70": filter.value === null }}>
@@ -237,8 +225,8 @@ export function SearchFilters(props: Props) {
           </button>
 
           <a-popover class="group" placements="bottom-start">
-            <div class={popoverPanel}>
-              <div class={`${popoverInner} w-52`}>
+            <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
+              <div class="w-52 origin-top-left scale-95 overflow-hidden rounded-lg border border-neutral-100 bg-background shadow-large transition-all duration-150 group-[[enabled]]:scale-100">
                 <div class="border-neutral-100 border-b px-3 py-2">
                   <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
                     Properties

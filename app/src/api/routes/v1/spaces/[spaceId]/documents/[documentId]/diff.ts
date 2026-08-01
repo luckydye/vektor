@@ -31,17 +31,27 @@ async function getRevision(rev: number, spaceId: string, id: string) {
 }
 
 /**
- * Returns a patch from publsihed content to given revision
+ * Returns a patch between two revisions: `rev` against `base`, defaulting to
+ * the revision this one was meant to change (its parent for a suggestion, the
+ * published revision otherwise). The resolved base comes back in
+ * `X-Diff-Base-Rev` so a caller that took the default can name both sides of
+ * the comparison — the viewer puts them in its URL.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "documentId");
-    const revParam = new URL(context.req.url).searchParams.get("rev");
+    const searchParams = new URL(context.req.url).searchParams;
+    const revParam = searchParams.get("rev");
     if (!revParam) {
       throw badRequestResponse("Revision query parameter is required");
     }
-    const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
+    const rev = parseQueryInt(searchParams, "rev", { min: 1 });
+    const baseParam = searchParams.get("base");
+    const requestedBaseRev =
+      baseParam === null || baseParam.trim() === ""
+        ? null
+        : parseQueryInt(searchParams, "base", { min: 1 });
 
     // Authenticate with either user session or access token
     const auth = await authenticateRequest(context, spaceId);
@@ -66,34 +76,47 @@ export const GET: ApiRouteHandler = (context) =>
       throw notFoundResponse("Revision");
     }
 
-    const document = await getDocument(spaceId, id);
-    if (!document) {
-      throw notFoundResponse("Document");
-    }
+    let compareBaseRev = requestedBaseRev;
+    if (compareBaseRev === null) {
+      const document = await getDocument(spaceId, id);
+      if (!document) {
+        throw notFoundResponse("Document");
+      }
 
-    const compareBaseRev =
-      revisionMetadata.status !== null
-        ? revisionMetadata.parentRev
-        : document.publishedRev;
+      compareBaseRev =
+        revisionMetadata.status !== null
+          ? revisionMetadata.parentRev
+          : document.publishedRev;
+    }
     if (!compareBaseRev) {
       throw badRequestResponse("Document has no comparable base revision");
     }
 
     const baseContent = await getRevisionContent(spaceId, id, compareBaseRev);
     if (!baseContent) {
-      throw badRequestResponse("Document has no comparable base content");
+      throw requestedBaseRev === null
+        ? badRequestResponse("Document has no comparable base content")
+        : notFoundResponse("Base revision");
     }
 
     // `format=html` returns a rendered, inline redline of the document (added
     // text wrapped in <ins>, removed text in <del>) instead of a source-level
     // unified patch, so the client can display changes in document context.
-    if (new URL(context.req.url).searchParams.get("format") === "html") {
-      return new Response(inlineHtmlDiff(baseContent, revisionContent), {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+    if (searchParams.get("format") === "html") {
+      const html = inlineHtmlDiff(baseContent, revisionContent);
+      return new Response(html, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          // Bun omits Content-Length on larger bodies and nginx then waits for
+          // a chunked terminator that never comes.
+          "Content-Length": Buffer.byteLength(html).toString(),
+          "X-Diff-Base-Rev": String(compareBaseRev),
+        },
       });
     }
 
     return new Response(
       createPatch(id, prettyPrintHtml(baseContent), prettyPrintHtml(revisionContent)),
+      { headers: { "X-Diff-Base-Rev": String(compareBaseRev) } },
     );
   }, "Failed to compute revision diff");

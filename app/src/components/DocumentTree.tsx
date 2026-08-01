@@ -38,13 +38,6 @@ type PopoverTriggerEl = HTMLElement & { show?: () => void; hide?: () => void };
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 
-const MENU_ITEM_CLASS =
-  "flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100";
-const FIELD_CLASS =
-  "w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium focus-ring";
-const DIALOG_BUTTON_CLASS =
-  "flex-1 rounded-md px-4 py-2 font-medium text-size-medium transition-colors disabled:opacity-50";
-
 // Load expanded items (categories and documents) from localStorage
 function loadExpandedItems(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -738,7 +731,7 @@ export function DocumentTree(props: Props) {
                           `/new?category=${menu().category.slug}`,
                         );
                       }}
-                      class={MENU_ITEM_CLASS}
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                     >
                       <Icon class="h-4 w-4 flex-none" name="document" />
                       <span>{t("New document")}</span>
@@ -750,7 +743,7 @@ export function DocumentTree(props: Props) {
                         closeContextMenu();
                         startEditing(category);
                       }}
-                      class={MENU_ITEM_CLASS}
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                     >
                       <Icon class="h-4 w-4 flex-none" name="edit-entry" />
                       <span>{t("Edit category")}</span>
@@ -764,7 +757,7 @@ export function DocumentTree(props: Props) {
                         closeContextMenu();
                         startCreating();
                       }}
-                      class={MENU_ITEM_CLASS}
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                     >
                       <Icon class="h-4 w-4 flex-none" name="add" />
                       <span>{t("New category")}</span>
@@ -775,7 +768,7 @@ export function DocumentTree(props: Props) {
                         closeContextMenu();
                         if (!isEditMode()) toggleEditMode();
                       }}
-                      class={MENU_ITEM_CLASS}
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                     >
                       <Icon class="h-4 w-4 flex-none" name="drag-dots" />
                       <span>{t("Rearrange categories")}</span>
@@ -791,7 +784,7 @@ export function DocumentTree(props: Props) {
                         requestDelete(category);
                       }}
                       disabled={deletingIds().has(menu().category.id)}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-red-600 text-size-normal transition-colors hover:bg-red-500 active:bg-red-500 hover:text-white disabled:opacity-50"
+                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-red-600 text-size-normal transition-colors hover:bg-red-500 hover:text-white active:bg-red-500 disabled:opacity-50"
                     >
                       <Icon class="h-4 w-4 flex-none" name="delete-entry" />
                       <span>{t("Delete category")}</span>
@@ -817,7 +810,7 @@ export function DocumentTree(props: Props) {
                 type="button"
                 onClick={cancelEdit}
                 disabled={isSaving()}
-                class={`${DIALOG_BUTTON_CLASS} border border-neutral-100 bg-background text-neutral-900 hover:bg-neutral-100`}
+                class="flex-1 rounded-md border border-neutral-100 bg-background px-4 py-2 font-medium text-neutral-900 text-size-medium transition-colors hover:bg-neutral-100 disabled:opacity-50"
               >
                 {t("Cancel")}
               </button>
@@ -825,7 +818,7 @@ export function DocumentTree(props: Props) {
                 type="submit"
                 form="category-form"
                 disabled={isSaving()}
-                class={`${DIALOG_BUTTON_CLASS} bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed`}
+                class="flex-1 rounded-md bg-blue-600 px-4 py-2 font-medium text-size-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving() ? t("Saving...") : editingId() ? t("Update") : t("Create")}
               </button>
@@ -853,7 +846,7 @@ export function DocumentTree(props: Props) {
                 onInput={(e) => patchForm({ name: e.currentTarget.value })}
                 type="text"
                 required
-                class={FIELD_CLASS}
+                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
                 placeholder={t("Category name")}
               />
             </div>
@@ -872,7 +865,7 @@ export function DocumentTree(props: Props) {
                 type="text"
                 required
                 pattern="[a-z0-9-]+"
-                class={FIELD_CLASS}
+                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
                 placeholder="slug-name"
               />
               <p class="mt-1 text-neutral text-size-small">
@@ -892,7 +885,7 @@ export function DocumentTree(props: Props) {
                 value={formData().description}
                 onInput={(e) => patchForm({ description: e.currentTarget.value })}
                 rows="2"
-                class={FIELD_CLASS}
+                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
                 placeholder={t("Description (optional)")}
               />
             </div>
@@ -936,7 +929,7 @@ export function DocumentTree(props: Props) {
                 onInput={(e) => patchForm({ icon: e.currentTarget.value })}
                 type="text"
                 maxlength="10"
-                class={FIELD_CLASS}
+                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
                 placeholder={t("Icon (emoji or text)")}
               />
             </div>
@@ -963,7 +956,7 @@ export function DocumentTree(props: Props) {
                 type="button"
                 onClick={cancelDelete}
                 disabled={isDeleting()}
-                class={`${DIALOG_BUTTON_CLASS} border border-neutral-100 bg-background text-neutral-900 hover:bg-neutral-100`}
+                class="flex-1 rounded-md border border-neutral-100 bg-background px-4 py-2 font-medium text-neutral-900 text-size-medium transition-colors hover:bg-neutral-100 disabled:opacity-50"
               >
                 {t("Cancel")}
               </button>
@@ -971,7 +964,7 @@ export function DocumentTree(props: Props) {
                 type="button"
                 onClick={() => void confirmDelete()}
                 disabled={isDeleting()}
-                class={`${DIALOG_BUTTON_CLASS} bg-red-600 text-white hover:bg-red-700 disabled:cursor-not-allowed`}
+                class="flex-1 rounded-md bg-red-600 px-4 py-2 font-medium text-size-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isDeleting() ? t("Deleting...") : t("Delete")}
               </button>

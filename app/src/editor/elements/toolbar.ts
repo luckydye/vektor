@@ -112,6 +112,10 @@ if (
       private copiedRow: unknown = null;
       private floatingStyle = "";
       private tableStyle = "";
+      // Where the table toolbar was last placed, so the formatting toolbar can
+      // route around it — it no longer follows from the table's own top edge.
+      private tableToolbarBand: { top: number; bottom: number } | null = null;
+      private tableToolbarStuck = false;
       private dismissedSelectionKey: string | null = null;
       private _editor?: Editor;
 
@@ -425,6 +429,8 @@ if (
           this.tableStyle = this.getTableStyle(editor);
         } else {
           this.tableStyle = "";
+          this.tableToolbarBand = null;
+          this.tableToolbarStuck = false;
         }
 
         if (this.shouldShow) {
@@ -454,17 +460,8 @@ if (
           { top: selectionTop, bottom: selectionBottom },
         ];
 
-        // Table toolbar occupies a rect we can read from the previous paint.
-        if (this.tableActive) {
-          const tableTop = this.getTableTop(editor);
-          if (tableTop !== null) {
-            const tableHeight = Math.max(
-              this.tableMenu?.getBoundingClientRect().height ?? 0,
-              48,
-            );
-            forbidden.push({ top: tableTop, bottom: tableTop + tableHeight });
-          }
-        }
+        // The table toolbar occupies the band `getTableStyle` just placed it in.
+        if (this.tableToolbarBand) forbidden.push(this.tableToolbarBand);
 
         const overlaps = (t: number) =>
           forbidden.some((f) => t < f.bottom + gap && t + menuHeight > f.top - gap);
@@ -487,20 +484,49 @@ if (
         return Math.max(padding, Math.min(belowTop, maxTop));
       }
 
-      private getTableTop(editor: Editor): number | null {
+      private getTableRect(editor: Editor): { top: number; bottom: number } | null {
         const { state, view } = editor;
         const $from = state.doc.resolve(state.selection.from);
         for (let depth = $from.depth; depth > 0; depth--) {
-          if ($from.node(depth).type.name === "table") {
-            return view.coordsAtPos($from.before(depth)).top;
+          if ($from.node(depth).type.name !== "table") continue;
+
+          const pos = $from.before(depth);
+          const dom = view.nodeDOM(pos);
+          if (dom instanceof HTMLElement) {
+            const rect = dom.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom };
           }
+          const coords = view.coordsAtPos(pos);
+          return { top: coords.top, bottom: coords.bottom };
         }
         return null;
       }
 
       private getTableStyle(editor: Editor) {
-        const top = this.getTableTop(editor);
-        if (top === null) return "";
+        const rect = this.getTableRect(editor);
+        if (!rect) {
+          this.tableToolbarBand = null;
+          this.tableToolbarStuck = false;
+          return "";
+        }
+
+        const padding = 8;
+        const gap = 8;
+        const height = Math.max(this.tableMenu?.offsetHeight ?? 0, 48);
+
+        // Sits above the table, but sticks to the top of the viewport once the
+        // table's own top has scrolled past it — the buttons act on the cell the
+        // caret is in, which stays reachable however far down the table you are.
+        // Capped against the table's bottom edge so the bar leaves with the
+        // table instead of hanging over whatever follows it.
+        const anchoredTop = rect.top - height - gap;
+        const top = Math.min(Math.max(anchoredTop, padding), rect.bottom - height - gap);
+        this.tableToolbarBand = { top, bottom: top + height };
+        // Clamped away from its anchor means it is riding the viewport rather
+        // than the table, and a bar pinned over scrolling content reads better
+        // flat than lifted off the page.
+        this.tableToolbarStuck = top > anchoredTop;
+
         const left = this.leftAlignedToolbarPosition(
           editor,
           this.tableMenu?.offsetWidth ?? 400,
@@ -919,7 +945,10 @@ if (
               background: var(--tb-bg);
               box-shadow: 0 6px 18px var(--tb-shadow);
               backdrop-filter: blur(8px);
-              transform: translateY(calc(-100% - 0.5rem));
+            }
+
+            .table-toolbar-stuck {
+              box-shadow: none;
             }
 
             .toolbar-section,
@@ -1498,9 +1527,13 @@ if (
       }
 
       private renderTableToolbar() {
+        // Unlike the formatting toolbar this one never fades out while a
+        // selection is being dragged: it is anchored to the table rather than to
+        // the selection, so it is never in the way, and its row/column actions
+        // are exactly what a cell-selection drag is aiming for.
         return html`
           <div
-            class=${`table-toolbar${this.tableSelectionPointerDown ? " toolbar-hidden" : ""}`}
+            class=${`table-toolbar${this.tableToolbarStuck ? " table-toolbar-stuck" : ""}`}
             style=${this.tableStyle}
           >
             <div class="menu-group">

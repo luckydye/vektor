@@ -231,9 +231,19 @@ export function SpaceApp(props: Props) {
         style={layoutStyle()}
       >
         <div
-          class="main-content relative h-full min-h-screen transition-transform will-change-transform md:transition-none"
+          class="main-content relative h-full min-h-screen transition-transform md:transition-none"
           style={{
-            transform: `translateX(${mobileSidebarOffset()}px)`,
+            // Only carry a transform while the mobile drawer actually offsets
+            // the shell. A transform — even translateX(0) — and will-change
+            // make this element the containing block for its fixed-position
+            // descendants, so the editor's viewport-anchored overlays (drag
+            // handles, toolbars, table reorder handles) would drift by the
+            // page's scroll offset.
+            transform:
+              mobileSidebarOffset() === 0
+                ? undefined
+                : `translateX(${mobileSidebarOffset()}px)`,
+            "will-change": mobileSidebarOffset() === 0 ? undefined : "transform",
             transition: isMobileSidebarDragging() ? "none" : undefined,
           }}
         >

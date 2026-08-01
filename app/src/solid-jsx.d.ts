@@ -66,6 +66,7 @@ declare module "solid-js" {
       mode?: string;
       "week-start"?: string;
       "attr:opened"?: string | undefined;
+      "attr:selected"?: string | undefined;
       fill?: boolean;
       showdelay?: string;
       name?: string;

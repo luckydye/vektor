@@ -52,6 +52,7 @@ describe("API Tests - Spaces", () => {
     expect(data.space.id.startsWith("space_")).toBe(true);
     expect(data.space.name).toBe("Test Space");
     expect(data.space.slug).toBe("test-space");
+    expect(data.space.userRole).toBe("owner");
 
     testSpaceId = data.space.id;
   });
@@ -137,6 +138,7 @@ describe("API Tests - Spaces", () => {
     const data = await response.json();
     expect(data.id).toBe(testSpaceId);
     expect(data.name).toBe("Test Space");
+    expect(data.userRole).toBe("owner");
   });
 
   it("should update a space", async () => {
@@ -155,6 +157,9 @@ describe("API Tests - Spaces", () => {
     const data = await response.json();
     expect(data.name).toBe("Updated Test Space");
     expect(data.slug).toBe("updated-test-space");
+    // The client caches spaces by id, so a response without the role would
+    // overwrite the one the listing set and lock the owner out of settings.
+    expect(data.userRole).toBe("owner");
   });
 });
 
@@ -1345,6 +1350,87 @@ describe("API Tests - Revisions", () => {
     expect(fetchResponse.status).toBe(200);
     const fetchData = await fetchResponse.json();
     expect(fetchData.revision.content).toBe(longHtml);
+  });
+});
+
+describe("API Tests - Revision Diff", () => {
+  let diffDocId: string;
+  let firstRev: number;
+  let secondRev: number;
+
+  async function saveRevision(html: string): Promise<number> {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${diffDocId}`,
+      { method: "POST", body: JSON.stringify({ html }) },
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).revision.rev;
+  }
+
+  async function publish(rev: number) {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${diffDocId}`,
+      { method: "PATCH", body: JSON.stringify({ publishedRev: rev }) },
+    );
+    expect(response.status).toBe(200);
+  }
+
+  it("creates two revisions to compare", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Original</p>",
+        properties: { title: "Diff Test Document" },
+      }),
+    });
+    expect(response.status).toBe(201);
+    diffDocId = (await response.json()).document.id;
+
+    firstRev = await saveRevision("<p>Original</p>");
+    // Publishing pins the revision: the next save cannot overwrite it in place.
+    await publish(firstRev);
+    secondRev = await saveRevision("<p>Revised</p>");
+    expect(secondRev).toBeGreaterThan(firstRev);
+  });
+
+  it("defaults the comparison base to the published revision", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${diffDocId}/diff?rev=${secondRev}&format=html`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Diff-Base-Rev")).toBe(String(firstRev));
+    const html = await response.text();
+    expect(html).toContain('<del class="diff-del">Original</del>');
+    expect(html).toContain('<ins class="diff-ins">Revised</ins>');
+  });
+
+  it("compares against an explicit base even after the published revision moves", async () => {
+    await publish(secondRev);
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${diffDocId}/diff?rev=${secondRev}&base=${firstRev}&format=html`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Diff-Base-Rev")).toBe(String(firstRev));
+    expect(await response.text()).toContain('<del class="diff-del">Original</del>');
+  });
+
+  it("returns 404 for a base revision that does not exist", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${diffDocId}/diff?rev=${secondRev}&base=999`,
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 400 for a non-numeric base", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${diffDocId}/diff?rev=${secondRev}&base=nope`,
+    );
+
+    expect(response.status).toBe(400);
   });
 });
 

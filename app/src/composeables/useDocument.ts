@@ -9,7 +9,7 @@ import {
 import { api } from "#api/client.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useMutation, useQuery } from "./query.ts";
+import { access, type MaybeAccessor, useMutation, useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 import { useToast } from "./useToast.ts";
@@ -122,7 +122,21 @@ export function useDocumentContext() {
   };
 }
 
-export function useDocument(documentId: string | undefined, documentType = "document") {
+/**
+ * Read a document and the mutations that write it back.
+ *
+ * The id and type are accessors because the views that render a document are
+ * reused across navigation: `DocumentPageView` only tears its subtree down when
+ * the next document has to be fetched, so a cached one swaps in under the same
+ * component instances. A snapshotted id would freeze the query key on whichever
+ * document happened to be showing when the caller was created.
+ */
+export function useDocument(
+  documentIdInput: MaybeAccessor<string | undefined>,
+  documentTypeInput: MaybeAccessor<string> = "document",
+) {
+  const documentId = () => access(documentIdInput);
+  const documentType = () => access(documentTypeInput);
   const { currentSpaceId, currentSpace } = useSpace();
   const navigate = useNavigate();
   const toast = useToast();
@@ -139,24 +153,27 @@ export function useDocument(documentId: string | undefined, documentType = "docu
     error,
     refetch: refresh,
   } = useQuery({
-    queryKey: createMemo(() => ["wiki_document", spaceId(), documentId]),
+    queryKey: createMemo(() => ["wiki_document", spaceId(), documentId()]),
     queryFn: async () => {
       const id = spaceId();
+      const docId = documentId();
       if (!id) throw new Error("No space ID");
-      if (!documentId) return null;
-      return await api.document.get(id, documentId);
+      if (!docId) return null;
+      return await api.document.get(id, docId);
     },
     initialData: async () => {
       const id = spaceId();
-      if (!id || !documentId) return undefined;
-      return await api.document.getCached(id, documentId);
+      const docId = documentId();
+      if (!id || !docId) return undefined;
+      return await api.document.getCached(id, docId);
     },
     subscribe: (callback) => {
       const id = spaceId();
-      if (!id || !documentId) return () => {};
-      return api.document.subscribeCached(id, documentId, callback);
+      const docId = documentId();
+      if (!id || !docId) return () => {};
+      return api.document.subscribeCached(id, docId, callback);
     },
-    enabled: createMemo(() => !!spaceId() && !!documentId),
+    enabled: createMemo(() => !!spaceId() && !!documentId()),
   });
 
   const document = createMemo(() => data());
@@ -175,12 +192,13 @@ export function useDocument(documentId: string | undefined, documentType = "docu
       if (!spaceId) {
         throw new Error("No space selected");
       }
-      if (documentId) {
-        await api.document.put(spaceId, documentId, content, { publish });
+      const docId = documentId();
+      if (docId) {
+        await api.document.put(spaceId, docId, content, { publish });
         return { content, isNew: false };
       } else {
         const defaultTitle =
-          documentType === "canvas" ? "Untitled Canvas" : "Untitled Document";
+          documentType() === "canvas" ? "Untitled Canvas" : "Untitled Document";
         const params = new URLSearchParams(window.location.search);
         // `?title=` is how the command palette seeds a draft. It is a fallback
         // behind `pendingTitle` — the title editor only reports a change when the
@@ -189,7 +207,7 @@ export function useDocument(documentId: string | undefined, documentType = "docu
         const category = params.get("category");
         const response = await api.documents.post(spaceId, {
           content,
-          type: documentType,
+          type: documentType(),
           properties: {
             title,
             ...(category ? { category } : {}),
@@ -258,9 +276,13 @@ export function useDocument(documentId: string | undefined, documentType = "docu
   // one prop updates will send a sync event to all users anywhere in the space
   useSync(
     spaceId,
-    () => (documentId ? [realtimeTopics.document(documentId)] : []),
+    () => {
+      const docId = documentId();
+      return docId ? [realtimeTopics.document(docId)] : [];
+    },
     (keys) => {
-      if (documentId && keys.includes(realtimeTopics.document(documentId))) {
+      const docId = documentId();
+      if (docId && keys.includes(realtimeTopics.document(docId))) {
         refresh();
       }
     },

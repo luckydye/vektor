@@ -1,16 +1,62 @@
-import Mention, { type MentionOptions } from "@tiptap/extension-mention";
+import { Node } from "@tiptap/core";
+import { type SuggestionConfig, suggestionPlugin } from "#editor/suggestion.ts";
 
-export const Mentions = Mention.extend<MentionOptions>({
+/** What the popup hands back when a person is picked — the node's attributes. */
+export type MentionAttributes = { id: string; label: string };
+
+export interface MentionOptions {
+  /**
+   * Suggestion config. The schema-only node leaves it empty (no popup on the
+   * server); `MentionSuggestions` supplies the item lookup and the lit-rendered
+   * popup.
+   */
+  suggestion: SuggestionConfig<MentionAttributes>;
+}
+
+/**
+ * People `@mention` node, rendered as the `<user-mention>` custom element so the
+ * same markup works inside and outside the editor (see #editor/css/mentions.css
+ * and #editor/elements/user-mention.ts). `id` holds the user's email — the
+ * identity the notification pipeline reads back out of published HTML
+ * (#documents/mentions.ts).
+ *
+ * Document mentions are a separate node (DocumentMention.ts); the shared
+ * suggestion popup decides which of the two it inserts.
+ */
+export const Mentions = Node.create<MentionOptions>({
+  name: "mention",
+  // Above the default 100 so the suggestion plugin sits ahead of the base
+  // extensions' plugins: while the popup is open its handleKeyDown must claim
+  // Enter/Tab/Arrow keys before the list and paragraph keymaps see them.
+  priority: 101,
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: false,
+
+  addOptions() {
+    return { suggestion: {} };
+  },
+
+  addAttributes() {
+    // Both values come from the parse rule below. `parseHTML: () => null` opts
+    // out of the per-attribute DOM lookup, which would otherwise let a stray
+    // `id`/`label` attribute on the element override what the rule resolved.
+    return {
+      id: { default: null, parseHTML: () => null, renderHTML: () => ({}) },
+      label: { default: null, parseHTML: () => null, renderHTML: () => ({}) },
+    };
+  },
+
   parseHTML() {
     return [
       {
         tag: "user-mention",
         getAttrs: (element: HTMLElement) => {
           const email = element.getAttribute("email");
-          const label = element.textContent?.replace("@", "") || email;
           return {
             id: email,
-            label: label,
+            label: element.textContent?.replace("@", "") || email,
           };
         },
       },
@@ -20,24 +66,58 @@ export const Mentions = Mention.extend<MentionOptions>({
   renderHTML({ node }) {
     return [
       "user-mention",
-      {
-        email: node.attrs.id,
-      },
+      { email: node.attrs.id },
       `@${node.attrs.label || node.attrs.id}`,
     ];
   },
 
-  addOptions() {
-    const parentOptions = this.parent?.();
-    if (!parentOptions) {
-      throw new Error("Mention parent options are unavailable");
-    }
-
+  addKeyboardShortcuts() {
     return {
-      ...parentOptions,
-      HTMLAttributes: {
-        class: "mention",
-      },
+      // Backspacing a mention leaves the plain "@" behind, so the trigger
+      // survives and typing continues the query instead of starting over.
+      Backspace: () =>
+        this.editor.commands.command(({ tr, state }) => {
+          const { empty, $from } = state.selection;
+          const mention = $from.nodeBefore;
+          if (!empty || mention?.type !== this.type) return false;
+
+          tr.insertText("@", $from.pos - mention.nodeSize, $from.pos);
+          return true;
+        }),
     };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      suggestionPlugin<MentionAttributes>({
+        editor: this.editor,
+        char: "@",
+        command: ({ editor, range, item }) => {
+          // Swallow a space that already follows the query so the inserted
+          // mention ends up with exactly one trailing space.
+          const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+          const to = nodeAfter?.text?.startsWith(" ") ? range.to + 1 : range.to;
+
+          editor
+            .chain()
+            .focus()
+            .insertContentAt({ from: range.from, to }, [
+              { type: this.name, attrs: item },
+              { type: "text", text: " " },
+            ])
+            .run();
+
+          // insertContentAt can leave the DOM selection spanning the new node;
+          // collapsing keeps the caret after the trailing space. `rangeCount`
+          // guards the case of nothing being selected at all — collapsing then
+          // throws instead of being a no-op.
+          const domSelection = editor.view.dom.ownerDocument.defaultView?.getSelection();
+          if (domSelection?.rangeCount) domSelection.collapseToEnd();
+        },
+        allow: ({ state, range }) =>
+          !!state.doc.resolve(range.from).parent.type.contentMatch.matchType(this.type),
+        ...this.options.suggestion,
+      }),
+    ];
   },
 });

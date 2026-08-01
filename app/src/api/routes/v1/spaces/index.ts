@@ -11,7 +11,13 @@ import {
   requireUser,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { createSpace, getSpace, listPublicSpaces, listUserSpaces } from "#db/spaces.ts";
+import {
+  createSpace,
+  getSpace,
+  getUserSpaceRole,
+  listPublicSpaces,
+  listUserSpaces,
+} from "#db/spaces.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -51,7 +57,9 @@ export const POST: ApiRouteHandler = (context) =>
         slug,
         preferences as Record<string, string> | undefined,
       );
-      return createdResponse({ space });
+      return createdResponse({
+        space: { ...space, userRole: await getUserSpaceRole(space, user.id) },
+      });
     },
     {
       fallbackMessage: "Failed to create space",

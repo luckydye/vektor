@@ -7,6 +7,7 @@ import {
   onMount,
   Show,
 } from "solid-js";
+import { isServer } from "solid-js/web";
 import type { AuditLog } from "#api/client.ts";
 import { useAuditLogs } from "#composeables/useAuditLogs.ts";
 import { useRevisions } from "#composeables/useRevisions.ts";
@@ -29,9 +30,6 @@ interface Props {
   documentId: string;
 }
 
-const MENU_ITEM_CLASS =
-  "flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100";
-
 function dispatchWindowEvent(event: Event) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(event);
@@ -44,7 +42,7 @@ export function RevisionsSidebar(props: Props) {
     publishRevision,
     fetchHistory,
     isLoading: isLoadingHistory,
-  } = useRevisions(props.documentId);
+  } = useRevisions(() => props.documentId);
 
   const {
     auditLogs,
@@ -142,11 +140,14 @@ export function RevisionsSidebar(props: Props) {
   /**
    * The returned path carries the router base ("/{space}/") — it comes from
    * `location.pathname` — so `navigate()` must pass `resolve: false` or the base
-   * lands twice ("/space/space/…").
+   * lands twice ("/space/space/…"). A revision on its own is viewed as-is; the
+   * `base` a redline compares it against is added by RevisionView, which is
+   * where the server resolves it.
    */
   function withRevisionQuery(revisionId: number): string {
     const query = new URLSearchParams(location.search);
     query.set("revision", String(revisionId));
+    query.delete("base");
     return `${location.pathname}?${query.toString()}`;
   }
 
@@ -165,6 +166,29 @@ export function RevisionsSidebar(props: Props) {
           content: revision.content,
           isSuggestion: revision.status !== null,
         },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  /**
+   * `base` is optional: without it the server compares against the revision
+   * this one was meant to change, and RevisionView writes the resolved pair
+   * into the URL. The revision is fetched for its status rather than read from
+   * the loaded history, because restoring `?revision=…&base=…` runs before the
+   * activity feed has any entries. RevisionView fetches the redline itself.
+   */
+  async function showRevisionDiff(revisionId: number | null | undefined, base?: number) {
+    if (!revisionId) return;
+    const revision = await getRevision(revisionId);
+    if (!revision) return;
+
+    setSelectedRevisionNumber(revisionId);
+
+    dispatchWindowEvent(
+      new CustomEvent("revision:diff", {
+        detail: { revision: revisionId, base, isSuggestion: revision.status !== null },
         bubbles: true,
         composed: true,
       }),
@@ -192,18 +216,6 @@ export function RevisionsSidebar(props: Props) {
     );
   }
 
-  function showDiff(entry: AuditLog) {
-    if (!entry.revisionId) return;
-    const revision = revisionsByNumber().get(entry.revisionId);
-    dispatchWindowEvent(
-      new CustomEvent("revision:diff", {
-        detail: { revision: entry.revisionId, isSuggestion: revision?.status !== null },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
   function exitPopover(e: Event) {
     (e.target as Element | null)?.dispatchEvent(
       new CustomEvent("exit", { bubbles: true }),
@@ -228,6 +240,7 @@ export function RevisionsSidebar(props: Props) {
     setSelectedRevisionNumber(null);
     const query = new URLSearchParams(location.search);
     query.delete("revision");
+    query.delete("base");
     const search = query.toString();
     navigate(`${location.pathname}${search ? `?${search}` : ""}`, {
       replace: true,
@@ -235,28 +248,40 @@ export function RevisionsSidebar(props: Props) {
     });
   }
 
-  // A `?revision=` in the URL opens that revision once the space is known. On a
-  // cold load the space resolves asynchronously, so this watches rather than
-  // reading once — and latches, so a later space change cannot reopen it.
-  let pendingUrlRevision: number | null = null;
+  /**
+   * A `?revision=` in the URL opens that revision once the space is known — as
+   * its redline against `&base=` when that rides along.
+   *
+   * Read during setup, not in `onMount`: effects run in creation order, so an
+   * effect declared here would run *before* `onMount` filled these in, bail out
+   * on the null, and — having read no signal on that path — never run again.
+   * The panel only renders on the client, but SSR has no location to read.
+   */
+  const urlRevision = isServer
+    ? null
+    : (() => {
+        const params = new URL(window.location.href).searchParams;
+        const rev = Number.parseInt(params.get("revision") ?? "", 10);
+        if (Number.isNaN(rev)) return null;
+        const base = Number.parseInt(params.get("base") ?? "", 10);
+        return { rev, base: Number.isNaN(base) ? null : base };
+      })();
+
+  // Latched, so a later space change cannot reopen what the user has closed.
   let urlRevisionOpened = false;
 
   createEffect(() => {
-    if (urlRevisionOpened || pendingUrlRevision === null) return;
-    if (!currentSpaceId()) return;
+    // Read first: an early return above this line would leave the effect
+    // tracking nothing, and the space resolves asynchronously on a cold load.
+    const spaceId = currentSpaceId();
+    if (!spaceId || urlRevisionOpened || urlRevision === null) return;
     urlRevisionOpened = true;
-    void viewRevision(pendingUrlRevision);
+    void (urlRevision.base === null
+      ? viewRevision(urlRevision.rev)
+      : showRevisionDiff(urlRevision.rev, urlRevision.base));
   });
 
   onMount(() => {
-    const url = new URL(window.location.href);
-    const revision = url.searchParams.get("revision");
-
-    if (revision) {
-      const rev = Number.parseInt(revision, 10);
-      if (!Number.isNaN(rev)) pendingUrlRevision = rev;
-    }
-
     window.addEventListener("revision:close", onRevisionClose);
     onCleanup(() => window.removeEventListener("revision:close", onRevisionClose));
   });
@@ -366,7 +391,7 @@ export function RevisionsSidebar(props: Props) {
                                     exitPopover(e);
                                     void viewRevision(primary.revisionId);
                                   }}
-                                  class={MENU_ITEM_CLASS}
+                                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                                 >
                                   <Icon class="h-4 w-4 flex-none" name="eye" />
                                   View Revision
@@ -375,9 +400,9 @@ export function RevisionsSidebar(props: Props) {
                                   type="button"
                                   onClick={(e) => {
                                     exitPopover(e);
-                                    showDiff(primary);
+                                    void showRevisionDiff(primary.revisionId);
                                   }}
-                                  class={MENU_ITEM_CLASS}
+                                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                                 >
                                   <Icon class="h-4 w-4 flex-none" name="paste" />
                                   Show Diff
@@ -388,7 +413,7 @@ export function RevisionsSidebar(props: Props) {
                                     exitPopover(e);
                                     copyRevisionLink(primary.revisionId);
                                   }}
-                                  class={MENU_ITEM_CLASS}
+                                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                                 >
                                   <Icon class="h-4 w-4 flex-none" name="copy" />
                                   Copy Link
@@ -405,7 +430,7 @@ export function RevisionsSidebar(props: Props) {
                                       exitPopover(e);
                                       void publishRevisionAction(primary.revisionId);
                                     }}
-                                    class={`${MENU_ITEM_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
+                                    class={`flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50`}
                                     disabled={isPublishing()}
                                   >
                                     <Icon class="h-4 w-4 flex-none" name="publish" />

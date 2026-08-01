@@ -4,11 +4,13 @@ import {
   createMemo,
   createSignal,
   Match,
+  on,
   onCleanup,
   onMount,
   Show,
   Switch,
 } from "solid-js";
+import { isServer } from "solid-js/web";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { useSpace } from "#composeables/useSpace.ts";
 import { AppView } from "./AppView.tsx";
@@ -35,6 +37,7 @@ export function RevisionView(props: Props) {
   const [viewingSuggestion, setViewingSuggestion] = createSignal(false);
   const [showingDiff, setShowingDiff] = createSignal(false);
   const [diffContent, setDiffContent] = createSignal("");
+  const [diffBaseNumber, setDiffBaseNumber] = createSignal<number | null>(null);
 
   // When viewing a diff the document element renders the inline redline instead
   // of the plain revision content; otherwise it renders the revision as-is.
@@ -57,28 +60,70 @@ export function RevisionView(props: Props) {
     });
   });
 
-  function handleRevisionView(event: Event) {
-    const detail = (event as CustomEvent).detail;
-    setViewingRevision(true);
-    document.body.dataset.revision = "true";
-    setRevisionNumber(detail.revision);
-    setRevisionContent(detail.content);
-    setViewingSuggestion(Boolean(detail.isSuggestion));
-    setShowingDiff(false);
-    setDiffContent("");
-  }
-
-  function handleRevisionClose() {
-    setViewingRevision(false);
+  /**
+   * `data-revision` hides the live document (`body[data-revision] main`), so it
+   * must not outlive the revision on screen: left behind it blanks whatever
+   * document comes next. Derived from the signal rather than toggled by hand at
+   * each call site, and cleared on unmount — navigating away tears this
+   * component down without any of the handlers below running.
+   */
+  createEffect(() => {
+    if (viewingRevision()) document.body.dataset.revision = "true";
+    else document.body.removeAttribute("data-revision");
+  });
+  onCleanup(() => {
+    // Cleanups also run when SSR tears the tree down, where there is no DOM.
+    if (isServer) return;
     document.body.removeAttribute("data-revision");
+  });
+
+  function clearRevisionState() {
+    setViewingRevision(false);
     setRevisionNumber(null);
     setRevisionContent("");
     setViewingSuggestion(false);
     setShowingDiff(false);
     setDiffContent("");
+    setDiffBaseNumber(null);
+  }
+
+  /**
+   * A revision of the previous document has nothing to say about this one.
+   *
+   * On the id changing, not merely on the effect re-running: the document query
+   * hands back a fresh object on every refetch and cache push, so this fires
+   * repeatedly for the same document — and closed a revision opened from its
+   * URL a moment earlier, before the reader ever saw it.
+   */
+  createEffect(
+    on(
+      () => props.documentId,
+      (documentId, previousDocumentId) => {
+        if (previousDocumentId === undefined || documentId === previousDocumentId) {
+          return;
+        }
+        clearRevisionState();
+      },
+    ),
+  );
+
+  function handleRevisionView(event: Event) {
+    const detail = (event as CustomEvent).detail;
+    setViewingRevision(true);
+    setRevisionNumber(detail.revision);
+    setRevisionContent(detail.content);
+    setViewingSuggestion(Boolean(detail.isSuggestion));
+    setShowingDiff(false);
+    setDiffContent("");
+    setDiffBaseNumber(null);
+  }
+
+  function handleRevisionClose() {
+    clearRevisionState();
 
     const query = new URLSearchParams(location.search);
     query.delete("revision");
+    query.delete("base");
     const search = query.toString();
     // `location.pathname` already carries the router base ("/{space}/"), so the
     // target must not be resolved against it again — that yields "/space/space/…".
@@ -93,24 +138,45 @@ export function RevisionView(props: Props) {
     window.dispatchEvent(new CustomEvent("revision:close"));
   }
 
+  /**
+   * The base revision is only known once the server has resolved it (the
+   * request may omit it and take the document's published revision), so this
+   * writes the URL itself instead of leaving it to the sidebar: both sides of
+   * the comparison belong in the link.
+   */
   async function handleRevisionDiff(event: Event) {
     const detail = (event as CustomEvent).detail;
     const spaceId = currentSpaceId();
     if (!spaceId) return;
 
+    const base = typeof detail.base === "number" ? detail.base : null;
+
     try {
       const response = await fetch(
-        `/api/v1/spaces/${spaceId}/documents/${props.documentId}/diff?rev=${detail.revision}&format=html`,
+        `/api/v1/spaces/${spaceId}/documents/${props.documentId}/diff?rev=${detail.revision}${base === null ? "" : `&base=${base}`}&format=html`,
       );
       if (!response.ok) throw new Error("Failed to fetch diff");
 
+      const header = Number.parseInt(response.headers.get("X-Diff-Base-Rev") ?? "", 10);
+      const baseRev = Number.isNaN(header) ? base : header;
+
       setDiffContent(await response.text());
+      setDiffBaseNumber(baseRev);
       setShowingDiff(true);
       setViewingRevision(true);
-      document.body.dataset.revision = "true";
       setRevisionNumber(detail.revision);
       setRevisionContent("");
       setViewingSuggestion(Boolean(detail.isSuggestion));
+
+      if (baseRev !== null) {
+        const query = new URLSearchParams(location.search);
+        query.set("revision", String(detail.revision));
+        query.set("base", String(baseRev));
+        navigate(`${location.pathname}?${query.toString()}`, {
+          replace: true,
+          resolve: false,
+        });
+      }
     } catch (error) {
       console.error("Failed to load diff:", error);
     }
@@ -140,6 +206,9 @@ export function RevisionView(props: Props) {
                 <p class="font-semibold text-amber-900 text-size-medium">
                   {showingDiff() ? "Comparing" : "Viewing"}{" "}
                   {viewingSuggestion() ? "Suggestion" : "Revision"} {revisionNumber()}
+                  <Show when={showingDiff() && diffBaseNumber() !== null}>
+                    {` with Revision ${diffBaseNumber()}`}
+                  </Show>
                 </p>
                 <p class="my-0! flex flex-wrap items-center gap-3 text-amber-700 text-size-small">
                   <Switch
@@ -151,7 +220,9 @@ export function RevisionView(props: Props) {
                     }
                   >
                     <Match when={showingDiff()}>
-                      Changes from the published version are shown inline.
+                      {diffBaseNumber() === null
+                        ? "Changes from the published version are shown inline."
+                        : `Changes from revision ${diffBaseNumber()} are shown inline.`}
                       <span class="inline-flex items-center gap-2">
                         <span class="rounded-xs bg-green-100 px-1 text-green-700 no-underline">
                           added

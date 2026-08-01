@@ -20,9 +20,8 @@ export function useInlineSuggestions(options: {
 }) {
   const { spaceId, documentId, isEditing, editor } = options;
 
-  const { revisions, saveRevision, fetchHistory, updateRevisionStatus } = useRevisions(
-    documentId(),
-  );
+  const { revisions, saveRevision, fetchHistory, updateRevisionStatus } =
+    useRevisions(documentId);
 
   const [suggestionPatches, setSuggestionPatches] = createSignal<Record<number, string>>(
     {},

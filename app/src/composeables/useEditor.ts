@@ -121,8 +121,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveStatus: documentSaveStatus,
     saveError: documentSaveError,
     saveDocument,
-  } = useDocument(documentId(), documentType());
-  const { saveRevision } = useRevisions(documentId());
+  } = useDocument(documentId, documentType);
+  const { saveRevision } = useRevisions(documentId);
   const toast = useToast();
 
   let editorSession = 0;

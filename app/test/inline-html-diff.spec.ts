@@ -128,6 +128,24 @@ describe("inlineHtmlDiff", () => {
     expect(inlineHtmlDiff(html, html)).toBe(html);
   });
 
+  it("keeps markup balanced when a structural tag's attributes changed", () => {
+    // Task items are stored in two shapes (the editor's node view writes a
+    // `contenteditable` label, markdown import writes a plain one), so a
+    // revision can differ from its base by the label's attributes alone.
+    const item = (label: string, extra: string) =>
+      '<ul data-type="taskList"><li data-type="taskItem" data-checked="false">' +
+      `<label${label}><input type="checkbox">${extra}</label>` +
+      "<div><p>Ship it</p></div></li></ul>";
+    const base = item(' contenteditable="false"', "");
+    const revision = item("", "<span></span>");
+
+    const result = inlineHtmlDiff(base, revision);
+
+    // Only one opening <label>: two of them would swallow the content div,
+    // which is a sibling, into the checkbox label.
+    expect(result).toBe(revision);
+  });
+
   it("keeps the space separating added words outside the marker", () => {
     const base = "<p>Lorem</p>";
     const revision = "<p>Lorem ipsum</p>";

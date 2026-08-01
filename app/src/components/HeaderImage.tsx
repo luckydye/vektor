@@ -24,7 +24,7 @@ export function HeaderImage(props: Props) {
       ? { "aspect-ratio": String(props.aspectRatio) }
       : undefined;
 
-  const { document: doc, isLoading } = useDocument(props.documentId);
+  const { document: doc, isLoading } = useDocument(() => props.documentId);
 
   const src = createMemo(() => {
     const headerImage = doc()?.properties?.headerImage;

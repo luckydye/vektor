@@ -327,13 +327,6 @@ function stamp(element: Element, svg: string): void {
   stamped.set(element, svg);
 }
 
-/**
- * The icon box itself: `svg-icon` carries the display and the rule that makes
- * the glyph fill it, `.icon` is the hook `button-with-icon` spaces a following
- * label against. Callers add size and colour, not mechanics.
- */
-const BASE_CLASS = "svg-icon";
-
 /** An icon's markup, for callers that build DOM without Solid. */
 export function iconMarkup(name: IconName): string {
   return icons[name] ?? FALLBACK;
@@ -368,7 +361,9 @@ export function Icon(props: Props) {
     if (props.name) return icons[props.name] ?? FALLBACK;
     return "";
   };
-  const className = () => twMerge(BASE_CLASS, props.class);
+  // `svg-icon` carries the display and the rule that makes the glyph fill the
+  // box; callers add size and colour, not mechanics.
+  const className = () => twMerge("svg-icon", props.class);
 
   // The server has no DOM to clone from, and the markup has to reach the
   // response so the shell paints its icons before hydration. Both branches
