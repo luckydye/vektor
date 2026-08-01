@@ -121,7 +121,7 @@ const lang = Astro.preferredLocale || "en";
 >
   <SpaceApp
     client:load
-    url={Astro.url.pathname}
+    url={`${Astro.url.pathname}${Astro.url.search}`}
     initialSpace={initialSpace}
     initialDocument={initialDocument}
     initialSidebarWidth={initialSidebarWidth}

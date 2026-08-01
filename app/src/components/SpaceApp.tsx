@@ -101,7 +101,15 @@ export function SpaceApp(props: Props) {
   }
 
   const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "/";
-  const ssrRelativeUrl = stripRouterBase(props.url ?? "/", routerBase);
+  // `props.url` carries the query string — the router needs it, because a route
+  // can be parameterised by search params alone (`/new?title=…` seeds a draft
+  // title, and reading it only after hydration is too late for the components
+  // that snapshot their props on setup). `SsrUrlContext` is a *pathname* its
+  // consumers pattern-match, so that one gets the query stripped.
+  const ssrRelativeUrl = stripRouterBase(
+    (props.url ?? "/").split("?")[0] || "/",
+    routerBase,
+  );
 
   const [activeSpaceId] = createSignal<string | null>(
     (props.initialSpace?.id as string | undefined) ?? null,
@@ -308,7 +316,9 @@ export function SpaceApp(props: Props) {
 
               It gets the full path, not the base-relative one: the client
               source is `window.location.pathname`, and the router strips
-              `base` itself. Handing it a pre-stripped path strips twice. */}
+              `base` itself. Handing it a pre-stripped path strips twice.
+              Query string included, so `useSearchParams()` resolves during SSR
+              too — see `ssrRelativeUrl` above. */}
             <Router
               url={props.url ?? "/"}
               base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
