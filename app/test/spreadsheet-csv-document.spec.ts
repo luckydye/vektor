@@ -161,3 +161,112 @@ describe("csvDocument", () => {
     expect(toDocumentHtml(model)).toBe("<table><tbody></tbody></table>");
   });
 });
+
+describe("csvDocument formatting", () => {
+  const area = (row: number, column: number, width: number, height: number) => ({
+    sheet: 0,
+    row,
+    column,
+    width,
+    height,
+  });
+
+  it("stores only what differs from the default style", () => {
+    const model = createModel(stored([["a", "b"]]), "Test");
+    model.updateRangeStyle(area(1, 1, 1, 1), "font.b", "true");
+
+    const saved = toDocumentHtml(model);
+    // The whole style is ~130 bytes of defaults; only the difference is kept.
+    expect(saved).toContain(
+      `data-style="${'{"font":{"b":true}}'.replace(/"/g, "&quot;")}"`,
+    );
+    // The untouched neighbour carries no style at all.
+    expect(saved).toContain("<th>b</th>");
+  });
+
+  it("restores every kind of formatting across a save and reload", () => {
+    const model = createModel(
+      stored([
+        ["a", "b"],
+        ["1", "2"],
+      ]),
+      "Test",
+    );
+    model.updateRangeStyle(area(1, 1, 2, 1), "font.b", "true");
+    model.updateRangeStyle(area(2, 1, 1, 1), "font.i", "true");
+    model.updateRangeStyle(area(2, 1, 1, 1), "font.color", "#FF0000");
+    model.updateRangeStyle(area(2, 2, 1, 1), "fill.color", "#FFCC00");
+    model.updateRangeStyle(area(2, 2, 1, 1), "alignment.horizontal", "center");
+    model.updateRangeStyle(area(2, 2, 1, 1), "num_fmt", "0.00%");
+    model.updateRangeStyle(area(1, 1, 1, 1), "font.size", "18");
+
+    const reloaded = createModel(toDocumentHtml(model), "Test");
+    const style = (row: number, column: number) =>
+      reloaded.getCellStyle(0, row, column).style;
+
+    expect(style(1, 1).font.b).toBe(true);
+    expect(style(1, 2).font.b).toBe(true);
+    expect(style(1, 1).font.sz).toBe(18);
+    expect(style(2, 1).font.i).toBe(true);
+    expect(style(2, 1).font.color).toBe("#FF0000");
+    expect(style(2, 2).fill.color).toBe("#FFCC00");
+    expect(style(2, 2).alignment?.horizontal).toBe("center");
+    expect(style(2, 2).num_fmt).toBe("0.00%");
+  });
+
+  it("keeps a style on a cell that has no value", () => {
+    const model = createModel(stored([["a"]]), "Test");
+    model.updateRangeStyle(area(4, 3, 1, 1), "fill.color", "#00FF00");
+
+    const reloaded = createModel(toDocumentHtml(model), "Test");
+    expect(reloaded.getCellStyle(0, 4, 3).style.fill.color).toBe("#00FF00");
+    expect(reloaded.getFormattedCellValue(0, 4, 3)).toBe("");
+  });
+
+  it("restores column widths and row heights", () => {
+    const model = createModel(
+      stored([
+        ["a", "b"],
+        ["c", "d"],
+      ]),
+      "Test",
+    );
+    model.setColumnsWidth(0, 2, 2, 175);
+    model.setRowsHeight(0, 2, 2, 40);
+
+    const saved = toDocumentHtml(model);
+    expect(saved).toContain('data-width="175"');
+    expect(saved).toContain('data-height="40"');
+
+    const reloaded = createModel(saved, "Test");
+    expect(reloaded.getColumnWidth(0, 2)).toBe(175);
+    expect(reloaded.getRowHeight(0, 2)).toBe(40);
+  });
+
+  it("writes no colgroup when every column is the default width", () => {
+    const model = createModel(stored([["a", "b"]]), "Test");
+    expect(toDocumentHtml(model)).not.toContain("colgroup");
+  });
+
+  it("saves a formatted document again unchanged", () => {
+    const model = createModel(
+      stored([
+        ["a", "b"],
+        ["1", "2"],
+      ]),
+      "Test",
+    );
+    model.updateRangeStyle(area(1, 1, 2, 1), "font.b", "true");
+    model.updateRangeStyle(area(2, 2, 1, 1), "fill.color", "#FFCC00");
+    model.setColumnsWidth(0, 1, 1, 140);
+
+    const saved = toDocumentHtml(model);
+    expect(toDocumentHtml(createModel(saved, "Test"))).toBe(saved);
+  });
+
+  it("ignores a data-style that is not usable JSON", () => {
+    const html = '<table><tbody><tr><td data-style="{oops">x</td></tr></tbody></table>';
+    expect(() => createModel(html, "Test")).not.toThrow();
+    expect(createModel(html, "Test").getFormattedCellValue(0, 1, 1)).toBe("x");
+  });
+});
