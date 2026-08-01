@@ -71,7 +71,9 @@ export class Actions {
 
   static unregister(idOrAction: string | ActionOptions) {
     if (typeof idOrAction === "string") {
-      globalActions.delete(idOrAction);
+      // register() stores ids lowercased, so normalize here too or a mixed-case
+      // id would silently fail to unregister.
+      globalActions.delete(idOrAction.toLocaleLowerCase());
       Actions.emit("actions:unregister", { detail: idOrAction });
     } else if (typeof idOrAction === "object") {
       for (const [id, action] of globalActions) {

@@ -19,6 +19,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { registerScopedAction } from "#utils/scopedAction.ts";
 import { Button } from "./Button.tsx";
 import { ContextMenu } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
@@ -87,7 +88,7 @@ export function DocumentActions(props: Props) {
     );
   }
 
-  Actions.register("document:print", {
+  registerScopedAction("document:print", {
     title: t("Print"),
     icon: () => "print",
     description: t("Print current document"),
@@ -98,7 +99,7 @@ export function DocumentActions(props: Props) {
     },
   });
 
-  Actions.register("document:accesstoken", {
+  registerScopedAction("document:accesstoken", {
     title: t("Copy API Command"),
     icon: () => "source-code",
     description: t("Creates API token to access this document"),
@@ -147,7 +148,7 @@ export function DocumentActions(props: Props) {
     },
   });
 
-  Actions.register("document:dev:copy-document-id", {
+  registerScopedAction("document:dev:copy-document-id", {
     title: t("Copy Document ID"),
     icon: () => "copy",
     description: t("Copy the current document ID to clipboard"),
@@ -160,7 +161,7 @@ export function DocumentActions(props: Props) {
     },
   });
 
-  Actions.register("document:dev:copy-space-id", {
+  registerScopedAction("document:dev:copy-space-id", {
     title: t("Copy Space ID"),
     icon: () => "copy",
     description: t("Copy the current space ID to clipboard"),
@@ -208,35 +209,27 @@ export function DocumentActions(props: Props) {
     setActionsDanger(Actions.group("document:danger"));
   }
 
-  onMount(() => {
-    Actions.register("document:edit", {
-      title: t("Edit Document"),
-      description: t("Start editing mode for current document"),
-      group: "edit",
-      run: async () => startEditing(),
-    });
-    Actions.register("document:cancel", {
-      title: t("Cancel Editing"),
-      description: t("Discard editing mode for current document"),
-      group: "edit",
-      run: async () => {
-        if (editing()) cancelEditing();
-      },
-    });
-
-    Actions.subscribe("actions:register", refreshActionGroups);
-    Actions.subscribe("actions:unregister", refreshActionGroups);
-
-    refreshActionGroups();
+  registerScopedAction("document:edit", {
+    title: t("Edit Document"),
+    description: t("Start editing mode for current document"),
+    group: "edit",
+    run: async () => startEditing(),
   });
 
-  onCleanup(() => {
-    Actions.unregister("document:edit");
-    Actions.unregister("document:cancel");
-    Actions.unregister("document:share");
-    Actions.unregister("document:mute-email");
-    Actions.unregister("document:unmute-email");
-    Actions.unregister("document:duplicate");
+  registerScopedAction("document:cancel", {
+    title: t("Cancel Editing"),
+    description: t("Discard editing mode for current document"),
+    group: "edit",
+    run: async () => {
+      if (editing()) cancelEditing();
+    },
+  });
+
+  onMount(() => {
+    onCleanup(Actions.subscribe("actions:register", refreshActionGroups));
+    onCleanup(Actions.subscribe("actions:unregister", refreshActionGroups));
+
+    refreshActionGroups();
   });
 
   function runContextMenuAction(e: Event, name: string) {
@@ -268,16 +261,13 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:mute-email");
-    Actions.unregister("document:unmute-email");
-
     const spaceId = currentSpaceId();
     const currentDocumentId = documentId();
     if (!spaceId || !currentDocumentId || !emailPreferenceLoaded()) return;
 
     const muted = emailMuted();
     const actionName = muted ? "document:unmute-email" : "document:mute-email";
-    Actions.register(actionName, {
+    registerScopedAction(actionName, {
       title: muted ? "Enable email notifications" : "Mute email notifications",
       icon: () => (muted ? "enable-notifications" : "mute-notifications"),
       description: muted
@@ -297,9 +287,6 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:pin");
-    Actions.unregister("document:unpin");
-
     const space = currentSpace();
     const docId = documentId();
     if (!userCanManageDocument() || !space || !docId) return;
@@ -307,7 +294,7 @@ export function DocumentActions(props: Props) {
     const isPinned = space.preferences?.pinnedDocumentId === docId;
 
     if (isPinned) {
-      Actions.register("document:unpin", {
+      registerScopedAction("document:unpin", {
         title: t("Unpin from Home"),
         icon: () => "pin-filled",
         description: t("Remove this document from the space home page"),
@@ -321,7 +308,7 @@ export function DocumentActions(props: Props) {
       return;
     }
 
-    Actions.register("document:pin", {
+    registerScopedAction("document:pin", {
       title: t("Pin to Home"),
       icon: () => "pin",
       description: t("Showcase this document on the space home page"),
@@ -335,13 +322,11 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:duplicate");
-
     const spaceId = currentSpaceId();
     const currentDocumentId = documentId();
     if (!userCanManageDocument() || !spaceId || !currentDocumentId) return;
 
-    Actions.register("document:duplicate", {
+    registerScopedAction("document:duplicate", {
       title: t("Duplicate Document"),
       icon: () => "copy",
       description: t("Create a new document with this document's content"),
@@ -366,11 +351,9 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:archive");
+    if (userCanManageDocument() !== true || !documentId()) return;
 
-    if (userCanManageDocument() !== true) return;
-
-    Actions.register("document:archive", {
+    registerScopedAction("document:archive", {
       title: t("Archive Document"),
       icon: () => "archive",
       description: t("Archive current document"),
@@ -394,11 +377,9 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:unpublish");
-
     if (!userCanManageDocument() || !documentId() || !hasPublishedVersion()) return;
 
-    Actions.register("document:unpublish", {
+    registerScopedAction("document:unpublish", {
       title: t("Unpublish"),
       icon: () => "eye",
       description: t("Remove the published version of this document"),
@@ -418,11 +399,9 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:share");
-
     if (!userCanManageDocument() || !documentId()) return;
 
-    Actions.register("document:share", {
+    registerScopedAction("document:share", {
       title: t("Share"),
       icon: () => "share",
       description: t("Invite people to this document or space"),
@@ -435,9 +414,6 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    Actions.unregister("document:set-header");
-    Actions.unregister("document:remove-header");
-
     const currentDocumentId = documentId();
     if (
       userCanManageDocument() !== true ||
@@ -447,7 +423,7 @@ export function DocumentActions(props: Props) {
       return;
     }
 
-    Actions.register("document:set-header", {
+    registerScopedAction("document:set-header", {
       title: props.headerImage ? t("Change header") : t("Add header image"),
       icon: () => "header-image",
       description: t("Set the header image for this document"),
@@ -457,7 +433,7 @@ export function DocumentActions(props: Props) {
     });
 
     if (props.headerImage) {
-      Actions.register("document:remove-header", {
+      registerScopedAction("document:remove-header", {
         title: t("Remove header image"),
         icon: () => "image",
         description: t("Remove the header image from this document"),

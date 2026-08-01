@@ -1,12 +1,4 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-  onMount,
-  Show,
-} from "solid-js";
+import { createEffect, createMemo, createSignal, on, onMount, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import {
   type ChatAttachment,
@@ -18,8 +10,8 @@ import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
-import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
 import { sendMessageIcon, stopIcon } from "#assets/icons.ts";
@@ -276,12 +268,13 @@ export function AIChatPanel(props: Props) {
   createEffect(
     on(isAgentConfigured, (configured) => {
       if (!configured) {
-        Actions.unregister("ai-chat:toggle");
         // Persisted UI state can restore the panel in a space with no provider.
         if (isOpen()) closeWindow("ai-chat");
         return;
       }
-      Actions.register("ai-chat:toggle", {
+      // Scoped to the effect: switching to an unconfigured space, or leaving the
+      // space app, takes the action with it.
+      registerScopedAction("ai-chat:toggle", {
         title: t("AI Chat"),
         icon: () => "agent-chat",
         description: t("Open AI chat to ask questions about this document"),
@@ -295,12 +288,6 @@ export function AIChatPanel(props: Props) {
 
   onMount(() => {
     loadUIState();
-  });
-
-  // The scroll and copied-message timers belong to AIChatMessages, which
-  // clears them on its own cleanup.
-  onCleanup(() => {
-    Actions.unregister("ai-chat:toggle");
   });
 
   return (

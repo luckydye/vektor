@@ -20,8 +20,8 @@ import {
 import { useAuditLogs } from "#composeables/useAuditLogs.ts";
 import { useRevisions } from "#composeables/useRevisions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { registerScopedAction } from "#utils/scopedAction.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import { DockedPanel } from "./DockedPanel.tsx";
@@ -220,7 +220,9 @@ export function RevisionsSidebar(props: Props) {
 
   // ── Lifecycle / panel watcher ───────────────────────────────────────────────
 
-  Actions.register("revisions:toggle", {
+  // Scoped: the activity panel needs a document, so the action must not linger
+  // on the home page.
+  registerScopedAction("revisions:toggle", {
     title: t("Activity"),
     icon: () => "history",
     description: t("Open or close the document activity"),
