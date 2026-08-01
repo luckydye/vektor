@@ -16,7 +16,7 @@ export function SelectItem(props: Props) {
   return (
     <button
       type="button"
-      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-left transition-colors [&_svg]:h-[18px] [&_svg]:w-[18px] [&_svg]:text-neutral-950"
+      class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors [&_svg]:h-[18px] [&_svg]:w-[18px] [&_svg]:text-neutral-950"
       classList={{
         "bg-primary-50": merged.selected,
         "hover:bg-primary-10": !merged.selected,

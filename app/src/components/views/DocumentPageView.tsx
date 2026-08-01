@@ -476,7 +476,7 @@ export function DocumentPageView(props: Props) {
                     <DocumentActions title={title()} headerImage={headerImageSrc()} />
                   </div>
 
-                  <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-xl print:px-0">
+                  <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-m print:px-0">
                     {titleRow()}
                   </inset-view>
 

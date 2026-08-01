@@ -115,7 +115,7 @@ export function UserProfile() {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-red-600 text-size-small transition-colors duration-200 hover:bg-red-50"
+                  class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-red-600 text-size-small transition-colors duration-200 hover:bg-red-500 hover:text-white"
                 >
                   <Icon class="h-4 w-4" name="sign-out" />
                   <span class="font-medium leading-none">{t("Sign Out")}</span>
