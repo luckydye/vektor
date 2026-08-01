@@ -1,10 +1,4 @@
 import { createMemo, createSignal, onMount, Show } from "solid-js";
-import {
-  preferencesIcon,
-  sendFeedbackIcon,
-  signOutIcon,
-  sourceCodeIcon,
-} from "#assets/icons.ts";
 import { authClient } from "#composeables/auth-client.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -15,6 +9,7 @@ import {
 } from "#utils/themePreference.ts";
 import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
+import { Icon } from "./Icon.tsx";
 import { UserPreferencesPanel } from "./UserPreferencesPanel.tsx";
 
 export function UserProfile() {
@@ -96,21 +91,21 @@ export function UserProfile() {
                   onClick={() => setPreferencesOpen(true)}
                   class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-foreground text-size-small transition-colors duration-200 hover:bg-neutral-50"
                 >
-                  <div class="svg-icon h-4 w-4" innerHTML={preferencesIcon} />
+                  <Icon class="h-4 w-4" name="preferences" />
                   <span class="font-medium leading-none">{t("Preferences")}</span>
                 </button>
                 <a
                   href="mailto:t.havlicek@s-v.de"
                   class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-foreground text-size-small transition-colors duration-200 hover:bg-neutral-50"
                 >
-                  <div class="svg-icon h-4 w-4" innerHTML={sendFeedbackIcon} />
+                  <Icon class="h-4 w-4" name="send-feedback" />
                   <span class="font-medium leading-none">{t("Send feedback")}</span>
                 </a>
                 <a
                   href="https://github.com/luckydye/vektor"
                   class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-foreground text-size-small transition-colors duration-200 hover:bg-neutral-50"
                 >
-                  <div class="svg-icon h-4 w-4" innerHTML={sourceCodeIcon} />
+                  <Icon class="h-4 w-4" name="source-code" />
                   <span class="font-medium leading-none">{t("Source")}</span>
                 </a>
                 <button
@@ -118,7 +113,7 @@ export function UserProfile() {
                   onClick={handleLogout}
                   class="flex w-full items-center gap-2.5 rounded-lg px-3xs py-3xs text-left text-red-600 text-size-small transition-colors duration-200 hover:bg-red-50"
                 >
-                  <div class="svg-icon h-4 w-4" innerHTML={signOutIcon} />
+                  <Icon class="h-4 w-4" name="sign-out" />
                   <span class="font-medium leading-none">{t("Sign Out")}</span>
                 </button>
               </div>

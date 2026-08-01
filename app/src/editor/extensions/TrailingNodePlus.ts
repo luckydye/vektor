@@ -4,20 +4,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { api } from "#api/client.ts";
-import {
-  addIcon,
-  dateIcon,
-  documentIcon,
-  extensionIcon,
-  fileAttachmentIcon,
-  fourColumnsIcon,
-  htmlIcon,
-  imageIcon,
-  tableIcon,
-  threeColumnsIcon,
-  twoColumnsIcon,
-  videoIcon,
-} from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import { extensions } from "#extensions/manager.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
@@ -72,7 +59,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Table",
       description: "Insert a table",
-      icon: tableIcon,
+      icon: iconMarkup("table"),
       command: (editor) => {
         editor
           .chain()
@@ -84,7 +71,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Image",
       description: "Upload and insert an image",
-      icon: imageIcon,
+      icon: iconMarkup("image"),
       command: (editor) => {
         handleImageUpload(editor, spaceId, documentId);
       },
@@ -92,7 +79,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Video",
       description: "Upload and insert a video",
-      icon: videoIcon,
+      icon: iconMarkup("video"),
       command: (editor) => {
         handleVideoUpload(editor, spaceId, documentId);
       },
@@ -100,7 +87,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "File/Attachment",
       description: "Upload and insert any file",
-      icon: fileAttachmentIcon,
+      icon: iconMarkup("file-attachment"),
       command: (editor) => {
         handleFileAttachmentUpload(editor, spaceId, documentId);
       },
@@ -108,7 +95,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "2 Columns",
       description: "Insert a 2-column layout",
-      icon: twoColumnsIcon,
+      icon: iconMarkup("2-columns"),
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
           .setColumnLayout({ columns: 2 })
@@ -118,7 +105,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "3 Columns",
       description: "Insert a 3-column layout",
-      icon: threeColumnsIcon,
+      icon: iconMarkup("3-columns"),
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
           .setColumnLayout({ columns: 3 })
@@ -128,7 +115,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "4 Columns",
       description: "Insert a 4-column layout",
-      icon: fourColumnsIcon,
+      icon: iconMarkup("4-columns"),
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
           .setColumnLayout({ columns: 4 })
@@ -138,7 +125,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "HTML Block",
       description: "Insert raw HTML markup",
-      icon: htmlIcon,
+      icon: iconMarkup("html"),
       command: (editor) => {
         editor.chain().focus().insertHtmlBlock().run();
       },
@@ -146,7 +133,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Date",
       description: "Insert a date picker",
-      icon: dateIcon,
+      icon: iconMarkup("date"),
       command: (editor) => {
         editor.chain().focus().insertDatePicker().run();
       },
@@ -154,7 +141,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "New document",
       description: "Create a new document and insert a link to it",
-      icon: documentIcon,
+      icon: iconMarkup("document"),
       command: (editor) => {
         void createDocumentAndInsertMention(editor, spaceId);
       },
@@ -165,7 +152,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     items.push({
       title: route.menuItem?.title || route.title || extensionId,
       description: route.description || "Extension view",
-      icon: route.menuItem?.icon || extensionIcon,
+      icon: route.menuItem?.icon || iconMarkup("extension"),
       command: (editor) => {
         editor
           .chain()
@@ -586,7 +573,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
               widget.className = "trailing-node-plus-button";
               widget.contentEditable = "false";
               widget.innerHTML = `
-                  ${addIcon}
+                  ${iconMarkup("add")}
                   <span>Add content</span>
                 `;
 

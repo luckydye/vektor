@@ -1,16 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
-import {
-  addIcon,
-  dateIcon,
-  documentWidthFullIcon,
-  documentWidthStandardIcon,
-  genericPropertyIcon,
-  gridCleanIcon,
-  gridDotsIcon,
-  gridGridIcon,
-  peopleIcon,
-} from "#assets/icons.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useMembers } from "#composeables/useMembers.ts";
@@ -23,8 +12,10 @@ import {
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import type { IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
+import type { SelectMenuItem } from "./SelectMenu.tsx";
 
 interface Props {
   documentId?: string;
@@ -36,17 +27,17 @@ interface Props {
 }
 
 // Backdrop grid options for canvas documents, mirroring the layout picker.
-const GRID_TYPE_OPTIONS = [
-  { id: "grid", label: t("Grid"), icon: gridGridIcon },
-  { id: "clean", label: t("Clean"), icon: gridCleanIcon },
-  { id: "dots", label: t("Dots"), icon: gridDotsIcon },
+const GRID_TYPE_OPTIONS: SelectMenuItem[] = [
+  { id: "grid", label: t("Grid"), icon: "grid-grid" },
+  { id: "clean", label: t("Clean"), icon: "grid-clean" },
+  { id: "dots", label: t("Dots"), icon: "grid-dots" },
 ];
 
-const propertyTypes = [
-  { id: "text", label: t("Text"), icon: addIcon },
-  { id: "multi-select", label: t("Multi Select"), icon: addIcon },
-  { id: "date", label: t("Date"), icon: addIcon },
-  { id: "user", label: t("User"), icon: peopleIcon },
+const propertyTypes: SelectMenuItem[] = [
+  { id: "text", label: t("Text"), icon: "add" },
+  { id: "multi-select", label: t("Multi Select"), icon: "add" },
+  { id: "date", label: t("Date"), icon: "add" },
+  { id: "user", label: t("User"), icon: "people" },
 ];
 
 export function DocumentProperties(props: Props) {
@@ -177,24 +168,28 @@ export function DocumentProperties(props: Props) {
     return property.value.map((value) => getPropertyLabel({ ...property, value }));
   };
 
-  const getPropertyIcon = (property: Property) => {
-    if (property.id?.toLowerCase() === "category") {
-      return getCategoryIcon(propertyValueToScalar(property.value)) || undefined;
-    }
+  /** A category's chip is a generated colour badge, not an icon from the set. */
+  const getPropertyIconSvg = (property: Property) =>
+    property.id?.toLowerCase() === "category"
+      ? (getCategoryIcon(propertyValueToScalar(property.value)) ?? undefined)
+      : undefined;
+
+  const getPropertyIcon = (property: Property): IconName | undefined => {
+    if (property.id?.toLowerCase() === "category") return undefined;
     if (property.id?.toLowerCase() === "layout") {
       return propertyValueToScalar(property.value) === "full"
-        ? documentWidthFullIcon
-        : documentWidthStandardIcon;
+        ? "document-width-full"
+        : "document-width-standard";
     }
     if (property.id?.toLowerCase() === "gridtype") {
       return (
         GRID_TYPE_OPTIONS.find((o) => o.id === propertyValueToScalar(property.value))
-          ?.icon ?? gridDotsIcon
+          ?.icon ?? "grid-dots"
       );
     }
-    if (property.type === "user") return peopleIcon;
-    if (property.type === "date") return dateIcon;
-    return genericPropertyIcon;
+    if (property.type === "user") return "people";
+    if (property.type === "date") return "date";
+    return "generic-property";
   };
 
   const getPropertyVariant = (property: Property): "default" | "special" => {
@@ -218,18 +213,18 @@ export function DocumentProperties(props: Props) {
       .replace(/^./, (character) => character.toUpperCase());
   };
 
-  const getPropertyValues = async (property: Property) => {
+  const getPropertyValues = async (property: Property): Promise<SelectMenuItem[]> => {
     if (property.name?.toLowerCase() === "category") {
       return categories().map((cat) => {
-        const icon = getCategoryIcon(cat.slug);
-        return { id: cat.slug, label: cat.name, icon: icon || undefined };
+        const badge = getCategoryIcon(cat.slug);
+        return { id: cat.slug, label: cat.name, iconSvg: badge || undefined };
       });
     }
 
     if (property.name?.toLowerCase() === "layout") {
       return [
-        { id: "document", label: t("Document"), icon: documentWidthStandardIcon },
-        { id: "full", label: t("Full Width"), icon: documentWidthFullIcon },
+        { id: "document", label: t("Document"), icon: "document-width-standard" },
+        { id: "full", label: t("Full Width"), icon: "document-width-full" },
       ];
     }
 
@@ -247,7 +242,7 @@ export function DocumentProperties(props: Props) {
           return {
             id: member.userId as string,
             label: userName,
-            icon: peopleIcon,
+            icon: "people",
           };
         });
     }
@@ -258,7 +253,7 @@ export function DocumentProperties(props: Props) {
         ?.values?.map((value) => ({
           id: value,
           label: value,
-          icon: genericPropertyIcon,
+          icon: "generic-property",
         })) || []
     );
   };
@@ -345,6 +340,7 @@ export function DocumentProperties(props: Props) {
               nameLabel={getPropertyName(property)}
               valueLabels={getPropertyValueLabels(property)}
               icon={getPropertyIcon(property)}
+              iconSvg={getPropertyIconSvg(property)}
               variant={getPropertyVariant(property)}
               readonly={props.readonly}
               property={property}
@@ -378,7 +374,7 @@ export function DocumentProperties(props: Props) {
           <Button
             variant="outline"
             size="small"
-            icon={addIcon}
+            icon="add"
             ariaLabel={t("New property")}
             class="w-full justify-center [&_svg]:inline [&_svg]:text-primary-600"
             onClick={() => setIsCreatePopoverOpen(!isCreatePopoverOpen())}

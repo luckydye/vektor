@@ -12,14 +12,6 @@ import {
 import { Portal } from "solid-js/web";
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
-import {
-  chevronLeftThinIcon,
-  documentIcon,
-  downloadIcon,
-  fileAttachmentIcon,
-  refreshIcon,
-  spinnerIcon,
-} from "#assets/icons.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
@@ -31,6 +23,7 @@ import { viewTransitionName } from "#utils/viewTransition.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import "@atrium-ui/elements/tabs";
 import { DataTable } from "./DataTable.tsx";
+import { Icon } from "./Icon.tsx";
 import { WorkflowRunHistory } from "./WorkflowRunHistory.tsx";
 
 interface Props {
@@ -518,13 +511,13 @@ export function WorkflowView(props: Props) {
             href={sourceExtensionHref() as string}
             class="inline-flex items-center gap-1.5 text-neutral-400 text-size-medium transition-colors hover:text-neutral-600"
           >
-            <div class="svg-icon h-4 w-4" innerHTML={chevronLeftThinIcon} />
+            <Icon class="h-4 w-4" name="chevron-left-thin" />
             Back
           </a>
         </Portal>
       </Show>
 
-      <div class="mx-auto mb-12 px-xs lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-12 lg:px-xl">
+      <div class="mx-auto mb-12 px-xs lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-12 lg:px-m">
         <div class="min-w-0 space-y-8">
           <div class="flex justify-between gap-4">
             {/* Title */}
@@ -556,10 +549,7 @@ export function WorkflowView(props: Props) {
                             detail().status === "running" || detail().status === "pending"
                           }
                         >
-                          <div
-                            class="svg-icon h-3 w-3 animate-spin"
-                            innerHTML={spinnerIcon}
-                          />
+                          <Icon class="h-3 w-3 animate-spin" name="spinner" />
                         </Show>
                         {detail().status}
                       </span>
@@ -601,10 +591,7 @@ export function WorkflowView(props: Props) {
                       <div class="flex items-start justify-between gap-4">
                         <div class="flex items-start gap-3">
                           <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none">
-                            <div
-                              class="svg-icon h-5 w-5 animate-spin"
-                              innerHTML={spinnerIcon}
-                            />
+                            <Icon class="h-5 w-5 animate-spin" name="spinner" />
                           </div>
                           <div>
                             <p class="font-semibold text-neutral-800">
@@ -707,10 +694,7 @@ export function WorkflowView(props: Props) {
                           rel="noreferrer"
                           class={OUTPUT_LINK_CLASS}
                         >
-                          <div
-                            class="svg-icon h-4 w-4 text-neutral-400"
-                            innerHTML={downloadIcon}
-                          />
+                          <Icon class="h-4 w-4 text-neutral-400" name="download" />
                           Result JSON
                         </a>
                       )}
@@ -719,10 +703,7 @@ export function WorkflowView(props: Props) {
                     {/* Document link */}
                     <Show when={outputDocumentId() && outputDocumentHref()}>
                       <a href={outputDocumentHref() as string} class={OUTPUT_LINK_CLASS}>
-                        <div
-                          class="svg-icon h-4 w-4 text-neutral-400"
-                          innerHTML={documentIcon}
-                        />
+                        <Icon class="h-4 w-4 text-neutral-400" name="document" />
                         {outputDocumentTitle() ?? "Open document"}
                       </a>
                     </Show>
@@ -735,10 +716,7 @@ export function WorkflowView(props: Props) {
                         rel="noreferrer"
                         class={OUTPUT_LINK_CLASS}
                       >
-                        <div
-                          class="svg-icon h-4 w-4 text-neutral-400"
-                          innerHTML={fileAttachmentIcon}
-                        />
+                        <Icon class="h-4 w-4 text-neutral-400" name="file-attachment" />
                         {selectedRunFileName()}
                       </a>
                       <button
@@ -753,7 +731,7 @@ export function WorkflowView(props: Props) {
                           )
                         }
                       >
-                        <div class="svg-icon h-4 w-4" innerHTML={downloadIcon} />
+                        <Icon class="h-4 w-4" name="download" />
                       </button>
                     </Show>
                   </div>
@@ -794,14 +772,9 @@ export function WorkflowView(props: Props) {
                     >
                       <Show
                         when={retrying()}
-                        fallback={
-                          <div class="svg-icon h-3.5 w-3.5" innerHTML={refreshIcon} />
-                        }
+                        fallback={<Icon class="h-3.5 w-3.5" name="refresh" />}
                       >
-                        <div
-                          class="svg-icon h-3.5 w-3.5 animate-spin"
-                          innerHTML={spinnerIcon}
-                        />
+                        <Icon class="h-3.5 w-3.5 animate-spin" name="spinner" />
                       </Show>
                       {retrying() ? "Retrying…" : "Retry"}
                     </button>

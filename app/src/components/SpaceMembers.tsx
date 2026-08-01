@@ -6,12 +6,12 @@ import type {
   User,
 } from "#api/client.ts";
 import { api } from "#api/client.ts";
-import { confirmationIcon, copyIcon, usersGroupIcon, usersIcon } from "#assets/icons.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { formatDate } from "#utils/datetime.ts";
 import { Button } from "./Button.tsx";
 import "./AvatarElement.ts";
+import { Icon } from "./Icon.tsx";
 
 interface MemberAccess {
   key: string;
@@ -594,10 +594,7 @@ export function SpaceMembers() {
                               when={member.primaryPermission.permission.userId}
                               fallback={
                                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600">
-                                  <div
-                                    class="svg-icon h-4 w-4 text-white"
-                                    innerHTML={usersIcon}
-                                  />
+                                  <Icon class="h-4 w-4 text-white" name="users" />
                                 </div>
                               }
                             >
@@ -631,16 +628,11 @@ export function SpaceMembers() {
                                 >
                                   <Show
                                     when={copiedUserId() === userId()}
-                                    fallback={
-                                      <div
-                                        class="svg-icon h-3.5 w-3.5"
-                                        innerHTML={copyIcon}
-                                      />
-                                    }
+                                    fallback={<Icon class="h-3.5 w-3.5" name="copy" />}
                                   >
-                                    <div
-                                      class="svg-icon h-3.5 w-3.5 text-green-600"
-                                      innerHTML={confirmationIcon}
+                                    <Icon
+                                      class="h-3.5 w-3.5 text-green-600"
+                                      name="confirmation"
                                     />
                                   </Show>
                                 </button>
@@ -809,10 +801,7 @@ export function SpaceMembers() {
 
         <Show when={!isLoading() && !loadingUsers() && memberAccess().length === 0}>
           <div class="rounded-lg border border-neutral-100 py-12 text-center">
-            <div
-              class="svg-icon mx-auto h-12 w-12 text-neutral-400"
-              innerHTML={usersGroupIcon}
-            />
+            <Icon class="mx-auto h-12 w-12 text-neutral-400" name="users-group" />
             <p class="mt-4 text-neutral-500">
               No members yet. Add your first member to get started.
             </p>

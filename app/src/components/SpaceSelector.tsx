@@ -37,13 +37,13 @@ function SpaceLogo(props: { logoSvg?: string; class?: string; fallbackClass?: st
   return (
     <Show
       when={props.logoSvg}
-      fallback={<div innerHTML={homeIcon} class={props.fallbackClass ?? "text-white"} />}
+      fallback={<Icon class={props.fallbackClass ?? "text-white"} name="home" />}
     >
       <Show
         when={props.logoSvg?.startsWith("<")}
         fallback={<img src={props.logoSvg} alt="" class={props.class} />}
       >
-        <div innerHTML={props.logoSvg} class="text-white" />
+        <Icon class="text-white" svg={props.logoSvg} />
       </Show>
     </Show>
   );
@@ -153,7 +153,7 @@ export function SpaceSelector(props: Props) {
                       }}
                       class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100"
                     >
-                      <Icon name="plus" />
+                      <Icon name="add" />
                       <span class="font-medium text-size-small leading-none">
                         {t("Create new Space")}
                       </span>

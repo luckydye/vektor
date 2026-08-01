@@ -1,8 +1,8 @@
 import { createMemo, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { deleteElementIcon, spinnerIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
 import { DocumentGroupedList } from "./DocumentGroupedList.tsx";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   spaceId: string;
@@ -79,10 +79,7 @@ export function ArchivedDocuments(props: Props) {
         when={!isLoading()}
         fallback={
           <div class="flex flex-col items-center gap-3 py-12">
-            <div
-              class="svg-icon h-6 w-6 animate-spin text-neutral-300"
-              innerHTML={spinnerIcon}
-            />
+            <Icon class="h-6 w-6 animate-spin text-neutral-300" name="spinner" />
             <p class="text-neutral-400 text-size-small">Loading archived documents…</p>
           </div>
         }
@@ -116,7 +113,7 @@ export function ArchivedDocuments(props: Props) {
                   class="rounded-md border border-neutral-200 p-1.5 text-neutral-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600"
                   title="Delete selected permanently"
                 >
-                  <div class="svg-icon block h-4 w-4" innerHTML={deleteElementIcon} />
+                  <Icon class="h-4 w-4" name="delete-element" />
                 </button>
               </>
             )}
@@ -135,7 +132,7 @@ export function ArchivedDocuments(props: Props) {
                   class="rounded p-1 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   title="Delete permanently"
                 >
-                  <div class="svg-icon h-3.5 w-3.5" innerHTML={deleteElementIcon} />
+                  <Icon class="h-3.5 w-3.5" name="delete-element" />
                 </button>
               </>
             )}

@@ -92,10 +92,12 @@ const avatarStyles = `
 
   .avatar-frame {
     position: absolute;
-    inset: -8px;
-    width: calc(100% + 16px);
-    height: calc(100% + 16px);
-    filter: drop-shadow(0 1px 1px rgb(15 23 42 / 0.18));
+    /* Frame art puts the inner edge of its ring at 25/32 of the art box's
+       half-width, so the ring sits flush with the avatar at an overhang of
+       -14% — proportional, because a fixed pixel inset only lines up at one
+       size. The extra half percent overlaps the avatar edge by a fraction of
+       a pixel, which hides the antialiasing hairline between the two circles. */
+    inset: -13.5%;
   }
 `;
 

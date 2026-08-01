@@ -1,4 +1,5 @@
 import { type JSX, mergeProps, Show } from "solid-js";
+import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
   /** Visual family. Each maps to one `button-*` utility in `styles/theme.css`. */
@@ -8,7 +9,7 @@ interface Props {
   size?: "medium" | "small";
   text?: string;
   /** Raw SVG markup, rendered inline. Use `children` for anything richer. */
-  icon?: string;
+  icon?: IconName;
   /** Accessible name and tooltip. Required for icon-only buttons. */
   ariaLabel?: string;
   disabled?: boolean;
@@ -64,7 +65,7 @@ export function Button(props: Props) {
     >
       {merged.children}
       <Show when={merged.icon}>
-        <div innerHTML={merged.icon} class="icon" />
+        <Icon class="icon" svg={merged.icon} />
       </Show>
       <Show when={merged.text}>
         <span>{merged.text}</span>

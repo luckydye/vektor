@@ -1,9 +1,9 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { api, type PropertyFilter } from "#api/client.ts";
-import { addIcon, cancelIcon, chevronRightThinIcon, dateIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   spaceId: string;
@@ -127,7 +127,7 @@ export function SearchFilters(props: Props) {
           slot="trigger"
           class={`${chipBase} ${activeDateRange() ? chipActive : chipInactive}`}
         >
-          <div class="svg-icon h-3 w-3 opacity-60" innerHTML={dateIcon} />
+          <Icon class="h-3 w-3 opacity-60" name="date" />
           <span>{dateRangeLabel() ?? "Modified"}</span>
           <Show when={activeDateRange()}>
             {/* biome-ignore lint/a11y/useFocusableInteractive: a nested control inside the chip trigger; the trigger itself takes the focus. */}
@@ -142,7 +142,7 @@ export function SearchFilters(props: Props) {
                 commit(props.value.filter((f) => f.key !== DATE_FILTER_KEY));
               }}
             >
-              <div class="svg-icon h-3 w-3" innerHTML={cancelIcon} />
+              <Icon class="h-3 w-3" name="cancel" />
             </span>
           </Show>
         </button>
@@ -196,7 +196,7 @@ export function SearchFilters(props: Props) {
                   removeFilterByKeyValue("type", tv);
                 }}
               >
-                <div class="svg-icon h-3 w-3" innerHTML={cancelIcon} />
+                <Icon class="h-3 w-3" name="cancel" />
               </span>
             </Show>
           </button>
@@ -217,7 +217,7 @@ export function SearchFilters(props: Props) {
               onClick={() => removeFilterByKeyValue(filter.key, filter.value)}
               class="ml-0.5 flex-none hover:opacity-70"
             >
-              <div class="svg-icon h-3 w-3" innerHTML={cancelIcon} />
+              <Icon class="h-3 w-3" name="cancel" />
             </button>
           </div>
         )}
@@ -231,7 +231,7 @@ export function SearchFilters(props: Props) {
             slot="trigger"
             class="flex items-center gap-1 rounded-lg border border-neutral-300 border-dashed px-3xs py-1 text-interactive text-neutral-500 text-size-small transition-colors hover:border-primary-300 hover:text-primary-600"
           >
-            <div class="svg-icon h-3.5 w-3.5" innerHTML={addIcon} />
+            <Icon class="h-3.5 w-3.5" name="add" />
             <span>Filter</span>
           </button>
 
@@ -252,12 +252,12 @@ export function SearchFilters(props: Props) {
                           onClick={() => toggleProperty(prop.name)}
                           class="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-neutral-700 text-size-small transition-colors hover:bg-primary-50 hover:transition-none"
                         >
-                          <div
-                            class="svg-icon h-3 w-3 flex-none text-neutral transition-transform duration-150"
+                          <Icon
+                            class="h-3 w-3 flex-none text-neutral transition-transform duration-150"
                             classList={{
                               "rotate-90": expandedProperties().has(prop.name),
                             }}
-                            innerHTML={chevronRightThinIcon}
+                            name="chevron-right-thin"
                           />
                           <span class="flex-1 truncate">{prop.name}</span>
                           <Show

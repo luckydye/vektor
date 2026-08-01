@@ -1,5 +1,4 @@
 import * as Y from "yjs";
-import { penToolIcon } from "#assets/icons.ts";
 import { shared } from "#canvas/state.ts";
 import {
   buildFreehandStroke,
@@ -19,6 +18,7 @@ import {
   type SnapGuide,
   type WorldTransform,
 } from "#canvas/viewport/index.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import type { TranslationKey } from "#utils/lang.ts";
 import type {
   CanvasPointerGestureSample,
@@ -70,12 +70,12 @@ export const DRAW_STROKE_MODES: Array<{
   {
     id: "pencil",
     label: "Pencil",
-    icon: penToolIcon,
+    icon: iconMarkup("pen-tool"),
   },
   {
     id: "pen",
     label: "Pen",
-    icon: penToolIcon,
+    icon: iconMarkup("pen-tool"),
   },
 ];
 

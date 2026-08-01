@@ -1,8 +1,8 @@
 import { createEffect, createSignal, on, onMount, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { folderIcon } from "#assets/icons.ts";
 import { slugify } from "#utils/utils.ts";
 import { Button } from "./Button.tsx";
+import { Icon } from "./Icon.tsx";
 
 const FIELD_CLASS =
   "w-full rounded-md border border-neutral-100 px-4 py-2 focus-ring focus:border-transparent";
@@ -97,7 +97,7 @@ export function FirstSpacePrompt() {
         <div class="mx-4 w-full max-w-lg rounded-lg bg-background p-8 shadow-2xl">
           <div class="mb-6 text-center">
             <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-              <div class="svg-icon h-8 w-8 text-blue-600" innerHTML={folderIcon} />
+              <Icon class="h-8 w-8 text-blue-600" name="folder" />
             </div>
             <h2 class="mb-2 font-bold text-neutral-900 text-size-title">
               Welcome to Your Space!
@@ -204,7 +204,7 @@ export function FirstSpacePrompt() {
                 />
                 <Show when={logoSvg()}>
                   <div class="flex items-center gap-2 rounded-md border border-neutral-100 bg-neutral-300 p-2">
-                    <div innerHTML={logoSvg()} class="flex h-8 items-center" />
+                    <Icon class="h-8" svg={logoSvg()} />
                     <button
                       type="button"
                       onClick={() => setLogoSvg("")}

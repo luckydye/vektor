@@ -44,7 +44,7 @@ export function HeaderImage(props: Props) {
   return (
     <Show when={src() || showSkeleton()}>
       <div
-        class={`${isPortrait() ? "" : "px-xs md:px-xl print:px-0"} ${props.class ?? ""}`}
+        class={`${isPortrait() ? "" : "px-xs md:px-m print:px-0"} ${props.class ?? ""}`}
       >
         <Show when={showSkeleton() && !src()}>
           <div

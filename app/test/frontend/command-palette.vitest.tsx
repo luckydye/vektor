@@ -46,10 +46,13 @@ function mountPalette(): HTMLElement {
   return container;
 }
 
-/** Row labels in display order, section headings excluded. */
+/**
+ * Row labels in display order, section headings excluded. Keyed on the label's
+ * own class: the first `span` in a row is the icon.
+ */
 function rowLabels(container: HTMLElement): string[] {
   return [...container.querySelectorAll("[data-result-index]")].map(
-    (row) => row.querySelector("span")?.textContent ?? "",
+    (row) => row.querySelector("span.truncate")?.textContent ?? "",
   );
 }
 

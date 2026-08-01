@@ -8,15 +8,6 @@ import {
   Show,
 } from "solid-js";
 import type { AuditLog } from "#api/client.ts";
-import {
-  activityIcon,
-  contextMenuMoreIcon,
-  copyIcon,
-  eyeIcon,
-  pasteIcon,
-  publishIcon,
-  refreshIcon,
-} from "#assets/icons.ts";
 import { useAuditLogs } from "#composeables/useAuditLogs.ts";
 import { useRevisions } from "#composeables/useRevisions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -32,6 +23,7 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   documentId: string;
@@ -224,7 +216,7 @@ export function RevisionsSidebar(props: Props) {
   // on the home page.
   registerScopedAction("revisions:toggle", {
     title: t("Activity"),
-    icon: () => "history",
+    icon: () => "activity",
     description: t("Open or close the document activity"),
     group: "document",
     run: async () => {
@@ -318,9 +310,9 @@ export function RevisionsSidebar(props: Props) {
           fallback={
             <div class="flex flex-1 items-center justify-center">
               <div class="text-center">
-                <div
-                  class="svg-icon mx-auto mb-2 h-8 w-8 animate-spin text-neutral-400"
-                  innerHTML={refreshIcon}
+                <Icon
+                  class="mx-auto mb-2 h-8 w-8 animate-spin text-neutral-400"
+                  name="refresh"
                 />
                 <p class="text-neutral-600 text-size-medium">Loading history...</p>
               </div>
@@ -332,10 +324,7 @@ export function RevisionsSidebar(props: Props) {
             fallback={
               <div class="flex flex-1 items-center justify-center">
                 <div class="px-4 text-center">
-                  <div
-                    class="svg-icon mx-auto mb-3 h-12 w-12 text-neutral-300"
-                    innerHTML={activityIcon}
-                  />
+                  <Icon class="mx-auto mb-3 h-12 w-12 text-neutral-300" name="activity" />
                   <p class="font-medium text-neutral-600">No activity yet</p>
                   <p class="mt-1 text-neutral-500 text-size-medium">
                     Activity will appear here as you work
@@ -362,9 +351,9 @@ export function RevisionsSidebar(props: Props) {
                             class="inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors hover:bg-neutral-200"
                             title="Revision actions"
                           >
-                            <div
-                              class="svg-icon h-[18px] w-[12px] text-neutral-500"
-                              innerHTML={contextMenuMoreIcon}
+                            <Icon
+                              class="h-[18px] w-[12px] text-neutral-500"
+                              name="context-menu-more"
                             />
                           </button>
 
@@ -379,10 +368,7 @@ export function RevisionsSidebar(props: Props) {
                                   }}
                                   class={MENU_ITEM_CLASS}
                                 >
-                                  <div
-                                    class="svg-icon h-4 w-4 flex-none"
-                                    innerHTML={eyeIcon}
-                                  />
+                                  <Icon class="h-4 w-4 flex-none" name="eye" />
                                   View Revision
                                 </button>
                                 <button
@@ -393,10 +379,7 @@ export function RevisionsSidebar(props: Props) {
                                   }}
                                   class={MENU_ITEM_CLASS}
                                 >
-                                  <div
-                                    class="svg-icon h-4 w-4 flex-none"
-                                    innerHTML={pasteIcon}
-                                  />
+                                  <Icon class="h-4 w-4 flex-none" name="paste" />
                                   Show Diff
                                 </button>
                                 <button
@@ -407,10 +390,7 @@ export function RevisionsSidebar(props: Props) {
                                   }}
                                   class={MENU_ITEM_CLASS}
                                 >
-                                  <div
-                                    class="svg-icon h-4 w-4 flex-none"
-                                    innerHTML={copyIcon}
-                                  />
+                                  <Icon class="h-4 w-4 flex-none" name="copy" />
                                   Copy Link
                                 </button>
                                 <Show
@@ -428,10 +408,7 @@ export function RevisionsSidebar(props: Props) {
                                     class={`${MENU_ITEM_CLASS} disabled:cursor-not-allowed disabled:opacity-50`}
                                     disabled={isPublishing()}
                                   >
-                                    <div
-                                      class="svg-icon h-4 w-4 flex-none"
-                                      innerHTML={publishIcon}
-                                    />
+                                    <Icon class="h-4 w-4 flex-none" name="publish" />
                                     Publish Revision
                                   </button>
                                 </Show>

@@ -14,7 +14,7 @@ import type { SaveStatus } from "#composeables/useDocument.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { Spreadsheet } from "#spreadsheet/Spreadsheet.tsx";
+import { SpreadsheetHost } from "#spreadsheet/SpreadsheetHost.tsx";
 import { t } from "#utils/lang.ts";
 
 interface Props {
@@ -137,7 +137,11 @@ export function CsvView(props: Props) {
   );
 
   return (
-    <main class="relative flex h-[calc(100vh-12rem)] min-h-0 flex-col">
+    // `flex-1`, not a viewport calculation: the height used to be
+    // `calc(100vh - 12rem)`, where the 12rem stood for the chrome above. It was
+    // only ever right for a one-line title — a title that wrapped pushed the
+    // grid 37px past the bottom of the window, with nothing to scroll it back.
+    <main class="relative flex min-h-0 flex-1 flex-col">
       <Switch>
         <Match when={loadError()}>
           <p class="p-2xs text-neutral-500 text-size-normal">
@@ -146,7 +150,11 @@ export function CsvView(props: Props) {
         </Match>
         <Match when={model()}>
           {(loaded) => (
-            <Spreadsheet model={loaded()} canEdit={props.canEdit} onChange={onChange} />
+            <SpreadsheetHost
+              model={loaded()}
+              canEdit={props.canEdit}
+              onChange={onChange}
+            />
           )}
         </Match>
         <Match when={!model()}>

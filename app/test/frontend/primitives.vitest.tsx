@@ -154,12 +154,12 @@ describe("Button", () => {
 
 describe("Icon", () => {
   it("renders the named icon's svg", () => {
-    const { container } = mount(Icon, { name: "plus" });
+    const { container } = mount(Icon, { name: "add" });
     expect(container.querySelector("svg")).toBeTruthy();
   });
 
   it("is hidden from assistive technology", () => {
-    const { container } = mount(Icon, { name: "plus" });
+    const { container } = mount(Icon, { name: "add" });
     expect(container.querySelector("[aria-hidden='true']")).toBeTruthy();
   });
 });

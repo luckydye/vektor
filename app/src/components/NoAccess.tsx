@@ -1,16 +1,13 @@
-import { arrowLeftIcon, lockElementIcon } from "#assets/icons.ts";
 import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import { Icon } from "./Icon.tsx";
 
 export function NoAccess() {
   return (
     <div class="flex h-full items-center justify-center bg-neutral-200">
       <div class="max-w-md px-6 py-12 text-center">
         <div class="mb-6">
-          <div
-            class="svg-icon mx-auto h-24 w-24 text-red-500"
-            innerHTML={lockElementIcon}
-          />
+          <Icon class="mx-auto h-24 w-24 text-red-500" name="lock-element" />
         </div>
 
         <h1 class="mb-4 font-bold text-neutral-900 text-size-display">
@@ -23,7 +20,7 @@ export function NoAccess() {
         </p>
 
         <Button onClick={() => history.back()}>
-          <div class="svg-icon mr-2 h-5 w-5" innerHTML={arrowLeftIcon} />
+          <Icon class="mr-2 h-5 w-5" name="arrow-left" />
           Go Back
         </Button>
       </div>

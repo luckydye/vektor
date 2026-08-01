@@ -12,8 +12,8 @@ import { html, render } from "lit-html";
 import { ref } from "lit-html/directives/ref.js";
 import { unsafeSVG } from "lit-html/directives/unsafe-svg.js";
 import type * as Y from "yjs";
-import { documentIcon } from "#assets/icons.ts";
 import type { CanvasDocumentCollaboration } from "#canvas/document/collaboration.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   currentEditorPresenceState,
@@ -260,7 +260,7 @@ export class CanvasDocumentEditorElement extends HostElement {
             this.emit("drag-start", event);
           }}
         >
-          <span class="svg-icon icon" aria-hidden="true">${unsafeSVG(documentIcon)}</span>
+          <span class="svg-icon icon" aria-hidden="true">${unsafeSVG(iconMarkup("document"))}</span>
           <span class="title-wrap"><span class="title">${this.documentTitle}</span></span>
           <button
             type="button"

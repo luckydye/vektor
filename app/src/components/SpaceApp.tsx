@@ -2,7 +2,6 @@ import { Route, Router, useParams, useSearchParams } from "@solidjs/router";
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { isServer } from "solid-js/web";
 import { api } from "#api/client.ts";
-import { commandPaletteIcon } from "#assets/icons.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
@@ -33,6 +32,7 @@ import { SpaceHomeView } from "./views/SpaceHomeView.tsx";
 import { SpaceSearchView } from "./views/SpaceSearchView.tsx";
 import { SpaceSettingsView } from "./views/SpaceSettingsView.tsx";
 import "#utils/insets.ts";
+import { Icon } from "./Icon.tsx";
 
 type InitialSpace = Record<string, unknown> & { id?: string; slug?: string };
 
@@ -276,7 +276,7 @@ export function SpaceApp(props: Props) {
         title="Open command palette"
         onClick={() => Actions.run("ui:toggle:palatte")}
       >
-        <span class="svg-icon h-7 w-7" innerHTML={commandPaletteIcon} />
+        <Icon class="h-7 w-7" name="command-palette" />
       </button>
 
       {/* A mounted flag, *not* `<Show when={!isServer}>`.

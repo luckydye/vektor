@@ -12,7 +12,6 @@ import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
-import { addIcon } from "#assets/icons.ts";
 import type { Property, SpaceProperty } from "#documents/properties.ts";
 
 interface Props {
@@ -47,9 +46,8 @@ export function PropertyPopover(props: Props) {
       .map((sp) => ({
         id: sp.name,
         label: sp.name,
-        icon: "",
       })),
-    { id: "__new__", label: t("New Property"), icon: addIcon },
+    { id: "__new__", label: t("New Property"), icon: "add" },
   ]);
 
   const handleSpacePropertySelect = (item: SelectMenuItem) => {

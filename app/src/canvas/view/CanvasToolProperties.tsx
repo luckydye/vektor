@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import { DRAW_STROKE_MODES, PEN_COLORS } from "#canvas/extensions/drawing.ts";
+import { Icon } from "#components/Icon.tsx";
 import { t } from "#utils/lang.ts";
 import { type CanvasChrome, swallowPointer } from "./chrome.ts";
 
@@ -49,11 +50,7 @@ export function CanvasToolProperties(props: { chrome: CanvasChrome }) {
                       run((canvas) => canvas.setActiveDrawStrokeMode(mode.id))
                     }
                   >
-                    <div
-                      class="svg-icon canvas-draw-mode-icon"
-                      aria-hidden="true"
-                      innerHTML={mode.icon}
-                    />
+                    <Icon class="canvas-draw-mode-icon" svg={mode.icon} />
                   </button>
                 )}
               </For>

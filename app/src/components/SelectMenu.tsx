@@ -1,10 +1,13 @@
 import { For, mergeProps } from "solid-js";
+import { type IconName } from "./Icon.tsx";
 import { SelectItem } from "./SelectItem.tsx";
 
 export interface SelectMenuItem {
   id: string;
   label: string;
-  icon?: string;
+  icon?: IconName;
+  /** Generated artwork — a category's colour badge — rather than a set icon. */
+  iconSvg?: string;
 }
 
 interface Props {
@@ -27,6 +30,7 @@ export function SelectMenu(props: Props) {
         {(item) => (
           <SelectItem
             icon={item.icon}
+            iconSvg={item.iconSvg}
             label={item.label}
             selected={isSelected(item.id)}
             onClick={() => {

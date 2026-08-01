@@ -11,13 +11,13 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { Comment as ApiComment } from "#api/ApiClient.ts";
-import { addIcon } from "#assets/icons.ts";
 import {
   isInlineAnchorReference,
   resolveReferenceSelector,
   useComments,
 } from "#composeables/useComments.ts";
 import { CommentThread, type Comment as CommentThreadType } from "./CommentThread.tsx";
+import { Icon } from "./Icon.tsx";
 
 /** Imperative handle, handed back through the `ref` prop. */
 export interface CommentBubbleHandle {
@@ -345,7 +345,7 @@ export function CommentBubble(props: Props) {
                 class="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-md transition-all hover:border-primary-300 hover:text-primary-600 hover:shadow-lg"
                 title="Add comment"
               >
-                <div class="svg-icon h-4 w-4" innerHTML={addIcon} />
+                <Icon class="h-4 w-4" name="add" />
               </button>
             </div>
           </Show>

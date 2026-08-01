@@ -2,46 +2,7 @@ import type { ChainedCommands, Editor } from "@tiptap/core";
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
-import {
-  addColumnLeftIcon,
-  addColumnRightIcon,
-  addRowBottomIcon,
-  addRowTopIcon,
-  boldIcon,
-  cancelIcon,
-  cellFillIcon,
-  chevronDownIcon,
-  commentIcon,
-  contextMenuMoreIcon,
-  cutIcon,
-  deleteColumnIcon,
-  deleteElementIcon,
-  deleteRowIcon,
-  fourColumnsIcon,
-  functionIcon,
-  imageFullWidthIcon,
-  indentIcon,
-  italicIcon,
-  justifyBlockIcon,
-  justifyCenterIcon,
-  justifyLeftIcon,
-  justifyRightIcon,
-  linkIcon,
-  listIcon,
-  mergeCellsIcon,
-  numberedListIcon,
-  outdentIcon,
-  pasteIcon,
-  restoreArrowIcon,
-  splitCellsIcon,
-  strikeThroughIcon,
-  tableIcon,
-  taskListIcon,
-  textColorIcon,
-  threeColumnsIcon,
-  twoColumnsIcon,
-  underlineIcon,
-} from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 
 const TEXT_COLOR_PRESETS = [
   { label: "Charcoal", value: "#111827" },
@@ -853,7 +814,7 @@ if (
                 this.update();
               }}
             >
-              ${this.icon(cancelIcon)}
+              ${this.icon(iconMarkup("cancel"))}
             </button>
           </div>
         `;
@@ -1176,7 +1137,7 @@ if (
                     }}
                   >
                     <span class="heading-label">${this.headingLevel === 0 ? "P" : `H${this.headingLevel}`}</span>
-                    ${this.icon(chevronDownIcon)}
+                    ${this.icon(iconMarkup("chevron-down"))}
                   </button>
                   <a-popover placements="bottom-start">
                     ${this.renderHeadingDropdown()}
@@ -1186,31 +1147,36 @@ if (
               <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
-                  this.icon(boldIcon),
+                  this.icon(iconMarkup("bold")),
                   "Bold",
                   () => this.chain()?.toggleBold().run(),
                   { active: this.isActive("bold") },
                 )}
                 ${this.button(
-                  this.icon(italicIcon),
+                  this.icon(iconMarkup("italic")),
                   "Italic",
                   () => this.chain()?.toggleItalic().run(),
                   { active: this.isActive("italic") },
                 )}
-                ${this.button(this.icon(linkIcon), "Link", () => this.setLink(), {
-                  active: this.isActive("link"),
-                })}
+                ${this.button(
+                  this.icon(iconMarkup("link")),
+                  "Link",
+                  () => this.setLink(),
+                  {
+                    active: this.isActive("link"),
+                  },
+                )}
               </div>
               <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
-                  this.icon(listIcon),
+                  this.icon(iconMarkup("list")),
                   "Bullet List",
                   () => this.chain()?.toggleBulletList().run(),
                   { active: this.isActive("bulletList") },
                 )}
                 ${this.button(
-                  this.icon(numberedListIcon),
+                  this.icon(iconMarkup("numbered-list")),
                   "Numbered List",
                   () => this.chain()?.toggleOrderedList().run(),
                   { active: this.isActive("orderedList") },
@@ -1249,7 +1215,7 @@ if (
                     }}
                   >
                     <span class="heading-label">${this.headingLevel === 0 ? "P" : `H${this.headingLevel}`}</span>
-                    ${this.icon(chevronDownIcon)}
+                    ${this.icon(iconMarkup("chevron-down"))}
                   </button>
                   <a-popover placements="bottom-start">
                     ${this.renderHeadingDropdown()}
@@ -1260,7 +1226,7 @@ if (
 
               <div class="menu-group">
                 ${this.button(
-                  this.icon(boldIcon),
+                  this.icon(iconMarkup("bold")),
                   "Bold",
                   () => this.chain()?.toggleBold().run(),
                   {
@@ -1268,7 +1234,7 @@ if (
                   },
                 )}
                 ${this.button(
-                  this.icon(italicIcon),
+                  this.icon(iconMarkup("italic")),
                   "Italic",
                   () => this.chain()?.toggleItalic().run(),
                   {
@@ -1276,22 +1242,27 @@ if (
                   },
                 )}
                 ${this.button(
-                  this.icon(underlineIcon),
+                  this.icon(iconMarkup("underline")),
                   "Underline",
                   () => this.chain()?.toggleUnderline().run(),
                   {
                     active: this.isActive("underline"),
                   },
                 )}
-                ${this.button(this.icon(linkIcon), "Link", () => this.setLink(), {
-                  active: this.isActive("link"),
-                })}
+                ${this.button(
+                  this.icon(iconMarkup("link")),
+                  "Link",
+                  () => this.setLink(),
+                  {
+                    active: this.isActive("link"),
+                  },
+                )}
               </div>
               <div class="menu-divider"></div>
 
               <div class="menu-group">
                 ${this.button(
-                  this.icon(listIcon),
+                  this.icon(iconMarkup("list")),
                   "Bullet List",
                   () => this.chain()?.toggleBulletList().run(),
                   {
@@ -1299,7 +1270,7 @@ if (
                   },
                 )}
                 ${this.button(
-                  this.icon(numberedListIcon),
+                  this.icon(iconMarkup("numbered-list")),
                   "Numbered List",
                   () => this.chain()?.toggleOrderedList().run(),
                   {
@@ -1307,7 +1278,7 @@ if (
                   },
                 )}
                 ${this.button(
-                  this.icon(taskListIcon),
+                  this.icon(iconMarkup("task-list")),
                   "Task List",
                   () => this.chain()?.toggleTaskList().run(),
                   {
@@ -1323,7 +1294,7 @@ if (
                   ? html`
                     <div class="menu-divider"></div>
                     <div class="menu-group">
-                      ${this.button(this.icon(commentIcon), "Add comment", () =>
+                      ${this.button(this.icon(iconMarkup("comment")), "Add comment", () =>
                         this.addInlineComment(),
                       )}
                     </div>
@@ -1334,7 +1305,7 @@ if (
               <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
-                  this.icon(contextMenuMoreIcon),
+                  this.icon(iconMarkup("context-menu-more")),
                   "More Formatting",
                   () => this.toggleSecondaryToolbar(),
                   { active: this.secondaryOpen },
@@ -1351,7 +1322,7 @@ if (
                         ? html`
                           <div class="menu-group">
                             ${this.button(
-                              this.icon(imageFullWidthIcon),
+                              this.icon(iconMarkup("image-full-width")),
                               "Toggle Full Width",
                               () => {
                                 toggleImageFullWidth(editor);
@@ -1359,7 +1330,7 @@ if (
                               { active: this.imageDisplay === "full" },
                             )}
                             ${this.button(
-                              this.icon(restoreArrowIcon),
+                              this.icon(iconMarkup("restore")),
                               "Reset Image Size",
                               () => {
                                 resetImageSize(editor);
@@ -1373,7 +1344,7 @@ if (
 
                     <div class="menu-group">
                       ${this.button(
-                        this.icon(strikeThroughIcon),
+                        this.icon(iconMarkup("strike-through")),
                         "Strikethrough",
                         () => this.chain()?.toggleStrike().run(),
                         {
@@ -1385,7 +1356,7 @@ if (
 
                     <div class="menu-group">
                       ${this.button(
-                        this.icon(justifyLeftIcon),
+                        this.icon(iconMarkup("justify-left")),
                         "Align Left",
                         () => this.chain()?.setTextAlign("left").run(),
                         {
@@ -1393,7 +1364,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(justifyCenterIcon),
+                        this.icon(iconMarkup("justify-center")),
                         "Align Center",
                         () => this.chain()?.setTextAlign("center").run(),
                         {
@@ -1401,7 +1372,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(justifyRightIcon),
+                        this.icon(iconMarkup("justify-right")),
                         "Align Right",
                         () => this.chain()?.setTextAlign("right").run(),
                         {
@@ -1409,7 +1380,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(justifyBlockIcon),
+                        this.icon(iconMarkup("justify-block")),
                         "Justify",
                         () => this.chain()?.setTextAlign("justify").run(),
                         {
@@ -1421,7 +1392,7 @@ if (
 
                     <div class="menu-group">
                       ${this.button(
-                        this.icon(indentIcon),
+                        this.icon(iconMarkup("indent")),
                         "Indent List Item",
                         () => this.indentListItem(),
                         {
@@ -1429,7 +1400,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(outdentIcon),
+                        this.icon(iconMarkup("outdent")),
                         "Outdent List Item",
                         () => this.outdentListItem(),
                         {
@@ -1442,7 +1413,7 @@ if (
                     <div class="menu-group">
                       <div class="color-picker-wrapper">
                         ${this.colorControl({
-                          icon: textColorIcon,
+                          icon: iconMarkup("text-color"),
                           label: "Text Color",
                           value: this.textColor,
                           active: this.textColorActive,
@@ -1454,7 +1425,7 @@ if (
                       </div>
                       <div class="color-picker-wrapper">
                         ${this.colorControl({
-                          icon: cellFillIcon,
+                          icon: iconMarkup("cell-fill"),
                           label: "Background Color",
                           value:
                             this.bgColor === "transparent" ? "#ffff00" : this.bgColor,
@@ -1474,9 +1445,9 @@ if (
                           <div class="menu-divider"></div>
                           <div class="menu-group columns-section">
                             ${[
-                              [2, twoColumnsIcon],
-                              [3, threeColumnsIcon],
-                              [4, fourColumnsIcon],
+                              [2, iconMarkup("2-columns")],
+                              [3, iconMarkup("3-columns")],
+                              [4, iconMarkup("4-columns")],
                             ].map(([count, icon]) =>
                               this.button(
                                 this.icon(icon as string),
@@ -1488,7 +1459,7 @@ if (
                               ),
                             )}
                             ${this.button(
-                              this.icon(deleteElementIcon),
+                              this.icon(iconMarkup("delete-element")),
                               "Delete Column Layout",
                               () => this.deleteColumnLayout(),
                               { danger: true },
@@ -1533,14 +1504,18 @@ if (
             style=${this.tableStyle}
           >
             <div class="menu-group">
-              ${this.button(this.icon(addColumnLeftIcon), "Add Column Before", () =>
-                this.chain()?.addColumnBefore().run(),
-              )}
-              ${this.button(this.icon(addColumnRightIcon), "Add Column After", () =>
-                this.chain()?.addColumnAfter().run(),
+              ${this.button(
+                this.icon(iconMarkup("add-column-left")),
+                "Add Column Before",
+                () => this.chain()?.addColumnBefore().run(),
               )}
               ${this.button(
-                this.icon(deleteColumnIcon),
+                this.icon(iconMarkup("add-column-right")),
+                "Add Column After",
+                () => this.chain()?.addColumnAfter().run(),
+              )}
+              ${this.button(
+                this.icon(iconMarkup("delete-column")),
                 "Delete Column",
                 () => this.chain()?.deleteColumn().run(),
                 { danger: true },
@@ -1549,44 +1524,53 @@ if (
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(this.icon(addRowTopIcon), "Add Row Before", () =>
+              ${this.button(this.icon(iconMarkup("add-row-top")), "Add Row Before", () =>
                 this.chain()?.addRowBefore().run(),
               )}
-              ${this.button(this.icon(addRowBottomIcon), "Add Row After", () =>
-                this.chain()?.addRowAfter().run(),
+              ${this.button(
+                this.icon(iconMarkup("add-row-bottom")),
+                "Add Row After",
+                () => this.chain()?.addRowAfter().run(),
               )}
               ${this.button(
-                this.icon(deleteRowIcon),
+                this.icon(iconMarkup("delete-row")),
                 "Delete Row",
                 () => this.chain()?.deleteRow().run(),
                 { danger: true },
               )}
-              ${this.button(this.icon(cutIcon), "Cut Row", () => this.cutRow())}
-              ${this.button(this.icon(pasteIcon), "Paste Row", () => this.pasteRow(), {
-                disabled: !this.copiedRow,
-              })}
+              ${this.button(this.icon(iconMarkup("cut")), "Cut Row", () => this.cutRow())}
+              ${this.button(
+                this.icon(iconMarkup("paste")),
+                "Paste Row",
+                () => this.pasteRow(),
+                {
+                  disabled: !this.copiedRow,
+                },
+              )}
             </div>
             <div class="menu-divider"></div>
 
             <div class="menu-group">
               ${this.button(
-                this.icon(tableIcon),
+                this.icon(iconMarkup("table")),
                 "Toggle Header Cell",
                 () => this.chain()?.toggleHeaderCell().run(),
                 { active: this.isActive("tableHeader") },
               )}
-              ${this.button(this.icon(mergeCellsIcon), "Merge Cells", () =>
+              ${this.button(this.icon(iconMarkup("merge-cells")), "Merge Cells", () =>
                 this.chain()?.mergeCells().run(),
               )}
-              ${this.button(this.icon(splitCellsIcon), "Split Cell", () =>
+              ${this.button(this.icon(iconMarkup("split-cells")), "Split Cell", () =>
                 this.chain()?.splitCell().run(),
               )}
             </div>
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(this.icon(functionIcon), "Insert Expression Cell", () =>
-                this.chain()?.insertExpressionCell({ formula: "=" }).run(),
+              ${this.button(
+                this.icon(iconMarkup("function")),
+                "Insert Expression Cell",
+                () => this.chain()?.insertExpressionCell({ formula: "=" }).run(),
               )}
             </div>
             <div class="menu-divider"></div>
@@ -1594,7 +1578,7 @@ if (
             <div class="menu-group">
               <div class="color-picker-wrapper">
                 ${this.colorControl({
-                  icon: cellFillIcon,
+                  icon: iconMarkup("cell-fill"),
                   label: "Cell Background",
                   value:
                     this.cellBackgroundColor === "transparent"
@@ -1613,7 +1597,7 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                this.icon(deleteElementIcon),
+                this.icon(iconMarkup("delete-element")),
                 "Delete Table",
                 () => this.chain()?.deleteTable().run(),
                 { danger: true },

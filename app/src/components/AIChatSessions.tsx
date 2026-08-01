@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
-import { activityIcon, addIcon, deleteEntryIcon, editEntryIcon } from "#assets/icons.ts";
 import type { ChatSessionSummary } from "#composeables/useChatSessions.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   sessions: ChatSessionSummary[];
@@ -28,7 +28,7 @@ export function AIChatSessions(props: Props) {
               class="flex items-center gap-1.5 text-neutral-500 text-size-small transition-colors hover:text-neutral-700"
               title="Recent conversations"
             >
-              <div class="svg-icon h-3.5 w-3.5" innerHTML={activityIcon} />
+              <Icon class="h-3.5 w-3.5" name="activity" />
               History
             </button>
           </Show>
@@ -40,7 +40,7 @@ export function AIChatSessions(props: Props) {
             class="flex items-center gap-1 font-medium text-primary-600 text-size-small transition-colors hover:text-primary-700"
             title="New chat"
           >
-            <div class="svg-icon h-3.5 w-3.5" innerHTML={editEntryIcon} />
+            <Icon class="h-3.5 w-3.5" name="edit-entry" />
             <span>New chat</span>
           </button>
         </div>
@@ -57,7 +57,7 @@ export function AIChatSessions(props: Props) {
               onClick={() => props.onNewChat?.()}
               class="flex items-center gap-1 font-medium text-primary-600 text-size-small transition-colors hover:text-primary-700"
             >
-              <div class="svg-icon h-3.5 w-3.5" innerHTML={addIcon} />
+              <Icon class="h-3.5 w-3.5" name="add" />
               New chat
             </button>
           </div>
@@ -116,7 +116,7 @@ export function AIChatSessions(props: Props) {
                       class="shrink-0 p-1 text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
                       title="Delete"
                     >
-                      <div class="svg-icon h-3.5 w-3.5" innerHTML={deleteEntryIcon} />
+                      <Icon class="h-3.5 w-3.5" name="delete-entry" />
                     </button>
                   </div>
                 );

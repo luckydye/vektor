@@ -8,6 +8,7 @@ import type {
 import { t } from "#utils/lang.ts";
 import "#cosmetics/CosmeticElement.ts";
 import "#components/AvatarElement.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   inventory: readonly CosmeticAsset[];
@@ -174,10 +175,7 @@ export function CosmeticsPanel(props: Props) {
                 <span class="absolute -right-2 bottom-1 block h-6 w-6 text-primary-600">
                   {/* Mirrored: the glyph is drawn tip-right, and a pointer
                       reads as backwards unless its tip leads to the left. */}
-                  <span
-                    class="svg-icon -scale-x-100 block h-full w-full"
-                    innerHTML={pointerGlyph}
-                  />
+                  <Icon class="-scale-x-100 h-full w-full" svg={pointerGlyph} />
                   <vektor-cosmetic
                     class="absolute top-0 left-4 h-8 w-10"
                     attr:asset-id={stageAppearance().cursorCompanion ?? undefined}
@@ -239,9 +237,9 @@ export function CosmeticsPanel(props: Props) {
                       <Show
                         when={equipped()}
                         fallback={
-                          <span
-                            class="svg-icon h-4 w-4 text-neutral-400"
-                            innerHTML={slotGlyphs[slot.id]}
+                          <Icon
+                            class="h-4 w-4 text-neutral-400"
+                            svg={slotGlyphs[slot.id]}
                           />
                         }
                       >
@@ -318,9 +316,9 @@ export function CosmeticsPanel(props: Props) {
                       <Show
                         when={entry.asset}
                         fallback={
-                          <span
-                            class="svg-icon h-5 w-5 text-neutral-400"
-                            innerHTML={slotGlyphs[activeSlot()]}
+                          <Icon
+                            class="h-5 w-5 text-neutral-400"
+                            svg={slotGlyphs[activeSlot()]}
                           />
                         }
                       >
@@ -342,7 +340,7 @@ export function CosmeticsPanel(props: Props) {
                         title={t("Equipped")}
                         class="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary-600 text-neutral-10"
                       >
-                        <span class="svg-icon h-2.5 w-2.5" innerHTML={checkGlyph} />
+                        <Icon class="h-2.5 w-2.5" svg={checkGlyph} />
                       </span>
                     </Show>
                   </label>

@@ -3,7 +3,7 @@
 // explicit open button.
 
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
-import { chevronRightThinIcon, csvFileIcon, documentIcon } from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import { escapeHtml } from "#utils/html.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
@@ -287,7 +287,7 @@ if (
           "loading") as DocumentPreviewStatus;
         const spaceId = this.getAttribute("space-id") || "";
         const documentId = this.getAttribute("document-id") || "";
-        const icon = type === "csv" ? csvFileIcon : documentIcon;
+        const icon = type === "csv" ? iconMarkup("csv-file") : iconMarkup("document");
         const workflow =
           type === "workflow" ? this.ensureWorkflowPreview(spaceId, documentId) : null;
 
@@ -560,7 +560,7 @@ if (
               <span class="type">${escapeHtml(documentTypeLabel(type))}</span>
             </span>
             <button type="button" class="open" draggable="false" aria-label="Open document">
-              <span class="open-icon">${chevronRightThinIcon}</span>
+              <span class="open-icon">${iconMarkup("chevron-right-thin")}</span>
             </button>
           </div>
           ${

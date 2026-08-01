@@ -2,18 +2,12 @@ import { useLocation, useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { api, type PropertyFilter } from "#api/client.ts";
-import {
-  alertCircleIcon,
-  cancelIcon,
-  documentIcon,
-  searchIcon,
-  spinnerIcon,
-} from "#assets/icons.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { DocumentGroupedList } from "./DocumentGroupedList.tsx";
+import { Icon } from "./Icon.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 import { SearchFilters } from "./SearchFilters.tsx";
 
@@ -278,9 +272,9 @@ export function Search(props: Props) {
       {/* Search Box */}
       <div class="mb-3 flex gap-3">
         <div class="relative flex-1">
-          <div
-            class="svg-icon pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-neutral-400"
-            innerHTML={searchIcon}
+          <Icon
+            class="pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-neutral-400"
+            name="search"
           />
           <input
             value={searchQuery()}
@@ -301,7 +295,7 @@ export function Search(props: Props) {
               disabled={isSearching()}
               title="Clear search"
             >
-              <div class="svg-icon h-4 w-4" innerHTML={cancelIcon} />
+              <Icon class="h-4 w-4" name="cancel" />
             </button>
           </Show>
         </div>
@@ -314,11 +308,9 @@ export function Search(props: Props) {
         >
           <Show
             when={!isSearching()}
-            fallback={
-              <div class="svg-icon h-4 w-4 animate-spin" innerHTML={spinnerIcon} />
-            }
+            fallback={<Icon class="h-4 w-4 animate-spin" name="spinner" />}
           >
-            <div class="svg-icon h-4 w-4" innerHTML={searchIcon} />
+            <Icon class="h-4 w-4" name="search" />
           </Show>
           {isSearching() ? "Searching…" : "Search"}
         </button>
@@ -336,14 +328,14 @@ export function Search(props: Props) {
 
       <Show when={searchError()}>
         <div class="mb-6 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800 text-size-medium">
-          <div class="svg-icon h-5 w-5 shrink-0" innerHTML={alertCircleIcon} />
+          <Icon class="h-5 w-5 shrink-0" name="alert-circle" />
           {searchError()?.message ?? "Search failed"}
         </div>
       </Show>
 
       <Show when={batchError()}>
         <div class="mb-6 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 text-size-medium">
-          <div class="svg-icon h-5 w-5 shrink-0" innerHTML={alertCircleIcon} />
+          <Icon class="h-5 w-5 shrink-0" name="alert-circle" />
           {batchError()}
         </div>
       </Show>
@@ -368,7 +360,7 @@ export function Search(props: Props) {
               class="flex items-center gap-2 rounded-lg border border-neutral-100 bg-background px-5 py-2 font-medium text-size-medium transition-colors hover:border-primary-300 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Show when={isFetchingNextPage()}>
-                <div class="svg-icon h-4 w-4 animate-spin" innerHTML={spinnerIcon} />
+                <Icon class="h-4 w-4 animate-spin" name="spinner" />
               </Show>
               {isFetchingNextPage() ? "Loading…" : "Load more"}
             </button>
@@ -377,9 +369,9 @@ export function Search(props: Props) {
 
         <Show when={allDocuments().length === 0 && isLoadingDocuments()}>
           <div class="py-12 text-center">
-            <div
-              class="svg-icon mx-auto mb-4 h-10 w-10 animate-spin text-neutral-300"
-              innerHTML={spinnerIcon}
+            <Icon
+              class="mx-auto mb-4 h-10 w-10 animate-spin text-neutral-300"
+              name="spinner"
             />
             <p class="text-neutral-500 text-size-medium">Loading documents…</p>
           </div>
@@ -387,10 +379,7 @@ export function Search(props: Props) {
 
         <Show when={allDocuments().length === 0 && !isLoadingDocuments()}>
           <div class="py-12 text-center">
-            <div
-              class="svg-icon mx-auto mb-4 h-12 w-12 text-neutral-300"
-              innerHTML={documentIcon}
-            />
+            <Icon class="mx-auto mb-4 h-12 w-12 text-neutral-300" name="document" />
             <h3 class="mb-2 font-semibold text-neutral-700 text-size-large">
               No documents yet
             </h3>
@@ -430,10 +419,7 @@ export function Search(props: Props) {
         }
       >
         <div class="py-12 text-center">
-          <div
-            class="svg-icon mx-auto mb-4 h-12 w-12 text-neutral-300"
-            innerHTML={searchIcon}
-          />
+          <Icon class="mx-auto mb-4 h-12 w-12 text-neutral-300" name="search" />
           <h3 class="mb-2 font-semibold text-neutral-800 text-size-large">
             No results found
           </h3>

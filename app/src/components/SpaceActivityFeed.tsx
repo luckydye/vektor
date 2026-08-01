@@ -1,6 +1,5 @@
 import { createMemo, For, Index, mergeProps, Show } from "solid-js";
 import type { AuditLog } from "#api/client.ts";
-import { chevronRightThinIcon, documentIcon, usersIcon } from "#assets/icons.ts";
 import { useSpaceActivity } from "#composeables/useSpaceActivity.ts";
 import {
   type ActivityGroup,
@@ -12,6 +11,7 @@ import {
 import { t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
+import { Icon } from "./Icon.tsx";
 
 interface CompactActivityBatch {
   id: string;
@@ -157,16 +157,16 @@ export function SpaceActivityFeed(props: Props) {
                     </div>
 
                     <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
-                      <div
-                        class="svg-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-100 p-2 text-neutral-500"
-                        innerHTML={documentIcon}
+                      <Icon
+                        class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
+                        name="document"
                       />
                       <div class="h-4 w-32 rounded-sm bg-neutral-100" />
                     </div>
 
-                    <div
-                      class="svg-icon @md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
-                      innerHTML={chevronRightThinIcon}
+                    <Icon
+                      class="@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
+                      name="chevron-right-thin"
                     />
                   </div>
                 </div>
@@ -221,9 +221,9 @@ export function SpaceActivityFeed(props: Props) {
                         </div>
 
                         <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
-                          <div
-                            class="svg-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-100 p-2 text-neutral-500"
-                            innerHTML={batch.isPermission ? usersIcon : documentIcon}
+                          <Icon
+                            class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
+                            name={batch.isPermission ? "users" : "document"}
                           />
                           <div class="min-w-0 truncate text-neutral-700 text-size-medium">
                             {batch.isPermission
@@ -234,10 +234,10 @@ export function SpaceActivityFeed(props: Props) {
 
                         {/* Permission cards are not links, but keep the column so the
                             middle column stays aligned with the document cards. */}
-                        <div
-                          class="svg-icon @md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
+                        <Icon
+                          class="@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
                           classList={{ invisible: batch.isPermission }}
-                          innerHTML={chevronRightThinIcon}
+                          name="chevron-right-thin"
                         />
                       </div>
                     </a>

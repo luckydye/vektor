@@ -9,10 +9,10 @@ import {
   Show,
   Switch,
 } from "solid-js";
-import { activityIcon } from "#assets/icons.ts";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { useSpace } from "#composeables/useSpace.ts";
 import { AppView } from "./AppView.tsx";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   documentId: string;
@@ -135,10 +135,7 @@ export function RevisionView(props: Props) {
         <BottomBanner>
           <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
             <div class="flex min-w-0 flex-1 items-center gap-3">
-              <div
-                class="svg-icon h-5 w-5 shrink-0 text-amber-600"
-                innerHTML={activityIcon}
-              />
+              <Icon class="h-5 w-5 shrink-0 text-amber-600" name="activity" />
               <div class="min-w-0">
                 <p class="font-semibold text-amber-900 text-size-medium">
                   {showingDiff() ? "Comparing" : "Viewing"}{" "}

@@ -1,4 +1,4 @@
-import { textToolIcon } from "#assets/icons.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 import { CanvasRichTextElement } from "./CanvasElementBase.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
@@ -11,7 +11,7 @@ export const textElement: CanvasElementExtension = {
     data: { text: "", fontScale: 1 },
   },
   creation: {
-    tool: { id: "text", label: "Text", shortcut: "T", icon: textToolIcon },
+    tool: { id: "text", label: "Text", shortcut: "T", icon: iconMarkup("text-tool") },
     editOnCreate: "element",
     doubleClick: true,
     create: (at) => createTextShape(at),

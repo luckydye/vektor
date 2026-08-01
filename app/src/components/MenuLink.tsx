@@ -1,8 +1,11 @@
 import { type JSX, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
+import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
-  icon?: string;
+  icon?: IconName;
+  /** Extension artwork, which arrives as markup rather than a name. */
+  iconSvg?: string;
   text?: string;
   isActive?: boolean;
   href?: string;
@@ -28,7 +31,7 @@ export function MenuLink(props: Props) {
       )}
     >
       <div class="flex flex-1 items-center @max-xs:justify-center text-size-normal">
-        <div innerHTML={props.icon} class="icon inline flex-none" />
+        <Icon name={props.icon} svg={props.iconSvg} />
         <span class="@max-xs:hidden">{props.text}</span>
       </div>
 

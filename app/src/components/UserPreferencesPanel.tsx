@@ -6,7 +6,6 @@ import {
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
-import { chevronLeftLargeIcon } from "#assets/icons.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -20,6 +19,7 @@ import {
   type ThemePreference,
 } from "#utils/themePreference.ts";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
+import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
@@ -294,7 +294,7 @@ export function UserPreferencesPanel(props: Props) {
           class="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
           aria-label={t("Back to profile menu")}
         >
-          <div class="svg-icon h-4 w-4" innerHTML={chevronLeftLargeIcon} />
+          <Icon class="h-4 w-4" name="chevron-left-large" />
         </button>
         <p class="font-medium text-base text-foreground">{t("Preferences")}</p>
       </div>

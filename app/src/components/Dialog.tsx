@@ -1,9 +1,9 @@
 import { createEffect, type JSX, mergeProps, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { cancelIcon } from "#assets/icons.ts";
 import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import "@atrium-ui/elements/blur";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   show?: boolean;
@@ -125,7 +125,7 @@ export function Dialog(props: Props) {
                 aria-label={t("Close")}
                 onClick={close}
               >
-                <div class="svg-icon h-4 w-4" innerHTML={cancelIcon} />
+                <Icon class="h-4 w-4" name="cancel" />
               </button>
             </div>
           </Show>

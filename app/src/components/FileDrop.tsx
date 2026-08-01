@@ -101,7 +101,7 @@ export function FileDrop(props: Props) {
                 "bg-neutral-100": !isDragging(),
               }}
             >
-              <Icon name="upload" />
+              <Icon name="upload-file" />
             </div>
 
             <p class="text-center text-neutral-700 text-size-normal">

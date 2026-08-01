@@ -296,7 +296,7 @@ export function DocumentActions(props: Props) {
     if (isPinned) {
       registerScopedAction("document:unpin", {
         title: t("Unpin from Home"),
-        icon: () => "pin-filled",
+        icon: () => "pin-to-home",
         description: t("Remove this document from the space home page"),
         group: "document",
         order: 20,
@@ -310,7 +310,7 @@ export function DocumentActions(props: Props) {
 
     registerScopedAction("document:pin", {
       title: t("Pin to Home"),
-      icon: () => "pin",
+      icon: () => "pin-to-home",
       description: t("Showcase this document on the space home page"),
       group: "document",
       order: 20,
@@ -355,7 +355,7 @@ export function DocumentActions(props: Props) {
 
     registerScopedAction("document:archive", {
       title: t("Archive Document"),
-      icon: () => "archive",
+      icon: () => "archive-document",
       description: t("Archive current document"),
       group: "document:danger",
       order: 20,
@@ -403,7 +403,7 @@ export function DocumentActions(props: Props) {
 
     registerScopedAction("document:share", {
       title: t("Share"),
-      icon: () => "share",
+      icon: () => "users-group",
       description: t("Invite people to this document or space"),
       group: "document",
       order: 10,
@@ -444,8 +444,10 @@ export function DocumentActions(props: Props) {
     }
   });
 
-  const actionIcon = (options: ActionOptions): IconName =>
-    ((options.icon?.() as IconName | undefined) ?? "placeholder") as IconName;
+  // Extensions name their own icons, and an unknown name draws nothing rather
+  // than a stand-in glyph that means something else.
+  const actionIcon = (options: ActionOptions): IconName | undefined =>
+    options.icon?.() as IconName | undefined;
 
   return (
     <div
@@ -478,7 +480,7 @@ export function DocumentActions(props: Props) {
           class="button-primary px-3 max-md:hidden"
           onClick={startEditing}
         >
-          <Icon name="edit" />
+          <Icon name="edit-document" />
           <span>Edit</span>
         </button>
       </Show>
@@ -571,7 +573,7 @@ export function DocumentActions(props: Props) {
           <Show when={documentType() === "workflow" && documentId() && userCanEdit()}>
             <ContextMenuItem onClick={openWorkflowEditorFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
-                <Icon name="edit" />
+                <Icon name="edit-document" />
               </div>
               <span class="mr-2 block w-full text-left">{t("Edit")}</span>
             </ContextMenuItem>
@@ -583,7 +585,7 @@ export function DocumentActions(props: Props) {
               onClick={(event) => runContextMenuAction(event, "document:edit")}
             >
               <div class="aspect-sqaure w-[1rem] flex-none">
-                <Icon name="edit" />
+                <Icon name="edit-document" />
               </div>
               <span class="mr-2 block w-full text-left">{t("Edit")}</span>
             </ContextMenuItem>

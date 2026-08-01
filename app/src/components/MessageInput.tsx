@@ -11,13 +11,13 @@ import {
   Show,
 } from "solid-js";
 import { createStore, produce } from "solid-js/store";
-import { addAttachmentsIcon, deleteElementIcon, sendMessageIcon } from "#assets/icons.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/elements/rich-text-editor.ts";
 import type {
   RichTextEditorElementApi,
   RichTextEditorFormat,
 } from "#editor/elements/rich-text-editor.ts";
+import { Icon } from "./Icon.tsx";
 
 export type PendingAttachment = {
   id: string;
@@ -290,7 +290,7 @@ export function MessageInput(props: Props) {
                   class="text-neutral-400 transition-colors hover:text-red-500"
                   onClick={() => removeAttachment(attachment.id)}
                 >
-                  <div class="svg-icon h-3.5 w-3.5" innerHTML={deleteElementIcon} />
+                  <Icon class="h-3.5 w-3.5" name="delete-element" />
                 </button>
               </div>
             )}
@@ -336,7 +336,7 @@ export function MessageInput(props: Props) {
               class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700"
               onClick={() => fileInputRef?.click()}
             >
-              <div class="svg-icon h-4 w-4" innerHTML={addAttachmentsIcon} />
+              <Icon class="h-4 w-4" name="add-attachments" />
             </button>
           </Show>
           <Show
@@ -349,7 +349,7 @@ export function MessageInput(props: Props) {
                 title="Send"
                 onClick={() => merged.onSubmit?.()}
               >
-                <div class="svg-icon h-4 w-4" innerHTML={sendMessageIcon} />
+                <Icon class="h-4 w-4" name="send-message" />
               </button>
             }
           >
