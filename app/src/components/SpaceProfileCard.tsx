@@ -26,7 +26,7 @@ export function SpaceProfileCard(props: Props) {
           title="Change color"
         >
           <div class="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
-            <span class="font-medium text-[11px] text-white drop-shadow">
+            <span class="font-medium text-size-extra-small text-white drop-shadow">
               Change color
             </span>
           </div>
@@ -103,7 +103,7 @@ export function SpaceProfileCard(props: Props) {
             {props.description}
           </p>
         </Show>
-        <p class="mt-1 truncate font-mono text-[11px] text-neutral-400">
+        <p class="mt-1 truncate font-mono text-neutral-400 text-size-extra-small">
           {props.slug || "space-slug"}
         </p>
       </div>

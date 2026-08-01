@@ -354,7 +354,7 @@ export function DocumentGroupedList(props: Props) {
                   <span class="font-semibold text-neutral-700 text-size-small">
                     {group.label}
                   </span>
-                  <span class="rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-[11px] text-neutral-500 tabular-nums">
+                  <span class="rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500 text-size-extra-small tabular-nums">
                     {group.docs.length}
                   </span>
                   <div class="flex-1" />
@@ -422,7 +422,7 @@ export function DocumentGroupedList(props: Props) {
                             <p class="truncate font-medium text-neutral-800 text-size-medium">
                               {docTitle(doc)}
                             </p>
-                            <p class="truncate text-[11px] text-neutral-400">
+                            <p class="truncate text-neutral-400 text-size-extra-small">
                               <Show when={docCategoryName(doc)}>
                                 <span>{docCategoryName(doc)} • </span>
                               </Show>
@@ -438,12 +438,12 @@ export function DocumentGroupedList(props: Props) {
                           </div>
 
                           <Show when={docCategoryName(doc)}>
-                            <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-[11px] text-neutral-600">
+                            <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 text-size-extra-small">
                               {docCategoryName(doc)}
                             </span>
                           </Show>
 
-                          <span class="w-20 shrink-0 text-right text-[11px] text-neutral-400 tabular-nums">
+                          <span class="w-20 shrink-0 text-right text-neutral-400 text-size-extra-small tabular-nums">
                             {formatDate(doc.updatedAt)}
                           </span>
                         </a>

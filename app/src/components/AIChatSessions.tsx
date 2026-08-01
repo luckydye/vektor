@@ -49,7 +49,7 @@ export function AIChatSessions(props: Props) {
       <Show when={props.showPicker}>
         <div class="flex-1 overflow-y-auto px-3 py-4">
           <div class="mb-3 flex items-center justify-between">
-            <p class="font-medium text-[11px] text-neutral-400 uppercase tracking-wide">
+            <p class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wide">
               Recent conversations
             </p>
             <button

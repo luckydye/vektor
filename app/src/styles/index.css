@@ -157,6 +157,18 @@ a-shortcut:not(:defined) {
   }
 }
 
+/* iOS Safari zooms the viewport whenever a focused control renders below 16px,
+   and never zooms back out on blur. The responsive type scale puts most chrome
+   under that threshold on purpose, so raise it back for controls that take text
+   — the mobile scale's `--text-size-medium` is exactly the 16px cutoff. */
+@media (width <= 40rem) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: max(var(--text-size-medium), 1rem);
+  }
+}
+
 body[data-revision] main {
   display: none;
 }

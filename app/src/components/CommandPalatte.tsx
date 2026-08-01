@@ -189,7 +189,7 @@ export function CommandPalatte() {
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
               onKeyDown={handleKeydown}
             />
-            <kbd class="hidden rounded-sm border border-neutral-100 px-1.5 py-0.5 font-mono text-[11px] text-neutral sm:inline-block">
+            <kbd class="hidden rounded-sm border border-neutral-100 px-1.5 py-0.5 font-mono text-neutral text-size-extra-small sm:inline-block">
               ESC
             </kbd>
           </div>
@@ -211,7 +211,7 @@ export function CommandPalatte() {
                     }
                   >
                     <div class="px-3 pt-2 pb-0.5">
-                      <span class="font-medium text-[11px] text-neutral uppercase tracking-wider">
+                      <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
                         {result.type === "document" ? "Documents" : "Actions"}
                       </span>
                     </div>
@@ -306,7 +306,7 @@ export function CommandPalatte() {
             </For>
           </div>
 
-          <div class="flex items-center justify-between rounded-b-xl border-neutral-100 border-t bg-neutral-50 px-4 py-2 text-[11px] text-neutral">
+          <div class="flex items-center justify-between rounded-b-xl border-neutral-100 border-t bg-neutral-50 px-4 py-2 text-neutral text-size-extra-small">
             <div class="flex items-center gap-3">
               <span class="flex items-center gap-1">
                 <kbd class="rounded-sm border border-neutral-100 bg-background px-1.5 py-0.5 font-mono">

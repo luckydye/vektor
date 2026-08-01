@@ -615,7 +615,7 @@ export function WorkflowView(props: Props) {
                             </p>
                           </div>
                         </div>
-                        <span class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 font-semibold text-[11px] text-sky-700 uppercase tracking-[0.1em] dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+                        <span class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 font-semibold text-size-extra-small text-sky-700 uppercase tracking-[0.1em] dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
                           Working
                         </span>
                       </div>
@@ -629,10 +629,10 @@ export function WorkflowView(props: Props) {
                       <Show when={recentActivity().length}>
                         <div class="border-sky-100/80 border-t pt-3 dark:border-sky-900/60">
                           <div class="mb-2 flex items-center justify-between gap-3">
-                            <span class="font-semibold text-[10px] text-neutral-400 uppercase tracking-[0.12em]">
+                            <span class="font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
                               Recent activity
                             </span>
-                            <span class="text-[10px] text-neutral-400">
+                            <span class="text-neutral-400 text-size-extra-small">
                               {selectedRunDetail()?.logs.length} updates
                             </span>
                           </div>
@@ -851,7 +851,7 @@ export function WorkflowView(props: Props) {
                           {([key, val]) => (
                             <div class="border-neutral-100 border-b transition-colors hover:bg-neutral-50">
                               <div class="grid grid-cols-[180px_1fr] items-center text-size-medium">
-                                <div class="truncate px-4 py-2.5 font-medium font-mono text-[11px] text-neutral-500">
+                                <div class="truncate px-4 py-2.5 font-medium font-mono text-neutral-500 text-size-extra-small">
                                   {key}
                                 </div>
                                 <pre class="overflow-x-auto whitespace-pre-wrap break-all px-0 py-2.5 pr-4 text-neutral-700 text-size-small">
@@ -873,7 +873,7 @@ export function WorkflowView(props: Props) {
                   <div class="flex flex-col rounded-lg bg-neutral-950 p-4 dark:bg-neutral-50">
                     <div class="text-neutral-400 text-size-small">Logs</div>
                     <div class="mt-2 max-h-[400px] w-full overflow-x-auto">
-                      <div class="space-y-0.5 font-mono text-[11px]">
+                      <div class="space-y-0.5 font-mono text-size-extra-small">
                         <For each={allLogs()}>
                           {(entry) => (
                             <div class="flex gap-3">
@@ -913,7 +913,7 @@ export function WorkflowView(props: Props) {
         </div>
 
         <aside class="hidden min-w-0 lg:block">
-          <h3 class="mb-2 font-semibold text-[10px] text-neutral-400 uppercase tracking-[0.12em]">
+          <h3 class="mb-2 font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
             History
           </h3>
           <WorkflowRunHistory

@@ -67,7 +67,7 @@ export function WorkflowRunHistory(props: Props) {
                     {formatDateTime(run.createdAt)}
                   </span>
                   <span
-                    class={`inline-flex flex-none items-center gap-1 rounded-sm px-1.5 py-0.5 font-medium text-[11px] capitalize ${
+                    class={`inline-flex flex-none items-center gap-1 rounded-sm px-1.5 py-0.5 font-medium text-size-extra-small capitalize ${
                       statusBadgeClass[run.status] ?? "bg-neutral-100 text-neutral-500"
                     }`}
                   >

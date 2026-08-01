@@ -75,7 +75,7 @@ export function DocumentTeaser(props: Props) {
               <For each={tags().slice(0, 1)}>
                 {(tag) => (
                   <span
-                    class="min-w-0 max-w-full truncate rounded-full bg-neutral-10 px-2.5 py-1 font-medium text-[11px] text-neutral-700 shadow-sm"
+                    class="min-w-0 max-w-full truncate rounded-full bg-neutral-10 px-2.5 py-1 font-medium text-neutral-700 text-size-extra-small shadow-sm"
                     title={tag}
                   >
                     {tag}
@@ -83,7 +83,7 @@ export function DocumentTeaser(props: Props) {
                 )}
               </For>
               <Show when={tags().length > 1}>
-                <span class="shrink-0 rounded-full bg-neutral-10 px-2.5 py-1 font-medium text-[11px] text-neutral-700 shadow-sm">
+                <span class="shrink-0 rounded-full bg-neutral-10 px-2.5 py-1 font-medium text-neutral-700 text-size-extra-small shadow-sm">
                   +{tags().length - 1}
                 </span>
               </Show>
@@ -92,7 +92,7 @@ export function DocumentTeaser(props: Props) {
         </div>
 
         <div class="mt-3">
-          <p class="mb-1 font-semibold text-[11px] text-neutral-500 tabular-nums">
+          <p class="mb-1 font-semibold text-neutral-500 text-size-extra-small tabular-nums">
             {formatDate(props.doc.updatedAt)}
           </p>
           <h4 class="line-clamp-3 font-bold text-primary-700 text-size-medium italic leading-snug transition-colors group-hover:text-primary-500">

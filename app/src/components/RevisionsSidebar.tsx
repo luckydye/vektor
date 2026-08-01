@@ -445,7 +445,7 @@ export function RevisionsSidebar(props: Props) {
                       when={isPublishedEntry(entry)}
                       fallback={
                         <Show when={isSuggestionEntry(entry)}>
-                          <span class="shrink-0 self-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-px font-medium text-[10px] text-amber-600 uppercase tracking-wide">
+                          <span class="shrink-0 self-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-px font-medium text-amber-600 text-size-extra-small uppercase tracking-wide">
                             {revisionStatusOf(entry) === "applied"
                               ? "Applied"
                               : "Suggestion"}
@@ -453,7 +453,7 @@ export function RevisionsSidebar(props: Props) {
                         </Show>
                       }
                     >
-                      <span class="shrink-0 self-center rounded-sm border border-blue-200 bg-blue-50 px-1.5 py-px font-medium text-[10px] text-blue-600 uppercase tracking-wide">
+                      <span class="shrink-0 self-center rounded-sm border border-blue-200 bg-blue-50 px-1.5 py-px font-medium text-blue-600 text-size-extra-small uppercase tracking-wide">
                         Published
                       </span>
                     </Show>

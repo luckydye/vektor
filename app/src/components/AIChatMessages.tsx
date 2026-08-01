@@ -199,7 +199,7 @@ export function AIChatMessages(props: Props) {
       onScroll={onMessagesScroll}
     >
       <Show when={props.sessionStartedAt}>
-        <div class="text-center text-[11px] text-neutral-400">
+        <div class="text-center text-neutral-400 text-size-extra-small">
           {formatSessionStartTime(props.sessionStartedAt)}
         </div>
       </Show>
@@ -223,7 +223,7 @@ export function AIChatMessages(props: Props) {
 
               <Show when={message.role === "status"}>
                 <div class="status-bubble max-w-[85%] rounded-xl px-3 py-2 shadow-sm">
-                  <div class="status-bubble-label mb-1 text-[11px] uppercase tracking-wide">
+                  <div class="status-bubble-label mb-1 text-size-extra-small uppercase tracking-wide">
                     Agent log
                   </div>
                   <pre class="whitespace-pre-wrap font-mono text-size-small leading-relaxed">
@@ -241,7 +241,7 @@ export function AIChatMessages(props: Props) {
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="flex max-h-72 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-sm">
-                    <div class="shrink-0 border-neutral-200 border-b px-3.5 py-2 font-medium text-[11px] text-neutral-500 uppercase tracking-wide">
+                    <div class="shrink-0 border-neutral-200 border-b px-3.5 py-2 font-medium text-neutral-500 text-size-extra-small uppercase tracking-wide">
                       Thinking
                     </div>
                     <pre class="thinking-content min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap px-3.5 py-3 font-mono text-neutral-700 text-size-small leading-relaxed">
@@ -291,7 +291,7 @@ export function AIChatMessages(props: Props) {
                       innerHTML={renderMessageMarkdown(message.content)}
                     />
                   </div>
-                  <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
+                  <div class="mt-1.5 px-0.5 text-neutral-500 text-size-extra-small">
                     {new Date(message.timestamp).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -323,7 +323,7 @@ export function AIChatMessages(props: Props) {
                       onClick={() => toggleToolMessageExpanded(message, index())}
                     >
                       <div
-                        class="tool-message-header flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-[11px]"
+                        class="tool-message-header flex min-w-0 items-center gap-1.5 px-3 py-1.5 text-size-extra-small"
                         classList={{
                           "border-b": isToolMessageExpanded(message, index()),
                         }}
@@ -404,7 +404,7 @@ export function AIChatMessages(props: Props) {
           if (state?.kind !== "tool_executing") return null;
           return (
             <div class="flex animate-message-slide-in justify-start">
-              <div class="tool-message-bg mt-0.5 ml-9 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px]">
+              <div class="tool-message-bg mt-0.5 ml-9 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border px-3 py-1.5 text-size-extra-small">
                 <div
                   class="svg-icon tool-message-icon h-4 w-4 shrink-0"
                   innerHTML={linkIcon}

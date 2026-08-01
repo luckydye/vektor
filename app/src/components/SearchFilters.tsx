@@ -239,7 +239,7 @@ export function SearchFilters(props: Props) {
             <div class={popoverPanel}>
               <div class={`${popoverInner} w-52`}>
                 <div class="border-neutral-100 border-b px-3 py-2">
-                  <span class="font-medium text-[11px] text-neutral uppercase tracking-wider">
+                  <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
                     Properties
                   </span>
                 </div>
@@ -265,7 +265,7 @@ export function SearchFilters(props: Props) {
                               props.value.filter((f) => f.key === prop.name).length > 0
                             }
                           >
-                            <span class="rounded-full bg-primary-100 px-1.5 py-0.5 text-[10px] text-primary-700">
+                            <span class="rounded-full bg-primary-100 px-1.5 py-0.5 text-primary-700 text-size-extra-small">
                               {props.value.filter((f) => f.key === prop.name).length}
                             </span>
                           </Show>
@@ -306,7 +306,7 @@ export function SearchFilters(props: Props) {
                               any value
                             </button>
                             <Show when={prop.values.length > 20}>
-                              <span class="px-2 text-[10px] text-neutral-400">
+                              <span class="px-2 text-neutral-400 text-size-extra-small">
                                 +{prop.values.length - 20} more
                               </span>
                             </Show>
@@ -327,7 +327,7 @@ export function SearchFilters(props: Props) {
         <button
           type="button"
           onClick={() => commit([])}
-          class="ml-1 text-[11px] text-neutral transition-colors hover:text-neutral-800"
+          class="ml-1 text-neutral text-size-extra-small transition-colors hover:text-neutral-800"
         >
           Clear all
         </button>

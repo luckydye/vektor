@@ -8,7 +8,6 @@
   --text-size-small: 0.75rem; /* 12px */
   --text-size-normal: 0.8125rem; /* 13px */
   --text-size-medium: 0.875rem; /* 14px */
-  --text-size-title: 0.9375rem; /* 15px */
   --text-size-large: 1.0625rem; /* 17px */
   --text-size-title: 1.5rem; /* 24px */
   --text-size-display: 1.625rem; /* 26px */
@@ -17,7 +16,6 @@
   /* other */
   --line-height-small: 0.875rem; /* 14px */
   --line-height-medium: 1.125rem; /* 18px */
-  --line-height-title: 1.25rem; /* 20px */
   --line-height-large: 1.5625rem; /* 24px */
   --line-height-title: 2rem; /* 32px */
   --line-height-display: 2.125rem; /* 34px */
@@ -562,4 +560,32 @@
 
 @utility focus-ring {
   @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+/* Responsive type scale.
+ *
+ * The desktop scale is tuned for a dense, mouse-driven layout read at ~60cm.
+ * On a phone held at ~30cm that same scale reads as 2-3px too small across the
+ * board, so the lower half of the scale is bumped and its line heights are
+ * loosened to keep the ratio. Only the tokens move — every `text-size-*`
+ * utility resolves through `var()`, so all consumers scale without a single
+ * responsive class.
+ *
+ * The display sizes (title/display/hero) are deliberately unchanged: they are
+ * already large enough on a phone, and growing them costs lines of content.
+ *
+ * `--text-size-medium` lands on exactly 16px because it is what inputs use;
+ * anything smaller makes iOS Safari zoom the viewport on focus. */
+@media (width <= 40rem) {
+  :root {
+    --text-size-extra-small: 0.75rem; /* 11px -> 12px */
+    --text-size-small: 0.875rem; /* 12px -> 14px */
+    --text-size-normal: 0.9375rem; /* 13px -> 15px */
+    --text-size-medium: 1rem; /* 14px -> 16px */
+    --text-size-large: 1.125rem; /* 17px -> 18px */
+
+    --line-height-small: 1.0625rem; /* 14px -> 17px */
+    --line-height-medium: 1.3125rem; /* 18px -> 21px */
+    --line-height-large: 1.6875rem; /* 25px -> 27px */
+  }
 }

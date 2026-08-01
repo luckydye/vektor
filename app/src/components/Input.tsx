@@ -33,7 +33,7 @@ export function Input(props: Props) {
           onInput={(event) => merged.onInput?.(event.currentTarget.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          class="w-full bg-transparent font-normal text-[14px] outline-none placeholder:opacity-30 disabled:cursor-not-allowed disabled:opacity-50"
+          class="w-full bg-transparent font-normal text-size-medium outline-none placeholder:opacity-30 disabled:cursor-not-allowed disabled:opacity-50"
         />
       </div>
     </div>

@@ -266,7 +266,7 @@ export function MessageInput(props: Props) {
                 <Show
                   when={attachment.previewUrl}
                   fallback={
-                    <div class="flex h-8 w-8 items-center justify-center rounded-sm bg-neutral-200 font-semibold text-[10px] text-neutral-500">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-sm bg-neutral-200 font-semibold text-neutral-500 text-size-extra-small">
                       FILE
                     </div>
                   }
@@ -281,7 +281,7 @@ export function MessageInput(props: Props) {
                   <p class="truncate text-neutral-700 text-size-small">
                     {attachment.name}
                   </p>
-                  <p class="text-[10px] text-neutral-500">
+                  <p class="text-neutral-500 text-size-extra-small">
                     {formatFileSize(attachment.size)}
                   </p>
                 </div>

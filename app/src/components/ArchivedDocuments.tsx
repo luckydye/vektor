@@ -125,7 +125,7 @@ export function ArchivedDocuments(props: Props) {
                 <button
                   type="button"
                   onClick={() => void handleRestore(doc.id)}
-                  class="rounded px-2.5 py-1 font-medium text-[11px] text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                  class="rounded px-2.5 py-1 font-medium text-neutral-600 text-size-extra-small transition-colors hover:bg-neutral-100 hover:text-neutral-900"
                 >
                   Restore
                 </button>

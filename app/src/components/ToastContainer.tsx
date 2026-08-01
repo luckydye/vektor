@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { alertCircleIcon, confirmationIcon, infoIcon } from "#assets/icons.ts";
 import { type Toast, useToast } from "#composeables/useToast.ts";
@@ -17,12 +17,8 @@ export function ToastContainer() {
   const [completedActions, setCompletedActions] = createSignal<Set<number>>(new Set());
 
   function registerToast(id: number, el: HTMLElement | undefined) {
-    if (el) {
-      elements.set(id, el);
-      animateIn(el);
-    } else {
-      elements.delete(id);
-    }
+    if (el) elements.set(id, el);
+    else elements.delete(id);
   }
 
   /**
@@ -79,44 +75,61 @@ export function ToastContainer() {
         class="pointer-events-none fixed bottom-20 left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-center gap-2"
       >
         <For each={toasts()}>
-          {(toast) => (
-            <div
-              ref={(el) => registerToast(toast.id, el)}
-              class="pointer-events-auto relative flex min-w-64 items-center gap-2.5 overflow-hidden rounded-lg px-4 py-2.5 font-medium text-size-small shadow-large"
-              classList={{
-                "bg-red-600 text-white": toast.type === "error",
-                "bg-neutral-900 text-white": toast.type === "info",
-                "bg-green-600 text-white": toast.type === "success",
-              }}
-            >
-              <div class="svg-icon h-4 w-4 shrink-0" innerHTML={icons[toast.type]} />
-              <span class="relative z-10">{toast.message}</span>
-              <Show when={toast.action}>
-                {(action) => (
-                  <button
-                    type="button"
-                    class="relative z-10 ml-auto rounded-md bg-white/15 px-2 py-1 font-semibold text-xs transition-colors hover:bg-white/25"
-                    disabled={completedActions().has(toast.id)}
-                    onClick={() => void runAction(toast)}
-                  >
-                    {completedActions().has(toast.id)
-                      ? (action().completedLabel ?? action().label)
-                      : action().label}
-                  </button>
-                )}
-              </Show>
-              <Show when={toast.progress !== undefined}>
-                <div class="absolute inset-x-0 bottom-0 h-1 bg-white/15">
-                  <div
-                    class="h-full bg-white/55 transition-all duration-200 ease-out"
-                    style={{
-                      width: `${Math.max(0, Math.min(1, toast.progress ?? 0)) * 100}%`,
-                    }}
-                  />
-                </div>
-              </Show>
-            </div>
-          )}
+          {(toast) => {
+            /**
+             * Played on mount, not from `ref`.
+             *
+             * `ref` runs before the node is in the document, and an animation
+             * started on a detached element never gets a start time — it holds
+             * the element at its first keyframe, which for the enter is
+             * `opacity: 0`. The toast then sat there invisible until it
+             * expired, and only flickered on the way out, when the leave
+             * animation ran on a node that was by then attached.
+             */
+            onMount(() => {
+              const el = elements.get(toast.id);
+              if (el) animateIn(el);
+            });
+
+            return (
+              <div
+                ref={(el) => registerToast(toast.id, el)}
+                class="pointer-events-auto relative flex min-w-64 items-center gap-2.5 overflow-hidden rounded-lg px-4 py-2.5 font-medium text-size-small shadow-large"
+                classList={{
+                  "bg-red-600 text-white": toast.type === "error",
+                  "bg-neutral-900 text-white": toast.type === "info",
+                  "bg-green-600 text-white": toast.type === "success",
+                }}
+              >
+                <div class="svg-icon h-4 w-4 shrink-0" innerHTML={icons[toast.type]} />
+                <span class="relative z-10">{toast.message}</span>
+                <Show when={toast.action}>
+                  {(action) => (
+                    <button
+                      type="button"
+                      class="relative z-10 ml-auto rounded-md bg-white/15 px-2 py-1 font-semibold text-xs transition-colors hover:bg-white/25"
+                      disabled={completedActions().has(toast.id)}
+                      onClick={() => void runAction(toast)}
+                    >
+                      {completedActions().has(toast.id)
+                        ? (action().completedLabel ?? action().label)
+                        : action().label}
+                    </button>
+                  )}
+                </Show>
+                <Show when={toast.progress !== undefined}>
+                  <div class="absolute inset-x-0 bottom-0 h-1 bg-white/15">
+                    <div
+                      class="h-full bg-white/55 transition-all duration-200 ease-out"
+                      style={{
+                        width: `${Math.max(0, Math.min(1, toast.progress ?? 0)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </Show>
+              </div>
+            );
+          }}
         </For>
       </div>
     </Portal>

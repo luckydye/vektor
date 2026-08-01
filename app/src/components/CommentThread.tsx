@@ -92,7 +92,7 @@ export function CommentThread(props: Props) {
         <div class="flex items-center gap-2">
           <h3 class="font-semibold text-neutral-800 text-size-medium">Thread</h3>
           <Show when={props.comments.length > 0}>
-            <span class="rounded-full bg-neutral-200/50 px-1.5 py-0.5 font-medium text-[10px] text-neutral-500">
+            <span class="rounded-full bg-neutral-200/50 px-1.5 py-0.5 font-medium text-neutral-500 text-size-extra-small">
               {props.comments.length}
             </span>
           </Show>
@@ -143,7 +143,7 @@ export function CommentThread(props: Props) {
                   <span class="truncate font-semibold text-neutral-900 text-size-small">
                     {getUserName(comment)}
                   </span>
-                  <span class="whitespace-nowrap text-[10px] text-neutral-400">
+                  <span class="whitespace-nowrap text-neutral-400 text-size-extra-small">
                     {getRelativeTime(comment.createdAt)}
                   </span>
                   <Show when={currentUser()?.id === comment.createdBy}>
