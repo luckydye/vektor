@@ -573,7 +573,7 @@ export function DocumentActions(props: Props) {
           <Show when={documentType() === "workflow" && documentId() && userCanEdit()}>
             <ContextMenuItem onClick={openWorkflowEditorFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
-                <Icon name="edit-document" />
+                <Icon name="edit-document" class="align-middle" />
               </div>
               <span class="mr-2 block w-full text-left">{t("Edit")}</span>
             </ContextMenuItem>
@@ -585,7 +585,7 @@ export function DocumentActions(props: Props) {
               onClick={(event) => runContextMenuAction(event, "document:edit")}
             >
               <div class="aspect-sqaure w-[1rem] flex-none">
-                <Icon name="edit-document" />
+                <Icon name="edit-document" class="align-middle" />
               </div>
               <span class="mr-2 block w-full text-left">{t("Edit")}</span>
             </ContextMenuItem>
@@ -595,7 +595,7 @@ export function DocumentActions(props: Props) {
             {([name, options]) => (
               <ContextMenuItem onClick={(event) => runContextMenuAction(event, name)}>
                 <div class="aspect-sqaure w-[1rem] flex-none">
-                  <Icon name={actionIcon(options)} />
+                  <Icon name={actionIcon(options)} class="align-middle" />
                 </div>
                 <span class="mr-2 block w-full text-left" data-action={name}>
                   {options.title}
@@ -616,7 +616,7 @@ export function DocumentActions(props: Props) {
                 class="text-orange-600 hover:text-orange-700"
               >
                 <div class="aspect-sqaure w-[1rem] flex-none">
-                  <Icon name={actionIcon(options)} />
+                  <Icon name={actionIcon(options)} class="align-middle" />
                 </div>
                 <span>{options.title}</span>
               </ContextMenuItem>
@@ -631,7 +631,7 @@ export function DocumentActions(props: Props) {
                   class="text-neutral-400"
                 >
                   <div class="aspect-sqaure w-[1rem] flex-none">
-                    <Icon name={actionIcon(options)} />
+                    <Icon name={actionIcon(options)} class="align-middle" />
                   </div>
                   <span>{options.title}</span>
                 </ContextMenuItem>
