@@ -8,7 +8,7 @@ import {
 import { SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
 import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/popover";
-import type { CanvasChrome } from "./chrome.ts";
+import { type CanvasChrome, swallowPointer } from "./chrome.ts";
 
 /**
  * The tool strip along the bottom of the canvas.
@@ -28,9 +28,6 @@ export function CanvasToolbar(props: { chrome: CanvasChrome }) {
   const canRedo = frame(() => view()?.state.canRedo ?? false);
   const activeShapeId = frame(() => view()?.activeShapeId);
   const tools = frame(() => view()?.tools ?? []);
-
-  // Chrome sits above the viewport, which starts a drag on pointerdown.
-  const swallowPointer = (event: PointerEvent) => event.stopPropagation();
 
   return (
     <div class="canvas-toolbar" onPointerDown={swallowPointer}>

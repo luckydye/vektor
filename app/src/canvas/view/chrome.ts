@@ -33,6 +33,14 @@ export interface CanvasChrome {
   onFrame(): void;
 }
 
+/**
+ * Chrome sits above the viewport, which starts a drag on pointerdown.
+ *
+ * Every panel needs this on its outermost element, so it lives with the bridge
+ * rather than being redefined in each one.
+ */
+export const swallowPointer = (event: PointerEvent) => event.stopPropagation();
+
 export function createCanvasChrome(
   host: () => CanvasHostElement | undefined,
 ): CanvasChrome {

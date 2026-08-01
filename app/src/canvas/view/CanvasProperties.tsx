@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
 import { PEN_COLORS } from "#canvas/extensions/drawing.ts";
 import { t } from "#utils/lang.ts";
-import type { CanvasChrome } from "./chrome.ts";
+import { type CanvasChrome, swallowPointer } from "./chrome.ts";
 
 /**
  * Appearance of what is currently selected.
@@ -20,9 +20,6 @@ export function CanvasProperties(props: { chrome: CanvasChrome }) {
   const selectedColor = frame(() => view()?.selectedShape()?.style.color);
   const strokeColor = frame(() => view()?.selectedStrokeColor());
   const hasStrokes = frame(() => (view()?.state.selectedStrokeIds.size ?? 0) > 0);
-
-  // Chrome sits above the viewport, which starts a drag on pointerdown.
-  const swallowPointer = (event: PointerEvent) => event.stopPropagation();
 
   return (
     <Show when={visible()}>

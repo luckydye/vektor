@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
 import { DRAW_STROKE_MODES, PEN_COLORS } from "#canvas/extensions/drawing.ts";
 import { t } from "#utils/lang.ts";
-import type { CanvasChrome } from "./chrome.ts";
+import { type CanvasChrome, swallowPointer } from "./chrome.ts";
 
 /**
  * What the active tool will draw with — pen mode and colours.
@@ -22,9 +22,6 @@ export function CanvasToolProperties(props: { chrome: CanvasChrome }) {
   const drawMode = frame(() => view()?.activeDrawStrokeMode);
   const penColor = frame(() => view()?.state.penColor);
   const activeColors = frame(() => view()?.state.activeColors ?? {});
-
-  // Chrome sits above the viewport, which starts a drag on pointerdown.
-  const swallowPointer = (event: PointerEvent) => event.stopPropagation();
 
   return (
     <Show when={visible()}>
