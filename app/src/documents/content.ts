@@ -93,12 +93,22 @@ function csvToHtmlTable(content: string): string {
   return rowsToHtmlTable(rows);
 }
 
+/**
+ * Whether `content` is CSV text that needs converting to the stored table.
+ *
+ * The request's own content type is the better witness and wins where it says
+ * anything definite. The document's type is a fallback, for the callers that
+ * send CSV text without labelling it — creating a spreadsheet posts a JSON body
+ * whose content type describes the envelope, not the grid.
+ */
 function isCsvContent(contentType: string | null, documentType?: string | null): boolean {
-  if (typeof documentType === "string" && documentType.toLowerCase() === "csv") {
-    return true;
-  }
   const mimeType = getMimeType(contentType);
-  return CSV_TYPE_SET.has(mimeType ?? "");
+  if (mimeType && CSV_TYPE_SET.has(mimeType)) return true;
+  // `text/html` outranks the document's type. A csv document's stored content
+  // *is* HTML, so converting it again would treat the markup as CSV text and
+  // bury the whole table inside one escaped cell of a new one.
+  if (mimeType === "text/html") return false;
+  return typeof documentType === "string" && documentType.toLowerCase() === "csv";
 }
 
 export function toHtmlIfMarkdown(

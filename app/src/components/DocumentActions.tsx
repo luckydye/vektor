@@ -16,6 +16,7 @@ import { setCancelCount, setEditing, useEditor } from "#composeables/useEditor.t
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
@@ -51,6 +52,7 @@ export function DocumentActions(props: Props) {
   const { editing, saveStatus, hasChanges } = useEditor();
   const { documentContext, canUseDocumentEditor, hasPublishedVersion } =
     useDocumentContext();
+  const toast = useToast();
 
   const userCanEdit = createMemo(() => documentContext().userCanEdit);
   const userCanManageDocument = createMemo(() => canEdit(currentSpace()?.userRole));
@@ -343,6 +345,10 @@ export function DocumentActions(props: Props) {
             ...(source.type ? { type: source.type } : {}),
           });
           navigate(`/doc/${duplicate.slug}`);
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : t("Failed to duplicate document"),
+          );
         } finally {
           setIsDuplicating(false);
         }

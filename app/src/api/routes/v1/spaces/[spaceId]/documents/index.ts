@@ -10,6 +10,7 @@ import {
 } from "#db/api.ts";
 import {
   createDocument,
+  EmptyDocumentSlugError,
   getDocumentChildren,
   InvalidDocumentParentError,
   listAllDocumentsByCategories,
@@ -233,7 +234,10 @@ export const POST: ApiRouteHandler = (context) =>
       createdAt,
       updatedAt,
     ).catch((error) => {
-      if (error instanceof InvalidDocumentParentError) {
+      if (
+        error instanceof InvalidDocumentParentError ||
+        error instanceof EmptyDocumentSlugError
+      ) {
         throw badRequestResponse(error.message);
       }
       throw error;

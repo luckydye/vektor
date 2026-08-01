@@ -37,6 +37,7 @@ import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { readOnlyDocumentTypes } from "#documents/types.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
@@ -88,6 +89,7 @@ export function DocumentPageView(props: Props) {
 
   const { currentSpace } = useSpace();
   const { extensions } = useExtensions();
+  const toast = useToast();
   const { canUseDocumentEditor, setDocumentContext, resetDocumentContext } =
     useDocumentContext();
 
@@ -320,6 +322,9 @@ export function DocumentPageView(props: Props) {
     void [isDraft(), documentType(), currentSpace(), userCanEdit(), draftCategory()];
     void maybeAutoCreateDraft().catch((error) => {
       console.error("Failed to create draft document", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create the document",
+      );
     });
   });
 
