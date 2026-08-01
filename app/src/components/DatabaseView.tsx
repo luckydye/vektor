@@ -46,7 +46,7 @@ export function DatabaseView(props: Props) {
     addColumn,
     addColumns,
     deleteColumn,
-  } = useDatabaseRows(props.databaseDocumentId);
+  } = useDatabaseRows(() => props.databaseDocumentId);
 
   createEffect(() => setSchemaStr(props.schemaJson));
 
@@ -127,6 +127,16 @@ export function DatabaseView(props: Props) {
   // Row deletion
   const [deletingRow, setDeletingRow] = createSignal<string | null>(null);
   const [rowPopoverStyle, setRowPopoverStyle] = createSignal<JSX.CSSProperties>({});
+
+  // Navigating between two databases keeps this view mounted, so interaction
+  // state tied to the old one has to be dropped explicitly — a pending cell
+  // edit or an open confirmation targets a row that is no longer on screen.
+  createEffect(() => {
+    void props.databaseDocumentId;
+    setEditingCell(null);
+    setDeletingColumn(null);
+    setDeletingRow(null);
+  });
 
   function openDeleteRow(rowId: string, event: MouseEvent) {
     setDeletingRow(rowId);

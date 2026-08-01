@@ -32,6 +32,21 @@ export interface TableCell {
   value: string;
   /** The raw input behind it, when that is not the value itself. */
   source?: string;
+  /**
+   * How the cell is formatted, as the difference from the spreadsheet's default
+   * style — `{"font":{"b":true}}` and the like. Only the difference, because the
+   * full style is ~130 bytes of mostly defaults and there is one per cell.
+   * Opaque here; `#spreadsheet/csvDocument.ts` gives it meaning.
+   */
+  style?: Record<string, unknown>;
+}
+
+/** Sizes the grid does not derive from its contents. */
+export interface TableLayout {
+  /** Column widths in px by column index; `undefined` leaves the default. */
+  columnWidths?: (number | undefined)[];
+  /** Row heights in px by row index; `undefined` leaves the default. */
+  rowHeights?: (number | undefined)[];
 }
 
 function isTag(node: HtmlNode, name?: string): node is HtmlTagNode {
@@ -99,29 +114,81 @@ interface ReadOptions {
   collapseWhitespace?: boolean;
 }
 
-/** Rows of the first `<table>` in `html`, or null when there is none. */
-export function htmlTableToCells(
+function parsePixels(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/** A stored attribute that should hold JSON. Bad JSON is ignored, not thrown. */
+function parseJsonAttribute(
+  value: string | undefined,
+): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(decodeEntities(value));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The first `<table>` in `html`, cells and sizes, or null when there is none. */
+export function htmlTableToTable(
   html: string,
   options: ReadOptions = {},
-): TableCell[][] | null {
+): { cells: TableCell[][]; layout: TableLayout } | null {
   const table = findFirstTag(parseHtml(html), "table");
   if (!table) return null;
 
-  const rows = (table.body ?? []).flatMap((child) => {
+  const rowTags = (table.body ?? []).flatMap((child) => {
     if (isTag(child, "thead") || isTag(child, "tbody") || isTag(child, "tfoot")) {
       return childTags(child, ["tr"]);
     }
     return isTag(child, "tr") ? [child] : [];
   });
 
-  return rows.map((row) =>
+  const cells = rowTags.map((row) =>
     childTags(row, ["th", "td"]).map((cell) => {
       let value = decodeEntities(nodeText(cell));
       if (options.collapseWhitespace) value = value.replace(/\s+/g, " ").trim();
       const source = attributeValue(cell, "data-source");
-      return source === undefined ? { value } : { value, source: decodeEntities(source) };
+      const style = parseJsonAttribute(attributeValue(cell, "data-style"));
+      return {
+        value,
+        ...(source === undefined ? {} : { source: decodeEntities(source) }),
+        ...(style === undefined ? {} : { style }),
+      };
     }),
   );
+
+  const colgroup = findFirstTag(table.body ?? [], "colgroup");
+  const columnWidths = colgroup
+    ? childTags(colgroup, ["col"]).map((col) =>
+        parsePixels(attributeValue(col, "data-width")),
+      )
+    : undefined;
+  const rowHeights = rowTags.map((row) =>
+    parsePixels(attributeValue(row, "data-height")),
+  );
+
+  return {
+    cells,
+    layout: {
+      ...(columnWidths?.some((width) => width !== undefined) ? { columnWidths } : {}),
+      ...(rowHeights.some((height) => height !== undefined) ? { rowHeights } : {}),
+    },
+  };
+}
+
+/** Rows of the first `<table>` in `html`, or null when there is none. */
+export function htmlTableToCells(
+  html: string,
+  options: ReadOptions = {},
+): TableCell[][] | null {
+  return htmlTableToTable(html, options)?.cells ?? null;
 }
 
 function escapeCsvCell(value: string): string {
@@ -141,9 +208,23 @@ export function htmlTableToCsv(html: string, options: ReadOptions = {}): string 
 }
 
 function cellHtml(tag: "th" | "td", cell: TableCell): string {
-  const attributes =
-    cell.source === undefined ? "" : ` data-source="${escapeHtml(cell.source)}"`;
+  let attributes = "";
+  if (cell.source !== undefined) {
+    attributes += ` data-source="${escapeHtml(cell.source)}"`;
+  }
+  if (cell.style !== undefined && Object.keys(cell.style).length > 0) {
+    attributes += ` data-style="${escapeHtml(JSON.stringify(cell.style))}"`;
+  }
   return `<${tag}${attributes}>${escapeHtml(cell.value)}</${tag}>`;
+}
+
+function rowHtml(
+  tag: "th" | "td",
+  cells: TableCell[],
+  height: number | undefined,
+): string {
+  const attributes = height === undefined ? "" : ` data-height="${Math.round(height)}"`;
+  return `<tr${attributes}>${cells.map((cell) => cellHtml(tag, cell)).join("")}</tr>`;
 }
 
 /**
@@ -151,16 +232,31 @@ function cellHtml(tag: "th" | "td", cell: TableCell): string {
  * body. Empty input still produces a table, so a csv document always has one
  * for readers to find.
  */
-export function cellsToHtmlTable(rows: TableCell[][]): string {
+export function cellsToHtmlTable(rows: TableCell[][], layout: TableLayout = {}): string {
   const [header, ...body] = rows;
   if (!header) return "<table><tbody></tbody></table>";
 
-  const thead = `<thead><tr>${header.map((cell) => cellHtml("th", cell)).join("")}</tr></thead>`;
+  // Only when a width was actually set — an empty colgroup is noise, and every
+  // non-spreadsheet reader has to step over it.
+  const widths = layout.columnWidths;
+  const colgroup = widths?.some((width) => width !== undefined)
+    ? `<colgroup>${header
+        .map((_, index) => {
+          const width = widths[index];
+          return width === undefined
+            ? "<col>"
+            : `<col data-width="${Math.round(width)}">`;
+        })
+        .join("")}</colgroup>`
+    : "";
+
+  const heights = layout.rowHeights ?? [];
+  const thead = `<thead>${rowHtml("th", header, heights[0])}</thead>`;
   const tbody = `<tbody>${body
-    .map((row) => `<tr>${row.map((cell) => cellHtml("td", cell)).join("")}</tr>`)
+    .map((row, index) => rowHtml("td", row, heights[index + 1]))
     .join("")}</tbody>`;
 
-  return `<table>${thead}${tbody}</table>`;
+  return `<table>${colgroup}${thead}${tbody}</table>`;
 }
 
 /** `cellsToHtmlTable` for plain text rows, with no formulas to carry. */

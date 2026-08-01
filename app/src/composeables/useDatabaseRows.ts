@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js";
+import { type Accessor, createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
@@ -34,10 +34,15 @@ function parseSchema(raw: string | undefined): DatabaseSchema {
   }
 }
 
-export function useDatabaseRows(databaseDocumentId: string) {
+/**
+ * An accessor, not a string: the view stays mounted when navigating from one
+ * database document to another — only the prop changes — so a snapshotted id
+ * would keep the first database's rows in the query key forever.
+ */
+export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   const { currentSpaceId: spaceId } = useSpace();
   const queryClient = useQueryClient();
-  const queryKey = createMemo(() => ["database_rows", spaceId(), databaseDocumentId]);
+  const queryKey = createMemo(() => ["database_rows", spaceId(), databaseDocumentId()]);
 
   const { data, isPending: isLoading } = useQuery({
     queryKey,
@@ -45,11 +50,11 @@ export function useDatabaseRows(databaseDocumentId: string) {
       const id = spaceId();
       if (!id) throw new Error("No space ID");
       return await api.documents.get(id, {
-        parentId: databaseDocumentId,
+        parentId: databaseDocumentId(),
         limit: 500,
       });
     },
-    enabled: createMemo(() => !!spaceId()),
+    enabled: createMemo(() => !!spaceId() && !!databaseDocumentId()),
   });
 
   const rows = createMemo(() => data()?.documents ?? []);
@@ -81,7 +86,7 @@ export function useDatabaseRows(databaseDocumentId: string) {
       return await api.documents.post(id, {
         content: "<p></p>",
         type: "record",
-        parentId: databaseDocumentId,
+        parentId: databaseDocumentId(),
         properties: { ...properties, title },
       });
     },
@@ -121,7 +126,7 @@ export function useDatabaseRows(databaseDocumentId: string) {
       const id = spaceId();
       if (!id) throw new Error("No space ID");
       writeSchemaStr(JSON.stringify(newSchema));
-      await api.document.patch(id, databaseDocumentId, {
+      await api.document.patch(id, databaseDocumentId(), {
         properties: { _schema: { value: JSON.stringify(newSchema) } },
       });
     },

@@ -33,7 +33,7 @@ import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
 
 interface Props {
   title?: string;
-  headerImage?: string;
+  headerImage?: string | null;
 }
 
 export function DocumentActions(props: Props) {
