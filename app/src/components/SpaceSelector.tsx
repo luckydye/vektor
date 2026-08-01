@@ -1,5 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
-import homeIcon from "#assets/icons/home.svg?raw";
+import { createMemo, Index, Show } from "solid-js";
 import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
@@ -113,36 +112,45 @@ export function SpaceSelector(props: Props) {
             <div class="w-max min-w-(--trigger-width) opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
               <div class="max-h-[500px] origin-top scale-95 overflow-y-auto rounded-lg border border-neutral-100 bg-neutral-50 shadow-xl transition-all duration-150 group-[[enabled]]:scale-100">
                 <div class="flex flex-col gap-[4px] p-[4px]">
-                  <For each={props.spaces}>
+                  {/*
+                    `Index`, not `For`: the space list arrives rebuilt from the
+                    replica cache, so every row object is new by identity even
+                    when nothing about it changed. `For` keys on that identity
+                    and would tear down and re-create every row — logo icon and
+                    all — on each cache write. Rows here are positional and
+                    interchangeable, so keying on position reuses them and lets
+                    the fields update in place.
+                  */}
+                  <Index each={props.spaces}>
                     {(space) => (
                       <button
                         type="button"
                         onClick={(event) => {
-                          props.onInput?.(space.id);
-                          props.onSelect?.(space);
+                          props.onInput?.(space().id);
+                          props.onSelect?.(space());
                           dismissPopover(event.target);
                         }}
                         class="flex w-full items-center gap-2.5 rounded-md px-4xs py-4xs text-left transition-colors hover:bg-neutral-100"
-                        classList={{ "bg-primary-100": space.id === props.value }}
+                        classList={{ "bg-primary-100": space().id === props.value }}
                       >
                         <div
                           class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-sm"
-                          style={{ background: space.color || "#6366f1" }}
+                          style={{ background: space().color || "#6366f1" }}
                         >
                           <SpaceLogo
-                            logoSvg={space.logoSvg}
+                            logoSvg={space().logoSvg}
                             class="block object-contain"
                             fallbackClass="text-white [&>svg]:w-4 [&>svg]:h-4 [&>svg]:object-contain"
                           />
                         </div>
                         <div class="min-w-0 flex-1">
                           <div class="truncate font-medium text-foreground text-size-small">
-                            {space.name}
+                            {space().name}
                           </div>
                         </div>
                       </button>
                     )}
-                  </For>
+                  </Index>
 
                   <div class="mt-[4px] border-neutral-100 border-t pt-[4px]">
                     <button
@@ -175,7 +183,7 @@ export function SpaceSelector(props: Props) {
               event.stopPropagation();
               props.onCreateDoc?.();
             }}
-            class="px-5xs"
+            class="px-4xs"
           >
             <Icon name="new-document" />
           </Button>

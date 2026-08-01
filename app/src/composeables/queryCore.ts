@@ -40,6 +40,17 @@ export interface QueryEntry<T = unknown> {
   promise: Promise<T> | null;
   queryFn: (() => Promise<T>) | null;
   staleTime: number;
+  /**
+   * The external data subscription, held once for the whole entry.
+   *
+   * Every observer of a key passes an equivalent `subscribe` — the same reason
+   * they share one `queryFn` — and each one writes the source's data straight
+   * back into this entry. Held per observer, N observers turned one cache
+   * write into N identical `setQueryData` calls, and each of those notified
+   * all N again: a list rebuilt N times per write, for one change. The first
+   * observer opens it, the last one to leave closes it.
+   */
+  subscription: { dispose: () => void; observers: number } | null;
   updatedAt: number;
 }
 
@@ -187,6 +198,7 @@ export class QueryCache {
       promise: null,
       queryFn: null,
       staleTime: this.defaultOptions.staleTime ?? 0,
+      subscription: null,
       updatedAt: 0,
     };
 
