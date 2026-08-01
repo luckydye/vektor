@@ -173,6 +173,12 @@ body[data-revision] main {
   display: none;
 }
 
+/* The archived notice describes the live document, which is hidden while a
+   revision is on screen — and the revision banner owns the bottom slot. */
+body[data-revision] .archived-banner {
+  display: none;
+}
+
 document-view {
   max-width: 100%;
 

@@ -10,6 +10,7 @@ import {
   Switch,
 } from "solid-js";
 import { activityIcon } from "#assets/icons.ts";
+import { BottomBanner } from "#components/BottomBanner.tsx";
 import { useSpace } from "#composeables/useSpace.ts";
 import { AppView } from "./AppView.tsx";
 
@@ -34,9 +35,6 @@ export function RevisionView(props: Props) {
   const [viewingSuggestion, setViewingSuggestion] = createSignal(false);
   const [showingDiff, setShowingDiff] = createSignal(false);
   const [diffContent, setDiffContent] = createSignal("");
-  const [bannerStyle, setBannerStyle] = createSignal<{ left: string; width: string }>();
-  let viewRootEl: HTMLDivElement | undefined;
-  let bannerResizeObserver: ResizeObserver | null = null;
 
   // When viewing a diff the document element renders the inline redline instead
   // of the plain revision content; otherwise it renders the revision as-is.
@@ -95,33 +93,6 @@ export function RevisionView(props: Props) {
     window.dispatchEvent(new CustomEvent("revision:close"));
   }
 
-  function updateBannerPosition() {
-    const bounds = viewRootEl?.getBoundingClientRect();
-    if (!bounds) return;
-    setBannerStyle({
-      left: `${bounds.left}px`,
-      width: `${bounds.width}px`,
-    });
-  }
-
-  function observeBannerPosition() {
-    bannerResizeObserver?.disconnect();
-    updateBannerPosition();
-    if (!viewRootEl) return;
-    bannerResizeObserver = new ResizeObserver(updateBannerPosition);
-    bannerResizeObserver.observe(viewRootEl);
-  }
-
-  createEffect(() => {
-    if (viewingRevision()) {
-      // The root only exists once the banner has rendered, and Solid applies
-      // the render synchronously with the signal write above it.
-      observeBannerPosition();
-    } else {
-      bannerResizeObserver?.disconnect();
-    }
-  });
-
   async function handleRevisionDiff(event: Event) {
     const detail = (event as CustomEvent).detail;
     const spaceId = currentSpaceId();
@@ -146,14 +117,11 @@ export function RevisionView(props: Props) {
   }
 
   onMount(() => {
-    window.addEventListener("resize", updateBannerPosition);
     window.addEventListener("revision:view", handleRevisionView);
     window.addEventListener("revision:close", handleRevisionClose);
     window.addEventListener("revision:diff", handleRevisionDiff);
 
     onCleanup(() => {
-      bannerResizeObserver?.disconnect();
-      window.removeEventListener("resize", updateBannerPosition);
       window.removeEventListener("revision:view", handleRevisionView);
       window.removeEventListener("revision:close", handleRevisionClose);
       window.removeEventListener("revision:diff", handleRevisionDiff);
@@ -162,12 +130,9 @@ export function RevisionView(props: Props) {
 
   return (
     <Show when={viewingRevision()}>
-      <div ref={viewRootEl}>
+      <div>
         {/* Revision Disclaimer Banner */}
-        <div
-          class="pointer-events-none fixed bottom-4 z-60 flex justify-center px-4"
-          style={bannerStyle()}
-        >
+        <BottomBanner>
           <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
             <div class="flex min-w-0 flex-1 items-center gap-3">
               <div
@@ -214,7 +179,7 @@ export function RevisionView(props: Props) {
               Show published version
             </button>
           </div>
-        </div>
+        </BottomBanner>
 
         {/* App Revision View (diffs render as an inline redline via document-view) */}
         <Show

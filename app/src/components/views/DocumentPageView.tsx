@@ -14,6 +14,7 @@ import { Dynamic, Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { api } from "#api/client.ts";
 import { AppView } from "#components/AppView.tsx";
+import { BottomBanner } from "#components/BottomBanner.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
 import { CanvasView } from "#components/CanvasView.tsx";
 import { CsvView } from "#components/CsvView.tsx";
@@ -407,20 +408,20 @@ export function DocumentPageView(props: Props) {
               )}
             >
               <Show when={doc()?.archived}>
-                <div class="mx-4 border-yellow-400 border-l-4 bg-yellow-50 p-4 md:mx-10">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="space-y-2">
-                      <div class="font-semibold text-size-medium text-yellow-600">
+                <BottomBanner class="archived-banner">
+                  <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
+                    <div class="min-w-0">
+                      <p class="font-semibold text-size-medium text-yellow-900">
                         ⚠️ This document is archived
-                      </div>
-                      <p class="text-size-medium text-yellow-700">
+                      </p>
+                      <p class="my-0! text-size-small text-yellow-700">
                         This document has been archived and is no longer actively
                         maintained.
                       </p>
                     </div>
                     <RestoreButton documentId={doc()?.id as string} />
                   </div>
-                </div>
+                </BottomBanner>
               </Show>
 
               <Show when={isCanvas()}>
