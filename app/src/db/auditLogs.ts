@@ -6,31 +6,10 @@ import type { getSpaceDb } from "./db.ts";
 import { type AuditLog, auditLog } from "./schema.ts";
 
 /**
- * Types of audit events that can be logged
+ * Every event kind the audit log records.
  *
- * Document lifecycle events:
- * - create: Document is created
- * - save: Document content is saved
- * - suggest: Document content is saved as a suggested (non-current) revision
- * - publish: Document revision is published
- * - unpublish: Document is unpublished
- * - restore: Old revision is restored
- * - archive: Document is archived
- * - delete: Document is deleted
- * - view: Document is viewed
- * - comment: Comment is created on a document
- *
- * Document state events:
- * - lock: Document is locked (readonly)
- * - unlock: Document is unlocked
- *
- * Property events:
- * - property_update: Document property is created or updated
- * - property_delete: Document property is deleted
- *
- * Access control events:
- * - acl_grant: Permission is granted
- * - acl_revoke: Permission is revoked
+ * `save` is an edit to the current revision; `suggest` is one parked as a
+ * non-current revision awaiting review.
  */
 export type AuditEvent =
   | "view"
@@ -59,72 +38,17 @@ export const DOCUMENT_CONTRIBUTION_AUDIT_EVENTS: AuditEvent[] = [
 ];
 
 /**
- * Optional details that can be attached to audit log entries
- *
- * Common fields:
- * - ip: IP address of the user
- * - userAgent: User agent string
- * - referrer: HTTP referrer
- * - message: Human-readable message
- *
- * Property change fields (for property_update and property_delete events):
- * - propertyKey: The key of the property being changed (e.g., "title", "status")
- * - propertyType: The type of the property (optional)
- * - previousValue: The value before the change (undefined for new properties)
- * - newValue: The value after the change (for property_update only)
- *
- * @example Property update
- * ```ts
- * {
- *   propertyKey: "status",
- *   propertyType: "text",
- *   previousValue: "draft",
- *   newValue: "published"
- * }
- * ```
- *
- * @example Property creation
- * ```ts
- * {
- *   propertyKey: "author",
- *   previousValue: undefined, // No previous value for new properties
- *   newValue: "John Doe"
- * }
- * ```
- *
- * @example Property deletion
- * ```ts
- * {
- *   propertyKey: "obsolete-field",
- *   previousValue: "old value" // Captures what was deleted
- * }
- * ```
- *
- * Access control fields:
- * - permission: The permission being granted or revoked
- * - previousValue: The permission held before the change (undefined for a new grant)
- * - targetUserId / targetGroupId: Who the permission change applies to
- * - targetName: Display name of the target, captured at the time of the change so
- *   the entry stays readable after the member has been removed
- * - resourceType: What the permission applies to (space, document, feature, ...)
- * - resourceId: The id of that resource (the feature name for feature grants)
- *
- * @example Member invited to a space
- * ```ts
- * {
- *   permission: "editor",
- *   targetUserId: "usr_123",
- *   targetName: "Jane Doe",
- *   resourceType: "space"
- * }
- * ```
+ * Optional details attached to an audit log entry. Which fields are populated
+ * depends on the event; all of them are absent unless the event sets them.
  */
 export interface AuditDetails {
   ip?: string;
   userAgent?: string;
   referrer?: string;
   message?: string;
+  /** Value before the change; absent when the property or grant is new. */
   previousValue?: string;
+  /** Value after the change; absent on deletes. */
   newValue?: string;
   permission?: string;
   propertyKey?: string;
@@ -161,14 +85,8 @@ export interface CreateAuditLogParams {
 }
 
 /**
- * Maps audit events to sync scopes for automatic websocket sync
- *
- * When an audit event is created, if it has a sync scope, a websocket
- * event will be automatically sent to notify connected clients.
- *
- * Sync scopes:
- * - documents: Document changes (content, properties, state)
- * - acl: Access control changes
+ * Events that notify connected clients, and the topics they publish to.
+ * An event absent from this map is recorded without any websocket traffic.
  */
 const EVENT_TO_SYNC_TOPICS: Partial<Record<AuditEvent, (docId: string) => string[]>> = {
   save: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
@@ -208,38 +126,7 @@ const EVENT_TO_SYNC_TOPICS: Partial<Record<AuditEvent, (docId: string) => string
   acl_revoke: () => [realtimeTopics.acl],
 };
 
-/**
- * Create an audit log entry
- *
- * Automatically triggers websocket sync events for relevant event types.
- *
- * @example Logging a property update
- * ```ts
- * await createAuditLog(db, {
- *   docId: documentId,
- *   userId: user.id,
- *   event: "property_update",
- *   details: {
- *     propertyKey: "status",
- *     previousValue: "draft",
- *     newValue: "published"
- *   }
- * });
- * ```
- *
- * @example Logging a property deletion
- * ```ts
- * await createAuditLog(db, {
- *   docId: documentId,
- *   userId: user.id,
- *   event: "property_delete",
- *   details: {
- *     propertyKey: "obsolete-field",
- *     previousValue: "old value"
- *   }
- * });
- * ```
- */
+/** Record an audit entry, and sync it to clients if the event has topics. */
 export async function createAuditLog(
   db: Awaited<ReturnType<typeof getSpaceDb>>,
   params: CreateAuditLogParams,
@@ -259,7 +146,6 @@ export async function createAuditLog(
     throw new Error("Failed to create audit log entry");
   }
 
-  // Automatically trigger sync events for relevant audit events
   const syncTopics = EVENT_TO_SYNC_TOPICS[params.event]?.(params.docId);
   if (params.spaceId && syncTopics?.length) {
     sendSyncEvent(params.spaceId, ...syncTopics);

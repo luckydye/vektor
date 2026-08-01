@@ -42,7 +42,7 @@ const propertyTypes: SelectMenuItem[] = [
 
 export function DocumentProperties(props: Props) {
   const { categories } = useCategories();
-  const { document } = useDocument(props.documentId);
+  const { document } = useDocument(() => props.documentId);
   const { updateProperty, deleteProperty, properties: spaceProperties } = useProperties();
   const { members } = useMembers();
 

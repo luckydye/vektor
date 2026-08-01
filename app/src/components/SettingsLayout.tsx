@@ -21,8 +21,12 @@ type ATabsEl = HTMLElement & {
 
 export function SettingsLayout(props: Props) {
   let tabsEl: ATabsEl | undefined;
+  const initialIndex = Math.max(
+    props.tabs.findIndex((tab) => tab.id === props.initialTab),
+    0,
+  );
   const [ready, setReady] = createSignal(false);
-  const [selectedIndex, setSelectedIndex] = createSignal(0);
+  const [selectedIndex, setSelectedIndex] = createSignal(initialIndex);
 
   function animatePanel(index: number, direction: "next" | "previous") {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -66,12 +70,6 @@ export function SettingsLayout(props: Props) {
   onMount(async () => {
     await customElements.whenDefined("a-tabs");
     setReady(true);
-    // No `nextTick`: setting the signal renders synchronously in Solid, so the
-    // element exists by the time this line runs.
-    if (props.initialTab) {
-      const index = props.tabs.findIndex((t) => t.id === props.initialTab);
-      if (index > 0) tabsEl?.selectTabByIndex(index, false);
-    }
   });
 
   return (
@@ -103,8 +101,16 @@ export function SettingsLayout(props: Props) {
         <a-tabs ref={tabsEl} on:tab-selected={onTabSelected}>
           <a-tabs-list class="block overflow-clip py-4xs">
             <For each={props.tabs}>
-              {(tab) => (
-                <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+              {(tab, index) => (
+                // Marked up front instead of selected imperatively after mount:
+                // a-tabs reads this attribute in its own connectedCallback, and
+                // selecting afterwards races Lit's async attribute reflection —
+                // the deselect query (`a-tabs-tab[selected]`) would find nothing
+                // and leave the first tab selected alongside this one.
+                <a-tabs-tab
+                  attr:selected={index() === initialIndex ? "" : undefined}
+                  class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200"
+                >
                   <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
                     {tab.label}
                   </span>

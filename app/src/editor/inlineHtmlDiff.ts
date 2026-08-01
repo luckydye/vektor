@@ -46,10 +46,40 @@ function isTag(token: string): boolean {
 // a block boundary.
 const VOID_MEDIA_TAGS = new Set(["img", "hr"]);
 
+/** Tag name and direction of a tag token; null for comments and text. */
+function tagInfo(token: string): { name: string; closing: boolean } | null {
+  const match = token.match(/^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)/);
+  if (!match) return null;
+  return { name: match[2].toLowerCase(), closing: match[1] === "/" };
+}
+
 function isVoidMediaTag(token: string): boolean {
-  if (!token.startsWith("<") || token.startsWith("</")) return false;
-  const name = token.match(/^<([a-zA-Z0-9-]+)/)?.[1]?.toLowerCase();
-  return name !== undefined && VOID_MEDIA_TAGS.has(name);
+  const tag = tagInfo(token);
+  return tag !== null && !tag.closing && VOID_MEDIA_TAGS.has(tag.name);
+}
+
+/**
+ * Treat two opening tags of the same element as the same token even when their
+ * attributes differ. Structural tags are emitted verbatim, so diffing them by
+ * exact text would emit the removed *and* the added opening tag with only one
+ * closing tag between them — the element's siblings then nest inside the stray
+ * wrapper (a task item whose content lands inside its checkbox label). The
+ * revision's version of a matched tag wins, so the redline shows the current
+ * structure. Media tags keep exact comparison so a swapped image still shows as
+ * a change rather than silently rendering the new one.
+ */
+function tokensMatch(left: string, right: string): boolean {
+  if (left === right) return true;
+
+  const leftTag = tagInfo(left);
+  const rightTag = tagInfo(right);
+  if (!leftTag || !rightTag) return false;
+  if (leftTag.closing || rightTag.closing) return false;
+  if (VOID_MEDIA_TAGS.has(leftTag.name) || VOID_MEDIA_TAGS.has(rightTag.name)) {
+    return false;
+  }
+
+  return leftTag.name === rightTag.name;
 }
 
 /**
@@ -116,7 +146,9 @@ function renderChange(
  * than a source-level diff.
  */
 export function inlineHtmlDiff(baseHtml: string, revisionHtml: string): string {
-  const changes = diffArrays(tokenizeHtml(baseHtml), tokenizeHtml(revisionHtml));
+  const changes = diffArrays(tokenizeHtml(baseHtml), tokenizeHtml(revisionHtml), {
+    comparator: tokensMatch,
+  });
 
   let out = "";
   for (const change of changes) {

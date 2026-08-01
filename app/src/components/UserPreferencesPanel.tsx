@@ -69,11 +69,6 @@ const integrationProviderDetails: Record<
   },
 };
 
-const EMPTY_PANEL_CLASS =
-  "rounded-lg border border-dashed border-neutral-200 p-5 text-center text-neutral-500 text-size-small";
-const LOADING_PANEL_CLASS =
-  "rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small";
-
 export function UserPreferencesPanel(props: Props) {
   const [themePreference, setThemePreference] = createSignal<ThemePreference>("system");
   const currentUser = useUserProfile();
@@ -446,14 +441,18 @@ export function UserPreferencesPanel(props: Props) {
               <Show
                 when={currentSpace()?.id}
                 fallback={
-                  <div class={EMPTY_PANEL_CLASS}>
+                  <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
                     {t("Open a space to manage notifications.")}
                   </div>
                 }
               >
                 <Show
                   when={!isLoadingNotificationPreference()}
-                  fallback={<div class={LOADING_PANEL_CLASS}>{t("Loading...")}</div>}
+                  fallback={
+                    <div class="rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
+                      {t("Loading...")}
+                    </div>
+                  }
                 >
                   <div class="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-background p-3">
                     <div>
@@ -506,14 +505,18 @@ export function UserPreferencesPanel(props: Props) {
               <Show
                 when={currentSpace()?.id}
                 fallback={
-                  <div class={EMPTY_PANEL_CLASS}>
+                  <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
                     {t("Open a space to manage integrations.")}
                   </div>
                 }
               >
                 <Show
                   when={!isLoadingIntegrations()}
-                  fallback={<div class={LOADING_PANEL_CLASS}>{t("Loading...")}</div>}
+                  fallback={
+                    <div class="rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
+                      {t("Loading...")}
+                    </div>
+                  }
                 >
                   <div class="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
                     <For each={integrationCards()}>

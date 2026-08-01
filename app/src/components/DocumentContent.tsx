@@ -532,6 +532,7 @@ export function DocumentContent(props: Props) {
                 documentId={docId}
                 currentRev={documentData()?.currentRev}
                 editor={editor()}
+                documentView={documentViewEl()}
               />
               <CommentOverlays
                 comments={commentBubble()?.commentsForOverlays() ?? []}

@@ -124,11 +124,10 @@ import { createCamera } from "./view/camera.ts";
  * Everything the canvas needs from the page around it.
  *
  * The canvas is framework-free, so it cannot call `useSpace`, `useUserProfile`
- * or any other composable. Their resolved
- * values arrive here instead, set as properties on `<vektor-canvas>` by whatever
- * shell is hosting it. That keeps the dependency pointing one way — the shell
- * knows about the canvas, never the reverse — which is what lets the canvas
- * outlive the app's framework.
+ * or any other composable. Their resolved values arrive here instead, set as
+ * properties on `<vektor-canvas>` by whatever shell is hosting it. That keeps
+ * the dependency pointing one way — the shell knows about the canvas, never the
+ * reverse — which is what lets the canvas outlive the app's framework.
  */
 export interface CanvasHost {
   readonly spaceId: string;
@@ -144,7 +143,6 @@ export interface CanvasHost {
   readonly cursorColor: string;
   /** Resolved from the space role — whether this user may modify the canvas. */
   readonly canEdit: boolean;
-  /** The user's chosen cursor companion, or null for none. */
   readonly cursorCompanion: string | null;
   /** The document's `gridtype` property. */
   readonly gridType: string | undefined;
@@ -158,17 +156,11 @@ export interface CanvasHost {
   save(snapshot: unknown): Promise<unknown>;
   error(message: string): void;
   presenceChanged(states: CanvasPresenceState[]): void;
-  /** Called when the controller wants the host to re-render its template. */
   requestRender(): void;
 }
 
-/**
- * Both public types are read off the factory rather than declared beside it.
- *
- * `CanvasView` in particular listed every member the template reads — a second
- * copy of the view object below, in the same order, that had to be edited twice
- * for every change and whose only failure mode was drifting silently.
- */
+// Derived from the factory, not declared: a hand-written `CanvasView` is a
+// second copy of the view object below that drifts from it silently.
 export type CanvasController = ReturnType<typeof createCanvasController>;
 export type CanvasView = CanvasController["view"];
 
@@ -264,41 +256,25 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     tools: host.tools,
   });
 
-  // Built-in engine tools plus element-contributed tools
-  // collected from the registry, so adding an element type surfaces its tool
-  // without editing the host.
+  // Element tools come from the registry, so adding an element type surfaces
+  // its tool without editing the host.
   const CANVAS_TOOLS: ToolDef[] = [
     { id: "select", label: "Select", shortcut: "V", icon: iconMarkup("select-tool") },
     { id: "draw", label: "Draw", shortcut: "D", icon: iconMarkup("pen-tool") },
     ...extensionManager.elementTools(),
   ];
 
-  // Locked elements are intentionally excluded from normal hit testing. Keep a
-  // separate hover target so their small unlock control remains reachable.
-
-  // Section chrome is painted on the canvas. This transient input only appears
-  // while its title is actively being edited.
-
-  // Live screen-space rectangle while drag-selecting; null when not marqueeing.
-
   // Alignment guides shown while dragging shapes; empty when no edge/center of
   // the dragged group is snapped to another shape. Drawn on the ink overlay.
   let activeSnapGuides: SnapGuide[] = [];
-  // True only while a pan drag is in progress, so the viewport shows the grabbing
-  // hand during panning and a resting cursor otherwise.
 
-  // Active swatch per color-capable element type (used when creating new shapes),
-  // seeded from each extension's palette. Recoloring a selected shape writes here
-  // too. Data-driven from the registry — no per-type refs.
   const colorPalettes = extensionManager.colorPalettes();
 
   // --- state -------------------------------------------------------------
-  // Everything a render reads. Values are replaced rather than mutated, so the
-  // store can compare by identity; see `state.ts` for why invalidation is coarse.
   /**
-   * Plain state. Writing a field does nothing on its own — exactly like
-   * writing a local — and the entry points that change it ask for a frame
-   * when they are done.
+   * Everything a render reads. Writing a field does nothing on its own —
+   * exactly like writing a local — and the entry points that change it ask for
+   * a frame when they are done.
    */
   const state = {
     shapes: [] as CanvasShape[],
@@ -317,9 +293,8 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     // grabbing hand during panning and a resting cursor otherwise.
     isPanning: false,
     activeTool: "select" as CanvasTool,
-    // Active swatch per color-capable element type (used when creating new
-    // shapes), seeded from each extension's palette. Recoloring a selected shape
-    // writes here too. Data-driven from the registry — no per-type fields.
+    // Active swatch per color-capable element type, seeded from each
+    // extension's palette. Recoloring a selected shape writes here too.
     activeColors: Object.fromEntries(
       colorPalettes.map((entry) => [entry.type, entry.palette[0]]),
     ) as Record<string, string>,
@@ -350,16 +325,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   const watch = createWatchers();
   const watchPost = createWatchers();
 
-  // Backdrop grid style, driven by the document's "gridtype" property. "grid"
-  // draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
+  // "grid" draws ruled lines, "dots" a dot grid, "clean" leaves it empty.
   type GridType = "grid" | "clean" | "dots";
 
   let localPointer: { x: number; y: number } | null = null;
-
-  // The explicit cursor-color preference overrides the automatic avatar color.
-  // `null` means "automatic", so the presence color matches the user's avatar.
-  // Singleton extension-owned editor session. The host only mounts the supplied
-  // tag/props and invokes its finish callback.
 
   const ydoc = host.ydoc;
   const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
@@ -393,8 +362,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
   };
   let activeToolPointerGesture: ActiveToolPointerGesture | null = null;
   let activeFreehandStroke: FreehandStroke | null = null;
-  // Screen-space position of the long-press context menu, null when hidden.
-
   // World-space insertion point captured when the context menu was opened.
   // A ref, because `document/clipboard.ts` consumes and clears it too.
   const contextMenuInsertWorld: { current: { x: number; y: number } | null } = {
@@ -489,17 +456,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
         getAvatarColor(presence.user.id),
     }));
 
-  // Remote pointers arrive as discrete presence updates; a CSS transition on the
-  // cursor smooths the jumps. While the local camera moves, the transition is
-  // suspended so cursors stay locked to the canvas instead of lagging behind the
-  // pan/zoom.
-
   let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Presence carries the cursor color, so re-announce when the preference changes.
-  // Everything the selection model needs to answer a question. Rebuilt per read
-  // so it always reflects the current maps and ids; the computeds below cache the
-  // answers, not this.
+  // Rebuilt per read so it always reflects the current maps and ids; the
+  // computeds below cache the answers, not this.
   function selectionContext(): SelectionContext {
     return {
       shapesById: shapesById(),
@@ -1726,9 +1686,8 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     const shapeIds = new Set(state.selectedShapeIds);
     const strokeIds = new Set(state.selectedStrokeIds);
 
-    // A container cascades locking to every element currently
-    // inside its bounds becomes locked with it. Include all contents, including
-    // elements that are already locked or user-scoped to someone else.
+    // A container cascades locking to everything inside its bounds, including
+    // elements already locked or user-scoped to someone else.
     for (const id of state.selectedShapeIds) {
       const container = shapesById().get(id);
       if (!isContainerShape(container) || !container) continue;
@@ -2088,7 +2047,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     renderInk();
   }
 
-  // Hit-tests canvas-rendered (non-GIF) image shapes in reverse paint order.
   // Shared geometry the canvas-painted extensions' hitTest hooks need. The host
   // keeps the z-order (below) and calls ext.hitTest per shape.
   const hitTestHelpers: CanvasHitTestHelpers = {
@@ -2416,7 +2374,7 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     }
 
     if (dragState.type === "pan") {
-      // Captured so the narrowing survives the closures below.
+      // `const drag` captured so the narrowing survives the closures below.
       const drag = dragState;
       state.camera = panCameraByScreenDelta({
         camera: drag.startCamera,
@@ -2430,7 +2388,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     }
 
     if (dragState.type === "marquee") {
-      // Captured so the narrowing survives the closures below.
       const drag = dragState;
       const rect: Rect = {
         x: Math.min(drag.startScreen.x, point.x),
@@ -2446,7 +2403,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
     const world = screenToWorld(point);
     if (dragState.type === "resize") {
-      // Captured so the narrowing survives the closures below.
       const drag = dragState;
       const shape = shapesById().get(drag.shapeId);
       if (!shape || !canMoveShape(shape)) return;
@@ -2482,7 +2438,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     }
 
     if (dragState.type === "selection-scale") {
-      // Captured so the narrowing survives the closures below.
       const drag = dragState;
       const resized = resizeRotatedShapeFromBottomRight({
         fixedTopLeft: drag.origin,
@@ -2531,7 +2486,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     }
 
     if (dragState.type === "rotate") {
-      // Captured so the narrowing survives the closures below.
       const drag = dragState;
       const shape = shapesById().get(drag.shapeId);
       if (!shape || !canMoveShape(shape)) return;
@@ -2542,7 +2496,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     }
 
     if (dragState.type === "stroke-resize") {
-      // Captured so the narrowing survives the closures below.
       const drag = dragState;
       const stroke = strokesById().get(drag.strokeId);
       if (!stroke || !canMoveStroke(stroke)) return;
@@ -2568,7 +2521,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     }
 
     if (dragState.type === "stroke-rotate") {
-      // Captured so the narrowing survives the closures below.
       const drag = dragState;
       const stroke = strokesById().get(drag.strokeId);
       if (!stroke || !canMoveStroke(stroke)) return;
@@ -2708,7 +2660,6 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
         updateShapeFrame(dragState.shapeId, dragState.initial);
       }
     } else if (dragState?.type === "selection-scale") {
-      // Captured so the narrowing survives the transaction closure.
       const drag = dragState;
       ydoc.transact(() => {
         for (const shape of drag.shapes) {
@@ -2922,9 +2873,9 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     if (key === "f") fitView();
   }
 
-  // Inline document editing ends as soon as the card leaves the (single)
-  // selection — clicking the canvas, selecting another shape, or deleting the
-  // card all funnel through here and tear the editor (and its presence) down.
+  // Moving a card changes updatedAt and refreshes the shapes array, so watch a
+  // stable key of the actual preview inputs instead — visual edits then never
+  // cause preview work. The loaders remain responsible for caching.
   const extensionPreparationKey = () =>
     state.shapes
       .map((shape) => {
@@ -2936,17 +2887,12 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       .sort()
       .join("\u001f");
 
-  // Moving a card changes updatedAt and refreshes the shapes array. Watch a
-  // stable key of the actual preview inputs instead, so those visual edits never
-  // cause preview work. The loaders themselves remain responsible for caching.
   // --- reactions ---------------------------------------------------------
   /**
-   * What used to be sixteen `watch` calls, as one ordered pass.
-   *
-   * Each entry fires when the value it is handed differs from the previous flush.
-   * Reading them top to bottom is the whole point: with `watch` the order between
-   * two reactions on the same value was an artefact of declaration order buried
-   * three thousand lines apart, and here it is the list.
+   * Each entry fires when the value it is handed differs from the previous
+   * flush. The order they appear in is the order they run in — that is the
+   * point of the single pass, rather than reactions declared far apart whose
+   * relative order is an accident of where they sit in the file.
    */
   function runReactions(): void {
     watch("cursorColor", host.cursorColor, () => updatePresence());
@@ -3002,19 +2948,16 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       { immediate: true },
     );
 
-    // Drawn every frame rather than watched. The selection overlay is part of
-    // painting, and four reactions used to exist only to ask for it — two of
-    // which fired on every frame anyway, because the arrays they compared were
-    // freshly built on each read.
+    // Drawn every frame rather than watched: the selection overlay is part of
+    // painting, and the arrays a watch would compare are rebuilt on each read,
+    // so it would fire every frame anyway.
     renderSelections();
   }
 
   /**
-   * Reactions that need the DOM to already show the new state.
-   *
-   * The canvas layers are drawn from measured element geometry, so running
-   * them before the template is patched would paint against the previous
-   * frame's layout.
+   * Reactions that need the DOM to already show the new state: the canvas
+   * layers are drawn from measured element geometry, so running them before the
+   * template is patched would paint against the previous frame's layout.
    */
   function runPostRenderReactions(): void {
     watchPost("transform", transform(), () => dom.canvasToolbar?.reposition());
@@ -3036,11 +2979,10 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
   // --- lifecycle ---------------------------------------------------------
   /**
-   * Input handled on `window` rather than on the element.
-   *
-   * A drag has to keep tracking once the pointer leaves the canvas, and the
-   * keyboard has no position at all. These sit outside the host, so the host's
-   * own input listener never sees them and each one asks for a frame itself.
+   * Input handled on `window` rather than on the element: a drag has to keep
+   * tracking once the pointer leaves the canvas, and the keyboard has no
+   * position at all. The host's own input listener never sees these, so each
+   * one asks for a frame itself.
    */
   const windowHandlers = (
     [
@@ -3161,19 +3103,14 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
 
   // --- view --------------------------------------------------------------
   /**
-   * Everything the template is allowed to touch.
-   *
-   * An explicit surface rather than handing the template the closure: it is the
-   * only place that lists what rendering actually depends on, and it is what
-   * makes the template a module instead of three thousand lines of the same file.
+   * Everything the template is allowed to touch — an explicit surface rather
+   * than the whole closure, so this list is what rendering depends on, and the
+   * template can live in its own module.
    */
   const view = {
     // state
-    /**
-     * Read wholesale rather than through one forwarding getter per field. The
-     * proxy is already the live object, and a getter list has to be extended
-     * by hand every time the state gains a field.
-     */
+    // Read wholesale: the proxy is already the live object, and a per-field
+    // getter list has to be extended by hand every time state gains a field.
     get state(): Readonly<typeof state> {
       return state;
     },
@@ -3279,18 +3216,12 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
     /** The live view model the template reads. */
     view,
     mount,
-    /**
-     * Marks the canvas dirty.
-     *
-     * For host properties: they live on the element rather than in the state
-     * proxy, so writing one schedules nothing on its own.
-     */
+    /** Marks the canvas dirty — host properties live outside the state proxy,
+     * so writing one schedules nothing on its own. */
     invalidate,
-    /** Runs the reactions that must observe the pre-render state, then renders. */
     flush() {
       runReactions();
     },
-    /** Runs the reactions that need the DOM to already reflect the new state. */
     afterRender() {
       runPostRenderReactions();
     },

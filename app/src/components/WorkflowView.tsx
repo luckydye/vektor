@@ -45,13 +45,6 @@ type ATabsEl = HTMLElement & {
 
 const WORKFLOW_RUNS_PAGE_SIZE = 10;
 
-const TAB_CLASS =
-  "inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100";
-const TAB_LABEL_CLASS =
-  "inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors";
-const OUTPUT_LINK_CLASS =
-  "inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200";
-
 const statusBadgeClass: Record<string, string> = {
   pending: "bg-neutral-100 text-neutral-500",
   running: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400",
@@ -566,15 +559,21 @@ export function WorkflowView(props: Props) {
             on:tab-selected={handleWorkflowTabSelected}
           >
             <a-tabs-list class="block overflow-clip py-4xs">
-              <a-tabs-tab class={TAB_CLASS}>
-                <span class={TAB_LABEL_CLASS}>Results</span>
+              <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+                <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+                  Results
+                </span>
               </a-tabs-tab>
-              <a-tabs-tab class={TAB_CLASS}>
-                <span class={TAB_LABEL_CLASS}>Run Details</span>
+              <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+                <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+                  Run Details
+                </span>
               </a-tabs-tab>
               {/* On desktop the history lives in the sidebar instead of a tab. */}
-              <a-tabs-tab class={`lg:hidden ${TAB_CLASS}`}>
-                <span class={TAB_LABEL_CLASS}>History</span>
+              <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 lg:hidden [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+                <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+                  History
+                </span>
               </a-tabs-tab>
             </a-tabs-list>
 
@@ -692,7 +691,7 @@ export function WorkflowView(props: Props) {
                           href={artifact().url}
                           target="_blank"
                           rel="noreferrer"
-                          class={OUTPUT_LINK_CLASS}
+                          class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
                         >
                           <Icon class="h-4 w-4 text-neutral-400" name="download" />
                           Result JSON
@@ -702,7 +701,10 @@ export function WorkflowView(props: Props) {
 
                     {/* Document link */}
                     <Show when={outputDocumentId() && outputDocumentHref()}>
-                      <a href={outputDocumentHref() as string} class={OUTPUT_LINK_CLASS}>
+                      <a
+                        href={outputDocumentHref() as string}
+                        class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
+                      >
                         <Icon class="h-4 w-4 text-neutral-400" name="document" />
                         {outputDocumentTitle() ?? "Open document"}
                       </a>
@@ -714,7 +716,7 @@ export function WorkflowView(props: Props) {
                         href={selectedRunFileUrl() as string}
                         target="_blank"
                         rel="noreferrer"
-                        class={OUTPUT_LINK_CLASS}
+                        class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
                       >
                         <Icon class="h-4 w-4 text-neutral-400" name="file-attachment" />
                         {selectedRunFileName()}

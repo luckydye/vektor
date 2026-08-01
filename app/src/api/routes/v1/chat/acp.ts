@@ -19,9 +19,7 @@ import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
-// ---------------------------------------------------------------------------
 // JSON-RPC 2.0 types
-// ---------------------------------------------------------------------------
 
 type AcpJsonRpcRequest = {
   jsonrpc: "2.0";
@@ -135,23 +133,17 @@ async function hydrateMessageImages(
   );
 }
 
-// ---------------------------------------------------------------------------
 // Agent run types
-// ---------------------------------------------------------------------------
 
 type AgentRunResult = Awaited<ReturnType<typeof runAgentInWorker>>;
 
 /**
- * A live agent turn that persists on the server independently of any client
- * HTTP connection.  When a streaming request arrives the server looks up an
- * existing turn by key before starting a new one.  If the client disconnects
- * mid-turn (page reload, network blip, etc.) the agent keeps running and any
- * new request with the same key re-attaches to the in-progress turn and
- * replays all events emitted so far before switching to live delivery.
- *
- * Completed turns are kept for ACTIVE_TURN_RETENTION_MS so a reconnect that
- * arrives just after the agent finishes can still receive the final result
- * without re-running the agent.
+ * A live agent turn, owned by the server rather than by any client connection.
+ * A disconnect mid-turn (reload, network blip) does not stop the agent: the
+ * next request with the same key re-attaches, replays the events so far, then
+ * switches to live delivery. Completed turns linger for
+ * ACTIVE_TURN_RETENTION_MS so a reconnect just after the agent finishes still
+ * gets the result instead of re-running it.
  */
 type ActiveChatTurn = {
   /** All events emitted so far; replayed to late-joining clients. */
@@ -167,9 +159,7 @@ type ActiveChatTurn = {
   abort: () => void;
 };
 
-// ---------------------------------------------------------------------------
 // Turn registry
-// ---------------------------------------------------------------------------
 
 /** Keyed by `spaceId:userId:chatId`. */
 const activeChatTurns = new Map<string, ActiveChatTurn>();
@@ -189,9 +179,8 @@ function getActiveTurnKey(options: {
 }
 
 /**
- * Schedules removal of a completed turn from the in-memory map.  Uses
- * `unref()` when available (Node.js) so the timer does not prevent process
- * exit during testing.
+ * Schedules removal of a completed turn from the in-memory map. `unref()`s the
+ * timer where available so it cannot hold the process open under test.
  */
 function scheduleActiveTurnCleanup(key: string, turn: ActiveChatTurn) {
   const timer = setTimeout(() => {
@@ -212,9 +201,7 @@ function emitTurnEvent(turn: ActiveChatTurn, event: AgentEvent) {
   }
 }
 
-// ---------------------------------------------------------------------------
 // ACP helpers
-// ---------------------------------------------------------------------------
 
 function tryParseJson(s: string): unknown {
   try {
@@ -250,27 +237,17 @@ function getToolKind(toolName: string): string {
   return "other";
 }
 
-// ---------------------------------------------------------------------------
 // Session persistence helpers
-// ---------------------------------------------------------------------------
 
 /**
- * Reconstructs the display message sequence for a completed turn from its
- * ordered event stream, preserving the exact interleaving the client saw
- * while streaming:
+ * Rebuilds a completed turn's display messages from its event stream, in the
+ * order the client saw them stream:
  *
  *   pre-tool text (assistant) → tool result → post-tool text (assistant) → …
  *
- * - `text` events are accumulated into assistant messages, flushing each time
- *   a tool boundary is crossed so pre- and post-tool text appear as separate
- *   bubbles in the correct order.
- * - `tool_call` events flush accumulated text and are saved as hidden reference
- *   messages so `formatBashResultPreview` can reconstruct `$ cmd` after reload.
- * - `tool_result` events are saved as visible tool messages.
- * - `thinking` and `status` events are transient UI-only and not persisted.
- *
- * If no text was emitted at all, `fallbackContent` is used as a final
- * assistant message so the turn always has at least one visible response.
+ * Text is accumulated and flushed at each tool boundary, so pre- and post-tool
+ * text stay separate bubbles. `fallbackContent` stands in when the turn emitted
+ * no text at all, so it always has one visible response.
  */
 function createTurnMessagesFromEvents(
   events: AgentEvent[],
@@ -326,13 +303,6 @@ function createTurnMessagesFromEvents(
   return messages;
 }
 
-/**
- * Appends the current turn's messages to the session log and updates the
- * conversation history.  The message list is built entirely from server-side
- * data — the user message and attachment metadata come from the request
- * payload, tool messages come from ACP events, and the assistant message comes
- * from the agent result.
- */
 /**
  * Persists the user message and every displayable event received before a turn
  * was stopped. The assistant history must still end with an assistant message,
@@ -451,9 +421,7 @@ async function persistCompletedChatTurn(options: {
   });
 }
 
-// ---------------------------------------------------------------------------
 // SSE streaming
-// ---------------------------------------------------------------------------
 
 /** Sends a JSON-RPC `session/update` notification over SSE. */
 function sendUpdate(
@@ -465,15 +433,11 @@ function sendUpdate(
 }
 
 /**
- * Creates an SSE response that streams ACP `session/update` notifications from
- * `turn` to the caller.
+ * SSE stream of `turn`'s `session/update` notifications: buffered events first
+ * if it already finished, otherwise live until it does.
  *
- * If the turn is already complete the buffered events are flushed immediately.
- * If it is still running the caller subscribes as a listener and receives
- * events in real-time until the turn finishes.
- *
- * Cancelling the stream (client disconnect) does NOT abort the agent; the
- * turn stays alive so the next request can reconnect.
+ * Cancelling the stream (client disconnect) does NOT abort the agent; the turn
+ * stays alive so the next request can reconnect.
  */
 function createStreamingResponse(
   turn: ActiveChatTurn,
@@ -628,9 +592,7 @@ function createStreamingResponse(
   );
 }
 
-// ---------------------------------------------------------------------------
 // Turn management
-// ---------------------------------------------------------------------------
 
 /**
  * Returns the existing in-progress (or recently completed) turn for the given
@@ -760,9 +722,7 @@ function getOrStartActiveChatTurn(options: {
   return turn;
 }
 
-// ---------------------------------------------------------------------------
 // POST handler
-// ---------------------------------------------------------------------------
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
@@ -776,9 +736,6 @@ export const POST: ApiRouteHandler = (context) =>
       const requestId = body.id ?? null;
       const params = (body.params ?? {}) as Record<string, unknown>;
 
-      // -----------------------------------------------------------------------
-      // session/prompt — start or resume a streaming agent turn
-      // -----------------------------------------------------------------------
       if (body.method === "session/prompt") {
         const sessionId = params.sessionId;
         const spaceId = params.spaceId;
@@ -946,9 +903,6 @@ export const POST: ApiRouteHandler = (context) =>
         return createStreamingResponse(turn, requestId, sessionId);
       }
 
-      // -----------------------------------------------------------------------
-      // session/cancel — abort an active turn
-      // -----------------------------------------------------------------------
       if (body.method === "session/cancel") {
         const sessionId = params.sessionId;
         const spaceId = params.spaceId;

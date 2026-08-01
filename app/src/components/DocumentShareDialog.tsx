@@ -30,13 +30,6 @@ type ATabsEl = HTMLElement & {
 type Scope = "document" | "category" | "space";
 type DocumentPermissionResource = "document" | "document_tree";
 
-const TAB_CLASS =
-  "inline-flex items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100";
-const TAB_LABEL_CLASS =
-  "inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors";
-const FIELD_CLASS =
-  "min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400";
-
 function roleBadgeClass(role: string) {
   const map: Record<string, string> = {
     owner: "bg-purple-100 text-purple-700",
@@ -374,7 +367,7 @@ export function DocumentShareDialog(props: Props) {
         type="email"
         required
         placeholder="person@example.com"
-        class={FIELD_CLASS}
+        class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
       />
       <select
         value={newMemberRole()}
@@ -415,14 +408,20 @@ export function DocumentShareDialog(props: Props) {
     >
       <a-tabs ref={tabsEl as never} class="block" on:tab-selected={onTabSelected}>
         <a-tabs-list class="block overflow-x-auto px-4 pt-4xs pb-2xs">
-          <a-tabs-tab class={TAB_CLASS}>
-            <span class={TAB_LABEL_CLASS}>This document</span>
+          <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+            <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+              This document
+            </span>
           </a-tabs-tab>
-          <a-tabs-tab class={TAB_CLASS}>
-            <span class={TAB_LABEL_CLASS}>Category</span>
+          <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+            <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+              Category
+            </span>
           </a-tabs-tab>
-          <a-tabs-tab class={TAB_CLASS}>
-            <span class={TAB_LABEL_CLASS}>Entire space</span>
+          <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+            <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+              Entire space
+            </span>
           </a-tabs-tab>
         </a-tabs-list>
 

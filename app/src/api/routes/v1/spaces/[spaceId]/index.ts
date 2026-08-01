@@ -11,7 +11,7 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { deleteSpace, getSpace, updateSpace } from "#db/spaces.ts";
+import { deleteSpace, getSpace, getUserSpaceRole, updateSpace } from "#db/spaces.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
@@ -20,7 +20,8 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     await verifyResourceAccess(spaceId, user.id);
     const space = await getSpace(spaceId);
-    return jsonResponse(space);
+    if (!space) return jsonResponse(space);
+    return jsonResponse({ ...space, userRole: await getUserSpaceRole(space, user.id) });
   }, "Failed to get space");
 
 export const PATCH: ApiRouteHandler = (context) =>
@@ -94,7 +95,14 @@ export const PATCH: ApiRouteHandler = (context) =>
         hasPreferences ? (preferences as Record<string, string>) : undefined,
       );
 
-      return jsonResponse(updated);
+      if (!updated) {
+        throw badRequestResponse("Space not found");
+      }
+
+      return jsonResponse({
+        ...updated,
+        userRole: await getUserSpaceRole(updated, user.id),
+      });
     },
     {
       fallbackMessage: "Failed to update space",

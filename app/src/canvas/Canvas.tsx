@@ -49,7 +49,7 @@ export function Canvas(props: Props) {
 
   const toast = useToast();
   const { document: documentData, saveDocument } = useDocument(
-    props.documentId,
+    () => props.documentId,
     "canvas",
   );
   const { currentSpace, spaces } = useSpace();

@@ -276,7 +276,7 @@ export function CommentOverlays(props: Props) {
                 )}
               </For>
               <Show when={overlay.participants.length > MAX_VISIBLE_AVATARS}>
-                <span class="absolute -right-1 -bottom-1 flex h-6 min-w-6 items-center justify-center rounded-full border border-neutral-200 bg-white px-1 font-semibold text-neutral-700 text-size-extra-small shadow-sm">
+                <span class="absolute -right-1 -bottom-1 flex h-6 min-w-6 items-center justify-center rounded-full border border-neutral-200 bg-background px-1 font-semibold text-neutral-700 text-size-extra-small shadow-sm">
                   +{overlay.participants.length - MAX_VISIBLE_AVATARS}
                 </span>
               </Show>

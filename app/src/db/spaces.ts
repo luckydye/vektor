@@ -204,6 +204,36 @@ export async function listAllSpaces(): Promise<Space[]> {
   return spaces.filter((space): space is Space => space !== null);
 }
 
+/**
+ * The user's space-wide role, or undefined when they hold no space-wide grant.
+ *
+ * Every response that carries a `Space` to the client must set `userRole` —
+ * the client caches spaces by id, so a response that omits it overwrites the
+ * role the listing established and locks the user out of role-gated UI.
+ */
+export async function getUserSpaceRole(
+  space: Space,
+  userId: string,
+): Promise<string | undefined> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) return "owner";
+  if (space.createdBy === userId) return "owner";
+
+  try {
+    const userGroups = await getUserGroups(userId);
+    const permissions = await listUserPermissions(
+      space.id,
+      userId,
+      userGroups,
+      ResourceType.SPACE,
+    );
+    return permissions.find(
+      (p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id,
+    )?.permission;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function listUserSpaces(userId: string): Promise<Space[]> {
   const allSpaces = await listAllSpaces();
 

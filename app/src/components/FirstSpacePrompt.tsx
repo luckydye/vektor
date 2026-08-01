@@ -4,9 +4,6 @@ import { slugify } from "#utils/utils.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 
-const FIELD_CLASS =
-  "w-full rounded-md border border-neutral-100 px-4 py-2 focus-ring focus:border-transparent";
-
 export function FirstSpacePrompt() {
   const [showPrompt, setShowPrompt] = createSignal(false);
   const [spaceName, setSpaceName] = createSignal("");
@@ -129,7 +126,7 @@ export function FirstSpacePrompt() {
                 type="text"
                 required
                 placeholder="Engineering, Product, Design ..."
-                class={FIELD_CLASS}
+                class="focus-ring w-full rounded-md border border-neutral-100 px-4 py-2 focus:border-transparent"
                 disabled={isCreating()}
               />
             </div>
@@ -149,7 +146,7 @@ export function FirstSpacePrompt() {
                 required
                 placeholder="engineering"
                 pattern="[a-z0-9-]+"
-                class={FIELD_CLASS}
+                class="focus-ring w-full rounded-md border border-neutral-100 px-4 py-2 focus:border-transparent"
                 disabled={isCreating()}
               />
               <p class="mt-1 text-neutral text-size-small">
@@ -200,7 +197,7 @@ export function FirstSpacePrompt() {
                   accept=".svg,image/svg+xml"
                   onChange={(event) => void handleLogoUpload(event)}
                   disabled={isCreating()}
-                  class={FIELD_CLASS}
+                  class="focus-ring w-full rounded-md border border-neutral-100 px-4 py-2 focus:border-transparent"
                 />
                 <Show when={logoSvg()}>
                   <div class="flex items-center gap-2 rounded-md border border-neutral-100 bg-neutral-300 p-2">

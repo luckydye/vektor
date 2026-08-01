@@ -36,12 +36,25 @@ interface Props {
   documentId: string;
   currentRev?: number;
   editor?: Editor;
+  /**
+   * The `<document-view>` the add bubble tracks. Hover is scoped to this
+   * element, so anything stacked in front of it (header actions, docked
+   * panels, dialogs) receives the pointer instead and the bubble stays away.
+   */
+  documentView?: HTMLElement | null;
   ref?: (handle: CommentBubbleHandle) => void;
 }
 
 const EDGE_THRESHOLD_PX = 60;
 const COMMENT_BUBBLE_PROXIMITY_PX = 20;
 const THREAD_GAP_PX = 8;
+const ADD_BUBBLE_GAP_PX = 4;
+const ADD_BUBBLE_SIZE_PX = 32;
+const VIEWPORT_MARGIN_PX = 8;
+/** Slack around the button, covering the gap between it and the document. */
+const ADD_BUBBLE_REACH_PX = 12;
+/** Backstop for pointers that stop reporting, e.g. on leaving the window. */
+const HIDE_GRACE_MS = 400;
 
 function toThreadComment(c: ApiComment): CommentThreadType {
   return {
@@ -78,7 +91,9 @@ export function CommentBubble(props: Props) {
 
   const [showAddBubble, setShowAddBubble] = createSignal(false);
   const [bubbleY, setBubbleY] = createSignal(0);
+  const [bubbleX, setBubbleX] = createSignal(0);
   const [addingCommentY, setAddingCommentY] = createSignal<number | null>(null);
+  const [addingCommentX, setAddingCommentX] = createSignal(0);
   const [addingCommentRef, setAddingCommentRef] = createSignal<string | null>(null);
   const [fadeAddBubble, setFadeAddBubble] = createSignal(false);
 
@@ -207,33 +222,100 @@ export function CommentBubble(props: Props) {
     });
   }
 
-  function handleMouseMove(e: MouseEvent) {
-    if (activeReference() || addingCommentY() !== null) {
-      setShowAddBubble(false);
-      setFadeAddBubble(false);
+  let hideTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function cancelHide() {
+    if (hideTimer === undefined) return;
+    clearTimeout(hideTimer);
+    hideTimer = undefined;
+  }
+
+  function hideAddBubble() {
+    cancelHide();
+    setShowAddBubble(false);
+    setFadeAddBubble(false);
+  }
+
+  /**
+   * The button sits beside the document view — and, where the margin is
+   * narrower than the button, slightly over it — so the pointer always leaves
+   * the element that keeps it alive on its way there, sometimes well inside
+   * that element's box. Never hide on the spot: fade out on a delay the
+   * button's own hover cancels.
+   */
+  function scheduleHideAddBubble() {
+    cancelHide();
+    hideTimer = setTimeout(hideAddBubble, HIDE_GRACE_MS);
+  }
+
+  function handleDocumentPointerMove(e: PointerEvent) {
+    // A hover affordance: touch has no hover, and a tap-drag would flash it.
+    if (e.pointerType === "touch") return;
+
+    const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
+    if (!docView || activeReference() || addingCommentY() !== null) {
+      hideAddBubble();
       return;
     }
 
-    if (e.clientX > window.innerWidth - EDGE_THRESHOLD_PX && e.clientY > 200) {
-      setShowAddBubble(true);
-      setBubbleY(e.clientY);
-      setFadeAddBubble(isNearCommentBubble(e.clientX, e.clientY));
-    } else {
-      setShowAddBubble(false);
-      setFadeAddBubble(false);
+    const rect = docView.getBoundingClientRect();
+    if (e.clientX < rect.right - EDGE_THRESHOLD_PX) {
+      hideAddBubble();
+      return;
     }
+
+    // Just outside the document, in the same gutter the comment bubbles use —
+    // never at the viewport edge, where a docked panel would cover it.
+    const left = Math.min(
+      rect.right + ADD_BUBBLE_GAP_PX,
+      window.innerWidth - ADD_BUBBLE_SIZE_PX - VIEWPORT_MARGIN_PX,
+    );
+
+    cancelHide();
+    setShowAddBubble(true);
+    setBubbleY(e.clientY);
+    setBubbleX(left);
+    setFadeAddBubble(isNearCommentBubble(left + ADD_BUBBLE_SIZE_PX / 2, e.clientY));
+  }
+
+  /** Is the pointer on the button, or in the short corridor leading to it? */
+  function isNearAddBubble(x: number, y: number) {
+    return (
+      x >= bubbleX() - ADD_BUBBLE_REACH_PX &&
+      x <= bubbleX() + ADD_BUBBLE_SIZE_PX + ADD_BUBBLE_REACH_PX &&
+      y >= bubbleY() - ADD_BUBBLE_SIZE_PX / 2 - ADD_BUBBLE_REACH_PX &&
+      y <= bubbleY() + ADD_BUBBLE_SIZE_PX / 2 + ADD_BUBBLE_REACH_PX
+    );
+  }
+
+  /**
+   * Showing is the document view's business alone; this only takes the bubble
+   * away again, the moment the pointer is somewhere it no longer belongs —
+   * over the header actions or a docked panel, say, rather than a grace period
+   * later.
+   */
+  function handleWindowPointerMove(e: PointerEvent) {
+    if (!showAddBubble()) return;
+    if (isNearAddBubble(e.clientX, e.clientY)) {
+      cancelHide();
+      return;
+    }
+    const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
+    // Over the document the element's own handler decides; anywhere else the
+    // pointer has moved on to something stacked in front of it.
+    if (docView && !e.composedPath().includes(docView)) hideAddBubble();
   }
 
   function handleAddComment() {
     // Viewport y for the fixed-positioned thread popup
     setAddingCommentY(bubbleY());
+    setAddingCommentX(bubbleX());
     // Stored reference is the y offset relative to the document content,
     // so the bubble stays anchored regardless of scroll position.
-    const docView = document.querySelector("document-view");
+    const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
     const docTop = docView ? docView.getBoundingClientRect().top : 0;
     setAddingCommentRef(String(Math.max(0, Math.round(bubbleY() - docTop))));
-    setShowAddBubble(false);
-    setFadeAddBubble(false);
+    hideAddBubble();
   }
 
   async function handleSubmit(payload: { content: string; reference: string | null }) {
@@ -295,16 +377,26 @@ export function CommentBubble(props: Props) {
     setActiveReference(null);
   }
 
-  function handleMouseLeave() {
-    setShowAddBubble(false);
-    setFadeAddBubble(false);
-  }
+  // Hover lives on the document view itself rather than on the window: an
+  // element in front of it (docked panel, header actions) then swallows the
+  // pointer and the bubble never appears over it.
+  createEffect(() => {
+    const docView = props.documentView; // solid-reactivity-ok: effect re-runs and rebinds when it changes
+    if (!docView) return;
+    docView.addEventListener("pointermove", handleDocumentPointerMove);
+    docView.addEventListener("pointerleave", scheduleHideAddBubble);
+    window.addEventListener("pointermove", handleWindowPointerMove);
+    onCleanup(() => {
+      docView.removeEventListener("pointermove", handleDocumentPointerMove);
+      docView.removeEventListener("pointerleave", scheduleHideAddBubble);
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      hideAddBubble();
+    });
+  });
 
   onMount(() => {
     setHasMounted(true);
     setupListeners();
-    window.addEventListener("mousemove", handleMouseMove);
-    document.documentElement.addEventListener("mouseleave", handleMouseLeave);
     // Capture phase so scrolls inside nested containers also re-anchor the thread.
     window.addEventListener("scroll", handleThreadReposition, true);
     window.addEventListener("resize", handleThreadReposition);
@@ -314,8 +406,7 @@ export function CommentBubble(props: Props) {
 
     onCleanup(() => {
       cleanupListeners();
-      window.removeEventListener("mousemove", handleMouseMove);
-      document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
+      cancelHide();
       window.removeEventListener("scroll", handleThreadReposition, true);
       window.removeEventListener("resize", handleThreadReposition);
       window.removeEventListener("editor-update", handleThreadReposition);
@@ -329,20 +420,22 @@ export function CommentBubble(props: Props) {
     <Show when={hasMounted()}>
       <Portal>
         <div class="contents">
-          {/* Add comment bubble — appears near right viewport edge */}
+          {/* Add comment bubble — hovering the document's right margin */}
           <Show when={showAddBubble()}>
             <div
-              class="fixed right-4 z-50 -translate-y-1/2 transition-opacity duration-200"
+              class="fixed z-50 -translate-y-1/2 transition-opacity duration-200"
               classList={{
                 "pointer-events-none opacity-0": fadeAddBubble(),
                 "pointer-events-auto opacity-100": !fadeAddBubble(),
               }}
-              style={{ top: `${bubbleY()}px` }}
+              style={{ top: `${bubbleY()}px`, left: `${bubbleX()}px` }}
+              onPointerEnter={cancelHide}
+              onPointerLeave={scheduleHideAddBubble}
             >
               <button
                 type="button"
                 onClick={handleAddComment}
-                class="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-md transition-all hover:border-primary-300 hover:text-primary-600 hover:shadow-lg"
+                class="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-background text-neutral-500 shadow-md transition-all hover:border-primary-300 hover:text-primary-600 hover:shadow-lg"
                 title="Add comment"
               >
                 <Icon class="h-4 w-4" name="add" />
@@ -382,7 +475,15 @@ export function CommentBubble(props: Props) {
 
           {/* Thread for new comment (bubble click) */}
           <Show when={addingCommentY() !== null && !activeReference()}>
-            <div class="fixed right-4 z-40" style={{ top: `${addingCommentY()}px` }}>
+            <div
+              class="fixed z-40"
+              style={{
+                top: `${addingCommentY()}px`,
+                // Opens to the left of the button that spawned it, the same way
+                // an existing thread hangs off its comment bubble.
+                right: `${window.innerWidth - addingCommentX() + THREAD_GAP_PX}px`,
+              }}
+            >
               <CommentThread
                 spaceId={props.spaceId}
                 documentId={props.documentId}

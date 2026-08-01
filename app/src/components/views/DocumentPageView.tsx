@@ -66,22 +66,6 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
   csv: { title: "Untitled Spreadsheet", content: "A,B,C\n,,\n,,\n,,\n" },
 };
 
-/**
- * The side inset every part of a document shares — breadcrumb, chips and the
- * content itself — so they line up down the page.
- *
- * Named rather than repeated because it cannot be overridden after the fact:
- * the project's spacing tokens (`px-xs`, `md:px-xl`) are not in
- * tailwind-merge's scale, so `twMerge("px-xs", "px-0")` keeps both classes and
- * the original still wins. Compose it, do not try to merge it away.
- */
-const CONTENT_INSET_CLASS = "px-xs md:px-m";
-
-const STICKY_HEADER_BASE_CLASS =
-  "flex min-h-7 flex-row items-center justify-between gap-6 py-4 sticky top-0 z-10";
-
-const STICKY_HEADER_CLASS = `${STICKY_HEADER_BASE_CLASS} ${CONTENT_INSET_CLASS}`;
-
 export function DocumentPageView(props: Props) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -471,7 +455,7 @@ export function DocumentPageView(props: Props) {
 
               <Show when={isCanvas()}>
                 <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
-                  <div class={STICKY_HEADER_CLASS}>
+                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-m">
                     <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                     <DocumentActions title={title()} headerImage={headerImageSrc()} />
                   </div>
@@ -491,7 +475,7 @@ export function DocumentPageView(props: Props) {
 
               {/* Portrait header image: image column beside the title/properties */}
               <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
-                <div class={`${STICKY_HEADER_CLASS} bg-neutral-10`}>
+                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-100 border-b bg-neutral-10 px-xs py-4 md:px-m">
                   <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                   <DocumentActions title={title()} headerImage={headerImageSrc()} />
                 </div>
@@ -528,7 +512,7 @@ export function DocumentPageView(props: Props) {
                   />
                 </Show>
 
-                <div class={`${STICKY_HEADER_CLASS} bg-neutral-10`}>
+                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-100 border-b bg-neutral-10 px-xs py-4 md:px-m">
                   <Show
                     when={isWorkflow()}
                     fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
@@ -551,7 +535,7 @@ export function DocumentPageView(props: Props) {
                     chips sit closer to it than prose content would. */}
                 <inset-view
                   id="document-properties"
-                  class={`block print:px-0 ${CONTENT_INSET_CLASS} ${isCsv() ? "mb-3xs" : "mb-l"}`}
+                  class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-l"}`}
                 >
                   {documentPropertiesBlock()}
                 </inset-view>

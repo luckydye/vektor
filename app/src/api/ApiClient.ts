@@ -414,11 +414,9 @@ export type DocumentPropertyPatchValue =
   | null
   | { value: string | string[] | number | boolean | null; type?: string | null };
 
-// Property filter for advanced search
-// Use value: null to filter for documents that have the property (any value)
-// Use value: string to filter for documents with that specific property value
 export interface PropertyFilter {
   key: string;
+  /** A string matches that exact value; null matches any document that has the property. */
   value: string | null;
 }
 
@@ -549,13 +547,6 @@ interface PresenceSubscription<TState = unknown> {
   callback: (event: PresenceMessage<TState>) => void;
 }
 
-/**
- * Main API client class with fluent interface
- * @example
- * const api = new ApiClient();
- * const users = await api.users.get("space-123");
- * const document = await api.document.get("space-123", "doc-456");
- */
 export class ApiClient {
   baseUrl: string;
   accessToken?: string;
@@ -637,9 +628,6 @@ export class ApiClient {
     }
   }
 
-  /**
-   * Base fetch function with error handling
-   */
   async apiFetch<T>(
     base: string,
     path: string,
@@ -674,9 +662,6 @@ export class ApiClient {
     return (responseText ? JSON.parse(responseText) : undefined) as T;
   }
 
-  /**
-   * Type-safe GET request
-   */
   async apiGet<T>(
     base: string,
     path: string,
@@ -685,9 +670,6 @@ export class ApiClient {
     return this.apiFetch<T>(base, path, { method: "GET", query });
   }
 
-  /**
-   * Type-safe POST request
-   */
   async apiPost<T>(
     base: string,
     path: string,
@@ -707,9 +689,6 @@ export class ApiClient {
     });
   }
 
-  /**
-   * Type-safe PUT request
-   */
   async apiPut<T, TBody = unknown>(
     base: string,
     path: string,
@@ -729,9 +708,6 @@ export class ApiClient {
     });
   }
 
-  /**
-   * Type-safe PATCH request
-   */
   async apiPatch<T, TBody = unknown>(
     base: string,
     path: string,
@@ -751,9 +727,6 @@ export class ApiClient {
     });
   }
 
-  /**
-   * Type-safe DELETE request
-   */
   async apiDelete(
     base: string,
     path: string,
@@ -768,36 +741,25 @@ export class ApiClient {
   }
 
   users = {
-    /**
-     * List the members of a space (minimal profiles: id, name, image).
-     */
+    /** List the members of a space — minimal profiles (id, name, image). */
     get: async (spaceId: string) => {
       return await this.apiGet<User[]>(
         this.baseUrl,
         `/api/v1/users?spaceId=${encodeURIComponent(spaceId)}`,
       );
     },
-    /**
-     * Get a user by ID
-     */
     getById: async (id: string) => {
       return await this.apiGet<User>(
         this.baseUrl,
         `/api/v1/users?id=${encodeURIComponent(id)}`,
       );
     },
-    /**
-     * Get the currently authenticated user
-     */
     me: async () => {
       return await this.apiGet<User>(this.baseUrl, "/api/v1/users/me");
     },
   };
 
   spaces = {
-    /**
-     * List all spaces
-     */
     get: async () => {
       const spaces = await this.apiGet<Space[]>(this.baseUrl, "/api/v1/spaces");
       await this.replica.writeSpaces(spaces);
@@ -812,9 +774,6 @@ export class ApiClient {
       return this.replica.subscribeSpaces(callback);
     },
 
-    /**
-     * Create a new space
-     */
     post: async (body: {
       name: string;
       slug: string;
@@ -831,17 +790,11 @@ export class ApiClient {
   };
 
   space = {
-    /**
-     * Get a space by ID
-     */
     get: async (spaceId: string) => {
       return await this.apiGet<Space>(this.baseUrl, `/api/v1/spaces/${spaceId}`);
     },
 
-    /**
-     * Get the caller's notification preference for the space, or for a single
-     * document within it when `documentId` is given.
-     */
+    /** The caller's notification preference for the space, or for one document in it. */
     getNotificationPreference: async (spaceId: string, documentId?: string) => {
       const path = documentId
         ? `/api/v1/spaces/${spaceId}/notification-preference?documentId=${encodeURIComponent(documentId)}`
@@ -849,10 +802,7 @@ export class ApiClient {
       return await this.apiGet<{ muted: boolean }>(this.baseUrl, path);
     },
 
-    /**
-     * Mute/unmute notifications for the space, or for a single document
-     * within it when `documentId` is given.
-     */
+    /** Mute/unmute the space, or one document in it. */
     setNotificationMuted: async (
       spaceId: string,
       muted: boolean,
@@ -865,9 +815,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Partially update a space (PATCH)
-     */
     patch: async (
       spaceId: string,
       body: { name?: string; slug?: string; preferences?: Record<string, string> },
@@ -879,9 +826,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Delete a space
-     */
     delete: async (spaceId: string) => {
       await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}`);
       await this.replica.removeSpace(spaceId);
@@ -889,9 +833,6 @@ export class ApiClient {
   };
 
   spaceMembers = {
-    /**
-     * List members in a space
-     */
     get: async (spaceId: string) => {
       return await this.apiGet<SpaceMember[]>(
         this.baseUrl,
@@ -901,9 +842,7 @@ export class ApiClient {
   };
 
   permissions = {
-    /**
-     * Get current user's permissions (role + features + groups)
-     */
+    /** The current user's role, features and groups in the space. */
     getMe: async (spaceId: string) => {
       return await this.apiGet<{
         role: string | null;
@@ -912,9 +851,6 @@ export class ApiClient {
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/permissions/me`);
     },
 
-    /**
-     * List all permissions in space (roles + features)
-     */
     list: async (
       spaceId: string,
       type?: "role" | "feature" | "all",
@@ -934,9 +870,6 @@ export class ApiClient {
       return await this.apiGet<{ permissions: PermissionEntry[] }>(this.baseUrl, url);
     },
 
-    /**
-     * Grant a permission (role or feature) to user or group
-     */
     grant: async (
       spaceId: string,
       body: {
@@ -956,9 +889,7 @@ export class ApiClient {
       });
     },
 
-    /**
-     * Deny a feature (feature only) for user or group
-     */
+    /** Deny a feature. Features only — roles are revoked, not denied. */
     deny: async (
       spaceId: string,
       body: {
@@ -974,9 +905,6 @@ export class ApiClient {
       });
     },
 
-    /**
-     * Revoke a permission (role or feature) from user or group
-     */
     revoke: async (
       spaceId: string,
       body: {
@@ -996,9 +924,6 @@ export class ApiClient {
   };
 
   categories = {
-    /**
-     * List categories in a space
-     */
     get: async (spaceId: string) => {
       const response = await this.apiGet<CategoriesListResponse>(
         this.baseUrl,
@@ -1019,9 +944,6 @@ export class ApiClient {
       return this.replica.subscribeCategories(spaceId, callback);
     },
 
-    /**
-     * Create a new category
-     */
     post: async (
       spaceId: string,
       body: {
@@ -1041,9 +963,6 @@ export class ApiClient {
       return response.category;
     },
 
-    /**
-     * Reorder categories
-     */
     reorder: async (spaceId: string, categoryIds: string[]) => {
       const response = await this.apiPut<{ success: boolean }>(
         this.baseUrl,
@@ -1060,9 +979,6 @@ export class ApiClient {
   };
 
   category = {
-    /**
-     * Get a category by ID
-     */
     get: async (spaceId: string, id: string) => {
       const response = await this.apiGet<{ category: Category }>(
         this.baseUrl,
@@ -1071,9 +987,6 @@ export class ApiClient {
       return response.category;
     },
 
-    /**
-     * Update a category
-     */
     put: async (
       spaceId: string,
       id: string,
@@ -1098,9 +1011,6 @@ export class ApiClient {
       return response.category;
     },
 
-    /**
-     * Delete a category
-     */
     delete: async (spaceId: string, id: string) => {
       await this.withOptimisticReplica(
         () => this.replica.removeCategoryOptimistic(spaceId, id),
@@ -1111,9 +1021,6 @@ export class ApiClient {
   };
 
   documents = {
-    /**
-     * List documents in a space
-     */
     get: async (
       spaceId: string,
       query?: {
@@ -1158,9 +1065,6 @@ export class ApiClient {
       return this.replica.subscribeDocuments(spaceId, callback);
     },
 
-    /**
-     * List archived documents in a space
-     */
     archived: async (spaceId: string, query?: { limit?: number; cursor?: string }) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
@@ -1170,9 +1074,7 @@ export class ApiClient {
       return response;
     },
 
-    /**
-     * List documents by categories as a grouped map, including descendants.
-     */
+    /** Documents grouped by category slug, including descendants of each category. */
     getByCategories: async (spaceId: string, categorySlugs: string[]) => {
       const response = await this.apiGet<{
         documentsByCategory: Record<string, DocumentWithProperties[]>;
@@ -1207,9 +1109,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Create a new document
-     */
     post: async (
       spaceId: string,
       body: {
@@ -1232,9 +1131,6 @@ export class ApiClient {
   };
 
   document = {
-    /**
-     * Get a document by ID
-     */
     get: async (
       spaceId: string,
       documentId: string,
@@ -1269,9 +1165,6 @@ export class ApiClient {
       return this.replica.subscribeDocument(spaceId, documentIdOrSlug, callback);
     },
 
-    /**
-     * Update document content (PUT)
-     */
     put: async (
       spaceId: string,
       documentId: string,
@@ -1325,9 +1218,6 @@ export class ApiClient {
       return { ...response.document, content };
     },
 
-    /**
-     * Patch document metadata and operations
-     */
     patch: async (
       spaceId: string,
       documentId: string,
@@ -1378,9 +1268,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Update document content via JSON body (used for code/workflow documents)
-     */
+    /** Content as a JSON body, for code and workflow documents. */
     putCode: async (
       spaceId: string,
       documentId: string,
@@ -1400,9 +1288,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Archive a document
-     */
     archive: async (spaceId: string, documentId: string) => {
       await this.withOptimisticReplica(
         () => this.replica.archiveDocumentOptimistic(spaceId, documentId),
@@ -1415,9 +1300,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Delete a document permanently
-     */
+    /** Delete permanently. `archive` is the recoverable version. */
     delete: async (spaceId: string, documentId: string) => {
       await this.withOptimisticReplica(
         () => this.replica.removeDocumentOptimistic(spaceId, documentId),
@@ -1430,9 +1313,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Restore an archived document
-     */
     restore: async (spaceId: string, documentId: string) => {
       const response = await this.apiPut<{ success: boolean }>(
         this.baseUrl,
@@ -1445,9 +1325,6 @@ export class ApiClient {
       return response;
     },
 
-    /**
-     * Save a revision (POST to document endpoint)
-     */
     post: async (
       spaceId: string,
       documentId: string,
@@ -1463,9 +1340,6 @@ export class ApiClient {
   };
 
   documentHistory = {
-    /**
-     * Get revision history for a document
-     */
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{ revisions: RevisionMetadata[] }>(
         this.baseUrl,
@@ -1489,9 +1363,6 @@ export class ApiClient {
   };
 
   documentContributors = {
-    /**
-     * Get contributors for a document
-     */
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{ contributors: DocumentContributor[] }>(
         this.baseUrl,
@@ -1502,9 +1373,6 @@ export class ApiClient {
   };
 
   documentChildren = {
-    /**
-     * Get child documents
-     */
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{ children: DocumentWithProperties[] }>(
         this.baseUrl,
@@ -1529,9 +1397,6 @@ export class ApiClient {
   };
 
   documentPublish = {
-    /**
-     * Restore a document to a specific revision
-     */
     post: async (spaceId: string, documentId: string, rev: number) => {
       await this.apiPost(
         this.baseUrl,
@@ -1543,14 +1408,8 @@ export class ApiClient {
 
   search = {
     /**
-     * Search documents in a space
-     *
-     * @param spaceId - The space to search in
-     * @param query.q - Search query text (can be empty when using filters only)
-     * @param query.limit - Max results to return
-     * @param query.cursor - Pagination cursor from a previous response's nextCursor
-     * @param query.filters - Property filters as JSON string: [{"key":"author","value":"John"}]
-     *                        Use value: null to filter for documents that have the property
+     * `q` may be empty when `filters` alone narrows the result. `filters` is a
+     * JSON-encoded `PropertyFilter[]`.
      */
     get: async (
       spaceId: string,
@@ -1566,18 +1425,12 @@ export class ApiClient {
       return response;
     },
 
-    /**
-     * Rebuild search index
-     */
     rebuild: async (spaceId: string) => {
       await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/search/rebuild`, {});
     },
   };
 
   properties = {
-    /**
-     * List properties in a space
-     */
     get: async (spaceId: string) => {
       const response = await this.apiGet<{ properties: PropertyInfo[] }>(
         this.baseUrl,
@@ -1588,9 +1441,7 @@ export class ApiClient {
   };
 
   auditLogs = {
-    /**
-     * List audit logs for a space, optionally scoped to a single document
-     */
+    /** Audit logs for a space, or for one document in it. */
     get: async (
       spaceId: string,
       query?: { documentId?: string; limit?: number; cursor?: string },
@@ -1604,9 +1455,6 @@ export class ApiClient {
   };
 
   uploads = {
-    /**
-     * List uploads in a space
-     */
     get: async (spaceId: string) => {
       const result = await this.apiGet<{
         files: { key: string; url: string; size: number; updatedAt: string }[];
@@ -1614,13 +1462,6 @@ export class ApiClient {
       return result.files;
     },
 
-    /**
-     * Create/upload a file
-     * @param spaceId - The space ID
-     * @param file - The file to upload
-     * @param filename - Optional filename override
-     * @param documentId - Optional document ID to scope the upload to
-     */
     post: async (
       spaceId: string,
       file: File | Blob,
@@ -1672,9 +1513,6 @@ export class ApiClient {
   };
 
   upload = {
-    /**
-     * Get an upload by filename
-     */
     get: async (spaceId: string, filename: string) => {
       const response = await this.apiGet<{ url: string }>(
         this.baseUrl,
@@ -1683,18 +1521,12 @@ export class ApiClient {
       return response.url;
     },
 
-    /**
-     * Delete an upload
-     */
     delete: async (spaceId: string, filename: string) => {
       await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/uploads/${filename}`);
     },
   };
 
   accessTokens = {
-    /**
-     * List access tokens in a space
-     */
     get: async (spaceId: string) => {
       return await this.apiGet<{ tokens: AccessToken[] }>(
         this.baseUrl,
@@ -1702,9 +1534,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Get a specific access token
-     */
     getById: async (spaceId: string, tokenId: string) => {
       return await this.apiGet<{ token: AccessToken }>(
         this.baseUrl,
@@ -1712,9 +1541,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Create a new access token
-     */
     create: async (
       spaceId: string,
       body: {
@@ -1735,9 +1561,6 @@ export class ApiClient {
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/access-tokens`, body);
     },
 
-    /**
-     * Grant token access to a specific resource
-     */
     grantResource: async (
       spaceId: string,
       tokenId: string,
@@ -1752,9 +1575,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Revoke token access to a specific resource
-     */
     revokeResource: async (
       spaceId: string,
       tokenId: string,
@@ -1767,9 +1587,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Revoke an access token
-     */
     revoke: async (spaceId: string, tokenId: string) => {
       return await this.apiPatch<{ message: string }>(
         this.baseUrl,
@@ -1778,9 +1595,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Delete an access token
-     */
     delete: async (spaceId: string, tokenId: string) => {
       await this.apiDelete(
         this.baseUrl,
@@ -1790,9 +1604,7 @@ export class ApiClient {
   };
 
   secrets = {
-    /**
-     * List secrets in a space (owner only)
-     */
+    /** List secrets. Owner only. */
     get: async (spaceId: string) => {
       return await this.apiGet<{ secrets: SpaceSecret[] }>(
         this.baseUrl,
@@ -1800,9 +1612,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Read one secret value by name
-     */
     getByName: async (spaceId: string, name: string) => {
       return await this.apiGet<{ name: string; value: string }>(
         this.baseUrl,
@@ -1810,9 +1619,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Create or upsert a secret by name
-     */
+    /** Create a secret, or overwrite one that already has this name. */
     create: async (
       spaceId: string,
       body: { name: string; value: string; description?: string | null },
@@ -1824,9 +1631,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Rotate/update secret value by name
-     */
     update: async (
       spaceId: string,
       name: string,
@@ -1839,9 +1643,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Delete secret by name
-     */
     delete: async (spaceId: string, name: string) => {
       await this.apiDelete(
         this.baseUrl,
@@ -1884,9 +1685,7 @@ export class ApiClient {
   };
 
   integrations = {
-    /**
-     * List OAuth integrations for current user in a space
-     */
+    /** OAuth integrations for the current user, not for the space as a whole. */
     get: async (spaceId: string) => {
       return await this.apiGet<{ connections: OAuthIntegrationConnection[] }>(
         this.baseUrl,
@@ -1894,9 +1693,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Get one provider integration status
-     */
     getByProvider: async (spaceId: string, provider: OAuthIntegrationProvider) => {
       return await this.apiGet<{ connection: OAuthIntegrationConnection }>(
         this.baseUrl,
@@ -1904,9 +1700,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Start OAuth connect flow for provider
-     */
     connect: async (
       spaceId: string,
       provider: OAuthIntegrationProvider,
@@ -1919,9 +1712,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Disconnect provider
-     */
     disconnect: async (spaceId: string, provider: OAuthIntegrationProvider) => {
       await this.apiDelete(
         this.baseUrl,
@@ -1931,9 +1721,6 @@ export class ApiClient {
   };
 
   extensions = {
-    /**
-     * List all extensions in a space
-     */
     get: async (
       spaceId: string,
     ): Promise<{ extensions: ExtensionInfo[]; errors: ExtensionManifestError[] }> => {
@@ -1969,9 +1756,6 @@ export class ApiClient {
       return this.replica.subscribeExtensions(spaceId, callback);
     },
 
-    /**
-     * Get a single extension
-     */
     getById: async (spaceId: string, extensionId: string): Promise<ExtensionInfo> => {
       return await this.apiGet<ExtensionInfo>(
         this.baseUrl,
@@ -1979,9 +1763,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Enable or disable an extension
-     */
+    /** Enable or disable an extension. */
     update: async (
       spaceId: string,
       extensionId: string,
@@ -1996,9 +1778,7 @@ export class ApiClient {
       return extension;
     },
 
-    /**
-     * Upload an extension (zip file)
-     */
+    /** Upload an extension as a zip. */
     upload: async (spaceId: string, file: File | Blob): Promise<ExtensionInfo> => {
       const formData = new FormData();
       formData.append("file", file);
@@ -2018,9 +1798,6 @@ export class ApiClient {
       return extension;
     },
 
-    /**
-     * Delete an extension
-     */
     delete: async (spaceId: string, extensionId: string) => {
       await this.apiDelete(
         this.baseUrl,
@@ -2029,9 +1806,6 @@ export class ApiClient {
       await this.replica.removeExtension(spaceId, extensionId);
     },
 
-    /**
-     * Download the raw extension ZIP package
-     */
     downloadPackage: async (spaceId: string, extensionId: string): Promise<Blob> => {
       const response = await fetch(
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}/package`,
@@ -2044,12 +1818,6 @@ export class ApiClient {
     },
   };
 
-  /**
-   * Fetch preview metadata for a URL
-   * @example
-   * const metadata = await api.linkPreview.get("https://example.com");
-   * console.log(metadata.title, metadata.description, metadata.image);
-   */
   linkPreview = {
     get: async (
       url: string,
@@ -2079,9 +1847,6 @@ export class ApiClient {
   };
 
   comments = {
-    /**
-     * Get all comments for a document
-     */
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{ comments: Comment[] }>(
         this.baseUrl,
@@ -2103,9 +1868,6 @@ export class ApiClient {
       return this.replica.subscribeComments(spaceId, documentId, callback);
     },
 
-    /**
-     * Create a new comment
-     */
     post: async (
       spaceId: string,
       documentId: string,
@@ -2147,9 +1909,7 @@ export class ApiClient {
       return response.comment;
     },
 
-    /**
-     * Update the reference (anchor) of one or more comments
-     */
+    /** Re-anchor one or more comments onto a new document reference. */
     patch: async (
       spaceId: string,
       documentId: string,
@@ -2175,9 +1935,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Resolve (archive) a thread — all comments sharing the same reference
-     */
+    /** Resolve a thread: archives every comment sharing the reference. */
     resolve: async (spaceId: string, documentId: string, commentIds: string[]) => {
       await this.withOptimisticReplica(
         // A resolved thread is archived, and the endpoint stops listing it.
@@ -2194,9 +1952,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Delete a comment
-     */
     delete: async (spaceId: string, documentId: string, commentId: string) => {
       await this.withOptimisticReplica(
         () => this.replica.removeCommentsOptimistic(spaceId, documentId, [commentId]),
@@ -2214,9 +1969,6 @@ export class ApiClient {
   };
 
   workflows = {
-    /**
-     * Start a workflow run for a workflow document
-     */
     startRun: async (
       spaceId: string,
       documentId: string,
@@ -2234,9 +1986,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Get the latest run status for a workflow document. Returns null if no run exists.
-     */
+    /** Latest run for a workflow document, or null if it has never run. */
     getLatestRun: async (
       spaceId: string,
       documentId: string,
@@ -2251,9 +2001,6 @@ export class ApiClient {
       }
     },
 
-    /**
-     * Get the status of a workflow run
-     */
     getRun: async (spaceId: string, runId: string): Promise<WorkflowRunStatus> => {
       return await this.apiGet<WorkflowRunStatus>(
         this.baseUrl,
@@ -2309,9 +2056,6 @@ export class ApiClient {
       return response;
     },
 
-    /**
-     * List cron schedules that run workflow documents in a space
-     */
     listSchedules: async (spaceId: string) => {
       return await this.apiGet<{ schedules: WorkflowSchedule[] }>(
         this.baseUrl,
@@ -2319,9 +2063,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Create a schedule that runs a workflow document on a cron expression
-     */
     createSchedule: async (
       spaceId: string,
       body: {
@@ -2339,9 +2080,6 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Update a workflow schedule
-     */
     updateSchedule: async (
       spaceId: string,
       scheduleId: string,
@@ -2359,9 +2097,7 @@ export class ApiClient {
       );
     },
 
-    /**
-     * Delete a workflow schedule (run history is preserved)
-     */
+    /** Delete a schedule. Its run history is kept. */
     deleteSchedule: async (spaceId: string, scheduleId: string) => {
       await this.apiDelete(
         this.baseUrl,
@@ -2397,9 +2133,7 @@ export class ApiClient {
       });
     },
 
-    /**
-     * List job execution history (newest first)
-     */
+    /** Job execution history, newest first. */
     listRuns: async (
       spaceId: string,
       options?: { jobId?: string; scheduleId?: string; limit?: number; cursor?: string },

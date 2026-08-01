@@ -52,9 +52,7 @@ const DEFAULT_TIMEOUT_MS: u64 = 15 * 60 * 1000;
 /// to the wall-clock deadline.
 const DEFAULT_LOOP_ITERATION_LIMIT: u64 = 50_000_000;
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Cross-thread protocol
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Host → VM. Sent from the JS thread, applied on the VM thread.
 pub enum VmCommand {
@@ -90,9 +88,7 @@ impl Default for VmConfig {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Session registry
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Only the command sender is shared, so the registry stays `Send` even though
 /// the VM state behind it is not.
@@ -138,9 +134,7 @@ pub fn send_command(id: u32, command: VmCommand) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Pending host call
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// A `__hostCall` that guest code is awaiting. Lives in a `Gc` cell because the
 /// native closure that creates it is GC-traced.
@@ -154,9 +148,7 @@ struct PendingCall {
     resolvers: Option<ResolvingFunctions>,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // VM
-// ─────────────────────────────────────────────────────────────────────────────
 
 struct Vm {
     context: Context,
@@ -184,7 +176,7 @@ impl Vm {
         limits.set_loop_iteration_limit(config.loop_iteration_limit);
         context.set_runtime_limits(limits);
 
-        // ── __hostCall(name, ...args) → Promise ──────────────────────────────
+        // __hostCall(name, ...args) → Promise
         // Safety: the closure body captures nothing from this scope; every GC
         // value it touches is passed as an explicit traced capture.
         let pending_cap = pending.clone();
@@ -231,7 +223,7 @@ impl Vm {
             .register_global_callable(js_string!("__hostCall"), 1, host_call)
             .map_err(|e| e.to_string())?;
 
-        // ── __log(message) ───────────────────────────────────────────────────
+        // __log(message)
         // Logging is a fire-and-forget event rather than a host call: guest code
         // should never await a log line, and a log must survive a VM that dies
         // before its next await point.
@@ -258,7 +250,7 @@ impl Vm {
             .register_global_callable(js_string!("__log"), 1, log_fn)
             .map_err(|e| e.to_string())?;
 
-        // ── __utf8Decode / __utf8Encode ──────────────────────────────────────
+        // __utf8Decode / __utf8Encode
         // Boa implements the language, not the web platform, so TextDecoder and
         // TextEncoder do not exist. They are pure computation, so they are plain
         // synchronous natives rather than host calls — and they have to be
@@ -296,7 +288,7 @@ impl Vm {
             )
             .map_err(|e| e.to_string())?;
 
-        // ── __b64Encode / __b64Decode ────────────────────────────────────────
+        // __b64Encode / __b64Decode
         // Backing for btoa/atob. Like the text codecs these are native because a
         // job may base64 a whole file, and unlike the JS version they enforce the
         // actual semantics: these operate on binary strings (one byte per code
@@ -350,7 +342,7 @@ impl Vm {
             )
             .map_err(|e| e.to_string())?;
 
-        // ── input ────────────────────────────────────────────────────────────
+        // input
         let input = json_to_js(inputs, &mut context).map_err(|e| e.to_string())?;
         context
             .register_global_property(js_string!("input"), input, Attribute::all())
@@ -430,9 +422,7 @@ impl Vm {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // VM thread
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Run a VM to completion on the calling thread, emitting events through `emit`.
 ///
