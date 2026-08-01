@@ -72,7 +72,9 @@ export function UserProfile() {
           class={`overflow-hidden rounded-lg bg-background opacity-0 shadow-xl transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 ${width()}`}
         >
           <div
-            class={`origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 ${width()}`}
+            // `relative`: the preferences panel positions itself against this
+            // box while it animates out.
+            class={`relative origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 ${width()}`}
           >
             <Show when={!isPreferencesOpen()}>
               <div class="border-neutral-100 border-b p-4">

@@ -499,6 +499,7 @@
 
 /** The user preferences panel inside the profile popover. */
 @utility preferences-panel {
+  position: static;
   opacity: 1;
   transform: translateX(0);
   transition:
@@ -506,7 +507,15 @@
     transform 160ms var(--emphasized-curve, ease-out),
     display 160ms allow-discrete;
 
+  /* Out of flow while leaving. `allow-discrete` holds `display` at its old
+     value until the fade ends, so an in-flow panel would keep its full height
+     underneath the menu that has already come back — the popover visibly grows
+     to the sum of both for the length of the animation. */
   &[hidden] {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    pointer-events: none;
     opacity: 0;
     transform: translateX(14px);
     display: none;
