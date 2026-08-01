@@ -68,6 +68,7 @@
     "#jobs/*": "./src/jobs/*",
     "#layouts/*": "./src/layouts/*",
     "#model-viewer/*": "./src/model-viewer/*",
+    "#notifications/*": "./src/notifications/*",
     "#observability/*": "./src/observability/*",
     "#pages/*": "./src/pages/*",
     "#realtime/*": "./src/realtime/*",

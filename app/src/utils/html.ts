@@ -204,6 +204,92 @@ export function prettyPrintHtml(html: string): string {
   return lines.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Plain text extraction
+// ---------------------------------------------------------------------------
+
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  "#39": "'",
+};
+
+function decodedCodePoint(value: string, radix: number, original: string): string {
+  const codePoint = Number.parseInt(value, radix);
+  return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+    ? String.fromCodePoint(codePoint)
+    : original;
+}
+
+/**
+ * Decode the character references a text node can carry. One pass only: a
+ * decoded `&` must not start a second round of decoding, or `&amp;lt;` — text
+ * that means the literal string `&lt;` — would turn into a `<`.
+ */
+function decodeHtmlEntities(value: string): string {
+  return value.replace(
+    /&(?:#x([\da-f]+)|#(\d+)|(nbsp|amp|lt|gt|quot|apos));/gi,
+    (match, hex: string | undefined, decimal: string | undefined, name?: string) => {
+      if (hex !== undefined) return decodedCodePoint(hex, 16, match);
+      if (decimal !== undefined) return decodedCodePoint(decimal, 10, match);
+      return NAMED_ENTITIES[name?.toLowerCase() ?? ""] ?? match;
+    },
+  );
+}
+
+// Elements whose contents are not prose: markup, styling or serialized state
+// that would read as noise (or leak attribute payloads) in a text rendering.
+const NON_TEXT_TAGS = new Set(["script", "style", "svg", "math", "head", "template"]);
+
+function plainTextNodes(nodes: INode[], out: string[]): void {
+  for (const node of nodes) {
+    if (node.type === SyntaxKind.Text) {
+      out.push(decodeHtmlEntities((node as IText).value));
+      continue;
+    }
+
+    if (node.type !== SyntaxKind.Tag) continue;
+
+    const tag = node as ITag;
+    const name = tag.name.toLowerCase();
+    // `!--` / `!doctype`: comments and declarations carry no readable text.
+    if (name.startsWith("!") || NON_TEXT_TAGS.has(name)) continue;
+
+    if (name === "br") {
+      out.push("\n");
+      continue;
+    }
+
+    const block = BLOCK_TAGS.has(name);
+    if (block) out.push("\n");
+    if (name === "li") out.push("• ");
+    plainTextNodes(tag.body ?? [], out);
+    if (block) out.push("\n");
+  }
+}
+
+/**
+ * Extract readable plain text from document HTML: element text in document
+ * order, with block boundaries as newlines and list items bulleted.
+ *
+ * Parsed rather than regex-stripped — attribute values legally contain `>`,
+ * quotes and encoded markup, so a `<[^>]*>` strip terminates mid-tag and spills
+ * serialized attribute payloads (canvas state, data props) into the text.
+ */
+export function htmlToPlainText(html: string): string {
+  const out: string[] = [];
+  plainTextNodes(parse(html), out);
+  return out
+    .join("")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n[\s\n]*/g, "\n")
+    .trim();
+}
+
 /**
  * Strip all script tags from HTML content to prevent XSS attacks
  */

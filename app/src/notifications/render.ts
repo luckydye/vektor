@@ -1,16 +1,11 @@
-import { diffWordsWithSpace } from "diff";
+import { type Change, diffWordsWithSpace } from "diff";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
-import { escapeHtml } from "#utils/html.ts";
+import { escapeHtml, htmlToPlainText } from "#utils/html.ts";
 
 const PREVIEW_MAX_LENGTH = 700;
 const EMAIL_FONT = 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
-
-function decodeCodePoint(value: string, radix: number, original: string): string {
-  const codePoint = Number.parseInt(value, radix);
-  return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
-    ? String.fromCodePoint(codePoint)
-    : original;
-}
+/** Marks where unchanged text was dropped between two pieces of one delta. */
+const GAP = " … ";
 
 function headerText(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
@@ -21,32 +16,41 @@ function excerpt(value: string, maxLength = PREVIEW_MAX_LENGTH): string {
   return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
 }
 
-/** Turn document HTML into safe, readable text for an email preview. */
-function documentText(html: string): string {
-  const text = html
-    .replace(/<(?:br|\/p|\/div|\/h[1-6]|\/li|\/blockquote|\/pre)[^>]*>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "• ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<\/?[a-z][^>]*>/gi, " ");
+/**
+ * Concatenate every added (or removed) run into one readable delta. The text
+ * the runs were separated by is gone, so the runs cannot simply be joined:
+ * without a separator the last and first words of two runs fuse into one
+ * ("thisdoesnotwork"). Runs split by nothing but whitespace rejoin with a
+ * space; a real dropped span becomes an ellipsis.
+ */
+function collectDelta(changes: Change[], kind: "added" | "removed"): string {
+  const pieces: string[] = [];
+  let separator = "";
 
-  return text
-    .replace(/&#x([\da-f]+);/gi, (match, codePoint: string) =>
-      decodeCodePoint(codePoint, 16, match),
-    )
-    .replace(/&#(\d+);/g, (match, codePoint: string) =>
-      decodeCodePoint(codePoint, 10, match),
-    )
-    .replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (_match, entity: string) => {
-      const entities: Record<string, string> = {
-        nbsp: " ",
-        amp: "&",
-        lt: "<",
-        gt: ">",
-        quot: '"',
-        "#39": "'",
-      };
-      return entities[entity.toLowerCase()] ?? _match;
-    });
+  for (const change of changes) {
+    if (!change[kind]) {
+      // The counterpart side of a replacement carries no text of this side, so
+      // it neither separates nor bridges the runs around it.
+      if (change.added || change.removed) continue;
+      if (!change.value.trim()) {
+        if (!separator) separator = " ";
+        continue;
+      }
+      // Unchanged punctuation with no whitespace joined one word rather than
+      // separating two ("request" + "-" + "scoped"): keep it verbatim.
+      separator =
+        change.value.length <= 2 && !/\s/.test(change.value) ? change.value : GAP;
+      continue;
+    }
+
+    const value = change.value.trim();
+    if (!value) continue;
+    if (pieces.length) pieces.push(separator);
+    pieces.push(value);
+    separator = "";
+  }
+
+  return pieces.join("");
 }
 
 interface ChangePreview {
@@ -59,27 +63,17 @@ function changePreview(
   previousContent: string | null | undefined,
   publishedContent: string | null | undefined,
 ): ChangePreview | null {
-  const published = documentText(publishedContent ?? "");
+  const published = htmlToPlainText(publishedContent ?? "");
   if (!published) return null;
 
   if (previousContent === null || previousContent === undefined) {
     return { added: "", removed: "", published: excerpt(published) };
   }
 
-  const previous = documentText(previousContent);
+  const previous = htmlToPlainText(previousContent);
   const changes = diffWordsWithSpace(previous, published);
-  const added = excerpt(
-    changes
-      .filter((change) => change.added)
-      .map((change) => change.value)
-      .join(""),
-  );
-  const removed = excerpt(
-    changes
-      .filter((change) => change.removed)
-      .map((change) => change.value)
-      .join(""),
-  );
+  const added = excerpt(collectDelta(changes, "added"));
+  const removed = excerpt(collectDelta(changes, "removed"));
 
   if (!added && !removed) return null;
   return { added, removed, published: "" };
@@ -212,7 +206,7 @@ export function renderNotificationEmail(params: {
   const { notification, actorName, documentTitle, spaceName, documentUrl } = params;
 
   if (notification.kind === "comment_created") {
-    const comment = excerpt(documentText(params.commentContent ?? ""));
+    const comment = excerpt(htmlToPlainText(params.commentContent ?? ""));
     const subject = headerText(`${actorName} commented on ${documentTitle}`);
     return {
       subject,
