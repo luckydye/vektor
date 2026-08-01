@@ -9,7 +9,12 @@ function svgDataUri(svg: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-const cosmeticAssets = [
+/**
+ * Stand-ins, drawn inline so the panel and the renderer can be exercised
+ * before Vektor Cloud serves a manifest. Development only: a production build
+ * starts with an empty registry that `registerCosmeticAssets` fills.
+ */
+const placeholderAssets = [
   {
     id: "frame-orbit",
     slot: "avatarFrame",
@@ -125,6 +130,10 @@ const cosmeticAssets = [
     `),
   },
 ] as const satisfies readonly CosmeticAsset[];
+
+const cosmeticAssets: readonly CosmeticAsset[] = import.meta.env.DEV
+  ? placeholderAssets
+  : [];
 
 const assetsById = new Map<string, CosmeticAsset>(
   cosmeticAssets.map((asset) => [asset.id, asset] as const),

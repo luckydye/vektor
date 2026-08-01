@@ -735,7 +735,11 @@ export class ExtensionViewElement extends HTMLElement {
   }
 }
 
-if (typeof customElements !== "undefined") {
+// `customElements` is not a browser check: lit's node build installs an SSR
+// registry shim on globalThis, so this module registers on the server too. The
+// `get` guard keeps that idempotent — the shim warns on a repeat define under
+// Vite's SSR module reloads and throws outright in a production build.
+if (typeof customElements !== "undefined" && !customElements.get("extension-view")) {
   customElements.define("extension-view", ExtensionViewElement);
 }
 
@@ -784,6 +788,9 @@ class ExtensionViewBlockElement extends HTMLElement {
   };
 }
 
-if (typeof customElements !== "undefined") {
+if (
+  typeof customElements !== "undefined" &&
+  !customElements.get("extension-view-block")
+) {
   customElements.define("extension-view-block", ExtensionViewBlockElement);
 }

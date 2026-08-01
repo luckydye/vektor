@@ -78,6 +78,7 @@ import {
   listIcon,
   lockElementIcon,
   mergeCellsIcon,
+  missingIcon,
   muteNotificationsIcon,
   newDocumentIcon,
   noteToolIcon,
@@ -215,6 +216,7 @@ const icons = {
   list: listIcon,
   "lock-element": lockElementIcon,
   "merge-cells": mergeCellsIcon,
+  missing: missingIcon,
   "mute-notifications": muteNotificationsIcon,
   "new-document": newDocumentIcon,
   "note-tool": noteToolIcon,
@@ -266,6 +268,27 @@ const icons = {
 export type IconName = keyof typeof icons;
 
 /**
+ * Whether a string carries SVG markup rather than a name or a URL.
+ *
+ * `svg` takes bytes and a name is also a string, so `svg={"confirmation"}` where
+ * `name` was meant type-checked and then stamped the word "confirmation" into
+ * the page. Text is never a readable icon, so anything that is not markup is
+ * treated as an icon that failed to resolve.
+ */
+const isMarkup = (value: string): boolean => /^\s*</.test(value);
+
+/**
+ * What to draw when an icon does not resolve.
+ *
+ * Silence is the wrong failure here. An unknown name used to render an empty
+ * span and `iconMarkup` quietly substituted `home`, so a typo either left a hole
+ * in the layout or drew a plausible wrong glyph — neither reads as a bug in
+ * review or in a screenshot. A crossed-out box does, and it holds the same space
+ * the real icon would have.
+ */
+const FALLBACK = icons.missing;
+
+/**
  * One parse per distinct icon.
  *
  * `element.innerHTML = svg` runs the HTML parser on every assignment, and an
@@ -313,16 +336,17 @@ const BASE_CLASS = "svg-icon";
 
 /** An icon's markup, for callers that build DOM without Solid. */
 export function iconMarkup(name: IconName): string {
-  return icons[name] ?? icons.home;
+  return icons[name] ?? FALLBACK;
 }
 
 interface Props {
-  /** Which icon to draw. Unknown names — an extension's, say — draw nothing. */
+  /** Which icon to draw. A name not in the set draws the missing-icon glyph. */
   name?: IconName;
   /**
    * Markup instead of a name, for SVG that arrives as *data* rather than from
    * the icon set: an uploaded space logo, a cosmetic glyph, an extension's own
-   * artwork. Anything in the set is named, never passed as bytes.
+   * artwork. Anything in the set is named, never passed as bytes — a value that
+   * is not markup draws the missing-icon glyph.
    */
   svg?: string;
   /**
@@ -334,7 +358,16 @@ interface Props {
 }
 
 export function Icon(props: Props) {
-  const svg = () => props.svg ?? (props.name ? (icons[props.name] ?? "") : "");
+  /**
+   * Nothing asked for still draws nothing: callers pass an optional `name` or
+   * `iconSvg` straight through, and an icon that was never requested is not a
+   * missing one. Only a value that was given and did not resolve falls back.
+   */
+  const svg = () => {
+    if (props.svg) return isMarkup(props.svg) ? props.svg : FALLBACK;
+    if (props.name) return icons[props.name] ?? FALLBACK;
+    return "";
+  };
   const className = () => twMerge(BASE_CLASS, props.class);
 
   // The server has no DOM to clone from, and the markup has to reach the

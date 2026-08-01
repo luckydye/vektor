@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
 import { authClient } from "#composeables/auth-client.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -26,6 +26,10 @@ export function UserProfile() {
   });
 
   const [isPreferencesOpen, setPreferencesOpen] = createSignal(false);
+  const [hasOpenedPreferences, setHasOpenedPreferences] = createSignal(false);
+  createEffect(() => {
+    if (isPreferencesOpen()) setHasOpenedPreferences(true);
+  });
   const width = () =>
     isPreferencesOpen()
       ? "w-[620px] max-w-[calc(100vw-2rem)]"
@@ -126,7 +130,16 @@ export function UserProfile() {
               hidden={!isPreferencesOpen()}
               class="preferences-panel w-[620px] max-w-[calc(100vw-2rem)]"
             >
-              <UserPreferencesPanel onClose={() => setPreferencesOpen(false)} />
+              {/* Mounted on first open, not with the profile button. The panel
+                  loads the space's integrations and notification preference on
+                  mount, and it lives inside a popover nobody has opened yet — so
+                  every page load paid two requests for a panel that was hidden.
+                  The flag latches rather than tracking `isPreferencesOpen` so
+                  closing keeps the loaded panel instead of refetching on every
+                  reopen, and so the exit animation still has something to play. */}
+              <Show when={hasOpenedPreferences()}>
+                <UserPreferencesPanel onClose={() => setPreferencesOpen(false)} />
+              </Show>
             </div>
           </div>
         </div>

@@ -8,7 +8,7 @@ interface Props {
   tone?: "default" | "danger";
   size?: "medium" | "small";
   text?: string;
-  /** Raw SVG markup, rendered inline. Use `children` for anything richer. */
+  /** Icon drawn before the text. Use `children` for anything richer. */
   icon?: IconName;
   /** Accessible name and tooltip. Required for icon-only buttons. */
   ariaLabel?: string;
@@ -65,7 +65,7 @@ export function Button(props: Props) {
     >
       {merged.children}
       <Show when={merged.icon}>
-        <Icon class="icon" svg={merged.icon} />
+        <Icon class="icon" name={merged.icon} />
       </Show>
       <Show when={merged.text}>
         <span>{merged.text}</span>

@@ -376,7 +376,7 @@ export function DocumentProperties(props: Props) {
             size="small"
             icon="add"
             ariaLabel={t("New property")}
-            class="w-full justify-center [&_svg]:inline [&_svg]:text-primary-600"
+            class="w-full justify-center [&_svg]:text-primary-600"
             onClick={() => setIsCreatePopoverOpen(!isCreatePopoverOpen())}
           />
 

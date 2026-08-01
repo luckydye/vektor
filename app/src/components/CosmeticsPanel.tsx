@@ -141,7 +141,7 @@ export function CosmeticsPanel(props: Props) {
           </p>
         </div>
         <a
-          href="https://vektorapp.org/cosmetics"
+          href="https://vektorapp.org/shop"
           target="_blank"
           rel="noreferrer"
           class="shrink-0 font-semibold text-primary-600 text-size-small hover:text-primary-700"
@@ -368,10 +368,6 @@ export function CosmeticsPanel(props: Props) {
           </div>
         </div>
       </div>
-
-      <p class="mt-3 text-neutral-500 text-size-small">
-        {t("Selections are stored on this device until Vektor Cloud is connected.")}
-      </p>
     </section>
   );
 }

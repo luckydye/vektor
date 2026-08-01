@@ -10,6 +10,30 @@ compared to `data/baseline.json`. See the header of `perf.ts` for flags.
 bun bench/perf.ts
 ```
 
+## `seed-space.ts` — large space database
+Writes a space straight through the DB layer (bulk inserts, no HTTP): tens of
+thousands of documents in a department/section tree, a long-tailed revision
+history where a few documents reach `--max-revisions`, an audit trail matching
+that history, and hundreds of members with space, group and document-scoped
+grants. The defaults produce ~30k documents, ~310k revisions, ~350k audit
+entries and 300 members in about 30s (~600 MB) under `bench/data`.
+
+```
+bun bench/seed-space.ts                          # → bench/data, prints the space id
+bun bench/seed-space.ts --docs 50000 --members 500 --reset
+bun bench/seed-space.ts --serve --no-auth --port 7500
+bun bench/seed-space.ts --memory --no-auth       # RAM-only; implies --serve
+```
+
+`--memory` seeds an in-memory database, which only exists inside the seeding
+process — it therefore always serves it rather than exiting. `--no-auth` seeds
+as (and serves for) the local super-user, which is what makes the space
+browsable without signing in; seeded members are auth users without
+credentials. Same `--seed` value, same database. Full flag list is in the file
+header. Search text is populated; embeddings are left empty because they need
+the native model, and `--no-audit` drops the audit trail when only the document
+side matters.
+
 ## Collaboration / canvas benchmarks
 
 Added while investigating a realtime-collaboration hang on large canvases. The
