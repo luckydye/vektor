@@ -12,6 +12,153 @@ export interface StoreConfig {
   version?: number;
 }
 
+export interface DatabaseStoreConfig {
+  name: string;
+  keyPath: string | string[];
+  indexes?: IndexConfig[];
+}
+
+export interface DatabaseConfig {
+  name: string;
+  version: number;
+  stores: DatabaseStoreConfig[];
+}
+
+export interface DatabaseWrite {
+  store: string;
+  /** Record to insert or replace. Mutually exclusive with `delete`. */
+  put?: object;
+  /** Key of the record to remove. Mutually exclusive with `put`. */
+  delete?: IDBValidKey;
+}
+
+/**
+ * A database whose stores are declared up front.
+ *
+ * `IndexedDBStore` owns a single store and discovers it at runtime, which is
+ * what a feature storing one kind of blob needs. This one exists for the
+ * opposite case: a fixed set of related stores that has to be written in one
+ * transaction, so a multi-record update cannot land half-applied.
+ */
+export class IndexedDBDatabase {
+  private db: IDBDatabase | null = null;
+  private openPromise: Promise<IDBDatabase> | null = null;
+
+  constructor(private readonly config: DatabaseConfig) {}
+
+  private open(): Promise<IDBDatabase> {
+    if (this.db) return Promise.resolve(this.db);
+    if (this.openPromise) return this.openPromise;
+
+    this.openPromise = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(this.config.name, this.config.version);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        for (const store of this.config.stores) {
+          const objectStore = db.objectStoreNames.contains(store.name)
+            ? request.transaction?.objectStore(store.name)
+            : db.createObjectStore(store.name, { keyPath: store.keyPath });
+          if (!objectStore) continue;
+
+          for (const index of store.indexes ?? []) {
+            if (objectStore.indexNames.contains(index.name)) continue;
+            objectStore.createIndex(index.name, index.keyPath, {
+              unique: index.unique || false,
+            });
+          }
+        }
+      };
+
+      request.onsuccess = () => {
+        this.db = request.result;
+        // Another tab upgrading or deleting this database closes our handle;
+        // drop it so the next call reopens instead of throwing.
+        this.db.onclose = () => {
+          this.db = null;
+        };
+        this.db.onversionchange = () => {
+          this.db?.close();
+          this.db = null;
+        };
+        resolve(request.result);
+      };
+
+      request.onerror = () => reject(request.error);
+    }).finally(() => {
+      this.openPromise = null;
+    });
+
+    return this.openPromise;
+  }
+
+  private async request<R>(
+    storeName: string,
+    mode: IDBTransactionMode,
+    op: (store: IDBObjectStore) => IDBRequest<R>,
+  ): Promise<R> {
+    const db = await this.open();
+
+    return new Promise((resolve, reject) => {
+      const request = op(db.transaction([storeName], mode).objectStore(storeName));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async get<T>(storeName: string, key: IDBValidKey): Promise<T | null> {
+    return (
+      ((await this.request<T>(storeName, "readonly", (store) => store.get(key))) as
+        | T
+        | undefined) ?? null
+    );
+  }
+
+  async getAll<T>(storeName: string, query?: IDBKeyRange): Promise<T[]> {
+    return (
+      (await this.request<T[]>(storeName, "readonly", (store) => store.getAll(query))) ??
+      []
+    );
+  }
+
+  async getAllByIndex<T>(
+    storeName: string,
+    indexName: string,
+    query?: IDBValidKey | IDBKeyRange,
+  ): Promise<T[]> {
+    return (
+      (await this.request<T[]>(storeName, "readonly", (store) =>
+        store.index(indexName).getAll(query),
+      )) ?? []
+    );
+  }
+
+  /** Apply every write in a single transaction, or none of them. */
+  async write(writes: DatabaseWrite[]): Promise<void> {
+    if (writes.length === 0) return;
+    const db = await this.open();
+    const storeNames = [...new Set(writes.map((write) => write.store))];
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeNames, "readwrite");
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+
+      for (const write of writes) {
+        const store = transaction.objectStore(write.store);
+        if (write.put !== undefined) store.put(write.put);
+        else if (write.delete !== undefined) store.delete(write.delete);
+      }
+    });
+  }
+
+  close(): void {
+    this.db?.close();
+    this.db = null;
+  }
+}
+
 export class IndexedDBStore<T extends object> {
   private db: IDBDatabase | null = null;
   private config: StoreConfig;

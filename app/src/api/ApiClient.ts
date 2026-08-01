@@ -18,7 +18,8 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
-import { ApiReplica, type OptimisticReplicaOperation } from "./ApiReplica.ts";
+import { ReplicaCache } from "./ReplicaCache.ts";
+import type { ReplicaOperation } from "./ReplicaDb.ts";
 
 export interface User {
   id: string;
@@ -527,8 +528,6 @@ interface PresenceSubscription<TState = unknown> {
   callback: (event: PresenceMessage<TState>) => void;
 }
 
-type ReplicaRollback = () => Promise<void>;
-
 /**
  * Main API client class with fluent interface
  * @example
@@ -541,8 +540,7 @@ export class ApiClient {
   accessToken?: string;
   socketHost?: string;
   realtimeConnections = new Map<string, RealtimeConnection>();
-  private readonly responseReplica = new ApiReplica();
-  private replicaScope: string | null = null;
+  private readonly replica = new ReplicaCache();
 
   constructor(options: {
     baseUrl?: string;
@@ -555,12 +553,12 @@ export class ApiClient {
   }
 
   /**
-   * Enable the persistent response replica for the current browser identity.
+   * Enable the persistent row cache for the current browser identity.
    * A scope is intentionally required: browser sessions can change users while
    * IndexedDB survives logout, so unscoped API data is never persisted.
    */
   setReplicaScope(scope: string | null | undefined): void {
-    this.replicaScope = scope?.trim() || null;
+    this.replica.setScope(scope);
   }
 
   private buildUrl(
@@ -584,38 +582,6 @@ export class ApiClient {
     return finalUrl;
   }
 
-  private scopedReplicaKey(key: string): string | null {
-    if (!this.replicaScope) return null;
-
-    const origin =
-      typeof window === "undefined" ? this.baseUrl || "server" : window.location.origin;
-    return `v1:${origin}:${this.replicaScope}:${key}`;
-  }
-
-  private replicaKey(finalUrl: string): string | null {
-    let normalizedUrl = finalUrl;
-    try {
-      const origin =
-        typeof window === "undefined" ? this.baseUrl || "server" : window.location.origin;
-      normalizedUrl = new URL(finalUrl, origin).toString();
-    } catch {
-      // Retain the request string if a custom base/path is not URL parseable.
-    }
-    return this.scopedReplicaKey(`response:${normalizedUrl}`);
-  }
-
-  private documentReplicaKey(spaceId: string, documentId: string): string | null {
-    return this.scopedReplicaKey(`document:${spaceId}:${documentId}`);
-  }
-
-  private documentAliasKey(spaceId: string, slug: string): string | null {
-    return this.scopedReplicaKey(`document-alias:${spaceId}:${slug}`);
-  }
-
-  private documentsPath(spaceId: string): string {
-    return `/api/v1/spaces/${spaceId}/documents`;
-  }
-
   private commentsPath(spaceId: string, documentId: string): string {
     return `/api/v1/spaces/${spaceId}/comments?documentId=${encodeURIComponent(documentId)}`;
   }
@@ -624,260 +590,30 @@ export class ApiClient {
     return [...new Set(categorySlugs)].sort().join(",");
   }
 
-  private isDocumentDetailPath(path: string): boolean {
-    return /^\/api\/v1\/spaces\/[^/]+\/documents\/[^/?]+$/.test(path);
-  }
-
-  private isReplicatedRead(method: string, path: string): boolean {
-    if (
-      method !== "GET" ||
-      !path.startsWith("/api/v1/") ||
-      this.isDocumentDetailPath(path)
-    ) {
-      return false;
-    }
-
-    // Replicate durable application state only. Security-sensitive responses,
-    // large/binary resources, and transient supporting views are deliberately
-    // network-only.
-    return ![
-      "/access-tokens",
-      "/secrets",
-      "/ai-chat",
-      "/uploads",
-      "/url-metadata",
-      "/package",
-      "/breadcrumbs",
-      "/audit-logs",
-      "/contributors",
-      "/members",
-      "/permissions",
-      "/users",
-    ].some((segment) => path.includes(segment));
-  }
-
-  /** Read a previously replicated JSON response without issuing a request. */
-  async readReplica<T>(
-    path: string,
-    query?: Record<string, string | number | boolean | undefined | null>,
-  ): Promise<T | undefined> {
-    const key = this.replicaKey(this.buildUrl(this.baseUrl, path, query));
-    if (!key) return undefined;
-    return (await this.responseReplica.get<T>(key))?.value;
-  }
-
   /**
-   * Observe a replicated response. The callback only fires for changes after
-   * subscription; callers should hydrate with readReplica first.
+   * Apply a mutation to the cache before the request, and undo it if the
+   * request fails.
+   *
+   * `reconcile` runs on success with the server's answer, which is what makes
+   * the local guess disposable: it is replaced by the canonical rows rather
+   * than trusted.
    */
-  subscribeToReplica<T>(
-    path: string,
-    callback: (value: T | undefined) => void,
-    query?: Record<string, string | number | boolean | undefined | null>,
-  ): () => void {
-    const key = this.replicaKey(this.buildUrl(this.baseUrl, path, query));
-    if (!key) return () => {};
-    return this.responseReplica.subscribe<T>(key, (entry) => callback(entry?.value));
-  }
-
-  /** Resolve a document id or slug through the canonical document replica. */
-  async readDocumentReplica(
-    spaceId: string,
-    documentIdOrSlug: string,
-  ): Promise<DocumentWithProperties | undefined> {
-    const directKey = this.documentReplicaKey(spaceId, documentIdOrSlug);
-    if (directKey) {
-      const direct = await this.responseReplica.get<{ document: DocumentWithProperties }>(
-        directKey,
-      );
-      if (direct) return direct.value.document;
-    }
-
-    const aliasKey = this.documentAliasKey(spaceId, documentIdOrSlug);
-    if (!aliasKey) return undefined;
-    const alias = await this.responseReplica.get<{ documentId: string }>(aliasKey);
-    if (!alias) return undefined;
-
-    const documentKey = this.documentReplicaKey(spaceId, alias.value.documentId);
-    if (!documentKey) return undefined;
-    return (
-      await this.responseReplica.get<{ document: DocumentWithProperties }>(documentKey)
-    )?.value.document;
-  }
-
-  /**
-   * Subscribe to the canonical document entry. A slug subscription first
-   * watches its small alias record, then follows it to the document id.
-   */
-  subscribeToDocumentReplica(
-    spaceId: string,
-    documentIdOrSlug: string,
-    callback: (document: DocumentWithProperties | undefined) => void,
-  ): () => void {
-    const directKey = this.documentReplicaKey(spaceId, documentIdOrSlug);
-    const aliasKey = this.documentAliasKey(spaceId, documentIdOrSlug);
-    if (!directKey || !aliasKey) return () => {};
-
-    let currentDocumentKey: string | null = null;
-    let unsubscribeDocument = () => {};
-    let disposed = false;
-
-    const attachDocument = (documentId: string) => {
-      const documentKey = this.documentReplicaKey(spaceId, documentId);
-      if (!documentKey || currentDocumentKey === documentKey || disposed) return;
-
-      unsubscribeDocument();
-      currentDocumentKey = documentKey;
-      unsubscribeDocument = this.responseReplica.subscribe<{
-        document: DocumentWithProperties;
-      }>(documentKey, (entry) => callback(entry?.value.document));
-      void this.responseReplica
-        .get<{ document: DocumentWithProperties }>(documentKey)
-        .then((entry) => {
-          if (!disposed && currentDocumentKey === documentKey) {
-            callback(entry?.value.document);
-          }
-        });
-    };
-
-    attachDocument(documentIdOrSlug);
-    const unsubscribeAlias = this.responseReplica.subscribe<{ documentId: string }>(
-      aliasKey,
-      (entry) => {
-        if (entry?.value.documentId) attachDocument(entry.value.documentId);
-      },
-    );
-    void this.responseReplica.get<{ documentId: string }>(aliasKey).then((entry) => {
-      if (entry?.value.documentId) attachDocument(entry.value.documentId);
-    });
-
-    return () => {
-      disposed = true;
-      unsubscribeDocument();
-      unsubscribeAlias();
-    };
-  }
-
-  private async replaceReplica<T>(
-    path: string,
-    value: T,
-    query?: Record<string, string | number | boolean | undefined | null>,
-  ): Promise<void> {
-    const key = this.replicaKey(this.buildUrl(this.baseUrl, path, query));
-    if (!key) return;
-    await this.responseReplica.replaceRemote(key, value);
-  }
-
-  private async applyOptimisticReplica<T>(
-    path: string,
-    updater: (current: T | undefined) => T | undefined,
-    query?: Record<string, string | number | boolean | undefined | null>,
-  ): Promise<OptimisticReplicaOperation<T> | null> {
-    const key = this.replicaKey(this.buildUrl(this.baseUrl, path, query));
-    if (!key) return null;
-    return await this.responseReplica.applyOptimistic(key, updater);
-  }
-
-  private async rollbackOptimisticReplica<T>(
-    operation: OptimisticReplicaOperation<T> | null,
-  ): Promise<void> {
-    if (!operation) return;
-    await this.responseReplica.rollback(operation);
-  }
-
-  private async optimisticReplica<T>(
-    path: string,
-    updater: (current: T | undefined) => T | undefined,
-    query?: Record<string, string | number | boolean | undefined | null>,
-  ): Promise<ReplicaRollback> {
-    const operation = await this.applyOptimisticReplica(path, updater, query);
-    return async () => await this.rollbackOptimisticReplica(operation);
-  }
-
   private async withOptimisticReplica<TResult>(
-    optimistic: () => Promise<ReplicaRollback | ReplicaRollback[]>,
+    optimistic: () => Promise<(ReplicaOperation | null) | Array<ReplicaOperation | null>>,
     request: () => Promise<TResult>,
     reconcile?: (result: TResult) => Promise<void>,
   ): Promise<TResult> {
-    const pendingRollbacks = await optimistic();
-    const rollbacks = Array.isArray(pendingRollbacks)
-      ? pendingRollbacks
-      : [pendingRollbacks];
+    const pending = await optimistic();
+    const operations = Array.isArray(pending) ? pending : [pending];
 
     try {
       const result = await request();
       await reconcile?.(result);
       return result;
     } catch (error) {
-      await Promise.all(rollbacks.map((rollback) => rollback()));
+      await Promise.all(operations.map((operation) => this.replica.rollback(operation)));
       throw error;
     }
-  }
-
-  /** Replace a cached response derived from a canonical mutation response. */
-  private async updateRemoteReplica<T>(
-    path: string,
-    updater: (current: T) => T,
-    query?: Record<string, string | number | boolean | undefined | null>,
-  ): Promise<void> {
-    const current = await this.readReplica<T>(path, query);
-    if (current === undefined) return;
-    await this.replaceReplica(path, updater(current), query);
-  }
-
-  /**
-   * A document can be addressed by either its stable id or its mutable slug.
-   * Keep both cached GET aliases in sync when a mutation returns a canonical
-   * representation so all document views observe the same replica update.
-   */
-  private async replaceDocumentReplica(
-    spaceId: string,
-    document: DocumentWithProperties,
-  ): Promise<void> {
-    const documentKey = this.documentReplicaKey(spaceId, document.id);
-    const aliasKey = this.documentAliasKey(spaceId, document.slug);
-    if (!documentKey || !aliasKey) return;
-
-    const previous = await this.responseReplica.get<{
-      document: DocumentWithProperties;
-    }>(documentKey);
-    await this.responseReplica.replaceRemote(documentKey, { document });
-
-    const previousSlug = previous?.value.document.slug;
-    if (previousSlug && previousSlug !== document.slug) {
-      const previousAliasKey = this.documentAliasKey(spaceId, previousSlug);
-      if (previousAliasKey) await this.responseReplica.removeRemote(previousAliasKey);
-    }
-    await this.responseReplica.replaceRemote(aliasKey, { documentId: document.id });
-  }
-
-  private async applyOptimisticDocumentReplica(
-    spaceId: string,
-    documentId: string,
-    updater: (
-      current: { document: DocumentWithProperties } | undefined,
-    ) => { document: DocumentWithProperties } | undefined,
-  ): Promise<OptimisticReplicaOperation<{ document: DocumentWithProperties }> | null> {
-    const current = await this.readDocumentReplica(spaceId, documentId);
-    const documentKey = this.documentReplicaKey(spaceId, current?.id ?? documentId);
-    if (!documentKey) return null;
-
-    return await this.responseReplica.applyOptimistic(documentKey, updater);
-  }
-
-  private async optimisticDocumentReplica(
-    spaceId: string,
-    documentId: string,
-    updater: (
-      current: { document: DocumentWithProperties } | undefined,
-    ) => { document: DocumentWithProperties } | undefined,
-  ): Promise<ReplicaRollback> {
-    const operation = await this.applyOptimisticDocumentReplica(
-      spaceId,
-      documentId,
-      updater,
-    );
-    return async () => await this.rollbackOptimisticReplica(operation);
   }
 
   /**
@@ -892,13 +628,6 @@ export class ApiClient {
   ): Promise<T> {
     const { query, ...fetchOptions } = options || {};
     const finalUrl = this.buildUrl(base, path, query);
-    const method = (fetchOptions.method ?? "GET").toUpperCase();
-    // Capture the identity before the request starts. A logout/login during an
-    // in-flight request must not write the prior user's response into the new
-    // replica scope.
-    const responseReplicaKey = this.isReplicatedRead(method, path)
-      ? this.replicaKey(finalUrl)
-      : null;
 
     const response = await fetch(finalUrl, {
       ...fetchOptions,
@@ -921,12 +650,7 @@ export class ApiClient {
     }
 
     const responseText = await response.text();
-    const data = (responseText ? JSON.parse(responseText) : undefined) as T;
-    if (responseReplicaKey) {
-      await this.responseReplica.replaceRemote(responseReplicaKey, data);
-    }
-
-    return data;
+    return (responseText ? JSON.parse(responseText) : undefined) as T;
   }
 
   /**
@@ -1054,15 +778,17 @@ export class ApiClient {
      * List all spaces
      */
     get: async () => {
-      return await this.apiGet<Space[]>(this.baseUrl, "/api/v1/spaces");
+      const spaces = await this.apiGet<Space[]>(this.baseUrl, "/api/v1/spaces");
+      await this.replica.writeSpaces(spaces);
+      return spaces;
     },
 
     getCached: async () => {
-      return await this.readReplica<Space[]>("/api/v1/spaces");
+      return await this.replica.readSpaces();
     },
 
     subscribeCached: (callback: (spaces: Space[] | undefined) => void) => {
-      return this.subscribeToReplica<Space[]>("/api/v1/spaces", callback);
+      return this.replica.subscribeSpaces(callback);
     },
 
     /**
@@ -1078,10 +804,7 @@ export class ApiClient {
         "/api/v1/spaces",
         body,
       );
-      await this.updateRemoteReplica<Space[]>("/api/v1/spaces", (spaces) => [
-        ...spaces.filter((space) => space.id !== response.space.id),
-        response.space,
-      ]);
+      await this.replica.writeSpace(response.space);
       return response.space;
     },
   };
@@ -1128,31 +851,10 @@ export class ApiClient {
       spaceId: string,
       body: { name?: string; slug?: string; preferences?: Record<string, string> },
     ) => {
-      const detailPath = `/api/v1/spaces/${spaceId}`;
-      const listPath = "/api/v1/spaces";
       return await this.withOptimisticReplica(
-        () =>
-          Promise.all([
-            this.optimisticReplica<Space>(detailPath, (space) =>
-              space ? { ...space, ...body } : space,
-            ),
-            this.optimisticReplica<Space[]>(listPath, (spaces) =>
-              spaces?.map((space) =>
-                space.id === spaceId ? { ...space, ...body } : space,
-              ),
-            ),
-          ]),
-        () => this.apiPatch<Space>(this.baseUrl, detailPath, body),
-        async (space) => {
-          await Promise.all([
-            this.replaceReplica(detailPath, space),
-            this.updateRemoteReplica<Space[]>(listPath, (spaces) =>
-              spaces.map((current) =>
-                current.id === spaceId ? { ...current, ...space } : current,
-              ),
-            ),
-          ]);
-        },
+        () => this.replica.patchSpace(spaceId, body),
+        () => this.apiPatch<Space>(this.baseUrl, `/api/v1/spaces/${spaceId}`, body),
+        async (space) => await this.replica.writeSpace(space),
       );
     },
 
@@ -1160,19 +862,8 @@ export class ApiClient {
      * Delete a space
      */
     delete: async (spaceId: string) => {
-      const listPath = "/api/v1/spaces";
-      await this.withOptimisticReplica(
-        () =>
-          this.optimisticReplica<Space[]>(listPath, (spaces) =>
-            spaces?.filter((space) => space.id !== spaceId),
-          ),
-        () => this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}`),
-        async () => {
-          await this.updateRemoteReplica<Space[]>(listPath, (spaces) =>
-            spaces.filter((space) => space.id !== spaceId),
-          );
-        },
-      );
+      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}`);
+      await this.replica.removeSpace(spaceId);
     },
   };
 
@@ -1288,26 +979,23 @@ export class ApiClient {
      * List categories in a space
      */
     get: async (spaceId: string) => {
-      return await this.apiGet<CategoriesListResponse>(
+      const response = await this.apiGet<CategoriesListResponse>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/categories`,
       );
+      await this.replica.writeCategories(spaceId, response);
+      return response;
     },
 
     getCached: async (spaceId: string) => {
-      return await this.readReplica<CategoriesListResponse>(
-        `/api/v1/spaces/${spaceId}/categories`,
-      );
+      return await this.replica.readCategories(spaceId);
     },
 
     subscribeCached: (
       spaceId: string,
       callback: (response: CategoriesListResponse | undefined) => void,
     ) => {
-      return this.subscribeToReplica<CategoriesListResponse>(
-        `/api/v1/spaces/${spaceId}/categories`,
-        callback,
-      );
+      return this.replica.subscribeCategories(spaceId, callback);
     },
 
     /**
@@ -1328,18 +1016,7 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/categories`,
         body,
       );
-      await this.updateRemoteReplica<CategoriesListResponse>(
-        `/api/v1/spaces/${spaceId}/categories`,
-        (cached) => ({
-          ...cached,
-          categories: [
-            ...cached.categories.filter(
-              (category) => category.id !== response.category.id,
-            ),
-            response.category,
-          ],
-        }),
-      );
+      await this.replica.writeCategory(spaceId, response.category);
       return response.category;
     },
 
@@ -1354,7 +1031,7 @@ export class ApiClient {
       );
       // The reorder endpoint does not return the canonical list, so re-fetch it
       // rather than treating the local ordering as authoritative.
-      if (await this.readReplica(`/api/v1/spaces/${spaceId}/categories`)) {
+      if (await this.replica.readCategories(spaceId)) {
         await this.categories.get(spaceId);
       }
       return response.success;
@@ -1387,37 +1064,15 @@ export class ApiClient {
         icon?: string;
       },
     ) => {
-      const detailPath = `/api/v1/spaces/${spaceId}/categories/${id}`;
-      const listPath = `/api/v1/spaces/${spaceId}/categories`;
       const response = await this.withOptimisticReplica(
+        () => this.replica.patchCategory(spaceId, id, body),
         () =>
-          Promise.all([
-            this.optimisticReplica<{ category: Category }>(detailPath, (cached) =>
-              cached ? { category: { ...cached.category, ...body } } : cached,
-            ),
-            this.optimisticReplica<CategoriesListResponse>(listPath, (cached) =>
-              cached
-                ? {
-                    ...cached,
-                    categories: cached.categories.map((category) =>
-                      category.id === id ? { ...category, ...body } : category,
-                    ),
-                  }
-                : cached,
-            ),
-          ]),
-        () => this.apiPut<{ category: Category }>(this.baseUrl, detailPath, body),
-        async (response) => {
-          await Promise.all([
-            this.replaceReplica(detailPath, response),
-            this.updateRemoteReplica<CategoriesListResponse>(listPath, (cached) => ({
-              ...cached,
-              categories: cached.categories.map((category) =>
-                category.id === id ? response.category : category,
-              ),
-            })),
-          ]);
-        },
+          this.apiPut<{ category: Category }>(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/categories/${id}`,
+            body,
+          ),
+        async (response) => await this.replica.writeCategory(spaceId, response.category),
       );
       return response.category;
     },
@@ -1426,24 +1081,10 @@ export class ApiClient {
      * Delete a category
      */
     delete: async (spaceId: string, id: string) => {
-      const listPath = `/api/v1/spaces/${spaceId}/categories`;
       await this.withOptimisticReplica(
-        () =>
-          this.optimisticReplica<CategoriesListResponse>(listPath, (cached) =>
-            cached
-              ? {
-                  ...cached,
-                  categories: cached.categories.filter((category) => category.id !== id),
-                }
-              : cached,
-          ),
+        () => this.replica.removeCategoryOptimistic(spaceId, id),
         () => this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/categories/${id}`),
-        async () => {
-          await this.updateRemoteReplica<CategoriesListResponse>(listPath, (cached) => ({
-            ...cached,
-            categories: cached.categories.filter((category) => category.id !== id),
-          }));
-        },
+        async () => await this.replica.removeCategory(spaceId, id),
       );
     },
   };
@@ -1465,47 +1106,32 @@ export class ApiClient {
         limit: number;
         nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, query);
+
+      // Only an unfiltered, exhausted read describes the space's documents.
+      // Anything narrower — a cursor page, a parent, a type — contributes rows
+      // without being the list, and must not be mistaken for it.
+      const isSpaceListing =
+        Object.keys(query ?? {}).every((key) => key === "limit") &&
+        response.nextCursor === null;
+
+      if (isSpaceListing) {
+        await this.replica.writeDocumentList(spaceId, response.documents);
+      } else {
+        await this.replica.writeDocuments(spaceId, response.documents);
+      }
       return response;
     },
 
-    getCached: async (
-      spaceId: string,
-      query?: { limit?: number; cursor?: string; type?: string } & Record<
-        string,
-        string | number | boolean | undefined
-      >,
-    ) => {
-      return await this.readReplica<{
-        documents: DocumentWithProperties[];
-        total: number;
-        limit: number;
-        nextCursor: string | null;
-      }>(this.documentsPath(spaceId), query);
+    /** The space's documents as the last listing left them. */
+    getCached: async (spaceId: string) => {
+      return await this.replica.readDocuments(spaceId);
     },
 
     subscribeCached: (
       spaceId: string,
-      callback: (
-        response:
-          | {
-              documents: DocumentWithProperties[];
-              total: number;
-              limit: number;
-              nextCursor: string | null;
-            }
-          | undefined,
-      ) => void,
-      query?: { limit?: number; cursor?: string; type?: string } & Record<
-        string,
-        string | number | boolean | undefined
-      >,
+      callback: (documents: DocumentWithProperties[] | undefined) => void,
     ) => {
-      return this.subscribeToReplica<{
-        documents: DocumentWithProperties[];
-        total: number;
-        limit: number;
-        nextCursor: string | null;
-      }>(this.documentsPath(spaceId), callback, query);
+      return this.replica.subscribeDocuments(spaceId, callback);
     },
 
     /**
@@ -1531,19 +1157,16 @@ export class ApiClient {
         categorySlugs: this.categorySlugsQuery(categorySlugs),
         grouped: true,
       });
+      await this.replica.writeDocumentsByCategory(
+        spaceId,
+        response.documentsByCategory,
+        categorySlugs,
+      );
       return response.documentsByCategory;
     },
 
     getByCategoriesCached: async (spaceId: string, categorySlugs: string[]) => {
-      return (
-        await this.readReplica<{
-          documentsByCategory: Record<string, DocumentWithProperties[]>;
-          categorySlugs: string[];
-        }>(this.documentsPath(spaceId), {
-          categorySlugs: this.categorySlugsQuery(categorySlugs),
-          grouped: true,
-        })
-      )?.documentsByCategory;
+      return await this.replica.readDocumentsByCategories(spaceId, categorySlugs);
     },
 
     subscribeByCategoriesCached: (
@@ -1553,16 +1176,10 @@ export class ApiClient {
         documentsByCategory: Record<string, DocumentWithProperties[]> | undefined,
       ) => void,
     ) => {
-      return this.subscribeToReplica<{
-        documentsByCategory: Record<string, DocumentWithProperties[]>;
-        categorySlugs: string[];
-      }>(
-        this.documentsPath(spaceId),
-        (response) => callback(response?.documentsByCategory),
-        {
-          categorySlugs: this.categorySlugsQuery(categorySlugs),
-          grouped: true,
-        },
+      return this.replica.subscribeDocumentsByCategories(
+        spaceId,
+        categorySlugs,
+        callback,
       );
     },
 
@@ -1585,7 +1202,7 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/documents`,
         body,
       );
-      await this.replaceDocumentReplica(spaceId, response.document);
+      await this.replica.writeDocument(spaceId, response.document);
       return response.document;
     },
   };
@@ -1612,12 +1229,12 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/documents/${documentId}`,
         query,
       );
-      await this.replaceDocumentReplica(spaceId, response.document);
+      await this.replica.writeDocument(spaceId, response.document);
       return response.document;
     },
 
     getCached: async (spaceId: string, documentIdOrSlug: string) => {
-      return await this.readDocumentReplica(spaceId, documentIdOrSlug);
+      return await this.replica.readDocument(spaceId, documentIdOrSlug);
     },
 
     subscribeCached: (
@@ -1625,7 +1242,7 @@ export class ApiClient {
       documentIdOrSlug: string,
       callback: (document: DocumentWithProperties | undefined) => void,
     ) => {
-      return this.subscribeToDocumentReplica(spaceId, documentIdOrSlug, callback);
+      return this.replica.subscribeDocument(spaceId, documentIdOrSlug, callback);
     },
 
     /**
@@ -1641,19 +1258,14 @@ export class ApiClient {
       const requestPath = options?.publish ? `${detailPath}?publish=true` : detailPath;
       const response = await this.withOptimisticReplica(
         () =>
-          this.optimisticDocumentReplica(spaceId, documentId, (cached) =>
-            cached
-              ? {
-                  document: {
-                    ...cached.document,
-                    content,
-                    ...(options?.publish
-                      ? { publishedRev: cached.document.publishedRev ?? 0 }
-                      : {}),
-                  },
-                }
-              : cached,
-          ),
+          this.replica.patchDocument(spaceId, documentId, {
+            document: (current) => ({
+              content,
+              // Publishing this edit does not tell us its revision number; keep
+              // the last one we know until the response says otherwise.
+              ...(options?.publish ? { publishedRev: current.publishedRev ?? 0 } : {}),
+            }),
+          }),
         async () => {
           const response = await fetch(`${this.baseUrl}${requestPath}`, {
             method: "PUT",
@@ -1679,8 +1291,8 @@ export class ApiClient {
           // The PUT response intentionally omits `content` to avoid echoing the
           // whole (potentially tens-of-MB) document back. We already hold the
           // canonical content — it's exactly what we just sent — so merge it
-          // onto the server metadata when refreshing the replica.
-          await this.replaceDocumentReplica(spaceId, {
+          // onto the server metadata when refreshing the row.
+          await this.replica.writeDocument(spaceId, {
             ...response.document,
             content,
           });
@@ -1702,45 +1314,36 @@ export class ApiClient {
         readonly?: boolean;
       },
     ) => {
-      const detailPath = `/api/v1/spaces/${spaceId}/documents/${documentId}`;
+      const properties: Record<string, string | string[] | null> = {};
+      for (const [key, patch] of Object.entries(body.properties ?? {})) {
+        if (patch === null) {
+          properties[key] = null;
+          continue;
+        }
+        const value =
+          typeof patch === "object" && !Array.isArray(patch) && "value" in patch
+            ? patch.value
+            : patch;
+        properties[key] =
+          typeof value === "string" || Array.isArray(value) ? value : String(value);
+      }
+
       return await this.withOptimisticReplica(
         () =>
-          this.optimisticDocumentReplica(spaceId, documentId, (cached) => {
-            if (!cached) return cached;
-
-            const properties = { ...cached.document.properties };
-            for (const [key, patch] of Object.entries(body.properties ?? {})) {
-              if (patch === null) {
-                delete properties[key];
-                continue;
-              }
-              const value =
-                typeof patch === "object" && !Array.isArray(patch) && "value" in patch
-                  ? patch.value
-                  : patch;
-              if (typeof value === "string" || Array.isArray(value)) {
-                properties[key] = value;
-              } else {
-                properties[key] = String(value);
-              }
-            }
-
-            return {
-              document: {
-                ...cached.document,
-                ...(body.parentId !== undefined ? { parentId: body.parentId } : {}),
-                ...(body.publishedRev !== undefined
-                  ? { publishedRev: body.publishedRev }
-                  : {}),
-                ...(body.readonly !== undefined ? { readonly: body.readonly } : {}),
-                properties,
-              },
-            };
+          this.replica.patchDocument(spaceId, documentId, {
+            document: {
+              ...(body.parentId !== undefined ? { parentId: body.parentId } : {}),
+              ...(body.publishedRev !== undefined
+                ? { publishedRev: body.publishedRev }
+                : {}),
+              ...(body.readonly !== undefined ? { readonly: body.readonly } : {}),
+            },
+            properties,
           }),
         () =>
           this.apiPatch<{ success?: boolean; slug?: string }>(
             this.baseUrl,
-            detailPath,
+            `/api/v1/spaces/${spaceId}/documents/${documentId}`,
             body,
           ),
         async () => {
@@ -1759,13 +1362,14 @@ export class ApiClient {
       documentId: string,
       content: string,
     ): Promise<void> => {
-      const detailPath = `/api/v1/spaces/${spaceId}/documents/${documentId}`;
       await this.withOptimisticReplica(
+        () => this.replica.patchDocument(spaceId, documentId, { document: { content } }),
         () =>
-          this.optimisticDocumentReplica(spaceId, documentId, (cached) =>
-            cached ? { document: { ...cached.document, content } } : cached,
+          this.apiPut<unknown>(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+            { content },
           ),
-        () => this.apiPut<unknown>(this.baseUrl, detailPath, { content }),
         async () => {
           await this.document.get(spaceId, documentId).catch(() => undefined);
         },
@@ -1776,9 +1380,14 @@ export class ApiClient {
      * Archive a document
      */
     archive: async (spaceId: string, documentId: string) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+      await this.withOptimisticReplica(
+        () => this.replica.archiveDocumentOptimistic(spaceId, documentId),
+        () =>
+          this.apiDelete(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+          ),
+        async () => await this.replica.archiveDocument(spaceId, documentId),
       );
     },
 
@@ -1786,9 +1395,14 @@ export class ApiClient {
      * Delete a document permanently
      */
     delete: async (spaceId: string, documentId: string) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}?permanent=true`,
+      await this.withOptimisticReplica(
+        () => this.replica.removeDocumentOptimistic(spaceId, documentId),
+        () =>
+          this.apiDelete(
+            this.baseUrl,
+            `/api/v1/spaces/${spaceId}/documents/${documentId}?permanent=true`,
+          ),
+        async () => await this.replica.removeDocument(spaceId, documentId),
       );
     },
 
@@ -1796,11 +1410,15 @@ export class ApiClient {
      * Restore an archived document
      */
     restore: async (spaceId: string, documentId: string) => {
-      return await this.apiPut<{ success: boolean }>(
+      const response = await this.apiPut<{ success: boolean }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/documents/${documentId}`,
         { restore: true },
       );
+      // Restoring puts the document back into every listing it belongs to,
+      // which only the server can work out.
+      await this.document.get(spaceId, documentId).catch(() => undefined);
+      return response;
     },
 
     /**
@@ -2300,10 +1918,12 @@ export class ApiClient {
         errors?: ExtensionManifestError[];
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions`);
 
-      return {
+      const manifest = {
         extensions: response.extensions ?? [],
         errors: response.errors ?? [],
       };
+      await this.replica.writeExtensions(spaceId, manifest);
+      return manifest;
     },
 
     getCached: async (
@@ -2311,15 +1931,7 @@ export class ApiClient {
     ): Promise<
       { extensions: ExtensionInfo[]; errors: ExtensionManifestError[] } | undefined
     > => {
-      const response = await this.readReplica<{
-        extensions: ExtensionInfo[];
-        errors?: ExtensionManifestError[];
-      }>(`/api/v1/spaces/${spaceId}/extensions`);
-      if (!response) return undefined;
-      return {
-        extensions: response.extensions ?? [],
-        errors: response.errors ?? [],
-      };
+      return await this.replica.readExtensions(spaceId);
     },
 
     subscribeCached: (
@@ -2330,19 +1942,7 @@ export class ApiClient {
           | undefined,
       ) => void,
     ) => {
-      return this.subscribeToReplica<{
-        extensions: ExtensionInfo[];
-        errors?: ExtensionManifestError[];
-      }>(`/api/v1/spaces/${spaceId}/extensions`, (response) => {
-        callback(
-          response
-            ? {
-                extensions: response.extensions ?? [],
-                errors: response.errors ?? [],
-              }
-            : undefined,
-        );
-      });
+      return this.replica.subscribeExtensions(spaceId, callback);
     },
 
     /**
@@ -2363,11 +1963,13 @@ export class ApiClient {
       extensionId: string,
       body: { enabled: boolean },
     ): Promise<ExtensionInfo> => {
-      return await this.apiPatch<ExtensionInfo>(
+      const extension = await this.apiPatch<ExtensionInfo>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
         body,
       );
+      await this.replica.writeExtension(spaceId, extension);
+      return extension;
     },
 
     /**
@@ -2387,7 +1989,9 @@ export class ApiClient {
         throw new Error(error.error || `Upload failed: ${response.status}`);
       }
 
-      return await response.json();
+      const extension = (await response.json()) as ExtensionInfo;
+      await this.replica.writeExtension(spaceId, extension);
+      return extension;
     },
 
     /**
@@ -2398,6 +2002,7 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
       );
+      await this.replica.removeExtension(spaceId, extensionId);
     },
 
     /**
@@ -2458,15 +2063,12 @@ export class ApiClient {
         this.baseUrl,
         this.commentsPath(spaceId, documentId),
       );
+      await this.replica.writeComments(spaceId, documentId, response.comments);
       return response.comments;
     },
 
     getCached: async (spaceId: string, documentId: string) => {
-      return (
-        await this.readReplica<{ comments: Comment[] }>(
-          this.commentsPath(spaceId, documentId),
-        )
-      )?.comments;
+      return await this.replica.readComments(spaceId, documentId);
     },
 
     subscribeCached: (
@@ -2474,10 +2076,7 @@ export class ApiClient {
       documentId: string,
       callback: (comments: Comment[] | undefined) => void,
     ) => {
-      return this.subscribeToReplica<{ comments: Comment[] }>(
-        this.commentsPath(spaceId, documentId),
-        (response) => callback(response?.comments),
-      );
+      return this.replica.subscribeComments(spaceId, documentId, callback);
     },
 
     /**
@@ -2493,7 +2092,6 @@ export class ApiClient {
         type: string;
       },
     ) => {
-      const path = this.commentsPath(spaceId, documentId);
       const optimisticId =
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? `optimistic-${crypto.randomUUID()}`
@@ -2512,27 +2110,15 @@ export class ApiClient {
         updatedBy: "",
       };
       const response = await this.withOptimisticReplica(
-        () =>
-          this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
-            cached
-              ? { ...cached, comments: [...cached.comments, optimisticComment] }
-              : cached,
-          ),
+        () => this.replica.addComment(spaceId, optimisticComment),
         () =>
           this.apiPost<{ comment: Comment }>(
             this.baseUrl,
             `/api/v1/spaces/${spaceId}/comments`,
             { ...body, documentId },
           ),
-        async (response) => {
-          await this.updateRemoteReplica<{ comments: Comment[] }>(path, (cached) => ({
-            ...cached,
-            comments: [
-              ...cached.comments.filter((comment) => comment.id !== optimisticId),
-              response.comment,
-            ],
-          }));
-        },
+        async (response) =>
+          await this.replica.replaceComment(spaceId, optimisticId, response.comment),
       );
       return response.comment;
     },
@@ -2548,21 +2134,11 @@ export class ApiClient {
         reference: string;
       },
     ) => {
-      const path = this.commentsPath(spaceId, documentId);
       await this.withOptimisticReplica(
         () =>
-          this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
-            cached
-              ? {
-                  ...cached,
-                  comments: cached.comments.map((comment) =>
-                    body.commentIds.includes(comment.id)
-                      ? { ...comment, reference: body.reference }
-                      : comment,
-                  ),
-                }
-              : cached,
-          ),
+          this.replica.patchComments(spaceId, body.commentIds, {
+            reference: body.reference,
+          }),
         () =>
           this.apiPatch<{ success: boolean }>(
             this.baseUrl,
@@ -2579,19 +2155,9 @@ export class ApiClient {
      * Resolve (archive) a thread — all comments sharing the same reference
      */
     resolve: async (spaceId: string, documentId: string, commentIds: string[]) => {
-      const path = this.commentsPath(spaceId, documentId);
       await this.withOptimisticReplica(
-        () =>
-          this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
-            cached
-              ? {
-                  ...cached,
-                  comments: cached.comments.filter(
-                    (comment) => !commentIds.includes(comment.id),
-                  ),
-                }
-              : cached,
-          ),
+        // A resolved thread is archived, and the endpoint stops listing it.
+        () => this.replica.removeCommentsOptimistic(spaceId, documentId, commentIds),
         () =>
           this.apiPatch<{ success: boolean }>(
             this.baseUrl,
@@ -2608,17 +2174,8 @@ export class ApiClient {
      * Delete a comment
      */
     delete: async (spaceId: string, documentId: string, commentId: string) => {
-      const path = this.commentsPath(spaceId, documentId);
       await this.withOptimisticReplica(
-        () =>
-          this.optimisticReplica<{ comments: Comment[] }>(path, (cached) =>
-            cached
-              ? {
-                  ...cached,
-                  comments: cached.comments.filter((comment) => comment.id !== commentId),
-                }
-              : cached,
-          ),
+        () => this.replica.removeCommentsOptimistic(spaceId, documentId, [commentId]),
         () =>
           this.apiFetch<void>(this.baseUrl, `/api/v1/spaces/${spaceId}/comments`, {
             method: "DELETE",
@@ -2627,12 +2184,7 @@ export class ApiClient {
             },
             body: JSON.stringify({ commentId, documentId }),
           }),
-        async () => {
-          await this.updateRemoteReplica<{ comments: Comment[] }>(path, (cached) => ({
-            ...cached,
-            comments: cached.comments.filter((comment) => comment.id !== commentId),
-          }));
-        },
+        async () => await this.replica.removeComments(spaceId, documentId, [commentId]),
       );
     },
   };

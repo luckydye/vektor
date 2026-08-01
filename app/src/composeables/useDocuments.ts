@@ -20,22 +20,22 @@ export function useDocuments() {
       if (!spaceIdValue) {
         throw new Error("No space ID");
       }
-      return await api.documents.get(spaceIdValue, { limit: 500 });
+      return (await api.documents.get(spaceIdValue, { limit: 500 })).documents;
     },
     initialData: async () => {
       const spaceIdValue = spaceId();
       if (!spaceIdValue) return undefined;
-      return await api.documents.getCached(spaceIdValue, { limit: 500 });
+      return await api.documents.getCached(spaceIdValue);
     },
     subscribe: (callback) => {
       const spaceIdValue = spaceId();
       if (!spaceIdValue) return () => {};
-      return api.documents.subscribeCached(spaceIdValue, callback, { limit: 500 });
+      return api.documents.subscribeCached(spaceIdValue, callback);
     },
     enabled: createMemo(() => !!spaceId()),
   });
 
-  const documents = createMemo(() => data()?.documents ?? []);
+  const documents = createMemo(() => data() ?? []);
 
   useSync(
     spaceId,
