@@ -43,6 +43,8 @@ files renamed (`util.ts` collides twice upstream). Beyond that:
   the document. `refresh` repaints; `onContentChanged` fires only where cells
   actually change, which in the ported code means the two autofill paths in
   `outlineHandle.ts` and the commit-on-click-away in `../pointer.ts`.
+- **`getAreaDimensions` is public**, so the presence overlays can size a
+  peer's selection the same way the selection outline is sized.
 - **Two performance fixes** carried over from `~/source/sheets/patches/`, neither
   of which is fixed upstream in 0.8.3. They were written against v0.7.1 and no
   longer apply as patches, so they are re-implemented here:

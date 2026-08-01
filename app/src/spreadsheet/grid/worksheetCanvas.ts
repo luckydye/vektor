@@ -1475,7 +1475,8 @@ export class WorksheetCanvas {
     return `rect(${topClip}px ${rightClip}px ${bottomClip}px ${leftClip}px)`;
   }
 
-  private getAreaDimensions(
+  // Local change: public, so presence overlays can size a peer's selection.
+  getAreaDimensions(
     startRow: number,
     startColumn: number,
     endRow: number,

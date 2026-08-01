@@ -228,11 +228,20 @@ function usedExtent(model: Model): { rows: number[]; columns: number[] } {
  * allows become the empty cells a table needs.
  */
 export function toDocumentHtml(model: Model): string {
+  const { cells, layout } = readSheet(model);
+  return cellsToHtmlTable(cells, layout);
+}
+
+/**
+ * The model's grid, as cells and sizes. Shared by the save path and the
+ * collaborative one, which needs the same view to diff against the room.
+ */
+export function readSheet(model: Model): { cells: TableCell[][]; layout: TableLayout } {
   const { rows, columns } = usedExtent(model);
   const lastRow = rows[rows.length - 1];
   const lastColumn = columns[columns.length - 1];
   if (lastRow === undefined || lastColumn === undefined) {
-    return cellsToHtmlTable([]);
+    return { cells: [], layout: {} };
   }
 
   const base = getDefaults().style as unknown as Json;
@@ -255,7 +264,7 @@ export function toDocumentHtml(model: Model): string {
     grid.push(cells);
   }
 
-  return cellsToHtmlTable(grid, readLayout(model, lastRow, lastColumn));
+  return { cells: grid, layout: readLayout(model, lastRow, lastColumn) };
 }
 
 /** The widths and heights that have been changed from the default. */

@@ -11,7 +11,14 @@
 // sheet can be a million rows tall without a million elements.
 
 import type { Model } from "@ironcalc/wasm";
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+} from "solid-js";
 import { CellEditor } from "#spreadsheet/CellEditor.tsx";
 import { LAST_COLUMN, LAST_ROW } from "#spreadsheet/grid/constants.ts";
 import type { Cell } from "#spreadsheet/grid/types.ts";
@@ -23,6 +30,7 @@ import {
   WorksheetCanvas,
 } from "#spreadsheet/grid/worksheetCanvas.ts";
 import { createPointerHandlers } from "#spreadsheet/pointer.ts";
+import { presenceColor, type RemoteSelection } from "#spreadsheet/presence.ts";
 
 export interface HeaderTarget {
   kind: "cell" | "column" | "row";
@@ -39,6 +47,8 @@ interface Props {
   refresh: () => void;
   /** Cell contents changed, so the document needs saving. */
   mutated: () => void;
+  /** Where everyone else in the room has their selection. */
+  remoteSelections: () => RemoteSelection[];
   /** An edit committed or was abandoned; focus goes back to the grid. */
   onEditEnd: () => void;
   onContextMenu: (target: HeaderTarget) => void;
@@ -61,6 +71,8 @@ export function Worksheet(props: Props) {
   let editorWrapper!: HTMLDivElement;
 
   const [canvas, setCanvas] = createSignal<WorksheetCanvas | null>(null);
+  // Bumped when the view moves without the model changing, so overlays follow.
+  const [viewport, setViewport] = createSignal(0);
   // The canvas is rebuilt on resize and on a theme change, but the sub-cell
   // scroll offset describes where the *view* is, so it outlives those.
   const scrollOffset: ScrollOffset = { x: 0, y: 0 };
@@ -255,6 +267,9 @@ export function Worksheet(props: Props) {
   });
 
   const onScroll = () => {
+    // Overlays are positioned from the canvas, which does not move when the
+    // view scrolls — so they have to be recomputed rather than carried along.
+    setViewport((value) => value + 1);
     const sheet = canvas();
     if (!sheet || ignoreScrollEvent) return;
     sheet.setScrollPosition({
@@ -315,6 +330,25 @@ export function Worksheet(props: Props) {
     return { kind: "cell", x: clientX, y: clientY };
   };
 
+  /**
+   * A peer's selection as a rectangle over the grid. Anything scrolled off the
+   * top or left of the cells area is dropped rather than drawn under the
+   * headers, which is where the canvas would otherwise put it.
+   */
+  const overlays = createMemo(() => {
+    props.revision();
+    viewport();
+    const sheet = canvas();
+    if (!sheet) return [];
+    return props.remoteSelections().flatMap((entry) => {
+      const { row, column, rowEnd, columnEnd } = entry.selection;
+      const [left, top] = sheet.getCoordinatesByCell(row, column);
+      const [width, height] = sheet.getAreaDimensions(row, column, rowEnd, columnEnd);
+      if (left < headerColumnWidth || top < headerRowHeight) return [];
+      return [{ entry, left, top, width, height }];
+    });
+  });
+
   return (
     <div class="ic-worksheet-wrapper" ref={scrollElement} onScroll={onScroll}>
       <div class="ic-worksheet-spacer" ref={spacerElement} />
@@ -361,6 +395,23 @@ export function Worksheet(props: Props) {
         <div class="ic-worksheet-column-resize-guide" ref={columnGuide} />
         <div class="ic-worksheet-row-resize-guide" ref={rowGuide} />
         <div class="ic-worksheet-column-headers" ref={columnHeaders} />
+
+        <For each={overlays()}>
+          {(overlay) => (
+            <div
+              class="ic-peer-selection"
+              style={{
+                left: `${overlay.left}px`,
+                top: `${overlay.top}px`,
+                width: `${overlay.width}px`,
+                height: `${overlay.height}px`,
+                "--peer-color": presenceColor(overlay.entry),
+              }}
+            >
+              <span class="ic-peer-name">{overlay.entry.user.name}</span>
+            </div>
+          )}
+        </For>
       </div>
     </div>
   );

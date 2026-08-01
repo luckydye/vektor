@@ -7,6 +7,7 @@ import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/canvasYjs.ts";
 import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
 import { contentExtensions } from "#editor/extensions.ts";
+import { htmlFromSheetDoc, sheetDocFromHtml } from "#spreadsheet/sheetDoc.ts";
 import { parseHtml, SyntaxKind } from "#utils/html.ts";
 
 /**
@@ -111,6 +112,7 @@ export function docFromContent(
   content: string,
 ): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
+  if (type === "csv") return sheetDocFromHtml(content);
   if (type === "workflow") return prosemirrorToYDoc(workflowDoc(content), "default");
   const extensions = contentExtensions({ spaceId, documentId });
   const json = generateJSON(content, extensions);
@@ -127,6 +129,7 @@ export function contentFromDoc(
   doc: Y.Doc,
 ): string {
   if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
+  if (type === "csv") return htmlFromSheetDoc(doc);
   if (type === "workflow") return workflowCode(doc);
   return toCleanHtml(doc, contentExtensions({ spaceId, documentId }));
 }

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
+import * as Y from "yjs";
 import {
   cellsToHtmlTable,
   htmlTableToCells,
@@ -9,6 +10,12 @@ import {
   rowsToHtmlTable,
 } from "#documents/htmlTable.ts";
 import { createModel, toDocumentHtml } from "#spreadsheet/csvDocument.ts";
+import {
+  htmlFromSheetDoc,
+  readCell,
+  sheetDocFromHtml,
+  sheetRows,
+} from "#spreadsheet/sheetDoc.ts";
 
 // `#spreadsheet/engine.ts` boots the engine from a Vite `?url` asset, which is a
 // browser path. Here the module is handed the bytes directly.
@@ -159,6 +166,92 @@ describe("csvDocument", () => {
   it("handles a document with no table at all", () => {
     const model = createModel("", "Test");
     expect(toDocumentHtml(model)).toBe("<table><tbody></tbody></table>");
+  });
+});
+
+describe("sheetDoc", () => {
+  it("round-trips the stored markup through a collaborative document", () => {
+    const original = cellsToHtmlTable(
+      [
+        [{ value: "name" }, { value: "qty", style: { font: { b: true } } }],
+        [{ value: "Widget" }, { value: "42", source: "=SUM(B3:B4)" }],
+      ],
+      { columnWidths: [140, undefined], rowHeights: [undefined, 40] },
+    );
+
+    expect(htmlFromSheetDoc(sheetDocFromHtml(original))).toBe(original);
+  });
+
+  it("puts each cell under its own key, so peers do not collide", () => {
+    const doc = sheetDocFromHtml(
+      rowsToHtmlTable([
+        ["a", "b"],
+        ["c", "d"],
+      ]),
+    );
+    const rows = sheetRows(doc);
+    expect(rows.length).toBe(2);
+    expect(readCell(rows.get(0) as never, 0)?.v).toBe("a");
+    expect(readCell(rows.get(1) as never, 1)?.v).toBe("d");
+  });
+
+  it("merges concurrent edits to different cells", () => {
+    const base = sheetDocFromHtml(
+      rowsToHtmlTable([
+        ["a", "b"],
+        ["c", "d"],
+      ]),
+    );
+
+    // Two peers that start from the same state and never see each other's edit
+    // until they exchange updates.
+    const peerA = new Y.Doc();
+    const peerB = new Y.Doc();
+    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(base));
+    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(base));
+
+    (sheetRows(peerA).get(0) as Y.Map<unknown>).set("0", { v: "from A" });
+    (sheetRows(peerB).get(1) as Y.Map<unknown>).set("1", { v: "from B" });
+
+    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(peerB));
+    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(peerA));
+
+    for (const peer of [peerA, peerB]) {
+      expect(readCell(sheetRows(peer).get(0) as never, 0)?.v).toBe("from A");
+      expect(readCell(sheetRows(peer).get(1) as never, 1)?.v).toBe("from B");
+    }
+    expect(htmlFromSheetDoc(peerA)).toBe(htmlFromSheetDoc(peerB));
+  });
+
+  it("keeps a row insert from one peer alongside an edit from another", () => {
+    const base = sheetDocFromHtml(rowsToHtmlTable([["a"], ["b"]]));
+    const peerA = new Y.Doc();
+    const peerB = new Y.Doc();
+    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(base));
+    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(base));
+
+    const inserted = new Y.Map<unknown>();
+    inserted.set("0", { v: "inserted" });
+    sheetRows(peerA).insert(1, [inserted]);
+    (sheetRows(peerB).get(1) as Y.Map<unknown>).set("0", { v: "edited" });
+
+    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(peerB));
+    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(peerA));
+
+    // The row keeps its identity through the insert, so B's edit lands on the
+    // row it was made on rather than on whatever ends up at that index.
+    const values = (doc: Y.Doc) =>
+      sheetRows(doc).map((row) => readCell(row, 0)?.v ?? "");
+    expect(values(peerA)).toEqual(["a", "inserted", "edited"]);
+    expect(values(peerA)).toEqual(values(peerB));
+  });
+
+  it("leaves an empty cell out rather than storing a blank", () => {
+    const doc = sheetDocFromHtml(rowsToHtmlTable([["a", "", "c"]]));
+    const row = sheetRows(doc).get(0) as Y.Map<unknown>;
+    expect([...row.keys()].sort()).toEqual(["0", "2"]);
+    // It still comes back as a cell, so the table stays rectangular.
+    expect(htmlFromSheetDoc(doc)).toBe("<table><thead><tr><th>a</th><th></th><th>c</th></tr></thead><tbody></tbody></table>");
   });
 });
 

@@ -505,6 +505,32 @@
   border-radius: 3px;
 }
 
+/* --- presence ------------------------------------------------------------ */
+
+/* Another person's selection. It sits above the grid but takes no pointer
+ * events — it is a thing to see, never a thing to click. */
+.ic-peer-selection {
+  position: absolute;
+  z-index: 5;
+  border: 2px solid var(--peer-color);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--peer-color) 8%, transparent);
+  pointer-events: none;
+}
+
+.ic-peer-name {
+  position: absolute;
+  top: -17px;
+  left: -2px;
+  padding: 1px 5px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--peer-color);
+  color: #fff;
+  font-size: var(--text-size-extra-small);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
 /* The autofill grip on the bottom-right of the selection. */
 .ironcalc-cell-handle {
   position: absolute;

@@ -12,7 +12,7 @@
 // in Toolbar.tsx, and everything it offers is persisted — see csvDocument.ts.
 
 import type { Model } from "@ironcalc/wasm";
-import { createSignal, Show } from "solid-js";
+import { createEffect, createSignal, on, Show } from "solid-js";
 import { Icon } from "#components/Icon.tsx";
 import { FormulaBar } from "#spreadsheet/FormulaBar.tsx";
 import { GridContextMenu, type GridMenuAction } from "#spreadsheet/GridContextMenu.tsx";
@@ -24,6 +24,11 @@ import {
 } from "#spreadsheet/grid/constants.ts";
 import { WorkbookState } from "#spreadsheet/grid/workbookState.ts";
 import { createNavigationKeyHandler } from "#spreadsheet/navigationKeys.ts";
+import {
+  type RemoteSelection,
+  type SheetSelection,
+  sameSelection,
+} from "#spreadsheet/presence.ts";
 import { Toolbar } from "#spreadsheet/Toolbar.tsx";
 import { type HeaderTarget, Worksheet } from "#spreadsheet/Worksheet.tsx";
 import { t } from "#utils/lang.ts";
@@ -34,6 +39,12 @@ interface Props {
   canEdit: boolean;
   /** Called after anything that changed the workbook's contents. */
   onChange: () => void;
+  /** Bumped when a peer's edit has been applied to the model; repaint. */
+  remoteRevision: () => number;
+  /** Where everyone else in the room has their selection. */
+  remoteSelections: () => RemoteSelection[];
+  /** This client's selection moved; tell the room. */
+  onSelectionChange: (selection: SheetSelection) => void;
   /**
    * The shadow root this is rendered into. `document.activeElement` reports the
    * host, not what is focused inside, so anything asking "do we have focus?"
@@ -55,6 +66,29 @@ export function Spreadsheet(props: Props) {
 
   /** Repaint. Call after anything that touched the model or workbook state. */
   const refresh = () => setRevision((value) => value + 1);
+
+  // A peer's edit is already in the model by the time this fires; all that is
+  // left is to redraw. It must not mark the document dirty — the change came
+  // from the room, and republishing it would be an echo.
+  createEffect(on(props.remoteRevision, refresh, { defer: true }));
+
+  // Selection is model state, so it changes on the same signal as everything
+  // else; only an actual move is worth a message to the room.
+  let published: SheetSelection | null = null;
+  createEffect(() => {
+    revision();
+    const [rowStart, columnStart, rowEnd, columnEnd] =
+      props.model.getSelectedView().range;
+    const selection: SheetSelection = {
+      row: Math.min(rowStart, rowEnd),
+      column: Math.min(columnStart, columnEnd),
+      rowEnd: Math.max(rowStart, rowEnd),
+      columnEnd: Math.max(columnStart, columnEnd),
+    };
+    if (sameSelection(published, selection)) return;
+    published = selection;
+    props.onSelectionChange(selection);
+  });
 
   /** Repaint, and tell the owner the document now differs from what was saved. */
   const mutated = () => {
@@ -429,6 +463,7 @@ export function Spreadsheet(props: Props) {
         revision={revision}
         refresh={refresh}
         mutated={mutated}
+        remoteSelections={props.remoteSelections}
         onEditEnd={endEditing}
         onStartEditing={() => startEditing()}
         onContextMenu={(target) => {

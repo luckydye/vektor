@@ -16,6 +16,7 @@
 import type { Model } from "@ironcalc/wasm";
 import { onCleanup, onMount } from "solid-js";
 import { render } from "solid-js/web";
+import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
 import { Spreadsheet } from "#spreadsheet/Spreadsheet.tsx";
 import styles from "#spreadsheet/spreadsheet.css?inline";
 
@@ -23,6 +24,10 @@ interface Props {
   model: Model;
   canEdit: boolean;
   onChange: () => void;
+  /** Bumped when a peer's edit has been applied to the model; repaint. */
+  remoteRevision: () => number;
+  remoteSelections: () => RemoteSelection[];
+  onSelectionChange: (selection: SheetSelection) => void;
 }
 
 /**
@@ -57,6 +62,9 @@ export function SpreadsheetHost(props: Props) {
           model={props.model}
           canEdit={props.canEdit}
           onChange={props.onChange}
+          remoteRevision={props.remoteRevision}
+          remoteSelections={props.remoteSelections}
+          onSelectionChange={props.onSelectionChange}
           // Focus and the context menu need to ask *this* root what is focused
           // and where a click landed; `document.activeElement` and `event.target`
           // both stop at the host once a shadow boundary is in the way.
