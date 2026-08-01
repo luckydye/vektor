@@ -4,15 +4,19 @@ import {
   createMemo,
   createSignal,
   type JSX,
+  Match,
   onCleanup,
   onMount,
   Show,
+  Switch,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { api } from "#api/client.ts";
 import { AppView } from "#components/AppView.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
+import { CanvasView } from "#components/CanvasView.tsx";
+import { CsvView } from "#components/CsvView.tsx";
 import { DatabaseView } from "#components/DatabaseView.tsx";
 import { DocumentActions } from "#components/DocumentActions.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
@@ -524,33 +528,48 @@ export function DocumentPageView(props: Props) {
                         spaceId={currentSpace()?.id as string}
                       />
 
-                      <Show when={isApp()}>
-                        <AppView html={doc()?.content || ""} />
-                      </Show>
-                      <Show when={!isApp() && isWorkflow()}>
-                        <WorkflowView
-                          documentId={doc()?.id as string}
-                          spaceId={currentSpace()?.id as string}
-                        />
-                      </Show>
-                      <Show when={!isApp() && !isWorkflow() && isDatabase()}>
-                        <DatabaseView
-                          databaseDocumentId={doc()?.id as string}
-                          schemaJson={
-                            optionalPropertyValueToText(doc()?.properties._schema) ??
-                            undefined
-                          }
-                        />
-                      </Show>
-                      <Show when={!isApp() && !isWorkflow() && !isDatabase()}>
-                        <DocumentContent
-                          spaceId={currentSpace()?.id as string}
-                          documentId={doc()?.id}
-                          initialHtml={doc()?.content}
-                          documentType={documentType()}
-                          readonly={isReadonly()}
-                        />
-                      </Show>
+                      <Switch
+                        fallback={
+                          <DocumentContent
+                            spaceId={currentSpace()?.id as string}
+                            documentId={doc()?.id}
+                            initialHtml={doc()?.content}
+                            documentType={documentType()}
+                            readonly={isReadonly()}
+                          />
+                        }
+                      >
+                        <Match when={isApp()}>
+                          <AppView html={doc()?.content || ""} />
+                        </Match>
+                        <Match when={isWorkflow()}>
+                          <WorkflowView
+                            documentId={doc()?.id as string}
+                            spaceId={currentSpace()?.id as string}
+                          />
+                        </Match>
+                        <Match when={isDatabase()}>
+                          <DatabaseView
+                            databaseDocumentId={doc()?.id as string}
+                            schemaJson={
+                              optionalPropertyValueToText(doc()?.properties._schema) ??
+                              undefined
+                            }
+                          />
+                        </Match>
+                        <Match when={isCanvas()}>
+                          <CanvasView
+                            documentId={doc()?.id}
+                            spaceId={currentSpace()?.id as string}
+                          />
+                        </Match>
+                        <Match when={isCsv()}>
+                          <CsvView
+                            documentId={doc()?.id as string}
+                            initialHtml={doc()?.content}
+                          />
+                        </Match>
+                      </Switch>
                     </Show>
                   </div>
 

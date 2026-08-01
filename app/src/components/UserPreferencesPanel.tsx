@@ -19,7 +19,7 @@ import {
   THEME_STORAGE_KEY,
   type ThemePreference,
 } from "#utils/themePreference.ts";
-import { CosmeticsPanel } from "./cosmetics/CosmeticsPanel.tsx";
+import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 

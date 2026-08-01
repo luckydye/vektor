@@ -12,9 +12,13 @@ import { expect, type Page, test } from "@playwright/test";
  * element never upgrades, the page renders an empty box — and every other
  * suite passes.
  *
- * Most assertions here are that the DOM *changed* after an interaction, not
- * that the first paint is right. A canvas that stops redrawing looks correct
- * until you touch it, and that is the bug class worth paying for a browser.
+ * Most assertions are that something *changed* after an interaction rather
+ * than that the first paint is right. A canvas that stops redrawing looks
+ * correct until you touch it, and that is the bug class worth a browser.
+ *
+ * Read the notes on `paintedPixels` before adding a test. The canvas draws
+ * across three layers and a DOM tree, and counting the wrong one is the
+ * easiest way to write an assertion that cannot fail.
  */
 
 const SPACE = process.env.VEKTOR_E2E_SPACE ?? "visual";
@@ -37,10 +41,35 @@ async function openCanvas(page: Page) {
 }
 
 /**
- * A point on the shape that is not its inline editor.
+ * How much of a canvas layer is painted.
  *
- * A note fills itself with a `rich-text-editor`, so pressing the middle of one
- * starts editing text rather than dragging — the grab area is the border.
+ * The layers are the only honest signal for anything drawn in 2D, and there is
+ * a trap in the alternative: `.canvas-selection` is the *overlay element*, one
+ * per canvas, present whether or not anything is selected. Asserting it exists
+ * passes always. Its pixels are what tell you there is a selection.
+ *
+ *   canvas-scene       shapes whose extension paints (sections, strokes)
+ *   canvas-active-ink  the stroke currently being drawn
+ *   canvas-selection   selection outlines and transform handles
+ */
+function paintedPixels(page: Page, layer: string) {
+  return page.evaluate((className) => {
+    const canvas = document.querySelector<HTMLCanvasElement>(`canvas.${className}`);
+    if (!canvas) throw new Error(`no ${className} layer`);
+    const { data } = canvas
+      .getContext("2d")!
+      .getImageData(0, 0, canvas.width, canvas.height);
+    let painted = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) painted++;
+    return painted;
+  }, layer);
+}
+
+/**
+ * A point on the note that is not its inline editor.
+ *
+ * A note fills itself with a `rich-text-editor`, so pressing the middle starts
+ * editing text rather than dragging — the grab area is the border.
  */
 async function grabPoint(page: Page) {
   const box = await page.locator(NOTE).boundingBox();
@@ -54,6 +83,12 @@ async function noteLeft(page: Page) {
   return Math.round(box.x);
 }
 
+async function viewport(page: Page) {
+  const box = await page.locator("vektor-canvas .canvas-viewport").boundingBox();
+  if (!box) throw new Error("no viewport");
+  return box;
+}
+
 test("upgrades the host element and paints the document", async ({ page }) => {
   const errors = await openCanvas(page);
 
@@ -62,20 +97,54 @@ test("upgrades the host element and paints the document", async ({ page }) => {
     "the host element must register, or the canvas is an empty box",
   ).toBe(true);
 
-  // The seed also carries a section shape, which does not render — see the
-  // canvas notes. Asserting the count that holds today means this fails if
-  // *these* stop rendering, rather than encoding the section as expected.
+  // Two of the fixture's three shapes are DOM elements. The third is a
+  // section, whose extension declares `surface: "canvas"` — it is painted on
+  // the scene layer and deliberately has no DOM node, so counting DOM shapes
+  // and finding two is correct rather than a missing shape.
   await expect(page.locator("vektor-canvas .canvas-shape")).toHaveCount(2);
   await expect(page.locator(NOTE)).toBeVisible();
+  expect(await paintedPixels(page, "canvas-scene")).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
 
-test("selects a shape on click", async ({ page }) => {
+test("selects on click and clears on a click into empty space", async ({ page }) => {
   await openCanvas(page);
   const grab = await grabPoint(page);
+  const box = await viewport(page);
+
+  expect(await paintedPixels(page, "canvas-selection")).toBe(0);
 
   await page.mouse.click(grab.x, grab.y);
-  await expect(page.locator("vektor-canvas .canvas-selection")).toHaveCount(1);
+  await expect
+    .poll(() => paintedPixels(page, "canvas-selection"), {
+      message: "selecting must draw handles on the selection layer",
+    })
+    .toBeGreaterThan(0);
+
+  await page.mouse.click(box.x + box.width - 40, box.y + 40);
+  await expect
+    .poll(() => paintedPixels(page, "canvas-selection"), {
+      message: "clicking empty canvas must clear the selection",
+    })
+    .toBe(0);
+});
+
+test("draws the marquee while dragging across empty space", async ({ page }) => {
+  await openCanvas(page);
+  const box = await viewport(page);
+  const startX = box.x + box.width - 260;
+  const startY = box.y + 40;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step++) {
+    await page.mouse.move(startX - step * 12, startY + step * 26);
+  }
+
+  await expect(page.locator(".canvas-marquee")).toBeVisible();
+
+  await page.mouse.up();
+  await expect(page.locator(".canvas-marquee")).toHaveCount(0);
 });
 
 test("repaints while a shape is dragged", async ({ page }) => {
@@ -130,11 +199,30 @@ test("switches the active tool from the keyboard", async ({ page }) => {
     .not.toBe(before);
 });
 
-test("opens the canvas context menu on right click", async ({ page }) => {
+test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) => {
   await openCanvas(page);
-  const grab = await grabPoint(page);
+  const shapes = page.locator("vektor-canvas .canvas-shape");
+  const before = await shapes.count();
+  const box = await viewport(page);
 
-  await page.mouse.click(grab.x, grab.y, { button: "right" });
+  // A tool needs a drag, not a click: the drag is what gives the new shape its
+  // size. A click with the note tool selected inserts nothing.
+  await page.keyboard.press("n");
+  const startX = box.x + 300;
+  const startY = box.y + box.height - 150;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  for (let step = 1; step <= 10; step++) {
+    await page.mouse.move(startX + step * 18, startY + step * 8);
+  }
+  await page.mouse.up();
 
-  await expect(page.locator(".canvas-context-menu")).toBeVisible();
+  await expect
+    .poll(() => shapes.count(), { message: "the new shape must appear" })
+    .toBe(before + 1);
+
+  // Put the document back: every test in this file shares one seeded server.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => shapes.count()).toBe(before);
 });

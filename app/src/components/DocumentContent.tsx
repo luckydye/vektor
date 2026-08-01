@@ -9,10 +9,8 @@ import {
   Show,
 } from "solid-js";
 import { isServer } from "solid-js/web";
-import { twMerge } from "tailwind-merge";
 import type * as Y from "yjs";
 import { api } from "#api/client.ts";
-import { Canvas } from "#canvas/Canvas.tsx";
 import { useQuery } from "#composeables/query.ts";
 import {
   type CollaborationPresenceProfile,
@@ -33,7 +31,6 @@ import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";
 import {
-  type CanvasPresenceState,
   currentEditorPresenceState,
   type DocumentPresenceProfile,
   type DocumentPresenceState,
@@ -48,11 +45,9 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.ts";
 import { CommentBubble, type CommentBubbleHandle } from "./CommentBubble.tsx";
 import { CommentOverlays } from "./CommentOverlays.tsx";
-import "#editor/elements/table-view.ts";
 import "#editor/elements/toolbar.ts";
 import "#components/document-statusbar.ts";
 
-type DocumentContentPresenceState = DocumentPresenceState | CanvasPresenceState;
 type TaskToggleRequest = { index: number };
 
 interface Props {
@@ -95,9 +90,6 @@ export function DocumentContent(props: Props) {
   const { currentSpaceId } = useSpace();
   const [pendingReload, setPendingReload] = createSignal(false);
   const [renderedHtml, setRenderedHtml] = createSignal(props.initialHtml || "");
-  // The canvas mounts a custom element that has no server rendering; a
-  // post-mount flag keeps the hydrated tree identical to the server's.
-  const [hasMounted, setHasMounted] = createSignal(false);
   const [commentBubble, setCommentBubble] = createSignal<CommentBubbleHandle | null>(
     null,
   );
@@ -148,7 +140,7 @@ export function DocumentContent(props: Props) {
 
   resetEditingState();
 
-  const collaboration = useCollaboration<DocumentContentPresenceState>({
+  const collaboration = useCollaboration<DocumentPresenceState>({
     spaceId: props.spaceId,
     documentId,
   });
@@ -178,15 +170,6 @@ export function DocumentContent(props: Props) {
       editor,
     });
 
-  const canvasPresenceProfiles = createMemo(() =>
-    collaboration
-      .presenceProfiles()
-      .filter(
-        (profile): profile is CollaborationPresenceProfile<CanvasPresenceState> =>
-          profile.state?.kind === "canvas",
-      ),
-  );
-
   function currentPresenceState(): DocumentPresenceState {
     return currentEditorPresenceState(editor());
   }
@@ -208,19 +191,6 @@ export function DocumentContent(props: Props) {
   // edit mode must rejoin presence explicitly, not just the Yjs doc room.
   function handleEditSessionStarted() {
     setupDocumentPresence();
-  }
-
-  function handleCanvasPresence(states: CanvasPresenceState[]) {
-    const [state] = states;
-    if (!state) {
-      collaboration.clearPresence();
-      return;
-    }
-
-    void collaboration.joinUntilReady();
-    collaboration.setPresenceState(state);
-    void collaboration.setupPresence();
-    collaboration.updatePresence(state);
   }
 
   function clearEditorPresenceSubscriptions() {
@@ -457,7 +427,6 @@ export function DocumentContent(props: Props) {
   );
 
   onMount(() => {
-    setHasMounted(true);
     extensions.setActiveCollaboration(collaboration.ydoc());
     extensions.setActiveDocumentId(documentId() ?? null);
 
@@ -493,9 +462,7 @@ export function DocumentContent(props: Props) {
       const layout = Array.isArray(doc.properties?.layout)
         ? doc.properties.layout[0]
         : doc.properties?.layout;
-      const full =
-        layout === "full" ||
-        (!layout && (documentType() === "csv" || documentType() === "canvas"));
+      const full = layout === "full";
       const container = document.querySelector<HTMLElement>("[data-layout]");
       container?.classList.toggle("max-w-full", full);
       container?.classList.toggle("max-w-(--document-width)", !full);
@@ -532,12 +499,7 @@ export function DocumentContent(props: Props) {
 
   return (
     <>
-      <main class={twMerge("relative", documentType() !== "canvas" && "mb-30")}>
-        {/* CSV Spreadsheet View */}
-        <Show when={!editing() && documentType() === "csv"}>
-          <table-view prop:html={renderedHtml()} class="block min-h-0 flex-1" />
-        </Show>
-
+      <main class="relative mb-30">
         {/* Document View (read + edit, single persistent instance) */}
         <Show when={supportsRichTextDocument()}>
           <div classList={{ "h-full": editing() }}>
@@ -549,18 +511,6 @@ export function DocumentContent(props: Props) {
               data-allow-mismatch="children"
               on:task-toggle-request={requestTaskToggle}
               innerHTML={ssrDeclarativeShadowDom()}
-            />
-          </div>
-        </Show>
-
-        <Show when={hasMounted() && documentType() === "canvas"}>
-          <div class="h-screen md:h-screen">
-            <Canvas
-              documentId={documentId()}
-              spaceId={props.spaceId}
-              ydoc={collaboration.ydoc()}
-              presenceProfiles={canvasPresenceProfiles()}
-              onPresence={handleCanvasPresence}
             />
           </div>
         </Show>
