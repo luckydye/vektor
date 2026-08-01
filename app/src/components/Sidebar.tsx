@@ -240,6 +240,13 @@ export function Sidebar(props: Props) {
   const handleOpenDrawerMove = (e: TouchEvent) => {
     if (isMobileOpen()) handleDrawerTouchMove(e);
   };
+  // Not `onTouchMove`: Solid delegates touchmove to the document, where the
+  // browser forces the listener passive, so the drag's preventDefault() is a
+  // no-op and the gesture bails out on the uncancelable event.
+  const closeDrawerMoveListener = {
+    handleEvent: handleOpenDrawerMove,
+    passive: false,
+  };
   const stopOpenDrawerDrag = (e: TouchEvent) => {
     if (!isMobileOpen()) return;
     const touch = changedDrawerTouch(e);
@@ -400,7 +407,7 @@ export function Sidebar(props: Props) {
           class="fixed inset-y-0 right-0 z-40 touch-pan-y md:hidden"
           style={{ left: `${mobileDrawerWidth()}px` }}
           onTouchStart={startDrawerFromContent}
-          onTouchMove={handleOpenDrawerMove}
+          on:touchmove={closeDrawerMoveListener}
           onTouchEnd={stopOpenDrawerDrag}
           onTouchCancel={stopOpenDrawerDrag}
         />
@@ -431,7 +438,7 @@ export function Sidebar(props: Props) {
           if (target.tagName === "A" || target.closest("a")) setMobileOpen(false);
         }}
         onTouchStart={startDrawerFromSidebar}
-        onTouchMove={handleOpenDrawerMove}
+        on:touchmove={closeDrawerMoveListener}
         onTouchEnd={stopOpenDrawerDrag}
         onTouchCancel={stopOpenDrawerDrag}
       >
