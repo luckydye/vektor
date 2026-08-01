@@ -869,6 +869,7 @@ export class DocumentView extends HTMLElement {
   }
 
   connectedCallback() {
+    this.upgradeProperty("html");
     this.upgradeProperty("collaborationDocument");
     const shadow = this.ensureShadowRoot();
     this.ensureDocumentStyles(shadow);
@@ -878,11 +879,27 @@ export class DocumentView extends HTMLElement {
     this.queueMaybeStartEditor();
   }
 
-  private upgradeProperty(name: "collaborationDocument") {
-    if (!Object.hasOwn(this, name)) return;
-    const value = this[name];
-    delete this[name];
-    this[name] = value;
+  /**
+   * Hand a property that was assigned before this definition loaded to its
+   * accessor.
+   *
+   * Assigning to an element that has not been upgraded yet defines an own data
+   * property, and that own property shadows the prototype's accessor for the
+   * rest of the element's life — every later write lands on it too, so the
+   * setter never runs. For `html` that means `_html` stays empty and read mode
+   * paints a blank document as soon as the editor is torn down (publish,
+   * cancel, navigation).
+   *
+   * Read through the descriptor rather than the property: `html` is set-only,
+   * so there is nothing to read once the own property is gone.
+   */
+  private upgradeProperty(name: "collaborationDocument" | "html") {
+    const own = Object.getOwnPropertyDescriptor(this, name);
+    if (!own || !("value" in own)) return;
+
+    const self = this as unknown as Record<string, unknown>;
+    delete self[name];
+    self[name] = own.value;
   }
 
   attributeChangedCallback() {
