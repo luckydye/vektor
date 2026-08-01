@@ -198,15 +198,33 @@ export function DocumentPageView(props: Props) {
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
   );
 
-  const documentRightViews = createMemo(() => {
-    if (isDraft() || documentType() !== "document") return [];
+  /**
+   * Compared by value: `For` keys on item identity and `ExtensionView` remounts
+   * the extension when its props change, so rebuilding this list on every
+   * extensions-cache write would tear down and remount every embedded view —
+   * and a mounted extension writes to that cache by calling the API.
+   */
+  const documentRightViews = createMemo(
+    () => {
+      if (isDraft() || documentType() !== "document") return [];
 
-    return extensions().flatMap((extension) =>
-      (extension.routes || [])
-        .filter((route) => route.placements?.includes("document"))
-        .map((route) => ({ extensionId: extension.id, route })),
-    );
-  });
+      return extensions().flatMap((extension) =>
+        (extension.routes || [])
+          .filter((route) => route.placements?.includes("document"))
+          .map((route) => ({ extensionId: extension.id, route })),
+      );
+    },
+    undefined,
+    {
+      equals: (a, b) =>
+        a.length === b.length &&
+        a.every(
+          (view, index) =>
+            view.extensionId === b[index]?.extensionId &&
+            view.route.path === b[index]?.route.path,
+        ),
+    },
+  );
 
   const userCanEdit = createMemo(() => canEdit(currentSpace()?.userRole));
 

@@ -309,7 +309,7 @@ function stamp(element: Element, svg: string): void {
  * the glyph fill it, `.icon` is the hook `button-with-icon` spaces a following
  * label against. Callers add size and colour, not mechanics.
  */
-const BASE_CLASS = "icon svg-icon";
+const BASE_CLASS = "svg-icon";
 
 /** An icon's markup, for callers that build DOM without Solid. */
 export function iconMarkup(name: IconName): string {

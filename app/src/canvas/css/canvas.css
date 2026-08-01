@@ -712,7 +712,7 @@ vektor-canvas {
   cursor: move;
 }
 
-.canvas-doc-editor .icon {
+.canvas-doc-editor .svg-icon {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;

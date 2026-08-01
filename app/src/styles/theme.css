@@ -327,8 +327,8 @@
 @custom-variant enabled (&:not([disabled]):not([aria-disabled="true"]));
 
 @utility button-with-icon {
-  @apply [&_svg]:align-middle [&_svg]:w-[1rem] [&_svg]:h-[1rem] [&_svg]:block [&_svg]:text-inherit;
-  @apply [&_.icon+span]:ml-3xs;
+  @apply [&_.svg-icon]:align-middle [&_.svg-icon]:w-[1.35em] [&_.svg-icon]:h-[1.35em] [&_.svg-icon]:block [&_.svg-icon]:text-inherit;
+  @apply [&_.svg-icon+span]:ml-3xs;
 }
 @utility svg-icon {
   @apply inline-block flex-none [&_svg]:block [&_svg]:w-full [&_svg]:h-full;

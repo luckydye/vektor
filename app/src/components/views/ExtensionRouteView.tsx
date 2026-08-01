@@ -29,17 +29,33 @@ export function ExtensionRouteView() {
 
   usePageTitle(() => match()?.route.title ?? null);
 
-  /** Everything the view needs, recomputed together so none of it can go stale. */
-  const target = createMemo(() => {
-    const found = match();
-    const space = currentSpace();
-    if (!found || !space) return null;
-    return {
-      extensionId: found.extension.id,
-      routePath: routePath(),
-      spaceId: space.id,
-    };
-  });
+  /**
+   * Everything the view needs, recomputed together so none of it can go stale.
+   *
+   * Compared by value, because `ExtensionView` tears the extension down and
+   * mounts it again whenever this changes. The inputs are rebuilt on every
+   * extensions-cache write — and a mounted extension writes to that cache by
+   * calling the API — so identity alone would remount the view in a loop.
+   */
+  const target = createMemo(
+    () => {
+      const found = match();
+      const space = currentSpace();
+      if (!found || !space) return null;
+      return {
+        extensionId: found.extension.id,
+        routePath: routePath(),
+        spaceId: space.id,
+      };
+    },
+    undefined,
+    {
+      equals: (a, b) =>
+        a?.extensionId === b?.extensionId &&
+        a?.routePath === b?.routePath &&
+        a?.spaceId === b?.spaceId,
+    },
+  );
 
   return (
     <div class="relative flex h-dvh flex-col overflow-x-hidden">
