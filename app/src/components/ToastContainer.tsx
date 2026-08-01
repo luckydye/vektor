@@ -2,9 +2,9 @@ import { createEffect, createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { type Toast, useToast } from "#composeables/useToast.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
-import { Icon } from "./Icon.tsx";
+import { Icon, type IconName } from "./Icon.tsx";
 
-const icons = {
+const icons: Record<Toast["type"], IconName> = {
   error: "alert-circle",
   success: "confirmation",
   info: "info",
@@ -101,7 +101,7 @@ export function ToastContainer() {
                   "bg-green-600 text-white": toast.type === "success",
                 }}
               >
-                <Icon class="h-4 w-4 shrink-0" svg={icons[toast.type]} />
+                <Icon class="h-4 w-4 shrink-0" name={icons[toast.type]} />
                 <span class="relative z-10">{toast.message}</span>
                 <Show when={toast.action}>
                   {(action) => (

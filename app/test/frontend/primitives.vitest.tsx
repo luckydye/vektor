@@ -162,6 +162,25 @@ describe("Icon", () => {
     const { container } = mount(Icon, { name: "add" });
     expect(container.querySelector("[aria-hidden='true']")).toBeTruthy();
   });
+
+  it("draws a glyph, never text, for a name that is not in the set", () => {
+    const { container } = mount(Icon, { name: "no-such-icon" });
+    expect(container.querySelector("svg")).toBeTruthy();
+    expect(container.textContent?.trim()).toBe("");
+  });
+
+  // The `svg` prop takes markup, and an icon name is also a string, so a caller
+  // that meant `name` used to get its name printed as text.
+  it("draws a glyph, never text, when a name arrives where markup was expected", () => {
+    const { container } = mount(Icon, { svg: "confirmation" });
+    expect(container.querySelector("svg")).toBeTruthy();
+    expect(container.textContent?.trim()).toBe("");
+  });
+
+  it("draws nothing when no icon was asked for", () => {
+    const { container } = mount(Icon, {});
+    expect(container.querySelector("svg")).toBeFalsy();
+  });
 });
 
 describe("MenuLink", () => {
