@@ -3615,6 +3615,12 @@ export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
       getCamera: () => state.camera,
       setCamera: (nextCamera) => {
         state.camera = nextCamera;
+        // Must ask for the frame itself. The host's capture-phase input listener
+        // already fired for the `wheel` event that scheduled this, and its
+        // microtask drained before the rAF that runs `flushWheel` — so without
+        // this the new camera is not painted until the *next* input event, which
+        // trails every layer by a frame and drops the last step of a zoom.
+        invalidate();
       },
       getScreen: () => state.screen,
       getFit: () => FIT_REFERENCE,
