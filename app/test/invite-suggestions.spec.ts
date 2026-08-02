@@ -43,12 +43,14 @@ let carol: { id: string; email: string; name: string };
 let dave: { id: string; email: string; name: string; token: string };
 
 beforeAll(async () => {
+  // A file-backed auth DB (not VEKTOR_IN_MEMORY_DB) is required: assignUserToGroup
+  // below runs in this test process and must see the same `user` table the server
+  // process migrated on boot. An in-memory DB lives only inside the server child.
   serverProcess = startTestServer(PORT, {
-    VEKTOR_IN_MEMORY_DB: "1",
     VEKTOR_EMAIL_AUTH: "1",
     AUTH_SECRET: process.env.AUTH_SECRET ?? "invite-suggestions-test-secret",
   });
-  await waitForServer(BASE_URL);
+  await waitForServer(BASE_URL, 25_000, 200);
 
   const a = await createTestUser("Alice Engineer");
   alice = { id: a.userId, email: a.email, name: a.name, token: a.token };
