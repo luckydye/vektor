@@ -1,8 +1,12 @@
-import { shared } from "#canvas/state.ts";
+import { canvasFilesFromList } from "#canvas/extensions/files.ts";
+import { mediaFilesFromList } from "#canvas/extensions/media.ts";
+import type {
+  CanvasInputHandler,
+  CanvasPoint,
+  CanvasShape,
+} from "#canvas/runtime/extensionApi.ts";
+import { shared } from "#canvas/runtime/state.ts";
 import { canvasClipboardFromDataTransfer } from "#utils/clipboard.ts";
-import { canvasFilesFromList } from "./files.ts";
-import { mediaFilesFromList } from "./media.ts";
-import type { CanvasInputHandler, CanvasPoint, CanvasShape } from "./types.ts";
 
 type UploadShapeType = "image" | "video" | "audio" | "file";
 

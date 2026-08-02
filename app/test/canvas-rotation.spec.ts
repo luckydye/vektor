@@ -4,7 +4,7 @@ import {
   CANVAS_SHAPES_KEY,
   CANVAS_STROKES_KEY,
   seedCanvasDoc,
-} from "#canvas/document/canvasYjs.ts";
+} from "#canvas/document/yjs.ts";
 
 function shapeRotation(doc: Y.Doc, id: string): unknown {
   const frame = doc.getMap<Y.Map<unknown>>(CANVAS_SHAPES_KEY).get(id)?.get("frame") as

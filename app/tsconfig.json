@@ -8,8 +8,7 @@
     "dist",
     "test",
     "generated",
-    "generated/**",
-    "src/canvas/viewport/vector-tile.ts"
+    "generated/**"
   ],
   "compilerOptions": {
     "jsx": "preserve",

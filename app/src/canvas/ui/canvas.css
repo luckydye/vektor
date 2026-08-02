@@ -1,0 +1,1073 @@
+/*
+ * Canvas host styles.
+ *
+ * Unscoped by necessity, not by accident: the element bodies inside the canvas
+ * are light-DOM custom elements that set `display: contents`, so scoping these
+ * rules to a component would stop them matching.
+ */
+
+/**
+ * The element now renders only the viewport and its layers; `.canvas-root` and
+ * the chrome around it belong to the Solid component. Custom elements are
+ * inline by default, so it has to be told to fill the root it sits in.
+ */
+vektor-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.canvas-root {
+  --canvas-bg: var(--color-neutral-50);
+  --canvas-text: var(--color-neutral-900);
+  --canvas-muted: #6b7280;
+  --canvas-strong: #374151;
+  --canvas-toolbar-bg: rgba(255, 255, 255, 0.94);
+  --canvas-toolbar-border: #d1d5db;
+  --canvas-toolbar-shadow: rgba(15, 23, 42, 0.14);
+  --canvas-tool-text: #374151;
+  --canvas-tool-hover-bg: #f3f4f6;
+  --canvas-tool-active-bg: #dbeafe;
+  --canvas-tool-active-border: #bfdbfe;
+  --canvas-tool-active-text: #1d4ed8;
+  --canvas-divider-color: #e5e7eb;
+  --canvas-grid-minor: rgba(15, 23, 42, 0.07);
+  --canvas-grid-major: rgba(15, 23, 42, 0.13);
+  --canvas-ink-color: #111827;
+  --canvas-shape-border: rgba(15, 23, 42, 0.14);
+  --canvas-shape-shadow: rgba(15, 23, 42, 0.12);
+  --canvas-handle-bg: rgba(15, 23, 42, 0.08);
+  --canvas-section-bg: rgba(219, 234, 254, 0.08);
+  --canvas-section-border: rgba(37, 99, 235, 0.55);
+  --canvas-section-title-bg: #eff6ff;
+  --canvas-section-title-focus-bg: #ffffff;
+  --canvas-section-title-border: rgba(37, 99, 235, 0.28);
+  --canvas-section-title-text: #1e3a8a;
+  --canvas-image-bg: #ffffff;
+  --canvas-doc-bg: #ffffff;
+  --canvas-doc-accent: #2563eb;
+  --canvas-doc-divider: #e5e7eb;
+  --canvas-doc-content: #374151;
+  --canvas-link-bg: #ffffff;
+  --canvas-link-border: rgba(15, 23, 42, 0.14);
+  --canvas-link-title: #111827;
+  --canvas-link-domain: #6b7280;
+  --canvas-link-desc: #6b7280;
+  --canvas-resize-border: rgba(15, 23, 42, 0.45);
+  --canvas-presence-text: #111827;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas-bg);
+  color: var(--canvas-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .canvas-root {
+    --canvas-muted: #9ca3af;
+    --canvas-strong: #e5e7eb;
+    --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
+    --canvas-toolbar-border: rgba(255, 255, 255, 0.12);
+    --canvas-toolbar-shadow: rgba(0, 0, 0, 0.38);
+    --canvas-tool-text: #d1d5db;
+    --canvas-tool-hover-bg: rgba(255, 255, 255, 0.08);
+    --canvas-tool-active-bg: rgba(37, 99, 235, 0.26);
+    --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
+    --canvas-tool-active-text: #bfdbfe;
+    --canvas-divider-color: rgba(255, 255, 255, 0.12);
+    --canvas-grid-minor: rgba(255, 255, 255, 0.07);
+    --canvas-grid-major: rgba(255, 255, 255, 0.13);
+    --canvas-ink-color: #f3f4f6;
+    --canvas-shape-border: rgba(255, 255, 255, 0.16);
+    --canvas-shape-shadow: rgba(0, 0, 0, 0.32);
+    --canvas-handle-bg: rgba(255, 255, 255, 0.12);
+    --canvas-section-bg: rgba(96, 165, 250, 0.09);
+    --canvas-section-border: rgba(147, 197, 253, 0.62);
+    --canvas-section-title-bg: #172033;
+    --canvas-section-title-focus-bg: #111827;
+    --canvas-section-title-border: rgba(147, 197, 253, 0.36);
+    --canvas-section-title-text: #dbeafe;
+    --canvas-image-bg: #111827;
+    --canvas-doc-bg: #1a1d24;
+    --canvas-doc-accent: #93c5fd;
+    --canvas-doc-divider: rgba(255, 255, 255, 0.1);
+    --canvas-doc-content: #d1d5db;
+    --canvas-link-bg: #1a1d24;
+    --canvas-link-border: rgba(255, 255, 255, 0.12);
+    --canvas-link-title: #f3f4f6;
+    --canvas-link-domain: #9ca3af;
+    --canvas-link-desc: #9ca3af;
+    --canvas-resize-border: rgba(255, 255, 255, 0.58);
+    --canvas-presence-text: #111827;
+  }
+}
+
+.canvas-toolbar {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 12px;
+  background: var(--canvas-toolbar-bg);
+  padding: 6px;
+  box-shadow: 0 10px 28px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-properties-bar {
+  position: absolute;
+  bottom: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+}
+
+.canvas-tool-properties {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 12px;
+  background: var(--canvas-toolbar-bg);
+  padding: 6px;
+  box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-properties-sidebar {
+  position: absolute;
+  top: 140px;
+  right: 16px;
+  z-index: 11;
+  display: flex;
+  width: min(224px, calc(100% - 32px));
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 12px;
+  background: var(--canvas-toolbar-bg);
+  padding: 14px;
+  box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-properties-sidebar-title {
+  margin: 0;
+  color: var(--canvas-text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.canvas-property-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.canvas-property-section + .canvas-property-section {
+  border-top: 1px solid var(--canvas-divider-color);
+  padding-top: 14px;
+}
+
+.canvas-property-label {
+  color: var(--canvas-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.canvas-property-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.canvas-tool {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0;
+  color: var(--canvas-tool-text);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.canvas-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.canvas-tool-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.canvas-tool:hover:not(:disabled) {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-tool.active,
+.canvas-tool.primary {
+  border-color: var(--canvas-tool-active-border);
+  background: var(--canvas-tool-active-bg);
+  color: var(--canvas-tool-active-text);
+}
+
+.canvas-tool.danger {
+  color: #b91c1c;
+}
+
+.canvas-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.canvas-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--canvas-divider-color);
+}
+
+.canvas-shape-trigger {
+  display: inline-flex;
+}
+
+/* The popover content is portaled to the document root, outside .canvas-root,
+   so it cannot use the --canvas-* variables and carries its own colors. */
+.canvas-shape-popover {
+  width: max-content;
+  padding-bottom: 8px;
+  transition: opacity 0.12s ease;
+}
+
+.canvas-shape-popover-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 6px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-shape-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 7px 10px;
+  color: #374151;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.canvas-shape-option:hover {
+  background: #f3f4f6;
+}
+
+.canvas-shape-option.active {
+  border-color: #bfdbfe;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.canvas-shape-option-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .canvas-shape-popover-panel {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(24, 24, 27, 0.94);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  }
+
+  .canvas-shape-option {
+    color: #d1d5db;
+  }
+
+  .canvas-shape-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .canvas-shape-option.active {
+    border-color: rgba(96, 165, 250, 0.48);
+    background: rgba(37, 99, 235, 0.26);
+    color: #bfdbfe;
+  }
+}
+
+.canvas-unlock-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 9;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 999px;
+  background: var(--canvas-toolbar-bg);
+  padding: 0;
+  color: var(--canvas-tool-text);
+  box-shadow: 0 3px 10px var(--canvas-toolbar-shadow);
+  cursor: pointer;
+}
+
+.canvas-unlock-button .svg-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.canvas-unlock-button:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-unlock-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.canvas-context-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 10px;
+  background: var(--canvas-toolbar-bg);
+  padding: 4px;
+  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  will-change: transform;
+  /* Offset slightly below and to the right of the long-press point. */
+  translate: 8px 8px;
+}
+
+.canvas-note-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 2px;
+}
+
+.canvas-draw-modes {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.canvas-draw-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+  color: var(--canvas-tool-text);
+  cursor: pointer;
+}
+
+.canvas-draw-mode-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.canvas-draw-mode:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-draw-mode.active {
+  background: var(--canvas-tool-active-bg);
+  color: var(--canvas-tool-active-text);
+}
+
+/* Each declared property emits a trailing divider; the bar does not know which
+   one is last, and whether colours follow depends on the tool. Drop it here
+   rather than threading index arithmetic through the markup. */
+.canvas-tool-properties > .canvas-divider:last-child {
+  display: none;
+}
+
+/* Size stops for a tool's "size" property. The dot is sized inline from the
+   stop's world width, so the row previews the actual stroke thickness. */
+.canvas-tool-sizes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.canvas-tool-size {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.canvas-tool-size-dot {
+  border-radius: 999px;
+  background: var(--canvas-tool-text);
+}
+
+.canvas-tool-size:hover {
+  background: var(--canvas-tool-hover-bg);
+}
+
+.canvas-tool-size.active {
+  background: var(--canvas-tool-active-bg);
+}
+
+.canvas-tool-size.active .canvas-tool-size-dot {
+  background: var(--canvas-tool-active-text);
+}
+
+.canvas-color-swatch {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.canvas-color-swatch.active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.canvas-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: var(--canvas-bg);
+  touch-action: none;
+  /* Prevent iOS long-press from selecting text in shape DOM nodes while drawing. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  /* Focusable (tabindex) so the browser dispatches clipboard events here, but
+     it's not a control — suppress the focus ring. */
+  outline: none;
+}
+
+/* Re-enable text selection inside editable shape content. */
+.canvas-section-title {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.canvas-world {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  transform-origin: 0 0;
+}
+
+.canvas-scene,
+.canvas-active-ink,
+.canvas-selection {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.canvas-scene {
+  z-index: 0;
+}
+
+.canvas-active-ink {
+  z-index: 3;
+}
+
+/* All local and remote selection outlines share this screen-space overlay.
+   It sits above the transformed DOM world while remaining interaction-transparent. */
+.canvas-selection {
+  z-index: 5;
+}
+
+.canvas-shape {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--canvas-shape-border);
+  border-radius: 8px;
+  content-visibility: auto;
+  transform-origin: center;
+}
+
+.canvas-upload-placeholder {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--canvas-shape-border);
+  border-radius: 8px;
+  background: var(--canvas-image-bg);
+  color: var(--color-text-secondary, #6b7280);
+  pointer-events: none;
+}
+
+.canvas-upload-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2.5px solid var(--canvas-shape-border);
+  border-top-color: var(--color-accent, #3b82f6);
+  animation: canvas-upload-spin 0.7s linear infinite;
+}
+
+.canvas-upload-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes canvas-upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.canvas-shape.text {
+  width: max-content;
+  max-width: none;
+  min-width: 32px;
+  min-height: 40px;
+  border-color: transparent;
+  background: transparent !important;
+  box-shadow: none;
+}
+
+.canvas-shape.image {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.canvas-shape.video {
+  border-color: transparent;
+  background: var(--canvas-image-bg);
+}
+
+.canvas-shape.file {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.canvas-shape.image .canvas-shape-image,
+.canvas-shape.video .canvas-shape-image,
+.canvas-shape.file .canvas-shape-file {
+  cursor: move;
+}
+
+.canvas-shape.image .canvas-shape-image {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.canvas-shape-file {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.canvas-shape.audio {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.canvas-shape-audio {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  border-radius: var(--radius-md);
+  background: var(--canvas-toolbar-bg, #fff);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
+}
+
+.canvas-shape-audio-handle {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 100%;
+  cursor: move;
+  background-image: radial-gradient(currentcolor 1px, transparent 1px);
+  background-position: center;
+  background-size: 4px 4px;
+  color: var(--canvas-text-muted, #9ca3af);
+  opacity: 0.6;
+}
+
+.canvas-shape-audio-player {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  flex: 1 1 auto;
+}
+
+.canvas-pdf-preview {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
+}
+
+.canvas-pdf-preview-header {
+  min-width: 0;
+  padding: 7px 10px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  background: #f8fafc;
+  color: var(--canvas-text, #111827);
+  cursor: move;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-pdf-preview-frame {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  background: #fff;
+}
+
+.canvas-shape-handle {
+  height: 18px;
+  flex: 0 0 auto;
+  cursor: move;
+  background: var(--canvas-handle-bg);
+}
+
+.canvas-shape.document {
+  background: var(--canvas-doc-bg) !important;
+  cursor: move;
+}
+
+.canvas-shape-document {
+  width: 100%;
+  height: 100%;
+  cursor: move;
+}
+
+.canvas-shape-document-editor {
+  width: 100%;
+  height: 100%;
+}
+
+/* Body of the <canvas-document-editor> custom element. Descendant-scoped under
+   .canvas-doc-editor so the generic child class names don't leak. */
+.canvas-doc-editor {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: auto;
+  color: var(--canvas-text, #111827);
+  font: inherit;
+}
+
+.canvas-doc-editor .editor-header {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  padding: 10px 12px;
+  cursor: move;
+}
+
+.canvas-doc-editor .svg-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--canvas-doc-accent, #2563eb);
+}
+
+.canvas-doc-editor .title-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.canvas-doc-editor .title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.canvas-doc-editor .done {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: var(--canvas-doc-accent, #2563eb);
+  padding: 4px 10px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.canvas-doc-editor .editor-header-image-frame {
+  display: flex;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  background: var(--canvas-tool-hover-bg, #f3f4f6);
+}
+
+.canvas-doc-editor .editor-header-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.canvas-doc-editor .editor-body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px 16px;
+  scrollbar-width: thin;
+}
+
+.canvas-doc-editor .editor-body document-view {
+  display: block;
+  min-width: 0;
+}
+
+.canvas-doc-editor .editor-hint {
+  margin: 0;
+  color: var(--canvas-muted, #6b7280);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.canvas-shape.link {
+  background: var(--canvas-link-bg) !important;
+  cursor: move;
+}
+
+.canvas-shape-link {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  cursor: move;
+}
+
+.canvas-twitter-shape {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--canvas-link-bg);
+  cursor: move;
+}
+
+/* Container built inside the <canvas-twitter-embed> custom element. */
+.canvas-twitter-embed {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.canvas-link-image {
+  flex: none;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--canvas-handle-bg);
+}
+
+.canvas-link-image img,
+.canvas-link-image video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.canvas-link-body {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.canvas-link-site {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.canvas-link-favicon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.canvas-link-domain {
+  font-size: 11px;
+  color: var(--canvas-link-domain);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-link-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--canvas-link-title);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.canvas-link-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--canvas-link-desc);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.canvas-section-title-overlay {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  cursor: move;
+  pointer-events: auto;
+  transform-origin: 0 0;
+}
+
+.canvas-section-title {
+  box-sizing: border-box;
+  field-sizing: content;
+  max-width: 100%;
+  border: 1px solid
+    color-mix(in srgb, var(--canvas-section-color, #60a5fa) 48%, transparent);
+  border-radius: 6px;
+  background: color-mix(
+    in srgb,
+    var(--canvas-section-color, #60a5fa) 10%,
+    var(--canvas-toolbar-bg)
+  );
+  padding: 3px 8px;
+  color: var(--canvas-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+  outline: none;
+}
+
+.canvas-section-title:focus {
+  border-color: var(--canvas-section-color, #60a5fa);
+  background: var(--canvas-toolbar-bg);
+}
+
+.canvas-shape-image {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  object-fit: contain;
+  background: var(--canvas-image-bg);
+  user-select: none;
+}
+
+.canvas-shape-textwrap {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  --editor-padding: 0.25rem;
+  color: var(--canvas-text);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+/* Text shapes auto-size to their content via TipTap's natural height. */
+.canvas-shape.text .canvas-shape-textwrap {
+  display: block;
+  width: max-content;
+  max-width: none;
+  cursor: move;
+  font-size: var(--canvas-text-font-size, 15px);
+  --editor-white-space: pre-wrap;
+  --editor-word-break: normal;
+  --editor-overflow-wrap: normal;
+}
+
+.canvas-shape.note .canvas-shape-textwrap {
+  color: #111827;
+}
+
+.canvas-transform-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.canvas-transform-handle {
+  position: absolute;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--canvas-resize-border);
+  cursor: nwse-resize;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  text-shadow: 0 1px 2px var(--canvas-toolbar-shadow);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.canvas-transform-handle:hover {
+  color: #1d4ed8;
+}
+
+.canvas-transform-handle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.canvas-rotate-handle {
+  cursor: grab;
+  font-size: 21px;
+}
+
+.canvas-rotate-handle:active {
+  cursor: grabbing;
+}
+
+.canvas-resize-handle::before {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+}
+
+.canvas-marquee {
+  position: absolute;
+  z-index: 7;
+  border: 1px solid #2563eb;
+  border-radius: 2px;
+  background: rgba(37, 99, 235, 0.1);
+  pointer-events: none;
+}

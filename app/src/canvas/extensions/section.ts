@@ -1,12 +1,12 @@
-import { pointOnRotatedShape, rotateVector } from "#canvas/viewport/geometry.ts";
-import { iconMarkup } from "#components/Icon.tsx";
-import { CanvasElementBase } from "./CanvasElementBase.ts";
+import { CanvasElementBase } from "#canvas/runtime/elementBase.ts";
 import type {
-  CanvasElementExtension,
   CanvasHitTestHelpers,
   CanvasPaintHelpers,
   CanvasShape,
-} from "./types.ts";
+} from "#canvas/runtime/extensionApi.ts";
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import { pointOnRotatedShape, rotateVector } from "#canvas/runtime/geometry.ts";
+import { iconMarkup } from "#components/Icon.tsx";
 
 // Sections are click-through in their interior; only the painted border (this
 // many world px) is grabbable, preserving access to content placed inside.
@@ -101,75 +101,94 @@ function paintSection(
 }
 
 // Section frame accent colors offered by the toolbar swatch.
-export const SECTION_COLORS = [
-  "#60a5fa",
-  "#34d399",
-  "#fbbf24",
-  "#f472b6",
-  "#a78bfa",
-] as const;
+const SECTION_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"] as const;
 
 // Sections are drawn entirely on a dedicated canvas layer (frame + title) and
 // only expose a resize handle — they never rotate and have no DOM body.
-export const sectionElement: CanvasElementExtension = {
-  type: "section",
-  defaults: {
-    size: { width: 560, height: 340 },
-    minSize: { width: 240, height: 160 },
-    style: { color: SECTION_COLORS[0] },
-    data: { text: "Section" },
+export const CanvasSection = CanvasElement.create({
+  name: "section",
+
+  addOptions() {
+    return {
+      colors: SECTION_COLORS as readonly string[],
+      size: { width: 560, height: 340 },
+      minSize: { width: 240, height: 160 },
+      title: "Section",
+    };
   },
-  creation: {
-    palette: SECTION_COLORS,
-    tool: {
-      id: "section",
-      label: "Section",
-      shortcut: "S",
-      icon: iconMarkup("frame-section-tool"),
-    },
-    editOnCreate: "chrome",
-    create: (at, ctx) =>
-      createSectionShape(at, ctx.color ?? sectionElement.defaults.style.color),
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: this.options.colors[0] },
+      data: { text: this.options.title },
+    };
   },
-  render: {
-    surface: "canvas",
-    paint: paintSection,
-    hitTest: (shape, world, helpers) => hitTestSection(shape, world, helpers),
-    chrome: {
-      editorTag: "canvas-section-title-editor",
-      position: (shape, helpers) => {
-        const gap = 32 / helpers.scale;
-        return helpers.worldToScreen(pointOnRotatedShape(shape.frame, { x: 0, y: -gap }));
+
+  addCreation() {
+    const { colors, size, title } = this.options;
+    return {
+      palette: colors,
+      tool: {
+        id: this.name,
+        label: "Section" as const,
+        shortcut: "S",
+        icon: iconMarkup("frame-section-tool"),
       },
-      size: (shape, helpers) => {
-        const maxWidth = Math.max(1, shape.frame.width * helpers.scale);
-        const title =
-          (typeof shape.data.text === "string" && shape.data.text) ||
-          helpers.t("Section");
-        return {
-          width: Math.min(maxWidth, Math.max(40, title.length * 8 + 16)),
-          height: 22,
-        };
+      editOnCreate: "chrome" as const,
+      create: (at: { x: number; y: number }, ctx: { color?: string }) =>
+        createSectionShape(at, ctx.color ?? colors[0], size, title),
+    };
+  },
+
+  addRender() {
+    return {
+      surface: "canvas" as const,
+      paint: paintSection,
+      hitTest: (shape, world, helpers) => hitTestSection(shape, world, helpers),
+      chrome: {
+        editorTag: "canvas-section-title-editor",
+        position: (shape, helpers) => {
+          const gap = 32 / helpers.scale;
+          return helpers.worldToScreen(
+            pointOnRotatedShape(shape.frame, { x: 0, y: -gap }),
+          );
+        },
+        size: (shape, helpers) => {
+          const maxWidth = Math.max(1, shape.frame.width * helpers.scale);
+          const title =
+            (typeof shape.data.text === "string" && shape.data.text) ||
+            helpers.t("Section");
+          return {
+            width: Math.min(maxWidth, Math.max(40, title.length * 8 + 16)),
+            height: 22,
+          };
+        },
       },
-    },
+    };
   },
-  behavior: {
-    transform: { move: true, resize: "box", rotate: false },
-    zOrder: -1,
-    container: {
-      containsBounds: (section, bounds) =>
-        bounds.x >= section.frame.x &&
-        bounds.y >= section.frame.y &&
-        bounds.x + bounds.width <= section.frame.x + section.frame.width &&
-        bounds.y + bounds.height <= section.frame.y + section.frame.height,
-      containsPoint: (section, point) =>
-        point.x >= section.frame.x &&
-        point.y >= section.frame.y &&
-        point.x <= section.frame.x + section.frame.width &&
-        point.y <= section.frame.y + section.frame.height,
-    },
+
+  addBehavior() {
+    return {
+      transform: { move: true, resize: "box" as const, rotate: false },
+      // Behind everything else: a section frames content rather than covering it.
+      zOrder: -1,
+      container: {
+        containsBounds: (section, bounds) =>
+          bounds.x >= section.frame.x &&
+          bounds.y >= section.frame.y &&
+          bounds.x + bounds.width <= section.frame.x + section.frame.width &&
+          bounds.y + bounds.height <= section.frame.y + section.frame.height,
+        containsPoint: (section, point) =>
+          point.x >= section.frame.x &&
+          point.y >= section.frame.y &&
+          point.x <= section.frame.x + section.frame.width &&
+          point.y <= section.frame.y + section.frame.height,
+      },
+    };
   },
-};
+});
 
 class CanvasSectionTitleEditor extends CanvasElementBase {
   private input: HTMLInputElement | null = null;
@@ -210,7 +229,7 @@ class CanvasSectionTitleEditor extends CanvasElementBase {
   }
 }
 
-const sectionEditorTag = sectionElement.render.chrome?.editorTag;
+const sectionEditorTag = CanvasSection.render.chrome?.editorTag;
 if (
   typeof customElements !== "undefined" &&
   sectionEditorTag &&
@@ -256,9 +275,11 @@ function hitTestSection(
   return inBounds && onEdge ? "border" : null;
 }
 
-export function createSectionShape(
+function createSectionShape(
   at: { x: number; y: number },
-  color = sectionElement.defaults.style.color,
+  color: string = SECTION_COLORS[0],
+  size: { width: number; height: number } = { width: 560, height: 340 },
+  title = "Section",
 ): CanvasShape {
   return {
     id: `shape-${crypto.randomUUID()}`,
@@ -266,12 +287,12 @@ export function createSectionShape(
     frame: {
       x: Math.round(at.x),
       y: Math.round(at.y),
-      width: sectionElement.defaults.size.width,
-      height: sectionElement.defaults.size.height,
+      width: size.width,
+      height: size.height,
       rotation: 0,
     },
     style: { color },
-    data: { ...sectionElement.defaults.data },
+    data: { text: title },
     updatedAt: Date.now(),
   };
 }

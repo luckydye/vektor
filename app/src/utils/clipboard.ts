@@ -2,7 +2,7 @@ import type {
   CanvasSerializedShape,
   CanvasShape,
   CanvasStrokeSnapshot,
-} from "#canvas/extensions/types.ts";
+} from "#canvas/index.ts";
 import { escapeHtml } from "#utils/html.ts";
 import { htmlToMarkdown, renderMessageMarkdown } from "./markdown.ts";
 

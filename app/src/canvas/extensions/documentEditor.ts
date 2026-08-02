@@ -13,13 +13,13 @@ import { ref } from "lit-html/directives/ref.js";
 import { unsafeSVG } from "lit-html/directives/unsafe-svg.js";
 import type * as Y from "yjs";
 import type { CanvasDocumentCollaboration } from "#canvas/document/collaboration.ts";
+import { HostElement } from "#canvas/runtime/elementBase.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
   currentEditorPresenceState,
   type DocumentPresenceProfile,
 } from "#editor/collaboration.ts";
-import { HostElement } from "./CanvasElementBase.ts";
 
 type DocumentViewElement = HTMLElement & {
   editorInstance?: Editor;
@@ -28,7 +28,7 @@ type DocumentViewElement = HTMLElement & {
   setLocalAppearance?: (appearance: PublicUserAppearance | undefined) => void;
 };
 
-export class CanvasDocumentEditorElement extends HostElement {
+class CanvasDocumentEditorElement extends HostElement {
   /**
    * Single-word property names, set by the host as `session.props`. Assigning
    * any of them schedules a render; the element starts once it has both a
