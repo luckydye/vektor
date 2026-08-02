@@ -757,6 +757,18 @@ export class ApiClient {
     me: async () => {
       return await this.apiGet<User>(this.baseUrl, "/api/v1/users/me");
     },
+    /**
+     * People the caller shares an OAuth group with — invite suggestions.
+     * Optionally filtered by a name/email substring. Empty when the caller has
+     * no OAuth groups.
+     */
+    inviteSuggestions: async (query?: string) => {
+      const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
+      return await this.apiGet<User[]>(
+        this.baseUrl,
+        `/api/v1/users/suggestions${suffix}`,
+      );
+    },
   };
 
   spaces = {
