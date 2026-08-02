@@ -1,9 +1,10 @@
-import { type Editor, mergeAttributes, Node, nodeInputRule } from "@tiptap/core";
+import { type Editor, Node, nodeInputRule } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { isImageFile } from "#files/fileTypes.ts";
-import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
+import { ResizableNodeView } from "./resizable.ts";
+import { nodeFromSpec } from "./specSchema.ts";
 
 export interface ImageUploadOptions {
   spaceId: string;
@@ -175,8 +176,7 @@ class ResizableImageView extends ResizableNodeView {
  */
 export const ImageUpload = Node.create<ImageUploadOptions>({
   name: "image",
-  group: "block",
-  draggable: true,
+  ...nodeFromSpec("image"),
 
   addOptions() {
     return {
@@ -184,22 +184,6 @@ export const ImageUpload = Node.create<ImageUploadOptions>({
       documentId: undefined,
       uploadUrl: undefined,
     };
-  },
-
-  addAttributes() {
-    return {
-      src: { default: null },
-      alt: { default: null },
-      title: { default: null },
-      // width / height / display, shared with the other resizable nodes.
-      ...createResizableAttributes(),
-    };
-  },
-
-  parseHTML() {
-    // `data:` sources are deliberately not parsed: an inlined image would be
-    // copied into every collaborator's document and every stored revision.
-    return [{ tag: 'img[src]:not([src^="data:"])' }];
   },
 
   addCommands() {
@@ -237,10 +221,6 @@ export const ImageUpload = Node.create<ImageUploadOptions>({
     }) => {
       return new ResizableImageView(node, view, getPos);
     };
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["img", mergeAttributes(HTMLAttributes)];
   },
 
   addProseMirrorPlugins() {

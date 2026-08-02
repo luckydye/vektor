@@ -1,7 +1,8 @@
-import { type Editor, mergeAttributes, Node } from "@tiptap/core";
+import { type Editor, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
+import { nodeFromSpec } from "./specSchema.ts";
 
 export interface FileAttachmentOptions {
   spaceId: string;
@@ -177,39 +178,13 @@ export function insertFileAttachmentsAt(
 
 export const FileAttachment = Node.create<FileAttachmentOptions>({
   name: "fileAttachment",
-
-  group: "block",
-
-  atom: true,
+  ...nodeFromSpec("fileAttachment"),
 
   addOptions() {
     return {
       spaceId: "",
       documentId: undefined,
     };
-  },
-
-  addAttributes() {
-    return {
-      src: {
-        default: null,
-      },
-      filename: {
-        default: "file",
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: "file-attachment",
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["file-attachment", mergeAttributes(HTMLAttributes)];
   },
 
   addNodeView() {

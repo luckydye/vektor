@@ -17,8 +17,10 @@ import {
 /**
  * Escape a string for interpolation into HTML — text content *or* a quoted
  * attribute value. Both quote styles are escaped so a single helper is safe in
- * either position; this is the only escaper in the app, so call sites never
- * have to reason about which characters a local variant happened to cover.
+ * either position; call sites never have to reason about which characters a
+ * local variant happened to cover.
+ *
+ * The one exception is document serialization, which needs `escapeHtmlText`.
  */
 export function escapeHtml(value: string): string {
   return value
@@ -27,6 +29,19 @@ export function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+/**
+ * Escape a string for use as HTML *text*, escaping exactly the three characters
+ * a browser's own serializer does.
+ *
+ * Document HTML is stored, diffed line by line, and shown in revision views, so
+ * it has to come back out of the serializer the way it went in: escaping quotes
+ * as well (which `escapeHtml` does, correctly, for attribute positions) would
+ * rewrite every stored document that contains one.
+ */
+export function escapeHtmlText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 // This is the only module that imports `html5parser` directly. Everything that
@@ -40,7 +55,8 @@ export type {
 };
 export { parse as parseHtml, SyntaxKind };
 
-const VOID_TAGS = new Set([
+/** Elements that never have a closing tag. */
+export const VOID_TAGS = new Set([
   "area",
   "base",
   "br",
@@ -230,7 +246,7 @@ function decodedCodePoint(value: string, radix: number, original: string): strin
  * decoded `&` must not start a second round of decoding, or `&amp;lt;` — text
  * that means the literal string `&lt;` — would turn into a `<`.
  */
-function decodeHtmlEntities(value: string): string {
+export function decodeHtmlEntities(value: string): string {
   return value.replace(
     /&(?:#x([\da-f]+)|#(\d+)|(nbsp|amp|lt|gt|quot|apos));/gi,
     (match, hex: string | undefined, decimal: string | undefined, name?: string) => {

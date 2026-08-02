@@ -239,15 +239,6 @@ export function codeEditorExtensions(): Extensions {
   ];
 }
 
-export function codeEditorContent(code: string, language: string) {
-  return {
-    type: "doc",
-    content: [
-      {
-        type: "codeBlock",
-        attrs: { language },
-        ...(code ? { content: [{ type: "text", text: code }] } : {}),
-      },
-    ],
-  };
-}
+// The shape a source file is stored as, shared with the workflow-source
+// (de)serializer so the editor and the server agree on it.
+export { codeToDoc as codeEditorContent } from "#documents/schema/parse.ts";

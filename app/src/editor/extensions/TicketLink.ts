@@ -2,6 +2,7 @@ import { Mark } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Connection } from "#api/client.ts";
 import { detectAppType } from "#utils/utils.ts";
+import { markFromSpec } from "./specSchema.ts";
 
 export interface TicketLinkOptions {
   connections: Connection[];
@@ -41,52 +42,7 @@ export const TicketLink = Mark.create<TicketLinkOptions>({
     };
   },
 
-  addAttributes() {
-    return {
-      ticketId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-ticket-id"),
-        renderHTML: (attributes) => {
-          return {
-            "data-ticket-id": attributes.ticketId,
-          };
-        },
-      },
-      connectionLabel: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-connection-id"),
-        renderHTML: (attributes) => ({
-          "data-connection-label": attributes.connectionLabel,
-        }),
-      },
-      connectionUrl: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-connection-id"),
-        renderHTML: (attributes) => ({
-          "data-connection-url": attributes.connectionUrl,
-        }),
-      },
-      connectionId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-connection-id"),
-        renderHTML: (attributes) => ({
-          "data-connection-id": attributes.connectionId,
-        }),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: "ticket-link",
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["ticket-link", HTMLAttributes, 0];
-  },
+  ...markFromSpec("ticketLink"),
 
   addProseMirrorPlugins() {
     const markType = this.type;

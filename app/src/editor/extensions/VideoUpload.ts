@@ -1,9 +1,10 @@
-import { type Editor, mergeAttributes, Node } from "@tiptap/core";
+import { type Editor, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { isVideoFile } from "#files/fileTypes.ts";
-import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
+import { ResizableNodeView } from "./resizable.ts";
+import { nodeFromSpec } from "./specSchema.ts";
 
 export interface VideoUploadOptions {
   spaceId: string;
@@ -147,31 +148,13 @@ class ResizableVideoView extends ResizableNodeView {
 
 export const VideoUpload = Node.create<VideoUploadOptions>({
   name: "video",
-
-  group: "block",
-
-  atom: true,
+  ...nodeFromSpec("video"),
 
   addOptions() {
     return {
       spaceId: "",
       documentId: undefined,
     };
-  },
-
-  addAttributes() {
-    return {
-      src: { default: null },
-      ...createResizableAttributes(),
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: "video[src]" }];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["video", mergeAttributes({ controls: "" }, HTMLAttributes)];
   },
 
   addNodeView() {

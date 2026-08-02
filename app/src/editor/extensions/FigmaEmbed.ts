@@ -22,11 +22,12 @@
 // Note: Relies on the <figma-embed> custom element defined in utils/elements.ts
 
 import type { CommandProps } from "@tiptap/core";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
+import { ResizableNodeView } from "./resizable.ts";
+import { nodeFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -120,34 +121,7 @@ class ResizableFigmaView extends ResizableNodeView {
 
 export const FigmaEmbed = Node.create({
   name: "figmaEmbed",
-  group: "block",
-  atom: true,
-  draggable: true,
-
-  addAttributes() {
-    return {
-      url: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-figma-url"),
-        renderHTML: (attributes) => ({
-          "data-figma-url": attributes.url,
-        }),
-      },
-      ...createResizableAttributes(),
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: "figma-embed[data-figma-url]",
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes, node }) {
-    return ["figma-embed", mergeAttributes(HTMLAttributes), node.attrs.url];
-  },
+  ...nodeFromSpec("figmaEmbed"),
 
   addCommands() {
     return {

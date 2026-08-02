@@ -1,4 +1,5 @@
 import { Mark } from "@tiptap/core";
+import { markFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -11,27 +12,7 @@ declare module "@tiptap/core" {
 
 export const CommentAnchor = Mark.create({
   name: "commentAnchor",
-
-  addAttributes() {
-    return {
-      commentId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-comment-id"),
-        renderHTML: (attributes) => {
-          if (!attributes.commentId) return {};
-          return { "data-comment-id": attributes.commentId };
-        },
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: "span[data-comment-id]" }];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["span", { ...HTMLAttributes, class: "comment-anchor" }, 0];
-  },
+  ...markFromSpec("commentAnchor"),
 
   addCommands() {
     return {

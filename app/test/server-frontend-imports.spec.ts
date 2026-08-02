@@ -4,21 +4,26 @@ import { describe, expect, it } from "vitest";
 import { subpathImports } from "./helpers/subpathImports.ts";
 
 /**
- * Guards the server's document path against frontend libraries.
+ * Guards the server's document path against the editor and its dependencies.
  *
- * The server builds `contentExtensions` to derive a ProseMirror schema and to
- * (de)serialize documents — on the main thread and inside every serialization
- * pool worker. Editor extensions are shared with the client, so it is very easy
- * for one to statically import a browser-only rendering library (a lit node
- * view, a composable) and drag the whole framework into the server process for
- * no benefit. That has happened with lit-html (via `HtmlBlock`) and with the
- * component runtime (via `useUploads`, the extension manager, the editor
- * keymap's `useEditor`, and `lang.ts`'s injected locale).
+ * The server (de)serializes documents on the main thread and inside every
+ * serialization pool worker. It does that from the spec table in
+ * `#documents/schema`, which is plain data — no ProseMirror schema, no
+ * `DOMSerializer`, no DOM. Reaching for `contentExtensions` again would pull
+ * the entire client editor tree back into the server process, node views and
+ * all, which is what the table exists to avoid.
+ *
+ * The frontend-library half of the guard predates that: editor extensions are
+ * shared with the client, so it is very easy for one to statically import a
+ * browser-only rendering library (a lit node view, a composable) and drag the
+ * whole framework in. That has happened with lit-html (via `HtmlBlock`) and
+ * with the component runtime (via `useUploads`, the extension manager, the
+ * editor keymap's `useEditor`, and `lang.ts`'s injected locale).
  *
  * Client behaviour belongs in a separate module that the client injects — see
- * `HtmlBlockNodeView.ts` and `editSession.ts` — or behind a
- * dynamic `import()` inside a browser-only code path. Both keep the module out
- * of the server's *static* graph, which is what this test walks.
+ * `HtmlBlockNodeView.ts` and `editSession.ts` — or behind a dynamic `import()`
+ * inside a browser-only code path. Both keep the module out of the server's
+ * *static* graph, which is what this test walks.
  *
  * Scope is deliberately the document/serialization path, not the whole server:
  * Astro server-renders components, so `server.ts` legitimately loads Solid.
@@ -41,9 +46,25 @@ const FRONTEND_PACKAGES = [
   "@solidjs",
 ];
 
+/**
+ * The editor stack. Everything the server needs to read and write documents is
+ * in `#documents/schema`; none of this may reappear in its static graph.
+ * `happy-dom` is here too — nothing on the server should need a DOM, and it is
+ * a devDependency for the component test environment only.
+ */
+const EDITOR_PACKAGES = [
+  "@tiptap",
+  "y-prosemirror",
+  "prosemirror-model",
+  "prosemirror-state",
+  "prosemirror-view",
+  "happy-dom",
+];
+
 /** Server-side entry points into document handling. */
 const SERVER_ROOTS = [
-  "src/editor/extensions.ts",
+  "src/documents/schema/parse.ts",
+  "src/documents/schema/render.ts",
   "src/documents/serialization.ts",
   "src/documents/serializationWorker.ts",
   "src/documents/serializationPool.ts",
@@ -149,7 +170,7 @@ function forbiddenPackage(specifier: string): string | null {
     return null;
   }
   return (
-    FRONTEND_PACKAGES.find(
+    [...FRONTEND_PACKAGES, ...EDITOR_PACKAGES].find(
       (pkg) => specifier === pkg || specifier.startsWith(`${pkg}/`),
     ) ?? null
   );
@@ -192,19 +213,28 @@ function findViolations(root: string): string[] {
 
 describe("server document path", () => {
   for (const root of SERVER_ROOTS) {
-    it(`does not statically import a frontend library from ${root}`, () => {
+    it(`does not statically import the editor or a frontend library from ${root}`, () => {
       const violations = findViolations(root);
       expect(
         violations,
         violations.length === 0
           ? ""
-          : `${root} statically reaches a frontend library.\n\n` +
-              `Move the browser-only code into a separate client module (see ` +
-              `HtmlBlockNodeView.ts / editSession.ts) or load it with a ` +
+          : `${root} statically reaches the editor tree or a frontend library.\n\n` +
+              `Document (de)serialization goes through #documents/schema, which ` +
+              `is plain data. Browser-only code belongs in a separate client ` +
+              `module (see HtmlBlockNodeView.ts / editSession.ts) or behind a ` +
               `dynamic import() inside the browser-only path.\n\n${violations.join("\n\n")}`,
       ).toEqual([]);
     });
   }
+
+  it("detects an editor import when one is introduced", () => {
+    // Guards the walker: the editor extensions legitimately import TipTap, so
+    // pointing it at them must report something. Otherwise the assertions above
+    // could pass because the rule stopped matching, not because the graph is
+    // clean.
+    expect(findViolations("src/editor/extensions.ts").length).toBeGreaterThan(0);
+  });
 
   it("detects a frontend import when one is introduced", () => {
     // Guards the walker itself: a root that legitimately imports a frontend

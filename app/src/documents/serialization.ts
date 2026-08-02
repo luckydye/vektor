@@ -1,19 +1,20 @@
-import type { JSONContent } from "@tiptap/core";
-import { getSchema } from "@tiptap/core";
-import { generateHTML, generateJSON } from "@tiptap/html";
-import { Node } from "@tiptap/pm/model";
-import { prosemirrorToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/canvasYjs.ts";
-import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
-import { contentExtensions } from "#editor/extensions.ts";
-import { parseHtml, SyntaxKind } from "#utils/html.ts";
+import { codeToDoc, htmlToDoc } from "./schema/parse.ts";
+import { docToHtml } from "./schema/render.ts";
+import { textOf } from "./schema/specs.ts";
+import { yDocToDoc } from "./schema/yDecode.ts";
+import { docToYDoc } from "./schema/yEncode.ts";
 
 /**
  * Pure, dependency-light document (de)serialization primitives shared by the
  * main thread and the serialization worker pool. Nothing here touches the DB,
  * WebSocket rooms, or any main-thread-only state, so the exact same code runs
  * off-thread inside a worker and in-process as a fallback.
+ *
+ * HTML ⇄ `Y.XmlFragment` goes through `./schema`, driven by the shared spec
+ * table. The editor is not involved: no ProseMirror schema, no `DOMSerializer`,
+ * no DOM.
  */
 
 function loadCanvasYDoc(content: string): Y.Doc {
@@ -26,21 +27,9 @@ function loadCanvasYDoc(content: string): Y.Doc {
   return ydoc;
 }
 
-function workflowDoc(content: string) {
-  return Node.fromJSON(
-    getSchema(codeEditorExtensions()),
-    codeEditorContent(content, "javascript"),
-  );
-}
-
 function workflowCode(doc: Y.Doc): string {
-  const json = yDocToProsemirrorJSON(doc, "default") as JSONContent;
-  const block = json.content?.find((node) => node.type === "codeBlock");
-  if (!block) return "";
-
-  const text = (node: JSONContent): string =>
-    typeof node.text === "string" ? node.text : (node.content ?? []).map(text).join("");
-  return text(block);
+  const block = yDocToDoc(doc).content?.find((node) => node.type === "codeBlock");
+  return textOf(block);
 }
 
 /** Serializes a canvas room doc back to the snapshot content format. */
@@ -63,72 +52,24 @@ export function canvasSnapshotFromDoc(doc: Y.Doc): {
 
 /**
  * Serializes the live Y.Doc to HTML with one top-level block per line, so
- * line-based edit operations have a deterministic line structure. The
- * server-side @tiptap/html build adds an xmlns attribute to elements; strip
- * it so the output matches client-produced content.
+ * line-based edit operations have a deterministic line structure.
  */
-export function toCleanHtml(
-  doc: Y.Doc,
-  extensions: ReturnType<typeof contentExtensions>,
-): string {
-  const json = yDocToProsemirrorJSON(doc, "default") as {
-    type: string;
-    content?: JSONContent[];
-  };
-  if (!json.content?.length) return "";
-
-  // Serialize the whole document in one pass. `generateHTML` builds a schema, a
-  // DOMSerializer and a fresh happy-dom Window on every call, so calling it once
-  // per block made serialization O(blocks) in DOM environments: a 4 MiB
-  // append-only log took ~14s and 8.8GB of RSS here, which is what OOM-killed
-  // the server (and blew past the serialization pool's request timeout, so the
-  // main thread then redid the same work in-process).
-  const html = generateHTML(json, extensions).replaceAll(
-    ' xmlns="http://www.w3.org/1999/xhtml"',
-    "",
-  );
-
-  // Re-split on top-level boundaries to restore one block per line. Slicing the
-  // serializer's own output keeps every block's markup and escaping identical to
-  // serializing that block on its own, and costs one string-level parse instead
-  // of one DOM per block. Whitespace between blocks is dropped, matching the
-  // previous per-block output (a ProseMirror doc holds only block nodes, so
-  // top-level text nodes are not expected).
-  const lines: string[] = [];
-  for (const node of parseHtml(html)) {
-    const source = html.slice(node.start, node.end);
-    if (node.type === SyntaxKind.Text && !source.trim()) continue;
-    lines.push(source);
-  }
-  return lines.join("\n");
+export function toCleanHtml(doc: Y.Doc): string {
+  return docToHtml(yDocToDoc(doc));
 }
 
 /** Builds a Y.Doc from persisted canvas, workflow-source, or HTML content. */
-export function docFromContent(
-  spaceId: string,
-  documentId: string,
-  type: string | null | undefined,
-  content: string,
-): Y.Doc {
+export function docFromContent(type: string | null | undefined, content: string): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
-  if (type === "workflow") return prosemirrorToYDoc(workflowDoc(content), "default");
-  const extensions = contentExtensions({ spaceId, documentId });
-  const json = generateJSON(content, extensions);
-  const schema = getSchema(extensions);
-  const pmDoc = Node.fromJSON(schema, json);
-  return prosemirrorToYDoc(pmDoc, "default");
+  if (type === "workflow") return docToYDoc(codeToDoc(content, "javascript"));
+  return docToYDoc(htmlToDoc(content));
 }
 
 /** Serializes a Y.Doc to canvas JSON, workflow source, or HTML. */
-export function contentFromDoc(
-  spaceId: string,
-  documentId: string,
-  type: string | null | undefined,
-  doc: Y.Doc,
-): string {
+export function contentFromDoc(type: string | null | undefined, doc: Y.Doc): string {
   if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
   if (type === "workflow") return workflowCode(doc);
-  return toCleanHtml(doc, contentExtensions({ spaceId, documentId }));
+  return toCleanHtml(doc);
 }
 
 /** Rebuilds a Y.Doc from an encoded state update. */

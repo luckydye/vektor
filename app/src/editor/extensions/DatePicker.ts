@@ -1,5 +1,6 @@
 import type { CommandProps } from "@tiptap/core";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Node } from "@tiptap/core";
+import { nodeFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -24,40 +25,7 @@ function formatDate(dateStr: string): string {
 
 export const DatePicker = Node.create({
   name: "datePicker",
-  group: "inline",
-  inline: true,
-  atom: true,
-  selectable: true,
-  draggable: false,
-
-  addAttributes() {
-    return {
-      "data-date": {
-        default: new Date().toISOString().split("T")[0],
-        parseHTML: (element) =>
-          element.getAttribute("data-date") || new Date().toISOString().split("T")[0],
-        renderHTML: (attributes) => {
-          return {
-            "data-date": attributes["data-date"],
-          };
-        },
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: "date-picker",
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    const dateValue =
-      HTMLAttributes["data-date"] || new Date().toISOString().split("T")[0];
-    return ["date-picker", mergeAttributes(HTMLAttributes), formatDate(dateValue)];
-  },
+  ...nodeFromSpec("datePicker"),
 
   addCommands() {
     return {
