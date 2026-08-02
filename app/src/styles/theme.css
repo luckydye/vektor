@@ -350,13 +350,14 @@
   @apply transition-colors enabled:hover:bg-primary-400 enabled:active:bg-primary-600;
 }
 @utility button-primary {
-  @apply button-primary-base button-primary-pointer disabled:button-disabled button-with-icon flex-none;
+  @apply button-primary-base button-primary-pointer disabled:button-disabled button-with-icon flex-none transition-shadow duration-200 shadow-2xs hover:shadow-xs;
   @apply px-3xs;
 }
 @utility button-secondary {
   @apply flex-none cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center bg-neutral-100 rounded-md font-medium text-interactive min-h-[2rem] text-primary-600 transition-colors px-3xs;
   @apply enabled:hover:bg-primary-10 enabled:active:bg-primary-50;
   @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply transition-shadow duration-200 shadow-2xs hover:shadow-xs;
   @apply button-with-icon;
 }
 @utility button-outline {

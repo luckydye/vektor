@@ -1,3 +1,9 @@
+/**
+ * A frontend spec, though what it asserts is pure: the canvas extensions it
+ * reaches for register custom elements and pull in components, so it needs the
+ * JSX transform and the DOM the frontend project sets up. `DataTransfer` and
+ * `File` are browser types too.
+ */
 import { describe, expect, it } from "vitest";
 import {
   createDocumentLinkShape,

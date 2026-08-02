@@ -475,7 +475,7 @@ export function DocumentPageView(props: Props) {
 
               {/* Portrait header image: image column beside the title/properties */}
               <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
-                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-100 border-b bg-neutral-10 px-xs py-4 md:px-m">
+                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
                   <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                   <DocumentActions title={title()} headerImage={headerImageSrc()} />
                 </div>
@@ -512,7 +512,7 @@ export function DocumentPageView(props: Props) {
                   />
                 </Show>
 
-                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-100 border-b bg-neutral-10 px-xs py-4 md:px-m">
+                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
                   <Show
                     when={isWorkflow()}
                     fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
