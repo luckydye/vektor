@@ -558,7 +558,7 @@ export function WorkflowView(props: Props) {
             ref={workflowTabsEl as never}
             on:tab-selected={handleWorkflowTabSelected}
           >
-            <a-tabs-list class="block overflow-clip py-4xs">
+            <a-tabs-list class="block overflow-clip py-4xs border-b border-neutral-100">
               <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
                 <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
                   Results

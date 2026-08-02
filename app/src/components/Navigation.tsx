@@ -183,11 +183,10 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="@max-xs:hidden px-5xs py-s">
+          <div class="@max-xs:hidden px-5xs pb-s pt-4xs">
+            <div class="border-b border-neutral-400/25 mx-4xs"></div>
+            
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
-              <h3 class="font-medium text-neutral-900 text-size-extra-small uppercase tracking-wider opacity-50">
-                {t("Categories")}
-              </h3>
               <Show when={documentTree()?.isEditMode}>
                 <button
                   type="button"
