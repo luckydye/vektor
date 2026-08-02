@@ -220,10 +220,14 @@ const result = await Bun.build({
   // @ts-expect-error — `outfile` is valid alongside `compile` at runtime (see
   // Bun.build's own docs), but tsc's bundled bun-types doesn't reflect it.
   outfile: "./vektor",
-  // lightningcss bundles a Rust-compiled native binary (../pkg) that bun
-  // cannot resolve. It's pulled in transitively by Astro's SSR output but
-  // is not actually used at runtime — marking it external skips bundling it.
-  external: ["lightningcss"],
+  // `import.meta.env.DEV` is just `process.env.DEV` under Bun, so it is always
+  // falsy in the compiled binary — only `task dev` (which runs from source)
+  // sets DEV=true. Pinning it to false here loses nothing at runtime but lets
+  // the bundler drop the dev-only branches statically. Without it, server.ts's
+  // `await import("astro")` keeps the whole Astro dev server and Vite build
+  // pipeline in the binary: ~16 MB of unreachable code that also drags in
+  // externals bun cannot bundle (lightningcss, tsx, @vitejs/devtools).
+  define: { "import.meta.env.DEV": "false" },
   plugins: [
     {
       name: "embed-libsql-native-addon",
