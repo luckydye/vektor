@@ -114,6 +114,8 @@ export function SpaceMembers() {
   const [loadingUsers, setLoadingUsers] = createSignal(false);
   const [copiedUserId, setCopiedUserId] = createSignal<string | null>(null);
   const [expandedMembers, setExpandedMembers] = createSignal(new Set<string>());
+  const [inviteSuggestions, setInviteSuggestions] = createSignal<User[]>([]);
+  const [showSuggestions, setShowSuggestions] = createSignal(false);
 
   async function fetchAllDocuments(spaceId: string) {
     const all: DocumentWithProperties[] = [];
@@ -172,6 +174,18 @@ export function SpaceMembers() {
     }
   }
 
+  async function fetchInviteSuggestions() {
+    try {
+      const suggestions = await api.users.inviteSuggestions();
+      setInviteSuggestions(suggestions);
+    } catch (err) {
+      // Suggestions are a convenience — a failure here should never block the
+      // manual email path, so we swallow it and just show no suggestions.
+      console.error("Failed to fetch invite suggestions:", err);
+      setInviteSuggestions([]);
+    }
+  }
+
   createEffect(
     on(currentSpaceId, () => {
       void fetchPermissions();
@@ -183,6 +197,7 @@ export function SpaceMembers() {
     on(
       showAddMember,
       (isOpen) => {
+        setShowSuggestions(false);
         if (!isOpen) return;
         setAddMemberError(null);
         setNewMemberId("");
@@ -191,6 +206,7 @@ export function SpaceMembers() {
         setNewMemberRole("viewer");
         setNewMemberScope("space");
         setNewMemberCategoryId("");
+        void fetchInviteSuggestions();
       },
       { defer: true },
     ),
@@ -199,6 +215,40 @@ export function SpaceMembers() {
   const rolePermissions = createMemo(() =>
     permissions().filter((p) => p.type === "role"),
   );
+
+  /** User ids already granted a role in the space — hidden from suggestions. */
+  const existingMemberIds = createMemo(
+    () =>
+      new Set(
+        rolePermissions()
+          .map((perm) => perm.permission.userId)
+          .filter((id): id is string => !!id),
+      ),
+  );
+
+  /**
+   * Same-group people to offer in the invite typeahead: not already members,
+   * and (once the inviter starts typing) matching their input by name or email.
+   */
+  const filteredInviteSuggestions = createMemo<User[]>(() => {
+    const query = newMemberEmail().trim().toLowerCase();
+    const members = existingMemberIds();
+    return inviteSuggestions()
+      .filter((suggestion) => !members.has(suggestion.id))
+      .filter((suggestion) => {
+        if (!query) return true;
+        return (
+          suggestion.name.toLowerCase().includes(query) ||
+          suggestion.email.toLowerCase().includes(query)
+        );
+      })
+      .slice(0, 8);
+  });
+
+  function selectSuggestion(suggestion: User) {
+    setNewMemberEmail(suggestion.email);
+    setShowSuggestions(false);
+  }
 
   function getMemberUser(perm: PermissionEntry): User | undefined {
     if (!perm.permission.userId) return undefined;
@@ -863,15 +913,60 @@ export function SpaceMembers() {
                     />
                   }
                 >
-                  <input
-                    id="member-id"
-                    value={newMemberEmail()}
-                    onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
-                    type="email"
-                    required
-                    placeholder="person@example.com"
-                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                  />
+                  <div class="relative">
+                    <input
+                      id="member-id"
+                      value={newMemberEmail()}
+                      onInput={(e) => {
+                        setNewMemberEmail(e.currentTarget.value);
+                        setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      // Delay so a click on a suggestion registers before the
+                      // dropdown unmounts (mousedown fires before blur).
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                      type="email"
+                      required
+                      autocomplete="off"
+                      placeholder="person@example.com"
+                      class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
+                    />
+                    <Show
+                      when={showSuggestions() && filteredInviteSuggestions().length > 0}
+                    >
+                      <ul class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-neutral-200 bg-background py-1 shadow-lg">
+                        <For each={filteredInviteSuggestions()}>
+                          {(suggestion) => (
+                            <li>
+                              <button
+                                type="button"
+                                class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50"
+                                onMouseDown={(e) => {
+                                  // Prevent the input blur from firing first.
+                                  e.preventDefault();
+                                  selectSuggestion(suggestion);
+                                }}
+                              >
+                                <vektor-avatar
+                                  size="28"
+                                  attr:user-id={suggestion.id}
+                                  prop:user={suggestion}
+                                />
+                                <div class="min-w-0">
+                                  <div class="truncate font-medium text-neutral-900">
+                                    {suggestion.name}
+                                  </div>
+                                  <div class="truncate text-neutral-500 text-size-small">
+                                    {suggestion.email}
+                                  </div>
+                                </div>
+                              </button>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+                  </div>
                 </Show>
                 <Show
                   when={newMemberType() === "user"}
@@ -882,8 +977,8 @@ export function SpaceMembers() {
                   }
                 >
                   <p class="mt-1 text-neutral-500 text-size-small">
-                    Enter the email of an existing account. They'll be added to the space
-                    immediately.
+                    Start typing to pick someone from your groups, or enter the email of
+                    an existing account. They'll be added to the space immediately.
                   </p>
                 </Show>
               </div>

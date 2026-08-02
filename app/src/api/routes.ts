@@ -60,6 +60,7 @@ import * as spaces from "./routes/v1/spaces/index.ts";
 import * as urlMetadata from "./routes/v1/url-metadata.ts";
 import * as users from "./routes/v1/users/index.ts";
 import * as usersMe from "./routes/v1/users/me.ts";
+import * as usersSuggestions from "./routes/v1/users/suggestions.ts";
 import type { ApiRouteModule } from "./server/types.ts";
 
 export interface ApiRoute {
@@ -204,4 +205,5 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/url-metadata", module: urlMetadata },
   { pattern: "/api/v1/users", module: users },
   { pattern: "/api/v1/users/me", module: usersMe },
+  { pattern: "/api/v1/users/suggestions", module: usersSuggestions },
 ];

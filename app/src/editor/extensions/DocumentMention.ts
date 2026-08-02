@@ -1,48 +1,9 @@
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Node } from "@tiptap/core";
+import { nodeFromSpec } from "./specSchema.ts";
 
 export const DocumentMention = Node.create({
   name: "documentMention",
-  group: "inline",
-  inline: true,
-  atom: true,
-  selectable: false,
-
-  addAttributes() {
-    return {
-      documentId: {
-        default: "",
-        parseHTML: (element) => element.getAttribute("data-document-id") ?? "",
-        renderHTML: (attributes) => ({
-          "data-document-id": attributes.documentId,
-        }),
-      },
-      label: {
-        default: "",
-        parseHTML: (element) => element.textContent?.replace(/^@/, "") ?? "",
-        renderHTML: () => ({}),
-      },
-      href: {
-        default: "",
-        parseHTML: (element) => element.getAttribute("data-href") ?? "",
-        renderHTML: (attributes) => ({
-          "data-href": attributes.href,
-        }),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: "document-mention" }];
-  },
-
-  renderHTML({ HTMLAttributes, node }) {
-    const label = node.attrs.label || node.attrs.documentId;
-    return [
-      "document-mention",
-      mergeAttributes(HTMLAttributes, { contenteditable: "false" }),
-      `@${label}`,
-    ];
-  },
+  ...nodeFromSpec("documentMention"),
 });
 
 if (

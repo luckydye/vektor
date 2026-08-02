@@ -1,14 +1,13 @@
-import type { JSONContent } from "@tiptap/core";
-import { getSchema } from "@tiptap/core";
-import { generateHTML, generateJSON } from "@tiptap/html";
-import { Node } from "@tiptap/pm/model";
 import type { WebSocket } from "ws";
-import { prosemirrorJSONToYXmlFragment, updateYFragment } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
-import { htmlTableToTable } from "#documents/htmlTable.ts";
+import { htmlToDoc } from "#documents/schema/parse.ts";
+import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";
+import type { DocNode } from "#documents/schema/specs.ts";
+import { fragmentToNodes } from "#documents/schema/yDecode.ts";
+import { docNodesToY } from "#documents/schema/yEncode.ts";
 import {
   canvasSnapshotFromDoc,
   contentFromDoc,
@@ -19,7 +18,6 @@ import {
   serializeDocContent,
 } from "#documents/serializationPool.ts";
 import { contentIsHtml } from "#documents/types.ts";
-import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
 import { fillSheetDoc, htmlFromSheetDoc } from "#spreadsheet/sheetDoc.ts";
@@ -64,9 +62,7 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
   if (!content) return new Y.Doc();
   // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
   // event loop and spikes memory; the pool falls back to in-process on failure.
-  return traced("loadYDoc", () =>
-    deserializeDocContent(spaceId, documentId, meta.type, content),
-  );
+  return traced("loadYDoc", () => deserializeDocContent(meta.type, content));
 }
 
 export function getRoom(spaceId: string, documentId: string): YRoom {
@@ -149,26 +145,10 @@ function isJsonContent(content: string): boolean {
  * the same deterministic line structure as the live-room path. Returns the
  * input unchanged if it cannot be parsed.
  */
-function normalizeHtmlContent(
-  spaceId: string,
-  documentId: string,
-  content: string,
-): string {
+function normalizeHtmlContent(content: string): string {
   if (!content.trim()) return content;
   try {
-    const extensions = contentExtensions({ spaceId, documentId });
-    const json = generateJSON(content, extensions) as {
-      type: string;
-      content?: JSONContent[];
-    };
-    return (json.content ?? [])
-      .map((node) =>
-        generateHTML({ type: json.type, content: [node] }, extensions).replaceAll(
-          ' xmlns="http://www.w3.org/1999/xhtml"',
-          "",
-        ),
-      )
-      .join("\n");
+    return docToHtml(htmlToDoc(content));
   } catch {
     return content;
   }
@@ -189,9 +169,8 @@ export function getLiveDocumentContent(
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
     if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
-    if (type === "csv") return htmlFromSheetDoc(room.doc);
-    if (type === "workflow") return contentFromDoc(spaceId, documentId, type, room.doc);
-    return toCleanHtml(room.doc, contentExtensions({ spaceId, documentId }));
+    if (type === "workflow") return contentFromDoc(type, room.doc);
+    return toCleanHtml(room.doc);
   }
   if (
     type === "canvas" ||
@@ -200,7 +179,7 @@ export function getLiveDocumentContent(
     isJsonContent(persisted)
   )
     return persisted;
-  return normalizeHtmlContent(spaceId, documentId, persisted);
+  return normalizeHtmlContent(persisted);
 }
 
 function broadcastToRoom(room: YRoom, frame: Uint8Array): void {
@@ -287,7 +266,7 @@ export async function persistYRoomDraft(key: string): Promise<void> {
 
   const doc = room.doc;
   const serialized = await traced("persist.serialize", () =>
-    serializeDocContent(ids.spaceId, ids.documentId, meta.type, doc),
+    serializeDocContent(meta.type, doc),
   );
   const content = contentIsHtml(meta.type) ? stripScriptTags(serialized) : serialized;
 
@@ -410,54 +389,6 @@ function setAgentPresence(
 }
 
 /**
- * Shows a presence cursor for "Agent" spanning the top-level blocks that
- * changed between the two serialized HTML contents, so other users see where
- * the agent edited.
- */
-function broadcastAgentPresence(
-  key: string,
-  documentId: string,
-  room: YRoom,
-  doc: Y.Doc,
-  beforeHtml: string,
-  afterHtml: string,
-): void {
-  try {
-    if (beforeHtml === afterHtml) return;
-
-    // Find the changed block range in the new content (common prefix/suffix).
-    const oldLines = beforeHtml.split("\n");
-    const newLines = afterHtml.split("\n");
-    let prefix = 0;
-    while (
-      prefix < oldLines.length &&
-      prefix < newLines.length &&
-      oldLines[prefix] === newLines[prefix]
-    ) {
-      prefix++;
-    }
-    let suffix = 0;
-    while (
-      suffix < oldLines.length - prefix &&
-      suffix < newLines.length - prefix &&
-      oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
-    ) {
-      suffix++;
-    }
-
-    const fragment = doc.getXmlFragment("default");
-    const anchorIndex = Math.min(prefix, fragment.length);
-    const headIndex = Math.min(
-      Math.max(newLines.length - suffix, anchorIndex),
-      fragment.length,
-    );
-    broadcastAgentPresenceRange(key, documentId, room, doc, anchorIndex, headIndex);
-  } catch {
-    // Presence is cosmetic — never fail the edit over it.
-  }
-}
-
-/**
  * Shows the "Agent" presence cursor spanning an explicit top-level block range
  * [anchorIndex, headIndex). Used by the incremental edit path, which knows the
  * changed range directly and so avoids serializing the whole doc to diff it.
@@ -573,55 +504,29 @@ function asBlockSpliceInsert(
 }
 
 /**
- * Applies an append/prepend by parsing only the inserted content and splicing
- * the resulting blocks into the live Yjs fragment — avoiding a `generateJSON`
- * parse (the memory-dominant jsdom step), `Node.fromJSON`, and `updateYFragment`
- * diff over the entire document. Returns false if the insert produced no blocks
- * so the caller can fall back to the full path.
+ * Splices whole top-level blocks into the live fragment, replacing
+ * `[from, from + remove)`, and shows the agent's presence over what it wrote.
+ * Blocks outside the range keep their Yjs identity, so a human editing
+ * elsewhere in the document keeps their concurrent changes.
  */
-function applyBlockSpliceInsert(
+function spliceBlocks(
   spaceId: string,
   documentId: string,
   room: YRoom,
   doc: Y.Doc,
-  splice: { position: "start" | "end"; content: string },
+  from: number,
+  remove: number,
+  blocks: DocNode[],
   onUpdate: (update: Uint8Array) => void,
-  extensions: ReturnType<typeof contentExtensions>,
-  schema: ReturnType<typeof getSchema>,
-): boolean {
-  const newHtml = stripScriptTags(splice.content);
-  const json = generateJSON(newHtml, extensions) as {
-    type: string;
-    content?: JSONContent[];
-  };
-  const blocks = json.content ?? [];
-  if (blocks.length === 0) return false;
-
+): void {
   const fragment = doc.getXmlFragment("default");
-
-  // Build the new blocks in a throwaway doc (cost is O(inserted content)), then
-  // clone the integrated nodes so they can be inserted into the live fragment.
-  const tmpDoc = new Y.Doc();
-  prosemirrorJSONToYXmlFragment(
-    schema,
-    { type: "doc", content: blocks },
-    tmpDoc.getXmlFragment("default"),
-  );
-  // Prosemirror block nodes map to XmlElement/XmlText only, never XmlHook;
-  // clone the integrated nodes so they can be re-inserted into the live doc.
-  const newNodes: (Y.XmlElement | Y.XmlText)[] = [];
-  for (const node of tmpDoc.getXmlFragment("default").toArray()) {
-    if (node instanceof Y.XmlHook) continue;
-    newNodes.push(node.clone());
-  }
-  if (newNodes.length === 0) return false;
-
-  const insertIndex = splice.position === "end" ? fragment.length : 0;
+  const inserted = docNodesToY(blocks);
 
   doc.on("update", onUpdate);
   try {
     doc.transact(() => {
-      fragment.insert(insertIndex, newNodes);
+      if (remove > 0) fragment.delete(from, remove);
+      if (inserted.length > 0) fragment.insert(from, inserted);
     }, "server-edit");
   } finally {
     doc.off("update", onUpdate);
@@ -632,10 +537,68 @@ function applyBlockSpliceInsert(
     documentId,
     room,
     doc,
-    insertIndex,
-    insertIndex + newNodes.length,
+    from,
+    from + inserted.length,
   );
+}
+
+/**
+ * Applies an append/prepend by parsing only the inserted content and splicing
+ * the resulting blocks into the live fragment, so the cost is O(inserted
+ * content) rather than O(document). Returns false if the insert produced no
+ * blocks, so the caller can fall back to the full path.
+ */
+function applyBlockSpliceInsert(
+  spaceId: string,
+  documentId: string,
+  room: YRoom,
+  doc: Y.Doc,
+  splice: { position: "start" | "end"; content: string },
+  onUpdate: (update: Uint8Array) => void,
+): boolean {
+  const blocks = htmlToDoc(stripScriptTags(splice.content)).content ?? [];
+  if (blocks.length === 0) return false;
+
+  const insertIndex =
+    splice.position === "end" ? doc.getXmlFragment("default").length : 0;
+  spliceBlocks(spaceId, documentId, room, doc, insertIndex, 0, blocks, onUpdate);
   return true;
+}
+
+/**
+ * The range of top-level blocks that differ between the room's current content
+ * and the transformed content, as `[from, remove, insert]`. Blocks are compared
+ * by their serialized HTML, so an untouched block is recognised as untouched
+ * however it was built.
+ */
+function changedBlockRange(
+  before: string[],
+  next: DocNode[],
+): { from: number; remove: number; blocks: DocNode[] } {
+  const after = next.map((node) => nodeToHtml(node));
+
+  let prefix = 0;
+  while (
+    prefix < before.length &&
+    prefix < after.length &&
+    before[prefix] === after[prefix]
+  ) {
+    prefix++;
+  }
+  let suffix = 0;
+  while (
+    suffix < before.length - prefix &&
+    suffix < after.length - prefix &&
+    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+
+  return {
+    from: prefix,
+    remove: before.length - prefix - suffix,
+    blocks: next.slice(prefix, after.length - suffix),
+  };
 }
 
 export async function transformDocumentContent(
@@ -653,18 +616,15 @@ export async function transformDocumentContent(
   if (!room?.doc) {
     const persisted = (await getDocumentContent(spaceId, documentId)) ?? "";
     // Append/prepend splice at the very end/start, so they don't need the
-    // content re-flowed to one-block-per-line — skip normalizeHtmlContent,
-    // whose whole-document generateJSON parse is O(doc) and is what OOMs the
-    // process on large append-only logs edited without a live room (e.g. the
-    // metrics-logger job). Other ops still normalize so mid-document line
-    // references stay accurate.
+    // content re-flowed to one-block-per-line — skip the normalize pass, which
+    // is O(doc) and is what OOMs the process on large append-only logs edited
+    // without a live room (e.g. the metrics-logger job). Other ops still
+    // normalize so mid-document line references stay accurate.
     const skipNormalize =
       dbDoc.type === "canvas" ||
       isJsonContent(persisted) ||
       asBlockSpliceInsert(operations) !== null;
-    const base = skipNormalize
-      ? persisted
-      : normalizeHtmlContent(spaceId, documentId, persisted);
+    const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
     return { content: transform(base), live: false };
   }
 
@@ -711,63 +671,44 @@ export async function transformDocumentContent(
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
   }
 
-  const extensions = contentExtensions({ spaceId, documentId });
-  const schema = getSchema(extensions);
-
   // Fast path: append/prepend splices only the new blocks into the fragment,
   // so cost is O(inserted content) rather than O(document). Broadcast is the
   // same incremental Yjs update; only the return serialization stays O(n).
   const splice = asBlockSpliceInsert(operations);
   if (
     splice &&
-    applyBlockSpliceInsert(
-      spaceId,
-      documentId,
-      room,
-      doc,
-      splice,
-      captureUpdate,
-      extensions,
-      schema,
-    )
+    applyBlockSpliceInsert(spaceId, documentId, room, doc, splice, captureUpdate)
   ) {
     for (const update of updates) {
       broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
     }
-    return {
-      content: await serializeDocContent(spaceId, documentId, dbDoc.type, doc),
-      live: true,
-    };
+    return { content: await serializeDocContent(dbDoc.type, doc), live: true };
   }
 
-  const currentHtml = await serializeDocContent(spaceId, documentId, dbDoc.type, doc);
-  const nextHtml = transform(currentHtml);
-  const nextPmDoc = Node.fromJSON(schema, generateJSON(nextHtml, extensions));
+  // General path: transform the whole document, then splice only the top-level
+  // blocks that actually changed. Granularity is a block rather than a
+  // character — an agent editing one word replaces that paragraph, so a human
+  // typing in the same paragraph at the same instant loses that edit — but
+  // everything outside the changed range keeps its Yjs identity, and concurrent
+  // edits to it survive.
+  //
+  // The current content is serialized here rather than through the pool: the
+  // diff needs the per-block strings, and serializing is now a string walk with
+  // no DOM behind it, which is what made the off-thread hop worth its cost.
+  const currentBlocks = fragmentToNodes(doc.getXmlFragment("default")).map(nodeToHtml);
+  const nextHtml = transform(currentBlocks.join("\n"));
+  const { from, remove, blocks } = changedBlockRange(
+    currentBlocks,
+    htmlToDoc(nextHtml).content ?? [],
+  );
 
-  doc.on("update", captureUpdate);
-  try {
-    doc.transact(() => {
-      updateYFragment(doc, doc.getXmlFragment("default"), nextPmDoc, {
-        mapping: new Map(),
-        isOMark: new Map(),
-      });
-    }, "server-edit");
-  } finally {
-    doc.off("update", captureUpdate);
+  if (remove > 0 || blocks.length > 0) {
+    spliceBlocks(spaceId, documentId, room, doc, from, remove, blocks, captureUpdate);
   }
 
   for (const update of updates) {
     broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
   }
 
-  const content = await serializeDocContent(spaceId, documentId, dbDoc.type, doc);
-  broadcastAgentPresence(
-    roomKey(spaceId, documentId),
-    documentId,
-    room,
-    doc,
-    currentHtml,
-    content,
-  );
-  return { content, live: true };
+  return { content: await serializeDocContent(dbDoc.type, doc), live: true };
 }

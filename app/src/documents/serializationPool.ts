@@ -180,24 +180,16 @@ async function dispatch(
  * serialization if the pool is unavailable or the worker fails.
  */
 export async function serializeDocContent(
-  spaceId: string,
-  documentId: string,
   type: string | null | undefined,
   doc: Y.Doc,
 ): Promise<string> {
   try {
     const update = Y.encodeStateAsUpdate(doc);
-    const response = await dispatch({
-      op: "serialize",
-      spaceId,
-      documentId,
-      type: type ?? null,
-      update,
-    });
+    const response = await dispatch({ op: "serialize", type: type ?? null, update });
     if (response.ok && "content" in response) return response.content;
     throw new Error(response.ok ? "unexpected worker response" : response.error);
   } catch {
-    return contentFromDoc(spaceId, documentId, type, doc);
+    return contentFromDoc(type, doc);
   }
 }
 
@@ -206,19 +198,11 @@ export async function serializeDocContent(
  * in-process deserialization if the pool is unavailable or the worker fails.
  */
 export async function deserializeDocContent(
-  spaceId: string,
-  documentId: string,
   type: string | null | undefined,
   content: string,
 ): Promise<Y.Doc> {
   try {
-    const response = await dispatch({
-      op: "deserialize",
-      spaceId,
-      documentId,
-      type: type ?? null,
-      content,
-    });
+    const response = await dispatch({ op: "deserialize", type: type ?? null, content });
     if (response.ok && "update" in response) {
       const doc = new Y.Doc();
       Y.applyUpdate(doc, response.update);
@@ -226,7 +210,7 @@ export async function deserializeDocContent(
     }
     throw new Error(response.ok ? "unexpected worker response" : response.error);
   } catch {
-    return docFromContent(spaceId, documentId, type, content);
+    return docFromContent(type, content);
   }
 }
 

@@ -3,7 +3,6 @@ import {
   getMarkAttributes,
   Mark,
   markPasteRule,
-  mergeAttributes,
   Node,
   textblockTypeInputRule,
   wrappingInputRule,
@@ -17,6 +16,17 @@ import {
 } from "@tiptap/pm/schema-list";
 import type { EditorState } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
+import { HEADING_LEVELS, nodesWithAttr } from "#documents/schema/specs.ts";
+import { markFromSpec, nodeFromSpec } from "./specSchema.ts";
+
+/**
+ * The editor's base nodes and marks.
+ *
+ * Each one is its behaviour — commands, keymaps, input rules — plus the schema
+ * half spread in from `#documents/schema/specs.ts`. Nothing here declares a tag
+ * name, an attribute or a parse rule of its own: the server serializes the same
+ * documents from that table without loading any of this.
+ */
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -110,33 +120,19 @@ declare module "@tiptap/core" {
   }
 }
 
+const htmlAttributeOptions = () => ({ HTMLAttributes: {} });
+
 // ---- Nodes ----
 
-export const Document = Node.create({
-  name: "doc",
-  topNode: true,
-  content: "block+",
-});
+export const Document = Node.create({ name: "doc", ...nodeFromSpec("doc") });
 
-export const Text = Node.create({
-  name: "text",
-  group: "inline",
-});
+export const Text = Node.create({ name: "text", ...nodeFromSpec("text") });
 
 export const Paragraph = Node.create({
   name: "paragraph",
   priority: 1000,
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  group: "block",
-  content: "inline*",
-  parseHTML() {
-    return [{ tag: "p" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["p", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("paragraph"),
   addCommands() {
     return {
       setParagraph:
@@ -149,18 +145,8 @@ export const Paragraph = Node.create({
 
 export const HardBreak = Node.create({
   name: "hardBreak",
-  inline: true,
-  group: "inline",
-  selectable: false,
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  parseHTML() {
-    return [{ tag: "br" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["br", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("hardBreak"),
   renderText() {
     return "\n";
   },
@@ -196,23 +182,8 @@ export const HardBreak = Node.create({
 
 export const Bold = Mark.create({
   name: "bold",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  parseHTML() {
-    return [
-      { tag: "strong" },
-      {
-        tag: "b",
-        getAttrs: (node) => (node as HTMLElement).style.fontWeight !== "normal" && null,
-      },
-      { style: "font-weight=bold" },
-      { style: "font-weight=bolder" },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["strong", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("bold"),
   addCommands() {
     return {
       setBold:
@@ -241,22 +212,8 @@ export const Bold = Mark.create({
 
 export const Italic = Mark.create({
   name: "italic",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  parseHTML() {
-    return [
-      { tag: "em" },
-      {
-        tag: "i",
-        getAttrs: (node) => (node as HTMLElement).style.fontStyle !== "normal" && null,
-      },
-      { style: "font-style=italic" },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["em", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("italic"),
   addCommands() {
     return {
       setItalic:
@@ -282,20 +239,8 @@ export const Italic = Mark.create({
 
 export const Strike = Mark.create({
   name: "strike",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  parseHTML() {
-    return [
-      { tag: "s" },
-      { tag: "del" },
-      { tag: "strike" },
-      { style: "text-decoration=line-through" },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["s", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("strike"),
   addCommands() {
     return {
       setStrike:
@@ -316,15 +261,8 @@ export const Strike = Mark.create({
 
 export const Underline = Mark.create({
   name: "underline",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  parseHTML() {
-    return [{ tag: "u" }, { style: "text-decoration=underline" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["u", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("underline"),
   addCommands() {
     return {
       setUnderline:
@@ -350,18 +288,8 @@ export const Underline = Mark.create({
 
 export const Code = Mark.create({
   name: "code",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  excludes: "_",
-  code: true,
-  exitable: true,
-  parseHTML() {
-    return [{ tag: "code" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["code", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("code"),
   addCommands() {
     return {
       setCode:
@@ -382,16 +310,8 @@ export const Code = Mark.create({
 
 export const Subscript = Mark.create({
   name: "subscript",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  excludes: "superscript",
-  parseHTML() {
-    return [{ tag: "sub" }, { style: "vertical-align=sub" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["sub", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("subscript"),
   addCommands() {
     return {
       setSubscript:
@@ -412,16 +332,8 @@ export const Subscript = Mark.create({
 
 export const Superscript = Mark.create({
   name: "superscript",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  excludes: "subscript",
-  parseHTML() {
-    return [{ tag: "sup" }, { style: "vertical-align=super" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["sup", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("superscript"),
   addCommands() {
     return {
       setSuperscript:
@@ -442,23 +354,8 @@ export const Superscript = Mark.create({
 
 export const TextStyle = Mark.create({
   name: "textStyle",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  parseHTML() {
-    return [
-      {
-        tag: "span",
-        getAttrs: (node) => {
-          const hasStyle = (node as HTMLElement).hasAttribute("style");
-          return hasStyle ? {} : false;
-        },
-      },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["span", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  addOptions: htmlAttributeOptions,
+  ...markFromSpec("textStyle"),
   addCommands() {
     return {
       removeEmptyTextStyle:
@@ -473,28 +370,10 @@ export const TextStyle = Mark.create({
   },
 });
 
+// `color` and `backgroundColor` are attributes of the `textStyle` mark in the
+// spec table; these extensions only carry the commands that set them.
 export const Color = Extension.create({
   name: "color",
-  addOptions() {
-    return { types: ["textStyle"] };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          color: {
-            default: null,
-            parseHTML: (element) => element.style.color?.replace(/['"]+/g, "") || null,
-            renderHTML: (attributes) => {
-              if (!attributes.color) return {};
-              return { style: `color: ${attributes.color}` };
-            },
-          },
-        },
-      },
-    ];
-  },
   addCommands() {
     return {
       setColor:
@@ -511,27 +390,6 @@ export const Color = Extension.create({
 
 export const BackgroundColor = Extension.create({
   name: "backgroundColor",
-  addOptions() {
-    return { types: ["textStyle"] };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          backgroundColor: {
-            default: null,
-            parseHTML: (element) =>
-              element.style.backgroundColor?.replace(/['"]+/g, "") || null,
-            renderHTML: (attributes) => {
-              if (!attributes.backgroundColor) return {};
-              return { style: `background-color: ${attributes.backgroundColor}` };
-            },
-          },
-        },
-      },
-    ];
-  },
   addCommands() {
     return {
       setBackgroundColor:
@@ -554,31 +412,9 @@ export const BackgroundColor = Extension.create({
 export const Heading = Node.create({
   name: "heading",
   addOptions() {
-    return {
-      levels: [1, 2, 3, 4, 5, 6] as number[],
-      HTMLAttributes: {},
-    };
+    return { levels: HEADING_LEVELS, HTMLAttributes: {} };
   },
-  content: "inline*",
-  group: "block",
-  defining: true,
-  addAttributes() {
-    return {
-      level: { default: 1, rendered: false },
-    };
-  },
-  parseHTML() {
-    return this.options.levels.map((level: number) => ({
-      tag: `h${level}`,
-      attrs: { level },
-    }));
-  },
-  renderHTML({ node, HTMLAttributes }) {
-    const level = this.options.levels.includes(node.attrs.level)
-      ? node.attrs.level
-      : this.options.levels[0];
-    return [`h${level}`, mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  ...nodeFromSpec("heading"),
   addCommands() {
     return {
       setHeading:
@@ -612,32 +448,15 @@ export const Heading = Node.create({
 
 // ---- TextAlign ----
 
+// The `textAlign` attribute lives on the nodes that carry it in the spec table;
+// this extension is the commands that set it.
 export const TextAlign = Extension.create({
   name: "textAlign",
   addOptions() {
     return {
-      types: [] as string[],
+      types: nodesWithAttr("textAlign"),
       alignments: ["left", "center", "right", "justify"],
-      defaultAlignment: "",
     };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          textAlign: {
-            default: this.options.defaultAlignment,
-            parseHTML: (element) =>
-              element.style.textAlign || this.options.defaultAlignment,
-            renderHTML: (attributes) => {
-              if (attributes.textAlign === this.options.defaultAlignment) return {};
-              return { style: `text-align: ${attributes.textAlign}` };
-            },
-          },
-        },
-      },
-    ];
   },
   addCommands() {
     return {
@@ -663,51 +482,8 @@ export const TextAlign = Extension.create({
 
 export const CodeBlock = Node.create({
   name: "codeBlock",
-  addOptions() {
-    return {
-      languageClassPrefix: "language-",
-      HTMLAttributes: {},
-    };
-  },
-  content: "text*",
-  marks: "",
-  group: "block",
-  code: true,
-  defining: true,
-  addAttributes() {
-    return {
-      language: {
-        default: null,
-        parseHTML: (element) => {
-          const { languageClassPrefix } = this.options;
-          const classes = [
-            ...((element.firstElementChild as HTMLElement)?.classList ?? []),
-          ];
-          const lang = classes
-            .filter((c) => c.startsWith(languageClassPrefix))
-            .map((c) => c.slice(languageClassPrefix.length))[0];
-          return lang ?? null;
-        },
-        rendered: false,
-      },
-    };
-  },
-  parseHTML() {
-    return [{ tag: "pre", preserveWhitespace: "full" }];
-  },
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      "pre",
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-      [
-        "code",
-        node.attrs.language
-          ? { class: `${this.options.languageClassPrefix}${node.attrs.language}` }
-          : {},
-        0,
-      ],
-    ];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("codeBlock"),
   addCommands() {
     return {
       setCodeBlock:
@@ -735,22 +511,8 @@ export const CodeBlock = Node.create({
 
 export const Blockquote = Node.create({
   name: "blockquote",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  content: "block+",
-  group: "block",
-  defining: true,
-  parseHTML() {
-    return [{ tag: "blockquote" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return [
-      "blockquote",
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-      0,
-    ];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("blockquote"),
   addCommands() {
     return {
       setBlockquote:
@@ -781,16 +543,8 @@ export const Blockquote = Node.create({
 
 export const HorizontalRule = Node.create({
   name: "horizontalRule",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  group: "block",
-  parseHTML() {
-    return [{ tag: "hr" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["hr", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("horizontalRule"),
   addCommands() {
     return {
       setHorizontalRule:
@@ -828,28 +582,7 @@ const URL_RE =
 export const Link = Mark.create({
   name: "link",
   priority: 1000,
-  keepOnSplit: false,
-  addOptions() {
-    return {
-      HTMLAttributes: {
-        target: "_blank",
-        rel: "noopener noreferrer nofollow",
-      },
-    };
-  },
-  addAttributes() {
-    return {
-      href: { default: null },
-      target: { default: this.options.HTMLAttributes.target },
-      rel: { default: this.options.HTMLAttributes.rel },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'a[href]:not([href*="javascript:"])' }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["a", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  ...markFromSpec("link"),
   addCommands() {
     return {
       setLink:
@@ -898,14 +631,7 @@ export const BulletList = Node.create({
   addOptions() {
     return { HTMLAttributes: {}, itemTypeName: "listItem" };
   },
-  group: "block list",
-  content: "listItem+",
-  parseHTML() {
-    return [{ tag: "ul" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["ul", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  ...nodeFromSpec("bulletList"),
   addCommands() {
     return {
       toggleBulletList:
@@ -942,34 +668,7 @@ export const OrderedList = Node.create({
   addOptions() {
     return { HTMLAttributes: {}, itemTypeName: "listItem" };
   },
-  group: "block list",
-  content: "listItem+",
-  addAttributes() {
-    return {
-      start: {
-        default: 1,
-        parseHTML: (element) => {
-          const start = element.getAttribute("start");
-          return start ? parseInt(start, 10) : 1;
-        },
-      },
-    };
-  },
-  parseHTML() {
-    return [{ tag: "ol" }];
-  },
-  renderHTML({ node, HTMLAttributes }) {
-    const { start } = node.attrs;
-    return [
-      "ol",
-      mergeAttributes(
-        this.options.HTMLAttributes,
-        HTMLAttributes,
-        start !== 1 ? { start } : {},
-      ),
-      0,
-    ];
-  },
+  ...nodeFromSpec("orderedList"),
   addCommands() {
     return {
       toggleOrderedList:
@@ -1012,14 +711,7 @@ export const ListItem = Node.create({
       orderedListTypeName: "orderedList",
     };
   },
-  content: "paragraph block*",
-  defining: true,
-  parseHTML() {
-    return [{ tag: "li" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["li", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
-  },
+  ...nodeFromSpec("listItem"),
   addCommands() {
     return {
       liftListItem:
@@ -1052,25 +744,8 @@ export const ListItem = Node.create({
 
 export const TaskList = Node.create({
   name: "taskList",
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
-  group: "block list",
-  content: "taskItem+",
-  parseHTML() {
-    return [{ tag: 'ul[data-type="taskList"]', priority: 51 }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return [
-      "ul",
-      mergeAttributes(
-        { "data-type": "taskList" },
-        this.options.HTMLAttributes,
-        HTMLAttributes,
-      ),
-      0,
-    ];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("taskList"),
   addCommands() {
     return {
       toggleTaskList:
@@ -1095,45 +770,8 @@ export const TaskList = Node.create({
 
 export const TaskItem = Node.create({
   name: "taskItem",
-  addOptions() {
-    return {
-      nested: false,
-      HTMLAttributes: {},
-    };
-  },
-  content() {
-    return this.options.nested ? "paragraph (taskList | block)*" : "paragraph block*";
-  },
-  defining: true,
-  addAttributes() {
-    return {
-      checked: {
-        default: false,
-        keepOnSplit: false,
-        parseHTML: (element) => element.getAttribute("data-checked") === "true",
-        renderHTML: (attributes) => ({ "data-checked": String(attributes.checked) }),
-      },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'li[data-type="taskItem"]', priority: 51 }];
-  },
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      "li",
-      mergeAttributes(
-        { "data-type": "taskItem" },
-        this.options.HTMLAttributes,
-        HTMLAttributes,
-      ),
-      [
-        "label",
-        { contenteditable: "false" },
-        ["input", { type: "checkbox", ...(node.attrs.checked ? { checked: "" } : {}) }],
-      ],
-      ["div", 0],
-    ];
-  },
+  addOptions: htmlAttributeOptions,
+  ...nodeFromSpec("taskItem"),
   addNodeView() {
     return ({ node, getPos, editor }) => {
       const li = document.createElement("li");

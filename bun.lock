@@ -10,7 +10,7 @@
     },
     "app": {
       "name": "@vektorapp/app",
-      "version": "0.0.67",
+      "version": "0.0.70",
       "dependencies": {
         "@astrojs/node": "^11.0.0",
         "@astrojs/solid-js": "7.0.1",

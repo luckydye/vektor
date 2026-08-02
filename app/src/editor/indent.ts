@@ -1,11 +1,8 @@
 import type { Editor } from "@tiptap/core";
+import { MAX_INDENT, nodesWithAttr } from "#documents/schema/specs.ts";
 
 /** Block node types that support a left-margin indent attribute. */
-export const INDENT_TYPES = ["paragraph", "heading"];
-/** Maximum indent level a block can reach. */
-export const MAX_INDENT = 10;
-/** Left margin applied per indent level, in em. */
-export const INDENT_STEP_EM = 2;
+export const INDENT_TYPES = nodesWithAttr("indent");
 
 /**
  * Shift the indent level of every indentable block touched by the current

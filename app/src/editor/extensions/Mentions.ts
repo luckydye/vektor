@@ -1,5 +1,6 @@
 import { Node } from "@tiptap/core";
 import { type SuggestionConfig, suggestionPlugin } from "#editor/suggestion.ts";
+import { nodeFromSpec } from "./specSchema.ts";
 
 /** What the popup hands back when a person is picked — the node's attributes. */
 export type MentionAttributes = { id: string; label: string };
@@ -29,46 +30,10 @@ export const Mentions = Node.create<MentionOptions>({
   // extensions' plugins: while the popup is open its handleKeyDown must claim
   // Enter/Tab/Arrow keys before the list and paragraph keymaps see them.
   priority: 101,
-  group: "inline",
-  inline: true,
-  atom: true,
-  selectable: false,
+  ...nodeFromSpec("mention"),
 
   addOptions() {
     return { suggestion: {} };
-  },
-
-  addAttributes() {
-    // Both values come from the parse rule below. `parseHTML: () => null` opts
-    // out of the per-attribute DOM lookup, which would otherwise let a stray
-    // `id`/`label` attribute on the element override what the rule resolved.
-    return {
-      id: { default: null, parseHTML: () => null, renderHTML: () => ({}) },
-      label: { default: null, parseHTML: () => null, renderHTML: () => ({}) },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: "user-mention",
-        getAttrs: (element: HTMLElement) => {
-          const email = element.getAttribute("email");
-          return {
-            id: email,
-            label: element.textContent?.replace("@", "") || email,
-          };
-        },
-      },
-    ];
-  },
-
-  renderHTML({ node }) {
-    return [
-      "user-mention",
-      { email: node.attrs.id },
-      `@${node.attrs.label || node.attrs.id}`,
-    ];
   },
 
   addKeyboardShortcuts() {

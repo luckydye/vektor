@@ -1,6 +1,7 @@
 import type { CommandProps } from "@tiptap/core";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Node } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { nodeFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -18,45 +19,7 @@ declare global {
 
 export const ExpressionCell = Node.create({
   name: "expressionCell",
-  group: "inline",
-  inline: true,
-  content: "text*",
-  atom: false,
-  selectable: true,
-  draggable: false,
-
-  addAttributes() {
-    return {
-      "data-formula": {
-        default: "=",
-        parseHTML: (element) =>
-          element.getAttribute("data-formula") || element.textContent?.trim() || "=",
-        renderHTML: (attributes) => {
-          return {
-            "data-formula": attributes["data-formula"],
-          };
-        },
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: "expression-cell",
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes, node }) {
-    const attrs = mergeAttributes(HTMLAttributes);
-    if (node.attrs["data-formula"]) {
-      attrs["data-formula"] = node.attrs["data-formula"];
-    } else if (node.textContent) {
-      attrs["data-formula"] = node.textContent;
-    }
-    return ["expression-cell", attrs, 0];
-  },
+  ...nodeFromSpec("expressionCell"),
 
   addCommands() {
     return {

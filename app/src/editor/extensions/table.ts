@@ -4,23 +4,7 @@ import { Plugin } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
 import { ExpressionCell } from "./ExpressionCell.ts";
-
-const colwidthAttribute = {
-  default: [200],
-  parseHTML: (element: HTMLElement) => {
-    const colwidth = element.getAttribute("colwidth");
-    return colwidth ? colwidth.split(",").map((w) => parseInt(w, 10)) : [200];
-  },
-  renderHTML: (attributes: { colwidth?: number[] }) => {
-    if (!attributes.colwidth) {
-      return { style: "width: 200px" };
-    }
-    return {
-      colwidth: attributes.colwidth.join(","),
-      style: `width: ${attributes.colwidth[0]}px`,
-    };
-  },
-};
+import { nodeFromSpec } from "./specSchema.ts";
 
 function clearNativeSelection(view: EditorView) {
   const root = view.root;
@@ -63,44 +47,27 @@ export const TableEditing = Extension.create({
   name: "tableEditing",
 
   addExtensions() {
+    // The table package supplies the editing behaviour — commands, the
+    // tableEditing plugin, column resizing. Its schema half is replaced with
+    // the shared spec table, so the server serializes tables without it.
     return [
       Table.extend({
         addKeyboardShortcuts: () => ({}),
+        ...nodeFromSpec("table"),
       }).configure({
         resizable: true,
       }),
       TableRow.extend({
         addKeyboardShortcuts: () => ({}),
+        ...nodeFromSpec("tableRow"),
       }),
       TableHeader.extend({
-        addAttributes(this: { parent?: () => Record<string, unknown> }) {
-          return {
-            ...this.parent?.(),
-            colwidth: colwidthAttribute,
-          };
-        },
         addKeyboardShortcuts: () => ({}),
+        ...nodeFromSpec("tableHeader"),
       }),
       TableCell.extend({
-        addAttributes(this: { parent?: () => Record<string, unknown> }) {
-          return {
-            ...this.parent?.(),
-            colwidth: colwidthAttribute,
-            backgroundColor: {
-              default: null,
-              parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
-              renderHTML: (attributes: { backgroundColor?: string }) => {
-                if (!attributes.backgroundColor) {
-                  return {};
-                }
-                return {
-                  style: `background-color: ${attributes.backgroundColor}`,
-                };
-              },
-            },
-          };
-        },
         addKeyboardShortcuts: () => ({}),
+        ...nodeFromSpec("tableCell"),
       }),
       ExpressionCell,
     ];

@@ -99,7 +99,7 @@ export function SettingsLayout(props: Props) {
         }
       >
         <a-tabs ref={tabsEl} on:tab-selected={onTabSelected}>
-          <a-tabs-list class="block overflow-clip py-4xs">
+          <a-tabs-list class="block overflow-clip py-4xs border-b border-neutral-100">
             <For each={props.tabs}>
               {(tab, index) => (
                 // Marked up front instead of selected imperatively after mount:

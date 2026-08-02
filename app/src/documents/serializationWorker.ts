@@ -10,22 +10,8 @@ import { contentFromDoc, docFromContent, docFromUpdate } from "./serialization.t
  */
 
 export type SerializationRequest =
-  | {
-      id: number;
-      op: "serialize";
-      spaceId: string;
-      documentId: string;
-      type: string | null;
-      update: Uint8Array;
-    }
-  | {
-      id: number;
-      op: "deserialize";
-      spaceId: string;
-      documentId: string;
-      type: string | null;
-      content: string;
-    };
+  | { id: number; op: "serialize"; type: string | null; update: Uint8Array }
+  | { id: number; op: "deserialize"; type: string | null; content: string };
 
 export type SerializationResponse =
   | { id: number; ok: true; content: string }
@@ -42,10 +28,10 @@ ctx.onmessage = (event) => {
   try {
     if (req.op === "serialize") {
       const doc = docFromUpdate(req.update);
-      const content = contentFromDoc(req.spaceId, req.documentId, req.type, doc);
+      const content = contentFromDoc(req.type, doc);
       ctx.postMessage({ id: req.id, ok: true, content });
     } else {
-      const doc = docFromContent(req.spaceId, req.documentId, req.type, req.content);
+      const doc = docFromContent(req.type, req.content);
       const update = Y.encodeStateAsUpdate(doc);
       ctx.postMessage({ id: req.id, ok: true, update });
     }

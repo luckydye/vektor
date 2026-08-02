@@ -1,5 +1,8 @@
 import type { CommandProps } from "@tiptap/core";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Node } from "@tiptap/core";
+import type { TagParseRule } from "@tiptap/pm/model";
+import { CONTENT_CONTAINER_TAGS, isHtmlBlockTag } from "#documents/schema/specs.ts";
+import { nodeFromSpec, specParseRules } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -15,69 +18,18 @@ declare global {
   }
 }
 
-// These elements have no TipTap representation. Without an explicit fallback,
-// ProseMirror drops their element and attributes, then parses only their text
-// children. Keep the complete source in an HTML block instead.
-const UNSUPPORTED_BLOCK_TAGS = new Set([
-  "address",
-  "article",
-  "aside",
-  "audio",
-  "canvas",
-  "dd",
-  "details",
-  "dialog",
-  "div",
-  "dl",
-  "embed",
-  "fieldset",
-  "figcaption",
-  "figure",
-  "footer",
-  "form",
-  "header",
-  "hgroup",
-  "iframe",
-  "main",
-  "menu",
-  "nav",
-  "noscript",
-  "object",
-  "output",
-  "picture",
-  "section",
-  "svg",
-  "template",
-  "video",
-]);
-
-function isUnsupportedHtmlBlock(element: HTMLElement): boolean {
-  const tagName = element.tagName.toLowerCase();
-  return UNSUPPORTED_BLOCK_TAGS.has(tagName) || tagName.includes("-");
-}
-
-// Content-holding nodes the schema understands. When ProseMirror descends into
-// one of these to parse its children, any unsupported element it encounters is
-// nested content, not a root-level block — hoisting it into its own HTML block
-// would swallow it (e.g. a task item's <div><p>…</p></div> content wrapper,
-// since <div> is an unsupported tag). Unsupported elements nested inside another
-// *unsupported* element never reach here: that ancestor is captured as an atom
-// first, so ProseMirror stops descending. So an ancestor from this set is the
-// only way getAttrs sees a non-root element.
-const CONTENT_CONTAINER_TAGS = new Set([
-  "ul",
-  "ol",
-  "li",
-  "blockquote",
-  "table",
-  "thead",
-  "tbody",
-  "tfoot",
-  "tr",
-  "td",
-  "th",
-]);
-
+/**
+ * Whether an element is nested inside a content-holding node the schema
+ * understands. Unsupported markup below one of those is that node's content,
+ * not a root-level block — hoisting it into its own HTML block would swallow
+ * the node it belongs to (a task item's `<div><p>…</p></div>` wrapper, say,
+ * since `div` is an unsupported tag).
+ *
+ * Unsupported elements nested inside another *unsupported* element never reach
+ * here: that ancestor is captured as an atom first, so ProseMirror stops
+ * descending. An ancestor from the container set is the only way this is
+ * reached for a non-root element.
+ */
 function isNestedInContentNode(element: HTMLElement): boolean {
   let parent = element.parentElement;
   while (parent) {
@@ -90,75 +42,37 @@ function isNestedInContentNode(element: HTMLElement): boolean {
   return false;
 }
 
-function parseHtmlBlockContent(element: HTMLElement): string | null {
-  const value = element.getAttribute("data-html");
-  if (value === null) return null;
-  if (element.getAttribute("data-html-encoding") !== "uri") return value;
-
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
 /**
  * Schema-only HTML block: parsing, attributes and HTML rendering, with no DOM
- * rendering library imported. The server builds this through `contentExtensions`
- * to (de)serialize documents, so this module must stay free of lit-html — the
- * interactive editing view lives in `HtmlBlockNodeView.ts` and is injected
- * client-side by `documentExtensions`.
+ * rendering library imported. The interactive editing view lives in
+ * `HtmlBlockNodeView.ts` and is injected client-side by `documentExtensions`.
+ *
+ * The catch-all rule below is the one parse rule that cannot come from the spec
+ * table: deciding whether an unknown element is a root-level block needs its
+ * ancestors, which a tag matcher cannot see. `parse.ts` runs the same logic on
+ * the server, driven by the same two exported tag sets.
  */
 export const HtmlBlock = Node.create({
   name: "htmlBlock",
-  group: "block",
-  atom: true,
-  selectable: false,
-  draggable: true,
+  ...nodeFromSpec("htmlBlock"),
 
-  addAttributes() {
-    return {
-      "data-html": {
-        default: "<p>Enter HTML content here</p>",
-        parseHTML: parseHtmlBlockContent,
-        renderHTML: (attributes) => {
-          return {
-            "data-html": attributes["data-html"],
-          };
-        },
-      },
-    };
-  },
-
-  parseHTML() {
+  parseHTML(): TagParseRule[] {
     return [
+      ...specParseRules("htmlBlock"),
       {
-        tag: "html-block",
-      },
-      {
-        // Run after every native and Vektor-specific parser rule, so this
+        // Runs after every native and Vektor-specific parser rule, so this
         // captures only elements the document schema does not understand.
         tag: "*",
         priority: 1,
         getAttrs: (element) => {
-          if (!isUnsupportedHtmlBlock(element)) return false;
+          if (typeof element === "string") return false;
+          if (!isHtmlBlockTag(element.tagName.toLowerCase())) return false;
           // Only hoist root-level unknown HTML into a block. Nested unknown
           // markup belongs to the node being parsed and is left in place.
           if (isNestedInContentNode(element)) return false;
           return { "data-html": element.outerHTML };
         },
       },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    const htmlContent = String(HTMLAttributes["data-html"] ?? "");
-    return [
-      "html-block",
-      mergeAttributes(HTMLAttributes, {
-        "data-html": encodeURIComponent(htmlContent),
-        "data-html-encoding": "uri",
-      }),
     ];
   },
 

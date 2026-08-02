@@ -8,13 +8,7 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import {
-  INDENT_STEP_EM,
-  INDENT_TYPES,
-  indentEditor,
-  MAX_INDENT,
-  outdentEditor,
-} from "#editor/indent.ts";
+import { indentEditor, outdentEditor } from "#editor/indent.ts";
 import { Actions } from "#utils/actions.ts";
 import {
   canvasClipboardFromDataTransfer,
@@ -341,37 +335,14 @@ const BaseSelectionShortcuts = Extension.create({
 });
 
 /**
- * Adds a numeric `indent` attribute to block nodes (rendered as a left margin)
- * and wires up code-editor-style Tab / Shift-Tab. The actual indent/outdent
- * logic lives in #editor/indent.ts so the `format:indent` / `format:outdent`
- * command-palette actions share it exactly. A handler returning `false` (inside
- * a table) defers to the table's own cell navigation.
+ * Wires up code-editor-style Tab / Shift-Tab for the `indent` attribute the
+ * spec table puts on indentable blocks. The actual indent/outdent logic lives
+ * in #editor/indent.ts so the `format:indent` / `format:outdent` command-palette
+ * actions share it exactly. A handler returning `false` (inside a table) defers
+ * to the table's own cell navigation.
  */
 const BlockIndent = Extension.create({
   name: "blockIndent",
-
-  addGlobalAttributes() {
-    return [
-      {
-        types: INDENT_TYPES,
-        attributes: {
-          indent: {
-            default: 0,
-            parseHTML: (element) => {
-              const marginLeft = Number.parseFloat(element.style.marginLeft);
-              if (!marginLeft) return 0;
-              return Math.min(Math.round(marginLeft / INDENT_STEP_EM), MAX_INDENT);
-            },
-            renderHTML: (attributes) => {
-              const indent = (attributes.indent as number) || 0;
-              if (!indent) return {};
-              return { style: `margin-left: ${indent * INDENT_STEP_EM}em` };
-            },
-          },
-        },
-      },
-    ];
-  },
 
   addKeyboardShortcuts() {
     return {
@@ -459,14 +430,10 @@ export function documentExtensions(
     Superscript,
     Subscript,
     TextStyle,
-    TextAlign.configure({
-      types: ["heading", "paragraph"],
-    }),
+    TextAlign,
     BackgroundColor,
     Color,
-    Heading.configure({
-      levels: [1, 2, 3, 4],
-    }),
+    Heading,
     ImageUpload.configure({
       spaceId: spaceId,
       documentId: documentId,
@@ -483,7 +450,7 @@ export function documentExtensions(
     RichClipboardPaste,
     TableEditing,
     TableReorder,
-    TaskItem.configure({ nested: true }).extend({
+    TaskItem.extend({
       addKeyboardShortcuts() {
         return {
           Enter: () => this.editor.commands.splitListItem(this.name),

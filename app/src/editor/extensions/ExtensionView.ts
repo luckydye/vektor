@@ -1,5 +1,6 @@
 import type { CommandProps } from "@tiptap/core";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { Node } from "@tiptap/core";
+import { nodeFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -14,37 +15,7 @@ declare module "@tiptap/core" {
 
 export const ExtensionView = Node.create({
   name: "extensionView",
-  group: "block",
-  atom: true,
-  selectable: true,
-  draggable: true,
-
-  addAttributes() {
-    return {
-      extensionId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-extension-id"),
-        renderHTML: (attributes) => ({
-          "data-extension-id": attributes.extensionId,
-        }),
-      },
-      routePath: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-route-path"),
-        renderHTML: (attributes) => ({
-          "data-route-path": attributes.routePath,
-        }),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: "extension-view-block[data-extension-id]" }];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ["extension-view-block", mergeAttributes(HTMLAttributes)];
-  },
+  ...nodeFromSpec("extensionView"),
 
   addCommands() {
     return {
