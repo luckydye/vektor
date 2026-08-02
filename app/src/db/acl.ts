@@ -113,6 +113,76 @@ export async function getUserGroups(userId: string): Promise<string[]> {
 }
 
 /**
+ * Minimal profile of a user who shares an OAuth group with the caller. Email is
+ * included because these results feed invite suggestions, and email is what the
+ * inviter picks by (and what the permissions endpoint resolves to a user id).
+ */
+export interface GroupPeer {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+}
+
+/**
+ * Users who share at least one real OAuth group with `userId`.
+ *
+ * This is the "same OAuth group ⇒ visible to each other" rule: membership in a
+ * common IdP group is treated as an organizational boundary within which people
+ * may see one another (name + email) for invite suggestions. Users only ever
+ * appear to peers in their own groups — there is deliberately no global user
+ * directory. The synthetic `public` group is excluded (everyone is in it, so it
+ * would leak the whole instance), and a user with no real groups sees nobody.
+ */
+export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[]> {
+  const authDb = getAuthDb();
+  if (!authDb) return [];
+
+  const groups = (await getUserGroups(userId)).filter((g) => g !== "public");
+  if (groups.length === 0) return [];
+
+  // Group names are sanitized to GROUP_NAME_PATTERN (no `"`), so the JSON-quoted
+  // token match below is exact per group and cannot be fooled by a name that is
+  // a prefix of another (`"dev"` never matches inside `"developers"`).
+  const conditions = groups.map((groupId) => like(user.groups, `%"${groupId}"%`));
+
+  const rows = await authDb
+    .select({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      image: user.image,
+      groups: user.groups,
+    })
+    .from(user)
+    .where(or(...conditions))
+    .all();
+
+  const groupSet = new Set(groups);
+
+  return rows
+    .filter((row) => row.id !== userId)
+    // Defense in depth: confirm a genuinely shared, well-formed group rather
+    // than trusting the coarse LIKE prefilter alone.
+    .filter((row) => {
+      if (!row.groups) return false;
+      try {
+        const parsed = JSON.parse(row.groups);
+        return (
+          Array.isArray(parsed) &&
+          parsed.some(
+            (g): g is string =>
+              typeof g === "string" && GROUP_NAME_PATTERN.test(g) && groupSet.has(g),
+          )
+        );
+      } catch {
+        return false;
+      }
+    })
+    .map(({ id, name, email, image }) => ({ id, name, email, image }));
+}
+
+/**
  * Display name of a grantee, captured when the permission change is logged so
  * the audit entry stays readable after the account is renamed or removed.
  */
