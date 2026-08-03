@@ -77,10 +77,18 @@ export function createCanvasChrome(
   // every paint has to invalidate, including one that lands on the same number.
   const [painted, setPainted] = createSignal(0, { equals: false });
 
-  const view = createMemo(() => {
-    painted();
-    return host()?.view ?? null;
-  });
+  // `equals: false` for the same reason `painted` has it: the view object is the
+  // same instance every frame, so a memo with default equality would swallow the
+  // change and never notify. Readers that call straight through to `view()` —
+  // rather than wrapping in `frame()` — depend on this to see a new frame at all.
+  const view = createMemo(
+    () => {
+      painted();
+      return host()?.view ?? null;
+    },
+    undefined,
+    { equals: false },
+  );
 
   return {
     view,

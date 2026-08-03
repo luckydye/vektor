@@ -9,7 +9,6 @@ import { cloneFreehandPoint } from "#canvas/document/strokes.ts";
 import {
   createFreehandOptions,
   createFreehandStrokeBuilder,
-  type DrawStrokeMode,
   FREEHAND_STYLE,
   type FreehandPoint,
   type FreehandStroke,
@@ -22,12 +21,10 @@ import type {
 } from "#canvas/runtime/extensionApi.ts";
 import { CanvasTool } from "#canvas/runtime/extensionApi.ts";
 import { iconMarkup } from "#components/Icon.tsx";
-import type { TranslationKey } from "#utils/lang.ts";
 
 type CanvasDrawingSession = {
   pointerId: number;
   builder: FreehandStrokeBuilder;
-  mode: DrawStrokeMode;
 };
 
 export const PEN_COLORS = [
@@ -39,23 +36,6 @@ export const PEN_COLORS = [
   "#8b5cf6",
 ] as const;
 
-const DRAW_STROKE_MODES: Array<{
-  id: DrawStrokeMode;
-  label: TranslationKey;
-  icon: string;
-}> = [
-  {
-    id: "pencil",
-    label: "Pencil",
-    icon: iconMarkup("pen-tool"),
-  },
-  {
-    id: "pen",
-    label: "Pen",
-    icon: iconMarkup("pen-tool"),
-  },
-];
-
 /**
  * Stroke widths offered by the size control, in world units.
  *
@@ -65,13 +45,6 @@ const DRAW_STROKE_MODES: Array<{
 const PEN_SIZES = [2, 6, 10, 18, 32] as const;
 
 const DRAW_TOOL_PROPERTIES = [
-  {
-    kind: "choice",
-    id: "mode",
-    label: "Pen",
-    options: DRAW_STROKE_MODES,
-    default: "pen",
-  },
   {
     kind: "size",
     id: "size",
@@ -88,13 +61,11 @@ const DRAW_TOOL_PROPERTIES = [
 function freehandPointFromPointerEvent(
   event: PointerEvent,
   world: { x: number; y: number },
-  mode: DrawStrokeMode,
 ): FreehandPoint {
   // Only trust pressure from a stylus. Mice report a constant 0.5 while a button
   // is held, and touch rarely reports meaningful pressure, so for those inputs
   // width falls back to velocity-based tapering.
-  const hasStylusPressure =
-    mode === "pen" && event.pointerType === "pen" && event.pressure > 0;
+  const hasStylusPressure = event.pointerType === "pen" && event.pressure > 0;
   return {
     x: world.x,
     y: world.y,
@@ -108,7 +79,6 @@ function startCanvasDrawingStroke(
   world: { x: number; y: number },
   options: {
     color: string;
-    mode: DrawStrokeMode;
     size: number;
     worldToScreenScale: number;
   },
@@ -120,7 +90,6 @@ function startCanvasDrawingStroke(
   const builder = createFreehandStrokeBuilder(
     createFreehandOptions(
       { ...FREEHAND_STYLE, color: options.color, width: options.size },
-      options.mode,
       options.worldToScreenScale,
     ),
   );
@@ -128,9 +97,8 @@ function startCanvasDrawingStroke(
     session: {
       pointerId: event.pointerId,
       builder,
-      mode: options.mode,
     },
-    stroke: builder.startAt(freehandPointFromPointerEvent(event, world, options.mode)),
+    stroke: builder.startAt(freehandPointFromPointerEvent(event, world)),
   };
 }
 
@@ -141,7 +109,7 @@ function addCanvasDrawingPoints(
   function* points(): Iterable<FreehandPoint> {
     for (const { event, world } of samples) {
       if (session.pointerId !== event.pointerId) continue;
-      yield freehandPointFromPointerEvent(event, world, session.mode);
+      yield freehandPointFromPointerEvent(event, world);
     }
   }
 
@@ -179,7 +147,6 @@ export const DrawTool = CanvasTool.create({
       // tool stamps in the same colour, and splitting them would silently change
       // that.
       color: ctx.penColor(),
-      mode: ctx.property<DrawStrokeMode>("mode"),
       size: ctx.property<number>("size"),
       worldToScreenScale: ctx.viewportScale(),
     });

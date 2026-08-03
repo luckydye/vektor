@@ -8,10 +8,10 @@
 
 import {
   drawFreehandStroke,
-  FREEHAND_MAX_STROKE_WIDTH,
   FREEHAND_STYLE,
   type FreehandStroke,
   fillFreehandStrokeMask,
+  maxStrokeWidth,
   strokePointBounds,
 } from "#canvas/render/freehand.ts";
 import { drawSnapGuides } from "#canvas/render/snapGuides.ts";
@@ -66,7 +66,7 @@ function paintCanvasStrokes(
 
   for (const stroke of strokes) {
     const bounds = strokePointBounds(stroke);
-    const padding = Math.max(stroke.style.width, FREEHAND_MAX_STROKE_WIDTH);
+    const padding = maxStrokeWidth(stroke.style);
     if (
       !bounds ||
       bounds.maxX + padding < minX ||
@@ -696,7 +696,7 @@ class CanvasInkRenderer {
       const bounds = boundsForStroke(stroke);
       if (!bounds) return [];
       const padding =
-        Math.max(maxWidthForStroke(stroke), FREEHAND_MAX_STROKE_WIDTH) / 2 +
+        Math.max(maxWidthForStroke(stroke), maxStrokeWidth(stroke.style)) / 2 +
         2 / cache.transform.scale;
       return [
         {
@@ -758,7 +758,7 @@ class CanvasInkRenderer {
       const bounds = boundsForStroke(stroke);
       if (!bounds) continue;
       const padding =
-        Math.max(maxWidthForStroke(stroke), FREEHAND_MAX_STROKE_WIDTH) / 2 +
+        Math.max(maxWidthForStroke(stroke), maxStrokeWidth(stroke.style)) / 2 +
         4 / source.transform.scale;
       const left =
         (bounds.x + dx - padding) * source.transform.scale +

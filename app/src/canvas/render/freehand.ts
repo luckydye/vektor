@@ -946,8 +946,6 @@ export function strokePointBounds(stroke: {
 // caring how the canvas caches its ink.
 // ---------------------------------------------------------------------------
 
-export type DrawStrokeMode = "pencil" | "pen";
-
 export const FREEHAND_STYLE: FreehandStrokeStyle = {
   color: "#111827",
   width: 10,
@@ -956,29 +954,35 @@ export const FREEHAND_STYLE: FreehandStrokeStyle = {
   lineJoin: "round",
 };
 
-// Width bounds are in world units; the renderer scales them by zoom. Pen mode
-// intentionally has a broad range so velocity and stylus pressure read clearly.
-const FREEHAND_PEN_VELOCITY = {
-  minWidth: 2,
-  maxWidth: 18,
+/**
+ * How far velocity and pressure may take a stroke either side of its nominal
+ * width, as a ratio of `style.width`.
+ *
+ * Ratios rather than absolutes: the width is chosen by the size control, and
+ * hardcoded bounds would ignore it — which is exactly the bug this replaces.
+ * At the default width of 10 these give the original 2..18 band.
+ */
+const FREEHAND_VELOCITY = {
+  minRatio: 0.2,
+  maxRatio: 1.8,
   smoothing: 0.72,
 };
 
 /**
- * The widest a velocity-tapered stroke can get.
+ * The widest this stroke can actually be drawn.
  *
- * Exported because painting has to pad culling and cache bounds by it: a
- * stroke's stored `style.width` is its nominal width, and pen mode can draw
- * wider than that.
+ * Painting pads culling and cache bounds by it: `style.width` is nominal, and
+ * velocity can take a stroke wider.
  */
-export const FREEHAND_MAX_STROKE_WIDTH = FREEHAND_PEN_VELOCITY.maxWidth;
+export function maxStrokeWidth(style: FreehandStrokeStyle): number {
+  return style.width * FREEHAND_VELOCITY.maxRatio;
+}
 
 // The stroke reaches its thinnest at roughly this pointer speed in screen px/ms.
 const SCREEN_VELOCITY_FULL = 2.4;
 
 export function createFreehandOptions(
   style: FreehandStrokeStyle = FREEHAND_STYLE,
-  mode: DrawStrokeMode = "pen",
   worldToScreenScale = 1,
 ): FreehandStrokeOptions {
   const safeScreenScale = Math.max(0.01, worldToScreenScale);
@@ -991,12 +995,11 @@ export function createFreehandOptions(
     simplifyTolerance: 0.75 * screenPixelInWorld,
     smoothing: 0.9,
     style,
-    velocityWidth:
-      mode === "pen"
-        ? {
-            ...FREEHAND_PEN_VELOCITY,
-            scale: (1 / SCREEN_VELOCITY_FULL) * safeScreenScale,
-          }
-        : undefined,
+    velocityWidth: {
+      minWidth: style.width * FREEHAND_VELOCITY.minRatio,
+      maxWidth: style.width * FREEHAND_VELOCITY.maxRatio,
+      smoothing: FREEHAND_VELOCITY.smoothing,
+      scale: (1 / SCREEN_VELOCITY_FULL) * safeScreenScale,
+    },
   };
 }

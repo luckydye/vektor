@@ -71,7 +71,7 @@ export function toCanvasStroke(
   // Recomputing velocity widths here would depend on the viewer's current zoom
   // and on the pre-layout 1x1 screen during initial load, so only derive widths
   // when none were stored.
-  const options = createFreehandOptions(style, "pen", worldToScreenScale);
+  const options = createFreehandOptions(style, worldToScreenScale);
   if (points.some((point) => point.width !== undefined)) {
     options.velocityWidth = undefined;
   }
