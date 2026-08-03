@@ -3,6 +3,7 @@ import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
+import { htmlTableToTable } from "#documents/htmlTable.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";
 import type { DocNode } from "#documents/schema/specs.ts";
@@ -157,8 +158,8 @@ function normalizeHtmlContent(content: string): string {
 /**
  * Returns the document content as edit operations see it: the live Yjs room
  * state when one is open, otherwise the persisted content. HTML is normalized
- * to one top-level block per line; canvas and workflow source stay in their
- * native serialized formats.
+ * to one top-level block per line; canvas, sheet markup and workflow source stay
+ * in their native serialized formats.
  */
 export function getLiveDocumentContent(
   spaceId: string,
@@ -168,8 +169,9 @@ export function getLiveDocumentContent(
 ): string {
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
-    if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
-    if (type === "workflow") return contentFromDoc(type, room.doc);
+    if (type === "canvas" || type === "csv" || type === "workflow") {
+      return contentFromDoc(type, room.doc);
+    }
     return toCleanHtml(room.doc);
   }
   if (
@@ -199,6 +201,39 @@ const COLLABORATION_REVISION_INTERVAL_MS = 3 * 60 * 60 * 1000;
 const MIN_PERSIST_INTERVAL_MS = 5000;
 
 /**
+ * Writes table markup into an open sheet room and broadcasts the change.
+ * Returns false when the markup holds no table, so the caller can refuse the
+ * write rather than blank the grid.
+ */
+function writeSheetContent(
+  room: YRoom,
+  doc: Y.Doc,
+  documentId: string,
+  content: string,
+): boolean {
+  const table = htmlTableToTable(content);
+  if (!table) return false;
+
+  // The websocket handler broadcasts updates it *receives*; one made here has
+  // to be sent on deliberately, or connected clients keep the old grid until
+  // they reload.
+  const updates: Uint8Array[] = [];
+  const capture = (update: Uint8Array) => updates.push(update);
+  doc.on("update", capture);
+  try {
+    // `fillSheetDoc` clears and refills in one transaction, so clients see a
+    // single update rather than a teardown followed by a rebuild.
+    fillSheetDoc(doc, table.cells, table.layout);
+  } finally {
+    doc.off("update", capture);
+  }
+  for (const update of updates) {
+    broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+  }
+  return true;
+}
+
+/**
  * Replays content written outside the room back into it.
  *
  * A REST write goes straight to the database, but an open room holds the
@@ -219,26 +254,7 @@ export async function replaceYRoomContent(
   if (type !== "csv") return;
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) return;
-
-  const table = htmlTableToTable(content);
-  if (!table) return;
-
-  // The websocket handler broadcasts updates it *receives*; one made here has
-  // to be sent on deliberately, or connected clients keep the old grid until
-  // they reload.
-  const updates: Uint8Array[] = [];
-  const capture = (update: Uint8Array) => updates.push(update);
-  room.doc.on("update", capture);
-  try {
-    // `fillSheetDoc` clears and refills in one transaction, so clients see a
-    // single update rather than a teardown followed by a rebuild.
-    fillSheetDoc(room.doc, table.cells, table.layout);
-  } finally {
-    room.doc.off("update", capture);
-  }
-  for (const update of updates) {
-    broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
-  }
+  writeSheetContent(room, room.doc, documentId, content);
 }
 
 export async function persistYRoomDraft(key: string): Promise<void> {
@@ -620,8 +636,13 @@ export async function transformDocumentContent(
     // is O(doc) and is what OOMs the process on large append-only logs edited
     // without a live room (e.g. the metrics-logger job). Other ops still
     // normalize so mid-document line references stay accurate.
+    //
+    // A sheet is never normalized: the prose schema has no place for a cell's
+    // `data-source` or `data-style`, so the round-trip would drop every formula
+    // and every bit of formatting in the document.
     const skipNormalize =
       dbDoc.type === "canvas" ||
+      dbDoc.type === "csv" ||
       isJsonContent(persisted) ||
       asBlockSpliceInsert(operations) !== null;
     const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
@@ -669,6 +690,19 @@ export async function transformDocumentContent(
     );
 
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
+  }
+
+  // A sheet keeps its grid in `rows`/`columns`, not in the XmlFragment the
+  // general path below edits — that fragment is empty for a csv document, so
+  // the edit would apply to nothing and the stored table would come back
+  // unchanged. Operations run against the table markup instead, and the result
+  // is written back to the grid as one transaction.
+  if (dbDoc.type === "csv") {
+    const next = transform(htmlFromSheetDoc(doc));
+    if (!writeSheetContent(room, doc, documentId, next)) {
+      throw new Error("csv edit must produce a <table>");
+    }
+    return { content: htmlFromSheetDoc(doc), live: true };
   }
 
   // Fast path: append/prepend splices only the new blocks into the fragment,

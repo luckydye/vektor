@@ -1,0 +1,31 @@
+---
+title: Edit a csv document (spreadsheet)
+keywords: csv, spreadsheet, sheet, table, row, column, cell, formula, grid, ironcalc
+---
+
+A csv document stores its grid as `<table>` markup on a single line — the header
+row in `<thead>`, every other row in `<tbody>`, one `<td>` per column:
+
+  <table><thead><tr><th>name</th><th>qty</th></tr></thead><tbody><tr><td>Widget</td><td>42</td></tr></tbody></table>
+
+1. Read it with `read_document`, or `get_current_document` for the open page.
+   `html-to-csv` turns the markup into CSV text when that is easier to read.
+2. Edit with `edit_document` and `sub`. Line operations are no use here: the
+   whole sheet is line 1. To append rows, match the closing tag:
+   {"op":"sub","pattern":"</tbody>","replacement":"<tr><td>Gadget</td><td>7</td></tr></tbody>"}
+   To change one cell, match enough of the row to be unique:
+   {"op":"sub","pattern":"<td>Widget</td><td>42</td>","replacement":"<td>Widget</td><td>44</td>"}
+3. Re-read after each edit; a `sub` that matches nothing fails.
+
+## Rules
+- Every row needs the same number of cells as the header, or the columns shift.
+- A cell holds plain escaped text and nothing else. No `<p>`, no `<span>`, no
+  attributes other than the ones below.
+- A formula goes in `data-source`, with the value it produces as the cell's
+  text: `<td data-source="=B2*2">84</td>`. The grid recomputes it when someone
+  opens the sheet. Without `data-source` the text is the value, which is what
+  plain data should be.
+- `data-style` (a cell's formatting) and `data-width`/`data-height` (sizes) are
+  the spreadsheet's own; carry them through unchanged rather than rewriting them.
+- Edits merge with whoever else has the sheet open. Use `write_document` only to
+  replace the entire grid, and then send a complete `<table>`.
