@@ -3,6 +3,7 @@ import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
+import { htmlTableToTable } from "#documents/htmlTable.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";
 import type { DocNode } from "#documents/schema/specs.ts";
@@ -156,8 +157,8 @@ function normalizeHtmlContent(content: string): string {
 /**
  * Returns the document content as edit operations see it: the live Yjs room
  * state when one is open, otherwise the persisted content. HTML is normalized
- * to one top-level block per line; canvas and workflow source stay in their
- * native serialized formats.
+ * to one top-level block per line; canvas, sheet markup and workflow source stay
+ * in their native serialized formats.
  */
 export function getLiveDocumentContent(
   spaceId: string,
@@ -167,8 +168,9 @@ export function getLiveDocumentContent(
 ): string {
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
-    if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
-    if (type === "workflow") return contentFromDoc(type, room.doc);
+    if (type === "canvas" || type === "csv" || type === "workflow") {
+      return contentFromDoc(type, room.doc);
+    }
     return toCleanHtml(room.doc);
   }
   if (type === "canvas" || type === "workflow" || isJsonContent(persisted))
@@ -571,8 +573,13 @@ export async function transformDocumentContent(
     // is O(doc) and is what OOMs the process on large append-only logs edited
     // without a live room (e.g. the metrics-logger job). Other ops still
     // normalize so mid-document line references stay accurate.
+    //
+    // A sheet is never normalized: the prose schema has no place for a cell's
+    // `data-source` or `data-style`, so the round-trip would drop every formula
+    // and every bit of formatting in the document.
     const skipNormalize =
       dbDoc.type === "canvas" ||
+      dbDoc.type === "csv" ||
       isJsonContent(persisted) ||
       asBlockSpliceInsert(operations) !== null;
     const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
@@ -620,6 +627,19 @@ export async function transformDocumentContent(
     );
 
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
+  }
+
+  // A sheet keeps its grid in `rows`/`columns`, not in the XmlFragment the
+  // general path below edits — that fragment is empty for a csv document, so
+  // the edit would apply to nothing and the stored table would come back
+  // unchanged. Operations run against the table markup instead, and the result
+  // is written back to the grid as one transaction.
+  if (dbDoc.type === "csv") {
+    const next = transform(htmlFromSheetDoc(doc));
+    if (!writeSheetContent(room, doc, documentId, next)) {
+      throw new Error("csv edit must produce a <table>");
+    }
+    return { content: htmlFromSheetDoc(doc), live: true };
   }
 
   // Fast path: append/prepend splices only the new blocks into the fragment,
