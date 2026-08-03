@@ -117,6 +117,34 @@ type OpenAIMessage = {
   tool_calls?: unknown[];
 };
 
+/**
+ * Anthropic requires an explicit output cap, and it bounds thinking plus the
+ * visible answer together — on models that think by default, a tight cap is
+ * spent reasoning and the answer arrives clipped mid-sentence. Callers that
+ * know their own ceiling may raise or lower it; this default is generous
+ * enough for long single-shot answers. Current models allow 128k (64k on
+ * Haiku 4.5), so it stays well inside every model this proxy can reach.
+ */
+const DEFAULT_MAX_TOKENS = 32_000;
+
+function resolveMaxTokens(body: Record<string, unknown>): number {
+  const requested = body.max_tokens ?? body.max_completion_tokens;
+  return typeof requested === "number" && Number.isInteger(requested) && requested > 0
+    ? requested
+    : DEFAULT_MAX_TOKENS;
+}
+
+/**
+ * OpenAI callers detect a clipped answer via `finish_reason: "length"`. Mapping
+ * every non-tool stop reason to "stop" makes hitting `max_tokens` look like a
+ * complete response, which is indistinguishable from success downstream.
+ */
+function toOpenAIFinishReason(stopReason: string | undefined): string {
+  if (stopReason === "tool_use") return "tool_calls";
+  if (stopReason === "max_tokens") return "length";
+  return "stop";
+}
+
 export function toAnthropicRequestBody(
   model: string,
   body: Record<string, unknown>,
@@ -184,7 +212,7 @@ export function toAnthropicRequestBody(
 
   const result: Record<string, unknown> = {
     model,
-    max_tokens: 8192,
+    max_tokens: resolveMaxTokens(body),
     messages: anthropicMessages,
     stream: body.stream ?? false,
   };
@@ -218,7 +246,7 @@ export async function callAnthropic(options: {
 
   let body: Record<string, unknown> = {
     model: options.provider.model,
-    max_tokens: 8192,
+    max_tokens: DEFAULT_MAX_TOKENS,
     messages: anthropicMessages,
     stream: true,
   };
@@ -333,7 +361,11 @@ export async function proxyToAnthropic(
         input?: unknown;
       }>;
       stop_reason: string;
+      usage?: { input_tokens?: number; output_tokens?: number };
     };
+    // Thinking blocks are dropped here, but their tokens still counted against
+    // max_tokens — so `output_tokens` is the only way a caller can tell a short
+    // answer apart from a long one whose budget went to reasoning.
     const textContent = data.content
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
@@ -358,9 +390,19 @@ export async function proxyToAnthropic(
             content: textContent || null,
             ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
           },
-          finish_reason: data.stop_reason === "tool_use" ? "tool_calls" : "stop",
+          finish_reason: toOpenAIFinishReason(data.stop_reason),
         },
       ],
+      ...(data.usage
+        ? {
+            usage: {
+              prompt_tokens: data.usage.input_tokens ?? 0,
+              completion_tokens: data.usage.output_tokens ?? 0,
+              total_tokens:
+                (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+            },
+          }
+        : {}),
     });
   }
 
@@ -402,7 +444,7 @@ export async function proxyToAnthropic(
               ],
             });
           } else if (typed.type === "message_delta" && typed.delta?.stop_reason) {
-            finishReason = typed.delta.stop_reason === "tool_use" ? "tool_calls" : "stop";
+            finishReason = toOpenAIFinishReason(typed.delta.stop_reason);
           }
         }
         send({

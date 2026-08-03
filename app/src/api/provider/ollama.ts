@@ -164,12 +164,18 @@ export async function proxyToOllama(
   body: Record<string, unknown>,
   signal: AbortSignal,
 ): Promise<Response> {
+  // Ollama takes generation limits under `options`, and its own defaults (notably
+  // num_ctx) clip long answers mid-sentence. Translate the OpenAI-shaped output
+  // cap so callers can raise it the same way they do for other providers.
+  const maxTokens = body.max_tokens ?? body.max_completion_tokens;
+
   const ollamaBody = {
     model,
     messages: body.messages,
     tools: body.tools,
     stream: body.stream ?? false,
     think: true,
+    ...(typeof maxTokens === "number" ? { options: { num_predict: maxTokens } } : {}),
   };
 
   const response = await fetch(`${baseUrl}/api/chat`, {
@@ -236,9 +242,12 @@ export async function proxyToOllama(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       };
 
+      let finishReason: string | null = null;
+
       try {
         for await (const chunk of parseNDJSON(response.body!)) {
           const message = (chunk.message as Record<string, unknown> | undefined) ?? {};
+          if (typeof chunk.done_reason === "string") finishReason = chunk.done_reason;
           if (typeof message.thinking === "string" && message.thinking) {
             send({
               id,
@@ -266,7 +275,7 @@ export async function proxyToOllama(
           object: "chat.completion.chunk",
           created,
           model,
-          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          choices: [{ index: 0, delta: {}, finish_reason: finishReason ?? "stop" }],
         });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } finally {
