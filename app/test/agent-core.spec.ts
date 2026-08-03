@@ -8,7 +8,11 @@ import {
   runAgentPrompt,
 } from "#agent/core.ts";
 import { callTool } from "#agent/tools.ts";
-import { toAnthropicMessages, toAnthropicRequestBody } from "#api/provider/anthropic.ts";
+import {
+  toAnthropicMessages,
+  toAnthropicRequestBody,
+  toOpenAIFinishReason,
+} from "#api/provider/anthropic.ts";
 import { toOpenAIResponsesInput } from "#api/provider/openaiCompatible.ts";
 import type { ChatMessage } from "#api/provider/types.ts";
 
@@ -60,6 +64,76 @@ describe("agent model loop", () => {
     });
 
     expect(body.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("honours a caller-supplied output cap and otherwise defaults generously", () => {
+    const explicit = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 64_000,
+    });
+    expect(explicit.max_tokens).toBe(64_000);
+
+    // Anthropic requires a cap, so an absent one must not fall back to a value
+    // small enough to clip a long answer mid-sentence.
+    const defaulted = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    expect(defaulted.max_tokens).toBe(32_000);
+
+    // A nonsense value must not be forwarded as-is; Anthropic would reject it.
+    const invalid = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "Hello" }],
+      max_tokens: 0,
+    });
+    expect(invalid.max_tokens).toBe(32_000);
+  });
+
+  it("forwards reasoning controls only when the caller sets them", () => {
+    const tuned = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "Hello" }],
+      output_config: { effort: "low" },
+      thinking: { type: "disabled" },
+    });
+    expect(tuned.output_config).toEqual({ effort: "low" });
+    expect(tuned.thinking).toEqual({ type: "disabled" });
+
+    // Models accept these at different tiers, so an unasked-for default would
+    // break spaces configured with a model that predates them.
+    const bare = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    expect(bare).not.toHaveProperty("output_config");
+    expect(bare).not.toHaveProperty("thinking");
+  });
+
+  it("reports a clipped answer as length so callers can resume it", () => {
+    // Collapsing this to "stop" makes a truncated answer indistinguishable from
+    // a complete one, which is what silently put partial ratings in the results.
+    expect(toOpenAIFinishReason("max_tokens")).toBe("length");
+    expect(toOpenAIFinishReason("end_turn")).toBe("stop");
+    expect(toOpenAIFinishReason("tool_use")).toBe("tool_calls");
+    expect(toOpenAIFinishReason(undefined)).toBe("stop");
+  });
+
+  it("converts a resumed conversation into alternating Anthropic turns", () => {
+    // The chat-completion job resumes a clipped answer by replaying the partial
+    // as an assistant turn followed by a user turn asking for the remainder. A
+    // trailing assistant turn would be a prefill, which current models reject.
+    const body = toAnthropicRequestBody("claude-sonnet-4-6", {
+      messages: [
+        { role: "system", content: "Rate the page." },
+        { role: "user", content: "<page>" },
+        { role: "assistant", content: "**Bewertung**\n🟨 GELB\n\nspart heute Tonnen an Stre" },
+        { role: "user", content: "Resume from where you stopped." },
+      ],
+    });
+
+    expect(body.system).toBe("Rate the page.");
+    expect(body.messages).toEqual([
+      { role: "user", content: "<page>" },
+      { role: "assistant", content: "**Bewertung**\n🟨 GELB\n\nspart heute Tonnen an Stre" },
+      { role: "user", content: "Resume from where you stopped." },
+    ]);
   });
 
   it("serializes GPT image attachments for the Responses API", () => {

@@ -139,7 +139,7 @@ function resolveMaxTokens(body: Record<string, unknown>): number {
  * every non-tool stop reason to "stop" makes hitting `max_tokens` look like a
  * complete response, which is indistinguishable from success downstream.
  */
-function toOpenAIFinishReason(stopReason: string | undefined): string {
+export function toOpenAIFinishReason(stopReason: string | undefined): string {
   if (stopReason === "tool_use") return "tool_calls";
   if (stopReason === "max_tokens") return "length";
   return "stop";
@@ -216,6 +216,13 @@ export function toAnthropicRequestBody(
     messages: anthropicMessages,
     stream: body.stream ?? false,
   };
+  // This builds a fresh body, so anything not copied across is silently dropped.
+  // `output_config.effort` is the lever for how much of max_tokens goes to
+  // reasoning rather than the answer, and `thinking` turns it off outright.
+  // Forwarded only when asked for: models reject these at different tiers, so a
+  // default here would break spaces on models that predate them.
+  if (body.output_config) result.output_config = body.output_config;
+  if (body.thinking) result.thinking = body.thinking;
   if (systemParts.length) result.system = systemParts.join("\n\n");
   if (tools.length)
     result.tools = tools.map((t) => ({
