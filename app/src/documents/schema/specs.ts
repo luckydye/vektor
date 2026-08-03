@@ -232,6 +232,26 @@ function resizableAttrs(): Record<string, AttrSpec> {
   };
 }
 
+/**
+ * A cell's `colspan` / `rowspan`, as a positive integer.
+ *
+ * `prosemirror-tables` builds its table map by summing spans, so anything but a
+ * number breaks arithmetic rather than validation: `"1" + "1"` widens the map to
+ * `"011"`, every cell then "collides", and `fixTables` reacts by stripping spans
+ * (`1 - 1 = 0`) and padding rows with empty cells. Selection, column resizing
+ * and row reordering all throw on the result. A zero — what a table already
+ * damaged that way is stored with — is clamped back to 1 for the same reason.
+ */
+function spanAttr(attribute: string): AttrSpec {
+  return {
+    default: 1,
+    parse: (el) => {
+      const span = Number.parseInt(el.attr(attribute) ?? "", 10);
+      return Number.isFinite(span) && span > 0 ? span : 1;
+    },
+  };
+}
+
 const colwidthAttr: AttrSpec = {
   default: [DEFAULT_COL_WIDTH],
   parse: (el) => {
@@ -677,8 +697,8 @@ const NODES: NodeSpec[] = [
     content: "block+",
     isolating: true,
     attrs: {
-      colspan: { default: 1 },
-      rowspan: { default: 1 },
+      colspan: spanAttr("colspan"),
+      rowspan: spanAttr("rowspan"),
       colwidth: colwidthAttr,
     },
     match: [{ tag: "th" }],
@@ -689,8 +709,8 @@ const NODES: NodeSpec[] = [
     content: "block+",
     isolating: true,
     attrs: {
-      colspan: { default: 1 },
-      rowspan: { default: 1 },
+      colspan: spanAttr("colspan"),
+      rowspan: spanAttr("rowspan"),
       colwidth: colwidthAttr,
       backgroundColor: styleAttr("background-color"),
     },

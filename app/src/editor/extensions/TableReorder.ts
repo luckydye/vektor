@@ -1,6 +1,6 @@
 import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { moveTableColumn, moveTableRow } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -194,7 +194,18 @@ export const TableReorder = Extension.create({
         axis === "col"
           ? moveTableColumn({ from, to, pos: posInsideTable, select: false })
           : moveTableRow({ from, to, pos: posInsideTable, select: false });
-      command(editor.state, editor.view.dispatch.bind(editor.view));
+      // `pos` is not enough: both commands measure the column/row they are
+      // moving through `getSelectionRangeIn*`, which reads the *selection* — so
+      // a drag that started on a handle, with the caret still outside the
+      // table, silently moved nothing. The command runs against a state whose
+      // selection has been put in the table, and the transaction it builds
+      // applies to the live one unchanged: same document, only the selection it
+      // was derived from differs.
+      const state = editor.state;
+      const inTable = state.apply(
+        state.tr.setSelection(TextSelection.near(state.doc.resolve(posInsideTable))),
+      );
+      command(inTable, editor.view.dispatch.bind(editor.view));
     };
 
     return [

@@ -177,10 +177,27 @@ function readAttrs(
   }
   Object.assign(attrs, matcher.attrs?.(el) ?? {});
   for (const [name, attr] of Object.entries(specAttrs)) {
-    const value = attr.parse ? attr.parse(el) : el.attr(name);
+    const value = attr.parse ? attr.parse(el) : rawAttr(el, name);
     if (value !== null && value !== undefined) attrs[name] = value;
   }
   return { attrs };
+}
+
+/**
+ * An attribute no reader in the spec claims, typed the way the editor types it.
+ *
+ * `@tiptap/core` runs its `fromString` over every attribute an extension does
+ * not parse itself, so the editor reads `colspan="1"` back as the number 1.
+ * Taking the string here instead would make the two parsers disagree about the
+ * same markup — and a document is written by one and edited by the other.
+ */
+function rawAttr(el: SpecElement, name: string): unknown {
+  const value = el.attr(name);
+  if (value === null) return null;
+  if (/^[+-]?(?:\d*\.)?\d+$/.test(value)) return Number(value);
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return value;
 }
 
 /**

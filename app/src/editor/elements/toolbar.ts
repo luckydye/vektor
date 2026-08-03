@@ -510,8 +510,8 @@ if (
           return "";
         }
 
-        const padding = 8;
-        const gap = 8;
+        const padding = 12;
+        const gap = 12;
         const height = Math.max(this.tableMenu?.offsetHeight ?? 0, 48);
 
         // Sits above the table, but sticks to the top of the viewport once the
@@ -939,8 +939,8 @@ if (
               gap: 2px;
               max-width: 95vw;
               overflow-x: auto;
-              padding: 4px;
-              border-radius: 10px;
+              padding: 2px;
+              border-radius: var(--radius-sm);
               border: 1px solid var(--tb-border);
               background: var(--tb-bg);
               box-shadow: 0 6px 18px var(--tb-shadow);
@@ -974,8 +974,8 @@ if (
               display: inline-flex;
               align-items: center;
               justify-content: center;
-              min-width: 36px;
-              height: 36px;
+              min-width: 32px;
+              height: 32px;
               border: 1px solid transparent;
               border-radius: 8px;
               padding: 0 6px;
@@ -1047,7 +1047,7 @@ if (
             }
 
             .color-control {
-              height: 36px;
+              height: auto;
               border: 1px solid transparent;
               border-radius: 8px;
               overflow: hidden;

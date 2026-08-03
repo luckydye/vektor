@@ -46,6 +46,10 @@ const CASES: Record<string, string> = {
   "horizontal rule": "<p>above</p>\n<hr>\n<p>below</p>",
   table:
     "<table><tbody><tr><th><p>h1</p></th><th><p>h2</p></th></tr><tr><td><p>a</p></td><td><p>b</p></td></tr></tbody></table>",
+  // The shape a table is *stored* as, spans and widths included — a table that
+  // has been saved once is read back from this, not from bare `<td>`s.
+  "table with spans":
+    '<table style="width: 400px;"><colgroup><col style="width: 200px;"><col style="width: 200px;"></colgroup><tbody><tr><th colspan="2" rowspan="1" colwidth="200,200" style="width: 200px;"><p>h</p></th></tr><tr><td colspan="1" rowspan="1" colwidth="200" style="width: 200px;"><p>a</p></td><td colspan="1" rowspan="1" colwidth="200" style="width: 200px;"><p>b</p></td></tr></tbody></table>',
   "link mark": '<p><a href="https://example.com/x?a=1&amp;b=2">link</a></p>',
   "hard break": "<p>line<br>break</p>",
   "html block":
@@ -63,6 +67,9 @@ const CASES: Record<string, string> = {
   "document mention":
     '<p><document-mention data-document-id="d1" data-href="/x">@Doc</document-mention></p>',
   image: '<p></p>\n<img src="/f/a.png" alt="a">',
+  // TipTap types every attribute no extension parses itself, so a value that
+  // reads as a number has to arrive as one here too.
+  "numeric attribute values": '<p></p>\n<img src="/f/1.png" alt="42" title="7">',
   "sub and sup": "<p><sub>a</sub><sup>b</sup></p>",
   "text style": '<p><span style="color: red; background-color: blue">x</span></p>',
   "text align": '<p style="text-align: center">c</p>',
