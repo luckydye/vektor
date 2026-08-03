@@ -1,9 +1,10 @@
-import { shared } from "#canvas/state.ts";
-import type { FreehandPoint } from "#canvas/viewport/index.ts";
+import type { FreehandPoint } from "#canvas/render/freehand.ts";
+import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
+import type { CanvasSize, CanvasStrokeSnapshot } from "#canvas/runtime/extensionApi.ts";
+import { CanvasTool } from "#canvas/runtime/extensionApi.ts";
+import { shared } from "#canvas/runtime/state.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import type { TranslationKey } from "#utils/lang.ts";
-import { FREEHAND_STYLE } from "./drawing.ts";
-import type { CanvasSize, CanvasStrokeSnapshot, CanvasToolExtension } from "./types.ts";
 
 // Outline width in world units — slightly thinner than a default pencil
 // stroke so stamped shapes read as deliberate outlines.
@@ -94,14 +95,14 @@ export const SHAPE_LIBRARY: CanvasShapeLibraryItem[] = [
 
 const itemsById = new Map(SHAPE_LIBRARY.map((item) => [item.id, item]));
 
-export function getShapeLibraryItem(id: string): CanvasShapeLibraryItem | undefined {
+function getShapeLibraryItem(id: string): CanvasShapeLibraryItem | undefined {
   return itemsById.get(id);
 }
 
 // Builds the stroke a library item stamps onto the canvas. The result is a
 // regular freehand stroke: it renders on the ink layer and supports the same
 // selection, move, recolor, erase, and undo behavior as drawn strokes.
-export function createShapeStroke(
+function createShapeStroke(
   item: CanvasShapeLibraryItem,
   at: { x: number; y: number },
   color: string,
@@ -125,9 +126,10 @@ export function setActiveShapeId(id: string) {
 
 // The shape tool stamps the active library item at the click as a shape-stroke
 // on the ink layer, then returns to select.
-export const shapeTool: CanvasToolExtension = {
-  id: "shape",
-  onPointerDown: (at, event, ctx) => {
+export const ShapeTool = CanvasTool.create({
+  name: "shape",
+  shortcut: "R",
+  onPointerDown(at, event, ctx) {
     const item = getShapeLibraryItem(activeShapeId.get()) ?? SHAPE_LIBRARY[0];
     const stroke = createShapeStroke(item, at, ctx.penColor());
     ctx.insertStroke(stroke);
@@ -135,4 +137,4 @@ export const shapeTool: CanvasToolExtension = {
     ctx.setActiveTool("select");
     event.preventDefault();
   },
-};
+});

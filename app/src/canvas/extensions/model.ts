@@ -1,11 +1,12 @@
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import "#model-viewer/ModelViewerElement.ts";
-import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
-} from "./CanvasElementBase.ts";
-import type { CanvasElementExtension, CanvasShape } from "./types.ts";
+} from "#canvas/runtime/elementBase.ts";
+import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
+import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
 
 // A 3D model on the canvas: a resizable, transparent shape that hosts the
 // reusable <model-viewer-3d> WebGPU preview. Distinct from the generic `file`
@@ -20,30 +21,50 @@ function modelName(shape: CanvasShape) {
   return typeof shape.data.alt === "string" ? shape.data.alt : "";
 }
 
-export const modelElement: CanvasElementExtension = {
-  type: "model",
-  defaults: {
-    size: { width: 260, height: 220 },
-    minSize: { width: 120, height: 100 },
-    style: { color: "transparent" },
-    data: { text: "" },
+export const CanvasModel = CanvasElement.create({
+  name: "model",
+
+  addOptions() {
+    return {
+      size: { width: 260, height: 220 },
+      minSize: { width: 120, height: 100 },
+    };
   },
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: "transparent" },
+      data: { text: "" },
+    };
+  },
+
   isValid: (shape) => Boolean(modelSource(shape)),
-  render: { surface: "dom", tag: "canvas-model", article: { background: false } },
-  behavior: { transform: { move: true, resize: "box", rotate: false } },
-  storage: {
-    parseData: (data, context) => {
-      const src = data.src;
-      return {
-        ...data,
-        src:
-          typeof src === "string" && src.startsWith("/")
-            ? `${context.currentOrigin}${src}`
-            : src,
-      };
-    },
+
+  addRender() {
+    return {
+      surface: "dom" as const,
+      tag: "canvas-model",
+      article: { background: false },
+    };
   },
-};
+
+  addBehavior() {
+    return { transform: { move: true, resize: "box" as const, rotate: false } };
+  },
+
+  parseData(data, context) {
+    const src = data.src;
+    return {
+      ...data,
+      src:
+        typeof src === "string" && src.startsWith("/")
+          ? `${context.currentOrigin}${src}`
+          : src,
+    };
+  },
+});
 
 // The <model-viewer-3d> preview keeps pointer-events off so canvas gestures
 // (move/select, and the resize handles drawn as host chrome) pass straight
@@ -89,7 +110,7 @@ export function createModelShape(params: {
   origin?: "center" | "top-left";
 }): CanvasShape {
   const origin = params.origin ?? "center";
-  const size = modelElement.defaults.size;
+  const size = CanvasModel.defaults.size;
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "model",
@@ -100,8 +121,8 @@ export function createModelShape(params: {
       height: size.height,
       rotation: 0,
     },
-    style: { ...modelElement.defaults.style },
-    data: { ...modelElement.defaults.data, src: params.src, alt: params.filename },
+    style: { ...CanvasModel.defaults.style },
+    data: { ...CanvasModel.defaults.data, src: params.src, alt: params.filename },
     updatedAt: Date.now(),
   };
 }

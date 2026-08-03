@@ -1,17 +1,18 @@
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import "#editor/elements/file-attachment.ts";
-import { isMediaFile, isModelFile } from "#files/fileTypes.ts";
-import {
-  CANVAS_ELEMENT_EVENTS,
-  CanvasElementBase,
-  dragOnPointerDown,
-} from "./CanvasElementBase.ts";
 import {
   type MediaUploadOptions,
   mediaFilesFromDataTransfer,
   uploadMediaFile,
-} from "./media.ts";
-import { createModelShape } from "./model.ts";
-import type { CanvasElementExtension, CanvasInputHandler, CanvasShape } from "./types.ts";
+} from "#canvas/extensions/media.ts";
+import { createModelShape } from "#canvas/extensions/model.ts";
+import {
+  CANVAS_ELEMENT_EVENTS,
+  CanvasElementBase,
+  dragOnPointerDown,
+} from "#canvas/runtime/elementBase.ts";
+import type { CanvasInputHandler, CanvasShape } from "#canvas/runtime/extensionApi.ts";
+import { isMediaFile, isModelFile } from "#files/fileTypes.ts";
 
 const PDF_PREVIEW_SIZE = { width: 420, height: 560 };
 
@@ -23,40 +24,58 @@ function fileName(shape: CanvasShape) {
   return typeof shape.data.alt === "string" ? shape.data.alt : "";
 }
 
-export const fileElement: CanvasElementExtension = {
-  type: "file",
-  defaults: {
-    size: { width: 220, height: 150 },
-    minSize: { width: 220, height: 150 },
-    style: { color: "transparent" },
-    data: { text: "" },
+export const CanvasFile = CanvasElement.create({
+  name: "file",
+
+  addOptions() {
+    return { size: { width: 220, height: 150 } };
   },
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.size,
+      style: { color: "transparent" },
+      data: { text: "" },
+    };
+  },
+
   isValid: (shape) => Boolean(fileSource(shape)),
-  render: { surface: "dom", tag: "canvas-file" },
-  behavior: { transform: { move: true, resize: "none", rotate: false } },
-  storage: {
-    parseData: (data, context) => {
-      const src = data.src;
-      return {
-        ...data,
-        src:
-          typeof src === "string" && src.startsWith("/")
-            ? `${context.currentOrigin}${src}`
-            : src,
-      };
-    },
+
+  addRender() {
+    return { surface: "dom" as const, tag: "canvas-file" };
   },
-  input: {
-    paste: {
-      priority: 90,
-      handle: (event, context) => handleFileInput(event, context, false),
-    },
-    drop: {
-      priority: 100,
-      handle: (event, context) => handleFileInput(event, context, true),
-    },
+
+  addBehavior() {
+    return { transform: { move: true, resize: "none" as const, rotate: false } };
   },
-};
+
+  // Relative upload paths are stored as-is and resolved against the origin the
+  // document is being read from, so a canvas survives moving between hosts.
+  parseData(data, context) {
+    const src = data.src;
+    return {
+      ...data,
+      src:
+        typeof src === "string" && src.startsWith("/")
+          ? `${context.currentOrigin}${src}`
+          : src,
+    };
+  },
+
+  addInput() {
+    return {
+      paste: {
+        priority: 90,
+        handle: (event, context) => handleFileInput(event, context, false),
+      },
+      drop: {
+        priority: 100,
+        handle: (event, context) => handleFileInput(event, context, true),
+      },
+    };
+  },
+});
 
 function handleFileInput(
   event: ClipboardEvent | DragEvent,
@@ -76,7 +95,7 @@ function handleFileInput(
   return true;
 }
 
-export function isCanvasFile(file: File) {
+function isCanvasFile(file: File) {
   return !isMediaFile(file);
 }
 
@@ -198,7 +217,7 @@ export function canvasFilesFromDataTransfer(
   );
 }
 
-export function dragHasCanvasFiles(transfer: DataTransfer | null) {
+function dragHasCanvasFiles(transfer: DataTransfer | null) {
   if (!transfer) return false;
   if (transfer.items.length > 0) {
     return Array.from(transfer.items).some((item) => item.kind === "file");
@@ -216,7 +235,7 @@ export function createFileShape(params: {
   const size =
     isPdfFile(params.filename) || isPdfFile(params.src)
       ? PDF_PREVIEW_SIZE
-      : fileElement.defaults.size;
+      : CanvasFile.defaults.size;
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "file",
@@ -227,8 +246,8 @@ export function createFileShape(params: {
       height: size.height,
       rotation: 0,
     },
-    style: { ...fileElement.defaults.style },
-    data: { ...fileElement.defaults.data, src: params.src, alt: params.filename },
+    style: { ...CanvasFile.defaults.style },
+    data: { ...CanvasFile.defaults.data, src: params.src, alt: params.filename },
     updatedAt: Date.now(),
   };
 }

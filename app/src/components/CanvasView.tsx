@@ -1,5 +1,5 @@
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Canvas } from "#canvas/Canvas.tsx";
+import { Canvas } from "#canvas/index.ts";
 import {
   provideCollaboration,
   useCollaboration,

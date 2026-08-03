@@ -1,16 +1,16 @@
-import { pointInRotatedShape } from "#canvas/viewport/geometry.ts";
-import { isMediaFile, mediaTypeForFile, toAbsoluteUploadUrl } from "#files/fileTypes.ts";
-import { withTransformParams } from "#files/transformUrl.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
-} from "./CanvasElementBase.ts";
+} from "#canvas/runtime/elementBase.ts";
 import type {
-  CanvasElementExtension,
   CanvasRasterPaintHelpers,
   CanvasShape,
-} from "./types.ts";
+} from "#canvas/runtime/extensionApi.ts";
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import { pointInRotatedShape } from "#canvas/runtime/geometry.ts";
+import { isMediaFile, mediaTypeForFile, toAbsoluteUploadUrl } from "#files/fileTypes.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
 
 const mediaMinSize = { width: 80, height: 60 };
 
@@ -170,79 +170,126 @@ function paintStaticImage(
 // GIFs must animate, so they render as a live DOM <img>; every other image is a
 // still frame the host rasterizes on the canvas layer. Owned here (not the
 // host) since it is image-type knowledge.
-export function isGifSrc(src: string): boolean {
+function isGifSrc(src: string): boolean {
   return /\.gif($|\?)/i.test(src);
 }
 
-export const imageElement: CanvasElementExtension = {
-  type: "image",
-  defaults: {
-    size: { width: 240, height: 150 },
-    minSize: mediaMinSize,
-    style: { color: "transparent" },
-    data: { text: "" },
-  },
-  render: {
-    surface: "dom+canvas",
-    rasterize: (shape) => !isGifSrc(mediaSource(shape)),
-    tag: "canvas-image",
-    article: { background: false },
-    paintRaster: paintStaticImage,
-    hitTest: (shape, world) => (pointInRotatedShape(world, shape.frame) ? "body" : null),
-  },
-  behavior: {
-    transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
-  },
-  storage: { parseData: parseMediaData },
-  input: {
-    paste: {
-      priority: 60,
-      handle: (event, context) => {
-        const originalUrl = context.data?.getData("text/plain").trim() ?? "";
-        const fetchUrl = transformImageUrl(originalUrl);
-        if (!fetchUrl) return false;
-        event.preventDefault();
-        context.command("insert-image-url", {
-          fetchUrl,
-          originalUrl,
-          at: context.at(),
-        });
-        return true;
-      },
-    },
-  },
-};
+export const CanvasImage = CanvasElement.create({
+  name: "image",
 
-export const videoElement: CanvasElementExtension = {
-  type: "video",
-  defaults: {
-    size: { width: 240, height: 150 },
-    minSize: mediaMinSize,
-    style: { color: "#000000" },
-    data: { text: "" },
+  addOptions() {
+    return { size: { width: 240, height: 150 }, minSize: mediaMinSize };
   },
-  render: { surface: "dom", tag: "canvas-video" },
-  behavior: {
-    transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: "transparent" },
+      data: { text: "" },
+    };
   },
-  storage: { parseData: parseMediaData },
-};
+
+  addRender() {
+    return {
+      // Still images are rasterized onto the shared canvas layer; animated GIFs
+      // stay live DOM, because a raster would freeze them on the first frame.
+      surface: "dom+canvas" as const,
+      rasterize: (shape: CanvasShape) => !isGifSrc(mediaSource(shape)),
+      tag: "canvas-image",
+      article: { background: false },
+      paintRaster: paintStaticImage,
+      hitTest: (shape: CanvasShape, world: { x: number; y: number }) =>
+        pointInRotatedShape(world, shape.frame) ? ("body" as const) : null,
+    };
+  },
+
+  addBehavior() {
+    return {
+      transform: { move: true, resize: "box" as const, rotate: true, aspectLocked: true },
+    };
+  },
+
+  parseData: parseMediaData,
+
+  addInput() {
+    return {
+      paste: {
+        priority: 60,
+        handle: (event, context) => {
+          const originalUrl = context.data?.getData("text/plain").trim() ?? "";
+          const fetchUrl = transformImageUrl(originalUrl);
+          if (!fetchUrl) return false;
+          event.preventDefault();
+          context.command("insert-image-url", {
+            fetchUrl,
+            originalUrl,
+            at: context.at(),
+          });
+          return true;
+        },
+      },
+    };
+  },
+});
+
+export const CanvasVideo = CanvasElement.create({
+  name: "video",
+
+  addOptions() {
+    return { size: { width: 240, height: 150 }, minSize: mediaMinSize };
+  },
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: "#000000" },
+      data: { text: "" },
+    };
+  },
+
+  addRender() {
+    return { surface: "dom" as const, tag: "canvas-video" };
+  },
+
+  addBehavior() {
+    return {
+      transform: { move: true, resize: "box" as const, rotate: true, aspectLocked: true },
+    };
+  },
+
+  parseData: parseMediaData,
+});
 
 // Audio renders as a fixed-height native player bar, so it has no natural pixel
 // size and (unlike image/video) is not aspect-locked.
-const audioMinSize = { width: 220, height: 54 };
-export const audioElement: CanvasElementExtension = {
-  type: "audio",
-  defaults: {
-    size: { width: 320, height: 54 },
-    minSize: audioMinSize,
-    style: { color: "transparent" },
-    data: { text: "" },
+export const CanvasAudio = CanvasElement.create({
+  name: "audio",
+
+  addOptions() {
+    return { size: { width: 320, height: 54 }, minSize: { width: 220, height: 54 } };
   },
-  render: { surface: "dom", tag: "canvas-audio" },
-  behavior: { transform: { move: true, resize: "none", rotate: false } },
-  storage: { parseData: parseMediaData },
-};
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: "transparent" },
+      data: { text: "" },
+    };
+  },
+
+  addRender() {
+    return { surface: "dom" as const, tag: "canvas-audio" };
+  },
+
+  addBehavior() {
+    return { transform: { move: true, resize: "none" as const, rotate: false } };
+  },
+
+  parseData: parseMediaData,
+});
 
 // A single media tag (img/video) that drags from its own body and tracks
 // shape.data.src/alt. GIF images render here as a live <img> (static images are
@@ -382,23 +429,6 @@ export function mediaFilesFromDataTransfer(
   );
 }
 
-// During dragover the browser hides file contents (dataTransfer.files is
-// empty); only item kind/type metadata is available to decide acceptance.
-export function dragHasMediaFiles(transfer: DataTransfer | null) {
-  if (!transfer) return false;
-  if (transfer.items.length > 0) {
-    return Array.from(transfer.items).some(
-      (item) =>
-        item.kind === "file" &&
-        (item.type === "" ||
-          item.type.startsWith("image/") ||
-          item.type.startsWith("video/") ||
-          item.type.startsWith("audio/")),
-    );
-  }
-  return transfer.types.includes("Files");
-}
-
 /**
  * Uploads through whatever the host supplies.
  *
@@ -438,7 +468,7 @@ export async function imageFileFromUrl(fetchUrl: string, originalUrl: string) {
   return new File([blob], name, { type: blob.type });
 }
 
-export function imageSize(src: string): Promise<{ width: number; height: number }> {
+function imageSize(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const image = new Image();
     image.onload = () =>
@@ -451,7 +481,7 @@ export function imageSize(src: string): Promise<{ width: number; height: number 
   });
 }
 
-export function videoSize(src: string): Promise<{ width: number; height: number }> {
+function videoSize(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const video = document.createElement("video");
     video.preload = "metadata";
@@ -466,7 +496,7 @@ export function videoSize(src: string): Promise<{ width: number; height: number 
   });
 }
 
-export function fitMediaSize(width: number, height: number) {
+function fitMediaSize(width: number, height: number) {
   const maxWidth = 480;
   const maxHeight = 360;
   const scale = Math.min(
@@ -490,7 +520,7 @@ export async function createUploadedMediaShape(
 
   const src = await uploadMediaFile(file, options);
   // Audio has no intrinsic pixel size; use the player-bar default size.
-  let size = audioElement.defaults.size;
+  let size = CanvasAudio.defaults.size;
   if (type !== "audio") {
     const natural = await (type === "video" ? videoSize(src) : imageSize(src));
     size = fitMediaSize(natural.width, natural.height);
@@ -514,10 +544,10 @@ export function createMediaShape(params: {
 }): CanvasShape {
   const definition =
     params.type === "video"
-      ? videoElement
+      ? CanvasVideo
       : params.type === "audio"
-        ? audioElement
-        : imageElement;
+        ? CanvasAudio
+        : CanvasImage;
   const origin = params.origin ?? "center";
   return {
     id: `shape-${crypto.randomUUID()}`,

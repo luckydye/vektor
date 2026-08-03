@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import { getRelativeSelection } from "y-prosemirror";
 import * as Y from "yjs";
-import type { CanvasTool } from "#canvas/extensions/types.ts";
+import type { CanvasToolId } from "#canvas/index.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 
@@ -26,7 +26,7 @@ export type CanvasPresenceState = {
   view: { x: number; y: number; scale: number };
   selectionIds: string[];
   focusedNodeId: string | null;
-  activeTool: CanvasTool | null;
+  activeTool: CanvasToolId | null;
 };
 
 export type DocumentPresenceProfile = {

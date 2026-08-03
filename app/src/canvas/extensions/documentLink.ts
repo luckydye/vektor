@@ -1,7 +1,13 @@
-import { shared } from "#canvas/state.ts";
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import { shared } from "#canvas/runtime/state.ts";
 import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
+import {
+  CANVAS_ELEMENT_EVENTS,
+  CanvasElementBase,
+  dragOnPointerDown,
+} from "#canvas/runtime/elementBase.ts";
 import {
   createVektorDocumentAddress,
   type ParsedVektorDocumentAddress,
@@ -13,17 +19,8 @@ import {
   propertyValueToText,
 } from "#documents/properties.ts";
 import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
-import {
-  CANVAS_ELEMENT_EVENTS,
-  CanvasElementBase,
-  dragOnPointerDown,
-} from "./CanvasElementBase.ts";
-import "./documentEditor.ts";
-import type {
-  CanvasElementExtension,
-  CanvasExtensionHost,
-  CanvasShape,
-} from "./types.ts";
+import "#canvas/extensions/documentEditor.ts";
+import type { CanvasExtensionHost, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 
 export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
 
@@ -43,7 +40,7 @@ export type DocumentLinkReference = {
   address: VektorDocumentAddress;
 };
 
-export async function resolveDocumentReferenceFromUrl(
+async function resolveDocumentReferenceFromUrl(
   rawUrl: string,
   options: {
     currentOrigin: string;
@@ -81,7 +78,7 @@ export async function resolveDocumentReferenceFromUrl(
   };
 }
 
-export async function insertDocumentReference(
+async function insertDocumentReference(
   ref: DocumentLinkReference,
   at: { x: number; y: number },
   options: {
@@ -174,7 +171,7 @@ export async function insertDocumentUrl(
   );
 }
 
-export type DocumentPreviewState = {
+type DocumentPreviewState = {
   status: "loading" | "loaded" | "error";
   title: string;
   headerImage?: string;
@@ -194,7 +191,7 @@ type LoadedDocumentPreviewSource = DocumentPreviewSource & {
   readonly?: boolean;
 };
 
-export type DocumentLinkControllerOptions = {
+type DocumentLinkControllerOptions = {
   documents: () => DocumentPreviewSource[];
   currentOrigin: string;
   currentSpaceId: string;
@@ -208,7 +205,7 @@ export type DocumentLinkControllerOptions = {
 
 // Reactive view model resolved from the document-link preview controller and
 // handed to <canvas-document> via its `data` property.
-export type CanvasDocumentData = {
+type CanvasDocumentData = {
   title: string;
   headerImage: string;
   type: string;
@@ -255,137 +252,155 @@ function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
   return index >= 0 ? index : null;
 }
 
-export const documentLinkElement: CanvasElementExtension = {
-  type: "document",
-  defaults: {
-    size: { width: 380, height: 280 },
-    minSize: { width: 280, height: 180 },
-    style: { color: "var(--canvas-doc-bg)" },
-    data: { text: "Untitled" },
+export const CanvasDocumentLink = CanvasElement.create({
+  name: "document",
+
+  addOptions() {
+    return {
+      size: { width: 380, height: 280 },
+      minSize: { width: 280, height: 180 },
+    };
   },
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: "var(--canvas-doc-bg)" },
+      data: { text: "Untitled" },
+    };
+  },
+
   isValid: (shape) => Boolean(parseVektorDocumentAddress(shapeDocumentAddress(shape))),
-  render: { surface: "dom", tag: "canvas-document" },
-  behavior: { transform: { move: true, resize: "box", rotate: false } },
-  storage: {
-    parseData: (data) => ({ ...data }),
+  addRender() {
+    return { surface: "dom" as const, tag: "canvas-document" };
   },
-  events: {
-    prepare: {
-      key: (shape) => documentAddressForShape(shape) ?? null,
-      run: (shape, host) => {
-        const address = documentAddressForShape(shape);
-        if (address) void documentService(host).loadPreview(address);
+  addBehavior() {
+    return { transform: { move: true, resize: "box" as const, rotate: false } };
+  },
+  parseData: (data) => ({ ...data }),
+  addEvents() {
+    return {
+      prepare: {
+        key: (shape) => documentAddressForShape(shape) ?? null,
+        run: (shape, host) => {
+          const address = documentAddressForShape(shape);
+          if (address) void documentService(host).loadPreview(address);
+        },
       },
-    },
-    data: (shape, host): CanvasDocumentData => {
-      const documents = documentService(host);
-      return {
-        title: documents.shapeTitle(shape),
-        headerImage: documents.shapeHeaderImage(shape),
-        type: documents.shapeType(shape),
-        status: documents.shapeStatus(shape),
-        content: documents.shapeContent(shape),
-        spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
-        documentId: documents.isRemote(shape)
-          ? ""
-          : documents.documentIdForShape(shape) || "",
-      };
-    },
-    activate: (shape, host, event) => {
-      if (event.button !== 0) return;
-      if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (host.wasDragged() || shape.locked) return;
-      const documents = documentService(host);
-      const documentId = documents.documentIdForShape(shape);
-      const address = documents.address(shape);
-      if (!documentId || !address) return;
-      if (!documents.canEdit() || documents.isRemote(shape)) return;
-      if (documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
-      if (!documents.inlineEditable(shape)) return;
-      // The editor is a plain custom element, so its session is created here
-      // and torn down in `finish` — there is no unmount hook to do it.
-      const collaboration = host.createCollaboration?.({
-        spaceId: host.spaceId,
-        documentId,
-      });
-      host.beginEdit({
-        shapeId: shape.id,
-        tag: "canvas-document-editor",
-        className: "canvas-shape-document-editor",
-        props: {
+      data: (shape, host): CanvasDocumentData => {
+        const documents = documentService(host);
+        return {
+          title: documents.shapeTitle(shape),
+          headerImage: documents.shapeHeaderImage(shape),
+          type: documents.shapeType(shape),
+          status: documents.shapeStatus(shape),
+          content: documents.shapeContent(shape),
+          spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
+          documentId: documents.isRemote(shape)
+            ? ""
+            : documents.documentIdForShape(shape) || "",
+        };
+      },
+      activate: (shape, host, event) => {
+        if (event.button !== 0) return;
+        if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (host.wasDragged() || shape.locked) return;
+        const documents = documentService(host);
+        const documentId = documents.documentIdForShape(shape);
+        const address = documents.address(shape);
+        if (!documentId || !address) return;
+        if (!documents.canEdit() || documents.isRemote(shape)) return;
+        if (documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
+        if (!documents.inlineEditable(shape)) return;
+        // The editor is a plain custom element, so its session is created here
+        // and torn down in `finish` — there is no unmount hook to do it.
+        const collaboration = host.createCollaboration?.({
           spaceId: host.spaceId,
           documentId,
-          documentTitle: documents.shapeTitle(shape),
-          headerImage: documents.shapeHeaderImage(shape),
-          toggleTaskIndex: clickedTaskCheckboxIndex(event),
-          collaboration,
-        },
-        finish: (element) => {
-          const editor = element as
-            | (HTMLElement & { getHtml?: () => string | null; destroy?: () => void })
-            | null;
-          const html = editor?.getHtml?.();
-          if (typeof html === "string") documents.setPreviewContent(address, html);
-          editor?.destroy?.();
-        },
-      });
-    },
-    open: (shape, host, event) => {
-      event.preventDefault();
-      if (host.wasDragged()) return;
-      const requested =
-        event instanceof CustomEvent && typeof event.detail?.documentId === "string"
-          ? event.detail.documentId
-          : null;
-      const documents = documentService(host);
-      const documentId = requested ?? documents.documentIdForShape(shape);
-      if (!documentId) return;
-      const href = documents.documentHrefForShape(shape);
-      if (documents.isRemote(shape) && href) {
-        host.openUrl(href);
-        return;
-      }
-      host.dispatch("view-document", {
-        spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
-        documentId,
-      });
-    },
-  },
-  input: {
-    paste: {
-      priority: 70,
-      handle: (event, context) => {
-        const url = context.data?.getData("text/plain").trim() ?? "";
-        if (
-          (!/^https?:\/\//i.test(url) && !url.startsWith("/")) ||
-          context.command("is-document-url", url) !== true
-        )
-          return false;
-        event.preventDefault();
-        context.command("insert-document-url", { url, at: context.at() });
-        return true;
+        });
+        host.beginEdit({
+          shapeId: shape.id,
+          tag: "canvas-document-editor",
+          className: "canvas-shape-document-editor",
+          props: {
+            spaceId: host.spaceId,
+            documentId,
+            documentTitle: documents.shapeTitle(shape),
+            headerImage: documents.shapeHeaderImage(shape),
+            toggleTaskIndex: clickedTaskCheckboxIndex(event),
+            collaboration,
+          },
+          finish: (element) => {
+            const editor = element as
+              | (HTMLElement & { getHtml?: () => string | null; destroy?: () => void })
+              | null;
+            const html = editor?.getHtml?.();
+            if (typeof html === "string") documents.setPreviewContent(address, html);
+            editor?.destroy?.();
+          },
+        });
       },
-    },
-    drop: {
-      priority: 90,
-      handle: (event, context) => {
-        if (context.phase === "preview") {
-          if (!dragHasDocumentLink(context.data)) return false;
+      open: (shape, host, event) => {
+        event.preventDefault();
+        if (host.wasDragged()) return;
+        const requested =
+          event instanceof CustomEvent && typeof event.detail?.documentId === "string"
+            ? event.detail.documentId
+            : null;
+        const documents = documentService(host);
+        const documentId = requested ?? documents.documentIdForShape(shape);
+        if (!documentId) return;
+        const href = documents.documentHrefForShape(shape);
+        if (documents.isRemote(shape) && href) {
+          host.openUrl(href);
+          return;
+        }
+        host.dispatch("view-document", {
+          spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
+          documentId,
+        });
+      },
+    };
+  },
+
+  addInput() {
+    return {
+      paste: {
+        priority: 70,
+        handle: (event, context) => {
+          const url = context.data?.getData("text/plain").trim() ?? "";
+          if (
+            (!/^https?:\/\//i.test(url) && !url.startsWith("/")) ||
+            context.command("is-document-url", url) !== true
+          )
+            return false;
+          event.preventDefault();
+          context.command("insert-document-url", { url, at: context.at() });
+          return true;
+        },
+      },
+      drop: {
+        priority: 90,
+        handle: (event, context) => {
+          if (context.phase === "preview") {
+            if (!dragHasDocumentLink(context.data)) return false;
+            event.preventDefault();
+            if (context.data) context.data.dropEffect = "move";
+            return true;
+          }
+
+          const reference = droppedDocumentReference(context.data);
+          if (!reference) return false;
           event.preventDefault();
           if (context.data) context.data.dropEffect = "move";
+          context.command("insert-document-ref", { reference, at: context.at() });
           return true;
-        }
-
-        const reference = droppedDocumentReference(context.data);
-        if (!reference) return false;
-        event.preventDefault();
-        if (context.data) context.data.dropEffect = "move";
-        context.command("insert-document-ref", { reference, at: context.at() });
-        return true;
+        },
       },
-    },
+    };
   },
-};
+});
 
 // Static preview card. Delegates to the existing <document-attachment> custom
 // element; the inline editor (<canvas-document-editor>) stays host-owned and
@@ -430,7 +445,7 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-documen
   customElements.define("canvas-document", CanvasDocumentElement);
 }
 
-export function documentLabel(doc: {
+function documentLabel(doc: {
   properties?: { title?: DocumentPropertyValue | null } | null;
 }): string {
   const title = doc.properties?.title;
@@ -458,16 +473,16 @@ export function createDocumentLinkShape(
     id: `shape-${crypto.randomUUID()}`,
     type: "document",
     frame: {
-      x: Math.round(at.x - documentLinkElement.defaults.size.width / 2),
-      y: Math.round(at.y - documentLinkElement.defaults.size.height / 2),
-      width: documentLinkElement.defaults.size.width,
-      height: documentLinkElement.defaults.size.height,
+      x: Math.round(at.x - CanvasDocumentLink.defaults.size.width / 2),
+      y: Math.round(at.y - CanvasDocumentLink.defaults.size.height / 2),
+      width: CanvasDocumentLink.defaults.size.width,
+      height: CanvasDocumentLink.defaults.size.height,
       rotation: 0,
     },
-    style: { ...documentLinkElement.defaults.style },
+    style: { ...CanvasDocumentLink.defaults.style },
     data: {
-      ...documentLinkElement.defaults.data,
-      text: doc ? documentLabel(doc) : documentLinkElement.defaults.data.text,
+      ...CanvasDocumentLink.defaults.data,
+      text: doc ? documentLabel(doc) : CanvasDocumentLink.defaults.data.text,
       docAddress: parsed.address,
       src: parsed.href,
     },
@@ -475,7 +490,7 @@ export function createDocumentLinkShape(
   };
 }
 
-export function initialDocumentPreview(
+function initialDocumentPreview(
   documentId: string,
   docs: DocumentPreviewSource[],
 ): DocumentPreviewState {
@@ -489,11 +504,11 @@ export function initialDocumentPreview(
   };
 }
 
-export function documentIdForShape(shape: CanvasShape): string | undefined {
+function documentIdForShape(shape: CanvasShape): string | undefined {
   return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.documentId;
 }
 
-export function documentSpaceIdForShape(
+function documentSpaceIdForShape(
   shape: CanvasShape,
   fallbackSpaceId: string,
 ): string | undefined {
@@ -502,7 +517,7 @@ export function documentSpaceIdForShape(
   );
 }
 
-export function documentHrefForShape(shape: CanvasShape): string | undefined {
+function documentHrefForShape(shape: CanvasShape): string | undefined {
   return (
     parseVektorDocumentAddress(shapeDocumentAddress(shape))?.href ?? shapeSource(shape)
   );
@@ -532,7 +547,7 @@ export function isRemoteDocumentShape(
   );
 }
 
-export function isRemoteDocumentUrl(
+function isRemoteDocumentUrl(
   url: string | undefined,
   currentOrigin: string,
 ): url is string {
@@ -542,36 +557,6 @@ export function isRemoteDocumentUrl(
   } catch {
     return false;
   }
-}
-
-// Older canvases stored a document link as separate docId/docSpaceId/src fields
-// instead of a single address. Reconstruct the canonical address from whichever
-// form is present.
-export function legacyDocumentAddress(
-  input: { docAddress?: unknown; docId?: unknown; docSpaceId?: unknown; src?: string },
-  context: { currentOrigin: string; defaultSpaceId: string },
-): string | undefined {
-  if (typeof input.docAddress === "string") {
-    const parsed = parseVektorDocumentAddress(input.docAddress);
-    if (parsed) return parsed.address;
-  }
-  if (typeof input.docId !== "string") return undefined;
-  const href = input.src;
-  let origin = context.currentOrigin;
-  if (href) {
-    try {
-      origin = new URL(href, context.currentOrigin).origin;
-    } catch {
-      origin = context.currentOrigin;
-    }
-  }
-  return createVektorDocumentAddress({
-    origin,
-    spaceId:
-      typeof input.docSpaceId === "string" ? input.docSpaceId : context.defaultSpaceId,
-    documentId: input.docId,
-    href,
-  });
 }
 
 // Fetches a document that lives on another Vektor origin, shaped like the
@@ -663,7 +648,7 @@ export function documentUrlPartsFromUrl(
 // Only plain rich-text documents can be edited inline on the canvas. Other
 // types (canvas, csv, workflow) render specialized previews, and readonly
 // documents reject writes server-side.
-export function previewSupportsInlineEditing(
+function previewSupportsInlineEditing(
   preview: DocumentPreviewState | undefined,
 ): boolean {
   if (preview?.status !== "loaded") return false;
@@ -671,14 +656,11 @@ export function previewSupportsInlineEditing(
   return (preview.type ?? "document") === "document";
 }
 
-export function documentShapeTitle(
-  shape: CanvasShape,
-  preview?: DocumentPreviewState,
-): string {
+function documentShapeTitle(shape: CanvasShape, preview?: DocumentPreviewState): string {
   return preview?.title || shapeText(shape) || "Untitled";
 }
 
-export function normalizeDocumentReference(
+function normalizeDocumentReference(
   ref: string | DocumentLinkReference | null | undefined,
 ): DocumentLinkReference | null {
   if (typeof ref === "string") {
@@ -717,7 +699,7 @@ export function droppedDocumentReference(
   return null;
 }
 
-export function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
+function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
   return Boolean(transfer?.types.includes(DOCUMENT_LINK_MIME));
 }
 

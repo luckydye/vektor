@@ -1,5 +1,5 @@
 import * as Y from "yjs";
-import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/canvasYjs.ts";
+import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/index.ts";
 import { codeToDoc, htmlToDoc } from "./schema/parse.ts";
 import { docToHtml } from "./schema/render.ts";
 import { textOf } from "./schema/specs.ts";

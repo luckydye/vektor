@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CanvasShape, CanvasStroke } from "#canvas/extensions/types.ts";
+import type { CanvasShape, CanvasStroke } from "#canvas/runtime/extensionApi.ts";
 import {
   type SelectionContext,
   selectedCanvasItems,
@@ -8,7 +8,7 @@ import {
   selectedScalableSelection,
   selectedShape,
   selectedTransformShape,
-} from "#canvas/model/selectionModel.ts";
+} from "#canvas/runtime/selection.ts";
 
 /** Transform affordances per type — the only extension data the model reads. */
 const TRANSFORMS: Record<string, { move: boolean; rotate: boolean; resize: string }> = {

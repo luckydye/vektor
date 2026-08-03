@@ -1,87 +1,111 @@
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
-import { shared } from "#canvas/state.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
-} from "./CanvasElementBase.ts";
-import "./twitterEmbed.ts";
-import type { CanvasElementExtension, CanvasShape } from "./types.ts";
+} from "#canvas/runtime/elementBase.ts";
+import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
+import { shared } from "#canvas/runtime/state.ts";
+import "#canvas/extensions/twitterEmbed.ts";
+import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
 
 function linkSource(shape: CanvasShape) {
   return typeof shape.data.src === "string" ? shape.data.src : "";
 }
 
-export const linkElement: CanvasElementExtension = {
-  type: "link",
-  defaults: {
-    size: { width: 320, height: 200 },
-    minSize: { width: 200, height: 80 },
-    style: { color: "var(--canvas-link-bg, #ffffff)" },
-    data: { text: "" },
+export const CanvasLink = CanvasElement.create({
+  name: "link",
+
+  addOptions() {
+    return {
+      size: { width: 320, height: 200 },
+      minSize: { width: 200, height: 80 },
+    };
   },
+
+  addDefaults() {
+    return {
+      size: this.options.size,
+      minSize: this.options.minSize,
+      style: { color: "var(--canvas-link-bg, #ffffff)" },
+      data: { text: "" },
+    };
+  },
+
   isValid: (shape) => Boolean(linkSource(shape)),
-  render: { surface: "dom", tag: "canvas-link" },
-  behavior: {
-    transform: { move: true, resize: "none", rotate: false },
-    measurement: {
-      normalize: (shape, size) => {
-        if (
-          size.height === undefined ||
-          !Number.isFinite(size.height) ||
-          size.height <= 0
-        )
-          return null;
-        const src = linkSource(shape);
-        const preview = src ? linkPreviews.previews.get().get(src) : undefined;
-        if (!preview || preview.status === "loading") return null;
-        const height = Math.max(
-          linkElement.defaults.minSize.height,
-          Math.round(size.height),
-        );
-        return Math.abs(height - shape.frame.height) <= 2 ? null : { height };
-      },
-    },
+
+  addRender() {
+    return { surface: "dom" as const, tag: "canvas-link" };
   },
-  events: { data: (shape) => linkPreviewForShape(shape) ?? null },
-  input: {
-    paste: {
-      priority: 50,
-      handle: (event, context) => {
-        const url = context.data?.getData("text/plain").trim() ?? "";
-        if (!/^https?:\/\//i.test(url)) return false;
-        try {
-          new URL(url);
-        } catch {
-          return false;
-        }
-        event.preventDefault();
-        context.command("insert-link", { url, at: context.at() });
-        return true;
+
+  addBehavior() {
+    const { minSize } = this.options;
+    return {
+      transform: { move: true, resize: "none" as const, rotate: false },
+      measurement: {
+        // The card sizes itself to whatever the preview turns out to be, so the
+        // measured height is accepted only once the preview has resolved.
+        normalize: (shape: CanvasShape, size: { height?: number }) => {
+          if (
+            size.height === undefined ||
+            !Number.isFinite(size.height) ||
+            size.height <= 0
+          )
+            return null;
+          const src = linkSource(shape);
+          const preview = src ? linkPreviews.previews.get().get(src) : undefined;
+          if (!preview || preview.status === "loading") return null;
+          const height = Math.max(minSize.height, Math.round(size.height));
+          return Math.abs(height - shape.frame.height) <= 2 ? null : { height };
+        },
       },
-    },
+    };
   },
-};
+
+  addEvents() {
+    return { data: (shape: CanvasShape) => linkPreviewForShape(shape) ?? null };
+  },
+
+  addInput() {
+    return {
+      paste: {
+        priority: 50,
+        handle: (event, context) => {
+          const url = context.data?.getData("text/plain").trim() ?? "";
+          if (!/^https?:\/\//i.test(url)) return false;
+          try {
+            new URL(url);
+          } catch {
+            return false;
+          }
+          event.preventDefault();
+          context.command("insert-link", { url, at: context.at() });
+          return true;
+        },
+      },
+    };
+  },
+});
 
 export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "link",
     frame: {
-      x: Math.round(at.x - linkElement.defaults.size.width / 2),
-      y: Math.round(at.y - linkElement.defaults.size.height / 2),
-      width: linkElement.defaults.size.width,
-      height: linkElement.defaults.size.height,
+      x: Math.round(at.x - CanvasLink.defaults.size.width / 2),
+      y: Math.round(at.y - CanvasLink.defaults.size.height / 2),
+      width: CanvasLink.defaults.size.width,
+      height: CanvasLink.defaults.size.height,
       rotation: 0,
     },
-    style: { ...linkElement.defaults.style },
-    data: { ...linkElement.defaults.data, src: url },
+    style: { ...CanvasLink.defaults.style },
+    data: { ...CanvasLink.defaults.data, src: url },
     updatedAt: Date.now(),
   };
 }
 
-export type LinkPreviewState = {
+type LinkPreviewState = {
   status: "loading" | "loaded" | "error";
   metadata: LinkMetadata | null;
 };
@@ -339,7 +363,7 @@ function linkPreviewForShape(shape: CanvasShape): LinkPreviewState | undefined {
 
 // Preview state used by this extension's data and measurement hooks. Writing a
 // resolved preview repaints the canvases, so a card fills in when it lands.
-export const linkPreviews = {
+const linkPreviews = {
   previews,
   loadPreview: loadLinkPreview,
   previewForShape: linkPreviewForShape,

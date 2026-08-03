@@ -1,19 +1,19 @@
+import { createMediaShape } from "#canvas/extensions/media.ts";
+import type { CanvasInputHandler, CanvasShape } from "#canvas/runtime/extensionApi.ts";
 import { figmaClipboardToFrames } from "#utils/figma.ts";
-import { createMediaShape } from "./media.ts";
-import type { CanvasInputHandler, CanvasShape } from "./types.ts";
 
-export type PasteFigmaClipboardOptions = {
+type PasteFigmaClipboardOptions = {
   uploadMediaFile: (file: File) => Promise<string>;
   insertShape: (shape: CanvasShape) => void;
 };
 
-export type PasteFigmaClipboardResult = {
+type PasteFigmaClipboardResult = {
   pasted: boolean;
   createdIds: string[];
   error?: unknown;
 };
 
-export function isFigmaClipboardHtml(html: string): boolean {
+function isFigmaClipboardHtml(html: string): boolean {
   return html.includes("(figmeta)") && html.includes("(figma)");
 }
 
@@ -32,7 +32,7 @@ export const figmaPasteInput: CanvasInputHandler = {
 // laid out to preserve the relative positions and sizes they had in Figma.
 // Returns false when nothing is renderable so the caller can fall back to the
 // OS clipboard's bitmap flavor.
-export async function pasteFigmaClipboard(
+async function pasteFigmaClipboard(
   html: string,
   at: { x: number; y: number },
   options: PasteFigmaClipboardOptions,

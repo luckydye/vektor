@@ -1,5 +1,5 @@
-import { HostElement } from "./CanvasElementBase.ts";
-import { loadTwitterWidgets } from "./twitterWidgets.ts";
+import { loadTwitterWidgets } from "#canvas/extensions/twitterWidgets.ts";
+import { HostElement } from "#canvas/runtime/elementBase.ts";
 
 // Renders an X/Twitter tweet embedded on the canvas. The server hands us the
 // script-free oEmbed blockquote (see `url-metadata.ts`); we inject it and let

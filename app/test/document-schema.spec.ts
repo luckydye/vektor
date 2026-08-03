@@ -163,6 +163,30 @@ describe("document normalization", () => {
     expectValid(doc, "stray table row");
   });
 
+  /**
+   * `prosemirror-tables` adds cell spans up to build its table map, so a span
+   * that is a string or a zero corrupts the table instead of failing a check:
+   * cells collide, `fixTables` strips spans and pads rows, and every table
+   * interaction throws afterwards. A stored table carries its spans in the
+   * markup, and a table damaged that way is stored with `colspan="0"`.
+   */
+  it("reads cell spans as positive integers", () => {
+    const cells = (html: string) =>
+      htmlToDoc(html).content?.[0]?.content?.[0]?.content?.map((cell) => cell.attrs);
+
+    expect(
+      cells('<table><tr><td colspan="2" rowspan="3"><p>x</p></td></tr></table>'),
+    ).toEqual([expect.objectContaining({ colspan: 2, rowspan: 3 })]);
+    expect(
+      cells(
+        '<table><tr><td colspan="0"><p>x</p></td><td colspan="nope"><p>y</p></td></tr></table>',
+      ),
+    ).toEqual([
+      expect.objectContaining({ colspan: 1 }),
+      expect.objectContaining({ colspan: 1 }),
+    ]);
+  });
+
   it("drops marks inside a code block", () => {
     const doc = htmlToDoc("<pre><code><strong>bold</strong> plain</code></pre>");
     expect(doc.content?.[0]?.content).toEqual([{ type: "text", text: "bold plain" }]);
