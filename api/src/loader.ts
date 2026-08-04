@@ -9,6 +9,7 @@ import {
   type PropertyValue,
   propertyScalar,
   propertyText,
+  VektorApiError,
   type VektorClient,
 } from "./index.ts";
 
@@ -323,24 +324,42 @@ export function vektorLoader(
 
       const seen = new Set<string>();
 
+      // Reading drafts needs editor permission. A viewer-scoped token is the
+      // normal case for a published site, so the first refusal downgrades the
+      // whole run to published content rather than dropping every document.
+      let draftsDenied = false;
+
+      // One request per document: the document route serves the published
+      // revision's content by default and the draft only when asked, so
+      // resolving the revision separately would just repeat that work.
+      const readDocument = async (id: string): Promise<Document | null> => {
+        const wantsDraft = options.revision === "current" && !draftsDenied;
+        try {
+          return await gate.run(() =>
+            client.getDocument(spaceId, id, { draft: wantsDraft }),
+          );
+        } catch (error) {
+          if (wantsDraft && error instanceof VektorApiError && error.status === 403) {
+            if (!draftsDenied) {
+              draftsDenied = true;
+              logger.warn(
+                'revision: "current" needs an editor-scoped access token to read drafts; ' +
+                  "this token is not allowed to, so published content is loaded instead.",
+              );
+            }
+            return readDocument(id);
+          }
+          const reason = error instanceof Error ? error.message : "unreadable";
+          logger.warn(`Skipping document ${id}: ${reason}`);
+          return null;
+        }
+      };
+
       await Promise.all(
         selected.map(async (doc) => {
-          let full: Document | undefined;
-          let content: string | null = null;
-          try {
-            // One request per document either way: the document route serves the
-            // published revision's content by default, and the draft only when
-            // asked. Resolving the revision separately would just repeat that work.
-            full = await gate.run(() =>
-              client.getDocument(spaceId, doc.id, {
-                draft: options.revision === "current",
-              }),
-            );
-            content = full.content ?? null;
-          } catch {
-            logger.warn(`Skipping document ${doc.id} (${doc.slug}): not found`);
-            return;
-          }
+          const full = await readDocument(doc.id);
+          if (!full) return;
+          const content = full.content ?? null;
           const slug = propertyScalar(full.properties.slug) ?? doc.slug;
           seen.add(slug);
 
