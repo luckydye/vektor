@@ -60,7 +60,17 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
     title: "Untitled Canvas",
     content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
   },
-  workflow: { title: "Untitled Workflow", content: "" },
+  // Workflow content is the script source. It has to be non-empty — the create
+  // route rejects empty content — so a new workflow starts as a comment header.
+  workflow: {
+    title: "Untitled Workflow",
+    content: [
+      "// Workflow script.",
+      "// `await runJob(extensionId, jobId, inputs)` runs an extension job and",
+      "// resolves with its outputs. The value you return becomes the run result.",
+      "",
+    ].join("\n"),
+  },
   // Spreadsheets are backed by CSV — the create route renders it to the table
   // HTML that gets stored, so this is a header row plus three empty rows.
   csv: { title: "Untitled Spreadsheet", content: "A,B,C\n,,\n,,\n,,\n" },

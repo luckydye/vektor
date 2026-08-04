@@ -99,10 +99,22 @@ export function ToastContainer() {
                   "bg-red-600 text-white": toast.type === "error",
                   "bg-neutral-900 text-white": toast.type === "info",
                   "bg-green-600 text-white": toast.type === "success",
+                  // Room for the repeat badge in the corner.
+                  "pr-9": (toast.count ?? 1) > 1,
                 }}
               >
                 <Icon class="h-4 w-4 shrink-0" name={icons[toast.type]} />
                 <span class="relative z-10">{toast.message}</span>
+                {/* Repeats of the same message merge into this row; the badge
+                    counts them so a flood stays one toast. */}
+                <Show when={(toast.count ?? 1) > 1}>
+                  <span
+                    class="absolute top-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 font-semibold text-[11px] tabular-nums leading-none"
+                    aria-label={`${toast.count} occurrences`}
+                  >
+                    {toast.count}
+                  </span>
+                </Show>
                 <Show when={toast.action}>
                   {(action) => (
                     <button
