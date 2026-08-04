@@ -4,7 +4,13 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Loader } from "astro/loaders";
 import sharp from "sharp";
-import type { Document, VektorClient } from "./index.ts";
+import {
+  type Document,
+  type PropertyValue,
+  propertyScalar,
+  propertyText,
+  type VektorClient,
+} from "./index.ts";
 
 export type VektorLoaderRevision = "published" | "current";
 export type VektorLoaderAssetMode = "download" | "remote";
@@ -17,6 +23,7 @@ export interface VektorLoaderOptions {
    *
    * - "published" preserves the original loader behavior and skips unpublished documents.
    * - "current" reads the current document body, including unpublished drafts.
+   *   Drafts require editor permission, so this needs an editor-scoped token.
    */
   revision?: VektorLoaderRevision;
   /**
@@ -78,11 +85,16 @@ function isAbsoluteUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
-/** Parses a property value as either a JSON array or object of URLs. Returns null if neither. */
+/**
+ * Reads a property as a list or a key→URL map of asset URLs, or null if it is
+ * neither. Vektor already decodes multi-value properties into arrays, so only a
+ * string value still needs parsing — that is how object-shaped manifests arrive.
+ */
 function parseAssetContainer(
-  value: string | undefined,
+  value: PropertyValue | undefined,
 ): string[] | Record<string, string> | null {
   if (!value) return null;
+  if (Array.isArray(value)) return value.filter((v) => typeof v === "string");
   try {
     const parsed = JSON.parse(value);
     if (Array.isArray(parsed)) return parsed.filter((v) => typeof v === "string");
@@ -103,7 +115,10 @@ function matchesPropertyFilters(
 ): boolean {
   return Object.entries(filters).every(([key, value]) => {
     if (!(key in document.properties)) return false;
-    return value === null || document.properties[key] === value;
+    if (value === null) return true;
+    // A multi-value property matches when any of its values does.
+    const actual = document.properties[key];
+    return Array.isArray(actual) ? actual.includes(value) : actual === value;
   });
 }
 
@@ -313,23 +328,23 @@ export function vektorLoader(
           let full: Document | undefined;
           let content: string | null = null;
           try {
-            full = await gate.run(() => client.getDocument(spaceId, doc.id));
-            if (options.revision === "published") {
-              const revision = await gate.run(() =>
-                client.getRevision(spaceId, doc.id, doc.publishedRev!),
-              );
-              content = revision.content;
-            } else {
-              content = full.content ?? null;
-            }
+            // One request per document either way: the document route serves the
+            // published revision's content by default, and the draft only when
+            // asked. Resolving the revision separately would just repeat that work.
+            full = await gate.run(() =>
+              client.getDocument(spaceId, doc.id, {
+                draft: options.revision === "current",
+              }),
+            );
+            content = full.content ?? null;
           } catch {
             logger.warn(`Skipping document ${doc.id} (${doc.slug}): not found`);
             return;
           }
-          const slug = full.properties.slug ?? doc.slug;
+          const slug = propertyScalar(full.properties.slug) ?? doc.slug;
           seen.add(slug);
 
-          const rawHeaderImage = full.properties.headerImage ?? null;
+          const rawHeaderImage = propertyScalar(full.properties.headerImage) ?? null;
           const [rewrittenContent, headerImageResult, rewrittenAssetProperties] =
             options.assetMode === "download"
               ? await Promise.all([
@@ -370,16 +385,22 @@ export function vektorLoader(
                 ])
               : [content, null, []];
 
-          const properties = { ...full.properties };
+          const properties: Record<string, PropertyValue> = { ...full.properties };
           for (const entry of rewrittenAssetProperties) {
-            if (entry && entry[0] in properties)
-              properties[entry[0]] = JSON.stringify(entry[1]);
+            if (!entry) continue;
+            const [key, rewritten] = entry;
+            if (!(key in properties)) continue;
+            // Preserve the property's original shape: a multi-value list stays a
+            // list, an object manifest stays JSON text.
+            properties[key] = Array.isArray(rewritten)
+              ? rewritten
+              : JSON.stringify(rewritten);
           }
 
           store.set({
             id: slug,
             digest: generateDigest({
-              v: 12,
+              v: 13,
               id: doc.id,
               updatedAt: full.updatedAt,
               currentRev: full.currentRev,
@@ -392,7 +413,10 @@ export function vektorLoader(
               parentId: full.parentId,
               slug: full.slug,
               type: full.type ?? null,
-              title: full.properties.title ?? null,
+              title:
+                full.properties.title === undefined
+                  ? null
+                  : propertyText(full.properties.title),
               headerImage:
                 options.assetMode === "download"
                   ? (headerImageResult?.publicPath ?? null)
