@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { createAuditLog } from "./auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "./db.ts";
@@ -672,6 +673,178 @@ export async function listPermissions(
     createdAt: new Date(r.createdAt),
     updatedAt: new Date(r.updatedAt),
   }));
+}
+
+/** One grant that reaches a document, and how it gets there. */
+export interface DocumentAccessGrant {
+  resourceType: string;
+  resourceId: string;
+  /** The grant is on an ancestor page, a category, or the space — not this page. */
+  inherited: boolean;
+  /** Page title or category name of the resource the grant sits on. */
+  resourceLabel?: string;
+  permission: string;
+  createdAt: Date;
+}
+
+/** One grantee's effective access to a document. */
+export interface DocumentAccessEntry {
+  userId?: string;
+  groupId?: string;
+  /** Effective role on the document, resolved as `hasPermission` resolves it. */
+  permission: string;
+  /** The grant that decides `permission`. */
+  via: DocumentAccessGrant;
+  grants: DocumentAccessGrant[];
+}
+
+/**
+ * Everyone who can reach a document, with the grant that gets them there.
+ *
+ * Mirrors the document branch of `hasPermission`: a direct, tree (this page or
+ * any ancestor) or category grant decides the role, and only a grantee with
+ * none of those falls back to their space role.
+ */
+export async function listDocumentAccess(
+  spaceId: string,
+  documentId: string,
+): Promise<DocumentAccessEntry[]> {
+  const db = await getSpaceDb(spaceId);
+
+  const treeIds = [documentId, ...(await getDocumentAncestorIds(spaceId, documentId))];
+  const categoryIds = await getDocumentCategoryResourceIds(spaceId, documentId);
+
+  const scopes = [
+    and(eq(acl.resourceType, ResourceType.DOCUMENT), eq(acl.resourceId, documentId)),
+    and(
+      eq(acl.resourceType, ResourceType.DOCUMENT_TREE),
+      inArray(acl.resourceId, treeIds),
+    ),
+    and(eq(acl.resourceType, ResourceType.SPACE), eq(acl.resourceId, spaceId)),
+  ];
+  if (categoryIds.length > 0) {
+    scopes.push(
+      and(
+        eq(acl.resourceType, ResourceType.CATEGORY),
+        inArray(acl.resourceId, categoryIds),
+      ),
+    );
+  }
+
+  const rows = await db
+    .select()
+    .from(acl)
+    .where(or(...scopes))
+    .all();
+
+  const labels = await getAclResourceLabels(spaceId, rows);
+
+  const grantees = new Map<
+    string,
+    { userId?: string; groupId?: string; grants: DocumentAccessGrant[] }
+  >();
+  for (const row of rows) {
+    const grantee = row.userId
+      ? { key: `user:${row.userId}`, userId: row.userId }
+      : row.groupId
+        ? { key: `group:${row.groupId}`, groupId: row.groupId }
+        : undefined;
+    if (!grantee) continue;
+
+    const existing = grantees.get(grantee.key) ?? { ...grantee, grants: [] };
+    existing.grants.push({
+      resourceType: row.resourceType,
+      resourceId: row.resourceId,
+      inherited: row.resourceId !== documentId,
+      resourceLabel: labels.get(`${row.resourceType}:${row.resourceId}`),
+      permission: row.permission,
+      createdAt: new Date(row.createdAt),
+    });
+    grantees.set(grantee.key, existing);
+  }
+
+  return [...grantees.values()].map(({ userId, groupId, grants }) => {
+    // A grant on the document, its tree or its category overrides the space
+    // role — even a lower one — so the space grant only counts on its own.
+    const scoped = grants.filter((grant) => grant.resourceType !== ResourceType.SPACE);
+    const via = bestGrant(scoped.length > 0 ? scoped : grants);
+    return { userId, groupId, permission: via.permission, via, grants };
+  });
+}
+
+function bestGrant(grants: DocumentAccessGrant[]): DocumentAccessGrant {
+  return grants.reduce((best, grant) =>
+    (PERMISSION_HIERARCHY[grant.permission] || 0) >
+    (PERMISSION_HIERARCHY[best.permission] || 0)
+      ? grant
+      : best,
+  );
+}
+
+/** Page titles and category names for the resources these grants sit on. */
+async function getAclResourceLabels(
+  spaceId: string,
+  rows: Array<{ resourceType: string; resourceId: string }>,
+): Promise<Map<string, string>> {
+  const db = await getSpaceDb(spaceId);
+  const labels = new Map<string, string>();
+
+  const documentIds = [
+    ...new Set(
+      rows
+        .filter(
+          (row) =>
+            row.resourceType === ResourceType.DOCUMENT ||
+            row.resourceType === ResourceType.DOCUMENT_TREE,
+        )
+        .map((row) => row.resourceId),
+    ),
+  ];
+  const categoryIds = [
+    ...new Set(
+      rows
+        .filter((row) => row.resourceType === ResourceType.CATEGORY)
+        .map((row) => row.resourceId),
+    ),
+  ];
+
+  if (documentIds.length > 0) {
+    const titles = await db
+      .select({ documentId: property.documentId, value: property.value })
+      .from(property)
+      .where(and(inArray(property.documentId, documentIds), eq(property.key, "title")))
+      .all();
+    const slugs = await db
+      .select({ id: document.id, slug: document.slug })
+      .from(document)
+      .where(inArray(document.id, documentIds))
+      .all();
+
+    const titleById = new Map(
+      titles.map((row) => [
+        row.documentId,
+        propertyValueToText(parseStoredPropertyValue(row.value)),
+      ]),
+    );
+    for (const row of slugs) {
+      const label = titleById.get(row.id) || row.slug;
+      labels.set(`${ResourceType.DOCUMENT}:${row.id}`, label);
+      labels.set(`${ResourceType.DOCUMENT_TREE}:${row.id}`, label);
+    }
+  }
+
+  if (categoryIds.length > 0) {
+    const categories = await db
+      .select({ id: category.id, name: category.name })
+      .from(category)
+      .where(inArray(category.id, categoryIds))
+      .all();
+    for (const row of categories) {
+      labels.set(`${ResourceType.CATEGORY}:${row.id}`, row.name);
+    }
+  }
+
+  return labels;
 }
 
 /** List every role grant in a space, including resource-scoped grants. */

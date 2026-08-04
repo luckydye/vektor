@@ -91,6 +91,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET/POST | `/spaces/:spaceId/documents` | List documents (with filters) / create a document |
 | GET | `/spaces/:spaceId/documents/archived` | List archived (soft-deleted) documents |
 | GET/PUT/PATCH/DELETE/POST | `/spaces/:spaceId/documents/:documentId` | Read / replace content / patch metadata / archive-delete / create revision |
+| GET | `/spaces/:spaceId/documents/:documentId/access` | Everyone who can reach the document, and the grant that gets them there |
 | GET | `/spaces/:spaceId/documents/:documentId/children` | List direct child documents |
 | GET | `/spaces/:spaceId/documents/:documentId/breadcrumbs` | Ancestor chain for a document |
 | GET | `/spaces/:spaceId/documents/:documentId/contributors` | Users who have edited the document |
@@ -762,6 +763,21 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
   pending-status suggestion revision instead of a normal one.
 - **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, status,
   message, createdAt, createdBy } }`.
+
+### `GET /spaces/:spaceId/documents/:documentId/access`
+
+- **Auth**: session; `verifyDocumentRole(editor)` — seeing who a document is shared
+  with takes the same role as changing it.
+- **Behavior**: resolves effective access per grantee (user or group), mirroring the
+  document branch of `hasPermission`: a grant on the document, on the document tree of
+  this page or any ancestor, or on the page's category decides the role, and only a
+  grantee holding none of those falls back to their space role. `via` is the winning
+  grant; `grants` lists every grant that reaches the document. Group grants are
+  returned as the group, not expanded into its members.
+- **Returns**: `200 { access: Array<{ userId?, groupId?, permission, via, grants }> }`,
+  where each grant is `{ resourceType, resourceId, inherited, resourceLabel?,
+  permission, createdAt }`. `inherited` is false only for a grant on this document
+  itself; `resourceLabel` is the ancestor page title or category name.
 
 ### `GET /spaces/:spaceId/documents/:documentId/children`
 

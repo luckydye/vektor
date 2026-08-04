@@ -8,7 +8,12 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/tabs";
-import type { Category, PermissionEntry, User } from "#api/client.ts";
+import type {
+  Category,
+  DocumentAccessEntry,
+  PermissionEntry,
+  User,
+} from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -48,7 +53,7 @@ export function DocumentShareDialog(props: Props) {
   const [scope, setScope] = createSignal<Scope>("document");
   const [includeChildPages, setIncludeChildPages] = createSignal(false);
 
-  const [docPermissions, setDocPermissions] = createSignal<PermissionEntry[]>([]);
+  const [documentAccess, setDocumentAccess] = createSignal<DocumentAccessEntry[]>([]);
   const [categoryPermissions, setCategoryPermissions] = createSignal<PermissionEntry[]>(
     [],
   );
@@ -104,20 +109,12 @@ export function DocumentShareDialog(props: Props) {
     if (!spaceId || !props.documentId) return;
     setIsLoading(true);
     try {
-      const [docPerms, docTreePerms, spacePerms, members, categoryList] =
-        await Promise.all([
-          api.permissions.list(spaceId, "role", {
-            resourceType: "document",
-            resourceId: props.documentId,
-          }),
-          api.permissions.list(spaceId, "role", {
-            resourceType: "document_tree",
-            resourceId: props.documentId,
-          }),
-          api.permissions.list(spaceId, "role"),
-          api.spaceMembers.get(spaceId),
-          api.categories.get(spaceId),
-        ]);
+      const [access, spacePerms, members, categoryList] = await Promise.all([
+        api.documentAccess.get(spaceId, props.documentId),
+        api.permissions.list(spaceId, "role"),
+        api.spaceMembers.get(spaceId),
+        api.categories.get(spaceId),
+      ]);
 
       const categoryValues = categoryList?.categories || [];
       setCategories(categoryValues);
@@ -125,11 +122,7 @@ export function DocumentShareDialog(props: Props) {
         setSelectedCategoryId(categoryValues[0].id);
       }
 
-      setDocPermissions(
-        [...(docPerms.permissions || []), ...(docTreePerms.permissions || [])].filter(
-          (p) => p.type === "role",
-        ),
-      );
+      setDocumentAccess(access);
       setSpacePermissions(
         (spacePerms.permissions || []).filter((p) => p.type === "role"),
       );
@@ -201,17 +194,26 @@ export function DocumentShareDialog(props: Props) {
     }
   }
 
-  async function removeDocPerm(perm: PermissionEntry) {
+  /** The grants sitting on this document itself — the only ones this tab owns. */
+  function directGrants(entry: DocumentAccessEntry) {
+    return entry.grants.filter((grant) => !grant.inherited);
+  }
+
+  async function removeDocumentAccess(entry: DocumentAccessEntry) {
     const spaceId = currentSpaceId();
-    if (!spaceId || !confirm("Remove this person's document access?")) return;
+    const grants = directGrants(entry);
+    if (!spaceId || grants.length === 0) return;
+    if (!confirm("Remove this person's document access?")) return;
     try {
-      await api.permissions.revoke(spaceId, {
-        type: "role",
-        roleOrFeature: perm.permission.permission,
-        userId: perm.permission.userId,
-        resourceType: perm.permission.resourceType || "document",
-        resourceId: props.documentId,
-      });
+      for (const grant of grants) {
+        await api.permissions.revoke(spaceId, {
+          type: "role",
+          roleOrFeature: grant.permission,
+          ...(entry.userId ? { userId: entry.userId } : { groupId: entry.groupId }),
+          resourceType: grant.resourceType,
+          resourceId: grant.resourceId,
+        });
+      }
       await load();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to remove");
@@ -273,29 +275,50 @@ export function DocumentShareDialog(props: Props) {
     }
   }
 
-  function getMemberUser(perm: PermissionEntry): User | undefined {
-    if (!perm.permission.userId) return undefined;
-    return usersMap().get(perm.permission.userId);
+  function getMemberName(userId?: string, groupId?: string): string {
+    if (!userId) return groupId ?? "";
+    const member = usersMap().get(userId);
+    return member?.name || member?.email || userId;
   }
 
-  function getMemberName(perm: PermissionEntry): string {
-    if (perm.permission.userId) {
-      const u = getMemberUser(perm);
-      return u?.name || u?.email || perm.permission.userId;
-    }
-    return perm.permission.groupId ?? "";
+  function getMemberEmail(userId?: string): string {
+    return (userId && usersMap().get(userId)?.email) || "";
   }
 
-  function getMemberEmail(perm: PermissionEntry): string {
-    if (perm.permission.userId) return getMemberUser(perm)?.email || "";
-    return "";
+  /** How a grantee reaches this document, in the words of the source grant. */
+  function accessSourceLabel(entry: DocumentAccessEntry): string {
+    const { resourceType, resourceLabel, inherited } = entry.via;
+    const source =
+      resourceType === "document"
+        ? "This document only"
+        : resourceType === "document_tree"
+          ? inherited
+            ? `Via page tree: ${resourceLabel || "parent page"}`
+            : "This document and child pages"
+          : resourceType === "category"
+            ? `Via category: ${resourceLabel || "category"}`
+            : "Via space membership";
+    return entry.groupId ? `Group · ${source}` : source;
   }
 
-  function permissionScopeLabel(perm: PermissionEntry): string {
-    return perm.permission.resourceType === "document_tree"
-      ? "Includes child pages"
-      : "This document only";
-  }
+  /** Direct grants first, then trees, categories, and space members. */
+  const sourceRank: Record<string, number> = {
+    document: 0,
+    document_tree: 1,
+    category: 2,
+    space: 3,
+  };
+
+  const sortedDocumentAccess = createMemo(() =>
+    [...documentAccess()].sort((a, b) => {
+      const rank =
+        (sourceRank[a.via.resourceType] ?? 4) - (sourceRank[b.via.resourceType] ?? 4);
+      if (rank !== 0) return rank;
+      return getMemberName(a.userId, a.groupId).localeCompare(
+        getMemberName(b.userId, b.groupId),
+      );
+    }),
+  );
 
   function isSelf(perm: PermissionEntry): boolean {
     return perm.permission.userId === user()?.id;
@@ -316,29 +339,28 @@ export function DocumentShareDialog(props: Props) {
 
   /** One person's row — identical in all three panels apart from the trailing controls. */
   const PermissionRow = (rowProps: {
-    perm: PermissionEntry;
-    scopeLabel?: boolean;
+    userId?: string;
+    groupId?: string;
+    detail?: string;
     trailing: JSX.Element;
   }) => (
     <div class="flex items-center gap-2.5 py-2">
       <vektor-avatar
         size="28"
-        attr:user-id={rowProps.perm.permission.userId || undefined}
-        prop:user={getMemberUser(rowProps.perm)}
+        attr:user-id={rowProps.userId || undefined}
+        prop:user={rowProps.userId ? usersMap().get(rowProps.userId) : undefined}
       />
       <div class="min-w-0 flex-1">
         <div class="truncate text-neutral-900 text-size-medium">
-          {getMemberName(rowProps.perm)}
+          {getMemberName(rowProps.userId, rowProps.groupId)}
         </div>
-        <Show when={getMemberEmail(rowProps.perm)}>
+        <Show when={getMemberEmail(rowProps.userId)}>
           <div class="truncate text-neutral-400 text-size-small">
-            {getMemberEmail(rowProps.perm)}
+            {getMemberEmail(rowProps.userId)}
           </div>
         </Show>
-        <Show when={rowProps.scopeLabel}>
-          <div class="truncate text-neutral-400 text-size-small">
-            {permissionScopeLabel(rowProps.perm)}
-          </div>
+        <Show when={rowProps.detail}>
+          <div class="truncate text-neutral-400 text-size-small">{rowProps.detail}</div>
         </Show>
       </div>
       {rowProps.trailing}
@@ -391,7 +413,6 @@ export function DocumentShareDialog(props: Props) {
     <Dialog
       show={props.show}
       bodyClass="p-0 overflow-y-auto"
-      panelHeight="h-[22rem]"
       onUpdateShow={(value) => props.onUpdateShow?.(value)}
       header={
         <div class="min-w-0">
@@ -407,7 +428,7 @@ export function DocumentShareDialog(props: Props) {
       }
     >
       <a-tabs ref={tabsEl as never} class="block" on:tab-selected={onTabSelected}>
-        <a-tabs-list class="block overflow-x-auto px-4 pt-4xs pb-2xs">
+        <a-tabs-list class="block px-4 pt-4xs pb-2xs">
           <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
             <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
               This document
@@ -455,27 +476,36 @@ export function DocumentShareDialog(props: Props) {
 
             <Show when={!isLoading()} fallback={<Spinner />}>
               <Show
-                when={docPermissions().length > 0}
+                when={sortedDocumentAccess().length > 0}
                 fallback={
                   <p class="text-neutral-400 text-size-small">
-                    No one has been given direct access to this document yet.
+                    No one has access to this document yet.
                   </p>
                 }
               >
+                <p class="text-neutral-400 text-size-small">
+                  {sortedDocumentAccess().length} with access
+                </p>
                 <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                  <For each={docPermissions()}>
-                    {(perm) => (
+                  <For each={sortedDocumentAccess()}>
+                    {(entry) => (
                       <PermissionRow
-                        perm={perm}
-                        scopeLabel
+                        userId={entry.userId}
+                        groupId={entry.groupId}
+                        detail={accessSourceLabel(entry)}
                         trailing={
                           <>
-                            <RoleBadge role={perm.permission.permission} />
-                            <Show when={!isSelf(perm)}>
+                            <RoleBadge role={entry.permission} />
+                            <Show
+                              when={
+                                directGrants(entry).length > 0 &&
+                                entry.userId !== user()?.id
+                              }
+                            >
                               <button
                                 type="button"
                                 class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                onClick={() => void removeDocPerm(perm)}
+                                onClick={() => void removeDocumentAccess(entry)}
                               >
                                 Remove
                               </button>
@@ -486,14 +516,6 @@ export function DocumentShareDialog(props: Props) {
                     )}
                   </For>
                 </div>
-              </Show>
-
-              <Show when={spacePermissions().length > 0}>
-                <p class="text-neutral-400 text-size-small">
-                  {spacePermissions().length} space member
-                  {spacePermissions().length !== 1 ? "s" : ""} can also access this
-                  document via their space role.
-                </p>
               </Show>
             </Show>
           </div>
@@ -545,7 +567,8 @@ export function DocumentShareDialog(props: Props) {
                   <For each={categoryPermissions()}>
                     {(perm) => (
                       <PermissionRow
-                        perm={perm}
+                        userId={perm.permission.userId}
+                        groupId={perm.permission.groupId}
                         trailing={
                           <>
                             <RoleBadge role={perm.permission.permission} />
@@ -597,7 +620,8 @@ export function DocumentShareDialog(props: Props) {
                   <For each={spacePermissions()}>
                     {(perm) => (
                       <PermissionRow
-                        perm={perm}
+                        userId={perm.permission.userId}
+                        groupId={perm.permission.groupId}
                         trailing={
                           <>
                             <Show

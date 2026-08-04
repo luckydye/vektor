@@ -305,6 +305,29 @@ export interface PermissionEntry {
   };
 }
 
+/** One grant that reaches a document, and how it gets there. */
+export interface DocumentAccessGrant {
+  resourceType: PermissionResourceType;
+  resourceId: string;
+  /** The grant is on an ancestor page, a category, or the space — not this page. */
+  inherited: boolean;
+  /** Page title or category name of the resource the grant sits on. */
+  resourceLabel?: string;
+  permission: string;
+  createdAt?: string | Date;
+}
+
+/** One grantee's effective access to a document. */
+export interface DocumentAccessEntry {
+  userId?: string;
+  groupId?: string;
+  /** Effective role on the document, with scoped grants overriding space role. */
+  permission: string;
+  /** The grant that decides `permission`. */
+  via: DocumentAccessGrant;
+  grants: DocumentAccessGrant[];
+}
+
 export type PermissionResourceType =
   | "space"
   | "document"
@@ -1371,6 +1394,17 @@ export class ApiClient {
         body,
       );
       return response.revision;
+    },
+  };
+
+  documentAccess = {
+    /** Everyone who can reach the document, however they reach it. */
+    get: async (spaceId: string, documentId: string) => {
+      const response = await this.apiGet<{ access: DocumentAccessEntry[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/access`,
+      );
+      return response.access;
     },
   };
 

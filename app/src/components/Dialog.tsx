@@ -125,7 +125,7 @@ export function Dialog(props: Props) {
                 aria-label={t("Close")}
                 onClick={close}
               >
-                <Icon class="h-4 w-4" name="cancel" />
+                <Icon class="block h-4 w-4" name="cancel" />
               </button>
             </div>
           </Show>
