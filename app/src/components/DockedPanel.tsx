@@ -300,7 +300,7 @@ export function DockedPanel(props: Props) {
       {/* Desktop: docked / floating overlay. */}
       <Show when={isOpen()}>
         <div
-          class="fixed z-50 flex flex-col overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10 shadow-xl"
+          class="docked-panel fixed z-50 flex flex-col overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10 shadow-xl"
           style={overlayStyle()}
         >
           {/* Header / drag handle */}

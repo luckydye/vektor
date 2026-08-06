@@ -462,7 +462,7 @@ export function Sidebar(props: Props) {
 
         {/* The grain pseudo-element paints after the blur one, so it also lands
             above in-flow content — the children need a z-index to stay on top. */}
-        <div class="before:backdrop-surface-blur after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
+        <div class="sidebar-panel before:backdrop-surface-blur after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
           <Navigation />
         </div>
 

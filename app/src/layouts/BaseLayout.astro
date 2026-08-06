@@ -1,6 +1,7 @@
 ---
 import "#styles/index.css";
 import { generatePaletteCss } from "#utils/color.ts";
+import { THEME_COLORS } from "#utils/themePreference.ts";
 
 export interface Props {
   title?: string;
@@ -66,8 +67,16 @@ let faviconFilename = {
       set:html={JSON.stringify(publicEnv)}
     ></script>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#181818" media="(prefers-color-scheme: dark)">
+    <meta
+      name="theme-color"
+      content={THEME_COLORS.light}
+      media="(prefers-color-scheme: light)"
+    >
+    <meta
+      name="theme-color"
+      content={THEME_COLORS.dark}
+      media="(prefers-color-scheme: dark)"
+    >
     {meta?.description && <meta name="description" content={meta.description} />}
     {meta?.title && <meta property="og:title" content={meta.title} />}
     {meta?.description && <meta property="og:description" content={meta.description} />}
@@ -77,6 +86,10 @@ let faviconFilename = {
   </head>
 
   <body class="bg-background font-sans" data-space-id={spaceId ?? ""}>
+    <title-bar aria-hidden="true"></title-bar>
     <slot />
+    <script>
+    import "#components/title-bar.ts";
+    </script>
   </body>
 </html>

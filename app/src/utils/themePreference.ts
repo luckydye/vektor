@@ -26,8 +26,27 @@ export function storeThemePreference(preference: ThemePreference): void {
   writeStored(THEME_STORAGE_KEY, preference, THEME_CODEC);
 }
 
+export const THEME_COLORS = { light: "#f5f5f5", dark: "#262626" } as const;
+
+function applyThemeColor(preference: ThemePreference): void {
+  const existing = document.querySelector<HTMLMetaElement>(
+    'meta[name="theme-color"][data-override]',
+  );
+  if (preference === "system") {
+    existing?.remove();
+    return;
+  }
+
+  const meta = existing ?? document.createElement("meta");
+  meta.name = "theme-color";
+  meta.dataset.override = "";
+  meta.content = THEME_COLORS[preference];
+  if (!existing) document.head.prepend(meta);
+}
+
 export function applyThemePreference(preference: ThemePreference): void {
   if (typeof document === "undefined") return;
+  applyThemeColor(preference);
   if (preference === "system") {
     document.documentElement.removeAttribute("data-theme");
     return;

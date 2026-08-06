@@ -126,6 +126,59 @@ a-popover:not(:defined) {
   background: var(--color-neutral-100, #f5f5f5);
 }
 
+title-bar {
+  display: none;
+}
+
+@media (display-mode: window-controls-overlay) {
+  :root {
+    --titlebar-height: env(titlebar-area-height, 0px);
+  }
+
+  title-bar {
+    position: fixed;
+    left: env(titlebar-area-x, 0);
+    top: env(titlebar-area-y, 0);
+    width: env(titlebar-area-width, 100%);
+    height: var(--titlebar-height);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-inline: var(--spacing-4xs);
+    background: var(--color-neutral-10);
+    app-region: drag;
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+
+  .title-bar-label {
+    overflow: hidden;
+    color: var(--color-neutral-500);
+    font-size: var(--text-size-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar {
+    padding: 0;
+  }
+
+  .sidebar-panel {
+    padding-top: var(--titlebar-height);
+  }
+
+  .main-content {
+    padding-top: var(--titlebar-height);
+  }
+
+  .docked-panel,
+  .dialog-layer {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+  }
+}
+
 .main-content:has([data-type="csv"]) {
   height: 100dvh;
   overflow: hidden;

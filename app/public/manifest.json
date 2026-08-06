@@ -1,25 +1,30 @@
 {
+  "id": "/",
   "name": "Vektor",
   "short_name": "Vektor",
   "description": "Vektor",
-  "theme_color": "#ffffff",
+  "theme_color": "#f5f5f5",
   "start_url": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "icons": [
     {
-      "src": "/192x192.jpg",
-      "sizes": "192x192",
-      "type": "image/jpg"
-    },
-    {
-      "src": "/180x180.jpg",
+      "src": "/180x180.png",
       "sizes": "180x180",
-      "type": "image/jpg"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/512x512.jpg",
+      "src": "/192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/512x512.png",
       "sizes": "512x512",
-      "type": "image/jpg"
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

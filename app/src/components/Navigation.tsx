@@ -123,7 +123,7 @@ export function Navigation() {
         />
       </div>
 
-      <div class="min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden">
+      <div class="min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <nav class="@container flex flex-col gap-3xs">
           <div class="flex flex-none flex-col gap-0.5 px-3xs pt-5xs">
             <div class="flex items-center gap-px">
