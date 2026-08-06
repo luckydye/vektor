@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import * as Y from "yjs";
 import {
   realtimeTopics,
   WsMsgType,
   wsDecode,
   wsDecodeJson,
+  wsDecodeYjsUpdate,
   wsEncode,
 } from "#realtime/protocol.ts";
 import {
@@ -176,6 +178,43 @@ afterAll(() => {
 });
 
 describe("Realtime WebSocket", () => {
+  it("does not duplicate content when reconnecting to a recreated Yjs room", async () => {
+    const initialConnection = await connectWebSocket(BASE_URL, testSpaceId);
+    const clientDoc = new Y.Doc();
+
+    initialConnection.socket.send(
+      wsEncode(WsMsgType.YjsJoin, { documentId: testDocumentId }),
+    );
+    const initialState = wsDecodeYjsUpdate(
+      await initialConnection.waitForFrame(WsMsgType.YjsUpdate),
+    );
+    Y.applyUpdate(clientDoc, initialState.update, "remote");
+
+    const expectedContent = clientDoc.getXmlFragment("default").toString();
+    expect(expectedContent).not.toBe("");
+
+    // This socket is the room's only member and has no presence registration,
+    // so closing it evicts the in-memory Y.Doc. The next join recreates the room
+    // from persisted HTML while the client retains its original Y.Doc.
+    initialConnection.socket.close();
+    await waitForClose(initialConnection.socket);
+
+    const reconnected = await connectWebSocket(BASE_URL, testSpaceId);
+    try {
+      reconnected.socket.send(
+        wsEncode(WsMsgType.YjsJoin, { documentId: testDocumentId }),
+      );
+      const recreatedRoomState = wsDecodeYjsUpdate(
+        await reconnected.waitForFrame(WsMsgType.YjsUpdate),
+      );
+      Y.applyUpdate(clientDoc, recreatedRoomState.update, "remote");
+
+      expect(clientDoc.getXmlFragment("default").toString()).toBe(expectedContent);
+    } finally {
+      reconnected.socket.close();
+    }
+  });
+
   it("synchronizes client presence joins, updates, leaves, and disconnects", async () => {
     const observer = await connectWebSocket(BASE_URL, testSpaceId);
     const participant = await connectWebSocket(BASE_URL, testSpaceId);

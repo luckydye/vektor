@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { withPinnedYjsSeed } from "#documents/yjsSeed.ts";
 import {
   type Attrs,
   type DocMark,
@@ -19,10 +20,20 @@ import {
  * `prosemirrorToYDoc` for exactly that reason.
  */
 
-/** Builds a fresh Y.Doc whose `default` fragment holds the document. */
+/**
+ * Builds a fresh Y.Doc whose `default` fragment holds the document.
+ *
+ * The parsed tree and insertion order must be identical for the same persisted
+ * content: Yjs struct ids are `(clientID, clock)`, so pinning only the client id
+ * is not sufficient if the operation sequence changes. The doc's unique client
+ * id is restored before returning so subsequent collaborative edits remain
+ * distinct.
+ */
 export function docToYDoc(doc: DocNode): Y.Doc {
   const ydoc = new Y.Doc();
-  applyDocToFragment(ydoc.getXmlFragment("default"), doc);
+  withPinnedYjsSeed(ydoc, () => {
+    applyDocToFragment(ydoc.getXmlFragment("default"), doc);
+  });
   return ydoc;
 }
 
