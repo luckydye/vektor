@@ -34,6 +34,33 @@ export function animateIn(el: HTMLElement): void {
 }
 
 /**
+ * Slide-and-fade the panel a newly selected tab reveals.
+ *
+ * `direction` is the travel of the selection rather than of the content: picking
+ * a tab further along the list brings its panel in from the right.
+ */
+export function animateTabPanel(el: HTMLElement, direction: "next" | "previous"): void {
+  if (prefersReducedMotion() || typeof el.animate !== "function") return;
+
+  // Tabs can be switched faster than 180ms, and a half-finished transform would
+  // otherwise become the start of the next animation.
+  for (const animation of el.getAnimations()) animation.cancel();
+
+  const easing =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--emphasized-curve")
+      .trim() || "ease-out";
+
+  el.animate(
+    [
+      { opacity: 0, transform: `translateX(${direction === "next" ? 8 : -8}px)` },
+      { opacity: 1, transform: "translateX(0)" },
+    ],
+    { duration: 180, easing },
+  );
+}
+
+/**
  * Play the leave animation and resolve when it is over.
  *
  * **Always resolves.** Callers gate a state change on this — removing the toast

@@ -95,7 +95,9 @@ export function useDatabaseCsvImport(options: DatabaseCsvImportOptions) {
           if (!fallbackTitle) fallbackTitle = value;
         });
 
-        if (!properties.title) properties.title = fallbackTitle || "Untitled";
+        // No usable column to name the row after leaves the title to `addRow`,
+        // which fills in the placeholder.
+        if (!properties.title && fallbackTitle) properties.title = fallbackTitle;
 
         await options.addRow(properties, { invalidate: false });
         created++;

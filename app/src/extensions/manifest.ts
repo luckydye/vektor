@@ -14,7 +14,7 @@ export interface ExtensionRoute {
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
   placements?: Array<
-    "standalone" | "inline" | "document" | DeprecatedPageExtensionPlacement
+    "standalone" | "inline" | "document" | "database" | DeprecatedPageExtensionPlacement
   >;
 }
 

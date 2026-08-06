@@ -744,8 +744,11 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
     `null`); triggers "document published" email notifications; audit-logged.
   - `readonly: boolean` — lock/unlock the document (CSV-type docs must stay
     readonly). Audit-logged.
-- **Returns**: `200 { success: true }` or `200 { slug? }` for a properties patch that
-  changed the slug.
+- **Returns**: `200 { success: true }`, or `200 { slug }` when a `title` patch also
+  claimed a new slug. The slug is fixed when the document is created and does not
+  follow later renames — the one exception is a slug still derived from the
+  placeholder title a document was created with ("Untitled Canvas", …), which the
+  first real title replaces.
 
 ### `DELETE /spaces/:spaceId/documents/:documentId`
 

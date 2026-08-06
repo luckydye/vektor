@@ -1,11 +1,20 @@
-import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { type ExtensionViewElement, extensions } from "#extensions/manager.ts";
 
 interface Props {
   extensionId: string;
   routePath: string;
   spaceId: string;
+  /** Document this embedded view belongs to, or null for a standalone route. */
+  documentId: string | null;
   fill?: boolean;
+}
+
+interface RenderTarget {
+  extensionId: string;
+  routePath: string;
+  spaceId: string;
+  documentId: string | null;
 }
 
 export function ExtensionView(props: Props) {
@@ -16,6 +25,28 @@ export function ExtensionView(props: Props) {
   // Bumped per render so a slow renderer from a previous route cannot install
   // itself after navigation.
   let renderVersion = 0;
+
+  // A document prop can be backed by a live query whose object changes when an
+  // extension reads or writes replica data. Compare the values that actually
+  // determine a view instance so those cache refreshes do not remount it.
+  // `Init` spelled out as `undefined`: there is no initial value, and it is only
+  // passed at all because `equals` is the third argument.
+  const renderTarget = createMemo<RenderTarget, undefined>(
+    () => ({
+      extensionId: props.extensionId,
+      routePath: props.routePath,
+      spaceId: props.spaceId,
+      documentId: props.documentId,
+    }),
+    undefined,
+    {
+      equals: (previous, next) =>
+        previous.extensionId === next.extensionId &&
+        previous.routePath === next.routePath &&
+        previous.spaceId === next.spaceId &&
+        previous.documentId === next.documentId,
+    },
+  );
 
   function cleanupView() {
     if (cleanup) {
@@ -29,7 +60,7 @@ export function ExtensionView(props: Props) {
     containerRef?.root?.replaceChildren();
   }
 
-  async function renderView() {
+  async function renderView(target: RenderTarget) {
     if (!containerRef) return;
 
     const version = ++renderVersion;
@@ -38,8 +69,10 @@ export function ExtensionView(props: Props) {
     setError(null);
 
     try {
-      await extensions.init(props.spaceId);
+      await extensions.init(target.spaceId);
       if (version !== renderVersion) return;
+
+      extensions.setActiveDocumentId(target.documentId);
 
       const root = containerRef?.root;
       if (!root) throw new Error("Extension view element is missing root");
@@ -52,8 +85,8 @@ export function ExtensionView(props: Props) {
       root.replaceChildren(mount);
 
       const nextCleanup = await extensions.renderInlineView(
-        props.extensionId,
-        props.routePath,
+        target.extensionId,
+        target.routePath,
         mount,
       );
 
@@ -65,25 +98,21 @@ export function ExtensionView(props: Props) {
 
       cleanup = nextCleanup;
       if (!nextCleanup) {
-        setError(`Failed to render view for route "${props.routePath}"`);
+        setError(`Failed to render view for route "${target.routePath}"`);
       }
     } catch (err) {
       console.error("Error rendering extension view:", err);
       if (version === renderVersion) {
-        setError(`Failed to render view for route "${props.routePath}"`);
+        setError(`Failed to render view for route "${target.routePath}"`);
       }
     } finally {
       if (version === renderVersion) setLoading(false);
     }
   }
 
-  // One effect covers mount and prop changes: reading the three inputs is what
-  // re-runs it, which is what onMounted + watch did separately.
-  createEffect(
-    on([() => props.extensionId, () => props.routePath, () => props.spaceId], () => {
-      void renderView();
-    }),
-  );
+  createEffect(() => {
+    void renderView(renderTarget());
+  });
 
   onCleanup(() => {
     renderVersion++;
@@ -91,7 +120,7 @@ export function ExtensionView(props: Props) {
   });
 
   return (
-    <div class="w-full" classList={{ "relative h-full": props.fill }}>
+    <div class="w-full" classList={{ "relative h-full min-h-0 flex-1": props.fill }}>
       <Show when={loading()}>
         <div class="flex items-center justify-center py-20">
           <div class="h-8 w-8 animate-spin rounded-full border-primary-600 border-b-2" />

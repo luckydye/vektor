@@ -137,7 +137,6 @@ async function handlePropertiesPatch(
       }
     }
 
-    // TODO: slug changes should happen with a document save, not property update
     const changedProperties = await updateDocumentProperty(
       spaceId,
       documentId,

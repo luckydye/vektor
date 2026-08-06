@@ -7,7 +7,11 @@ import {
   propertyValueToText,
   serializePropertyValue,
 } from "#documents/properties.ts";
-import { allowsChildDocumentType, readOnlyDocumentTypes } from "#documents/types.ts";
+import {
+  allowsChildDocumentType,
+  isPlaceholderDocumentSlug,
+  readOnlyDocumentTypes,
+} from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -868,7 +872,7 @@ export async function updateDocumentProperty(
   value: DocumentPropertyValue,
   type?: string | null,
   userId?: string,
-) {
+): Promise<{ slug?: string }> {
   const db = await getSpaceDb(spaceId);
   const now = new Date();
   const storedValue = serializePropertyValue(value);
@@ -881,8 +885,6 @@ export async function updateDocumentProperty(
     .get();
 
   const previousValue = existing ? parseStoredPropertyValue(existing.value) : undefined;
-
-  const payload: { slug?: string } = {};
 
   if (existing) {
     const updateData: { value: string; updatedAt: Date; type?: string | null } = {
@@ -916,23 +918,34 @@ export async function updateDocumentProperty(
     },
   });
 
+  // A rename leaves the slug alone so existing links and bookmarks keep
+  // resolving. The exception is a slug still derived from the placeholder title
+  // the document was created with — that one names nothing, so the first real
+  // title claims it.
+  let renamedSlug: string | undefined;
   if (key === "title" && typeof value === "string" && value) {
-    // An unsluggable title still renames the document; only the derived slug
-    // can't follow, so it stays where it was.
-    const newSlug = await generateUniqueSlug(spaceId, value, documentId).catch(
-      (error: unknown) => {
-        if (error instanceof EmptyDocumentSlugError) return undefined;
-        throw error;
-      },
-    );
-    await db
-      .update(document)
-      .set({ ...(newSlug ? { slug: newSlug } : {}), updatedAt: now })
-      .where(eq(document.id, documentId));
-    if (newSlug) payload.slug = newSlug;
-  } else {
-    await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
+    const current = await db
+      .select({ slug: document.slug })
+      .from(document)
+      .where(eq(document.id, documentId))
+      .get();
+
+    if (current && isPlaceholderDocumentSlug(current.slug)) {
+      // An unsluggable title still renames the document; only the derived slug
+      // can't follow, so it stays where it was.
+      renamedSlug = await generateUniqueSlug(spaceId, value, documentId).catch(
+        (error: unknown) => {
+          if (error instanceof EmptyDocumentSlugError) return undefined;
+          throw error;
+        },
+      );
+    }
   }
+
+  await db
+    .update(document)
+    .set({ ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now })
+    .where(eq(document.id, documentId));
 
   void updateDocumentEmbeddingBestEffort(spaceId, documentId);
   const propertyChangeData = {
@@ -942,7 +955,6 @@ export async function updateDocumentProperty(
     propertyType: type ?? existing?.type ?? null,
     previousValue: previousValue ?? null,
     value,
-    slug: payload.slug ?? null,
   };
   const treeRelevantProperty = ["title", "category", "collection"].includes(key);
 
@@ -970,7 +982,7 @@ export async function updateDocumentProperty(
       : []),
   );
 
-  return payload;
+  return renamedSlug ? { slug: renamedSlug } : {};
 }
 
 export async function deleteDocumentProperty(

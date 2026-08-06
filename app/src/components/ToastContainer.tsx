@@ -108,12 +108,16 @@ export function ToastContainer() {
                 {/* Repeats of the same message merge into this row; the badge
                     counts them so a flood stays one toast. */}
                 <Show when={(toast.count ?? 1) > 1}>
+                  {/* The numeral is hidden and restated in full for assistive
+                      tech: a bare "3" says nothing, and a span cannot carry an
+                      `aria-label` of its own — nothing names a generic role. */}
                   <span
+                    aria-hidden="true"
                     class="absolute top-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 font-semibold text-[11px] tabular-nums leading-none"
-                    aria-label={`${toast.count} occurrences`}
                   >
                     {toast.count}
                   </span>
+                  <span class="sr-only">{`${toast.count} occurrences`}</span>
                 </Show>
                 <Show when={toast.action}>
                   {(action) => (

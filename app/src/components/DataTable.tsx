@@ -6,9 +6,9 @@ import {
   Index,
   on,
   onCleanup,
-  onMount,
   Show,
 } from "solid-js";
+import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/xlsx.ts";
@@ -216,19 +216,21 @@ export function DataTable(props: Props) {
     return spacePath(currentSpace()?.slug, `/doc/${encodeURIComponent(text)}`);
   }
 
-  // Column resizing
-  const storageKey = createMemo(() =>
-    props.documentId ? `datatable-col-widths-${props.documentId}` : null,
-  );
-  const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>({});
-
-  onMount(() => {
-    const key = storageKey();
-    if (!key) return;
-    try {
-      const saved = sessionStorage.getItem(key);
-      if (saved) setColumnWidths(JSON.parse(saved));
-    } catch {}
+  /**
+   * Column widths, for this tab only.
+   *
+   * `session` rather than `local` on purpose: a width dragged out to read one long
+   * value is a fix for the moment, not a preference to be met again on the user's
+   * next visit or in every other tab.
+   */
+  const {
+    value: columnWidths,
+    commit: commitColumnWidths,
+    set: setColumnWidths,
+  } = usePersistedState<Record<string, number>>({
+    key: () => (props.documentId ? `datatable-col-widths-${props.documentId}` : null),
+    fallback: {},
+    area: "session",
   });
 
   function colWidth(col: string): string {
@@ -249,8 +251,8 @@ export function DataTable(props: Props) {
     resizeCol = null;
     document.removeEventListener("mousemove", onResizeMouseMove);
     document.removeEventListener("mouseup", onResizeMouseUp);
-    const key = storageKey();
-    if (key) sessionStorage.setItem(key, JSON.stringify(columnWidths()));
+    // Remembered on release rather than on every mousemove: one write per drag.
+    commitColumnWidths(columnWidths());
   }
 
   function onResizeMouseDown(col: string, e: MouseEvent) {

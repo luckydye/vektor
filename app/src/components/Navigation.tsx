@@ -183,9 +183,9 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="@max-xs:hidden px-5xs pb-s pt-4xs">
-            <div class="border-b border-neutral-400/25 mx-4xs"></div>
-            
+          <div class="@max-xs:hidden px-5xs pt-4xs pb-s">
+            <div class="mx-4xs border-neutral-400/25 border-b"></div>
+
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
               <Show when={documentTree()?.isEditMode}>
                 <button

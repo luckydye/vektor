@@ -15,7 +15,7 @@ import { t } from "#utils/lang.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
-  THEME_STORAGE_KEY,
+  storeThemePreference,
   type ThemePreference,
 } from "#utils/themePreference.ts";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
@@ -136,7 +136,7 @@ export function UserPreferencesPanel(props: Props) {
   };
 
   const chooseThemePreference = (preference: ThemePreference) => {
-    localStorage.setItem(THEME_STORAGE_KEY, preference);
+    storeThemePreference(preference);
     applyThemePreferenceWithTransition(preference);
   };
 
@@ -311,11 +311,8 @@ export function UserPreferencesPanel(props: Props) {
                   </p>
                 </div>
                 <div class="rounded-lg border border-neutral-200 bg-background p-3">
-                  <div
-                    class="mt-3 grid grid-cols-3 gap-3"
-                    role="group"
-                    aria-label={t("Theme")}
-                  >
+                  <fieldset class="mt-3 grid grid-cols-3 gap-3">
+                    <legend class="sr-only">{t("Theme")}</legend>
                     <For each={themeOptions}>
                       {(option) => (
                         <button
@@ -339,7 +336,7 @@ export function UserPreferencesPanel(props: Props) {
                         </button>
                       )}
                     </For>
-                  </div>
+                  </fieldset>
                 </div>
               </section>
 

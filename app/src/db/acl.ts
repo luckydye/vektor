@@ -161,26 +161,28 @@ export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[
 
   const groupSet = new Set(groups);
 
-  return rows
-    .filter((row) => row.id !== userId)
-    // Defense in depth: confirm a genuinely shared, well-formed group rather
-    // than trusting the coarse LIKE prefilter alone.
-    .filter((row) => {
-      if (!row.groups) return false;
-      try {
-        const parsed = JSON.parse(row.groups);
-        return (
-          Array.isArray(parsed) &&
-          parsed.some(
-            (g): g is string =>
-              typeof g === "string" && GROUP_NAME_PATTERN.test(g) && groupSet.has(g),
-          )
-        );
-      } catch {
-        return false;
-      }
-    })
-    .map(({ id, name, email, image }) => ({ id, name, email, image }));
+  return (
+    rows
+      .filter((row) => row.id !== userId)
+      // Defense in depth: confirm a genuinely shared, well-formed group rather
+      // than trusting the coarse LIKE prefilter alone.
+      .filter((row) => {
+        if (!row.groups) return false;
+        try {
+          const parsed = JSON.parse(row.groups);
+          return (
+            Array.isArray(parsed) &&
+            parsed.some(
+              (g): g is string =>
+                typeof g === "string" && GROUP_NAME_PATTERN.test(g) && groupSet.has(g),
+            )
+          );
+        } catch {
+          return false;
+        }
+      })
+      .map(({ id, name, email, image }) => ({ id, name, email, image }))
+  );
 }
 
 /**

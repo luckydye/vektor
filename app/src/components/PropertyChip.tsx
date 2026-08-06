@@ -230,7 +230,7 @@ export function PropertyChip(props: Props) {
               <span class="flex min-w-0 max-w-[260px] items-center gap-5xs overflow-hidden">
                 <For each={valueLabels()}>
                   {(valueLabel) => (
-                    <span class="max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap rounded-sm bg-primary-50 px-5xs py-5xs leading-none text-primary-600 capitalize">
+                    <span class="max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap rounded-sm bg-primary-50 px-5xs py-5xs text-primary-600 capitalize leading-none">
                       {valueLabel}
                     </span>
                   )}

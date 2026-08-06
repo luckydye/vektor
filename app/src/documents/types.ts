@@ -1,3 +1,5 @@
+import { slugify } from "#utils/utils.ts";
+
 /** Hidden, immutable system document created for each workflow execution. */
 export const workflowRunDocumentType = "workflow-run";
 
@@ -63,4 +65,35 @@ export function supportsComments(type: string | null | undefined): boolean {
 
 export function supportsDocumentEditor(type: string | null | undefined): boolean {
   return documentEditorTypes.includes(type ?? "document");
+}
+
+/**
+ * What a document is called when it is created before the user has named it.
+ *
+ * Shared with the server because a slug derived from one of these says nothing
+ * about the document — it is the one slug a rename may still replace.
+ */
+const placeholderDocumentTitles: Readonly<Record<string, string>> = {
+  document: "Untitled Document",
+  canvas: "Untitled Canvas",
+  database: "Untitled Database",
+  workflow: "Untitled Workflow",
+  csv: "Untitled Spreadsheet",
+};
+
+export function placeholderDocumentTitle(type: string | null | undefined): string {
+  return placeholderDocumentTitles[type ?? "document"] ?? "Untitled";
+}
+
+const placeholderSlugs = new Set(
+  [...Object.values(placeholderDocumentTitles), "Untitled"].map(slugify),
+);
+
+/**
+ * Whether a slug still comes from a placeholder title rather than one somebody
+ * chose. The uniquifier the generator appends ("-2") belongs to the placeholder
+ * just as much, so it stays replaceable too.
+ */
+export function isPlaceholderDocumentSlug(slug: string): boolean {
+  return placeholderSlugs.has(slug.replace(/-\d+$/, ""));
 }

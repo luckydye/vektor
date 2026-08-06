@@ -77,7 +77,11 @@ function clearTimer(id: number) {
 
 function scheduleDismiss(id: number, duration: number) {
   clearTimer(id);
-  if (duration > 0) timers.set(id, setTimeout(() => dismiss(id), duration));
+  if (duration > 0)
+    timers.set(
+      id,
+      setTimeout(() => dismiss(id), duration),
+    );
 }
 
 /**

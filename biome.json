@@ -148,7 +148,7 @@
       "!**/public",
       "!**/assets/**/*",
       "!**/dist",
-      "!**/test/frontend/__snapshots__/**"
+      "!**/test/frontend/__snapshots__"
     ]
   }
 }

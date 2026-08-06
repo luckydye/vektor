@@ -1,6 +1,7 @@
 import { type Accessor, createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
+import { placeholderDocumentTitle } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
@@ -84,7 +85,9 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
     mutationFn: async ({ properties }: AddRowMutationVariables) => {
       const id = spaceId();
       if (!id) throw new Error("No space ID");
-      const title = properties?.title ? properties.title : "Untitled";
+      const title = properties?.title
+        ? properties.title
+        : placeholderDocumentTitle("record");
       return await api.documents.post(id, {
         content: "<p></p>",
         type: "record",

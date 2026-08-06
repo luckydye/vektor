@@ -18,7 +18,10 @@ import { BottomBanner } from "#components/BottomBanner.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
 import { CanvasView } from "#components/CanvasView.tsx";
 import { CsvView } from "#components/CsvView.tsx";
-import { DatabaseView } from "#components/DatabaseView.tsx";
+import {
+  DatabaseDocumentView,
+  type DatabaseExtensionView,
+} from "#components/DatabaseDocumentView.tsx";
 import { DocumentActions } from "#components/DocumentActions.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
 import { DocumentExtensionViews } from "#components/DocumentExtensionViews.tsx";
@@ -39,7 +42,7 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
-import { readOnlyDocumentTypes } from "#documents/types.ts";
+import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
 import { formatRelativeTime } from "#utils/datetime.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
@@ -55,15 +58,15 @@ interface Props {
 }
 
 const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
-  database: { title: "Untitled Database", content: "<p></p>" },
+  database: { title: placeholderDocumentTitle("database"), content: "<p></p>" },
   canvas: {
-    title: "Untitled Canvas",
+    title: placeholderDocumentTitle("canvas"),
     content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
   },
   // Workflow content is the script source. It has to be non-empty — the create
   // route rejects empty content — so a new workflow starts as a comment header.
   workflow: {
-    title: "Untitled Workflow",
+    title: placeholderDocumentTitle("workflow"),
     content: [
       "// Workflow script.",
       "// `await runJob(extensionId, jobId, inputs)` runs an extension job and",
@@ -73,7 +76,7 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
   },
   // Spreadsheets are backed by CSV — the create route renders it to the table
   // HTML that gets stored, so this is a header row plus three empty rows.
-  csv: { title: "Untitled Spreadsheet", content: "A,B,C\n,,\n,,\n,,\n" },
+  csv: { title: placeholderDocumentTitle("csv"), content: "A,B,C\n,,\n,,\n,,\n" },
 };
 
 export function DocumentPageView(props: Props) {
@@ -222,6 +225,36 @@ export function DocumentPageView(props: Props) {
     },
   );
 
+  // `Init` spelled out as `undefined`: there is no initial value, and it is only
+  // passed at all because `equals` is the third argument.
+  const databaseViews = createMemo<DatabaseExtensionView[], undefined>(
+    () => {
+      if (isDraft() || !isDatabase()) return [];
+
+      return extensions().flatMap((extension) =>
+        (extension.routes || [])
+          .filter((route) => route.placements?.includes("database"))
+          .map((route) => ({
+            extensionId: extension.id,
+            extensionName: extension.name,
+            route,
+          })),
+      );
+    },
+    undefined,
+    {
+      equals: (a, b) =>
+        a.length === b.length &&
+        a.every(
+          (view, index) =>
+            view.extensionId === b[index]?.extensionId &&
+            view.extensionName === b[index]?.extensionName &&
+            view.route.path === b[index]?.route.path &&
+            view.route.title === b[index]?.route.title,
+        ),
+    },
+  );
+
   const userCanEdit = createMemo(() => canEdit(currentSpace()?.userRole));
 
   const isReadonly = createMemo(() =>
@@ -240,9 +273,8 @@ export function DocumentPageView(props: Props) {
 
   const title = createMemo(() =>
     isDraft()
-      ? (draftTitle() ??
-        (documentType() === "canvas" ? "Untitled Canvas" : "Untitled Document"))
-      : (doc()?.properties?.title as string) || "Untitled Document",
+      ? (draftTitle() ?? placeholderDocumentTitle(documentType()))
+      : (doc()?.properties?.title as string) || placeholderDocumentTitle("document"),
   );
 
   // Header image + its server-derived orientation. The API reads dimensions from
@@ -421,15 +453,19 @@ export function DocumentPageView(props: Props) {
           </Show>
         }
       >
-        {/* A spreadsheet sizes itself to what is left of the window rather than
-            to its content, so for `csv` every box between here and the grid is
-            a flex column that may shrink. Without an unbroken chain the grid has
-            no height to resolve against and has to guess one. */}
-        <div class={twMerge(isCsv() && "flex h-full min-h-0 flex-col")}>
+        {/* Data views size themselves to what is left of the window rather than
+            to their content, so every box between here and the view is a flex
+            column that may shrink. Without an unbroken chain, an extension view
+            whose contents use `height: 100%` resolves to zero height. */}
+        <div
+          class={twMerge(
+            (isCsv() || isDatabase()) && "flex h-full min-h-screen flex-col",
+          )}
+        >
           <inset-view
             class={twMerge(
               "block min-h-0 flex-1",
-              isCsv() && "flex flex-col",
+              (isCsv() || isDatabase()) && "flex flex-col",
               !isCanvas() && "md:mr-(--inset-right) md:ml-(--inset-left)",
             )}
           >
@@ -440,7 +476,7 @@ export function DocumentPageView(props: Props) {
               data-layout={effectiveLayout()}
               class={twMerge(
                 "relative mx-auto flex h-full w-full flex-col",
-                isCsv() && "min-h-0",
+                (isCsv() || isDatabase()) && "min-h-0 flex-1",
                 isCsv() || isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
@@ -555,13 +591,16 @@ export function DocumentPageView(props: Props) {
                 class={twMerge(
                   // Continues the flex column down to the grid; see the wrapper
                   // at the top of this view.
-                  isCsv() && "flex min-h-0 flex-1 flex-col",
+                  (isCsv() || isDatabase()) && "flex min-h-0 flex-1 flex-col",
                   documentRightViews().length > 0 &&
                     "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6",
                 )}
               >
                 <div
-                  class={twMerge("min-w-0", isCsv() && "flex min-h-0 flex-1 flex-col")}
+                  class={twMerge(
+                    "min-w-0",
+                    (isCsv() || isDatabase()) && "flex min-h-0 flex-1 flex-col",
+                  )}
                 >
                   <div
                     class={twMerge(
@@ -617,8 +656,11 @@ export function DocumentPageView(props: Props) {
                           />
                         </Match>
                         <Match when={isDatabase()}>
-                          <DatabaseView
+                          <DatabaseDocumentView
                             databaseDocumentId={doc()?.id as string}
+                            spaceId={currentSpace()?.id as string}
+                            views={databaseViews()}
+                            viewConfig={doc()?.properties._databaseViews}
                             schemaJson={
                               optionalPropertyValueToText(doc()?.properties._schema) ??
                               undefined
@@ -661,6 +703,7 @@ export function DocumentPageView(props: Props) {
 
                 <DocumentExtensionViews
                   views={documentRightViews()}
+                  documentId={doc()?.id as string}
                   spaceId={currentSpace()?.id as string}
                 />
               </div>

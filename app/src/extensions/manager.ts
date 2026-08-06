@@ -18,6 +18,17 @@ import { type ActionOptions, Actions } from "#utils/actions.ts";
 
 export type { SuggestionItem, SuggestionProvider };
 
+export function hasExtensionRoutePlacement(
+  route: ExtensionRoute,
+  placement: NonNullable<ExtensionRoute["placements"]>[number],
+): boolean {
+  const placements = route.placements ?? ["standalone"];
+  return (
+    placements.includes(placement) ||
+    (placement === "standalone" && placements.includes("page"))
+  );
+}
+
 /**
  * Extension API surface exposed to extension code
  *
@@ -529,7 +540,7 @@ export class Extensions {
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
       for (const route of loaded.info.routes) {
-        if (route.menuItem) {
+        if (route.menuItem && hasExtensionRoutePlacement(route, "standalone")) {
           links.push({
             extensionId: loaded.info.id,
             route: route.path,
@@ -551,7 +562,7 @@ export class Extensions {
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
       for (const route of loaded.info.routes) {
-        if (route.path === routePath) {
+        if (route.path === routePath && hasExtensionRoutePlacement(route, "standalone")) {
           return { extension: loaded.info, route };
         }
       }
@@ -641,6 +652,8 @@ export class Extensions {
       return null;
     }
 
+    this.currentRoute = routePath;
+
     // Load view module if not loaded yet
     if (!loaded.viewModule && loaded.info.entries.view && this.spaceId) {
       const assetUrl = getExtensionAssetUrl(
@@ -686,17 +699,13 @@ export class Extensions {
    * Get all routes with specific placement
    */
   getRoutesWithPlacement(
-    placement: "standalone" | "inline" | "document" | "page",
+    placement: "standalone" | "inline" | "document" | "database" | "page",
   ): Array<{ extensionId: string; route: ExtensionRoute }> {
     const routes: Array<{ extensionId: string; route: ExtensionRoute }> = [];
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
       for (const route of loaded.info.routes) {
-        const placements = route.placements || ["standalone"];
-        const matchesPlacement =
-          placements.includes(placement) ||
-          (placement === "standalone" && placements.includes("page"));
-        if (matchesPlacement) {
+        if (hasExtensionRoutePlacement(route, placement)) {
           routes.push({
             extensionId: loaded.info.id,
             route,

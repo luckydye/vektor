@@ -89,7 +89,7 @@ export function UserProfile() {
                 </div>
               </div>
 
-              <div class="p-[4px] space-y-5xs">
+              <div class="space-y-5xs p-[4px]">
                 <button
                   type="button"
                   onClick={() => setPreferencesOpen(true)}

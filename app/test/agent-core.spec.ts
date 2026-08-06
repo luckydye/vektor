@@ -123,7 +123,10 @@ describe("agent model loop", () => {
       messages: [
         { role: "system", content: "Rate the page." },
         { role: "user", content: "<page>" },
-        { role: "assistant", content: "**Bewertung**\n🟨 GELB\n\nspart heute Tonnen an Stre" },
+        {
+          role: "assistant",
+          content: "**Bewertung**\n🟨 GELB\n\nspart heute Tonnen an Stre",
+        },
         { role: "user", content: "Resume from where you stopped." },
       ],
     });
@@ -131,7 +134,10 @@ describe("agent model loop", () => {
     expect(body.system).toBe("Rate the page.");
     expect(body.messages).toEqual([
       { role: "user", content: "<page>" },
-      { role: "assistant", content: "**Bewertung**\n🟨 GELB\n\nspart heute Tonnen an Stre" },
+      {
+        role: "assistant",
+        content: "**Bewertung**\n🟨 GELB\n\nspart heute Tonnen an Stre",
+      },
       { role: "user", content: "Resume from where you stopped." },
     ]);
   });

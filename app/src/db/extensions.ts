@@ -355,7 +355,10 @@ export async function findExtensionForRoute(
   for (const ext of extensions) {
     if (!ext.manifest.routes) continue;
     for (const route of ext.manifest.routes) {
-      if (route.path === routePath) {
+      const placements = route.placements ?? ["standalone"];
+      const isStandalone =
+        placements.includes("standalone") || placements.includes("page");
+      if (route.path === routePath && isStandalone) {
         return { extension: ext, route };
       }
     }

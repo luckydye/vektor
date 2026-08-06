@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { AIChatMessage } from "#api/client.ts";
 import {
@@ -101,32 +101,6 @@ export function AIChatPanel(props: Props) {
     scrollToBottom: () => messagesRef()?.scrollToBottom(),
     reconnectSession: (pendingUserMessage) => reconnectSession(pendingUserMessage),
   });
-
-  // ── UI state persistence ────────────────────────────────────────────────────
-
-  function loadUIState() {
-    // State is now managed by useDockedWindows with localStorage persistence.
-    // Migrate the old state format if present.
-    const saved = localStorage.getItem("ai-chat-ui-state");
-    if (!saved) return;
-    try {
-      const parsed = JSON.parse(saved) as {
-        isOpen?: boolean;
-        isDocked?: boolean;
-        dockSide?: "left" | "right";
-      };
-      if (parsed.isOpen) {
-        toggleWindow("ai-chat", {
-          mode: parsed.isDocked ? "docked" : "floating",
-          side: parsed.dockSide ?? "right",
-          width: 380,
-        });
-      }
-      localStorage.removeItem("ai-chat-ui-state");
-    } catch {
-      localStorage.removeItem("ai-chat-ui-state");
-    }
-  }
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
 
@@ -286,10 +260,6 @@ export function AIChatPanel(props: Props) {
       });
     }),
   );
-
-  onMount(() => {
-    loadUIState();
-  });
 
   return (
     <DockedPanel id="ai-chat" title="AI Assistant" defaultSide="right" defaultWidth={380}>

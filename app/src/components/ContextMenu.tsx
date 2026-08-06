@@ -17,7 +17,12 @@ export function ContextMenu(props: Props) {
 
   return (
     <a-popover-trigger class="group relative z-10 flex-none">
-      <Button variant="secondary" slot="trigger" ariaLabel={t("Document actions")} class="px-4xs">
+      <Button
+        variant="secondary"
+        slot="trigger"
+        ariaLabel={t("Document actions")}
+        class="px-4xs"
+      >
         <Icon name="context-menu-more" />
       </Button>
 

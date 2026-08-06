@@ -227,9 +227,9 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, or "document" beside standard documents. */
+  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, "document" beside standard documents, or "database" as a selectable database view. */
   placements?: Array<
-    "standalone" | "inline" | "document" | DeprecatedPageExtensionPlacement
+    "standalone" | "inline" | "document" | "database" | DeprecatedPageExtensionPlacement
   >;
 }
 

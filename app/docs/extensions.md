@@ -56,8 +56,21 @@ Define standalone views your extension provides. Routes are accessible at `/:spa
 
 Set `placements` on a route to render it in additional locations. `"standalone"` is
 the default, `"inline"` makes it available through the Add Content menu, and
-`"document"` renders it beside standard documents on desktop.
+`"document"` renders it beside standard documents on desktop. `"database"` adds
+it to the database's **+ View** picker; after a user adds and selects it,
+`ctx.documentId` is the current database document ID while the view is mounted.
 `"page"` remains accepted as a deprecated alias for `"standalone"`.
+
+For example, a Kanban view that is only available on databases uses one
+placement:
+
+```json
+{
+  "path": "kanban",
+  "title": "Kanban",
+  "placements": ["database"]
+}
+```
 
 ### Menu Items
 
@@ -109,6 +122,7 @@ The context object passed to `activate` and `deactivate`:
 | `extensionId` | `string` | Your extension's ID |
 | `spaceId` | `string` | Current space ID |
 | `route` | `string \| null` | Current route path if rendering a view |
+| `documentId` | `string \| null` | Current document ID for an embedded document/database view |
 | `api` | `ApiClient` | Vektor API client |
 | `actions` | `Actions` | Action registration |
 | `views` | `Views` | View registration for custom routes |
@@ -190,7 +204,10 @@ type ViewRenderFn = (
 ) => void | (() => void) | Promise<void | (() => void)>;
 ```
 
-Views are rendered when navigating to `/:spaceSlug/x/:routePath`. The extension is activated if not already loaded, then the registered view renderer is called.
+Views are rendered when navigating to `/:spaceSlug/x/:routePath` or when a host
+placement such as `"inline"`, `"document"`, or `"database"` selects the route.
+The extension is activated if not already loaded, then the registered view
+renderer is called.
 
 ### Using a Framework
 

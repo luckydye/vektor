@@ -278,10 +278,12 @@ function innermost(node: DocNode | undefined, depth: number): DocNode | null {
 // ---------------------------------------------------------------------------
 
 export function normalizeDocument(doc: DocNode): DocNode {
-  return normalizeNode(doc) ?? {
-    type: "doc",
-    content: [emptyNode("paragraph") as DocNode],
-  };
+  return (
+    normalizeNode(doc) ?? {
+      type: "doc",
+      content: [emptyNode("paragraph") as DocNode],
+    }
+  );
 }
 
 function normalizeNode(node: DocNode, depth = 0): DocNode | null {
