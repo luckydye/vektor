@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import type { UIMessage } from "#composeables/useChatSessions.ts";
+import type { AIChatMessage } from "#api/client.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import {
   formatCollapsedToolInput,
@@ -24,7 +24,7 @@ export interface AIChatMessagesHandle {
 }
 
 interface Props {
-  messages: UIMessage[];
+  messages: AIChatMessage[];
   isGenerating: boolean;
   sessionStartedAt: number | null;
   ref?: (handle: AIChatMessagesHandle) => void;
@@ -49,7 +49,7 @@ export function AIChatMessages(props: Props) {
   let clearCopiedAssistantMessageTimer: ReturnType<typeof setTimeout> | null = null;
 
   const waitingState = createMemo(
-    (): { kind: "tool_executing"; tool: UIMessage } | { kind: "waiting" } | null => {
+    (): { kind: "tool_executing"; tool: AIChatMessage } | { kind: "waiting" } | null => {
       if (!props.isGenerating) return null;
       const last = props.messages.at(-1);
       if (last?.role === "tool" && last.toolPhase === "call") {
@@ -67,19 +67,19 @@ export function AIChatMessages(props: Props) {
   );
 
   /** Bound to the live conversation: a tool result names its call by id only. */
-  function toolPreview(message: UIMessage): string {
+  function toolPreview(message: AIChatMessage): string {
     return formatToolPreview(message, props.messages);
   }
 
-  function collapsedToolInput(message: UIMessage): string {
+  function collapsedToolInput(message: AIChatMessage): string {
     return formatCollapsedToolInput(message, props.messages);
   }
 
-  function isToolMessageExpanded(message: UIMessage, index: number): boolean {
+  function isToolMessageExpanded(message: AIChatMessage, index: number): boolean {
     return expandedToolMessages().has(getToolMessageKey(message, index));
   }
 
-  function toggleToolMessageExpanded(message: UIMessage, index: number) {
+  function toggleToolMessageExpanded(message: AIChatMessage, index: number) {
     const key = getToolMessageKey(message, index);
     const next = new Set(expandedToolMessages());
     if (next.has(key)) next.delete(key);
@@ -87,7 +87,7 @@ export function AIChatMessages(props: Props) {
     setExpandedToolMessages(next);
   }
 
-  async function copyAssistantMessage(message: UIMessage) {
+  async function copyAssistantMessage(message: AIChatMessage) {
     let copied = false;
     try {
       if (navigator.clipboard?.writeText) {

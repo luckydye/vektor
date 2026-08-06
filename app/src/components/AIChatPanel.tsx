@@ -1,12 +1,12 @@
 import { createEffect, createMemo, createSignal, on, onMount, Show } from "solid-js";
 import { createStore } from "solid-js/store";
+import type { AIChatMessage } from "#api/client.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
   useAIChat,
 } from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
-import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
@@ -64,7 +64,7 @@ export function AIChatPanel(props: Props) {
   const isOpen = createMemo(() => dockedWindows().get("ai-chat")?.open ?? false);
   const [messageInput, setMessageInput] = createSignal("");
   const [messagesRef, setMessagesRef] = createSignal<AIChatMessagesHandle | null>(null);
-  const [messages, setMessages] = createStore<UIMessage[]>([]);
+  const [messages, setMessages] = createStore<AIChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [messageInputEl, setMessageInputEl] = createSignal<MessageInputHandle | null>(
     null,

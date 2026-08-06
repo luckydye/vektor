@@ -1,8 +1,7 @@
 import type { Accessor } from "solid-js";
 import type { SetStoreFunction } from "solid-js/store";
 import { produce } from "solid-js/store";
-import { api } from "#api/client.ts";
-import type { UIMessage } from "#composeables/useChatSessions.ts";
+import { type AIChatMessage, api } from "#api/client.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 
@@ -30,8 +29,8 @@ export function useAIChat(options: {
    * per-message write (`setMessages(i, "content", …)`) is what keeps rendering
    * to the one bubble that changed.
    */
-  messages: Accessor<UIMessage[]>;
-  setMessages: SetStoreFunction<UIMessage[]>;
+  messages: Accessor<AIChatMessage[]>;
+  setMessages: SetStoreFunction<AIChatMessage[]>;
   isGenerating: Accessor<boolean>;
   setIsGenerating: (value: boolean) => void;
   refreshCurrentSession: () => Promise<void>;
@@ -40,7 +39,7 @@ export function useAIChat(options: {
 }) {
   let abortController: AbortController | null = null;
 
-  function pushMessage(message: UIMessage): number {
+  function pushMessage(message: AIChatMessage): number {
     const index = options.messages().length;
     options.setMessages(index, message);
     return index;

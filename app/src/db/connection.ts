@@ -16,7 +16,7 @@ declare global {
   var __vektor_auth_db: Database | undefined;
 }
 
-function filePathFromDatabaseUrl(databaseUrl: string): string | null {
+export function getDatabaseFilePath(databaseUrl: string): string | null {
   if (!databaseUrl.startsWith("file:") || databaseUrl.startsWith("file::memory:")) {
     return null;
   }
@@ -30,7 +30,7 @@ function filePathFromDatabaseUrl(databaseUrl: string): string | null {
 }
 
 function ensureLocalDatabaseDirectory(databaseUrl: string): void {
-  const databasePath = filePathFromDatabaseUrl(databaseUrl);
+  const databasePath = getDatabaseFilePath(databaseUrl);
   if (!databasePath) return;
   const directory = path.dirname(databasePath);
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true });
@@ -60,10 +60,6 @@ export function getLocalSpacesDirectory(): string {
 
 export function getLocalSpaceDatabaseUrl(spaceId: string): string {
   return `file:./data/spaces/${spaceId}.db`;
-}
-
-export function getDatabaseFilePath(databaseUrl: string): string | null {
-  return filePathFromDatabaseUrl(databaseUrl);
 }
 
 export function withoutDatabaseCredentials(databaseUrl: string): string {
