@@ -250,9 +250,7 @@ export function CommandPalatte() {
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
               onKeyDown={handleKeydown}
             />
-            <kbd class="hidden rounded-sm border border-neutral-100 px-1.5 py-0.5 font-mono text-neutral text-size-extra-small sm:inline-block">
-              ESC
-            </kbd>
+            <a-shortcut class="hidden sm:flex" attr:data-shortcut="esc" />
           </div>
 
           <div ref={resultsContainer} class="max-h-[400px] overflow-y-auto py-1">
@@ -360,23 +358,22 @@ export function CommandPalatte() {
 
           <div class="flex items-center justify-between rounded-b-xl border-neutral-100 border-t bg-neutral-50 px-4 py-2 text-neutral text-size-extra-small">
             <div class="flex items-center gap-3">
-              <span class="flex items-center gap-1">
-                <kbd class="rounded-sm border border-neutral-100 bg-background px-1.5 py-0.5 font-mono">
-                  ↑↓
-                </kbd>
+              <span class="flex pointer-coarse:hidden items-center gap-1">
+                <a-shortcut attr:data-shortcut="↑-↓" />
                 Navigate
               </span>
-              <span class="flex items-center gap-1">
-                <kbd class="rounded-sm border border-neutral-100 bg-background px-1.5 py-0.5 font-mono">
-                  ↵
-                </kbd>
+              <span class="flex pointer-coarse:hidden items-center gap-1">
+                <a-shortcut attr:data-shortcut="↵" />
                 Select
               </span>
             </div>
-            <span class="flex items-center gap-1">
-              <kbd class="rounded-sm border border-neutral-100 bg-background px-1.5 py-0.5 font-mono">
-                ⌘K
-              </kbd>
+            <span class="flex pointer-coarse:hidden items-center gap-1">
+              <a-shortcut
+                attr:data-shortcut={
+                  Actions.getShortcutsForAction("ui:toggle:palatte")?.values().next()
+                    .value
+                }
+              />
               Toggle
             </span>
           </div>

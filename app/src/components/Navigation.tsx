@@ -123,10 +123,7 @@ export function Navigation() {
         />
       </div>
 
-      <wiki-scroll
-        name="navigation"
-        class="min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden"
-      >
+      <div class="min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden">
         <nav class="@container flex flex-col gap-3xs">
           <div class="flex flex-none flex-col gap-0.5 px-3xs pt-5xs">
             <div class="flex items-center gap-px">
@@ -202,7 +199,7 @@ export function Navigation() {
             <DocumentTree ref={setDocumentTree} />
           </div>
         </nav>
-      </wiki-scroll>
+      </div>
 
       <div class="relative flex flex-none items-center px-1 py-3">
         <UserProfile />

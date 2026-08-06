@@ -362,8 +362,10 @@ export function Icon(props: Props) {
     return "";
   };
   // `svg-icon` carries the display and the rule that makes the glyph fill the
-  // box; callers add size and colour, not mechanics.
-  const className = () => twMerge("svg-icon", props.class);
+  // box. Safari can otherwise resolve an SVG's intrinsic dimensions through
+  // the surrounding flex row, producing an oversized icon. A concrete default
+  // box prevents that; a caller's `h-*` / `w-*` utilities still win.
+  const className = () => twMerge("svg-icon h-[1.35em] w-[1.35em]", props.class);
 
   // The server has no DOM to clone from, and the markup has to reach the
   // response so the shell paints its icons before hydration. Both branches

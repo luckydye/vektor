@@ -112,7 +112,6 @@ declare module "solid-js" {
       // Fixtures for test/frontend/custom-elements.vitest.tsx.
       "test-prop-only": CustomElementAttributes;
       "test-attr-only": CustomElementAttributes;
-      "wiki-scroll": CustomElementAttributes;
     }
   }
 }
