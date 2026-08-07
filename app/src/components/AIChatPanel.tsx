@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { createStore } from "solid-js/store";
-import type { AIChatMessage } from "#api/client.ts";
+import { type AIChatMessage, isUploadAborted } from "#api/client.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
@@ -173,9 +173,13 @@ export function AIChatPanel(props: Props) {
           };
         });
       } catch (error) {
-        setUploadError(
-          error instanceof Error ? error.message : "Failed to upload attachments",
-        );
+        // A cancellation is reported by the toast the user cancelled from;
+        // repeating it as an inline error would read as something going wrong.
+        if (!isUploadAborted(error)) {
+          setUploadError(
+            error instanceof Error ? error.message : "Failed to upload attachments",
+          );
+        }
         setIsUploadingFiles(false);
         return;
       } finally {

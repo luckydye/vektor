@@ -9,6 +9,12 @@ export interface Toast {
   progress?: number;
   action?: ToastAction;
   /**
+   * Called when the user presses the toast's cancel button, which is shown only
+   * while this is set. Aborting the work is all it does — whoever raised the
+   * toast owns what the row says next, and when it leaves.
+   */
+  cancel?: () => void;
+  /**
    * How many identical raises this row stands for. Absent or 1 for a plain
    * toast; the container shows a badge from 2 up.
    */
@@ -97,6 +103,7 @@ function mergeTarget(message: string, type: Toast["type"]): Toast | undefined {
       toast.message === message &&
       toast.type === type &&
       !toast.action &&
+      !toast.cancel &&
       toast.progress === undefined,
   );
 }
@@ -107,7 +114,7 @@ export function useToast(): {
     message: string,
     type?: Toast["type"],
     duration?: number,
-    options?: { progress?: number; action?: ToastAction },
+    options?: { progress?: number; action?: ToastAction; cancel?: () => void },
   ) => number;
   update: (
     id: number,
@@ -124,12 +131,12 @@ export function useToast(): {
     message: string,
     type: Toast["type"] = "info",
     duration = 4000,
-    options?: { progress?: number; action?: ToastAction },
+    options?: { progress?: number; action?: ToastAction; cancel?: () => void },
   ) {
     // A flood of the same message — one failed request per row of a batch, say —
     // collapses into the row already on screen: bump its count, restart its
     // timer, and stay quiet rather than replaying the sound per repeat.
-    if (!options?.action && options?.progress === undefined) {
+    if (!options?.action && !options?.cancel && options?.progress === undefined) {
       const existing = mergeTarget(message, type);
       if (existing) {
         setState(
@@ -150,6 +157,7 @@ export function useToast(): {
       type,
       progress: options?.progress,
       action: options?.action,
+      cancel: options?.cancel,
     });
     scheduleDismiss(id, duration);
 

@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { api } from "#api/client.ts";
+import { api, isUploadAborted } from "#api/client.ts";
 import { t } from "#utils/lang.ts";
 import { type ToastAction, useToast } from "./useToast.ts";
 
@@ -77,6 +77,27 @@ export function useUploads() {
     setActiveUploads(activeUploads().filter((upload) => upload.id !== id));
   }
 
+  /**
+   * Report the outcome of a cancelled upload.
+   *
+   * Deliberately not `notifyError`: the user asked for this, so it is stated
+   * plainly and briefly, and the progress bar and cancel button both go — there
+   * is nothing left to progress or to cancel.
+   */
+  function notifyCancelled(toastId: number | null) {
+    if (toastId == null) return;
+    toast.update(
+      toastId,
+      {
+        message: t("Upload cancelled"),
+        type: "info",
+        progress: undefined,
+        cancel: undefined,
+      },
+      { duration: 2000 },
+    );
+  }
+
   function notifyError(toastId: number | null, showError: boolean, error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     if (!showError) {
@@ -87,7 +108,7 @@ export function useUploads() {
     if (toastId != null) {
       toast.update(
         toastId,
-        { message: text, type: "error", progress: 1 },
+        { message: text, type: "error", progress: 1, cancel: undefined },
         { duration: 5000 },
       );
     } else {
@@ -104,8 +125,12 @@ export function useUploads() {
     const showProgress = options.progressToast !== false;
     const showError = options.errorToast !== false;
     const entry = track(label);
+    const controller = new AbortController();
     const toastId = showProgress
-      ? toast.show(`${t("Uploading")} ${label}`, "info", 0, { progress: 0 })
+      ? toast.show(`${t("Uploading")} ${label}`, "info", 0, {
+          progress: 0,
+          cancel: () => controller.abort(),
+        })
       : null;
 
     try {
@@ -115,6 +140,7 @@ export function useUploads() {
         file.name || label,
         options.documentId,
         {
+          signal: controller.signal,
           onProgress: (progress) => {
             patchUpload(entry.id, { progress });
             if (toastId != null) toast.update(toastId, { progress });
@@ -133,6 +159,7 @@ export function useUploads() {
             type: "success",
             progress: 1,
             action: successToast?.action?.(result),
+            cancel: undefined,
           },
           { duration: successToast?.duration ?? 2000 },
         );
@@ -140,7 +167,8 @@ export function useUploads() {
       return result;
     } catch (error) {
       patchUpload(entry.id, { status: "error" });
-      notifyError(toastId, showError, error);
+      if (isUploadAborted(error)) notifyCancelled(toastId);
+      else notifyError(toastId, showError, error);
       throw error;
     } finally {
       untrack(entry.id);
@@ -161,8 +189,14 @@ export function useUploads() {
     const showProgress = options.progressToast !== false;
     const showError = options.errorToast !== false;
     const label = options.label ?? `${files.length} ${t("files")}`;
+    // One controller for the batch: the toast is aggregated, so cancelling it
+    // cancels the whole thing rather than an arbitrary file of it.
+    const controller = new AbortController();
     const toastId = showProgress
-      ? toast.show(`${t("Uploading")} ${label}`, "info", 0, { progress: 0 })
+      ? toast.show(`${t("Uploading")} ${label}`, "info", 0, {
+          progress: 0,
+          cancel: () => controller.abort(),
+        })
       : null;
 
     const progresses = new Array(files.length).fill(0);
@@ -184,6 +218,7 @@ export function useUploads() {
               file.name || "file",
               options.documentId,
               {
+                signal: controller.signal,
                 onProgress: (progress) => {
                   progresses[index] = progress;
                   patchUpload(entries[index].id, { progress });
@@ -200,7 +235,12 @@ export function useUploads() {
       if (toastId != null) {
         toast.update(
           toastId,
-          { message: t("Upload complete"), type: "success", progress: 1 },
+          {
+            message: t("Upload complete"),
+            type: "success",
+            progress: 1,
+            cancel: undefined,
+          },
           { duration: 2000 },
         );
       }
@@ -209,7 +249,8 @@ export function useUploads() {
       for (const entry of entries) {
         patchUpload(entry.id, { status: "error" });
       }
-      notifyError(toastId, showError, error);
+      if (isUploadAborted(error)) notifyCancelled(toastId);
+      else notifyError(toastId, showError, error);
       throw error;
     } finally {
       for (const entry of entries) {

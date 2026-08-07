@@ -142,3 +142,41 @@ describe("toast removal", () => {
     expect(toastNodes()).toHaveLength(0);
   });
 });
+
+describe("toast cancel button", () => {
+  function cancelButton(): HTMLButtonElement | null {
+    return document.body.querySelector("#toast-container button[aria-label='Cancel']");
+  }
+
+  it("runs the cancel callback when pressed", async () => {
+    const cancel = vi.fn();
+    toast.show("Uploading report.pdf", "info", 0, { progress: 0.4, cancel });
+    await settle();
+
+    const button = cancelButton();
+    expect(button).not.toBeNull();
+    button?.click();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the button once the raiser clears the callback", async () => {
+    // How an upload retires the button on completion: it patches `cancel` away,
+    // and there must be nothing left to press on a finished transfer.
+    const id = toast.show("Uploading report.pdf", "info", 0, {
+      progress: 0.9,
+      cancel: () => {},
+    });
+    await settle();
+    expect(cancelButton()).not.toBeNull();
+
+    toast.update(id, { message: "Upload complete", type: "success", cancel: undefined });
+    await settle();
+    expect(cancelButton()).toBeNull();
+  });
+
+  it("stays absent on a plain toast", async () => {
+    toast.show("Saved", "success", 0);
+    await settle();
+    expect(cancelButton()).toBeNull();
+  });
+});

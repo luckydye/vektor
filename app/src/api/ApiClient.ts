@@ -570,6 +570,23 @@ interface PresenceSubscription<TState = unknown> {
   callback: (event: PresenceMessage<TState>) => void;
 }
 
+/**
+ * The rejection an aborted upload produces.
+ *
+ * A cancellation is not a failure: callers tell the two apart with
+ * `isUploadAborted` so they can drop their placeholder without reporting an
+ * error the user caused on purpose.
+ */
+function uploadAbortError(): Error {
+  const error = new Error("Upload cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+export function isUploadAborted(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export class ApiClient {
   baseUrl: string;
   accessToken?: string;
@@ -1514,7 +1531,7 @@ export class ApiClient {
       file: File | Blob,
       filename?: string,
       documentId?: string,
-      options?: { onProgress?: (progress: number) => void },
+      options?: { onProgress?: (progress: number) => void; signal?: AbortSignal },
     ) => {
       const formData = new FormData();
       formData.append("file", file, filename);
@@ -1526,8 +1543,25 @@ export class ApiClient {
       // fetch has no way to observe how much of the request body has been sent.
       return await new Promise<{ url: string; [key: string]: unknown }>(
         (resolve, reject) => {
+          const signal = options?.signal;
+          if (signal?.aborted) {
+            reject(uploadAbortError());
+            return;
+          }
+
           const xhr = new XMLHttpRequest();
           xhr.open("POST", `/api/v1/spaces/${spaceId}/uploads`);
+
+          if (signal) {
+            const abort = () => xhr.abort();
+            signal.addEventListener("abort", abort, { once: true });
+            // Both terminal events fire after `abort()` too, so the listener is
+            // dropped from either — an aborted signal outlives this request.
+            xhr.addEventListener("loadend", () =>
+              signal.removeEventListener("abort", abort),
+            );
+            xhr.addEventListener("abort", () => reject(uploadAbortError()));
+          }
 
           if (options?.onProgress) {
             xhr.upload.addEventListener("progress", (event) => {
