@@ -39,19 +39,21 @@ export function SpaceSettings() {
       initialTab={tabFromHash()}
       onTabChange={setTab}
       panels={{
-        general: () =>  <>
-          <section>
-            <h2 class="mb-3 font-semibold text-neutral-900 text-size-large">
-              Space Settings
-            </h2>
-            <p class="mt-1 text-neutral-900 text-size-medium">
-              Personalize your space with settings and preferences.
-            </p>
-            <div class="pt-6">
-              <SpaceGeneralSettings />
-            </div>
-          </section>
-        </>,
+        general: () => (
+          <>
+            <section>
+              <h2 class="mb-3 font-semibold text-neutral-900 text-size-large">
+                Space Settings
+              </h2>
+              <p class="mt-1 text-neutral-900 text-size-medium">
+                Personalize your space with settings and preferences.
+              </p>
+              <div class="pt-6">
+                <SpaceGeneralSettings />
+              </div>
+            </section>
+          </>
+        ),
         integrations: () => (
           <>
             <section>

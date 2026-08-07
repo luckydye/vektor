@@ -1,4 +1,5 @@
 import { type Accessor, createMemo, createSignal } from "solid-js";
+import { readStored, writeStored } from "#utils/clientStorage.ts";
 
 export interface DockedWindowState {
   mode: "docked" | "floating";
@@ -12,20 +13,6 @@ export interface DockedWindowState {
 
 function storageKey(id: string) {
   return `docked-window:${id}`;
-}
-
-function loadState(id: string): DockedWindowState | null {
-  const saved = localStorage.getItem(storageKey(id));
-  if (!saved) return null;
-  try {
-    return JSON.parse(saved);
-  } catch {
-    return null;
-  }
-}
-
-function saveState(id: string, state: DockedWindowState) {
-  localStorage.setItem(storageKey(id), JSON.stringify(state));
 }
 
 /**
@@ -65,7 +52,7 @@ function update(id: string, patch: Partial<DockedWindowState>) {
   if (!current) throw new Error(`Window "${id}" not registered`);
   const next = { ...current, ...patch };
   writeWindows((map) => map.set(id, next));
-  saveState(id, next);
+  writeStored(storageKey(id), next);
 }
 
 // Register a window (on mount) — respects persisted open state
@@ -82,7 +69,7 @@ function register(
   };
   writeWindows((map) => map.set(id, state));
 
-  const persisted = loadState(id);
+  const persisted = readStored<DockedWindowState>(storageKey(id));
   if (persisted) {
     queueMicrotask(() => {
       if (!windows().has(id)) return;

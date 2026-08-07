@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { withPinnedYjsSeed } from "#documents/yjsSeed.ts";
 
 /**
  * Seeds a canvas Y.Doc from persisted content. The server is the only caller —
@@ -13,8 +14,6 @@ import * as Y from "yjs";
  * reloaded yields the same structure). The doc's real, unique clientID is
  * restored before any live edit so concurrent edits still merge normally.
  */
-const SEED_CLIENT_ID = 1;
-
 export const CANVAS_SHAPES_KEY = "canvas.shapes";
 export const CANVAS_STROKES_KEY = "canvas.strokes";
 
@@ -92,8 +91,8 @@ function seedStroke(target: Y.Map<Y.Map<unknown>>, stroke: RawStroke): void {
 
 /**
  * Seeds a canvas Y.Doc from a parsed snapshot deterministically. Assumes the
- * target maps are empty (the only real seed path). Runs under SEED_CLIENT_ID so
- * every party produces identical Yjs state, then restores the doc's own
+ * target maps are empty (the only real seed path). Runs under the shared seed
+ * client id so every party produces identical Yjs state, then restores the doc's own
  * clientID for subsequent live edits.
  */
 export function seedCanvasDoc(
@@ -106,9 +105,7 @@ export function seedCanvasDoc(
   const strokes = Array.isArray(parsed.strokes) ? parsed.strokes : [];
   if (shapes.length === 0 && strokes.length === 0) return;
 
-  const liveClientId = ydoc.clientID;
-  ydoc.clientID = SEED_CLIENT_ID;
-  try {
+  withPinnedYjsSeed(ydoc, () => {
     ydoc.transact(() => {
       const shapeMap = ydoc.getMap<Y.Map<unknown>>(CANVAS_SHAPES_KEY);
       const strokeMap = ydoc.getMap<Y.Map<unknown>>(CANVAS_STROKES_KEY);
@@ -120,11 +117,7 @@ export function seedCanvasDoc(
           seedStroke(strokeMap, stroke as RawStroke);
       }
     }, origin);
-  } finally {
-    // Guard the astronomically unlikely case where the doc's own id collides
-    // with the seed id — live edits must never share SEED_CLIENT_ID.
-    ydoc.clientID = liveClientId === SEED_CLIENT_ID ? SEED_CLIENT_ID + 1 : liveClientId;
-  }
+  });
 }
 
 export function parseCanvasContent(

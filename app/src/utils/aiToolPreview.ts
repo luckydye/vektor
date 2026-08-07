@@ -1,4 +1,4 @@
-import type { UIMessage } from "#composeables/useChatSessions.ts";
+import type { AIChatMessage } from "#api/client.ts";
 
 /**
  * Turning an agent tool call or its result into the one-line preview the chat
@@ -29,7 +29,7 @@ export function parseToolResultContent(content: string): unknown {
   }
 }
 
-export function getBashCommandFromToolCallMessage(message: UIMessage): string | null {
+export function getBashCommandFromToolCallMessage(message: AIChatMessage): string | null {
   if (message.toolName !== "bash" || message.toolPhase !== "call") {
     return null;
   }
@@ -39,8 +39,8 @@ export function getBashCommandFromToolCallMessage(message: UIMessage): string | 
 }
 
 export function findBashCommandForResultMessage(
-  message: UIMessage,
-  messages: readonly UIMessage[],
+  message: AIChatMessage,
+  messages: readonly AIChatMessage[],
 ): string | null {
   if (message.toolName !== "bash" || message.toolPhase !== "result") {
     return null;
@@ -59,9 +59,9 @@ export function findBashCommandForResultMessage(
 }
 
 export function formatBashResultPreview(
-  message: UIMessage,
+  message: AIChatMessage,
   result: unknown,
-  messages: readonly UIMessage[],
+  messages: readonly AIChatMessage[],
 ): string {
   const output =
     typeof result === "string"
@@ -126,8 +126,8 @@ export function summarizeCollectionResult(value: unknown): string | null {
 }
 
 export function formatToolPreview(
-  message: UIMessage,
-  messages: readonly UIMessage[],
+  message: AIChatMessage,
+  messages: readonly AIChatMessage[],
 ): string {
   if (message.toolPhase === "call") {
     const args = parseToolArguments(message.content);
@@ -216,21 +216,21 @@ export function formatToolPreview(
 }
 
 export function formatCollapsedToolInput(
-  message: UIMessage,
-  messages: readonly UIMessage[],
+  message: AIChatMessage,
+  messages: readonly AIChatMessage[],
 ): string {
   if (message.toolPhase !== "call") return "";
   const preview = formatToolPreview(message, messages).replace(/\s+/g, " ").trim();
   return preview.length > 120 ? `${preview.slice(0, 119)}…` : preview;
 }
 
-export function getToolMessageKey(message: UIMessage, index: number): string {
+export function getToolMessageKey(message: AIChatMessage, index: number): string {
   return message.toolCallId
     ? `${message.toolCallId}:${message.toolPhase ?? "unknown"}`
     : `tool:${index}:${message.timestamp}`;
 }
 
-export function getMessageKey(message: UIMessage, index: number): string {
+export function getMessageKey(message: AIChatMessage, index: number): string {
   if (message.role === "tool") {
     return getToolMessageKey(message, index);
   }

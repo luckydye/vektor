@@ -358,7 +358,7 @@ export function RevisionsSidebar(props: Props) {
               </div>
             }
           >
-            <wiki-scroll class="flex-1 overflow-y-auto" data-scroll-container>
+            <div class="flex-1 overflow-y-auto" data-scroll-container>
               <div class="px-2 py-2">
                 <DocumentActivityFeed
                   entries={sortedEntries()}
@@ -464,7 +464,7 @@ export function RevisionsSidebar(props: Props) {
                   )}
                 />
               </div>
-            </wiki-scroll>
+            </div>
           </Show>
         </Show>
 

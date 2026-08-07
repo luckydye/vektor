@@ -140,6 +140,21 @@ export function DocumentContent(props: Props) {
 
   resetEditingState();
 
+  // Edit mode is per document, but this component is not: `DocumentPageView`
+  // only tears its subtree down while the next document is being fetched, so
+  // navigating to an already-cached document swaps the id under the same
+  // instance and the mount-time decision above never runs again. Re-decide on
+  // every id change — before `useEditor`'s own id effect, which would otherwise
+  // restart the leftover session against the new document.
+  createEffect(
+    on(documentId, (currentDocumentId, previousDocumentId) => {
+      if (currentDocumentId === previousDocumentId) return;
+      autoEditModeApplied = false;
+      resetEditingState();
+      maybeStartAutoEditMode();
+    }),
+  );
+
   const collaboration = useCollaboration<DocumentPresenceState>({
     spaceId: props.spaceId,
     documentId,
@@ -343,7 +358,7 @@ export function DocumentContent(props: Props) {
   let toolbarActionsRegistered = false;
   let leaveToolbarActionSubscriptions: Array<() => void> = [];
   let formattingActionsRegistered = false;
-  let autoEditModeAppliedForDocumentId: string | undefined | null;
+  let autoEditModeApplied = false;
 
   function registerEditorActions() {
     if (formattingActionsRegistered) return;
@@ -399,14 +414,9 @@ export function DocumentContent(props: Props) {
   }
 
   function maybeStartAutoEditMode() {
-    const currentDocumentId = documentId() ?? null;
-    if (
-      shouldAutoStartEditMode() &&
-      autoEditModeAppliedForDocumentId !== currentDocumentId
-    ) {
-      autoEditModeAppliedForDocumentId = currentDocumentId;
-      setEditing(true);
-    }
+    if (autoEditModeApplied || !shouldAutoStartEditMode()) return;
+    autoEditModeApplied = true;
+    setEditing(true);
   }
 
   createEffect(

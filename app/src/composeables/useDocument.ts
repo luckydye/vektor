@@ -7,7 +7,7 @@ import {
   useContext,
 } from "solid-js";
 import { api } from "#api/client.ts";
-import { supportsDocumentEditor } from "#documents/types.ts";
+import { placeholderDocumentTitle, supportsDocumentEditor } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { access, type MaybeAccessor, useMutation, useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
@@ -197,8 +197,7 @@ export function useDocument(
         await api.document.put(spaceId, docId, content, { publish });
         return { content, isNew: false };
       } else {
-        const defaultTitle =
-          documentType() === "canvas" ? "Untitled Canvas" : "Untitled Document";
+        const defaultTitle = placeholderDocumentTitle(documentType());
         const params = new URLSearchParams(window.location.search);
         // `?title=` is how the command palette seeds a draft. It is a fallback
         // behind `pendingTitle` — the title editor only reports a change when the

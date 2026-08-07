@@ -1,21 +1,18 @@
 import { type Accessor, createEffect, createMemo, createSignal } from "solid-js";
 import type { SetStoreFunction } from "solid-js/store";
 import {
-  type ChatSession,
-  type ChatSessionSummary,
-  deleteSession,
-  getSession,
-  getSessionsForSpace,
-  saveSession,
-  type UIMessage,
-} from "./useChatSessions.ts";
+  type AIChatMessage,
+  type AIChatSession,
+  type AIChatSessionListEntry,
+  api,
+} from "#api/client.ts";
 
 const welcomeMessage = "Hello! I'm here to help you with this document. Ask me anything!";
 
 type SessionStatus = "generating" | "awaiting" | "idle";
 
 /** The list's view of a session we happen to hold in full. */
-function toSummary(session: ChatSession): ChatSessionSummary {
+function toSummary(session: AIChatSession): AIChatSessionListEntry {
   const lastMessage = (session.conversationHistory as Array<{ role: string }>).at(-1);
   return {
     id: session.id,
@@ -40,22 +37,22 @@ export function useChatSessionHandling(options: {
    * stream appends to it token by token: `setMessages(i, "content", …)` touches
    * one message, where replacing the array would rerender the whole list.
    */
-  messages: Accessor<UIMessage[]>;
-  setMessages: SetStoreFunction<UIMessage[]>;
+  messages: Accessor<AIChatMessage[]>;
+  setMessages: SetStoreFunction<AIChatMessage[]>;
   isGenerating: Accessor<boolean>;
   resetDraft: () => void;
   scrollToBottom: () => void;
   reconnectSession: (pendingUserMessage: string) => void | Promise<void>;
 }) {
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
-  const [sessions, setSessions] = createSignal<ChatSessionSummary[]>([]);
+  const [sessions, setSessions] = createSignal<AIChatSessionListEntry[]>([]);
   const [showSessionPicker, setShowSessionPicker] = createSignal(false);
   const sessionStartedAt = createMemo(() => {
     const session = sessions().find((item) => item.id === currentSessionId());
     return session?.createdAt ?? options.messages()[0]?.timestamp ?? null;
   });
 
-  function normalizeSavedMessage(message: UIMessage): UIMessage {
+  function normalizeSavedMessage(message: AIChatMessage): AIChatMessage {
     return {
       role: message.role,
       content: typeof message.content === "string" ? message.content : "",
@@ -79,7 +76,7 @@ export function useChatSessionHandling(options: {
   async function loadSessions() {
     const spaceId = options.currentSpaceId();
     if (!spaceId) return;
-    setSessions(await getSessionsForSpace(spaceId));
+    setSessions(await api.aiChatSessions.list(spaceId));
   }
 
   async function refreshCurrentSession() {
@@ -87,7 +84,7 @@ export function useChatSessionHandling(options: {
     const sessionId = currentSessionId();
     if (!spaceId || !sessionId) return;
 
-    const refreshed = await getSession(spaceId, sessionId);
+    const refreshed = await api.aiChatSessions.get(spaceId, sessionId);
     if (!refreshed) return;
 
     setSessions((list) =>
@@ -97,7 +94,7 @@ export function useChatSessionHandling(options: {
     );
   }
 
-  function getSessionStatus(session: ChatSessionSummary): SessionStatus {
+  function getSessionStatus(session: AIChatSessionListEntry): SessionStatus {
     if (session.id === currentSessionId() && options.isGenerating()) return "generating";
     return session.lastMessageRole === "user" ? "awaiting" : "idle";
   }
@@ -110,15 +107,15 @@ export function useChatSessionHandling(options: {
     addWelcomeMessage();
   }
 
-  async function resumeSession(summary: ChatSessionSummary) {
+  async function resumeSession(summary: AIChatSessionListEntry) {
     // The list carries no transcript, so the picked session is read in full
     // here — one session, rather than every session on every page load.
-    const session = await getSession(summary.spaceId, summary.id);
+    const session = await api.aiChatSessions.get(summary.spaceId, summary.id);
     if (!session) return;
 
     setCurrentSessionId(session.id);
     options.resetDraft();
-    options.setMessages((session.messages as UIMessage[]).map(normalizeSavedMessage));
+    options.setMessages((session.messages as AIChatMessage[]).map(normalizeSavedMessage));
     setShowSessionPicker(false);
     options.scrollToBottom();
 
@@ -141,7 +138,7 @@ export function useChatSessionHandling(options: {
     const spaceId = options.currentSpaceId();
     if (!spaceId) throw new Error("No active space selected");
 
-    const session: ChatSession = {
+    const session: AIChatSession = {
       id: crypto.randomUUID(),
       title,
       spaceId,
@@ -152,14 +149,14 @@ export function useChatSessionHandling(options: {
     };
     setSessions((list) => [toSummary(session), ...list]);
     setCurrentSessionId(session.id);
-    await saveSession(session);
+    await api.aiChatSessions.save(session);
   }
 
   async function removeSession(id: string) {
     const session = sessions().find((item) => item.id === id);
     if (!session) return;
 
-    await deleteSession(session.spaceId, id);
+    await api.aiChatSessions.delete(session.spaceId, id);
     setSessions((list) => list.filter((item) => item.id !== id));
     if (currentSessionId() !== id) return;
 

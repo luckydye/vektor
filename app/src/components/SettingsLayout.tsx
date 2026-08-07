@@ -1,4 +1,5 @@
 import { createSignal, For, type JSX, onMount, Show } from "solid-js";
+import { animateTabPanel } from "#utils/animate.ts";
 import "@atrium-ui/elements/tabs";
 
 interface Tab {
@@ -29,25 +30,10 @@ export function SettingsLayout(props: Props) {
   const [selectedIndex, setSelectedIndex] = createSignal(initialIndex);
 
   function animatePanel(index: number, direction: "next" | "previous") {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
     requestAnimationFrame(() => {
       const panel = tabsEl?.querySelectorAll("a-tabs-panel").item(index);
       const content = panel?.firstElementChild as HTMLElement | null;
-      if (!content) return;
-
-      for (const animation of content.getAnimations()) animation.cancel();
-
-      const easing = getComputedStyle(document.documentElement)
-        .getPropertyValue("--emphasized-curve")
-        .trim();
-      content.animate(
-        [
-          { opacity: 0, transform: `translateX(${direction === "next" ? 8 : -8}px)` },
-          { opacity: 1, transform: "translateX(0)" },
-        ],
-        { duration: 180, easing: easing || "ease-out" },
-      );
+      if (content) animateTabPanel(content, direction);
     });
   }
 
@@ -99,7 +85,7 @@ export function SettingsLayout(props: Props) {
         }
       >
         <a-tabs ref={tabsEl} on:tab-selected={onTabSelected}>
-          <a-tabs-list class="block overflow-clip py-4xs border-b border-neutral-100">
+          <a-tabs-list class="block overflow-clip border-neutral-100 border-b py-4xs">
             <For each={props.tabs}>
               {(tab, index) => (
                 // Marked up front instead of selected imperatively after mount:

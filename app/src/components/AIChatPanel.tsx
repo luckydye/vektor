@@ -1,12 +1,12 @@
-import { createEffect, createMemo, createSignal, on, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
 import { createStore } from "solid-js/store";
+import { type AIChatMessage, isUploadAborted } from "#api/client.ts";
 import {
   type ChatAttachment,
   type ImageChatAttachment,
   useAIChat,
 } from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
-import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
@@ -64,7 +64,7 @@ export function AIChatPanel(props: Props) {
   const isOpen = createMemo(() => dockedWindows().get("ai-chat")?.open ?? false);
   const [messageInput, setMessageInput] = createSignal("");
   const [messagesRef, setMessagesRef] = createSignal<AIChatMessagesHandle | null>(null);
-  const [messages, setMessages] = createStore<UIMessage[]>([]);
+  const [messages, setMessages] = createStore<AIChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [messageInputEl, setMessageInputEl] = createSignal<MessageInputHandle | null>(
     null,
@@ -101,32 +101,6 @@ export function AIChatPanel(props: Props) {
     scrollToBottom: () => messagesRef()?.scrollToBottom(),
     reconnectSession: (pendingUserMessage) => reconnectSession(pendingUserMessage),
   });
-
-  // ── UI state persistence ────────────────────────────────────────────────────
-
-  function loadUIState() {
-    // State is now managed by useDockedWindows with localStorage persistence.
-    // Migrate the old state format if present.
-    const saved = localStorage.getItem("ai-chat-ui-state");
-    if (!saved) return;
-    try {
-      const parsed = JSON.parse(saved) as {
-        isOpen?: boolean;
-        isDocked?: boolean;
-        dockSide?: "left" | "right";
-      };
-      if (parsed.isOpen) {
-        toggleWindow("ai-chat", {
-          mode: parsed.isDocked ? "docked" : "floating",
-          side: parsed.dockSide ?? "right",
-          width: 380,
-        });
-      }
-      localStorage.removeItem("ai-chat-ui-state");
-    } catch {
-      localStorage.removeItem("ai-chat-ui-state");
-    }
-  }
 
   const canSend = createMemo(() => !isGenerating() && !isUploadingFiles());
 
@@ -199,9 +173,13 @@ export function AIChatPanel(props: Props) {
           };
         });
       } catch (error) {
-        setUploadError(
-          error instanceof Error ? error.message : "Failed to upload attachments",
-        );
+        // A cancellation is reported by the toast the user cancelled from;
+        // repeating it as an inline error would read as something going wrong.
+        if (!isUploadAborted(error)) {
+          setUploadError(
+            error instanceof Error ? error.message : "Failed to upload attachments",
+          );
+        }
         setIsUploadingFiles(false);
         return;
       } finally {
@@ -286,10 +264,6 @@ export function AIChatPanel(props: Props) {
       });
     }),
   );
-
-  onMount(() => {
-    loadUIState();
-  });
 
   return (
     <DockedPanel id="ai-chat" title="AI Assistant" defaultSide="right" defaultWidth={380}>

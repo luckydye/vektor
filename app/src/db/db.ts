@@ -34,7 +34,7 @@ const spaceDbOpening =
   globalThis.__vektor_space_db_opening ?? new Map<string, Promise<Database>>();
 globalThis.__vektor_space_db_opening = spaceDbOpening;
 
-function startDatabaseInitialization(): Promise<void> {
+export function initializeDatabases(): Promise<void> {
   if (!globalThis.__vektor_database_initialization) {
     globalThis.__vektor_database_initialization = (async () => {
       await prepareAuthDb(getAuthDb());
@@ -42,10 +42,6 @@ function startDatabaseInitialization(): Promise<void> {
     })();
   }
   return globalThis.__vektor_database_initialization;
-}
-
-export function initializeDatabases(): Promise<void> {
-  return startDatabaseInitialization();
 }
 
 export { getAuthDb };

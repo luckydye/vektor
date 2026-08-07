@@ -61,6 +61,8 @@ export function TitleEditor(props: Props) {
           properties: { title: { value: localTitle() } },
         });
 
+        // Only a document still on its placeholder slug gets a new one, so this
+        // fires once per document at most.
         if (data.slug && /\/doc\/[^/]+/.test(window.location.pathname)) {
           // Router paths are relative to its base ("/{spaceSlug}/"), so no
           // spacePath() prefix here.

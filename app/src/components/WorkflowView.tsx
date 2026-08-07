@@ -33,6 +33,7 @@ interface Props {
 
 type RunSummary = {
   runId: string;
+  documentId: string;
   status: string;
   createdAt: string;
   sourceExtensionId: string | null;
@@ -44,6 +45,9 @@ type ATabsEl = HTMLElement & {
 };
 
 const WORKFLOW_RUNS_PAGE_SIZE = 10;
+
+// Third tab, and only present while the view is too narrow for the sidebar.
+const HISTORY_TAB_INDEX = 2;
 
 const statusBadgeClass: Record<string, string> = {
   pending: "bg-neutral-100 text-neutral-500",
@@ -127,9 +131,21 @@ export function WorkflowView(props: Props) {
   const [selectedRunError, setSelectedRunError] = createSignal<string | null>(null);
   let unsubscribeRuns: (() => void) | null = null;
   let unsubscribeRun: (() => void) | null = null;
+  // Run ids the URL asked for that turned out to belong to another workflow; a
+  // run never changes document, so once rejected they stay rejected.
+  const foreignRunIds = new Set<string>();
 
   let workflowTabsEl: ATabsEl | undefined;
+  let workflowContainerEl: HTMLDivElement | undefined;
+  let historySidebarEl: HTMLElement | undefined;
   let selectedWorkflowTabIndex = 0;
+
+  // `selectTabByIndex` only emits `tab-selected` for clicks, so a programmatic
+  // selection has to keep the tracked index in step itself.
+  function selectWorkflowTab(index: number, focus = true) {
+    workflowTabsEl?.selectTabByIndex(index, focus);
+    selectedWorkflowTabIndex = index;
+  }
 
   // The breadcrumb slot lives in DocumentPageView, so it only exists after mount.
   const [breadcrumbSlot, setBreadcrumbSlot] = createSignal<HTMLElement | null>(null);
@@ -170,7 +186,7 @@ export function WorkflowView(props: Props) {
   // view. Everything the selected run needs falls back to `selectedRunDetail`,
   // which keeps working when the run isn't on the current page.
   const {
-    items: runList,
+    items: fetchedRuns,
     isFetching: isFetchingRuns,
     hasPrevPage: hasPrevRunsPage,
     hasNextPage: hasNextRunsPage,
@@ -189,6 +205,14 @@ export function WorkflowView(props: Props) {
     },
     pageSize: WORKFLOW_RUNS_PAGE_SIZE,
   });
+
+  // While the list for a newly opened workflow loads, the query still serves the
+  // previous document's page as placeholder data. Filtering by document keeps
+  // that page out of the history and out of the auto-selection below, so
+  // switching workflows never shows the one just left behind.
+  const runList = createMemo(() =>
+    fetchedRuns().filter((run) => run.documentId === props.documentId),
+  );
 
   function runIdFromUrl(): string | null {
     const runParam = new URLSearchParams(window.location.search).get("run")?.trim();
@@ -238,7 +262,15 @@ export function WorkflowView(props: Props) {
       const detail = await api.workflows.getRun(props.spaceId, runId);
       if (selectedRunId() !== runId) return;
       if (detail.documentId && detail.documentId !== props.documentId) {
-        throw new Error("Workflow run not found for this document");
+        // A `run` param pointing at another workflow's run — a stale link, or one
+        // left in the URL. Drop the selection and let the auto-select below fall
+        // back to this document's newest run instead of showing an error.
+        foreignRunIds.add(runId);
+        setSelectedRunId(null);
+        setSelectedRunDetail(null);
+        setSelectedRunResult(null);
+        setSelectedRunError(null);
+        return;
       }
       setSelectedRunDetail(detail);
       setSelectedRunError(null);
@@ -267,12 +299,32 @@ export function WorkflowView(props: Props) {
     await fetchSelectedRunDetail();
   }
 
-  // On mobile the history is a tab, so jump back to the results of the run that
-  // was just picked instead of leaving the user on the list.
+  // In the narrow layout the history is a tab, so jump back to the results of
+  // the run that was just picked instead of leaving the user on the list.
   function selectRunFromHistoryTab(runId: string) {
     void selectRun(runId);
-    workflowTabsEl?.selectTabByIndex(0);
+    selectWorkflowTab(0);
   }
+
+  // The History tab hides itself as soon as the sidebar fits, and CSS cannot
+  // move the selection with it: without this, widening the view — closing a
+  // docked panel, collapsing the space sidebar — while the history is open
+  // would leave an empty panel behind. The sidebar's computed display is the
+  // source of truth so the breakpoint stays declared once, in the markup.
+  onMount(() => {
+    const containerEl = workflowContainerEl;
+    if (!containerEl) return;
+
+    const observer = new ResizeObserver(() => {
+      if (selectedWorkflowTabIndex !== HISTORY_TAB_INDEX) return;
+      if (!historySidebarEl || getComputedStyle(historySidebarEl).display === "none") {
+        return;
+      }
+      selectWorkflowTab(0, false);
+    });
+    observer.observe(containerEl);
+    onCleanup(() => observer.disconnect());
+  });
 
   const [retrying, setRetrying] = createSignal(false);
   const [retryError, setRetryError] = createSignal<string | null>(null);
@@ -339,6 +391,30 @@ export function WorkflowView(props: Props) {
     return inputs;
   });
 
+  // Navigating from one workflow to another reuses this component — the document
+  // page stays on its workflow branch and only swaps the id — so every
+  // per-document signal has to be dropped by hand. Without this the page keeps
+  // showing the run of the workflow that was just left.
+  createEffect(
+    on(
+      () => props.documentId,
+      () => {
+        setSelectedRunId(null);
+        setSelectedRunDetail(null);
+        setSelectedRunResult(null);
+        setSelectedRunError(null);
+        setSourceExtensionHref(null);
+        // A `run` param survives a same-page reload but not a navigation; when
+        // it is there it wins, otherwise the effect below picks the newest run.
+        const urlRunId = runIdFromUrl();
+        if (urlRunId && !foreignRunIds.has(urlRunId)) {
+          void selectRun(urlRunId, { updateUrl: false });
+        }
+      },
+      { defer: true },
+    ),
+  );
+
   // Auto-select the first run once the list arrives. The guard on
   // `selectedRunId` keeps it idempotent across later list updates.
   createEffect(() => {
@@ -346,7 +422,8 @@ export function WorkflowView(props: Props) {
     if (newRuns.length === 0) return;
     if (selectedRunId()) return;
     const urlRunId = runIdFromUrl();
-    void selectRun(urlRunId ?? newRuns[0].runId, { updateUrl: false });
+    const target = urlRunId && !foreignRunIds.has(urlRunId) ? urlRunId : newRuns[0].runId;
+    void selectRun(target, { updateUrl: false });
   });
 
   createEffect(
@@ -358,7 +435,9 @@ export function WorkflowView(props: Props) {
       const ext = await api.extensions.getById(props.spaceId, sourceExtId);
       if (selectedRunSourceExtensionId() !== sourceExtId) return;
       const firstRoute = ext.routes?.[0];
-      setSourceExtensionHref(firstRoute ? `/x/${firstRoute.path}` : null);
+      setSourceExtensionHref(
+        firstRoute ? spacePath(currentSpace()?.slug, `/x/${firstRoute.path}`) : null,
+      );
     }),
   );
 
@@ -510,392 +589,401 @@ export function WorkflowView(props: Props) {
         </Portal>
       </Show>
 
-      <div class="mx-auto mb-12 px-xs lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-12 lg:px-m">
-        <div class="min-w-0 space-y-8">
-          <div class="flex justify-between gap-4">
-            {/* Title */}
-            <h2 class="font-semibold text-neutral-800 text-size-title">
-              {selectedRunTitle() || "Untitled"}
-            </h2>
+      {/* The history sidebar comes and goes with the width this view actually
+          gets, not the window's: the space sidebar and docked panels take from
+          it, so a wide window can still leave a narrow view. */}
+      <div ref={workflowContainerEl} class="@container/workflow">
+        <div class="mx-auto mb-12 @4xl/workflow:grid @4xl/workflow:grid-cols-[minmax(0,1fr)_20rem] @4xl/workflow:items-start @4xl/workflow:gap-12 md:px-m px-xs">
+          <div class="min-w-0 space-y-8">
+            <div class="flex justify-between gap-4">
+              {/* Title */}
+              <h2 class="font-semibold text-neutral-800 text-size-title">
+                {selectedRunTitle() || "Untitled"}
+              </h2>
 
-            {/* Header */}
-            <div class="flex items-center justify-between gap-12">
-              <div class="flex items-center gap-3">
-                <Show when={selectedRunCreatedAt()}>
-                  {(createdAt) => (
-                    <span class="text-neutral-400 text-size-small">
-                      {formatDateTime(createdAt())}
-                    </span>
-                  )}
-                </Show>
-                <Show when={selectedRunDetail()}>
-                  {(detail) => (
-                    <div class="flex items-center gap-3">
-                      <span
-                        class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-size-medium capitalize ${
-                          statusBadgeClass[detail().status] ??
-                          "bg-neutral-100 text-neutral-500"
-                        }`}
-                      >
-                        <Show
-                          when={
-                            detail().status === "running" || detail().status === "pending"
-                          }
-                        >
-                          <Icon class="h-3 w-3 animate-spin" name="spinner" />
-                        </Show>
-                        {detail().status}
+              {/* Header */}
+              <div class="flex items-center justify-between gap-12">
+                <div class="flex items-center gap-3">
+                  <Show when={selectedRunCreatedAt()}>
+                    {(createdAt) => (
+                      <span class="text-neutral-400 text-size-small">
+                        {formatDateTime(createdAt())}
                       </span>
-                    </div>
-                  )}
-                </Show>
-              </div>
-            </div>
-          </div>
-
-          {/* Tabs: Results / Run Details / History */}
-          <a-tabs
-            ref={workflowTabsEl as never}
-            on:tab-selected={handleWorkflowTabSelected}
-          >
-            <a-tabs-list class="block overflow-clip py-4xs border-b border-neutral-100">
-              <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-                <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                  Results
-                </span>
-              </a-tabs-tab>
-              <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-                <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                  Run Details
-                </span>
-              </a-tabs-tab>
-              {/* On desktop the history lives in the sidebar instead of a tab. */}
-              <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 lg:hidden [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-                <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                  History
-                </span>
-              </a-tabs-tab>
-            </a-tabs-list>
-
-            {/* Results panel */}
-            <a-tabs-panel>
-              <div class="space-y-4 pt-4">
-                <Show when={isSelectedRunActive()}>
-                  <section
-                    class="relative overflow-hidden rounded-xl border border-sky-100 bg-[linear-gradient(135deg,rgba(240,249,255,0.9),rgba(255,255,255,0.96)_55%,rgba(236,253,245,0.8))] p-5 shadow-[0_8px_24px_rgba(14,116,144,0.08)] dark:border-sky-900/50 dark:bg-[linear-gradient(135deg,rgba(12,74,110,0.2),rgba(23,23,23,0.96)_55%,rgba(6,78,59,0.2))]"
-                    aria-live="polite"
-                  >
-                    <div class="absolute -top-16 -right-12 h-40 w-40 rounded-full bg-sky-200/25 blur-3xl dark:bg-sky-500/10" />
-                    <div class="relative space-y-5">
-                      <div class="flex items-start justify-between gap-4">
-                        <div class="flex items-start gap-3">
-                          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none">
-                            <Icon class="h-5 w-5 animate-spin" name="spinner" />
-                          </div>
-                          <div>
-                            <p class="font-semibold text-neutral-800">
-                              Your workflow is in progress
-                            </p>
-                            <p class="mt-0.5 text-neutral-500 text-size-small">
-                              {activeRunPhase()}
-                            </p>
-                          </div>
-                        </div>
-                        <span class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 font-semibold text-size-extra-small text-sky-700 uppercase tracking-[0.1em] dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
-                          Working
+                    )}
+                  </Show>
+                  <Show when={selectedRunDetail()}>
+                    {(detail) => (
+                      <div class="flex items-center gap-3">
+                        <span
+                          class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-size-medium capitalize ${
+                            statusBadgeClass[detail().status] ??
+                            "bg-neutral-100 text-neutral-500"
+                          }`}
+                        >
+                          <Show
+                            when={
+                              detail().status === "running" ||
+                              detail().status === "pending"
+                            }
+                          >
+                            <Icon class="h-3 w-3 animate-spin" name="spinner" />
+                          </Show>
+                          {detail().status}
                         </span>
                       </div>
+                    )}
+                  </Show>
+                </div>
+              </div>
+            </div>
 
-                      <div>
-                        <div class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70">
-                          <div class="absolute inset-y-0 w-1/3 animate-workflow-progress rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)] motion-reduce:translate-x-full motion-reduce:animate-none" />
-                        </div>
-                      </div>
+            {/* Tabs: Results / Run Details / History */}
+            <a-tabs
+              ref={workflowTabsEl as never}
+              on:tab-selected={handleWorkflowTabSelected}
+            >
+              <a-tabs-list class="block overflow-clip border-neutral-100 border-b py-4xs">
+                <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+                    Results
+                  </span>
+                </a-tabs-tab>
+                <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+                    Run Details
+                  </span>
+                </a-tabs-tab>
+                {/* Once the view is wide enough the history lives in the
+                    sidebar instead of a tab. */}
+                <a-tabs-tab class="inline-flex @4xl/workflow:hidden h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
+                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
+                    History
+                  </span>
+                </a-tabs-tab>
+              </a-tabs-list>
 
-                      <Show when={recentActivity().length}>
-                        <div class="border-sky-100/80 border-t pt-3 dark:border-sky-900/60">
-                          <div class="mb-2 flex items-center justify-between gap-3">
-                            <span class="font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
-                              Recent activity
-                            </span>
-                            <span class="text-neutral-400 text-size-extra-small">
-                              {selectedRunDetail()?.logs.length} updates
-                            </span>
+              {/* Results panel */}
+              <a-tabs-panel>
+                <div class="space-y-4 pt-4">
+                  <Show when={isSelectedRunActive()}>
+                    <section
+                      class="relative overflow-hidden rounded-xl border border-sky-100 bg-[linear-gradient(135deg,rgba(240,249,255,0.9),rgba(255,255,255,0.96)_55%,rgba(236,253,245,0.8))] p-5 shadow-[0_8px_24px_rgba(14,116,144,0.08)] dark:border-sky-900/50 dark:bg-[linear-gradient(135deg,rgba(12,74,110,0.2),rgba(23,23,23,0.96)_55%,rgba(6,78,59,0.2))]"
+                      aria-live="polite"
+                    >
+                      <div class="absolute -top-16 -right-12 h-40 w-40 rounded-full bg-sky-200/25 blur-3xl dark:bg-sky-500/10" />
+                      <div class="relative space-y-5">
+                        <div class="flex items-start justify-between gap-4">
+                          <div class="flex items-start gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none">
+                              <Icon class="h-5 w-5 animate-spin" name="spinner" />
+                            </div>
+                            <div>
+                              <p class="font-semibold text-neutral-800">
+                                Your workflow is in progress
+                              </p>
+                              <p class="mt-0.5 text-neutral-500 text-size-small">
+                                {activeRunPhase()}
+                              </p>
+                            </div>
                           </div>
-                          <div class="space-y-1.5">
-                            <For each={visibleActivity()}>
-                              {(activity) => (
-                                <div
-                                  class="flex min-w-0 items-center gap-2 text-size-small"
-                                  classList={{
-                                    "text-neutral-700": activity.isLatest,
-                                    "text-neutral-400": !activity.isLatest,
-                                  }}
-                                  style={{
-                                    "view-transition-name": viewTransitionName(
-                                      "vt-run-activity",
-                                      activity.id,
-                                    ),
-                                  }}
-                                >
-                                  <span
-                                    class="h-1.5 w-1.5 shrink-0 rounded-full"
+                          <span class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 font-semibold text-size-extra-small text-sky-700 uppercase tracking-[0.1em] dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+                            Working
+                          </span>
+                        </div>
+
+                        <div>
+                          <div class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70">
+                            <div class="absolute inset-y-0 w-1/3 animate-workflow-progress rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)] motion-reduce:translate-x-full motion-reduce:animate-none" />
+                          </div>
+                        </div>
+
+                        <Show when={recentActivity().length}>
+                          <div class="border-sky-100/80 border-t pt-3 dark:border-sky-900/60">
+                            <div class="mb-2 flex items-center justify-between gap-3">
+                              <span class="font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
+                                Recent activity
+                              </span>
+                              <span class="text-neutral-400 text-size-extra-small">
+                                {selectedRunDetail()?.logs.length} updates
+                              </span>
+                            </div>
+                            <div class="space-y-1.5">
+                              <For each={visibleActivity()}>
+                                {(activity) => (
+                                  <div
+                                    class="flex min-w-0 items-center gap-2 text-size-small"
                                     classList={{
-                                      "animate-pulse bg-sky-500": activity.isLatest,
-                                      "bg-neutral-300": !activity.isLatest,
+                                      "text-neutral-700": activity.isLatest,
+                                      "text-neutral-400": !activity.isLatest,
                                     }}
-                                  />
-                                  <span class="truncate" title={activity.message}>
-                                    {activity.message}
-                                  </span>
-                                </div>
-                              )}
-                            </For>
+                                    style={{
+                                      "view-transition-name": viewTransitionName(
+                                        "vt-run-activity",
+                                        activity.id,
+                                      ),
+                                    }}
+                                  >
+                                    <span
+                                      class="h-1.5 w-1.5 shrink-0 rounded-full"
+                                      classList={{
+                                        "animate-pulse bg-sky-500": activity.isLatest,
+                                        "bg-neutral-300": !activity.isLatest,
+                                      }}
+                                    />
+                                    <span class="truncate" title={activity.message}>
+                                      {activity.message}
+                                    </span>
+                                  </div>
+                                )}
+                              </For>
+                            </div>
                           </div>
-                        </div>
-                      </Show>
-                    </div>
-                  </section>
-                </Show>
-
-                <Show
-                  when={
-                    !isSelectedRunActive() && selectedRunDetail()?.status === "completed"
-                  }
-                >
-                  {/* HTML output */}
-                  <Show when={outputHtml()}>
-                    {(html) => (
-                      <div class="overflow-hidden rounded-xl border border-neutral-200">
-                        <div innerHTML={html()} class="p-2" />
+                        </Show>
                       </div>
-                    )}
+                    </section>
                   </Show>
 
-                  {/* Data table */}
-                  <Show when={outputData()}>
-                    {(data) => (
-                      <DataTable
-                        data={data()}
-                        documentId={props.documentId}
-                        exportFileName={selectedRunTitle() ?? "data"}
-                      />
-                    )}
-                  </Show>
+                  <Show
+                    when={
+                      !isSelectedRunActive() &&
+                      selectedRunDetail()?.status === "completed"
+                    }
+                  >
+                    {/* HTML output */}
+                    <Show when={outputHtml()}>
+                      {(html) => (
+                        <div class="overflow-hidden rounded-xl border border-neutral-200">
+                          <div innerHTML={html()} class="p-2" />
+                        </div>
+                      )}
+                    </Show>
 
-                  <div class="flex flex-wrap items-center gap-2">
-                    {/* Raw JSON artifact */}
-                    <Show when={selectedRunDetail()?.resultArtifact}>
-                      {(artifact) => (
+                    {/* Data table */}
+                    <Show when={outputData()}>
+                      {(data) => (
+                        <DataTable
+                          data={data()}
+                          documentId={props.documentId}
+                          exportFileName={selectedRunTitle() ?? "data"}
+                        />
+                      )}
+                    </Show>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                      {/* Raw JSON artifact */}
+                      <Show when={selectedRunDetail()?.resultArtifact}>
+                        {(artifact) => (
+                          <a
+                            href={artifact().url}
+                            target="_blank"
+                            rel="noreferrer"
+                            class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
+                          >
+                            <Icon class="h-4 w-4 text-neutral-400" name="download" />
+                            Result JSON
+                          </a>
+                        )}
+                      </Show>
+
+                      {/* Document link */}
+                      <Show when={outputDocumentId() && outputDocumentHref()}>
                         <a
-                          href={artifact().url}
+                          href={outputDocumentHref() as string}
+                          class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
+                        >
+                          <Icon class="h-4 w-4 text-neutral-400" name="document" />
+                          {outputDocumentTitle() ?? "Open document"}
+                        </a>
+                      </Show>
+
+                      {/* File download */}
+                      <Show when={selectedRunFileUrl() && selectedRunFileName()}>
+                        <a
+                          href={selectedRunFileUrl() as string}
                           target="_blank"
                           rel="noreferrer"
                           class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
                         >
-                          <Icon class="h-4 w-4 text-neutral-400" name="download" />
-                          Result JSON
+                          <Icon class="h-4 w-4 text-neutral-400" name="file-attachment" />
+                          {selectedRunFileName()}
                         </a>
-                      )}
-                    </Show>
+                        <button
+                          type="button"
+                          class="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-neutral-500 text-size-medium transition-colors hover:border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-100"
+                          title="Download"
+                          onClick={() =>
+                            void downloadFile(
+                              selectedRunFileUrl() as string,
+                              selectedRunFileName() as string,
+                              selectedRunTitle() ?? (selectedRunFileName() as string),
+                            )
+                          }
+                        >
+                          <Icon class="h-4 w-4" name="download" />
+                        </button>
+                      </Show>
+                    </div>
 
-                    {/* Document link */}
-                    <Show when={outputDocumentId() && outputDocumentHref()}>
-                      <a
-                        href={outputDocumentHref() as string}
-                        class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
-                      >
-                        <Icon class="h-4 w-4 text-neutral-400" name="document" />
-                        {outputDocumentTitle() ?? "Open document"}
-                      </a>
+                    <Show
+                      when={
+                        !outputHtml() &&
+                        !outputData() &&
+                        !outputDocumentId() &&
+                        !selectedRunFileUrl() &&
+                        !selectedRunDetail()?.resultArtifact
+                      }
+                    >
+                      <p class="text-neutral-400 text-size-medium">No output</p>
                     </Show>
-
-                    {/* File download */}
-                    <Show when={selectedRunFileUrl() && selectedRunFileName()}>
-                      <a
-                        href={selectedRunFileUrl() as string}
-                        target="_blank"
-                        rel="noreferrer"
-                        class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 font-medium text-neutral-800 text-size-medium transition-colors hover:border-sky-300 hover:bg-sky-50 dark:bg-neutral-100 dark:hover:border-neutral-300 dark:hover:bg-neutral-200"
-                      >
-                        <Icon class="h-4 w-4 text-neutral-400" name="file-attachment" />
-                        {selectedRunFileName()}
-                      </a>
-                      <button
-                        type="button"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-neutral-500 text-size-medium transition-colors hover:border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-100"
-                        title="Download"
-                        onClick={() =>
-                          void downloadFile(
-                            selectedRunFileUrl() as string,
-                            selectedRunFileName() as string,
-                            selectedRunTitle() ?? (selectedRunFileName() as string),
-                          )
-                        }
-                      >
-                        <Icon class="h-4 w-4" name="download" />
-                      </button>
-                    </Show>
-                  </div>
+                  </Show>
 
                   <Show
                     when={
-                      !outputHtml() &&
-                      !outputData() &&
-                      !outputDocumentId() &&
-                      !selectedRunFileUrl() &&
-                      !selectedRunDetail()?.resultArtifact
+                      !isSelectedRunActive() &&
+                      selectedRunDetail()?.status !== "completed" &&
+                      canRetrySelectedRun()
                     }
                   >
-                    <p class="text-neutral-400 text-size-medium">No output</p>
-                  </Show>
-                </Show>
-
-                <Show
-                  when={
-                    !isSelectedRunActive() &&
-                    selectedRunDetail()?.status !== "completed" &&
-                    canRetrySelectedRun()
-                  }
-                >
-                  <div class="space-y-3">
-                    <p class="text-red-600 text-size-medium">
-                      {selectedRunDetail()?.error ??
-                        (selectedRunDetail()?.status === "cancelled"
-                          ? "Run cancelled."
-                          : "Run failed.")}
-                    </p>
-                    <button
-                      type="button"
-                      class="inline-flex items-center gap-2 rounded-md bg-neutral-900 px-3 py-1.5 font-medium text-size-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
-                      disabled={retrying()}
-                      title="Start a new run, replaying already-completed steps from cache"
-                      onClick={() => void retrySelectedRun()}
-                    >
-                      <Show
-                        when={retrying()}
-                        fallback={<Icon class="h-3.5 w-3.5" name="refresh" />}
+                    <div class="space-y-3">
+                      <p class="text-red-600 text-size-medium">
+                        {selectedRunDetail()?.error ??
+                          (selectedRunDetail()?.status === "cancelled"
+                            ? "Run cancelled."
+                            : "Run failed.")}
+                      </p>
+                      <button
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-md bg-neutral-900 px-3 py-1.5 font-medium text-size-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+                        disabled={retrying()}
+                        title="Start a new run, replaying already-completed steps from cache"
+                        onClick={() => void retrySelectedRun()}
                       >
-                        <Icon class="h-3.5 w-3.5 animate-spin" name="spinner" />
+                        <Show
+                          when={retrying()}
+                          fallback={<Icon class="h-3.5 w-3.5" name="refresh" />}
+                        >
+                          <Icon class="h-3.5 w-3.5 animate-spin" name="spinner" />
+                        </Show>
+                        {retrying() ? "Retrying…" : "Retry"}
+                      </button>
+                      <Show when={retryError()}>
+                        <p class="text-red-600 text-size-small">{retryError()}</p>
                       </Show>
-                      {retrying() ? "Retrying…" : "Retry"}
-                    </button>
-                    <Show when={retryError()}>
-                      <p class="text-red-600 text-size-small">{retryError()}</p>
-                    </Show>
-                  </div>
-                </Show>
+                    </div>
+                  </Show>
 
-                <Show
-                  when={
-                    !isSelectedRunActive() &&
-                    selectedRunDetail()?.status !== "completed" &&
-                    !canRetrySelectedRun()
-                  }
-                >
-                  <p class="text-neutral-400 text-size-medium">
-                    {!selectedRunDetail()
-                      ? (selectedRunError() ??
-                        "Select a run from History to see results.")
-                      : "Run did not complete."}
-                  </p>
-                </Show>
-              </div>
-            </a-tabs-panel>
+                  <Show
+                    when={
+                      !isSelectedRunActive() &&
+                      selectedRunDetail()?.status !== "completed" &&
+                      !canRetrySelectedRun()
+                    }
+                  >
+                    <p class="text-neutral-400 text-size-medium">
+                      {!selectedRunDetail()
+                        ? (selectedRunError() ??
+                          "Select a run from History to see results.")
+                        : "Run did not complete."}
+                    </p>
+                  </Show>
+                </div>
+              </a-tabs-panel>
 
-            {/* Run Details panel */}
-            <a-tabs-panel>
-              <div class="space-y-6 pt-4">
-                {/* Input fields */}
-                <Show when={selectedRunInputs()}>
-                  {(inputs) => (
-                    <div>
-                      <div class="mb-2 font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                        Input fields
-                      </div>
-                      <div class="grid h-9 grid-cols-[180px_1fr] items-center border-neutral-100 border-b bg-neutral-50 transition-colors">
-                        <div class="px-4 font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                          Field
-                        </div>
-                        <div class="pr-4 font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                          Value
-                        </div>
-                      </div>
+              {/* Run Details panel */}
+              <a-tabs-panel>
+                <div class="space-y-6 pt-4">
+                  {/* Input fields */}
+                  <Show when={selectedRunInputs()}>
+                    {(inputs) => (
                       <div>
-                        <For each={Object.entries(inputs())}>
-                          {([key, val]) => (
-                            <div class="border-neutral-100 border-b transition-colors hover:bg-neutral-50">
-                              <div class="grid grid-cols-[180px_1fr] items-center text-size-medium">
-                                <div class="truncate px-4 py-2.5 font-medium font-mono text-neutral-500 text-size-extra-small">
-                                  {key}
+                        <div class="mb-2 font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                          Input fields
+                        </div>
+                        <div class="grid h-9 grid-cols-[180px_1fr] items-center border-neutral-100 border-b bg-neutral-50 transition-colors">
+                          <div class="px-4 font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                            Field
+                          </div>
+                          <div class="pr-4 font-medium text-neutral-500 text-size-small uppercase tracking-wide">
+                            Value
+                          </div>
+                        </div>
+                        <div>
+                          <For each={Object.entries(inputs())}>
+                            {([key, val]) => (
+                              <div class="border-neutral-100 border-b transition-colors hover:bg-neutral-50">
+                                <div class="grid grid-cols-[180px_1fr] items-center text-size-medium">
+                                  <div class="truncate px-4 py-2.5 font-medium font-mono text-neutral-500 text-size-extra-small">
+                                    {key}
+                                  </div>
+                                  <pre class="overflow-x-auto whitespace-pre-wrap break-all px-0 py-2.5 pr-4 text-neutral-700 text-size-small">
+                                    {typeof val === "object"
+                                      ? JSON.stringify(val, null, 2)
+                                      : String(val)}
+                                  </pre>
                                 </div>
-                                <pre class="overflow-x-auto whitespace-pre-wrap break-all px-0 py-2.5 pr-4 text-neutral-700 text-size-small">
-                                  {typeof val === "object"
-                                    ? JSON.stringify(val, null, 2)
-                                    : String(val)}
-                                </pre>
                               </div>
-                            </div>
-                          )}
-                        </For>
+                            )}
+                          </For>
+                        </div>
+                      </div>
+                    )}
+                  </Show>
+
+                  {/* Logs */}
+                  <Show when={allLogs().length > 0}>
+                    <div class="flex flex-col rounded-lg bg-neutral-950 p-4 dark:bg-neutral-50">
+                      <div class="text-neutral-400 text-size-small">Logs</div>
+                      <div class="mt-2 max-h-[400px] w-full overflow-x-auto">
+                        <div class="space-y-0.5 font-mono text-size-extra-small">
+                          <For each={allLogs()}>
+                            {(entry) => (
+                              <div class="flex gap-3">
+                                <span
+                                  classList={{
+                                    "text-red-400": entry.isError,
+                                    "text-neutral-300 dark:text-neutral-600":
+                                      !entry.isError,
+                                  }}
+                                >
+                                  {entry.line}
+                                </span>
+                              </div>
+                            )}
+                          </For>
+                        </div>
                       </div>
                     </div>
-                  )}
-                </Show>
+                  </Show>
 
-                {/* Logs */}
-                <Show when={allLogs().length > 0}>
-                  <div class="flex flex-col rounded-lg bg-neutral-950 p-4 dark:bg-neutral-50">
-                    <div class="text-neutral-400 text-size-small">Logs</div>
-                    <div class="mt-2 max-h-[400px] w-full overflow-x-auto">
-                      <div class="space-y-0.5 font-mono text-size-extra-small">
-                        <For each={allLogs()}>
-                          {(entry) => (
-                            <div class="flex gap-3">
-                              <span
-                                classList={{
-                                  "text-red-400": entry.isError,
-                                  "text-neutral-300 dark:text-neutral-600":
-                                    !entry.isError,
-                                }}
-                              >
-                                {entry.line}
-                              </span>
-                            </div>
-                          )}
-                        </For>
-                      </div>
-                    </div>
-                  </div>
-                </Show>
+                  <Show when={!selectedRunInputs() && allLogs().length === 0}>
+                    <p class="text-neutral-400 text-size-medium">No details available.</p>
+                  </Show>
+                </div>
+              </a-tabs-panel>
 
-                <Show when={!selectedRunInputs() && allLogs().length === 0}>
-                  <p class="text-neutral-400 text-size-medium">No details available.</p>
-                </Show>
-              </div>
-            </a-tabs-panel>
+              {/* History panel (narrow view only; the sidebar below takes over
+                  when there is room for it) */}
+              <a-tabs-panel>
+                <div class="@4xl/workflow:hidden pt-2">
+                  <WorkflowRunHistory
+                    {...historyProps()}
+                    onSelect={selectRunFromHistoryTab}
+                  />
+                </div>
+              </a-tabs-panel>
+            </a-tabs>
+          </div>
 
-            {/* History panel (mobile only; desktop renders the sidebar below) */}
-            <a-tabs-panel>
-              <div class="pt-2 lg:hidden">
-                <WorkflowRunHistory
-                  {...historyProps()}
-                  onSelect={selectRunFromHistoryTab}
-                />
-              </div>
-            </a-tabs-panel>
-          </a-tabs>
+          <aside ref={historySidebarEl} class="@4xl/workflow:block hidden min-w-0">
+            <h3 class="mb-2 font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
+              History
+            </h3>
+            <WorkflowRunHistory
+              {...historyProps()}
+              onSelect={(runId: string) => void selectRun(runId)}
+            />
+          </aside>
         </div>
-
-        <aside class="hidden min-w-0 lg:block">
-          <h3 class="mb-2 font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
-            History
-          </h3>
-          <WorkflowRunHistory
-            {...historyProps()}
-            onSelect={(runId: string) => void selectRun(runId)}
-          />
-        </aside>
       </div>
     </>
   );

@@ -15,7 +15,7 @@ export function PagerCursor(props: Props) {
   return (
     <Show when={props.alwaysVisible || props.hasPrevPage || props.hasNextPage}>
       <div
-        class={`flex items-center justify-between border-neutral-100 border-t ${props.class ?? ""}`}
+        class={`flex items-center justify-between border-neutral-100 border-t pt-2 ${props.class ?? ""}`}
       >
         <button
           type="button"

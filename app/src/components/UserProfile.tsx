@@ -57,7 +57,7 @@ export function UserProfile() {
       <button
         slot="trigger"
         type="button"
-        class="focus-ring mx-1.5 my-2 block overflow-visible rounded-full"
+        class="focus-ring mx-4xs my-2 block overflow-visible rounded-full"
       >
         <vektor-avatar prop:user={user()} />
       </button>
@@ -89,7 +89,7 @@ export function UserProfile() {
                 </div>
               </div>
 
-              <div class="p-[4px] space-y-5xs">
+              <div class="space-y-5xs p-[4px]">
                 <button
                   type="button"
                   onClick={() => setPreferencesOpen(true)}

@@ -23,6 +23,26 @@ export interface Space {
   memberCount?: number;
 }
 
+/**
+ * A property holds either a single value or a multi-value list. Vektor decides
+ * per value, so any property can come back either way — use `propertyText` or
+ * `propertyScalar` instead of assuming a string.
+ */
+export type PropertyValue = string | string[];
+
+/** Renders a property as display text, joining multi-value lists with commas. */
+export function propertyText(value: PropertyValue): string {
+  return Array.isArray(value) ? value.join(", ") : value;
+}
+
+/** Takes the single (or first) value of a property. */
+export function propertyScalar(
+  value: PropertyValue | null | undefined,
+): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value ?? undefined;
+}
+
 export interface Document {
   id: string;
   slug: string;
@@ -31,7 +51,7 @@ export interface Document {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
-  properties: Record<string, string>;
+  properties: Record<string, PropertyValue>;
   parentId: string | null;
   readonly: boolean;
   archived: boolean;
@@ -39,12 +59,23 @@ export interface Document {
   updatedAt: string;
   createdBy: string;
   mentionCount?: number;
+  /** Width / height of the `headerImage` property. Only on a single-document fetch. */
+  headerImageAspectRatio?: number | null;
+  /** Set on uploaded-file entries — fetch this URL instead of the document route. */
   fileUrl?: string;
 }
 
 export interface Revision {
+  id: string;
+  documentId: string;
   rev: number;
+  slug: string;
   content: string;
+  checksum: string;
+  parentRev: number | null;
+  /** "suggestion" for proposed edits; null for an ordinary revision. */
+  status?: string | null;
+  message?: string | null;
   createdAt: string;
   createdBy: string;
 }
@@ -56,6 +87,8 @@ export interface Category {
   description?: string | null;
   color?: string | null;
   icon?: string | null;
+  /** Sort position within the space; listings arrive already ordered by it. */
+  order: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,14 +97,40 @@ export interface Page<T> {
   documents: T[];
   total: number;
   limit: number;
-  nextCursor?: string;
+  /** Null on the last page. Pass it back as `cursor` to read the next one. */
+  nextCursor?: string | null;
 }
 
 export interface ListDocumentsOptions {
+  /** Server default is 50, capped at 500. */
   limit?: number;
   cursor?: string;
   type?: string;
   categorySlugs?: string[];
+  /** List the children of one document instead of the whole space. Unpaginated. */
+  parentId?: string;
+  /**
+   * Append the space's uploaded files as `type: "file"` entries carrying a
+   * `fileUrl`. The file index is unpaginated and ships in full on the first
+   * page, so only ask for it when the listing actually needs files.
+   */
+  includeFiles?: boolean;
+  signal?: AbortSignal;
+}
+
+/** The abbreviated space a single-document response is served from. */
+export interface SpaceRef {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+export interface GetDocumentOptions {
+  /**
+   * Read the current draft instead of the published revision. Requires editor
+   * permission — a viewer-scoped token gets 403.
+   */
+  draft?: boolean;
   signal?: AbortSignal;
 }
 
@@ -82,6 +141,7 @@ export interface PropertyFilter {
 
 export interface SearchOptions {
   query?: string;
+  /** Server default is 20, capped at 100. */
   limit?: number;
   cursor?: string;
   filters?: PropertyFilter[];
@@ -97,7 +157,8 @@ export interface SearchResponse {
   results: SearchResult[];
   nextCursor?: string | null;
   query: string;
-  limit: number;
+  /** Omitted from the empty response returned when there is no query and no filter. */
+  limit?: number;
   filters: PropertyFilter[];
 }
 
@@ -180,6 +241,17 @@ export class VektorClient {
     return body as T;
   }
 
+  /**
+   * Whether a failure means "no such document for you" rather than a real error.
+   * Vektor answers 401 both for a document that is not public and for a rejected
+   * token, so that status only counts as absence when no token was configured —
+   * a bad token must stay loud instead of emptying the whole site.
+   */
+  private isNotVisible(status: number): boolean {
+    if (status === 404 || status === 403) return true;
+    return status === 401 && !this.accessToken;
+  }
+
   listSpaces(signal?: AbortSignal): Promise<Space[]> {
     return this.get("/api/v1/spaces", {}, signal);
   }
@@ -188,10 +260,10 @@ export class VektorClient {
     spaceId: string,
     options: ListDocumentsOptions = {},
   ): Promise<Page<Document>> {
-    const { signal, ...query } = options;
+    const { signal, categorySlugs, ...query } = options;
     return this.get(
       `/api/v1/spaces/${encodeURIComponent(spaceId)}/documents`,
-      query,
+      { ...query, categorySlugs: categorySlugs?.join(",") },
       signal,
     );
   }
@@ -211,15 +283,16 @@ export class VektorClient {
     return response.documentsByCategory;
   }
 
+  /** Accepts a document id or a slug, and a space id or a space slug. */
   async getDocument(
     spaceId: string,
     documentId: string,
-    signal?: AbortSignal,
+    options: GetDocumentOptions = {},
   ): Promise<Document> {
-    const response = await this.get<{ document: Document }>(
+    const response = await this.get<{ document: Document; space: SpaceRef }>(
       `/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}`,
-      {},
-      signal,
+      { draft: options.draft ? "true" : undefined },
+      options.signal,
     );
     return response.document;
   }
@@ -238,29 +311,33 @@ export class VektorClient {
     return response.revision;
   }
 
-  /** Finds a visible document by slug, then fetches its published content. */
+  /**
+   * Fetches a visible document by slug, or undefined when no such document is
+   * visible. Archived documents are treated as absent.
+   */
   async getDocumentBySlug(
     spaceId: string,
     slug: string,
-    options: { type?: string; signal?: AbortSignal } = {},
+    options: GetDocumentOptions & { type?: string } = {},
   ): Promise<Document | undefined> {
-    const limit = 500;
-    let cursor: string | undefined;
-    for (;;) {
-      const page = await this.listDocuments(spaceId, {
-        limit,
-        cursor,
-        type: options.type,
-        signal: options.signal,
-      });
-      const match = page.documents.find((document) => document.slug === slug);
-      if (match) return this.getDocument(spaceId, match.id, options.signal);
-      if (!page.nextCursor || page.documents.length === 0) return undefined;
-      cursor = page.nextCursor;
+    let document: Document;
+    try {
+      // The document route resolves a slug as well as an id, so this is one request.
+      document = await this.getDocument(spaceId, slug, options);
+    } catch (error) {
+      if (error instanceof VektorApiError && this.isNotVisible(error.status)) {
+        return undefined;
+      }
+      throw error;
     }
+    if (document.archived) return undefined;
+    if (options.type && document.type !== options.type) return undefined;
+    return document;
   }
 
   async listCategories(spaceId: string, signal?: AbortSignal): Promise<Category[]> {
+    // The response also carries `hasHiddenCategories`, which only distinguishes
+    // empty-space from nothing-visible-to-you for the Vektor UI's empty states.
     const response = await this.get<{ categories: Category[] }>(
       `/api/v1/spaces/${encodeURIComponent(spaceId)}/categories`,
       {},

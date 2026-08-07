@@ -6,6 +6,7 @@ import { api } from "#api/client.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
+import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
@@ -38,23 +39,11 @@ type PopoverTriggerEl = HTMLElement & { show?: () => void; hide?: () => void };
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 
-// Load expanded items (categories and documents) from localStorage
-function loadExpandedItems(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-
-  const stored = localStorage.getItem("wiki-expanded-items");
-  if (!stored) return new Set();
-  try {
-    return new Set(JSON.parse(stored));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveExpandedItems(items: Set<string>) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("wiki-expanded-items", JSON.stringify([...items]));
-}
+/** A `Set` is not JSON, so the entries go in and out as an array of IDs. */
+const EXPANDED_ITEMS_CODEC = {
+  parse: (raw: string) => new Set<string>(JSON.parse(raw)),
+  serialize: (items: Set<string>) => JSON.stringify([...items]),
+};
 
 export function DocumentTree(props: Props) {
   const { currentSpace } = useSpace();
@@ -70,10 +59,20 @@ export function DocumentTree(props: Props) {
     isLoading,
   } = useCategories();
 
-  // Defer reading client-only state (localStorage, cached query data) until
-  // after hydration so server and client render the same initial markup.
+  // `isMounted` still gates rendering: the tree also reads cached query data, so
+  // the first paint has to match what the server sent. The expanded set defers its
+  // own read.
   const [isMounted, setIsMounted] = createSignal(false);
-  const [expandedItems, setExpandedItems] = createSignal(new Set<string>());
+  const {
+    value: expandedItems,
+    commit: commitExpandedItems,
+    set: setExpandedItems,
+    restore: restoreExpandedItems,
+  } = usePersistedState<Set<string>>({
+    key: "wiki-expanded-items",
+    fallback: new Set(),
+    ...EXPANDED_ITEMS_CODEC,
+  });
 
   const expandedCategorySlugs = createMemo(() =>
     categories()
@@ -81,7 +80,7 @@ export function DocumentTree(props: Props) {
       .map((cat) => cat.slug),
   );
 
-  const { documentsBySlug } = useCategoryDocuments(expandedCategorySlugs);
+  const { documentsBySlug, isSlugLoading } = useCategoryDocuments(expandedCategorySlugs);
 
   const documentTitleCollator = new Intl.Collator(currentLang(), {
     numeric: true,
@@ -246,11 +245,10 @@ export function DocumentTree(props: Props) {
   function toggleEditMode() {
     setIsEditMode(!isEditMode());
     if (isEditMode()) {
-      // Collapse without saving — localStorage still holds the real state
+      // Collapse without persisting, so the real state survives edit mode.
       setExpandedItems(new Set<string>());
     } else {
-      // Restore from localStorage
-      setExpandedItems(loadExpandedItems());
+      restoreExpandedItems();
       resetForm();
     }
   }
@@ -384,8 +382,7 @@ export function DocumentTree(props: Props) {
     const next = new Set(expandedItems());
     if (next.has(itemId)) next.delete(itemId);
     else next.add(itemId);
-    setExpandedItems(next);
-    saveExpandedItems(next);
+    commitExpandedItems(next);
   }
 
   async function handleDocumentParentChange(event: Event) {
@@ -427,7 +424,6 @@ export function DocumentTree(props: Props) {
 
   onMount(() => {
     setIsMounted(true);
-    setExpandedItems(loadExpandedItems());
 
     window.addEventListener("document-parent-change", handleDocumentParentChange);
     window.addEventListener("document-category-change", handleDocumentCategoryChange);
@@ -655,6 +651,25 @@ export function DocumentTree(props: Props) {
                       class="space-y-1 pt-1 pb-1.5"
                       hidden={!(expandedItems().has(category().id) && !isEditMode())}
                     >
+                      <Show
+                        when={
+                          expandedItems().has(category().id) &&
+                          isSlugLoading(category().slug)
+                        }
+                      >
+                        <Index each={["55%", "72%", "44%"]}>
+                          {(width) => (
+                            <div class="flex items-center gap-1 pl-[0.535rem]">
+                              <div class="w-4 flex-none" />
+                              <div
+                                class="mx-1.5 my-1 h-4 animate-pulse rounded-sm bg-neutral-200"
+                                style={{ width: width() }}
+                              />
+                            </div>
+                          )}
+                        </Index>
+                      </Show>
+
                       <For each={documents().rootDocs}>
                         {(doc) => (
                           <DocumentTreeItem

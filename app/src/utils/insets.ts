@@ -22,8 +22,12 @@
 //   • components: call `bindInsets(el)` / `onInsets(cb)` in `onMount` and
 //     invoke the returned unsubscribe in `onCleanup`.
 
-const SIDEBAR_STORAGE_KEY = "sidebar-width";
-const DEFAULT_SIDEBAR = 280;
+import { readStored, storedText } from "#utils/clientStorage.ts";
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  parseSidebarWidth,
+  SIDEBAR_WIDTH_KEY,
+} from "#utils/sidebarState.ts";
 
 export interface Insets {
   /** Raw sidebar width in px. */
@@ -34,16 +38,17 @@ export interface Insets {
   right: number;
 }
 
-let sidebar = DEFAULT_SIDEBAR;
+let sidebar = DEFAULT_SIDEBAR_WIDTH;
 let leftDock = 0;
 let rightDock = 0;
 let wired = false;
 const subscribers = new Set<(insets: Insets) => void>();
 
 function readSavedSidebar(): number {
-  if (typeof localStorage === "undefined") return DEFAULT_SIDEBAR;
-  const n = parseInt(localStorage.getItem(SIDEBAR_STORAGE_KEY) ?? "", 10);
-  return Number.isFinite(n) ? n : DEFAULT_SIDEBAR;
+  // Through `parseSidebarWidth` rather than a bare `parseInt`: the key belongs to
+  // the sidebar, and clamping here too keeps the space reserved equal to the width
+  // actually rendered.
+  return parseSidebarWidth(readStored(SIDEBAR_WIDTH_KEY, storedText));
 }
 
 function snapshot(): Insets {

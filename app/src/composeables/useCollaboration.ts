@@ -11,6 +11,12 @@ import * as Y from "yjs";
 import { api } from "#api/client.ts";
 import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
+import {
+  readStored,
+  removeStored,
+  storedText,
+  writeStored,
+} from "#utils/clientStorage.ts";
 import { useCanvasCursorColor } from "./useCanvasCursorColor.ts";
 import { useCosmetics } from "./useCosmetics.ts";
 import { useUserProfile } from "./useUserProfile.ts";
@@ -66,42 +72,30 @@ function clientIdLeaseKey(clientId: string) {
 }
 
 function hasActiveClientIdLease(clientId: string) {
-  try {
-    const raw = window.localStorage.getItem(clientIdLeaseKey(clientId));
-    if (!raw) return false;
-    const lease = JSON.parse(raw) as { owner?: string; updatedAt?: number };
-    return (
-      lease.owner !== pageInstanceId &&
-      typeof lease.updatedAt === "number" &&
-      Date.now() - lease.updatedAt < CLIENT_ID_LEASE_MS
-    );
-  } catch {
-    return false;
-  }
+  const lease = readStored<{ owner?: string; updatedAt?: number }>(
+    clientIdLeaseKey(clientId),
+  );
+  if (!lease) return false;
+  return (
+    lease.owner !== pageInstanceId &&
+    typeof lease.updatedAt === "number" &&
+    Date.now() - lease.updatedAt < CLIENT_ID_LEASE_MS
+  );
 }
 
+// Best effort: if the write fails, presence still works but duplicate-window
+// detection may not.
 function writeClientIdLease(clientId: string) {
-  try {
-    window.localStorage.setItem(
-      clientIdLeaseKey(clientId),
-      JSON.stringify({ owner: pageInstanceId, updatedAt: Date.now() }),
-    );
-  } catch {
-    // Best effort only. Presence still works; duplicate-window detection may not.
-  }
+  writeStored(clientIdLeaseKey(clientId), {
+    owner: pageInstanceId,
+    updatedAt: Date.now(),
+  });
 }
 
 function releaseClientIdLease(clientId: string) {
-  try {
-    const raw = window.localStorage.getItem(clientIdLeaseKey(clientId));
-    if (!raw) return;
-    const lease = JSON.parse(raw) as { owner?: string };
-    if (lease.owner === pageInstanceId) {
-      window.localStorage.removeItem(clientIdLeaseKey(clientId));
-    }
-  } catch {
-    // Best effort only.
-  }
+  const lease = readStored<{ owner?: string }>(clientIdLeaseKey(clientId));
+  // Only ever drop our own lease: another window's is still live.
+  if (lease?.owner === pageInstanceId) removeStored(clientIdLeaseKey(clientId));
 }
 
 function startClientIdHeartbeat(clientId: string) {
@@ -114,25 +108,30 @@ function startClientIdHeartbeat(clientId: string) {
   window.addEventListener("beforeunload", () => releaseClientIdLease(clientId));
 }
 
+/**
+ * This tab's client ID, reused across reloads but never across tabs.
+ *
+ * `session` is load-bearing, not a default: two tabs sharing one client ID is
+ * exactly the duplicate-presence case the lease below exists to detect. The ID
+ * must die with the tab, so it can never live in `local`.
+ */
+const CLIENT_ID_SESSION = { ...storedText, area: "session" as const };
+
 function getBrowserClientId() {
   if (typeof window === "undefined") {
     return createClientId();
   }
 
-  try {
-    const existing = window.sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
-    if (existing && !hasActiveClientIdLease(existing)) {
-      startClientIdHeartbeat(existing);
-      return existing;
-    }
-
-    const next = createClientId();
-    window.sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
-    startClientIdHeartbeat(next);
-    return next;
-  } catch {
-    return createClientId();
+  const existing = readStored(CLIENT_ID_STORAGE_KEY, CLIENT_ID_SESSION);
+  if (existing && !hasActiveClientIdLease(existing)) {
+    startClientIdHeartbeat(existing);
+    return existing;
   }
+
+  const next = createClientId();
+  writeStored(CLIENT_ID_STORAGE_KEY, next, CLIENT_ID_SESSION);
+  startClientIdHeartbeat(next);
+  return next;
 }
 
 /** The identity this tab presents in any presence room. */

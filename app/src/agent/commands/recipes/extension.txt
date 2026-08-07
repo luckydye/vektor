@@ -48,7 +48,7 @@ Standalone or document-side view:
       "path": "my-ext",
       "title": "My Extension",
       "menuItem": { "title": "My Extension" },
-      "placements": ["standalone", "inline", "document"]
+      "placements": ["standalone", "inline", "document", "database"]
     }
   ]
 }
@@ -59,7 +59,8 @@ Standalone or document-side view:
 - Routes require `entries.view`, and a view entry requires at least one route.
 - `placements` defaults to `["standalone"]`. Add `"inline"` to make the view
   available through the Add Content menu, or `"document"` to render beside
-  standard documents on desktop.
+  standard documents on desktop. Add `"database"` to expose it as a database
+  view tab; `ctx.documentId` is the current database while that view is mounted.
 - Every entry path declared in the manifest must exist in the ZIP.
 
 ## Frontend entry

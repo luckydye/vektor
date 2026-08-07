@@ -3416,3 +3416,113 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
     expect(html).toContain("Public Test Document");
   });
 });
+
+describe("ACL API Tests - Document Access List", () => {
+  let spaceId: string;
+  let parentId: string;
+  let childId: string;
+  let pageUser: Awaited<ReturnType<typeof createAclTestUser>>;
+  let treeUser: Awaited<ReturnType<typeof createAclTestUser>>;
+  let spaceUser: Awaited<ReturnType<typeof createAclTestUser>>;
+
+  function grant(body: Record<string, unknown>) {
+    return apiRequest(`/api/v1/spaces/${spaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({ type: "role", action: "grant", ...body }),
+    });
+  }
+
+  async function createDocument(title: string, parent?: string) {
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: `<p>${title}</p>`,
+          properties: { title },
+          ...(parent ? { parentId: parent } : {}),
+        }),
+      },
+    );
+    expect(response.status).toBe(201);
+    return (await response.json()).document.id as string;
+  }
+
+  beforeAll(async () => {
+    const spaceResponse = await apiRequest("/api/v1/spaces", session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Access List Space",
+        slug: `access-list-space-${Date.now()}`,
+      }),
+    });
+    expect(spaceResponse.status === 200 || spaceResponse.status === 201).toBe(true);
+    spaceId = (await spaceResponse.json()).space.id;
+
+    parentId = await createDocument("Parent Page");
+    childId = await createDocument("Child Page", parentId);
+
+    pageUser = await createAclTestUser("Page Grantee");
+    treeUser = await createAclTestUser("Tree Grantee");
+    spaceUser = await createAclTestUser("Space Grantee");
+
+    await grant({
+      roleOrFeature: "editor",
+      userId: pageUser.userId,
+      resourceType: "document",
+      resourceId: childId,
+    });
+    // A space role plus a narrower grant on an ancestor: the narrower one wins.
+    await grant({ roleOrFeature: "editor", userId: treeUser.userId });
+    await grant({
+      roleOrFeature: "viewer",
+      userId: treeUser.userId,
+      resourceType: "document_tree",
+      resourceId: parentId,
+    });
+    await grant({ roleOrFeature: "editor", userId: spaceUser.userId });
+  });
+
+  it("lists direct, inherited and space-level access to a document", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
+      session1Token,
+    );
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    const byUser = new Map<string, any>(body.access.map((e: any) => [e.userId, e]));
+
+    const direct = byUser.get(pageUser.userId);
+    expect(direct.permission).toBe("editor");
+    expect(direct.via.resourceType).toBe("document");
+    expect(direct.via.inherited).toBe(false);
+
+    const inherited = byUser.get(treeUser.userId);
+    expect(inherited.via.resourceType).toBe("document_tree");
+    expect(inherited.via.inherited).toBe(true);
+    expect(inherited.via.resourceLabel).toBe("Parent Page");
+    // The tree grant overrides the space role, even though the space role is higher.
+    expect(inherited.permission).toBe("viewer");
+
+    const viaSpace = byUser.get(spaceUser.userId);
+    expect(viaSpace.permission).toBe("editor");
+    expect(viaSpace.via.resourceType).toBe("space");
+    expect(viaSpace.via.inherited).toBe(true);
+
+    // The space owner reaches the document through their space role.
+    expect(byUser.get(testUser1.id).via.resourceType).toBe("space");
+  });
+
+  it("requires editor access to the document", async () => {
+    const viewer = await createAclTestUser("Access List Viewer");
+    await grant({ roleOrFeature: "viewer", userId: viewer.userId });
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
+      viewer.token,
+    );
+    expect(response.status).toBe(403);
+  });
+});

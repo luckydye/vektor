@@ -185,7 +185,7 @@ export function DatabaseView(props: Props) {
 
   return (
     <>
-      <div class="relative flex h-full min-h-0 flex-col overflow-hidden px-xs lg:px-m">
+      <div class="relative flex h-full min-h-0 flex-col overflow-hidden">
         {/* Toolbar */}
         <div class="flex h-10 shrink-0 items-center justify-between gap-3 rounded-t-md border border-neutral-100 border-b-0 bg-neutral-50 px-4">
           <span class="text-neutral-500 text-size-small">{rows().length} rows</span>

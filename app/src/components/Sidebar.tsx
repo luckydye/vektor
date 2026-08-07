@@ -2,6 +2,7 @@ import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { Actions } from "#utils/actions.ts";
+import { readStored, storedText, writeStored } from "#utils/clientStorage.ts";
 import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import {
@@ -261,7 +262,7 @@ export function Sidebar(props: Props) {
 
   function persistSidebarWidth(width: number) {
     const parsedWidth = parseSidebarWidth(width, defaultWidth());
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, parsedWidth.toString());
+    writeStored(SIDEBAR_WIDTH_KEY, parsedWidth.toString(), storedText);
     writeSidebarWidthCookie(parsedWidth);
   }
 
@@ -363,7 +364,7 @@ export function Sidebar(props: Props) {
       run: async () => setMobileOpen(!isMobileOpen()),
     });
 
-    const savedWidth = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    const savedWidth = readStored(SIDEBAR_WIDTH_KEY, storedText);
     const resolved = savedWidth
       ? parseSidebarWidth(savedWidth, initialSidebarWidth)
       : initialSidebarWidth;
@@ -456,19 +457,19 @@ export function Sidebar(props: Props) {
           class="absolute -right-3 bottom-7 z-50 hidden rounded-full bg-background p-2 text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 md:block"
           title={currentWidth() === minWidth() ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <Icon name="collapse-sidebar" class="h-4 w-4 block" />
+          <Icon name="collapse-sidebar" class="block h-4 w-4" />
         </button>
 
         {/* The grain pseudo-element paints after the blur one, so it also lands
             above in-flow content — the children need a z-index to stay on top. */}
-        <div class="relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 before:backdrop-surface-blur after:surface-noise [&>*]:relative [&>*]:z-10">
+        <div class="sidebar-panel before:backdrop-surface-blur after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
           <Navigation />
         </div>
 
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle, not a control. */}
         <div
           class={twMerge(
-            "group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-primary-200/50 md:block",
+            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-primary-200/50 md:block",
             isResizing() ? "bg-primary-200/50 active:bg-primary-200" : "",
           )}
           onMouseDown={startResize}

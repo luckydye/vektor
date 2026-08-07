@@ -365,10 +365,6 @@ async function decompress(
   return out;
 }
 
-async function decompressZstd(data: Uint8Array): Promise<Uint8Array> {
-  return decompress(data, "zstd" as CompressionFormat);
-}
-
 // ---------------------------------------------------------------------------
 // Shared decode pipeline
 // ---------------------------------------------------------------------------
@@ -411,7 +407,10 @@ async function decodeFigmaKiwi(html: string): Promise<{
   try {
     [schemaBytes, dataBytes] = await Promise.all([
       decompress(raw.slice(16, 16 + schemaSize), "deflate-raw"),
-      decompressZstd(raw.slice(dataOffset + 4, dataOffset + 4 + dataSize)),
+      decompress(
+        raw.slice(dataOffset + 4, dataOffset + 4 + dataSize),
+        "zstd" as CompressionFormat,
+      ),
     ]);
   } catch {
     return null;

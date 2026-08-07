@@ -2,6 +2,7 @@ import { createEffect, createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { type Toast, useToast } from "#composeables/useToast.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
+import { t } from "#utils/lang.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
 const icons: Record<Toast["type"], IconName> = {
@@ -99,10 +100,26 @@ export function ToastContainer() {
                   "bg-red-600 text-white": toast.type === "error",
                   "bg-neutral-900 text-white": toast.type === "info",
                   "bg-green-600 text-white": toast.type === "success",
+                  // Room for the repeat badge in the corner.
+                  "pr-9": (toast.count ?? 1) > 1,
                 }}
               >
                 <Icon class="h-4 w-4 shrink-0" name={icons[toast.type]} />
                 <span class="relative z-10">{toast.message}</span>
+                {/* Repeats of the same message merge into this row; the badge
+                    counts them so a flood stays one toast. */}
+                <Show when={(toast.count ?? 1) > 1}>
+                  {/* The numeral is hidden and restated in full for assistive
+                      tech: a bare "3" says nothing, and a span cannot carry an
+                      `aria-label` of its own — nothing names a generic role. */}
+                  <span
+                    aria-hidden="true"
+                    class="absolute top-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 font-semibold text-[11px] tabular-nums leading-none"
+                  >
+                    {toast.count}
+                  </span>
+                  <span class="sr-only">{`${toast.count} occurrences`}</span>
+                </Show>
                 <Show when={toast.action}>
                   {(action) => (
                     <button
@@ -116,6 +133,19 @@ export function ToastContainer() {
                         : action().label}
                     </button>
                   )}
+                </Show>
+                {/* Cancel sits after the action so a row that somehow has both
+                    keeps the destructive one on the outside. */}
+                <Show when={toast.cancel}>
+                  <button
+                    type="button"
+                    aria-label={t("Cancel")}
+                    title={t("Cancel")}
+                    class="relative z-10 ml-auto rounded-md p-1 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+                    onClick={() => toast.cancel?.()}
+                  >
+                    <Icon class="h-4 w-4" name="cancel" />
+                  </button>
                 </Show>
                 <Show when={toast.progress !== undefined}>
                   <div class="absolute inset-x-0 bottom-0 h-1 bg-white/15">

@@ -227,9 +227,9 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, or "document" beside standard documents. */
+  /** Where this view should be placed. Can include "standalone" (default), "inline" for Add Content blocks, "document" beside standard documents, or "database" as a selectable database view. */
   placements?: Array<
-    "standalone" | "inline" | "document" | DeprecatedPageExtensionPlacement
+    "standalone" | "inline" | "document" | "database" | DeprecatedPageExtensionPlacement
   >;
 }
 
@@ -303,6 +303,29 @@ export interface PermissionEntry {
     createdAt?: string | Date;
     updatedAt?: string | Date;
   };
+}
+
+/** One grant that reaches a document, and how it gets there. */
+export interface DocumentAccessGrant {
+  resourceType: PermissionResourceType;
+  resourceId: string;
+  /** The grant is on an ancestor page, a category, or the space — not this page. */
+  inherited: boolean;
+  /** Page title or category name of the resource the grant sits on. */
+  resourceLabel?: string;
+  permission: string;
+  createdAt?: string | Date;
+}
+
+/** One grantee's effective access to a document. */
+export interface DocumentAccessEntry {
+  userId?: string;
+  groupId?: string;
+  /** Effective role on the document, with scoped grants overriding space role. */
+  permission: string;
+  /** The grant that decides `permission`. */
+  via: DocumentAccessGrant;
+  grants: DocumentAccessGrant[];
 }
 
 export type PermissionResourceType =
@@ -545,6 +568,23 @@ interface RealtimeConnection {
 interface PresenceSubscription<TState = unknown> {
   room: string;
   callback: (event: PresenceMessage<TState>) => void;
+}
+
+/**
+ * The rejection an aborted upload produces.
+ *
+ * A cancellation is not a failure: callers tell the two apart with
+ * `isUploadAborted` so they can drop their placeholder without reporting an
+ * error the user caused on purpose.
+ */
+function uploadAbortError(): Error {
+  const error = new Error("Upload cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+export function isUploadAborted(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 export class ApiClient {
@@ -1146,7 +1186,8 @@ export class ApiClient {
     get: async (
       spaceId: string,
       documentId: string,
-      query?: { rev?: number; draft?: boolean },
+      /** `live` reads the draft as the collaboration room currently holds it. */
+      query?: { rev?: number; draft?: boolean; live?: boolean },
     ) => {
       if (query?.rev) {
         const response = await this.apiGet<{ revision: RevisionWithContent }>(
@@ -1374,6 +1415,17 @@ export class ApiClient {
     },
   };
 
+  documentAccess = {
+    /** Everyone who can reach the document, however they reach it. */
+    get: async (spaceId: string, documentId: string) => {
+      const response = await this.apiGet<{ access: DocumentAccessEntry[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/access`,
+      );
+      return response.access;
+    },
+  };
+
   documentContributors = {
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{ contributors: DocumentContributor[] }>(
@@ -1479,7 +1531,7 @@ export class ApiClient {
       file: File | Blob,
       filename?: string,
       documentId?: string,
-      options?: { onProgress?: (progress: number) => void },
+      options?: { onProgress?: (progress: number) => void; signal?: AbortSignal },
     ) => {
       const formData = new FormData();
       formData.append("file", file, filename);
@@ -1491,8 +1543,25 @@ export class ApiClient {
       // fetch has no way to observe how much of the request body has been sent.
       return await new Promise<{ url: string; [key: string]: unknown }>(
         (resolve, reject) => {
+          const signal = options?.signal;
+          if (signal?.aborted) {
+            reject(uploadAbortError());
+            return;
+          }
+
           const xhr = new XMLHttpRequest();
           xhr.open("POST", `/api/v1/spaces/${spaceId}/uploads`);
+
+          if (signal) {
+            const abort = () => xhr.abort();
+            signal.addEventListener("abort", abort, { once: true });
+            // Both terminal events fire after `abort()` too, so the listener is
+            // dropped from either — an aborted signal outlives this request.
+            xhr.addEventListener("loadend", () =>
+              signal.removeEventListener("abort", abort),
+            );
+            xhr.addEventListener("abort", () => reject(uploadAbortError()));
+          }
 
           if (options?.onProgress) {
             xhr.upload.addEventListener("progress", (event) => {

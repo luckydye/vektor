@@ -11,6 +11,7 @@ export function useCategoryDocuments(categorySlugs: Accessor<string[]>) {
 
   const {
     data: documentsData,
+    isFetching,
     isPending,
     isError,
     refetch,
@@ -65,6 +66,9 @@ export function useCategoryDocuments(categorySlugs: Accessor<string[]>) {
   const isLoading = createMemo(() => isPending());
   const hasError = createMemo(() => isError());
 
+  const isSlugLoading = (slug: string) =>
+    isFetching() && documentsData()?.[slug] === undefined;
+
   // TODO: syncs are not scopped to documents,
   // one prop updates will send a sync event to all users anywhere in the space
   useSync(
@@ -88,6 +92,7 @@ export function useCategoryDocuments(categorySlugs: Accessor<string[]>) {
   return {
     documentsBySlug,
     isLoading,
+    isSlugLoading,
     hasError,
     refetchAll: refetch,
   };

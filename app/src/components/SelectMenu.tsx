@@ -1,5 +1,5 @@
 import { For, mergeProps } from "solid-js";
-import { type IconName } from "./Icon.tsx";
+import type { IconName } from "./Icon.tsx";
 import { SelectItem } from "./SelectItem.tsx";
 
 export interface SelectMenuItem {

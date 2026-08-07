@@ -9,6 +9,17 @@ export interface Toast {
   progress?: number;
   action?: ToastAction;
   /**
+   * Called when the user presses the toast's cancel button, which is shown only
+   * while this is set. Aborting the work is all it does — whoever raised the
+   * toast owns what the row says next, and when it leaves.
+   */
+  cancel?: () => void;
+  /**
+   * How many identical raises this row stands for. Absent or 1 for a plain
+   * toast; the container shows a badge from 2 up.
+   */
+  count?: number;
+  /**
    * Set by `dismiss`, cleared only by `drop`. The container watches this to
    * play the leave animation; the toast is still in the list until `drop`.
    */
@@ -41,13 +52,69 @@ const [state, setState] = createStore<{ list: Toast[] }>({ list: [] });
 const toasts: Accessor<Toast[]> = () => state.list;
 let nextId = 0;
 
+/**
+ * Pending auto-dismiss timers by toast id. Kept so a repeat raise can restart
+ * the timer of the toast it merged into instead of leaving the original one to
+ * fire while the count is still climbing.
+ */
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
+
+/**
+ * Start the toast leaving. The container animates it out and then calls `drop`.
+ * Kept separate from `drop` so the element survives long enough to animate —
+ * nothing else may depend on the toast being gone after this.
+ */
+function dismiss(id: number) {
+  clearTimer(id);
+  setState("list", (toast) => toast.id === id, "exiting", true);
+}
+
+/** Remove the toast for real. Safe to call twice. */
+function drop(id: number) {
+  clearTimer(id);
+  setState("list", (list) => list.filter((toast) => toast.id !== id));
+}
+
+function clearTimer(id: number) {
+  const timer = timers.get(id);
+  if (timer !== undefined) clearTimeout(timer);
+  timers.delete(id);
+}
+
+function scheduleDismiss(id: number, duration: number) {
+  clearTimer(id);
+  if (duration > 0)
+    timers.set(
+      id,
+      setTimeout(() => dismiss(id), duration),
+    );
+}
+
+/**
+ * The visible toast a repeat of this message merges into, if any.
+ *
+ * Toasts carrying an action or a progress bar are addressed by id by whoever
+ * raised them (an upload updates its own row), so they never take part.
+ */
+function mergeTarget(message: string, type: Toast["type"]): Toast | undefined {
+  return state.list.find(
+    (toast) =>
+      !toast.exiting &&
+      toast.message === message &&
+      toast.type === type &&
+      !toast.action &&
+      !toast.cancel &&
+      toast.progress === undefined,
+  );
+}
+
 export function useToast(): {
   toasts: Accessor<Toast[]>;
   show: (
     message: string,
     type?: Toast["type"],
     duration?: number,
-    options?: { progress?: number; action?: ToastAction },
+    options?: { progress?: number; action?: ToastAction; cancel?: () => void },
   ) => number;
   update: (
     id: number,
@@ -60,26 +127,29 @@ export function useToast(): {
   error: (message: string) => void;
   success: (message: string) => void;
 } {
-  /**
-   * Start the toast leaving. The container animates it out and then calls
-   * `drop`. Kept separate from `drop` so the element survives long enough to
-   * animate — nothing else may depend on the toast being gone after this.
-   */
-  function dismiss(id: number) {
-    setState("list", (toast) => toast.id === id, "exiting", true);
-  }
-
-  /** Remove the toast for real. Safe to call twice. */
-  function drop(id: number) {
-    setState("list", (list) => list.filter((toast) => toast.id !== id));
-  }
-
   function show(
     message: string,
     type: Toast["type"] = "info",
     duration = 4000,
-    options?: { progress?: number; action?: ToastAction },
+    options?: { progress?: number; action?: ToastAction; cancel?: () => void },
   ) {
+    // A flood of the same message — one failed request per row of a batch, say —
+    // collapses into the row already on screen: bump its count, restart its
+    // timer, and stay quiet rather than replaying the sound per repeat.
+    if (!options?.action && !options?.cancel && options?.progress === undefined) {
+      const existing = mergeTarget(message, type);
+      if (existing) {
+        setState(
+          "list",
+          (toast) => toast.id === existing.id,
+          "count",
+          (count) => (count ?? 1) + 1,
+        );
+        scheduleDismiss(existing.id, duration);
+        return existing.id;
+      }
+    }
+
     const id = ++nextId;
     setState("list", state.list.length, {
       id,
@@ -87,8 +157,9 @@ export function useToast(): {
       type,
       progress: options?.progress,
       action: options?.action,
+      cancel: options?.cancel,
     });
-    if (duration > 0) setTimeout(() => dismiss(id), duration);
+    scheduleDismiss(id, duration);
 
     switch (type) {
       case "success":
@@ -111,7 +182,7 @@ export function useToast(): {
 
     setState("list", (toast) => toast.id === id, patch);
     if (options?.duration && options.duration > 0) {
-      setTimeout(() => dismiss(id), options.duration);
+      scheduleDismiss(id, options.duration);
     }
   }
 

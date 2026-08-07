@@ -1,0 +1,30 @@
+{
+  "id": "/?dev",
+  "name": "Vektor Dev",
+  "short_name": "Vektor Dev",
+  "description": "Vektor (development)",
+  "theme_color": "#f5f5f5",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "icons": [
+    {
+      "src": "/180x180_dev.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/192x192_dev.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/512x512_dev.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

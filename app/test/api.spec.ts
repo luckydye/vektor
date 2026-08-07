@@ -300,6 +300,72 @@ describe("API Tests - Documents", () => {
     expect(data.document.properties.title).toBe("Wrapped Title Document");
   });
 
+  it("should keep the slug when the title changes", async () => {
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Slug stability</p>",
+        properties: { title: "Original Slug Source" },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()).document;
+    expect(created.slug).toBe("original-slug-source");
+
+    const patchResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${created.id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ properties: { title: "Renamed Entirely" } }),
+      },
+    );
+    expect(patchResponse.status).toBe(200);
+    expect((await patchResponse.json()).slug).toBeUndefined();
+
+    const getResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${created.id}`,
+    );
+    const fetched = (await getResponse.json()).document;
+    expect(fetched.properties.title).toBe("Renamed Entirely");
+    expect(fetched.slug).toBe("original-slug-source");
+  });
+
+  it("should replace a placeholder slug on the first real title", async () => {
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Still unnamed</p>",
+        properties: { title: "Untitled Document" },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()).document;
+    expect(created.slug.startsWith("untitled-document")).toBe(true);
+
+    const patchResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${created.id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ properties: { title: "Finally Named" } }),
+      },
+    );
+    expect(patchResponse.status).toBe(200);
+    expect((await patchResponse.json()).slug).toBe("finally-named");
+
+    // Renaming again keeps the slug — it is no longer a placeholder.
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${created.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ properties: { title: "Named Once More" } }),
+    });
+
+    const getResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${created.id}`,
+    );
+    const fetched = (await getResponse.json()).document;
+    expect(fetched.properties.title).toBe("Named Once More");
+    expect(fetched.slug).toBe("finally-named");
+  });
+
   it("should reject a title with nothing sluggable in it", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",

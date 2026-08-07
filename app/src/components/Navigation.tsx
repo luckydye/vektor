@@ -123,10 +123,7 @@ export function Navigation() {
         />
       </div>
 
-      <wiki-scroll
-        name="navigation"
-        class="min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden"
-      >
+      <div class="sidebar-scroll min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <nav class="@container flex flex-col gap-3xs">
           <div class="flex flex-none flex-col gap-0.5 px-3xs pt-5xs">
             <div class="flex items-center gap-px">
@@ -183,9 +180,9 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="@max-xs:hidden px-5xs pb-s pt-4xs">
-            <div class="border-b border-neutral-400/25 mx-4xs"></div>
-            
+          <div class="@max-xs:hidden px-5xs pt-4xs pb-s">
+            <div class="mx-4xs border-neutral-400/25 border-b"></div>
+
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
               <Show when={documentTree()?.isEditMode}>
                 <button
@@ -202,7 +199,7 @@ export function Navigation() {
             <DocumentTree ref={setDocumentTree} />
           </div>
         </nav>
-      </wiki-scroll>
+      </div>
 
       <div class="relative flex flex-none items-center px-1 py-3">
         <UserProfile />

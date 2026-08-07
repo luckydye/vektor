@@ -4,6 +4,7 @@ import { ExtensionView } from "#components/ExtensionView.tsx";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { hasExtensionRoutePlacement } from "#extensions/manager.ts";
 
 export function ExtensionRouteView() {
   const { currentSpace } = useSpace();
@@ -19,7 +20,10 @@ export function ExtensionRouteView() {
     if (!path) return null;
     for (const ext of extensions()) {
       for (const route of ext.routes || []) {
-        if (path === route.path || path.startsWith(`${route.path}/`)) {
+        if (
+          hasExtensionRoutePlacement(route, "standalone") &&
+          (path === route.path || path.startsWith(`${route.path}/`))
+        ) {
           return { extension: ext, route };
         }
       }
@@ -71,6 +75,7 @@ export function ExtensionRouteView() {
               extensionId={resolved().extensionId}
               routePath={resolved().routePath}
               spaceId={resolved().spaceId}
+              documentId={null}
               fill
             />
           )}

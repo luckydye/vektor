@@ -160,7 +160,6 @@ export function SpaceApp(props: Props) {
    */
   const registerShellElements = () =>
     Promise.all([
-      import("#editor/elements/scroll.ts"),
       import("#editor/elements/category-target.ts"),
       import("#editor/elements/page-target.ts"),
       import("#editor/elements/shortcut.ts"),

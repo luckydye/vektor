@@ -175,7 +175,7 @@ export function CosmeticsPanel(props: Props) {
                 <span class="absolute -right-2 bottom-1 block h-6 w-6 text-primary-600">
                   {/* Mirrored: the glyph is drawn tip-right, and a pointer
                       reads as backwards unless its tip leads to the left. */}
-                  <Icon class="-scale-x-100 h-full w-full" svg={pointerGlyph} />
+                  <Icon class="h-full w-full -scale-x-100" svg={pointerGlyph} />
                   <vektor-cosmetic
                     class="absolute top-0 left-4 h-8 w-10"
                     attr:asset-id={stageAppearance().cursorCompanion ?? undefined}

@@ -3,6 +3,7 @@ import type { ExtensionRoute } from "#api/client.ts";
 import { ExtensionView } from "#components/ExtensionView.tsx";
 
 interface Props {
+  documentId: string;
   spaceId: string;
   views: Array<{ extensionId: string; route: ExtensionRoute }>;
 }
@@ -17,6 +18,7 @@ export function DocumentExtensionViews(props: Props) {
               extensionId={extensionId}
               routePath={route.path}
               spaceId={props.spaceId}
+              documentId={props.documentId}
             />
           )}
         </For>

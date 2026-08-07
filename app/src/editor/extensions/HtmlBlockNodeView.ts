@@ -54,6 +54,7 @@ export const HtmlBlockNodeView = HtmlBlock.extend({
               margin: 1rem 0;
               width: 100%;
               position: relative;
+              white-space: normal;
             }
             .html-block-toolbar {
               position: absolute;
