@@ -131,22 +131,24 @@ title-bar {
 }
 
 @media (display-mode: window-controls-overlay) {
-  :root {
-    --titlebar-height: env(titlebar-area-height, 0px);
-  }
-
+  /* Floats over the shell instead of reserving a row, so the document below
+     lays out exactly as it does in a browser tab. The fill matches the sidebar
+     — which is also the manifest theme_color — so the seam with the strip the
+     browser paints behind the window controls is invisible. */
   title-bar {
     position: fixed;
     left: env(titlebar-area-x, 0);
     top: env(titlebar-area-y, 0);
-    width: env(titlebar-area-width, 100%);
-    height: var(--titlebar-height);
-    z-index: 5;
+    /* `right` rather than `width`: the sidebar offset below moves the left edge
+       only, and the right edge has to stay pinned to the drag region's end. */
+    right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
+    height: env(titlebar-area-height, 0px);
+    z-index: 50;
     display: flex;
     align-items: center;
     justify-content: center;
     padding-inline: var(--spacing-4xs);
-    background: var(--color-neutral-10);
+    background: var(--color-neutral-25);
     app-region: drag;
     -webkit-app-region: drag;
     user-select: none;
@@ -160,22 +162,61 @@ title-bar {
     white-space: nowrap;
   }
 
+  /* Content clears the floating bar instead of running under it. Top-level views
+     only — a nested one (the canvas title row, the document properties) already
+     sits inside a view that has been pushed down. A margin rather than padding,
+     so each view keeps its own `pt-*`, and so the height of the ones that flex
+     to fill the shell shrinks to match. */
+  inset-view:not(inset-view inset-view) {
+    margin-top: env(titlebar-area-height, 0px);
+  }
+
+  /* Sticky headers — the breadcrumb bars — park below the bar rather than
+     scrolling under it. Scoped to the content area: the sidebar's sticky header
+     sticks inside the panel, which is offset already. */
+  .main-content .sticky.top-0 {
+    top: env(titlebar-area-height, 0px);
+  }
+
+  /* Flush to the window edges: in a standalone window the gutter the sidebar
+     keeps in a browser tab reads as a gap in the app's own chrome. The panel
+     then runs up behind the window controls, so its contents — not the panel
+     itself — start below them. */
   .sidebar {
     padding: 0;
+    app-region: drag;
+    -webkit-app-region: drag;
   }
 
   .sidebar-panel {
-    padding-top: var(--titlebar-height);
+    padding-top: env(titlebar-area-height, 0px);
+    border-radius: 0;
   }
 
-  .main-content {
-    padding-top: var(--titlebar-height);
+  /* A drag region swallows pointer input whole, so the scrollable body and every
+     control in the sidebar's chrome opt back out. What stays draggable is the
+     strip beside the window controls and the gaps around the controls. */
+  .sidebar-scroll,
+  .sidebar-resize-handle,
+  .sidebar :is(a, button, input, [draggable]) {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
   }
 
   .docked-panel,
   .dialog-layer {
     app-region: no-drag;
     -webkit-app-region: no-drag;
+  }
+}
+
+/* Beside the sidebar rather than over it. Gated on the space shell and on `md`,
+   the two conditions under which a sidebar is actually in flow: elsewhere it is
+   either absent or an off-canvas drawer, and the bar spans the full window.
+   `max()` keeps the window controls clear when they sit left of the sidebar. */
+@media (display-mode: window-controls-overlay) and (min-width: 48rem) {
+  body[data-space-id]:not([data-space-id=""]) title-bar {
+    left: max(env(titlebar-area-x, 0px), var(--sidebar-inset, 0px));
   }
 }
 

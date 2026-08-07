@@ -26,7 +26,10 @@ export function storeThemePreference(preference: ThemePreference): void {
   writeStored(THEME_STORAGE_KEY, preference, THEME_CODEC);
 }
 
-export const THEME_COLORS = { light: "#f5f5f5", dark: "#262626" } as const;
+/** Kept in sync with `--color-neutral-25`: the browser paints the window-control
+ * strip of the PWA overlay titlebar with this, and it has to match the bar the
+ * app draws beside it. */
+export const THEME_COLORS = { light: "#f5f5f5", dark: "#202020" } as const;
 
 function applyThemeColor(preference: ThemePreference): void {
   const existing = document.querySelector<HTMLMetaElement>(
