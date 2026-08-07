@@ -80,7 +80,7 @@ export function DocumentTree(props: Props) {
       .map((cat) => cat.slug),
   );
 
-  const { documentsBySlug } = useCategoryDocuments(expandedCategorySlugs);
+  const { documentsBySlug, isSlugLoading } = useCategoryDocuments(expandedCategorySlugs);
 
   const documentTitleCollator = new Intl.Collator(currentLang(), {
     numeric: true,
@@ -651,6 +651,25 @@ export function DocumentTree(props: Props) {
                       class="space-y-1 pt-1 pb-1.5"
                       hidden={!(expandedItems().has(category().id) && !isEditMode())}
                     >
+                      <Show
+                        when={
+                          expandedItems().has(category().id) &&
+                          isSlugLoading(category().slug)
+                        }
+                      >
+                        <Index each={["55%", "72%", "44%"]}>
+                          {(width) => (
+                            <div class="flex items-center gap-1 pl-[0.535rem]">
+                              <div class="w-4 flex-none" />
+                              <div
+                                class="mx-1.5 my-1 h-4 animate-pulse rounded-sm bg-neutral-200"
+                                style={{ width: width() }}
+                              />
+                            </div>
+                          )}
+                        </Index>
+                      </Show>
+
                       <For each={documents().rootDocs}>
                         {(doc) => (
                           <DocumentTreeItem
