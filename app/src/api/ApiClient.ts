@@ -1169,7 +1169,8 @@ export class ApiClient {
     get: async (
       spaceId: string,
       documentId: string,
-      query?: { rev?: number; draft?: boolean },
+      /** `live` reads the draft as the collaboration room currently holds it. */
+      query?: { rev?: number; draft?: boolean; live?: boolean },
     ) => {
       if (query?.rev) {
         const response = await this.apiGet<{ revision: RevisionWithContent }>(
