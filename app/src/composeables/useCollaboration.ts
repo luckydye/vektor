@@ -134,7 +134,8 @@ function getBrowserClientId() {
   return next;
 }
 
-const browserClientId = getBrowserClientId();
+/** The identity this tab presents in any presence room. */
+export const browserClientId = getBrowserClientId();
 
 /**
  * Publishes a session as the active one.

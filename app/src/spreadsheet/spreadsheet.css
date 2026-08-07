@@ -1,0 +1,636 @@
+/* The spreadsheet's entire stylesheet. It is adopted into a shadow root (see
+ * SpreadsheetHost.tsx), so nothing here leaks out and — the reason for the
+ * isolation — none of the app's Tailwind reset reaches in. Preflight's
+ * `box-sizing: border-box` in particular breaks the grid: the renderer sizes the
+ * selection outline and the column headers as content-box, and under the reset
+ * every one of them came out short by its own border.
+ *
+ * Consequence: no Tailwind utilities are available in here. Every class the
+ * spreadsheet components use is defined below, in terms of the app's design
+ * tokens — those are custom properties on :root, and custom properties inherit
+ * straight through a shadow boundary, so theming and the space's brand colour
+ * still apply. */
+
+/* Scoped reset. Only what the components actually rely on; the point is to be
+ * predictable, not to reimplement preflight. */
+.ic-root *,
+.ic-root *::before,
+.ic-root *::after {
+  box-sizing: content-box;
+}
+
+.ic-root button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.ic-root canvas {
+  display: block;
+}
+
+/* The renderer reads its palette from these custom properties (see
+ * `readThemeFromCSS` in grid/canvasUtil.ts), so pointing them at vektor's tokens
+ * is what makes the spreadsheet follow the app's light/dark theme and its
+ * space's brand colour. The canvas snapshots them when it is built;
+ * `Worksheet.tsx` rebuilds it on a theme change. */
+.ic-root {
+  --palette-common-white: var(--color-neutral-10);
+  --palette-primary-main: var(--color-primary-600);
+  --palette-info-main: var(--color-primary-600);
+  --palette-grey-600: var(--color-neutral-500);
+
+  --palette-sheet-grid-color: var(--color-neutral-100);
+  --palette-sheet-grid-separator-color: var(--color-neutral-200);
+  --palette-sheet-default-text-color: var(--color-forground);
+  --palette-sheet-default-cell-font-family: var(--font-sans);
+
+  --palette-sheet-header-background: var(--color-neutral-25);
+  --palette-sheet-header-text-color: var(--color-neutral-600);
+  --palette-sheet-header-border-color: var(--color-neutral-100);
+  --palette-sheet-header-selected-background: var(--color-primary-10);
+  --palette-sheet-header-selected-color: var(--color-neutral-900);
+
+  --palette-sheet-outline-color: var(--color-primary-600);
+  /* The selection wash follows the accent, whatever the space's brand is. */
+  --palette-sheet-outline-background-color: color-mix(
+    in srgb,
+    var(--color-primary-600) 8%,
+    transparent
+  );
+  --palette-sheet-outline-editing-color: var(--color-primary-200);
+  --palette-sheet-cell-array-structure-color: var(--color-primary-300);
+  --palette-sheet-header-font: 500 11px var(--font-sans);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-neutral-10);
+  color: var(--color-forground);
+  font-family: var(--font-sans);
+  font-size: var(--text-size-small);
+  line-height: 1.35;
+}
+
+/* Focus lives on the root, which owns keyboard navigation; the ring would
+ * otherwise trace the whole grid on every click. */
+.ic-root:focus {
+  outline: none;
+}
+
+/* --- toolbar and formula bar -------------------------------------------- */
+
+.ic-toolbar,
+.ic-formula-bar {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  height: 32px;
+  border-bottom: 1px solid var(--color-neutral-100);
+}
+
+.ic-toolbar {
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ic-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.ic-toolbar button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  color: var(--color-neutral-700);
+  cursor: pointer;
+}
+
+.ic-toolbar button:hover:not(:disabled) {
+  background: var(--color-neutral-50);
+}
+
+.ic-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The control reflects the selected cell: bold is lit when the cell is bold. */
+.ic-toolbar-button--active {
+  background: var(--color-neutral-100);
+  color: var(--color-forground);
+}
+
+.ic-toolbar-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--color-neutral-100);
+}
+
+/* Controls whose label is the glyph — $, %, .00, the font-size stepper. */
+.ic-toolbar-glyph {
+  font-size: var(--text-size-normal);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ic-toolbar-glyph--small {
+  font-size: var(--text-size-extra-small);
+}
+
+.ic-toolbar-glyph--wide {
+  gap: 4px;
+  width: auto !important;
+  padding: 0 6px;
+}
+
+.ic-font-size {
+  flex: none;
+  min-width: 26px;
+  padding: 3px 0;
+  border: 1px solid var(--color-neutral-100);
+  border-radius: 4px;
+  color: var(--color-neutral-700);
+  font-size: var(--text-size-small);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ic-caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid currentColor;
+  border-right: 3px solid transparent;
+  border-left: 3px solid transparent;
+  opacity: 0.6;
+}
+
+/* The colour controls carry a swatch of what they would apply. */
+.ic-color-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ic-color-button .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.ic-color-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--color-neutral-200);
+}
+
+/* `inline-flex`, not `contents`: the panel is positioned from this element's
+ * box, and an element with `display: contents` generates none — every popover
+ * would open in the top-left corner of the window. */
+.ic-popover-anchor {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+/* `#components/Icon.tsx` renders `.svg-icon`, whose sizing is a Tailwind
+ * `@utility` — and utilities do not cross into here. This is that utility,
+ * restated, plus the size the toolbar wants. Using the shared component anyway
+ * keeps the glyphs in step with the rest of the app. */
+.ic-root .svg-icon {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.ic-root .svg-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The cell reference, in the box to the left of the formula input. */
+.ic-name-box {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  border-right: 1px solid var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  font-size: var(--text-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.ic-name-box .svg-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--color-neutral-400);
+}
+
+/* The `fx` marker between the reference and the formula itself. */
+.ic-fx {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--color-neutral-400);
+  font-size: var(--text-size-normal);
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  user-select: none;
+}
+
+.ic-formula-bar-input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+/* --- context menu ------------------------------------------------------- */
+
+.ic-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--color-neutral-100);
+  border-radius: 8px;
+  background: var(--color-background);
+  box-shadow: 0 10px 20px rgb(15 23 42 / 15%);
+}
+
+.ic-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 4px 12px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  color: var(--color-forground);
+  font-size: var(--text-size-normal);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 100ms;
+}
+
+.ic-menu button:hover {
+  background: var(--color-primary-50);
+  transition: none;
+}
+
+.ic-menu button:active {
+  background: var(--color-primary-100);
+}
+
+.ic-menu li + li.ic-menu-separated {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-neutral-100);
+  padding-top: 4px;
+}
+
+.ic-menu ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ic-menu--wide {
+  min-width: 240px;
+}
+
+.ic-menu--wide button {
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.ic-menu-sample {
+  color: var(--color-neutral-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.ic-menu-item--active {
+  background: var(--color-primary-10);
+}
+
+/* --- colour palette ----------------------------------------------------- */
+
+.ic-menu--palette {
+  min-width: 0;
+}
+
+.ic-palette {
+  display: grid;
+  grid-template-columns: repeat(6, 20px);
+  gap: 4px;
+  padding: 4px;
+}
+
+.ic-swatch {
+  width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
+  cursor: pointer;
+}
+
+.ic-swatch:hover {
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 12%),
+    0 0 0 2px var(--color-primary-200);
+}
+
+.ic-palette-reset {
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px solid var(--color-neutral-100);
+  padding: 6px 12px !important;
+  color: var(--color-neutral-600) !important;
+  font-size: var(--text-size-small);
+}
+
+/* --- error toast -------------------------------------------------------- */
+
+.ic-error {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 50;
+  max-width: 24rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-10);
+  font-size: var(--text-size-small);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgb(15 23 42 / 15%);
+}
+
+/* --- worksheet ---------------------------------------------------------- */
+
+.ic-worksheet-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: scroll;
+  overscroll-behavior: none;
+}
+
+/* Sized to the scrollable extent of the sheet; nothing is drawn in it. It only
+ * gives the wrapper something to scroll, since the canvas itself never moves. */
+.ic-worksheet-spacer {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.ic-worksheet-sheet-container {
+  position: sticky;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+
+.ic-worksheet-sheet-canvas {
+  position: relative;
+  top: 0;
+  left: 0;
+}
+
+.ic-worksheet-sheet-container .column-resize-handle {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  opacity: 0;
+  border-radius: 5px;
+  background: var(--palette-sheet-outline-color);
+  cursor: col-resize;
+}
+
+.ic-worksheet-sheet-container .row-resize-handle {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  opacity: 0;
+  border-radius: 5px;
+  background: var(--palette-sheet-outline-color);
+  cursor: row-resize;
+}
+
+.ic-worksheet-sheet-container .column-resize-handle:hover,
+.ic-worksheet-sheet-container .row-resize-handle:hover {
+  opacity: 1;
+}
+
+.ic-worksheet-column-resize-guide {
+  position: absolute;
+  top: 0;
+  display: none;
+  width: 0;
+  height: 100%;
+  border-left: 1px dashed var(--palette-sheet-outline-color);
+}
+
+.ic-worksheet-row-resize-guide {
+  position: absolute;
+  left: 0;
+  display: none;
+  width: 100%;
+  height: 0;
+  border-top: 1px dashed var(--palette-sheet-outline-color);
+}
+
+.ic-worksheet-column-headers {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.ic-worksheet-column-headers .column-header {
+  display: inline-block;
+  height: 100%;
+  overflow: hidden;
+  text-align: center;
+  user-select: none;
+}
+
+.ic-worksheet-area-outline {
+  position: absolute;
+  border: 0 solid var(--palette-sheet-outline-color);
+  border-radius: 1px;
+  background-color: var(--palette-sheet-outline-background-color);
+}
+
+.ic-worksheet-cell-array-structure {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--palette-sheet-cell-array-structure-color);
+}
+
+.ic-worksheet-cell-outline {
+  position: absolute;
+  display: flex;
+  border: 2px solid var(--palette-sheet-outline-color);
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--palette-common-white);
+  font-size: var(--text-size-small);
+  word-break: break-word;
+}
+
+.ic-worksheet-extend-to-outline {
+  position: absolute;
+  border: 1px dashed var(--palette-sheet-outline-color);
+  border-radius: 3px;
+}
+
+/* --- presence ------------------------------------------------------------ */
+
+/* Another person's selection. It sits above the grid but takes no pointer
+ * events — it is a thing to see, never a thing to click. */
+.ic-peer-selection {
+  position: absolute;
+  z-index: 5;
+  border: 2px solid var(--peer-color);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--peer-color) 8%, transparent);
+  pointer-events: none;
+}
+
+.ic-peer-name {
+  position: absolute;
+  top: -17px;
+  left: -2px;
+  padding: 1px 5px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--peer-color);
+  color: #fff;
+  font-size: var(--text-size-extra-small);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+/* The autofill grip on the bottom-right of the selection. */
+.ironcalc-cell-handle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--color-neutral-10);
+  border-radius: 1px;
+  background: var(--palette-sheet-outline-color);
+  cursor: crosshair;
+}
+
+.ic-root--readonly .ironcalc-cell-handle {
+  display: none;
+}
+
+.ic-worksheet-editor-wrapper {
+  position: absolute;
+  z-index: 10;
+  width: 100%;
+  padding: 0;
+  border: 2px solid var(--palette-sheet-outline-color);
+  outline: 3px solid var(--palette-sheet-outline-editing-color);
+  overflow: hidden;
+  text-align: left;
+  vertical-align: bottom;
+  white-space: pre-wrap;
+  resize: none;
+}
+
+.ic-worksheet-editor-wrapper span {
+  min-width: 1px;
+}
+
+/* --- cell editor -------------------------------------------------------- */
+
+.ic-editor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-neutral-10);
+  font-family: var(--palette-sheet-default-cell-font-family);
+  font-size: var(--text-size-small);
+}
+
+.ic-editor[hidden] {
+  display: none;
+}
+
+/* Both layers share a box so the caret in the (transparent) textarea lands on
+ * the glyphs painted by the mask underneath it. */
+.ic-editor-mask,
+.ic-editor-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  line-height: 22px;
+  white-space: pre;
+}
+
+.ic-editor-mask {
+  pointer-events: none;
+  text-align: left;
+}
+
+.ic-editor-input {
+  border: none;
+  outline: none;
+  background-color: transparent;
+  color: transparent;
+  caret-color: var(--color-primary-600);
+  overflow: hidden;
+  resize: none;
+  align-content: baseline;
+}
+
+.ic-editor--readonly .ic-editor-mask {
+  color: var(--color-neutral-500);
+}
+
+/* Marks the caret position where a reference can be inserted (`=SUM(|`). */
+.ic-insert-range-hint {
+  position: relative;
+  margin: 0 2px;
+  white-space: normal;
+}
+
+.ic-insert-range-hint::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  height: 2px;
+  border: 1px solid;
+  border-top: 0;
+  color: var(--palette-info-main);
+}
