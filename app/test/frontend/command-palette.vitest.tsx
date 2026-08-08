@@ -15,7 +15,9 @@ const [documents, setDocuments] = createSignal<Array<Record<string, unknown>>>([
 vi.mock("@solidjs/router", () => ({ useNavigate: () => navigate }));
 vi.mock("#composeables/useDocuments.ts", () => ({ useDocuments: () => ({ documents }) }));
 vi.mock("#composeables/useSpace.ts", () => ({
-  useSpace: () => ({ currentSpace: () => ({ id: "space_1", slug: "first" }) }),
+  useSpace: () => ({
+    currentSpace: () => ({ id: "space_1", slug: "first", name: "First" }),
+  }),
 }));
 vi.mock("#utils/history.ts", () => ({
   history: { getAll: async () => [], log: async () => {} },
@@ -67,13 +69,25 @@ function pressEnter(container: HTMLElement) {
   });
 }
 
+/** Clicks the row whose label starts with `prefix`. */
+function clickRow(container: HTMLElement, prefix: string) {
+  const row = [...container.querySelectorAll("[data-result-index]")].find((candidate) =>
+    candidate.querySelector("span.truncate")?.textContent?.startsWith(prefix),
+  );
+  if (!row) throw new Error(`No row labelled "${prefix}…" in ${rowLabels(container)}`);
+  return fireEvent.click(row);
+}
+
 describe("command palette create-with-title", () => {
   it("offers the typed text as a title when nothing else matches", async () => {
     const container = mountPalette();
 
     await type(container, "Release notes");
 
-    expect(rowLabels(container)).toEqual(['Create Document with title "Release notes"']);
+    expect(rowLabels(container)).toEqual([
+      'Search "Release notes" in First',
+      'Create Document with title "Release notes"',
+    ]);
     expect(container.textContent).not.toContain("No results found");
   });
 
@@ -81,7 +95,7 @@ describe("command palette create-with-title", () => {
     const container = mountPalette();
 
     await type(container, "Q3 / roadmap");
-    await pressEnter(container);
+    await clickRow(container, "Create Document");
 
     expect(navigate).toHaveBeenCalledWith("/new?title=Q3%20%2F%20roadmap");
   });
@@ -92,7 +106,11 @@ describe("command palette create-with-title", () => {
 
     await type(container, "Notes");
 
-    expect(rowLabels(container)).toEqual(["Notes", 'Create Document with title "Notes"']);
+    expect(rowLabels(container)).toEqual([
+      "Notes",
+      'Search "Notes" in First',
+      'Create Document with title "Notes"',
+    ]);
 
     await pressEnter(container);
     expect(navigate).toHaveBeenCalledWith("/doc/notes");
@@ -112,7 +130,56 @@ describe("command palette create-with-title", () => {
 
     await type(container, "  API Reference  ");
 
-    expect(rowLabels(container)).toEqual(['Create Document with title "API Reference"']);
+    expect(rowLabels(container)).toEqual([
+      'Search "API Reference" in First',
+      'Create Document with title "API Reference"',
+    ]);
+  });
+});
+
+/**
+ * The palette filters cached titles and slugs; the search page runs the
+ * server-side index over document bodies. This row is the handoff between them.
+ */
+describe("command palette search-in-space", () => {
+  it("hands the typed query to the search page", async () => {
+    const container = mountPalette();
+
+    await type(container, "quarterly plan");
+    await clickRow(container, "Search");
+
+    expect(navigate).toHaveBeenCalledWith("/search?q=quarterly%20plan");
+  });
+
+  /**
+   * Nothing matched by title, so the body-text search is the better guess than
+   * a new document named after the query.
+   */
+  it("wins Enter over the create row when no document matches", async () => {
+    const container = mountPalette();
+
+    await type(container, "quarterly plan");
+    await pressEnter(container);
+
+    expect(navigate).toHaveBeenCalledWith("/search?q=quarterly%20plan");
+  });
+
+  it("is absent while the query is empty", async () => {
+    const container = mountPalette();
+
+    await type(container, "   ");
+
+    expect(rowLabels(container)).toEqual([]);
+  });
+
+  it("sits behind matching documents so it never steals Enter", async () => {
+    setDocuments([{ id: "doc_1", slug: "plan", properties: { title: "Plan" } }]);
+    const container = mountPalette();
+
+    await type(container, "Plan");
+    await pressEnter(container);
+
+    expect(navigate).toHaveBeenCalledWith("/doc/plan");
   });
 });
 
@@ -158,6 +225,7 @@ describe("command palette list size", () => {
 
     expect(rowLabels(container)).toEqual([
       "Doc 117",
+      'Search "Doc 117" in First',
       'Create Document with title "Doc 117"',
     ]);
   });
