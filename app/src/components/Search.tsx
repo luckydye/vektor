@@ -1,5 +1,13 @@
 import { useLocation, useNavigate } from "@solidjs/router";
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
@@ -128,28 +136,44 @@ export function Search(props: Props) {
   onMount(() => {
     window.addEventListener("scroll", handleScroll);
     onCleanup(() => window.removeEventListener("scroll", handleScroll));
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const queryParam = urlParams.get("q");
-    const filtersParam = urlParams.get("filters");
-
-    if (queryParam) setSearchQuery(queryParam);
-
-    if (filtersParam) {
-      try {
-        const parsed = JSON.parse(filtersParam);
-        if (Array.isArray(parsed)) setActiveFilters(parsed);
-      } catch {
-        // Ignore invalid filters
-      }
-    }
-
-    if (queryParam || filtersParam) {
-      setCommittedQuery(queryParam ?? "");
-      setCommittedFilters([...activeFilters()]);
-      setHasSearched(true);
-    }
   });
+
+  /**
+   * Runs the search the URL asks for.
+   *
+   * Reactive, and reading the router's location rather than `window.location`,
+   * because the command palette hands its query over by navigating here: the
+   * palette can be opened from this very page, where nothing remounts, and on a
+   * client-side navigation `window.location` is not yet updated when this
+   * component mounts. Typing does not touch the URL — only committing does — so
+   * this never fights the input.
+   */
+  createEffect(
+    on(
+      () => location.search,
+      () => {
+        const urlParams = new URLSearchParams(location.search);
+        const queryParam = urlParams.get("q");
+        const filtersParam = urlParams.get("filters");
+
+        let filters: PropertyFilter[] = [];
+        if (filtersParam) {
+          try {
+            const parsed = JSON.parse(filtersParam);
+            if (Array.isArray(parsed)) filters = parsed;
+          } catch {
+            // Ignore invalid filters
+          }
+        }
+
+        setSearchQuery(queryParam ?? "");
+        setActiveFilters(filters);
+        setCommittedQuery(queryParam ?? "");
+        setCommittedFilters(filters);
+        setHasSearched(Boolean(queryParam || filtersParam));
+      },
+    ),
+  );
 
   const handleSearch = () => {
     const hasQuery = searchQuery().trim().length > 0;

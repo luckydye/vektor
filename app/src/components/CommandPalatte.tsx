@@ -18,17 +18,20 @@ type Doc = any;
 type Result =
   | { type: "document"; data: Doc; id?: undefined }
   | { type: "action"; id: string; data: { title?: string; description?: string } }
+  | { type: "search"; title: string; space: string; id?: undefined }
   | { type: "create"; title: string; id?: undefined };
 
 const SECTION_LABELS: Record<Result["type"], string> = {
   document: "Documents",
   action: "Actions",
+  search: "Search",
   create: "Create",
 };
 
 const RESULT_ICONS: Record<Result["type"], IconName> = {
   document: "document",
   action: "bolt",
+  search: "search",
   create: "new-document",
 };
 
@@ -44,11 +47,13 @@ const MAX_DOCUMENT_RESULTS = 50;
 function resultLabel(result: Result): string {
   if (result.type === "document") return documentTitle(result.data);
   if (result.type === "action") return result.data.title || result.id;
+  if (result.type === "search") return `Search "${result.title}" in ${result.space}`;
   return `Create Document with title "${result.title}"`;
 }
 
 function resultDescription(result: Result): string | undefined {
   if (result.type === "action") return result.data.description;
+  if (result.type === "search") return "Search the full text of every document";
   if (result.type === "create") return "Open a new document with this title";
   return undefined;
 }
@@ -113,10 +118,18 @@ export function CommandPalatte() {
       }
     }
 
+    const space = currentSpace();
+    // The filter above only reads titles and slugs of the cached list. Handing
+    // the same query to the search page is how the body of every document —
+    // and the semantic index — becomes reachable from here.
+    if (typed && space) {
+      results.push({ type: "search", title: typed, space: space.name || "this space" });
+    }
+
     // Offered for whatever was typed, matches or not: the query that finds
     // nothing is exactly the title of the document that does not exist yet.
     // Last, so it never steals Enter from a document that does match.
-    if (typed && currentSpace()) results.push({ type: "create", title: typed });
+    if (typed && space) results.push({ type: "create", title: typed });
 
     return results;
   });
@@ -147,13 +160,34 @@ export function CommandPalatte() {
 
   function togglePalette() {
     setIsOpen((open) => !open);
-    if (isOpen()) {
-      void loadHistory();
-      // No `nextTick`: the element already exists — the palette is kept
-      // mounted and toggled with `hidden`, so it can be focused directly.
-      searchInput?.focus();
-    }
   }
+
+  /**
+   * Moves focus into the input on every open, and back out on every close.
+   *
+   * Neither half can be done where the palette is toggled from. The overlay is
+   * `hidden` while closed and a hidden element cannot take focus, so a focus
+   * call in the same tick as the state change is silently dropped — hence a
+   * frame's wait. `a-blur` does some of this itself but cannot be relied on for
+   * either direction: it focuses on open only when the open came from the
+   * keyboard (deliberately, so a pointer open paints no focus ring), and it
+   * restores focus on close only when it recorded where focus was on the way
+   * in, which it skips when focus was already inside it.
+   *
+   * Releasing focus matters as much as taking it: `Actions.handleKey` ignores
+   * every shortcut while an `<input>` has focus, so focus left behind in the
+   * closed overlay makes the palette impossible to reopen with the keyboard.
+   */
+  createEffect(
+    on(isOpen, (open) => {
+      if (open) {
+        void loadHistory();
+        requestAnimationFrame(() => searchInput?.focus());
+      } else if (searchInput && document.activeElement === searchInput) {
+        searchInput.blur();
+      }
+    }),
+  );
 
   function scrollToSelected() {
     resultsContainer
@@ -189,9 +223,16 @@ export function CommandPalatte() {
     navigate(`/new?title=${encodeURIComponent(title)}`);
   }
 
+  /** Hands the query to the search page, which owns the server-side index. */
+  function searchSpace(query: string) {
+    closePalette();
+    navigate(`/search?q=${encodeURIComponent(query)}`);
+  }
+
   function runResult(result: Result) {
     if (result.type === "document") void navigateToDocument(result.data);
     else if (result.type === "action") executeAction(result.id);
+    else if (result.type === "search") searchSpace(result.title);
     else createDocumentWithTitle(result.title);
   }
 
