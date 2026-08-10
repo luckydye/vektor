@@ -33,8 +33,6 @@ export function Search(props: Props) {
   const [activeFilters, setActiveFilters] = createSignal<PropertyFilter[]>([]);
   const [hasSearched, setHasSearched] = createSignal(false);
 
-  // "Committed" values — only updated when the user explicitly submits a search.
-  // This prevents the paged list from re-fetching while the user is still typing.
   const [committedQuery, setCommittedQuery] = createSignal("");
   const [committedFilters, setCommittedFilters] = createSignal<PropertyFilter[]>([]);
 
@@ -86,15 +84,12 @@ export function Search(props: Props) {
       query.delete("filters");
     }
     const search = query.toString();
-    // `location.pathname` already carries the router base ("/{space}/"), so the
-    // target must not be resolved against it again — that yields "/space/space/…".
     navigate(`${location.pathname}${search ? `?${search}` : ""}`, {
       replace: true,
       resolve: false,
     });
   };
 
-  // Infinite query for documents (when not searching)
   const documentsPageSize = 50;
 
   const {
@@ -109,15 +104,12 @@ export function Search(props: Props) {
       await api.documents.get(props.spaceId, {
         limit: documentsPageSize,
         cursor: pageParam,
-        // The browse list stands in for search with no query, so it lists
-        // uploads next to documents the way a search result set does.
         includeFiles: true,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     initialPageParam: undefined,
   });
 
-  // Flatten all documents from pages (only when not searching)
   const allDocuments = createMemo(() => {
     if (hasSearched()) return [];
     return documentsData()?.pages.flatMap((page) => page.documents) ?? [];
@@ -138,16 +130,6 @@ export function Search(props: Props) {
     onCleanup(() => window.removeEventListener("scroll", handleScroll));
   });
 
-  /**
-   * Runs the search the URL asks for.
-   *
-   * Reactive, and reading the router's location rather than `window.location`,
-   * because the command palette hands its query over by navigating here: the
-   * palette can be opened from this very page, where nothing remounts, and on a
-   * client-side navigation `window.location` is not yet updated when this
-   * component mounts. Typing does not touch the URL — only committing does — so
-   * this never fights the input.
-   */
   createEffect(
     on(
       () => location.search,
@@ -161,9 +143,7 @@ export function Search(props: Props) {
           try {
             const parsed = JSON.parse(filtersParam);
             if (Array.isArray(parsed)) filters = parsed;
-          } catch {
-            // Ignore invalid filters
-          }
+          } catch {}
         }
 
         setSearchQuery(queryParam ?? "");
@@ -210,13 +190,9 @@ export function Search(props: Props) {
     () => searchQuery().trim().length > 0 || activeFilters().length > 0,
   );
 
-  // Batch operations
   const [isBatchArchiving, setIsBatchArchiving] = createSignal(false);
   const [batchError, setBatchError] = createSignal<string | null>(null);
 
-  // Files (search results backed by the file table) aren't documents — their id
-  // is a file storage path, not a document id, so they go through the uploads
-  // delete endpoint instead of the document archive endpoint.
   const isFileId = (id: string) => {
     const item = [...sortedResults(), ...allDocuments()].find((d) => d.id === id);
     return item?.type === "file" || Boolean(item?.fileUrl);
@@ -293,7 +269,6 @@ export function Search(props: Props) {
 
   return (
     <div>
-      {/* Search Box */}
       <div class="mb-3 flex gap-3">
         <div class="relative flex-1">
           <Icon
@@ -340,7 +315,6 @@ export function Search(props: Props) {
         </button>
       </div>
 
-      {/* Filter chips row */}
       <div class="mb-6">
         <SearchFilters
           spaceId={props.spaceId}
@@ -364,7 +338,6 @@ export function Search(props: Props) {
         </div>
       </Show>
 
-      {/* Browse mode: grouped document list */}
       <Show when={!hasSearched()}>
         <Show when={allDocuments().length > 0}>
           <DocumentGroupedList
@@ -414,7 +387,6 @@ export function Search(props: Props) {
         </Show>
       </Show>
 
-      {/* Search results: grouped list */}
       <Show when={hasSearched() && sortedResults().length > 0}>
         <DocumentGroupedList
           items={sortedResults() as unknown as DocumentWithProperties[]}
@@ -433,7 +405,6 @@ export function Search(props: Props) {
         />
       </Show>
 
-      {/* No search results */}
       <Show
         when={
           hasSearched() &&

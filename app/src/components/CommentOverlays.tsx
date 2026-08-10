@@ -43,14 +43,12 @@ const MAX_VISIBLE_AVATARS = 3;
 const DRAG_THRESHOLD_PX = 4;
 
 function findElement(reference: string, root: Element | ShadowRoot): Element | null {
-  // Case 1: Reference is an ID
   const byId =
     root instanceof ShadowRoot
       ? root.getElementById(reference)
       : root.querySelector(`#${reference}`);
   if (byId) return byId;
 
-  // Case 2: Reference is a selector (e.g. "p:nth-of-type(1)")
   try {
     const bySelector = root.querySelector(reference);
     if (bySelector) return bySelector;
@@ -62,8 +60,6 @@ function findElement(reference: string, root: Element | ShadowRoot): Element | n
 export function CommentOverlays(props: Props) {
   let containerEl: HTMLDivElement | undefined;
 
-  // A store rather than a signal: dragging writes a single overlay's `top` in
-  // place, and only that bubble should move.
   const [overlays, setOverlays] = createStore<CommentOverlay[]>([]);
 
   const [drag, setDrag] = createSignal<{
@@ -74,7 +70,6 @@ export function CommentOverlays(props: Props) {
   } | null>(null);
   let suppressClick = false;
 
-  /** Top of the document content relative to the overlay container. */
   function documentViewTop(): number {
     const docView = document.querySelector("document-view");
     if (!containerEl || !docView) return 0;
@@ -87,7 +82,6 @@ export function CommentOverlays(props: Props) {
     const docView = document.querySelector("document-view");
     if (!containerEl || !docView) return;
 
-    // Group comments and their distinct authors by reference.
     const commentGroups = new Map<string, Comment[]>();
     for (const c of props.comments) {
       if (!c.reference) continue;
@@ -104,15 +98,12 @@ export function CommentOverlays(props: Props) {
     const newOverlays: CommentOverlay[] = [];
 
     commentGroups.forEach((comments, reference) => {
-      // Inline anchor comments are shown as hover tooltips, not right-edge bubbles.
       if (isInlineAnchorReference(reference)) return;
 
       const participants = Array.from(
         comments
           .reduce((byUser, comment) => {
             const userId = comment.createdByUser?.id ?? comment.createdBy;
-            // Optimistic comments have no author until the server responds, so their
-            // comment id keeps their temporary avatar separate from another pending one.
             const key = userId || comment.id;
             if (!byUser.has(key)) {
               byUser.set(key, { key, userId, user: comment.createdByUser ?? null });
@@ -124,22 +115,18 @@ export function CommentOverlays(props: Props) {
       const overlay = { count: comments.length, reference, participants };
 
       if (isPositionReference(reference)) {
-        // Position references are y offsets relative to the document content
         newOverlays.push({ ...overlay, top: docTop + Number(reference) });
         return;
       }
 
       const target = findElement(reference, searchRoot);
       if (target) {
-        // Calculate top relative to the overlay container
         const top = target.getBoundingClientRect().top - containerRect.top;
         newOverlays.push({ ...overlay, top });
       }
     });
 
     setOverlays(newOverlays);
-    // Consumers anchored to a bubble measure after it has moved in the DOM.
-    // Solid applies the store write synchronously, so there is no tick to await.
     props.onPositioned?.();
   }
 
@@ -150,8 +137,6 @@ export function CommentOverlays(props: Props) {
   function openSidebar(reference: string) {
     window.dispatchEvent(new CustomEvent("comment:create", { detail: { reference } }));
   }
-
-  // --- Drag-to-reposition ---
 
   function startDrag(e: PointerEvent, overlay: CommentOverlay) {
     if (e.button !== 0) return;
@@ -180,7 +165,6 @@ export function CommentOverlays(props: Props) {
     setDrag(null);
     if (!d || d.reference !== overlay.reference || !d.moved) return;
 
-    // Inline anchor references are bound to document text — don't convert to a y-offset.
     if (isInlineAnchorReference(d.reference)) return;
 
     suppressClick = true;
@@ -202,14 +186,7 @@ export function CommentOverlays(props: Props) {
     let resizeObserver: ResizeObserver | null = null;
 
     window.addEventListener("resize", handleResize);
-    // The overlay stores positions relative to its container, while document
-    // anchors are measured in the viewport. Recalculate on every captured
-    // scroll so bubbles stay attached when either the page or a nested pane
-    // scrolls.
     window.addEventListener("scroll", handleResize, true);
-    // Recompute when the document content grows/shrinks (images loading,
-    // entering/leaving edit mode, ...). The container is inset-0, so it
-    // tracks the wrapper around the document content.
     if (containerEl && typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(handleResize);
       resizeObserver.observe(containerEl);

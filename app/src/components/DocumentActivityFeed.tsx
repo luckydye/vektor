@@ -74,7 +74,6 @@ function getDocumentBatchKey(entry: AuditLog | undefined, userId: string | null)
   ].join(":");
 }
 
-/** Document entries batch by revision, falling back to the minute. */
 function isSameDocumentBatch(entry: AuditLog, group: ActivityGroup): boolean {
   return (
     getDocumentBatchKey(group.items[0], group.userId) ===

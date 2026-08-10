@@ -119,7 +119,6 @@ export function DocumentActions(props: Props) {
         const docId = documentId();
         if (!docId) return;
 
-        // Create a 30-day access token for this document
         const documentName = props.title || docId;
         const tokenResult = await api.accessTokens.create(spaceId, {
           name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
@@ -450,8 +449,6 @@ export function DocumentActions(props: Props) {
     }
   });
 
-  // Extensions name their own icons, and an unknown name draws nothing rather
-  // than a stand-in glyph that means something else.
   const actionIcon = (options: ActionOptions): IconName | undefined =>
     options.icon?.() as IconName | undefined;
 
@@ -477,8 +474,6 @@ export function DocumentActions(props: Props) {
           spaceId={currentSpaceId() as string}
         />
       </Show>
-
-      {/* Workflows have no dedicated edit button; the context menu carries it. */}
 
       <Show when={canUseDocumentEditor() && !editing()}>
         <button

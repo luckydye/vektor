@@ -8,7 +8,6 @@ import { Icon } from "./Icon.tsx";
 
 interface Props {
   spaceId: string;
-  /** Two-way bound value. */
   value: PropertyFilter[];
   onInput?: (filters: PropertyFilter[]) => void;
   onSearch?: () => void;
@@ -109,7 +108,6 @@ export function SearchFilters(props: Props) {
 
   return (
     <div class="flex select-none flex-wrap items-center gap-2">
-      {/* Date range picker */}
       <a-popover-trigger class="group">
         <button
           type="button"
@@ -156,7 +154,6 @@ export function SearchFilters(props: Props) {
         </a-popover>
       </a-popover-trigger>
 
-      {/* Type filter chips */}
       <For each={typeValues()}>
         {(tv) => (
           <button
@@ -192,7 +189,6 @@ export function SearchFilters(props: Props) {
         )}
       </For>
 
-      {/* Active property filter chips */}
       <For each={activePropertyFilters()}>
         {(filter) => (
           <div class="flex items-center gap-1 rounded-lg border border-primary-200 bg-primary-50 px-3xs py-1 text-interactive text-primary-700 text-size-small transition-colors hover:bg-primary-100">
@@ -212,7 +208,6 @@ export function SearchFilters(props: Props) {
         )}
       </For>
 
-      {/* Add property filter */}
       <Show when={nonTypeProperties().length > 0}>
         <a-popover-trigger class="group">
           <button
@@ -311,7 +306,6 @@ export function SearchFilters(props: Props) {
         </a-popover-trigger>
       </Show>
 
-      {/* Clear all */}
       <Show when={props.value.length > 0}>
         <button
           type="button"

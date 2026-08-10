@@ -26,14 +26,6 @@ interface Props {
 const TABLE_VIEW_ID = "table";
 const DATABASE_VIEWS_PROPERTY = "_databaseViews";
 
-/**
- * Shared by every tab so the table and the extension views cannot drift apart.
- *
- * The pill selectors are child-scoped (`>span`) rather than descendant matches:
- * `Icon` renders a span of its own, so `[&_span]` also gives the glyph a
- * background — a hard-edged box that snaps in while the pill underneath is still
- * fading through `transition-colors`, which reads as a flicker.
- */
 const TAB_CLASS =
   "inline-flex h-9 items-center justify-center rounded-sm px-1 text-label opacity-60 transition-opacity [&[aria-selected=true]:hover>span]:bg-gray-100 [&[aria-selected=true]]:opacity-100 [&[aria-selected=true]>span]:bg-gray-100 hover:[&>span]:bg-gray-200";
 
@@ -66,7 +58,6 @@ export function DatabaseDocumentView(props: Props) {
     parseConfiguredViewIds(props.viewConfig),
   );
 
-  // The value to compare the next render against, so a snapshot is the point.
   let previousDatabaseDocumentId = props.databaseDocumentId; // solid-reactivity-ok: snapshot by design
   let previousViewConfigKey = JSON.stringify(parseConfiguredViewIds(props.viewConfig));
 
@@ -85,20 +76,8 @@ export function DatabaseDocumentView(props: Props) {
     ...configuredExtensionViews().map(extensionViewId),
   ]);
 
-  // Tracked by ID rather than by index so adding or removing a view, which
-  // shifts every index after it, does not read as a selection change.
   let animatedViewId = TABLE_VIEW_ID;
 
-  /**
-   * Which tab is open is the reader's own state, not the document's.
-   *
-   * The counterpart to `_databaseViews`: *which views exist* is document data
-   * everyone shares, while *which one you are looking at* stays in your browser,
-   * so two people on the same database keep their own tab. `canApply` is what
-   * makes the restore survive a cold load — a stored extension view is not
-   * selectable until `props.views` arrives, and selecting it early would trip the
-   * fall-back-to-Table effect below.
-   */
   const {
     value: selectedViewId,
     commit: selectView,
@@ -107,8 +86,6 @@ export function DatabaseDocumentView(props: Props) {
     key: () => `database-view:${props.databaseDocumentId}`,
     fallback: TABLE_VIEW_ID,
     canApply: (viewId) => orderedViewIds().includes(viewId),
-    // Neither a restore nor a switch between documents is a tab switch, so
-    // neither should slide the panel in.
     onAdopt: (viewId) => {
       animatedViewId = viewId;
     },
@@ -129,16 +106,12 @@ export function DatabaseDocumentView(props: Props) {
     if (to === -1) return;
 
     const direction = from === -1 || to > from ? "next" : "previous";
-    // Switching between the table and an extension replaces the panel's child,
-    // so the node to animate only exists after this render has been painted.
     requestAnimationFrame(() => {
       const content = panelRef?.firstElementChild as HTMLElement | null;
       if (content) animateTabPanel(content, direction);
     });
   });
 
-  // An extension can disappear while this page is open. Fall back to the table
-  // instead of leaving an empty panel selected.
   createEffect(() => {
     if (
       selectedViewId() !== TABLE_VIEW_ID &&
@@ -150,8 +123,6 @@ export function DatabaseDocumentView(props: Props) {
     }
   });
 
-  // The document query can refresh while a view writes to its database. Guard
-  // by the actual ID value so those refreshes do not select Table again.
   createEffect(() => {
     const databaseDocumentId = props.databaseDocumentId; // solid-reactivity-ok: tracked read, inside the effect
     const nextConfiguredViewIds = parseConfiguredViewIds(props.viewConfig);
@@ -161,8 +132,6 @@ export function DatabaseDocumentView(props: Props) {
       previousDatabaseDocumentId = databaseDocumentId;
       previousViewConfigKey = viewConfigKey;
       setConfiguredViewIds(nextConfiguredViewIds);
-      // The selection resets itself: this component survives navigation between
-      // two database documents, and the storage key follows the document ID.
       return;
     }
 
@@ -358,8 +327,6 @@ export function DatabaseDocumentView(props: Props) {
         </Show>
       </div>
 
-      {/* Owns the horizontal gutter so an extension view occupies exactly the
-          table's box instead of bleeding to the window edges. */}
       <div
         ref={panelRef}
         role="tabpanel"

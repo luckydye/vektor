@@ -16,8 +16,6 @@ import { UserProfile } from "./UserProfile.tsx";
 
 export function Navigation() {
   const navigate = useNavigate();
-  // The tree owns rearrange mode; the header button reads and toggles it
-  // through the handle.
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
   const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
@@ -34,9 +32,6 @@ export function Navigation() {
       return match ? `x/${match[1]}` : "";
     }
     if (path.includes("/settings")) return "settings";
-    // The router keeps its base ("/{space}/") in `location.pathname`, so the
-    // space home is "/{space}" — only the pre-hydration SSR fallback is
-    // base-relative and reports a bare "/".
     if (path === "" || path === spacePath(currentSpace()?.slug, "").replace(/\/+$/, "")) {
       return "home";
     }

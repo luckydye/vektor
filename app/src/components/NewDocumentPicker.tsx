@@ -43,7 +43,6 @@ const documentOptions: Array<{
     icon: "database",
   },
   {
-    // The document type stays "csv" — "Spreadsheet" is the product name for it.
     type: "csv",
     title: "Spreadsheet",
     description: "Lay out numbers and records in rows and columns.",
@@ -59,8 +58,6 @@ export function NewDocumentPicker() {
 
   const availableDocumentOptions = createMemo(() =>
     documentOptions.filter((option) => {
-      // Spreadsheets are still read-only once created, so keep them out of
-      // production until csv documents can be edited or imported into.
       if (option.type === "csv") return import.meta.env.DEV;
       if (option.type === "workflow") {
         return isWorkflowCreationEnabled(currentSpace()?.preferences);

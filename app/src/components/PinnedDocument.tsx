@@ -32,8 +32,6 @@ export function PinnedDocument(props: Props) {
     if (!viewEl) return;
     const root = viewEl.shadowRoot;
     if (!root) {
-      // `document-view` upgrades with the lazily-loaded editor chunk; retry on
-      // the next frame rather than dropping the content.
       requestAnimationFrame(() => renderContent(html));
       return;
     }

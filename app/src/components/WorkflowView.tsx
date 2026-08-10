@@ -46,7 +46,6 @@ type ATabsEl = HTMLElement & {
 
 const WORKFLOW_RUNS_PAGE_SIZE = 10;
 
-// Third tab, and only present while the view is too narrow for the sidebar.
 const HISTORY_TAB_INDEX = 2;
 
 const statusBadgeClass: Record<string, string> = {
@@ -58,7 +57,6 @@ const statusBadgeClass: Record<string, string> = {
   cancelled: "bg-neutral-100 text-neutral-400",
 };
 
-// Job values may use { type: "text", value } or { type: "file", url } envelopes.
 function unwrapOutputValue(val: unknown): string | null {
   if (typeof val === "string") return val;
   if (val && typeof val === "object") {
@@ -73,7 +71,6 @@ function extractTableData(
   output: Record<string, unknown> | null | undefined,
 ): Record<string, unknown>[] | null {
   let raw: unknown = output?.data ?? output?.result;
-  // unwrap { type: "text", value: "..." } envelope
   const str = unwrapOutputValue(raw);
   if (str !== null) {
     try {
@@ -131,8 +128,6 @@ export function WorkflowView(props: Props) {
   const [selectedRunError, setSelectedRunError] = createSignal<string | null>(null);
   let unsubscribeRuns: (() => void) | null = null;
   let unsubscribeRun: (() => void) | null = null;
-  // Run ids the URL asked for that turned out to belong to another workflow; a
-  // run never changes document, so once rejected they stay rejected.
   const foreignRunIds = new Set<string>();
 
   let workflowTabsEl: ATabsEl | undefined;
@@ -140,14 +135,11 @@ export function WorkflowView(props: Props) {
   let historySidebarEl: HTMLElement | undefined;
   let selectedWorkflowTabIndex = 0;
 
-  // `selectTabByIndex` only emits `tab-selected` for clicks, so a programmatic
-  // selection has to keep the tracked index in step itself.
   function selectWorkflowTab(index: number, focus = true) {
     workflowTabsEl?.selectTabByIndex(index, focus);
     selectedWorkflowTabIndex = index;
   }
 
-  // The breadcrumb slot lives in DocumentPageView, so it only exists after mount.
   const [breadcrumbSlot, setBreadcrumbSlot] = createSignal<HTMLElement | null>(null);
 
   function animateWorkflowTabPanel(index: number, direction: "next" | "previous") {
@@ -182,9 +174,6 @@ export function WorkflowView(props: Props) {
     animateWorkflowTabPanel(index, direction);
   }
 
-  // The history is paged (previous/next), so `runList` only holds the page in
-  // view. Everything the selected run needs falls back to `selectedRunDetail`,
-  // which keeps working when the run isn't on the current page.
   const {
     items: fetchedRuns,
     isFetching: isFetchingRuns,
@@ -206,10 +195,6 @@ export function WorkflowView(props: Props) {
     pageSize: WORKFLOW_RUNS_PAGE_SIZE,
   });
 
-  // While the list for a newly opened workflow loads, the query still serves the
-  // previous document's page as placeholder data. Filtering by document keeps
-  // that page out of the history and out of the auto-selection below, so
-  // switching workflows never shows the one just left behind.
   const runList = createMemo(() =>
     fetchedRuns().filter((run) => run.documentId === props.documentId),
   );
@@ -231,15 +216,12 @@ export function WorkflowView(props: Props) {
     if (runIdFromUrl() === runId) return;
     const query = new URLSearchParams(location.search);
     query.set("run", runId);
-    // `location.pathname` already carries the router base ("/{space}/"), so the
-    // target must not be resolved against it again — that yields "/space/space/…".
     navigate(`${location.pathname}?${query.toString()}`, {
       replace: true,
       resolve: false,
     });
   }
 
-  // Follow the selected run with a per-run realtime subscription.
   createEffect(
     on(selectedRunId, (runId) => {
       unsubscribeRun?.();
@@ -262,9 +244,6 @@ export function WorkflowView(props: Props) {
       const detail = await api.workflows.getRun(props.spaceId, runId);
       if (selectedRunId() !== runId) return;
       if (detail.documentId && detail.documentId !== props.documentId) {
-        // A `run` param pointing at another workflow's run — a stale link, or one
-        // left in the URL. Drop the selection and let the auto-select below fall
-        // back to this document's newest run instead of showing an error.
         foreignRunIds.add(runId);
         setSelectedRunId(null);
         setSelectedRunDetail(null);
@@ -299,18 +278,11 @@ export function WorkflowView(props: Props) {
     await fetchSelectedRunDetail();
   }
 
-  // In the narrow layout the history is a tab, so jump back to the results of
-  // the run that was just picked instead of leaving the user on the list.
   function selectRunFromHistoryTab(runId: string) {
     void selectRun(runId);
     selectWorkflowTab(0);
   }
 
-  // The History tab hides itself as soon as the sidebar fits, and CSS cannot
-  // move the selection with it: without this, widening the view — closing a
-  // docked panel, collapsing the space sidebar — while the history is open
-  // would leave an empty panel behind. The sidebar's computed display is the
-  // source of truth so the breakpoint stays declared once, in the markup.
   onMount(() => {
     const containerEl = workflowContainerEl;
     if (!containerEl) return;
@@ -329,9 +301,6 @@ export function WorkflowView(props: Props) {
   const [retrying, setRetrying] = createSignal(false);
   const [retryError, setRetryError] = createSignal<string | null>(null);
 
-  // Retry a failed or cancelled run: starts a new run seeded from this one's
-  // cached step results, so completed steps replay instantly and only the
-  // failed/changed steps re-execute. Selects the new run so its progress is shown.
   async function retrySelectedRun() {
     const currentRunId = selectedRunId();
     if (!currentRunId || retrying()) return;
@@ -391,10 +360,6 @@ export function WorkflowView(props: Props) {
     return inputs;
   });
 
-  // Navigating from one workflow to another reuses this component — the document
-  // page stays on its workflow branch and only swaps the id — so every
-  // per-document signal has to be dropped by hand. Without this the page keeps
-  // showing the run of the workflow that was just left.
   createEffect(
     on(
       () => props.documentId,
@@ -404,8 +369,6 @@ export function WorkflowView(props: Props) {
         setSelectedRunResult(null);
         setSelectedRunError(null);
         setSourceExtensionHref(null);
-        // A `run` param survives a same-page reload but not a navigation; when
-        // it is there it wins, otherwise the effect below picks the newest run.
         const urlRunId = runIdFromUrl();
         if (urlRunId && !foreignRunIds.has(urlRunId)) {
           void selectRun(urlRunId, { updateUrl: false });
@@ -415,8 +378,6 @@ export function WorkflowView(props: Props) {
     ),
   );
 
-  // Auto-select the first run once the list arrives. The guard on
-  // `selectedRunId` keeps it idempotent across later list updates.
   createEffect(() => {
     const newRuns = runList();
     if (newRuns.length === 0) return;
@@ -441,9 +402,6 @@ export function WorkflowView(props: Props) {
     }),
   );
 
-  // Router navigations don't fire `popstate`, so the query param is watched
-  // separately. This is how a run started from the header button (a different
-  // part of the tree) switches the view over to it.
   const runParam = createMemo(() => new URLSearchParams(location.search).get("run"));
 
   createEffect(
@@ -477,9 +435,6 @@ export function WorkflowView(props: Props) {
     window.addEventListener("popstate", handleUrlChange);
     window.addEventListener("hashchange", handleUrlChange);
 
-    // Any run change in the space refreshes the list (and the open run detail).
-    // When a run is started elsewhere (e.g. the header button) and nothing is
-    // selected yet, follow the newest run so it shows up immediately.
     unsubscribeRuns = api.subscribeToTopics(
       props.spaceId,
       [realtimeTopics.workflowRuns],
@@ -497,7 +452,6 @@ export function WorkflowView(props: Props) {
     });
   });
 
-  // Output fields
   const outputHtml = createMemo<string | null>(() =>
     unwrapOutputValue(selectedRunResult()?.html),
   );
@@ -548,14 +502,11 @@ export function WorkflowView(props: Props) {
     }));
   });
 
-  // A View Transition so new entries push the existing ones down rather than
-  // snapping — the FLIP move the old `move-class` provided.
   const visibleActivity = useViewTransitionList(
     recentActivity,
     (activity) => activity.id,
   );
 
-  // The script has one flat log stream; job messages include their job identifier.
   const allLogs = createMemo(() => {
     const detail = selectedRunDetail();
     if (!detail) return [];
@@ -589,19 +540,11 @@ export function WorkflowView(props: Props) {
         </Portal>
       </Show>
 
-      {/* The history sidebar comes and goes with the width this view actually
-          gets, not the window's: the space sidebar and docked panels take from
-          it, so a wide window can still leave a narrow view. */}
       <div
         ref={workflowContainerEl}
         class="@container/workflow flex min-h-0 flex-1 flex-col"
       >
-        {/* No grid gap: each column brings its own gutter padding, so the
-            divider between them has content spacing on both sides without a
-            container-query variant fighting the `md:` padding below. */}
         <div class="mx-auto flex @4xl/workflow:grid min-h-0 w-full flex-1 @4xl/workflow:grid-cols-[20rem_minmax(0,1fr)] flex-col">
-          {/* The list keeps its heading in place and scrolls under it, so a long
-              history never pushes the pager out of reach. */}
           <aside
             ref={historySidebarEl}
             class="@4xl/workflow:flex hidden min-h-0 min-w-0 flex-col border-neutral-100 @4xl/workflow:border-r pt-1 pl-xs md:pl-m"
@@ -619,12 +562,10 @@ export function WorkflowView(props: Props) {
 
           <div class="min-h-0 min-w-0 flex-1 space-y-8 overflow-y-auto px-xs pt-1 pb-12 md:px-m">
             <div class="flex justify-between gap-4">
-              {/* Title */}
               <h2 class="font-semibold text-neutral-800 text-size-title">
                 {selectedRunTitle() || "Untitled"}
               </h2>
 
-              {/* Header */}
               <div class="flex items-center justify-between gap-12">
                 <div class="flex items-center gap-3">
                   <Show when={selectedRunCreatedAt()}>
@@ -660,7 +601,6 @@ export function WorkflowView(props: Props) {
               </div>
             </div>
 
-            {/* Tabs: Results / Run Details / History */}
             <a-tabs
               ref={workflowTabsEl as never}
               on:tab-selected={handleWorkflowTabSelected}
@@ -676,8 +616,6 @@ export function WorkflowView(props: Props) {
                     Run Details
                   </span>
                 </a-tabs-tab>
-                {/* Once the view is wide enough the history lives in the
-                    sidebar instead of a tab. */}
                 <a-tabs-tab class="inline-flex @4xl/workflow:hidden h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
                   <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
                     History
@@ -685,7 +623,6 @@ export function WorkflowView(props: Props) {
                 </a-tabs-tab>
               </a-tabs-list>
 
-              {/* Results panel */}
               <a-tabs-panel>
                 <div class="space-y-4 pt-4">
                   <Show when={isSelectedRunActive()}>
@@ -772,7 +709,6 @@ export function WorkflowView(props: Props) {
                       selectedRunDetail()?.status === "completed"
                     }
                   >
-                    {/* HTML output */}
                     <Show when={outputHtml()}>
                       {(html) => (
                         <div class="overflow-hidden rounded-xl border border-neutral-200">
@@ -781,7 +717,6 @@ export function WorkflowView(props: Props) {
                       )}
                     </Show>
 
-                    {/* Data table */}
                     <Show when={outputData()}>
                       {(data) => (
                         <DataTable
@@ -793,7 +728,6 @@ export function WorkflowView(props: Props) {
                     </Show>
 
                     <div class="flex flex-wrap items-center gap-2">
-                      {/* Raw JSON artifact */}
                       <Show when={selectedRunDetail()?.resultArtifact}>
                         {(artifact) => (
                           <a
@@ -808,7 +742,6 @@ export function WorkflowView(props: Props) {
                         )}
                       </Show>
 
-                      {/* Document link */}
                       <Show when={outputDocumentId() && outputDocumentHref()}>
                         <a
                           href={outputDocumentHref() as string}
@@ -819,7 +752,6 @@ export function WorkflowView(props: Props) {
                         </a>
                       </Show>
 
-                      {/* File download */}
                       <Show when={selectedRunFileUrl() && selectedRunFileName()}>
                         <a
                           href={selectedRunFileUrl() as string}
@@ -912,10 +844,8 @@ export function WorkflowView(props: Props) {
                 </div>
               </a-tabs-panel>
 
-              {/* Run Details panel */}
               <a-tabs-panel>
                 <div class="space-y-6 pt-4">
-                  {/* Input fields */}
                   <Show when={selectedRunInputs()}>
                     {(inputs) => (
                       <div>
@@ -952,7 +882,6 @@ export function WorkflowView(props: Props) {
                     )}
                   </Show>
 
-                  {/* Logs */}
                   <Show when={allLogs().length > 0}>
                     <div class="flex flex-col rounded-lg bg-neutral-950 p-4 dark:bg-neutral-50">
                       <div class="text-neutral-400 text-size-small">Logs</div>
@@ -984,8 +913,6 @@ export function WorkflowView(props: Props) {
                 </div>
               </a-tabs-panel>
 
-              {/* History panel (narrow view only; the sidebar below takes over
-                  when there is room for it) */}
               <a-tabs-panel>
                 <div class="@4xl/workflow:hidden pt-2">
                   <WorkflowRunHistory

@@ -29,9 +29,6 @@ export function Breadcrumbs(props: Props) {
 
   let olRef: HTMLOListElement | undefined;
 
-  // Keep the deepest crumb visible when the trail overflows. Reading all three
-  // inputs is what re-runs this; the DOM is already updated by the time a Solid
-  // effect runs, so the old `nextTick` is unnecessary.
   createEffect(() => {
     void props.category;
     void parents();

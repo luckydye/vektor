@@ -26,7 +26,6 @@ interface Props {
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
 }
 
-// Backdrop grid options for canvas documents, mirroring the layout picker.
 const GRID_TYPE_OPTIONS: SelectMenuItem[] = [
   { id: "grid", label: t("Grid"), icon: "grid-grid" },
   { id: "clean", label: t("Clean"), icon: "grid-clean" },
@@ -91,7 +90,6 @@ export function DocumentProperties(props: Props) {
     setIsCreatePopoverOpen(false);
   };
 
-  /** Resolves a slug against the loaded categories, falling back to the SSR one. */
   const findCategory = (categorySlug: string) =>
     categories().find((c) => c.slug === categorySlug || c.name === categorySlug) ||
     (props.initialCategory?.slug === categorySlug ||
@@ -143,7 +141,6 @@ export function DocumentProperties(props: Props) {
     }
 
     if (property.type === "date" && value) {
-      // Format date as readable string (e.g., "Jan 15, 2024")
       const date = new Date(value);
       if (!Number.isNaN(date.getTime())) {
         return date.toLocaleDateString(currentLang(), {
@@ -168,7 +165,6 @@ export function DocumentProperties(props: Props) {
     return property.value.map((value) => getPropertyLabel({ ...property, value }));
   };
 
-  /** A category's chip is a generated colour badge, not an icon from the set. */
   const getPropertyIconSvg = (property: Property) =>
     property.id?.toLowerCase() === "category"
       ? (getCategoryIcon(propertyValueToScalar(property.value)) ?? undefined)

@@ -53,10 +53,6 @@ export function WorkflowEditorOverlay(props: Props) {
     editor?.setPresenceProfiles(editorProfiles);
   });
 
-  // Joining is keyed to the document, not to mount: navigating from one workflow
-  // to another keeps this panel alive, and `useCollaboration` only leaves the old
-  // room on that change — the new one has to be joined from here, or the editor
-  // sits on the empty replacement doc and shows no script.
   createEffect(
     on(
       () => props.documentId,

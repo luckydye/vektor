@@ -35,13 +35,6 @@ const RESULT_ICONS: Record<Result["type"], IconName> = {
   create: "new-document",
 };
 
-/**
- * How many documents the list may show at once. Filtering runs over the whole
- * space first, so typing still reaches every document; this only bounds what
- * gets built into the DOM. A space with a few hundred documents otherwise
- * renders a few hundred rows — each one a custom element with `innerHTML`
- * icons — every time the document list changes.
- */
 const MAX_DOCUMENT_RESULTS = 50;
 
 function resultLabel(result: Result): string {
@@ -77,9 +70,6 @@ export function CommandPalatte() {
   const getLastVisited = (doc: Doc) => lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
 
   const filteredResults = createMemo<Result[]>(() => {
-    // Nothing is visible while the palette is closed, and the document list it
-    // renders changes on every cache write. Deriving it here keeps those writes
-    // from rebuilding a hidden list.
     if (!isOpen()) return [];
 
     const typed = searchQuery().trim();
@@ -97,7 +87,6 @@ export function CommandPalatte() {
       });
     }
 
-    // Most recently visited first, then everything never visited.
     const visited = lastVisitedByUrl();
     const sorted = [...docs].sort((a: Doc, b: Doc) => {
       const aVisited = visited.get(`/doc/${a.slug}`);
@@ -119,22 +108,15 @@ export function CommandPalatte() {
     }
 
     const space = currentSpace();
-    // The filter above only reads titles and slugs of the cached list. Handing
-    // the same query to the search page is how the body of every document —
-    // and the semantic index — becomes reachable from here.
     if (typed && space) {
       results.push({ type: "search", title: typed, space: space.name || "this space" });
     }
 
-    // Offered for whatever was typed, matches or not: the query that finds
-    // nothing is exactly the title of the document that does not exist yet.
-    // Last, so it never steals Enter from a document that does match.
     if (typed && space) results.push({ type: "create", title: typed });
 
     return results;
   });
 
-  /** First index per result type — the row that carries its section heading. */
   const sectionStarts = createMemo(() => {
     const starts = new Map<Result["type"], number>();
     filteredResults().forEach((result, index) => {
@@ -162,22 +144,6 @@ export function CommandPalatte() {
     setIsOpen((open) => !open);
   }
 
-  /**
-   * Moves focus into the input on every open, and back out on every close.
-   *
-   * Neither half can be done where the palette is toggled from. The overlay is
-   * `hidden` while closed and a hidden element cannot take focus, so a focus
-   * call in the same tick as the state change is silently dropped — hence a
-   * frame's wait. `a-blur` does some of this itself but cannot be relied on for
-   * either direction: it focuses on open only when the open came from the
-   * keyboard (deliberately, so a pointer open paints no focus ring), and it
-   * restores focus on close only when it recorded where focus was on the way
-   * in, which it skips when focus was already inside it.
-   *
-   * Releasing focus matters as much as taking it: `Actions.handleKey` ignores
-   * every shortcut while an `<input>` has focus, so focus left behind in the
-   * closed overlay makes the palette impossible to reopen with the keyboard.
-   */
   createEffect(
     on(isOpen, (open) => {
       if (open) {
@@ -214,16 +180,11 @@ export function CommandPalatte() {
     Actions.run(actionId);
   }
 
-  /**
-   * Opens the draft with the title seeded rather than creating the document —
-   * the user still picks a type and writes before anything is persisted.
-   */
   function createDocumentWithTitle(title: string) {
     closePalette();
     navigate(`/new?title=${encodeURIComponent(title)}`);
   }
 
-  /** Hands the query to the search page, which owns the server-side index. */
   function searchSpace(query: string) {
     closePalette();
     navigate(`/search?q=${encodeURIComponent(query)}`);

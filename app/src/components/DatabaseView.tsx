@@ -50,17 +50,13 @@ export function DatabaseView(props: Props) {
 
   createEffect(() => setSchemaStr(props.schemaJson));
 
-  // Inline cell editing state
   const [editingCell, setEditingCell] = createSignal<{
     rowId: string;
     col: string;
   } | null>(null);
   const [editingValue, setEditingValue] = createSignal("");
 
-  /** Focuses the freshly-rendered edit input. Only one cell edits at a time. */
   const focusEditInput = (el: HTMLInputElement) => {
-    // The element is in the document by the time a ref callback runs, but not
-    // yet painted; a frame later it can take focus.
     requestAnimationFrame(() => el.focus());
   };
 
@@ -85,7 +81,6 @@ export function DatabaseView(props: Props) {
     if (e.key === "Escape") cancelEdit();
   }
 
-  // Add column popover
   const [newColumnName, setNewColumnName] = createSignal("");
   const [newColumnType, setNewColumnType] = createSignal<DatabaseColumn["type"]>("text");
   let newColumnInputRef: HTMLInputElement | undefined;
@@ -109,7 +104,6 @@ export function DatabaseView(props: Props) {
     if (e.key === "Escape") addColumnTriggerRef?.hide?.();
   }
 
-  // Per-column delete confirmation
   const [deletingColumn, setDeletingColumn] = createSignal<string | null>(null);
   const [columnPopoverStyle, setColumnPopoverStyle] = createSignal<JSX.CSSProperties>({});
 
@@ -124,13 +118,9 @@ export function DatabaseView(props: Props) {
     setDeletingColumn(null);
   }
 
-  // Row deletion
   const [deletingRow, setDeletingRow] = createSignal<string | null>(null);
   const [rowPopoverStyle, setRowPopoverStyle] = createSignal<JSX.CSSProperties>({});
 
-  // Navigating between two databases keeps this view mounted, so interaction
-  // state tied to the old one has to be dropped explicitly — a pending cell
-  // edit or an open confirmation targets a row that is no longer on screen.
   createEffect(() => {
     void props.databaseDocumentId;
     setEditingCell(null);
@@ -157,7 +147,6 @@ export function DatabaseView(props: Props) {
     }
   }
 
-  // CSV import
   let csvInputRef: HTMLInputElement | undefined;
   const { isImportingCsv, importCsvFile } = useDatabaseCsvImport({
     derivedColumns,
@@ -179,14 +168,12 @@ export function DatabaseView(props: Props) {
     await importCsvFile(file);
   }
 
-  // The confirm popovers portal into <body>, which does not exist during SSR.
   const [hasMounted, setHasMounted] = createSignal(false);
   onMount(() => setHasMounted(true));
 
   return (
     <>
       <div class="relative flex h-full min-h-0 flex-col overflow-hidden">
-        {/* Toolbar */}
         <div class="flex h-10 shrink-0 items-center justify-between gap-3 rounded-t-md border border-neutral-100 border-b-0 bg-neutral-50 px-4">
           <span class="text-neutral-500 text-size-small">{rows().length} rows</span>
           <div class="flex items-center gap-1.5">
@@ -210,7 +197,6 @@ export function DatabaseView(props: Props) {
           </div>
         </div>
 
-        {/* Table */}
         <div class="min-h-0 flex-1 overflow-auto">
           <Show
             when={!isLoading()}
@@ -230,7 +216,6 @@ export function DatabaseView(props: Props) {
             >
               <thead>
                 <tr class="bg-neutral-50 text-left">
-                  {/* Name column header */}
                   <th
                     class="relative whitespace-nowrap px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
                     style={{ width: `${NAME_COL_WIDTH}px` }}
@@ -238,7 +223,6 @@ export function DatabaseView(props: Props) {
                     Name
                   </th>
 
-                  {/* Property column headers */}
                   <For each={derivedColumns()}>
                     {(col) => (
                       <th
@@ -260,7 +244,6 @@ export function DatabaseView(props: Props) {
                     )}
                   </For>
 
-                  {/* Add column button */}
                   <th class="px-2" style={{ width: "48px" }}>
                     <a-popover-trigger ref={addColumnTriggerRef as never}>
                       <button
@@ -320,7 +303,6 @@ export function DatabaseView(props: Props) {
                 <For each={rows()}>
                   {(row) => (
                     <tr class="group">
-                      {/* Name cell — links to document */}
                       <td
                         class="px-3 py-2.5 align-top"
                         style={{ width: `${NAME_COL_WIDTH}px` }}
@@ -364,7 +346,6 @@ export function DatabaseView(props: Props) {
                         </Show>
                       </td>
 
-                      {/* Property cells */}
                       <For each={derivedColumns()}>
                         {(col) => (
                           // biome-ignore lint/a11y/noStaticElementInteractions: the cell is the edit affordance; the input it opens is the control.
@@ -426,7 +407,6 @@ export function DatabaseView(props: Props) {
                         )}
                       </For>
 
-                      {/* Row actions */}
                       <td class="px-2 py-2.5 align-top" style={{ width: "48px" }}>
                         <button
                           type="button"
@@ -441,7 +421,6 @@ export function DatabaseView(props: Props) {
                   )}
                 </For>
 
-                {/* Empty state */}
                 <Show when={rows().length === 0 && !isLoading()}>
                   <tr>
                     <td
@@ -457,7 +436,6 @@ export function DatabaseView(props: Props) {
           </Show>
         </div>
 
-        {/* Add row footer button */}
         <div class="shrink-0 border-neutral-100 border-t px-3 py-2">
           <button
             type="button"
@@ -472,7 +450,6 @@ export function DatabaseView(props: Props) {
 
       <Show when={hasMounted()}>
         <Portal>
-          {/* Delete column popover */}
           <Show when={deletingColumn()}>
             {(name) => (
               // biome-ignore lint/a11y/noStaticElementInteractions: a click-away backdrop; the Cancel button is the keyboard path.
@@ -511,7 +488,6 @@ export function DatabaseView(props: Props) {
             )}
           </Show>
 
-          {/* Delete row popover */}
           <Show when={deletingRow()}>
             {(rowId) => (
               // biome-ignore lint/a11y/noStaticElementInteractions: a click-away backdrop; the Cancel button is the keyboard path.

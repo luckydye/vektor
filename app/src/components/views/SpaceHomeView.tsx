@@ -33,9 +33,7 @@ export function SpaceHomeView() {
           }),
         },
       });
-    } catch {
-      // The shared upload manager reports the failure through the progress toast.
-    }
+    } catch {}
   }
 
   return (

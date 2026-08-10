@@ -4,7 +4,6 @@ import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
   icon?: IconName;
-  /** Extension artwork, which arrives as markup rather than a name. */
   iconSvg?: string;
   text?: string;
   isActive?: boolean;

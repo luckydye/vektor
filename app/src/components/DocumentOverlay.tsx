@@ -1,11 +1,3 @@
-/**
- * DocumentOverlay - Opens a document in a modal overlay for quick viewing
- *
- * Usage:
- *   window.dispatchEvent(new CustomEvent("view-document", {
- *     detail: { spaceId: "space-123", documentId: "doc-456" }
- *   }))
- */
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -44,7 +36,6 @@ export function DocumentOverlay() {
   const [contentContainer, setContentContainer] = createSignal<HTMLElement | null>(null);
   const { currentSpaceId, spaces } = useSpace();
 
-  // The overlay portals into <body>, which does not exist during SSR.
   const [hasMounted, setHasMounted] = createSignal(false);
 
   const { comments } = useComments({
@@ -82,19 +73,15 @@ export function DocumentOverlay() {
     const data = documentData();
     if (!container || !data) return;
 
-    // Clear existing content
     container.innerHTML = "";
 
-    // Create a document-view element with shadow DOM for proper styling
     const docView = document.createElement("document-view");
     const shadow = docView.attachShadow({ mode: "open" });
 
-    // Add document styles to shadow DOM
     const styleEl = document.createElement("style");
     styleEl.textContent = docStyles;
     shadow.appendChild(styleEl);
 
-    // Add the content
     const contentDiv = document.createElement("div");
     contentDiv.setAttribute("part", "content");
     contentDiv.innerHTML = data.content;
@@ -129,7 +116,6 @@ export function DocumentOverlay() {
     if (event.key === "Escape" && isOpen()) closeOverlay();
   }
 
-  // Event handler for custom event (by document ID)
   function handleViewDocumentEvent(event: Event) {
     const customEvent = event as CustomEvent<{ spaceId: string; documentId: string }>;
     void openOverlay(customEvent.detail.spaceId, customEvent.detail.documentId);
@@ -146,7 +132,6 @@ export function DocumentOverlay() {
     });
   });
 
-  // Prevent body scroll when overlay is open
   createEffect(
     on(
       isOpen,
@@ -160,7 +145,6 @@ export function DocumentOverlay() {
   return (
     <Show when={hasMounted()}>
       <Portal>
-        {/* Backdrop */}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a click-away backdrop; Escape and the close button are the keyboard paths. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: Escape closes the overlay, handled on document. */}
         <div
@@ -169,7 +153,6 @@ export function DocumentOverlay() {
           onClick={closeOverlay}
         />
 
-        {/* Slide-in Panel */}
         <a-blur
           hidden={!isOpen()}
           enabled={isOpen()}
@@ -180,7 +163,6 @@ export function DocumentOverlay() {
             <div class="pointer-events-none h-[calc(100vh-169px)] w-full flex-none lg:hidden" />
 
             <div class="pointer-events-auto flex h-full max-h-screen flex-1 flex-col bg-background">
-              {/* Header */}
               <div class="flex shrink-0 items-center justify-between border-neutral-100 border-b px-6 py-4">
                 <div class="flex min-w-0 items-center gap-3">
                   <Icon class="h-5 w-5 shrink-0 text-neutral-400" name="document" />
@@ -222,7 +204,6 @@ export function DocumentOverlay() {
                 </div>
               </div>
 
-              {/* Content */}
               <div class="flex-1 overflow-y-auto" data-scroll-container>
                 <Show when={loading()}>
                   <div class="space-y-4 p-6">
@@ -249,12 +230,10 @@ export function DocumentOverlay() {
                   </div>
                 </Show>
 
-                {/* Document content (rendered into shadow DOM) */}
                 <Show when={!loading() && !error() && documentData()}>
                   <div ref={setContentContainer} class="p-6" />
                 </Show>
 
-                {/* Comments Thread */}
                 <Show when={documentData()}>
                   <div class="border-neutral-100 border-t bg-neutral-50">
                     <div class="flex items-center gap-2 px-6 py-4">

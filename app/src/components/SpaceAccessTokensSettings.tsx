@@ -105,7 +105,6 @@ export function SpaceAccessTokensSettings() {
       const result = await api.accessTokens.create(spaceId, {
         name: newTokenName().trim(),
         permission: newTokenPermission(),
-        // The "extensions" capability is space-wide and has no resource target.
         ...(isExtensionsCapability
           ? {}
           : {
@@ -181,7 +180,6 @@ export function SpaceAccessTokensSettings() {
           </div>
         </Show>
 
-        {/* Create Token Form */}
         <Show when={isCreatingToken()}>
           <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
             <form
@@ -318,7 +316,6 @@ export function SpaceAccessTokensSettings() {
           </div>
         </Show>
 
-        {/* Created Token Display (shown once after creation) */}
         <Show when={createdTokenValue()}>
           {(value) => (
             <div class="mb-4 rounded-md border border-green-200 bg-green-50 p-3">

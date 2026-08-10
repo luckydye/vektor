@@ -3,22 +3,13 @@ import { Icon } from "./Icon.tsx";
 
 interface Props {
   accept?: string;
-  /** Small text shown below the main call-to-action (e.g. accepted formats). */
   hint?: string;
   onSelect?: (file: File) => void;
-  /** Replaces the default prompt. Receives the live drag state and the picker. */
   children?: (state: {
     isDragging: () => boolean;
     openPicker: () => void;
   }) => JSX.Element;
   class?: string;
-  /**
-   * Imperative handle, handed back through the `ref` prop.
-   *
-   * `isDragging` is a getter, not an accessor: a parent reads it as a value,
-   * and it stays reactive because the getter reads the signal at the point of
-   * use. `openPicker` is an action and stays a function.
-   */
   ref?: (handle: { readonly isDragging: boolean; openPicker: () => void }) => void;
 }
 

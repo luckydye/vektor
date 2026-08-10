@@ -6,7 +6,6 @@ import { Icon } from "./Icon.tsx";
 interface Props {
   sessions: AIChatSessionListEntry[];
   currentSessionId: string | null;
-  /** Picker replaces the transcript; the toolbar shows when it is closed. */
   showPicker: boolean;
   isGenerating: boolean;
   getSessionStatus: (session: AIChatSessionListEntry) => string;

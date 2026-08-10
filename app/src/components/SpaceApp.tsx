@@ -45,12 +45,6 @@ interface Props {
   lang?: string;
 }
 
-/**
- * Strips the router base so a URL is relative to it — "/test/doc/foo" becomes
- * "/doc/foo". Anchors carry the full space-scoped URL so middle-click and
- * open-in-new-tab resolve on the server, but the route records are
- * base-relative.
- */
 function stripRouterBase(url: string, base: string) {
   if (base === "/") return url || "/";
   const normalized = base.endsWith("/") ? base.slice(0, -1) : base;
@@ -59,18 +53,6 @@ function stripRouterBase(url: string, base: string) {
   return url || "/";
 }
 
-/**
- * Placeholder for a route whose view lands in phase 5.
- *
- * Named rather than blank: phase 4's exit is "the app boots, most routes still
- * blank", and a route that renders nothing is indistinguishable from one that
- * failed to match.
- */
-/**
- * `/new` and `/doc/:slug` are the same view; the draft is the case with no
- * slug. The route params are read here rather than inside the view so the view
- * stays a plain component the snapshot harness can mount directly.
- */
 function DocumentRoute() {
   const params = useParams<{ documentSlug?: string }>();
   return <DocumentPageView documentSlug={params.documentSlug} />;
@@ -92,20 +74,12 @@ function NewDocumentRoute() {
 }
 
 export function SpaceApp(props: Props) {
-  // The island root sets the document's locale rather than providing it: `t()`
-  // is called from 427 sites, most of them plain modules with no component
-  // context to read from. On the server the middleware scopes it per request.
   if (!isServer) {
     setClientLang(props.lang);
     api.setReplicaScope(props.replicaScope);
   }
 
   const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "/";
-  // `props.url` carries the query string — the router needs it, because a route
-  // can be parameterised by search params alone (`/new?title=…` seeds a draft
-  // title, and reading it only after hydration is too late for the components
-  // that snapshot their props on setup). `SsrUrlContext` is a *pathname* its
-  // consumers pattern-match, so that one gets the query stripped.
   const ssrRelativeUrl = stripRouterBase(
     (props.url ?? "/").split("?")[0] || "/",
     routerBase,
@@ -115,14 +89,8 @@ export function SpaceApp(props: Props) {
     (props.initialSpace?.id as string | undefined) ?? null,
   );
 
-  // One client for the island: shared across islands in the browser, fresh per
-  // render on the server. See islandQueryClient for why the binding's
-  // module-level fallback is not good enough — the seeding just below would
-  // otherwise write into a cache shared by every SSR render in the process.
   const queryClient = islandQueryClient();
 
-  // Seed the query cache with SSR-fetched data so children render immediately
-  // instead of waiting on their queries.
   if (props.initialSpace) {
     queryClient.setQueryData(["wiki_spaces"], [props.initialSpace], { stale: true });
   }
@@ -154,10 +122,6 @@ export function SpaceApp(props: Props) {
     void extensions.refresh(spaceId).catch(console.error);
   });
 
-  /**
-   * Lightweight chrome elements every route needs — the sidebar tree targets,
-   * shortcut hints and the mobile drawer. Registered eagerly.
-   */
   const registerShellElements = () =>
     Promise.all([
       import("#editor/elements/category-target.ts"),
@@ -166,12 +130,6 @@ export function SpaceApp(props: Props) {
       import("#editor/elements/drawer.ts"),
     ]).catch(console.error);
 
-  /**
-   * Heavy document/editor elements — these pull in TipTap, Yjs and embeds. They
-   * only render inside document content, so they stay off the initial-render
-   * path. Custom elements upgrade once defined and the renderers tolerate late
-   * registration, so deferring is safe.
-   */
   const registerDocumentElements = () =>
     Promise.all([
       import("#editor/document.ts"),
@@ -217,9 +175,6 @@ export function SpaceApp(props: Props) {
     "--inset-left": `${initialSidebarWidth}px`,
   }));
 
-  // Provided at this level because the writer is `DocumentPageView` and the
-  // readers are both under it (`DocumentActions`) and beside it in the shell
-  // (`AIChatPanel`), so this is the only scope that covers everyone.
   const documentContext = provideDocumentContext();
 
   const Shell = (shellProps: { children?: unknown }) => (
@@ -232,12 +187,6 @@ export function SpaceApp(props: Props) {
         <div
           class="main-content relative h-full min-h-screen transition-transform md:transition-none"
           style={{
-            // Only carry a transform while the mobile drawer actually offsets
-            // the shell. A transform — even translateX(0) — and will-change
-            // make this element the containing block for its fixed-position
-            // descendants, so the editor's viewport-anchored overlays (drag
-            // handles, toolbars, table reorder handles) would drift by the
-            // page's scroll offset.
             transform:
               mobileSidebarOffset() === 0
                 ? undefined
@@ -288,18 +237,6 @@ export function SpaceApp(props: Props) {
         <Icon class="h-7 w-7" name="command-palette" />
       </button>
 
-      {/* A mounted flag, *not* `<Show when={!isServer}>`.
-          
-          `isServer` is false during hydration, so the client would render these
-          on its first pass while the server rendered nothing — and Solid's
-          hydration then fails outright with "Unable to find DOM nodes for
-          hydration key", taking the whole island down. Measured: the toast
-          container never appeared and the palette threw.
-          
-          This is the same conclusion as ticket 1380, and it holds on both
-          sides: for *rendering* inside a hydrated island the guard has to be a
-          post-hydration flag. `isServer` is for code paths that must not run on
-          the server, not for withholding markup. */}
       <Show when={hasMounted()}>
         <CalDAVSetupDialog />
         <ToastContainer />
@@ -315,19 +252,6 @@ export function SpaceApp(props: Props) {
       <ActiveSpaceIdContext.Provider value={activeSpaceId}>
         <SsrUrlContext.Provider value={ssrRelativeUrl}>
           <DocumentContextContext.Provider value={documentContext}>
-            {/* `url` is the server's only route source. `Router` delegates to
-              `StaticRouter` when `isServer`, and that reads `props.url`,
-              falling back to SolidStart's request event — which does not exist
-              under Astro — and then to `""`. Without this every SSR matched
-              `/` and served the space home for every path, so hydrating any
-              other route walked markup for a tree that was never rendered and
-              threw. The client ignores it and reads `window.location`.
-
-              It gets the full path, not the base-relative one: the client
-              source is `window.location.pathname`, and the router strips
-              `base` itself. Handing it a pre-stripped path strips twice.
-              Query string included, so `useSearchParams()` resolves during SSR
-              too — see `ssrRelativeUrl` above. */}
             <Router
               url={props.url ?? "/"}
               base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}

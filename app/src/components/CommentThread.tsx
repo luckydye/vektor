@@ -78,7 +78,6 @@ export function CommentThread(props: Props) {
     on(
       commentCount,
       () => {
-        // Solid has already rendered the new comment by the time this runs.
         if (commentListRef) commentListRef.scrollTop = commentListRef.scrollHeight;
       },
       { defer: true },
@@ -87,7 +86,6 @@ export function CommentThread(props: Props) {
 
   return (
     <div class="flex h-full max-h-[600px] w-80 flex-col rounded-lg border border-neutral-100 bg-background shadow-xl">
-      {/* Header */}
       <div class="flex items-center justify-between rounded-t-lg border-neutral-100 border-b bg-neutral-50/80 p-3 backdrop-blur-sm">
         <div class="flex items-center gap-2">
           <h3 class="font-semibold text-neutral-800 text-size-medium">Thread</h3>
@@ -119,7 +117,6 @@ export function CommentThread(props: Props) {
         </div>
       </div>
 
-      {/* Comments List */}
       <div ref={commentListRef} class="flex-1 space-y-4 overflow-y-auto p-3">
         <Show when={props.comments.length === 0}>
           <div class="flex h-24 flex-col items-center justify-center text-center text-neutral-400">
@@ -169,7 +166,6 @@ export function CommentThread(props: Props) {
         </For>
       </div>
 
-      {/* Input Area */}
       <div class="p-5xs">
         <div class="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
           <MessageInput

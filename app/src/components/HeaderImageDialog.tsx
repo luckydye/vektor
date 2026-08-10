@@ -31,7 +31,6 @@ export function HeaderImageDialog(props: Props) {
 
   return (
     <a-popover-trigger class="group absolute top-0 left-0 h-0 w-0 overflow-hidden">
-      {/* Zero-size anchor; clicked programmatically to open the popover */}
       <button
         ref={triggerRef}
         slot="trigger"

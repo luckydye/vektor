@@ -194,7 +194,6 @@ export function DocumentShareDialog(props: Props) {
     }
   }
 
-  /** The grants sitting on this document itself — the only ones this tab owns. */
   function directGrants(entry: DocumentAccessEntry) {
     return entry.grants.filter((grant) => !grant.inherited);
   }
@@ -285,7 +284,6 @@ export function DocumentShareDialog(props: Props) {
     return (userId && usersMap().get(userId)?.email) || "";
   }
 
-  /** How a grantee reaches this document, in the words of the source grant. */
   function accessSourceLabel(entry: DocumentAccessEntry): string {
     const { resourceType, resourceLabel, inherited } = entry.via;
     const source =
@@ -301,7 +299,6 @@ export function DocumentShareDialog(props: Props) {
     return entry.groupId ? `Group · ${source}` : source;
   }
 
-  /** Direct grants first, then trees, categories, and space members. */
   const sourceRank: Record<string, number> = {
     document: 0,
     document_tree: 1,
@@ -327,7 +324,6 @@ export function DocumentShareDialog(props: Props) {
   function canRemoveSpaceMember(perm: PermissionEntry): boolean {
     if (!userIsOwner()) return false;
     if (isSelf(perm)) return false;
-    // The space owner is `createdBy`.
     if (
       perm.permission.permission === "owner" &&
       currentSpace()?.createdBy === perm.permission.userId
@@ -337,7 +333,6 @@ export function DocumentShareDialog(props: Props) {
     return true;
   }
 
-  /** One person's row — identical in all three panels apart from the trailing controls. */
   const PermissionRow = (rowProps: {
     userId?: string;
     groupId?: string;
@@ -446,7 +441,6 @@ export function DocumentShareDialog(props: Props) {
           </a-tabs-tab>
         </a-tabs-list>
 
-        {/* Document panel */}
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
             <form class="space-y-2" onSubmit={(e) => void handleInvite(e)}>
@@ -521,7 +515,6 @@ export function DocumentShareDialog(props: Props) {
           </div>
         </a-tabs-panel>
 
-        {/* Category panel */}
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
             <select
@@ -592,7 +585,6 @@ export function DocumentShareDialog(props: Props) {
           </div>
         </a-tabs-panel>
 
-        {/* Space panel */}
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
             <form onSubmit={(e) => void handleInvite(e)}>

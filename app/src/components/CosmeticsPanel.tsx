@@ -23,11 +23,6 @@ interface Props {
   onEquip?: (slot: CosmeticSlot, cosmeticId: string | null) => void;
 }
 
-/**
- * Silhouettes for an empty slot, shown in the slot rail and on the "None"
- * tile. Inline rather than in the shared icon set: they exist only to give an
- * unfilled slot a shape, and never appear anywhere else.
- */
 const slotGlyphs: Record<CosmeticSlot, string> = {
   avatarFrame: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3.5"/><circle cx="12" cy="12" r="4.25"/></svg>`,
   cursorCompanion: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5.5 3.5 19 11.2l-6.2 1.5L9.9 18.5 5.5 3.5Z"/></svg>`,
@@ -61,7 +56,6 @@ const slots = [
 }[];
 
 interface InventoryEntry {
-  /** `null` is the "None" entry, which unequips the slot. */
   id: string | null;
   name: string;
   description: string;
@@ -70,10 +64,6 @@ interface InventoryEntry {
 
 export function CosmeticsPanel(props: Props) {
   const [activeSlot, setActiveSlot] = createSignal<CosmeticSlot>(slots[0].id);
-  /**
-   * Hovering or focusing a tile shows that item on the stage without equipping
-   * it, so the whole inventory can be tried on before committing to anything.
-   */
   const [preview, setPreview] = createSignal<{
     slot: CosmeticSlot;
     id: string | null;
@@ -95,7 +85,6 @@ export function CosmeticsPanel(props: Props) {
       })),
   ]);
 
-  /** Empty slots that pad the shelf out to two full rows. */
   const vacancies = createMemo(() =>
     Array.from({ length: Math.max(0, 6 - entries().length) }, (_, index) => index),
   );
@@ -116,8 +105,6 @@ export function CosmeticsPanel(props: Props) {
     appearance: stageAppearance(),
   }));
 
-  /** What the detail line under the grid describes: the item being tried on,
-   *  or the equipped one when nothing is hovered. */
   const detail = createMemo(() => {
     const pending = preview();
     const id = pending?.slot === activeSlot() ? pending.id : equippedId();
@@ -152,7 +139,6 @@ export function CosmeticsPanel(props: Props) {
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-[196px_minmax(0,1fr)]">
         <div class="flex flex-col gap-2">
-          {/* The stage: everything equipped, worn at once. */}
           <div class="relative overflow-hidden rounded-xl border border-primary-500/25 bg-neutral-50 px-3 py-4">
             <div
               aria-hidden="true"
@@ -170,11 +156,7 @@ export function CosmeticsPanel(props: Props) {
                   class="absolute inset-1 rounded-full bg-[radial-gradient(circle,color-mix(in_srgb,var(--color-primary-500)_18%,transparent),transparent_72%)] blur-[8px]"
                 />
                 <vektor-avatar class="relative" size="64" prop:user={stageUser()} />
-                {/* Close in on the avatar: the companion trails to the right
-                    of the pointer and would otherwise clip the stage edge. */}
                 <span class="absolute -right-2 bottom-1 block h-6 w-6 text-primary-600">
-                  {/* Mirrored: the glyph is drawn tip-right, and a pointer
-                      reads as backwards unless its tip leads to the left. */}
                   <Icon class="h-full w-full -scale-x-100" svg={pointerGlyph} />
                   <vektor-cosmetic
                     class="absolute top-0 left-4 h-8 w-10"
@@ -187,8 +169,6 @@ export function CosmeticsPanel(props: Props) {
                 {props.user?.name ?? props.user?.email ?? t("Anonymous User")}
               </p>
 
-              {/* A stand-in line of text, so the caret is shown where a caret
-                  actually lives rather than floating on its own. */}
               <span class="mt-2 flex h-6 items-center gap-1.5 rounded-md border border-neutral-200 bg-background px-2">
                 <span aria-hidden="true" class="h-1 w-8 rounded-full bg-neutral-300" />
                 <span
@@ -205,8 +185,6 @@ export function CosmeticsPanel(props: Props) {
             </div>
           </div>
 
-          {/* The slot rail: what is worn where, and which shelf the inventory
-              is showing. */}
           <fieldset class="grid gap-1.5">
             <legend class="sr-only">{t("Slots")}</legend>
             <For each={slots}>
@@ -261,7 +239,6 @@ export function CosmeticsPanel(props: Props) {
           </fieldset>
         </div>
 
-        {/* The inventory: one shelf at a time, for the selected slot. */}
         <div
           id="cosmetics-inventory"
           class="flex flex-col self-start rounded-xl border border-neutral-200 bg-background p-3"
@@ -302,8 +279,6 @@ export function CosmeticsPanel(props: Props) {
                         !checked(),
                     }}
                   >
-                    {/* A real radio group, so the arrow keys walk the shelf and
-                        equip as they go without a keydown handler of our own. */}
                     <input
                       type="radio"
                       class="sr-only"
@@ -331,9 +306,6 @@ export function CosmeticsPanel(props: Props) {
                     <span class="w-full truncate text-center font-medium text-foreground text-size-small">
                       {entry.name}
                     </span>
-                    {/* Hidden from the accessibility tree: the radio's checked
-                        state already says this, and a second announcement
-                        would land in the tile's accessible name. */}
                     <Show when={checked()}>
                       <span
                         aria-hidden="true"
@@ -348,8 +320,6 @@ export function CosmeticsPanel(props: Props) {
               }}
             </For>
 
-            {/* Room to grow, drawn as empty slots rather than as blank space:
-                a short shelf otherwise leaves the card looking unfinished. */}
             <For each={vacancies()}>
               {() => (
                 <div

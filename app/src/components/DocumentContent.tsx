@@ -140,12 +140,6 @@ export function DocumentContent(props: Props) {
 
   resetEditingState();
 
-  // Edit mode is per document, but this component is not: `DocumentPageView`
-  // only tears its subtree down while the next document is being fetched, so
-  // navigating to an already-cached document swaps the id under the same
-  // instance and the mount-time decision above never runs again. Re-decide on
-  // every id change — before `useEditor`'s own id effect, which would otherwise
-  // restart the leftover session against the new document.
   createEffect(
     on(documentId, (currentDocumentId, previousDocumentId) => {
       if (currentDocumentId === previousDocumentId) return;
@@ -201,9 +195,6 @@ export function DocumentContent(props: Props) {
     void collaboration.setupPresence();
   }
 
-  // Cancelling an edit session tears the presence room down entirely
-  // (useEditor's stopEditorSession -> collaboration.leave()), so re-entering
-  // edit mode must rejoin presence explicitly, not just the Yjs doc room.
   function handleEditSessionStarted() {
     setupDocumentPresence();
   }
@@ -510,7 +501,6 @@ export function DocumentContent(props: Props) {
   return (
     <>
       <main class="relative mb-30">
-        {/* Document View (read + edit, single persistent instance) */}
         <Show when={supportsRichTextDocument()}>
           <div classList={{ "h-full": editing() }}>
             <document-view
@@ -525,9 +515,7 @@ export function DocumentContent(props: Props) {
           </div>
         </Show>
 
-        <div>
-          {/* DON'T REMOVE; This fixes shadowDOM content not visible in print preview */}
-        </div>
+        <div></div>
       </main>
 
       <Show when={documentId() && supportsComments(documentType())}>

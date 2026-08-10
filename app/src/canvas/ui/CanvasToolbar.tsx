@@ -5,17 +5,7 @@ import "@atrium-ui/elements/popover";
 import { type CanvasChrome, swallowPointer } from "#canvas/ui/Canvas.tsx";
 import { Icon } from "#components/Icon.tsx";
 
-/**
- * The tool strip along the bottom of the canvas.
- *
- * Rendered by Solid rather than by the canvas's own lit template: it is
- * ordinary chrome — buttons bound to commands — with no world-space geometry
- * and nothing that has to keep up with a drag. What it reads changes on
- * discrete actions, so it re-renders when those change rather than every frame.
- */
 export function CanvasToolbar(props: { chrome: CanvasChrome }) {
-  // `chrome` is one object built in Canvas.tsx and never replaced, so reading it
-  // once at setup is the same as reading it per use.
   const { view, frame, run } = props.chrome; // solid-reactivity-ok: stable object
 
   const activeTool = frame(() => view()?.state.activeTool);

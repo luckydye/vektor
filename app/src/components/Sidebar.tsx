@@ -241,9 +241,6 @@ export function Sidebar(props: Props) {
   const handleOpenDrawerMove = (e: TouchEvent) => {
     if (isMobileOpen()) handleDrawerTouchMove(e);
   };
-  // Not `onTouchMove`: Solid delegates touchmove to the document, where the
-  // browser forces the listener passive, so the drag's preventDefault() is a
-  // no-op and the gesture bails out on the uncancelable event.
   const closeDrawerMoveListener = {
     handleEvent: handleOpenDrawerMove,
     passive: false,
@@ -280,8 +277,6 @@ export function Sidebar(props: Props) {
     if (Math.abs(newWidth - defaultWidth()) <= SNAP_THRESHOLD) newWidth = defaultWidth();
     else if (Math.abs(newWidth - minWidth()) <= SNAP_THRESHOLD) newWidth = minWidth();
 
-    // Past either bound the handle keeps moving, but at a fifth of the speed —
-    // the rubber-band that tells you there is nothing further.
     if (newWidth < minWidth()) {
       setDisplayWidth(minWidth() - (minWidth() - newWidth) * 0.2);
     } else if (newWidth > maxWidth()) {
@@ -302,7 +297,6 @@ export function Sidebar(props: Props) {
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
 
-    // A press with no movement is a click on the handle, which toggles.
     if (!didDrag) {
       Actions.run("ui:toggle:sidebar");
       return;
@@ -350,9 +344,6 @@ export function Sidebar(props: Props) {
         setDisplayWidth(targetWidth);
         persistSidebarWidth(targetWidth);
         dispatchSidebarResize();
-        // A microtask, not `nextTick`: subscribers measure against the new
-        // width, so the resize event has to follow the DOM write rather than
-        // ride along with it.
         queueMicrotask(() => window.dispatchEvent(new Event("resize")));
       },
     });
@@ -372,15 +363,10 @@ export function Sidebar(props: Props) {
     setDisplayWidth(resolved);
     persistSidebarWidth(resolved);
 
-    // Publish the resolved width so subscribers (page insets, toolbar, docked
-    // panels) sync to the actual component state on mount.
     dispatchSidebarResize();
   });
 
   onCleanup(() => {
-    // Solid runs cleanup when it disposes the *server* render tree too.
-    // Everything below is browser teardown, and reaching `window` during SSR
-    // crashes the render.
     if (isServer) return;
 
     window.removeEventListener("resize", closeMobileDrawerOnDesktop);
@@ -400,8 +386,6 @@ export function Sidebar(props: Props) {
 
   return (
     <div>
-      {/* The open drawer is modal on mobile: drag anywhere in the exposed
-          content area to push it back to the left. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer gestures are this control's only interaction. */}
       <Show when={isMobileOpen()}>
         <div
@@ -460,8 +444,6 @@ export function Sidebar(props: Props) {
           <Icon name="collapse-sidebar" class="block h-4 w-4" />
         </button>
 
-        {/* The grain pseudo-element paints after the blur one, so it also lands
-            above in-flow content — the children need a z-index to stay on top. */}
         <div class="sidebar-panel before:backdrop-surface-blur after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
           <Navigation />
         </div>

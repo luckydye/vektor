@@ -5,8 +5,6 @@ import { DialogFooter } from "./DialogFooter.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
 
 const DEFAULT_BRAND_COLOR = "#42516d";
-// Logos are stored inline in space preferences, which every space request
-// carries, so keep them compact.
 const MAX_LOGO_BYTES = 300 * 1024;
 
 interface Props {
@@ -58,8 +56,6 @@ export function CreateSpaceDialog(props: Props) {
 
     try {
       if (file.type === "image/svg+xml") {
-        // Inline SVG is rendered with innerHTML, so strip anything executable
-        // before it is stored.
         const text = (await file.text())
           .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
           .replace(/on\w+="[^"]*"/g, "")
@@ -102,8 +98,6 @@ export function CreateSpaceDialog(props: Props) {
     handleClose();
   }
 
-  // Clear the form when the dialog closes, so reopening never shows the last
-  // attempt.
   createEffect(
     on(
       () => props.show,

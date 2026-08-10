@@ -179,8 +179,6 @@ export function SpaceMembers() {
       const suggestions = await api.users.inviteSuggestions();
       setInviteSuggestions(suggestions);
     } catch (err) {
-      // Suggestions are a convenience — a failure here should never block the
-      // manual email path, so we swallow it and just show no suggestions.
       console.error("Failed to fetch invite suggestions:", err);
       setInviteSuggestions([]);
     }
@@ -216,7 +214,6 @@ export function SpaceMembers() {
     permissions().filter((p) => p.type === "role"),
   );
 
-  /** User ids already granted a role in the space — hidden from suggestions. */
   const existingMemberIds = createMemo(
     () =>
       new Set(
@@ -226,10 +223,6 @@ export function SpaceMembers() {
       ),
   );
 
-  /**
-   * Same-group people to offer in the invite typeahead: not already members,
-   * and (once the inviter starts typing) matching their input by name or email.
-   */
   const filteredInviteSuggestions = createMemo<User[]>(() => {
     const query = newMemberEmail().trim().toLowerCase();
     const members = existingMemberIds();
@@ -508,7 +501,6 @@ export function SpaceMembers() {
     setExpandedMembers(next);
   }
 
-  /** The caller's own space-level grant, which is what bounds what they may do. */
   function currentUserSpacePermission() {
     const me = user();
     if (!me) return undefined;
@@ -543,15 +535,12 @@ export function SpaceMembers() {
 
     const memberId = perm.permission.userId;
 
-    // Can't remove yourself
     if (memberId === me.id) return false;
 
-    // Can't remove the original space owner. `Space` spells that `createdBy`.
     if (perm.permission.permission === "owner" && space.createdBy === memberId) {
       return false;
     }
 
-    // Space owner can remove anyone (except themselves and the checks above)
     if (space.createdBy === me.id) return true;
 
     const currentUserPerm = currentUserSpacePermission();
@@ -859,7 +848,6 @@ export function SpaceMembers() {
         </Show>
       </div>
 
-      {/* Add Member Modal */}
       <Show when={showAddMember()}>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: the Cancel button is the keyboard path. */}
@@ -922,8 +910,6 @@ export function SpaceMembers() {
                         setShowSuggestions(true);
                       }}
                       onFocus={() => setShowSuggestions(true)}
-                      // Delay so a click on a suggestion registers before the
-                      // dropdown unmounts (mousedown fires before blur).
                       onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                       type="email"
                       required
@@ -942,7 +928,6 @@ export function SpaceMembers() {
                                 type="button"
                                 class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50"
                                 onMouseDown={(e) => {
-                                  // Prevent the input blur from firing first.
                                   e.preventDefault();
                                   selectSuggestion(suggestion);
                                 }}

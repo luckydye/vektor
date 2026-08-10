@@ -65,8 +65,6 @@ export function Contributors(props: Props) {
 
   const displayCollaborators = createMemo(() => collaborators().slice(0, merged.max));
 
-  // Rendered through a View Transition so reordering avatars animates to their
-  // new positions — a FLIP move, which CSS alone cannot do.
   const visibleAvatars = useViewTransitionList(
     displayCollaborators,
     (collaborator) => collaborator.key,

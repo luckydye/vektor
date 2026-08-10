@@ -11,12 +11,6 @@ import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 
-/**
- * Imperative handle, handed back through the `ref` prop.
- *
- * The panel drives scrolling — it knows when a send or a stream chunk happened —
- * but this component owns the scroll container, so it hands out the verbs.
- */
 export interface AIChatMessagesHandle {
   scrollToBottom: () => void;
   scrollToBottomIfFollowing: () => void;
@@ -66,7 +60,6 @@ export function AIChatMessages(props: Props) {
     },
   );
 
-  /** Bound to the live conversation: a tool result names its call by id only. */
   function toolPreview(message: AIChatMessage): string {
     return formatToolPreview(message, props.messages);
   }
@@ -94,10 +87,7 @@ export function AIChatMessages(props: Props) {
         await navigator.clipboard.writeText(message.content);
         copied = true;
       }
-    } catch {
-      // Some embedded or non-secure contexts deny the Clipboard API. Fall back
-      // to the synchronous browser copy command below.
-    }
+    } catch {}
 
     if (!copied) {
       const textarea = document.createElement("textarea");
@@ -136,8 +126,6 @@ export function AIChatMessages(props: Props) {
   }
 
   function scheduleScrollToBottom() {
-    // Solid has already applied the message write by the time a caller reaches
-    // here, so the frame below measures the new content — no tick to await.
     if (!shouldFollowMessages() || scrollAnimationFrame !== null) return;
     scrollAnimationFrame = requestAnimationFrame(() => {
       scrollAnimationFrame = null;
@@ -146,13 +134,11 @@ export function AIChatMessages(props: Props) {
     });
   }
 
-  /** Unconditional scroll — for explicit user actions (send, load session, done). */
   function scrollToBottom() {
     setShouldFollowMessages(true);
     scheduleScrollToBottom();
   }
 
-  /** Conditional scroll — during streaming, so the user can scroll up mid-response. */
   function scrollToBottomIfFollowing() {
     scheduleScrollToBottom();
   }
@@ -164,7 +150,6 @@ export function AIChatMessages(props: Props) {
       if (!pres.length) return;
       const lastPre = pres[pres.length - 1] as HTMLElement;
       lastPre.scrollTop = lastPre.scrollHeight;
-      // Also keep the main container scrolled to bottom unless the user scrolled away.
       scrollToBottomIfFollowing();
     });
   }
@@ -243,7 +228,6 @@ export function AIChatMessages(props: Props) {
               </Show>
 
               <Show when={message.role === "assistant"}>
-                {/* Robot avatar */}
                 <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50">
                   <Icon class="h-4 w-4 text-primary-500" name="agent-chat" />
                 </div>
@@ -377,7 +361,6 @@ export function AIChatMessages(props: Props) {
         )}
       </For>
 
-      {/* Tool-executing indicator */}
       <Show when={waitingState()?.kind === "tool_executing"}>
         {(_) => {
           const state = waitingState();
@@ -404,7 +387,6 @@ export function AIChatMessages(props: Props) {
         }}
       </Show>
 
-      {/* Generic waiting indicator (before first event, or model processing a tool result) */}
       <Show when={waitingState()?.kind === "waiting"}>
         <div class="flex animate-message-slide-in justify-start gap-2">
           <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50">

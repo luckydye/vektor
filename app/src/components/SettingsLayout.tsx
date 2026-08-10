@@ -10,7 +10,6 @@ interface Tab {
 interface Props {
   tabs: readonly Tab[];
   initialTab?: string;
-  /** Panel content by tab id. */
   panels: Record<string, () => JSX.Element>;
   class?: string;
   onTabChange?: (id: string) => void;
@@ -39,10 +38,6 @@ export function SettingsLayout(props: Props) {
 
   function onTabSelected(event: Event) {
     const { index } = (event as CustomEvent<{ index: number }>).detail;
-    // a-tabs binds its own tab-selected listener in the constructor but drops it
-    // on disconnect, so it stops switching panels once something moves it in the
-    // DOM (a-popover portals its content out). Driving the selection here works
-    // either way.
     tabsEl?.selectTabByIndex(index, false);
     if (index !== selectedIndex()) {
       const direction = index > selectedIndex() ? "next" : "previous";
@@ -88,11 +83,6 @@ export function SettingsLayout(props: Props) {
           <a-tabs-list class="block overflow-clip border-neutral-100 border-b py-4xs">
             <For each={props.tabs}>
               {(tab, index) => (
-                // Marked up front instead of selected imperatively after mount:
-                // a-tabs reads this attribute in its own connectedCallback, and
-                // selecting afterwards races Lit's async attribute reflection —
-                // the deselect query (`a-tabs-tab[selected]`) would find nothing
-                // and leave the first tab selected alongside this one.
                 <a-tabs-tab
                   attr:selected={index() === initialIndex ? "" : undefined}
                   class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200"

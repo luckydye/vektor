@@ -2,7 +2,6 @@ import { play } from "cuelume";
 import { Show } from "solid-js";
 
 interface Props {
-  /** Two-way bound value. */
   value: boolean;
   disabled?: boolean;
   label?: string;
