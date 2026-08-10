@@ -11,7 +11,12 @@ interface Props {
 export function DocumentExtensionViews(props: Props) {
   return (
     <Show when={props.views.length > 0}>
-      <aside class="hidden min-w-0 space-y-4 lg:block">
+      {/* Sticky, and below the document header rather than under it: a column
+          beside the document is a companion to whatever part of it is on
+          screen, so it stays put while the document scrolls past. It is a grid
+          item, so its grid area — the full height of the document row — is what
+          it travels within. */}
+      <aside class="hidden min-w-0 space-y-4 lg:sticky lg:top-20 lg:block">
         <For each={props.views}>
           {({ extensionId, route }) => (
             <ExtensionView

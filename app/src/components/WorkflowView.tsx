@@ -592,9 +592,32 @@ export function WorkflowView(props: Props) {
       {/* The history sidebar comes and goes with the width this view actually
           gets, not the window's: the space sidebar and docked panels take from
           it, so a wide window can still leave a narrow view. */}
-      <div ref={workflowContainerEl} class="@container/workflow">
-        <div class="mx-auto mb-12 @4xl/workflow:grid @4xl/workflow:grid-cols-[minmax(0,1fr)_20rem] @4xl/workflow:items-start @4xl/workflow:gap-12 md:px-m px-xs">
-          <div class="min-w-0 space-y-8">
+      <div
+        ref={workflowContainerEl}
+        class="@container/workflow flex min-h-0 flex-1 flex-col"
+      >
+        {/* No grid gap: each column brings its own gutter padding, so the
+            divider between them has content spacing on both sides without a
+            container-query variant fighting the `md:` padding below. */}
+        <div class="mx-auto flex @4xl/workflow:grid min-h-0 w-full flex-1 @4xl/workflow:grid-cols-[20rem_minmax(0,1fr)] flex-col">
+          {/* The list keeps its heading in place and scrolls under it, so a long
+              history never pushes the pager out of reach. */}
+          <aside
+            ref={historySidebarEl}
+            class="@4xl/workflow:flex hidden min-h-0 min-w-0 flex-col border-neutral-100 @4xl/workflow:border-r pt-1 pl-xs md:pl-m"
+          >
+            <h3 class="mb-2 shrink-0 font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
+              History
+            </h3>
+            <div class="min-h-0 flex-1 overflow-y-auto pr-3 pb-12">
+              <WorkflowRunHistory
+                {...historyProps()}
+                onSelect={(runId: string) => void selectRun(runId)}
+              />
+            </div>
+          </aside>
+
+          <div class="min-h-0 min-w-0 flex-1 space-y-8 overflow-y-auto px-xs pt-1 pb-12 md:px-m">
             <div class="flex justify-between gap-4">
               {/* Title */}
               <h2 class="font-semibold text-neutral-800 text-size-title">
@@ -973,16 +996,6 @@ export function WorkflowView(props: Props) {
               </a-tabs-panel>
             </a-tabs>
           </div>
-
-          <aside ref={historySidebarEl} class="@4xl/workflow:block hidden min-w-0">
-            <h3 class="mb-2 font-semibold text-neutral-400 text-size-extra-small uppercase tracking-[0.12em]">
-              History
-            </h3>
-            <WorkflowRunHistory
-              {...historyProps()}
-              onSelect={(runId: string) => void selectRun(runId)}
-            />
-          </aside>
         </div>
       </div>
     </>

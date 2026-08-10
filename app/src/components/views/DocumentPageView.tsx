@@ -190,6 +190,10 @@ export function DocumentPageView(props: Props) {
   const isCsv = createMemo(() => documentType() === "csv");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
+  // Views that size themselves to what is left of the window instead of growing
+  // with their content, because they scroll internally: a spreadsheet grid, a
+  // database table, a workflow's history/results split.
+  const isFullHeightView = createMemo(() => isCsv() || isDatabase() || isWorkflow());
   // A spreadsheet is a full-width document, not a full-bleed surface like the
   // canvas: the container spans the window but the grid keeps the same side
   // inset as the breadcrumb and the chips above it.
@@ -457,15 +461,11 @@ export function DocumentPageView(props: Props) {
             to their content, so every box between here and the view is a flex
             column that may shrink. Without an unbroken chain, an extension view
             whose contents use `height: 100%` resolves to zero height. */}
-        <div
-          class={twMerge(
-            (isCsv() || isDatabase()) && "flex h-full min-h-screen flex-col",
-          )}
-        >
+        <div class={twMerge(isFullHeightView() && "flex h-full min-h-screen flex-col")}>
           <inset-view
             class={twMerge(
               "block min-h-0 flex-1",
-              (isCsv() || isDatabase()) && "flex flex-col",
+              isFullHeightView() && "flex flex-col",
               !isCanvas() && "md:mr-(--inset-right) md:ml-(--inset-left)",
             )}
           >
@@ -476,7 +476,7 @@ export function DocumentPageView(props: Props) {
               data-layout={effectiveLayout()}
               class={twMerge(
                 "relative mx-auto flex h-full w-full flex-col",
-                (isCsv() || isDatabase()) && "min-h-0 flex-1",
+                isFullHeightView() && "min-h-0 flex-1",
                 isCsv() || isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
@@ -591,7 +591,7 @@ export function DocumentPageView(props: Props) {
                 class={twMerge(
                   // Continues the flex column down to the grid; see the wrapper
                   // at the top of this view.
-                  (isCsv() || isDatabase()) && "flex min-h-0 flex-1 flex-col",
+                  isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                   documentRightViews().length > 0 &&
                     "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6",
                 )}
@@ -599,20 +599,19 @@ export function DocumentPageView(props: Props) {
                 <div
                   class={twMerge(
                     "min-w-0",
-                    (isCsv() || isDatabase()) && "flex min-h-0 flex-1 flex-col",
+                    isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                   )}
                 >
                   <div
                     class={twMerge(
                       "h-full max-w-none overflow-x-auto text-neutral-700",
-                      isCsv() || isDatabase()
+                      isFullHeightView()
                         ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                         : "h-full overflow-x-auto",
                       isPaddedDocument() && "px-xs md:px-m print:px-0",
                       // The grid ends the page, so it closes it with the same
                       // gap the sticky header opens it with (`py-4`).
                       isCsv() && "pb-4",
-                      isWorkflow() && "overflow-inherit",
                     )}
                   >
                     <Show
@@ -683,12 +682,16 @@ export function DocumentPageView(props: Props) {
                     </Show>
                   </div>
 
-                  {/* Not under a spreadsheet: it is the last flex child, so its
-                      ~90px of margins came straight off the grid's height and
-                      left it hanging short of the window. The grid runs to the
-                      bottom edge instead, and "Updated …" lives in the ⋮ menu's
-                      document info. */}
-                  <Show when={!isDraft() && !editing() && !isCanvas() && !isCsv()}>
+                  {/* Not under a spreadsheet or a workflow: it is the last flex
+                      child, so its ~90px of margins came straight off the
+                      height of a view that sizes to the window and left it
+                      hanging short. Those views run to the bottom edge instead,
+                      and "Updated …" lives in the ⋮ menu's document info. */}
+                  <Show
+                    when={
+                      !isDraft() && !editing() && !isCanvas() && !isCsv() && !isWorkflow()
+                    }
+                  >
                     <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
                       <Show when={doc()?.updatedAt}>
                         <div class="mb-12 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
