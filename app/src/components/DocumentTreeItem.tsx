@@ -1,4 +1,5 @@
-import { createMemo, For, Show } from "solid-js";
+import "@atrium-ui/elements/expandable";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
@@ -30,9 +31,6 @@ export function DocumentTreeItem(props: Props) {
   const { currentSpace } = useSpace();
   const { draggedDocument } = useDocumentDrag();
 
-  // Dim rows that cannot parent the document being dragged (e.g. a plain
-  // document dropped on a database, which only accepts records). The dragged
-  // row itself keeps its own `data-dragging` styling.
   const isInvalidDropTarget = createMemo(() => {
     const dragged = draggedDocument();
     if (!dragged || dragged.id === props.doc.id) return false;
@@ -48,7 +46,6 @@ export function DocumentTreeItem(props: Props) {
 
       const childCategory = d.properties.category || d.properties.collection;
 
-      // Include child if it has no explicit category (inherits) or same category as parent
       return (
         !childCategory ||
         !docCategorySlug ||
@@ -60,6 +57,11 @@ export function DocumentTreeItem(props: Props) {
   const hasChildren = createMemo(() => children().length > 0);
   const isExpanded = createMemo(() => props.expandedItems.has(props.doc.id));
   const isActive = createMemo(() => props.activeDocId === props.doc.slug);
+
+  const [wasExpanded, setWasExpanded] = createSignal(isExpanded());
+  createEffect(() => {
+    if (isExpanded()) setWasExpanded(true);
+  });
 
   function getDocumentUrl(docSlug: string) {
     return spacePath(currentSpace()?.slug, `/doc/${docSlug}`);
@@ -73,7 +75,6 @@ export function DocumentTreeItem(props: Props) {
       attr:data-document-url={getDocumentUrl(props.doc.slug)}
       class="block pl-[0.535rem] [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
     >
-      {/* Only the row dims: descendants may still be valid drop targets. */}
       <div
         class="flex items-center gap-1 transition-opacity"
         classList={{ "opacity-40": isInvalidDropTarget() }}
@@ -84,6 +85,7 @@ export function DocumentTreeItem(props: Props) {
             onClick={() => props.onToggle?.(props.doc.id)}
             class="rounded-sm p-0.5 hover:bg-neutral-300 active:bg-neutral-200"
             aria-label={isExpanded() ? t("Collapse") : t("Expand")}
+            aria-expanded={isExpanded()}
           >
             <Icon
               class={twMerge(
@@ -112,32 +114,37 @@ export function DocumentTreeItem(props: Props) {
         </a>
       </div>
 
-      <Show when={isExpanded() && hasChildren()}>
-        <div class="mt-1 ml-2 space-y-1">
-          <For each={children()}>
-            {(child, index) => (
-              <div class="relative">
-                <Show
-                  when={index() < children().length - 1}
-                  fallback={
-                    // L-shaped connector for the last item
-                    <div class="absolute top-0 left-0 h-[0.975rem] w-[0.52rem] border-neutral-400 border-b border-l" />
-                  }
-                >
-                  {/* continuous vertical rail for non-last items; extends through the space-y-1 gap */}
-                  <div class="absolute top-0 bottom-[-0.25rem] left-0 w-0 border-neutral-400 border-l" />
-                </Show>
-                <DocumentTreeItem
-                  doc={child}
-                  allDocs={props.allDocs}
-                  activeDocId={props.activeDocId}
-                  expandedItems={props.expandedItems}
-                  onToggle={props.onToggle}
-                />
-              </div>
-            )}
-          </For>
-        </div>
+      <Show when={hasChildren()}>
+        <a-expandable
+          attr:opened={isExpanded() ? "" : undefined}
+          class="[--transition-speed:100ms]"
+        >
+          <div class="mt-1 ml-2 space-y-1">
+            <Show when={wasExpanded()}>
+              <For each={children()}>
+                {(child, index) => (
+                  <div class="relative">
+                    <Show
+                      when={index() < children().length - 1}
+                      fallback={
+                        <div class="absolute top-0 left-0 h-[0.975rem] w-[0.52rem] border-neutral-400 border-b border-l" />
+                      }
+                    >
+                      <div class="absolute top-0 bottom-[-0.25rem] left-0 w-0 border-neutral-400 border-l" />
+                    </Show>
+                    <DocumentTreeItem
+                      doc={child}
+                      allDocs={props.allDocs}
+                      activeDocId={props.activeDocId}
+                      expandedItems={props.expandedItems}
+                      onToggle={props.onToggle}
+                    />
+                  </div>
+                )}
+              </For>
+            </Show>
+          </div>
+        </a-expandable>
       </Show>
     </page-target>
   );

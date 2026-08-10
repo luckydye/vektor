@@ -1,3 +1,4 @@
+import "@atrium-ui/elements/expandable";
 import "@atrium-ui/elements/popover";
 import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
@@ -19,12 +20,6 @@ import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 import { Icon } from "./Icon.tsx";
 
-/**
- * Imperative handle, handed back through the `ref` prop.
- *
- * `isEditMode` is a getter so a parent reads it as a value. It stays reactive:
- * the getter reads the signal when the parent reads the property.
- */
 export interface DocumentTreeHandle {
   readonly isEditMode: boolean;
   toggleEditMode: () => void;
@@ -39,7 +34,6 @@ type PopoverTriggerEl = HTMLElement & { show?: () => void; hide?: () => void };
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 
-/** A `Set` is not JSON, so the entries go in and out as an array of IDs. */
 const EXPANDED_ITEMS_CODEC = {
   parse: (raw: string) => new Set<string>(JSON.parse(raw)),
   serialize: (items: Set<string>) => JSON.stringify([...items]),
@@ -59,9 +53,6 @@ export function DocumentTree(props: Props) {
     isLoading,
   } = useCategories();
 
-  // `isMounted` still gates rendering: the tree also reads cached query data, so
-  // the first paint has to match what the server sent. The expanded set defers its
-  // own read.
   const [isMounted, setIsMounted] = createSignal(false);
   const {
     value: expandedItems,
@@ -87,29 +78,15 @@ export function DocumentTree(props: Props) {
     sensitivity: "base",
   });
 
-  /**
-   * The document lists for one category, derived per row rather than merged
-   * into the category objects up front.
-   *
-   * `For` keys on object identity, so handing it `{...category, docs}` would
-   * mint a new identity for every category each time the batch query resolves
-   * — expanding one category would tear down and rebuild the entire tree, and
-   * the sidebar would lose its scroll position on the way.
-   */
   function categoryDocuments(category: Category) {
     const docs = [...(documentsBySlug().get(category.slug) || [])].sort((left, right) =>
       documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
     );
 
-    // Root docs are docs that belong to this category and whose parent is not
-    // in this category's doc list (so they can't be rendered as a nested child).
     const rootDocs = docs.filter((doc) => {
       const docCategory = doc.properties?.category;
       const docCollection = doc.properties?.collection;
 
-      // A doc with an explicit different category belongs only to that
-      // category's tree, never as a root (or child) here — it was included
-      // only for descendant traversal.
       if (
         (docCategory || docCollection) &&
         !propertyValueIncludes(docCategory, category.slug) &&
@@ -121,14 +98,12 @@ export function DocumentTree(props: Props) {
       if (!doc.parentId) return true;
 
       const parent = docs.find((d) => d.id === doc.parentId);
-      // If parent is in this category's docs, this doc renders as a child there.
       return !parent;
     });
 
     return { docs, rootDocs };
   }
 
-  // Category edit mode state
   const [isEditMode, setIsEditMode] = createSignal(false);
   const [editingId, setEditingId] = createSignal<string | null>(null);
   const [showAddForm, setShowAddForm] = createSignal(false);
@@ -136,7 +111,6 @@ export function DocumentTree(props: Props) {
   const [isSaving, setIsSaving] = createSignal(false);
   const [formError, setFormError] = createSignal<string | null>(null);
   const [deletingIds, setDeletingIds] = createSignal(new Set<string>());
-  // Category pending deletion (drives the confirmation dialog).
   const [deleteTarget, setDeleteTarget] = createSignal<Category | null>(null);
   const [deleteError, setDeleteError] = createSignal<string | null>(null);
   const isDeleting = createMemo(() => {
@@ -155,7 +129,6 @@ export function DocumentTree(props: Props) {
   const patchForm = (patch: Partial<ReturnType<typeof formData>>) =>
     setFormData({ ...formData(), ...patch });
 
-  // Context menu state (right-click on desktop, long-press on touch)
   const [contextMenu, setContextMenu] = createSignal<{
     x: number;
     y: number;
@@ -172,8 +145,6 @@ export function DocumentTree(props: Props) {
     if (!canManageCategories() || isEditMode()) return;
 
     setContextMenu({ x: clientX, y: clientY, category });
-    // The trigger has already moved to the new position — Solid applies the
-    // signal write synchronously — so the popover opens where it belongs.
     categoryPopoverTrigger?.show?.();
   }
 
@@ -182,7 +153,6 @@ export function DocumentTree(props: Props) {
     setContextMenu(null);
   }
 
-  // Open the menu beside the hover "⋯" button with both top edges aligned.
   function handleMenuButton(event: MouseEvent, category: Category) {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     openContextMenu(rect.right + 4, rect.top, category);
@@ -217,13 +187,10 @@ export function DocumentTree(props: Props) {
     if (!touch) return;
     const dx = touch.clientX - longPressStart.x;
     const dy = touch.clientY - longPressStart.y;
-    // Cancel the long-press if the finger moves (i.e. the user is scrolling).
     if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) clearLongPress();
   }
 
   function handleTouchEnd(event: TouchEvent) {
-    // If the long-press just opened the menu, swallow the trailing synthetic
-    // click so it doesn't fall through to the backdrop and close the menu.
     if (longPressFired) {
       event.preventDefault();
       longPressFired = false;
@@ -245,7 +212,6 @@ export function DocumentTree(props: Props) {
   function toggleEditMode() {
     setIsEditMode(!isEditMode());
     if (isEditMode()) {
-      // Collapse without persisting, so the real state survives edit mode.
       setExpandedItems(new Set<string>());
     } else {
       restoreExpandedItems();
@@ -271,7 +237,6 @@ export function DocumentTree(props: Props) {
   }
 
   function cancelEdit() {
-    // Don't discard the form (and reset state) out from under an in-flight save.
     if (isSaving()) return;
     resetForm();
   }
@@ -378,6 +343,9 @@ export function DocumentTree(props: Props) {
     }
   }
 
+  const isCategoryOpen = (category: Category) =>
+    expandedItems().has(category.id) && !isEditMode();
+
   function toggleItem(itemId: string) {
     const next = new Set(expandedItems());
     if (next.has(itemId)) next.delete(itemId);
@@ -394,7 +362,6 @@ export function DocumentTree(props: Props) {
     try {
       await api.document.patch(space.id, documentId, { parentId: newParentId });
 
-      // Then, update the category property
       await api.document.patch(space.id, documentId, {
         properties: { category: null },
       });
@@ -409,14 +376,11 @@ export function DocumentTree(props: Props) {
     const space = currentSpace();
     if (!space) throw new Error(t("No space selected"));
 
-    // Find the category to get its slug
     const targetCategory = categories().find((c) => c.id === newCategoryId);
     if (!targetCategory) throw new Error(t("Target category not found"));
 
-    // First, clear the parentId
     await api.document.patch(space.id, documentId, { parentId: null });
 
-    // Then, update the category property
     await api.document.patch(space.id, documentId, {
       properties: { category: { value: targetCategory.slug } },
     });
@@ -453,7 +417,6 @@ export function DocumentTree(props: Props) {
     <div class="document-tree">
       <Show when={!isMounted() || isLoading()}>
         <div class="hidden flex-col space-y-1 px-5xs md:flex">
-          {/* Category skeleton */}
           <Index each={[0, 1, 2]}>
             {() => (
               <div class="space-y-1">
@@ -478,7 +441,6 @@ export function DocumentTree(props: Props) {
       </Show>
 
       <Show when={isMounted()}>
-        {/* Empty state */}
         <Show when={!isLoading() && !isEditMode() && categories().length === 0}>
           <div class="px-4xs">
             <Show
@@ -514,20 +476,19 @@ export function DocumentTree(props: Props) {
           </div>
         </Show>
 
-        {/* Categories List and Documents */}
         <Show when={!isLoading()}>
           <div class="space-y-1 px-4xs">
-            {/*
-              `Index`, not `For`: `For` keys on object identity, and the
-              categories query hands back a fresh array of fresh objects every
-              time it resolves — IndexedDB first, then the network. `For` would
-              tear the whole tree down and rebuild it, which empties the
-              sidebar's scroll container for a frame and leaves the browser to
-              clamp its scroll position back to the top.
-            */}
             <Index each={categories()}>
               {(category) => {
-                const documents = createMemo(() => categoryDocuments(category()));
+                const documents = createMemo(
+                  (prev: ReturnType<typeof categoryDocuments>) => {
+                    const next = categoryDocuments(category());
+                    const isClosing =
+                      next.docs.length === 0 && !isCategoryOpen(category());
+                    return isClosing ? prev : next;
+                  },
+                  { docs: [], rootDocs: [] } as ReturnType<typeof categoryDocuments>,
+                );
 
                 return (
                   <div>
@@ -567,6 +528,7 @@ export function DocumentTree(props: Props) {
                           type="button"
                           onClick={() => !isEditMode() && toggleItem(category().id)}
                           class="flex flex-1 items-center gap-2 px-1 py-1 text-left"
+                          aria-expanded={isCategoryOpen(category())}
                         >
                           <div
                             class="relative flex h-6 w-6 flex-none items-center justify-center rounded-sm font-semibold text-size-extra-small"
@@ -591,7 +553,6 @@ export function DocumentTree(props: Props) {
                           <span class="font-medium">{category().name}</span>
                         </button>
 
-                        {/* Hover actions: new document + options menu */}
                         <Show when={!isEditMode() && canManageCategories()}>
                           <div
                             class="mr-2 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/category:opacity-100 group-hover/category:opacity-100"
@@ -633,7 +594,6 @@ export function DocumentTree(props: Props) {
                           </div>
                         </Show>
 
-                        {/* Drag handle (shown in rearrange mode) */}
                         <Show when={isEditMode()}>
                           <div
                             class="flex shrink-0 items-center pr-2 text-neutral-400"
@@ -645,49 +605,48 @@ export function DocumentTree(props: Props) {
                       </div>
                     </category-target>
 
-                    {/* `hidden`, not an unmount: collapsing must not tear down the
-                      subtree's drop targets, which the drag layer holds on to. */}
-                    <div
-                      class="space-y-1 pt-1 pb-1.5"
-                      hidden={!(expandedItems().has(category().id) && !isEditMode())}
+                    <a-expandable
+                      attr:opened={isCategoryOpen(category()) ? "" : undefined}
+                      class="[--transition-speed:100ms]"
                     >
-                      <Show
-                        when={
-                          expandedItems().has(category().id) &&
-                          isSlugLoading(category().slug)
-                        }
-                      >
-                        <Index each={["55%", "72%", "44%"]}>
-                          {(width) => (
-                            <div class="flex items-center gap-1 pl-[0.535rem]">
-                              <div class="w-4 flex-none" />
-                              <div
-                                class="mx-1.5 my-1 h-4 animate-pulse rounded-sm bg-neutral-200"
-                                style={{ width: width() }}
-                              />
-                            </div>
-                          )}
-                        </Index>
-                      </Show>
+                      <div class="space-y-1 pt-1 pb-1.5">
+                        <Show
+                          when={
+                            expandedItems().has(category().id) &&
+                            isSlugLoading(category().slug)
+                          }
+                        >
+                          <Index each={["55%", "72%", "44%"]}>
+                            {(width) => (
+                              <div class="flex items-center gap-1 pl-[0.535rem]">
+                                <div class="w-4 flex-none" />
+                                <div
+                                  class="mx-1.5 my-1 h-4 animate-pulse rounded-sm bg-neutral-200"
+                                  style={{ width: width() }}
+                                />
+                              </div>
+                            )}
+                          </Index>
+                        </Show>
 
-                      <For each={documents().rootDocs}>
-                        {(doc) => (
-                          <DocumentTreeItem
-                            doc={doc}
-                            allDocs={documents().docs}
-                            activeDocId={activeDocSlug()}
-                            expandedItems={expandedItems()}
-                            onToggle={toggleItem}
-                          />
-                        )}
-                      </For>
-                    </div>
+                        <For each={documents().rootDocs}>
+                          {(doc) => (
+                            <DocumentTreeItem
+                              doc={doc}
+                              allDocs={documents().docs}
+                              activeDocId={activeDocSlug()}
+                              expandedItems={expandedItems()}
+                              onToggle={toggleItem}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </a-expandable>
                   </div>
                 );
               }}
             </Index>
 
-            {/* Add Category Button (shown in edit mode) */}
             <Show when={isEditMode()}>
               <button
                 type="button"
@@ -701,7 +660,6 @@ export function DocumentTree(props: Props) {
           </div>
         </Show>
 
-        {/* Category Context Menu (options button, right-click, or long-press) */}
         <a-popover-trigger
           ref={categoryPopoverTrigger as never}
           class="fixed z-50 h-px w-px"
@@ -711,8 +669,6 @@ export function DocumentTree(props: Props) {
           }}
           on:hide={() => setContextMenu(null)}
         >
-          {/* A zero-size anchor the popover positions against; it is opened
-              programmatically and is never a target itself. */}
           <button
             slot="trigger"
             type="button"
@@ -811,7 +767,6 @@ export function DocumentTree(props: Props) {
           </a-popover>
         </a-popover-trigger>
 
-        {/* Create/Edit Category Dialog */}
         <Dialog
           show={showAddForm() || !!editingId()}
           title={editingId() ? t("Edit category") : t("New category")}
@@ -957,7 +912,6 @@ export function DocumentTree(props: Props) {
           </form>
         </Dialog>
 
-        {/* Delete Category Confirmation */}
         <Dialog
           show={!!deleteTarget()}
           title={t("Delete category")}
