@@ -24,7 +24,11 @@ import { expect, type Page, test } from "@playwright/test";
 const SPACE = process.env.VEKTOR_E2E_SPACE ?? "visual";
 const CANVAS = process.env.VEKTOR_E2E_CANVAS ?? "untitled-2";
 
+const SECOND_CANVAS = process.env.VEKTOR_E2E_CANVAS_SECOND ?? "other-canvas-fixture";
+const CATEGORY = "Guidelines";
+
 const NOTE = '[data-shape-id="shape-fixture-note"]';
+const OTHER_NOTE = '[data-shape-id="shape-fixture-other-note"]';
 
 async function openCanvas(page: Page) {
   const errors: string[] = [];
@@ -298,4 +302,37 @@ test("inserts a shape by dragging with a tool, and undoes it", async ({ page }) 
   await page.mouse.click(box.x + 40, box.y + 40);
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(() => shapes.count()).toBe(before);
+});
+
+/**
+ * Switching canvases in the app, not by reload: the view stays mounted and only
+ * its props change, which is the case where the title followed the new document
+ * while the canvas kept painting the old one. A `page.goto` remounts and misses
+ * it, so this goes through the sidebar and back through history.
+ */
+test("switching to another canvas paints the other document", async ({ page }) => {
+  const errors = await openCanvas(page);
+  await expect(page.locator(NOTE)).toBeVisible();
+
+  // The tree only loads a category's documents once it is open.
+  await page.locator(`nav button:has-text("${CATEGORY}")`).first().click();
+  const link = page.locator(`a[href="/${SPACE}/doc/${SECOND_CANVAS}"]`);
+  await link.click();
+
+  await expect(page.locator(OTHER_NOTE)).toBeVisible();
+  await expect(
+    page.locator(NOTE),
+    "the shapes of the canvas we left must be gone",
+  ).toHaveCount(0);
+  expect(errors).toEqual([]);
+
+  // Back, because this switch renders over the tree the last one left behind.
+  await page.goBack();
+  await expect(page.locator(NOTE)).toBeVisible();
+  await expect(page.locator(OTHER_NOTE)).toHaveCount(0);
+  expect(
+    await paintedPixels(page, "canvas-scene"),
+    "the painted layers belong to the controller, and it is a new one",
+  ).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
 });

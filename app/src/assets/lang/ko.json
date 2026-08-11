@@ -399,8 +399,6 @@
   "No documents in the selected date range": "선택한 날짜 범위에 문서가 없습니다",
   "Choose a format to get started.": "시작할 형식을 선택하세요.",
   "Select document type": "문서 유형 선택",
-  "Doc": "문서",
-  "Write, organize, and collaborate in a structured document.": "구조화된 문서에서 작성하고 정리하며 협업하세요.",
   "Canvas": "캔버스",
   "Visualize ideas and connect things on a flexible canvas.": "유연한 캔버스에서 아이디어를 시각화하고 연결하세요.",
   "Workflow": "워크플로",
@@ -410,5 +408,6 @@
   "Spreadsheet": "스프레드시트",
   "Lay out numbers and records in rows and columns.": "숫자와 레코드를 행과 열로 정리하세요.",
   "Start from a template": "템플릿으로 시작하기",
-  "Failed to insert the template": "템플릿을 삽입하지 못했습니다"
+  "Failed to insert the template": "템플릿을 삽입하지 못했습니다",
+  "Template": "템플릿"
 }

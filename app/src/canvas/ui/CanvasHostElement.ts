@@ -82,6 +82,8 @@ export class CanvasHostElement extends HostElement {
   private controller: CanvasController | null = null;
   private renderQueued = false;
   private started = false;
+  /** The document the live controller reads. See `changed()`. */
+  private boundYdoc: Y.Doc | undefined;
 
   private readonly dom: CanvasDomRefs = {
     viewport: null,
@@ -163,6 +165,11 @@ export class CanvasHostElement extends HostElement {
    * one render.
    */
   changed(): void {
+    // A new doc is a new canvas, and the controller is bound to one for its
+    // whole life. Keyed on the doc, not `documentid`, which changes first —
+    // restarting on the mismatched pair saves the old shapes into the new doc.
+    if (this.started && this.ydoc !== this.boundYdoc) this.stop();
+
     // Also the start signal. The shell sets `ydoc` after the element is in the
     // document, so `connectedCallback` alone is too early — whichever of the
     // two happens last is the one that starts the canvas.
@@ -199,6 +206,7 @@ export class CanvasHostElement extends HostElement {
     const ydoc = this.ydoc;
     if (this.started || !ydoc) return;
     this.started = true;
+    this.boundYdoc = ydoc;
 
     // Getters, not a snapshot: the reactions compare each of these against the
     // previous flush, so a property the shell rewrites later has to be visible
@@ -257,6 +265,7 @@ export class CanvasHostElement extends HostElement {
       this.dom,
     );
 
+    // Idempotent on a restart: same type, listener and capture flag.
     this.watchInput();
 
     // First paint has to happen before mount: the controller measures the
@@ -320,11 +329,21 @@ export class CanvasHostElement extends HostElement {
     return this.controller?.view ?? null;
   }
 
-  /** Explicit teardown. Not called on disconnect — see `disconnectedCallback`. */
-  destroy(): void {
+  /**
+   * Drop the controller, keep the tree it painted. lit's render state lives on
+   * this element, so clearing the children would leave it patching detached
+   * nodes; the next `start()` renders over the same tree instead.
+   */
+  private stop(): void {
     this.controller?.destroy();
     this.controller = null;
     this.started = false;
+    this.boundYdoc = undefined;
+  }
+
+  /** Explicit teardown. Not called on disconnect — see `disconnectedCallback`. */
+  destroy(): void {
+    this.stop();
     this.replaceChildren();
   }
 }

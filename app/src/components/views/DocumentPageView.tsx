@@ -569,13 +569,13 @@ export function DocumentPageView(props: Props) {
                       when={!isDraft()}
                       fallback={
                         <>
-                          <Show when={showPicker()}>
-                            <NewDocumentPicker />
-                          </Show>
                           <DocumentContent
                             spaceId={currentSpace()?.id as string}
                             documentType={documentType()}
                           />
+                          <Show when={showPicker()}>
+                            <NewDocumentPicker />
+                          </Show>
                         </>
                       }
                     >

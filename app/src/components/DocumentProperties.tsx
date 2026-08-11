@@ -9,6 +9,7 @@ import {
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
 } from "#documents/properties.ts";
+import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
@@ -55,6 +56,12 @@ export function DocumentProperties(props: Props) {
 
   const isDocumentType = createMemo(() => effectiveDocumentType() === "document");
   const isCanvasType = createMemo(() => effectiveDocumentType() === "canvas");
+
+  const isTemplate = createMemo(
+    () =>
+      propertyValueToScalar(documentProperties()[templatePropertyKey]) ===
+      templatePropertyValue,
+  );
 
   function requireDocumentId(): string {
     if (!props.documentId) {
@@ -111,6 +118,8 @@ export function DocumentProperties(props: Props) {
   };
 
   const getPropertyLabel = (property: Property): string => {
+    if (property.id === templatePropertyKey) return t("Template");
+
     if (property.name?.toLowerCase() === "category") {
       const categorySlug = propertyValueToScalar(property.value);
       if (!categorySlug) return t("Category");
@@ -171,6 +180,7 @@ export function DocumentProperties(props: Props) {
       : undefined;
 
   const getPropertyIcon = (property: Property): IconName | undefined => {
+    if (property.id === templatePropertyKey) return "copy";
     if (property.id?.toLowerCase() === "category") return undefined;
     if (property.id?.toLowerCase() === "layout") {
       return propertyValueToScalar(property.value) === "full"
@@ -189,6 +199,8 @@ export function DocumentProperties(props: Props) {
   };
 
   const getPropertyVariant = (property: Property): "default" | "special" => {
+    if (property.id === templatePropertyKey) return "special";
+
     const propertyName = property.name?.toLowerCase();
     return propertyName === "category" ||
       propertyName === "layout" ||
@@ -198,6 +210,8 @@ export function DocumentProperties(props: Props) {
   };
 
   const getPropertyName = (property: Property): string => {
+    if (property.id === templatePropertyKey) return t("Template");
+
     const normalizedName = property.name.toLowerCase();
     if (normalizedName === "category") return t("Category");
     if (normalizedName === "layout") return t("Layout");
@@ -257,6 +271,18 @@ export function DocumentProperties(props: Props) {
   const properties = createMemo((): Property[] => {
     const list: Property[] = [];
 
+    // The marker is hidden from the editable properties below, so being a
+    // template would otherwise be invisible on the document itself. It leads
+    // the row and stays read-only: publishing is what sets it.
+    if (isTemplate()) {
+      list.push({
+        id: templatePropertyKey,
+        name: templatePropertyKey,
+        type: "select",
+        value: templatePropertyValue,
+      } as Property);
+    }
+
     list.push({
       id: "category",
       name: "category",
@@ -315,49 +341,52 @@ export function DocumentProperties(props: Props) {
       )}
     >
       <For each={properties()}>
-        {(property) => (
-          <div
-            class={twMerge(
-              "pointer-events-auto",
-              props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
-            )}
-          >
-            <Show when={props.layout === "labeled"}>
-              <span
-                class="w-28 shrink-0 truncate text-interactive text-neutral-700"
-                title={getPropertyName(property)}
-              >
-                {getPropertyName(property)}
-              </span>
-            </Show>
+        {(property) => {
+          // The chip already reads "Template", so the labeled layout keeps the
+          // name column empty for it — width and all, to stay on the grid.
+          const isMarker = property.id === templatePropertyKey;
+          const readonly = () => props.readonly || isMarker;
 
-            <PropertyChip
-              label={getPropertyLabel(property)}
-              nameLabel={getPropertyName(property)}
-              valueLabels={getPropertyValueLabels(property)}
-              icon={getPropertyIcon(property)}
-              iconSvg={getPropertyIconSvg(property)}
-              variant={getPropertyVariant(property)}
-              readonly={props.readonly}
-              property={property}
-              showTooltip={props.layout !== "labeled"}
-              allowMultiple={
-                property.type === "multi-select" || Array.isArray(property.value)
-              }
-              propertyValues={getPropertyValues}
-              onUpdate={
-                props.readonly
-                  ? undefined
-                  : (updated) => void handleUpdateProperty(updated)
-              }
-              onDelete={
-                props.readonly
-                  ? undefined
-                  : (deleted) => void handleDeleteProperty(deleted)
-              }
-            />
-          </div>
-        )}
+          return (
+            <div
+              class={twMerge(
+                "pointer-events-auto",
+                props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
+              )}
+            >
+              <Show when={props.layout === "labeled"}>
+                <span
+                  class="w-28 shrink-0 truncate text-interactive text-neutral-700"
+                  title={isMarker ? undefined : getPropertyName(property)}
+                >
+                  {isMarker ? "" : getPropertyName(property)}
+                </span>
+              </Show>
+
+              <PropertyChip
+                label={getPropertyLabel(property)}
+                nameLabel={getPropertyName(property)}
+                valueLabels={getPropertyValueLabels(property)}
+                icon={getPropertyIcon(property)}
+                iconSvg={getPropertyIconSvg(property)}
+                variant={getPropertyVariant(property)}
+                readonly={readonly()}
+                property={property}
+                showTooltip={props.layout !== "labeled" && !isMarker}
+                allowMultiple={
+                  property.type === "multi-select" || Array.isArray(property.value)
+                }
+                propertyValues={getPropertyValues}
+                onUpdate={
+                  readonly() ? undefined : (updated) => void handleUpdateProperty(updated)
+                }
+                onDelete={
+                  readonly() ? undefined : (deleted) => void handleDeleteProperty(deleted)
+                }
+              />
+            </div>
+          );
+        }}
       </For>
 
       <Show when={!props.readonly}>

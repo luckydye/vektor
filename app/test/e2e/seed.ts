@@ -68,6 +68,24 @@ export const SEED = {
       },
     ],
   },
+  /**
+   * A second canvas, so navigating between two of them is testable. Shares no
+   * shape id with the first, and is filed under the category so the sidebar
+   * tree has a link to click.
+   */
+  secondCanvas: {
+    title: "Other canvas fixture",
+    shapes: [
+      {
+        id: "shape-fixture-other-note",
+        type: "note",
+        frame: { x: -120, y: -80, width: 220, height: 140, rotation: 0 },
+        style: { color: "#bbf7d0" },
+        data: { text: "The other canvas." },
+        updatedAt: 1_000,
+      },
+    ],
+  },
 } as const;
 
 export interface SeededSpace {
@@ -75,6 +93,7 @@ export interface SeededSpace {
   slug: string;
   documentSlugs: string[];
   canvasSlug: string;
+  secondCanvasSlug: string;
 }
 
 export async function seed(baseUrl: string): Promise<SeededSpace> {
@@ -113,10 +132,24 @@ export async function seed(baseUrl: string): Promise<SeededSpace> {
     }),
   });
 
+  const { document: secondCanvas } = await post(`/spaces/${space.id}/documents`, {
+    properties: {
+      title: SEED.secondCanvas.title,
+      category: SEED.category.slug,
+    },
+    type: "canvas",
+    content: JSON.stringify({
+      version: 1,
+      shapes: SEED.secondCanvas.shapes,
+      strokes: [],
+    }),
+  });
+
   return {
     spaceId: space.id,
     slug: space.slug,
     documentSlugs,
     canvasSlug: canvas.slug,
+    secondCanvasSlug: secondCanvas.slug,
   };
 }

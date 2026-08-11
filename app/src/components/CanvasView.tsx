@@ -1,4 +1,11 @@
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { Canvas } from "#canvas/index.ts";
 import {
   provideCollaboration,
@@ -41,10 +48,15 @@ export function CanvasView(props: Props) {
     collaboration.updatePresence(state);
   }
 
-  onMount(() => {
-    setHasMounted(true);
+  // An effect, not `onMount`: a canvas → canvas navigation swaps the props
+  // without remounting, and extensions would keep acting on the old document.
+  createEffect(() => {
     extensions.setActiveCollaboration(collaboration.ydoc());
     extensions.setActiveDocumentId(documentId() ?? null);
+  });
+
+  onMount(() => {
+    setHasMounted(true);
 
     onCleanup(() => {
       extensions.setActiveCollaboration(null);
