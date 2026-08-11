@@ -362,6 +362,11 @@ export function useCollaboration<TPresenceState>(options: {
   createEffect(
     on(documentId, (currentDocumentId, previousDocumentId) => {
       if (currentDocumentId === previousDocumentId) return;
+      // Consumers rejoin from their own effect on the same id, and the order
+      // of the two is not guaranteed. Once the session already holds the room
+      // for this id, leaving would drop that membership and swap in an empty
+      // document that nothing rejoins.
+      if (joinedDocumentId === currentDocumentId) return;
       leave();
     }),
   );

@@ -34,8 +34,9 @@ export function WorkflowEditorOverlay(props: Props) {
   }
 
   createEffect(() => {
+    const ydoc = collaboration.ydoc();
     const editor = codeEditor();
-    if (editor) editor.collaborationDocument = collaboration.ydoc();
+    if (editor) editor.collaborationDocument = ydoc;
   });
 
   createEffect(() => {
