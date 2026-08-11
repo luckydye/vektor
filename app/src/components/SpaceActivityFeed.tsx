@@ -9,8 +9,8 @@ import {
   groupActivityEntries,
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
 

@@ -12,6 +12,7 @@ import {
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
+import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import { AppView } from "#components/AppView.tsx";
 import { BottomBanner } from "#components/BottomBanner.tsx";
@@ -38,7 +39,6 @@ import { useDocumentContext } from "#composeables/useDocument.ts";
 import { editing, resetEditingState } from "#composeables/useEditor.ts";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";

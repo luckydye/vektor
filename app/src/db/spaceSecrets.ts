@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { getUserGroups, hasPermission, Permission, ResourceType } from "./acl.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
+import { getUserGroups, hasPermission } from "#acl/store.ts";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { spaceSecret } from "./schema/space.ts";

@@ -353,7 +353,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   const { createHash } = await import("node:crypto");
   const { eq } = await import("drizzle-orm");
   const { LOCAL_USER, LOCAL_USER_ID, isNoAuthMode } = await import("#noAuth");
-  const { Permission, ResourceType } = await import("#db/acl.ts");
+  const { Permission, ResourceType } = await import("#acl/permissions.ts");
   const { getAuthDb, getSpaceDb, initializeDatabases } = await import("#db/db.ts");
   const { createSpace } = await import("#db/spaces.ts");
   const { createId } = await import("#db/ids.ts");

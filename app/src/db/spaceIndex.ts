@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { Permission, ResourceType } from "#acl/permissions.ts";
+import { grantPermission } from "#acl/store.ts";
 import { isInMemoryDb } from "#inMemoryDb";
-import { grantPermission, Permission, ResourceType } from "./acl.ts";
 import {
   closeDatabase,
   createDatabase,

@@ -1,5 +1,6 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import type * as Y from "yjs";
+import { canEdit } from "#acl/permissions.ts";
 import { CanvasProperties } from "#canvas/ui/CanvasProperties.tsx";
 import { CanvasToolbar } from "#canvas/ui/CanvasToolbar.tsx";
 import { CanvasToolProperties } from "#canvas/ui/CanvasToolProperties.tsx";
@@ -11,7 +12,6 @@ import {
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUploads } from "#composeables/useUploads.ts";

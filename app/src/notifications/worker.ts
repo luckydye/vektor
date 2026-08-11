@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
+import { verifyDocumentRole } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
-import { verifyDocumentRole } from "#db/api.ts";
 import { getComment } from "#db/comments.ts";
 import { getAuthDb } from "#db/db.ts";
 import { getDocument } from "#db/documents.ts";
@@ -61,7 +62,7 @@ async function deliver(
       spaceId,
       notification.documentId,
       notification.recipientUserId,
-      "viewer",
+      Permission.VIEWER,
     );
   } catch {
     await markEmailNotificationSkipped(

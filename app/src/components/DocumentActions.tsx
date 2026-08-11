@@ -9,12 +9,12 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/popover";
+import { canEdit, Permission } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { setCancelCount, setEditing, useEditor } from "#composeables/useEditor.ts";
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -124,7 +124,7 @@ export function DocumentActions(props: Props) {
           name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
           resourceType: "document",
           resourceId: docId,
-          permission: "editor",
+          permission: Permission.EDITOR,
           expiresInDays: 30,
         });
 

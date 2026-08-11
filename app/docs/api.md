@@ -24,7 +24,7 @@ Most endpoints accept one or more of:
 Role hierarchy (space/document/category level): `viewer` < `editor` < `owner`. Some
 actions additionally gate on a **feature** flag independent of role: `comment`,
 `view_history`, `view_audit`, `manage_extensions` (see `Feature` enum in
-`src/db/acl.ts`); features can be granted/denied per user or group regardless of role,
+`src/acl/permissions.ts`); features can be granted/denied per user or group regardless of role,
 though roles have sane feature defaults (e.g. owner has all).
 
 `ResourceType` values used in ACL/token grants: `space`, `document`, `document_tree`,

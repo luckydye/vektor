@@ -8,6 +8,7 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/tabs";
+import { isOwner, Permission } from "#acl/permissions.ts";
 import type {
   Category,
   DocumentAccessEntry,
@@ -15,7 +16,6 @@ import type {
   User,
 } from "#api/client.ts";
 import { api } from "#api/client.ts";
-import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Dialog } from "./Dialog.tsx";
@@ -64,7 +64,7 @@ export function DocumentShareDialog(props: Props) {
   const [isLoading, setIsLoading] = createSignal(false);
 
   const [newMemberEmail, setNewMemberEmail] = createSignal("");
-  const [newMemberRole, setNewMemberRole] = createSignal("viewer");
+  const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
   const [addingMember, setAddingMember] = createSignal(false);
   const [addMemberError, setAddMemberError] = createSignal<string | null>(null);
 
@@ -73,13 +73,13 @@ export function DocumentShareDialog(props: Props) {
   const roleOptions = createMemo(() =>
     userIsOwner()
       ? [
-          { value: "viewer", label: "Viewer" },
-          { value: "editor", label: "Editor" },
-          { value: "owner", label: "Owner" },
+          { value: Permission.VIEWER, label: "Viewer" },
+          { value: Permission.EDITOR, label: "Editor" },
+          { value: Permission.OWNER, label: "Owner" },
         ]
       : [
-          { value: "viewer", label: "Viewer" },
-          { value: "editor", label: "Editor" },
+          { value: Permission.VIEWER, label: "Viewer" },
+          { value: Permission.EDITOR, label: "Editor" },
         ],
   );
 
@@ -147,7 +147,7 @@ export function DocumentShareDialog(props: Props) {
         if (!open) return;
         setScope("document");
         setNewMemberEmail("");
-        setNewMemberRole("viewer");
+        setNewMemberRole(Permission.VIEWER);
         setIncludeChildPages(false);
         setSelectedCategoryId("");
         setAddMemberError(null);
@@ -325,7 +325,7 @@ export function DocumentShareDialog(props: Props) {
     if (!userIsOwner()) return false;
     if (isSelf(perm)) return false;
     if (
-      perm.permission.permission === "owner" &&
+      isOwner(perm.permission.permission) &&
       currentSpace()?.createdBy === perm.permission.userId
     ) {
       return false;
@@ -627,9 +627,9 @@ export function DocumentShareDialog(props: Props) {
                                 }
                                 class="rounded-md border border-neutral-200 bg-background px-2 py-0.5 text-neutral-700 text-size-small focus:outline-none focus:ring-1 focus:ring-neutral-400"
                               >
-                                <option value="viewer">Viewer</option>
-                                <option value="editor">Editor</option>
-                                <option value="owner">Owner</option>
+                                <option value={Permission.VIEWER}>Viewer</option>
+                                <option value={Permission.EDITOR}>Editor</option>
+                                <option value={Permission.OWNER}>Owner</option>
                               </select>
                             </Show>
                             <Show when={canRemoveSpaceMember(perm)}>

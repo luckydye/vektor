@@ -1,8 +1,8 @@
 import { createMemo, Show } from "solid-js";
+import { canAccessSettings } from "#acl/permissions.ts";
 import { NoAccess } from "#components/NoAccess.tsx";
 import { SpaceSettings } from "#components/SpaceSettings.tsx";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
-import { canAccessSettings } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 export function SpaceSettingsView() {

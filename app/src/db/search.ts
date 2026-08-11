@@ -1,4 +1,6 @@
 import { eq, inArray, sql } from "drizzle-orm";
+import { ResourceType } from "#acl/permissions.ts";
+import { listAccessibleResources } from "#acl/store.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
@@ -6,8 +8,6 @@ import {
 } from "#documents/properties.ts";
 import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
 import { escapeHtml } from "#utils/html.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
-import { listAccessibleResources, ResourceType } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
 import { document, file as fileTable, property } from "./schema/space.ts";
 
@@ -62,6 +62,19 @@ export type SearchResult = DocumentWithProperties & {
 export interface PropertyFilter {
   key: string;
   value: string | null;
+}
+
+/**
+ * Raw `sql` selections bypass drizzle's column codec, so an
+ * `integer(mode: "timestamp")` column arrives as the stored unix seconds rather
+ * than a `Date` — and the driver hands those back as numeric strings
+ * (`"1786455693.0"`), the same loose typing `nonArchivedColumnCondition` guards.
+ * Convert at the query boundary; everything downstream works in `Date`.
+ */
+function storedSecondsToDate(value: string | number): Date {
+  const seconds = Number(value);
+  // A legacy row holding a date string rather than a number would go NaN here.
+  return Number.isNaN(seconds) ? new Date(value) : new Date(seconds * 1000);
 }
 
 export type FileRow = typeof fileTable.$inferSelect;
@@ -532,8 +545,8 @@ export async function searchDocuments(
       publishedRev: number | null;
       readonly: boolean;
       archived: boolean;
-      createdAt: Date;
-      updatedAt: Date;
+      createdAt: string | number;
+      updatedAt: string | number;
     }>(sql`
       SELECT
         d.id,
@@ -603,8 +616,8 @@ export async function searchDocuments(
           content: candidate.content,
           userId: candidate.userId,
           parentId: candidate.parentId,
-          createdAt: candidate.createdAt,
-          updatedAt: candidate.updatedAt,
+          createdAt: storedSecondsToDate(candidate.createdAt),
+          updatedAt: storedSecondsToDate(candidate.updatedAt),
           rank: scoreToRank(combinedScore),
           snippet: buildSearchSnippet(query, textForScoring),
         };
@@ -614,14 +627,14 @@ export async function searchDocuments(
 
     allRawResults = ranked;
   } else {
-    allRawResults = await db.all<{
+    const rows = await db.all<{
       id: string;
       type: string | null;
       content: string;
       userId: string;
       parentId: string | null;
-      createdAt: Date;
-      updatedAt: Date;
+      createdAt: string | number;
+      updatedAt: string | number;
       rank: number;
       snippet: string;
     }>(sql`
@@ -639,6 +652,12 @@ export async function searchDocuments(
       WHERE ${nonArchivedColumnCondition("d.archived")}
       ORDER BY d.updated_at DESC
     `);
+
+    allRawResults = rows.map((row) => ({
+      ...row,
+      createdAt: storedSecondsToDate(row.createdAt),
+      updatedAt: storedSecondsToDate(row.updatedAt),
+    }));
   }
 
   const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
@@ -690,7 +709,7 @@ export async function searchDocuments(
     const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     accessibleResults = accessibleResults.filter((r) => {
-      const ua = normalizeTimestamp(r.updatedAt as string | number | Date);
+      const ua = r.updatedAt;
       for (const df of dateFilters) {
         if (df.value?.includes("/")) {
           const [startStr, endStr] = df.value.split("/");

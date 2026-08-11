@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
+import { Permission } from "#acl/permissions.ts";
 import { api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
@@ -210,7 +211,7 @@ export function SpaceSecretsSettings() {
     try {
       await api.permissions.grant(spaceId, {
         type: "role",
-        roleOrFeature: "viewer",
+        roleOrFeature: Permission.VIEWER,
         userId: selectedGrantUserId(),
         resourceType: "secret",
         resourceId: secretName,
@@ -234,7 +235,7 @@ export function SpaceSecretsSettings() {
     try {
       await api.permissions.revoke(spaceId, {
         type: "role",
-        roleOrFeature: "viewer",
+        roleOrFeature: Permission.VIEWER,
         userId,
         resourceType: "secret",
         resourceId: secretName,

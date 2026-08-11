@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { remoteDocumentPathParts } from "#api/routes/v1/url-metadata.ts";
+import { remoteDocumentPathParts } from "#api/routes/url-metadata.ts";
 import {
   createVektorDocumentAddress,
   parseVektorDocumentAddress,

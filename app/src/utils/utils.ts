@@ -1,28 +1,3 @@
-export function normalizeTimestamp(value: string | number | Date): Date {
-  if (value instanceof Date) {
-    return value;
-  }
-
-  if (typeof value === "number") {
-    return new Date(value < 1e12 ? value * 1000 : value);
-  }
-
-  const trimmed = value.trim();
-  if (/^\d+(\.\d+)?$/.test(trimmed)) {
-    const numeric = Number(trimmed);
-    if (!Number.isFinite(numeric)) {
-      throw new Error(`Invalid numeric timestamp: ${value}`);
-    }
-    return new Date(numeric < 1e12 ? numeric * 1000 : numeric);
-  }
-
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`Invalid timestamp: ${value}`);
-  }
-  return parsed;
-}
-
 /** Inverse of `slugify` for display: "my-extension" → "My Extension". */
 export function kebabToTitle(kebab: string): string {
   return kebab

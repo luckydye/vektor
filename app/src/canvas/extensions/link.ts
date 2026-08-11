@@ -1,5 +1,5 @@
 import { api } from "#api/client.ts";
-import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
+import type { LinkMetadata } from "#api/routes/url-metadata.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,

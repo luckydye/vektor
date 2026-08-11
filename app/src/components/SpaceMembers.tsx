@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { isOwner, Permission, permissionLevel } from "#acl/permissions.ts";
 import type {
   Category,
   DocumentWithProperties,
@@ -22,24 +23,22 @@ interface MemberAccess {
   highestRole: string;
 }
 
-const roleHierarchy: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
-
 function getRoleBadgeClass(role: string): string {
   const classes: Record<string, string> = {
-    owner: "bg-purple-100 text-purple-800",
-    editor: "bg-green-100 text-green-800",
-    viewer: "bg-neutral-100 text-neutral-800",
+    [Permission.OWNER]: "bg-purple-100 text-purple-800",
+    [Permission.EDITOR]: "bg-green-100 text-green-800",
+    [Permission.VIEWER]: "bg-neutral-100 text-neutral-800",
   };
-  return classes[role] || classes.viewer;
+  return classes[role] || classes[Permission.VIEWER];
 }
 
 function getHighestRole(grants: PermissionEntry[]): string {
   return grants.reduce(
     (highest, grant) =>
-      (roleHierarchy[grant.permission.permission] ?? 0) > (roleHierarchy[highest] ?? 0)
+      permissionLevel(grant.permission.permission) > permissionLevel(highest)
         ? grant.permission.permission
         : highest,
-    "viewer",
+    Permission.VIEWER as string,
   );
 }
 
@@ -101,7 +100,7 @@ export function SpaceMembers() {
   const [newMemberId, setNewMemberId] = createSignal("");
   const [newMemberEmail, setNewMemberEmail] = createSignal("");
   const [newMemberType, setNewMemberType] = createSignal("user");
-  const [newMemberRole, setNewMemberRole] = createSignal("viewer");
+  const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
   const [newMemberScope, setNewMemberScope] = createSignal("space");
   const [newMemberCategoryId, setNewMemberCategoryId] = createSignal("");
   const [addingMember, setAddingMember] = createSignal(false);
@@ -201,7 +200,7 @@ export function SpaceMembers() {
         setNewMemberId("");
         setNewMemberEmail("");
         setNewMemberType("user");
-        setNewMemberRole("viewer");
+        setNewMemberRole(Permission.VIEWER);
         setNewMemberScope("space");
         setNewMemberCategoryId("");
         void fetchInviteSuggestions();
@@ -354,7 +353,7 @@ export function SpaceMembers() {
       setNewMemberId("");
       setNewMemberEmail("");
       setNewMemberType("user");
-      setNewMemberRole("viewer");
+      setNewMemberRole(Permission.VIEWER);
       setNewMemberScope("space");
       setNewMemberCategoryId("");
       await Promise.all([fetchPermissions(), fetchUsers()]);
@@ -520,12 +519,8 @@ export function SpaceMembers() {
     const currentUserPerm = currentUserSpacePermission();
     if (!currentUserPerm) return false;
 
-    const currentUserLevel = roleHierarchy[currentUserPerm.permission.permission] || 0;
-    const memberLevel = roleHierarchy[perm.permission.permission] || 0;
-
-    return (
-      (currentUserLevel >= 3 && currentUserLevel > memberLevel) || currentUserLevel === 3
-    );
+    // Owners may edit anyone else's membership.
+    return isOwner(currentUserPerm.permission.permission);
   }
 
   function canRemoveMember(perm: PermissionEntry): boolean {
@@ -537,7 +532,7 @@ export function SpaceMembers() {
 
     if (memberId === me.id) return false;
 
-    if (perm.permission.permission === "owner" && space.createdBy === memberId) {
+    if (isOwner(perm.permission.permission) && space.createdBy === memberId) {
       return false;
     }
 
@@ -546,10 +541,12 @@ export function SpaceMembers() {
     const currentUserPerm = currentUserSpacePermission();
     if (!currentUserPerm) return false;
 
-    const currentUserLevel = roleHierarchy[currentUserPerm.permission.permission] || 0;
-    const memberLevel = roleHierarchy[perm.permission.permission] || 0;
-
-    return currentUserLevel >= 3 && currentUserLevel > memberLevel;
+    // Owners may remove anyone ranked strictly below them — never another owner.
+    const currentUserRole = currentUserPerm.permission.permission;
+    return (
+      isOwner(currentUserRole) &&
+      permissionLevel(currentUserRole) > permissionLevel(perm.permission.permission)
+    );
   }
 
   function getResourceLabel(perm: PermissionEntry): string {
@@ -757,9 +754,13 @@ export function SpaceMembers() {
                                             )
                                           }
                                         >
-                                          <option value="viewer">Viewer</option>
-                                          <option value="editor">Editor</option>
-                                          <option value="owner">Owner</option>
+                                          <option value={Permission.VIEWER}>
+                                            Viewer
+                                          </option>
+                                          <option value={Permission.EDITOR}>
+                                            Editor
+                                          </option>
+                                          <option value={Permission.OWNER}>Owner</option>
                                         </select>
                                       </Show>
                                       <Show when={canRemoveMember(grant)}>
@@ -1022,9 +1023,11 @@ export function SpaceMembers() {
                   onChange={(e) => setNewMemberRole(e.currentTarget.value)}
                   class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
                 >
-                  <option value="viewer">Viewer - Read-only access</option>
-                  <option value="editor">Editor - Create and edit content</option>
-                  <option value="owner">Owner - Full control</option>
+                  <option value={Permission.VIEWER}>Viewer - Read-only access</option>
+                  <option value={Permission.EDITOR}>
+                    Editor - Create and edit content
+                  </option>
+                  <option value={Permission.OWNER}>Owner - Full control</option>
                 </select>
               </div>
 

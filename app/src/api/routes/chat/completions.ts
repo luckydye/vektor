@@ -1,0 +1,109 @@
+import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
+import {
+  badRequestResponse,
+  errorResponse,
+  parseJsonBody,
+  withApiErrorHandling,
+} from "#api/http.ts";
+import { proxyToAnthropic } from "#api/provider/anthropic.ts";
+import { proxyToOllama } from "#api/provider/ollama.ts";
+import {
+  getOpenAICompatibleChatCompletionsUrl,
+  getOpenAICompatibleHeaders,
+} from "#api/provider/openaiCompatible.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
+import { getAIProvider } from "#db/aiConfig.ts";
+import { appLogger } from "#observability/logger.ts";
+
+export const POST: ApiRouteHandler = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const spaceId = context.req.raw.headers.get("X-Space-Id");
+      if (!spaceId) {
+        throw badRequestResponse("X-Space-Id header is required");
+      }
+
+      // `spaceId` is a client-supplied header, so a session alone proves nothing
+      // about this space: without a role check any logged-in user could name
+      // someone else's space and spend its provider credentials. The shared
+      // guard also scopes user-carrying job tokens to that user's real access,
+      // which a signature-only check cannot do.
+      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.VIEWER);
+
+      const provider = await getAIProvider(spaceId);
+      const bodyJson = await parseJsonBody(context.req.raw);
+
+      if (provider.provider === "anthropic") {
+        return proxyToAnthropic(
+          provider.apiKey,
+          provider.model,
+          bodyJson,
+          context.req.raw.signal,
+        );
+      }
+      if (provider.provider === "ollama") {
+        return proxyToOllama(
+          provider.baseUrl,
+          provider.model,
+          bodyJson,
+          context.req.raw.signal,
+        );
+      }
+
+      bodyJson.model = provider.model;
+      const response = await fetch(getOpenAICompatibleChatCompletionsUrl(provider), {
+        method: "POST",
+        headers: getOpenAICompatibleHeaders(provider),
+        body: JSON.stringify(bodyJson),
+        signal: context.req.raw.signal,
+      });
+
+      await logChatCompletionUpstreamFailure(provider.provider, provider.model, response);
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          "Content-Type": response.headers.get("Content-Type") ?? "application/json",
+          "Cache-Control": "no-cache",
+        },
+      });
+    },
+    {
+      fallbackMessage: "Proxy request failed",
+      onError: (error) => {
+        appLogger.error("Chat completions proxy failed", {
+          error,
+        });
+        return errorResponse("Proxy request failed", 500);
+      },
+    },
+  );
+
+async function logChatCompletionUpstreamFailure(
+  provider: string,
+  model: string,
+  response: Response,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  let responseBody: string;
+  try {
+    responseBody = await response.clone().text();
+  } catch (error) {
+    responseBody =
+      error instanceof Error
+        ? `failed to read upstream body: ${error.message}`
+        : "failed to read upstream body";
+  }
+
+  appLogger.error("Chat completions upstream error", {
+    provider,
+    model,
+    statusCode: response.status,
+    contentType: response.headers.get("Content-Type"),
+    body: responseBody.slice(0, 2000),
+  });
+}

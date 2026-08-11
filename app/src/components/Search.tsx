@@ -8,11 +8,11 @@ import {
   onMount,
   Show,
 } from "solid-js";
+import { canEdit } from "#acl/permissions.ts";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { DocumentGroupedList } from "./DocumentGroupedList.tsx";
 import { Icon } from "./Icon.tsx";

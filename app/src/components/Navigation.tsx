@@ -1,6 +1,6 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { canAccessSettings, canEdit } from "#composeables/usePermissions.ts";
+import { canAccessSettings, canEdit } from "#acl/permissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { extensions } from "#extensions/manager.ts";

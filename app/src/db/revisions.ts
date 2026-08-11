@@ -6,7 +6,6 @@ import {
   constants as zlibConstants,
 } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
-import { notFoundResponse } from "#db/api.ts";
 import { appLogger } from "#observability/logger.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
@@ -341,10 +340,10 @@ export async function restoreRevision(
   rev: number,
   userId: string,
   message?: string,
-): Promise<Revision> {
+): Promise<Revision | null> {
   const content = await getRevisionContent(spaceId, documentId, rev);
   if (!content) {
-    throw notFoundResponse("Revision");
+    return null;
   }
 
   const restoredMessage = message || `Restored from revision ${rev}`;
@@ -452,7 +451,7 @@ export async function createSuggestion(
     .get();
 
   if (!doc) {
-    throw notFoundResponse("Document");
+    throw new Error(`Document ${documentId} not found`);
   }
 
   const parentRev = doc.publishedRev;

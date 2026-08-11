@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
+import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 import { validateAccessToken } from "./accessTokens.ts";
-import { verifySpaceAccess, verifySpaceRole } from "./api.ts";
 import { getAuthDb } from "./db.ts";
 import type { DocumentWithProperties } from "./documents.ts";
 import { user } from "./schema/auth.ts";
@@ -318,7 +319,7 @@ export function calDavForbidden(): Response {
 
 export async function requireCalDAVUserAndAccess(
   context: ApiContext,
-  options: { userId?: string; spaceId?: string; requiredRole?: string },
+  options: { userId?: string; spaceId?: string; requiredRole?: Permission },
 ): Promise<CalDAVUser | Response> {
   const caldavUser = await verifyCalDAVUser(context);
   if (!caldavUser) {
@@ -333,7 +334,7 @@ export async function requireCalDAVUserAndAccess(
     try {
       // Writes (PUT/DELETE) must require the corresponding role, not just
       // read access — a viewer must not be able to create/modify events.
-      if (options.requiredRole && options.requiredRole !== "viewer") {
+      if (options.requiredRole && options.requiredRole !== Permission.VIEWER) {
         await verifySpaceRole(options.spaceId, caldavUser.id, options.requiredRole);
       } else {
         await verifySpaceAccess(options.spaceId, caldavUser.id);

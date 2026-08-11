@@ -1,4 +1,6 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { type AclViewer, ResourceType } from "#acl/permissions.ts";
+import { filterReadableResources } from "#acl/store.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   type DocumentPropertyValue,
@@ -17,7 +19,6 @@ import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { slugify } from "#utils/utils.ts";
-import { filterReadableResources, ResourceType } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
 import { getSpaceDb } from "./db.ts";
@@ -518,12 +519,6 @@ export async function deleteDocument(
   return true;
 }
 
-/** Identity used for per-document ACL filtering; null = trusted system view. */
-export interface AclViewer {
-  userId: string;
-  userGroups?: string[];
-}
-
 async function syncFileIndex(
   spaceId: string,
   db: Awaited<ReturnType<typeof getSpaceDb>>,
@@ -643,8 +638,7 @@ export async function listDocuments(
       spaceId,
       ResourceType.DOCUMENT,
       allDocs.map((d) => d.id),
-      viewer.userId,
-      viewer.userGroups,
+      viewer,
     );
     const visible = allDocs.filter((d) => readable.has(d.id));
     total = visible.length;
@@ -753,11 +747,14 @@ export async function listDocuments(
         spaceId,
         ResourceType.DOCUMENT,
         parentDocumentIds,
-        viewer.userId,
-        viewer.userGroups,
+        viewer,
       );
-      visibleFiles = visibleFiles.filter(
-        (file) => file.documentId === null || readableParentIds.has(file.documentId),
+      visibleFiles = visibleFiles.filter((file) =>
+        file.documentId === null
+          ? // A file attached to no document is a space-wide upload, readable
+            // by anyone in the space but not reachable through any one grant.
+            !viewer.documentScope
+          : readableParentIds.has(file.documentId),
       );
     }
 
@@ -811,8 +808,7 @@ export async function listArchivedDocuments(
       spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
-      viewer.userId,
-      viewer.userGroups,
+      viewer,
     );
     docs = docs.filter((doc) => readable.has(doc.id));
   }
@@ -1174,8 +1170,7 @@ export async function listAllDocumentsByCategories(
       spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
-      viewer.userId,
-      viewer.userGroups,
+      viewer,
     );
     docs = docs.filter((doc) => readable.has(doc.id));
   }
@@ -1337,8 +1332,7 @@ export async function getDocumentChildren(
       spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
-      viewer.userId,
-      viewer.userGroups,
+      viewer,
     );
     docs = docs.filter((doc) => readable.has(doc.id));
   }

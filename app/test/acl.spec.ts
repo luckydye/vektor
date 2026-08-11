@@ -3526,3 +3526,194 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe("ACL API Tests - Resource-Scoped Browsing", () => {
+  let spaceId: string;
+  let sharedCategoryId: string;
+  let sharedSlug: string;
+  let otherSlug: string;
+  let parentId: string;
+  let childId: string;
+
+  function grant(body: Record<string, unknown>) {
+    return apiRequest(`/api/v1/spaces/${spaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({ type: "role", action: "grant", ...body }),
+    });
+  }
+
+  async function createDocument(
+    title: string,
+    extra: { parentId?: string; category?: string } = {},
+  ) {
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: `<p>${title}</p>`,
+          properties: { title, ...(extra.category ? { category: extra.category } : {}) },
+          ...(extra.parentId ? { parentId: extra.parentId } : {}),
+        }),
+      },
+    );
+    expect(response.status).toBe(201);
+    return (await response.json()).document.id as string;
+  }
+
+  async function listedTitles(response: Response): Promise<string[]> {
+    const body = await response.json();
+    return body.documents.map((doc: any) => doc.properties.title).sort();
+  }
+
+  beforeAll(async () => {
+    const unique = Date.now();
+    const spaceResponse = await apiRequest("/api/v1/spaces", session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Scoped Browsing Space",
+        slug: `scoped-browsing-space-${unique}`,
+      }),
+    });
+    spaceId = (await spaceResponse.json()).space.id;
+
+    sharedSlug = `scoped-shared-${unique}`;
+    otherSlug = `scoped-other-${unique}`;
+    const sharedCategory = await apiRequest(
+      `/api/v1/spaces/${spaceId}/categories`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Shared", slug: sharedSlug }),
+      },
+    );
+    sharedCategoryId = (await sharedCategory.json()).category.id;
+    await apiRequest(`/api/v1/spaces/${spaceId}/categories`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({ name: "Other", slug: otherSlug }),
+    });
+
+    parentId = await createDocument("Parent Page", { category: sharedSlug });
+    childId = await createDocument("Child Page", { parentId });
+    await createDocument("Sibling Page", { parentId });
+    await createDocument("Unrelated Page", { category: otherSlug });
+  });
+
+  it("lets a category grantee expand the category they were shared", async () => {
+    const user = await createAclTestUser("Scoped Category Grantee");
+    await grant({
+      roleOrFeature: "viewer",
+      userId: user.userId,
+      resourceType: "category",
+      resourceId: sharedCategoryId,
+    });
+
+    const categories = await apiRequest(
+      `/api/v1/spaces/${spaceId}/categories`,
+      user.token,
+    );
+    expect((await categories.json()).categories.map((c: any) => c.slug)).toEqual([
+      sharedSlug,
+    ]);
+
+    const grouped = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents?categorySlugs=${sharedSlug}&grouped=true`,
+      user.token,
+    );
+    expect(grouped.status).toBe(200);
+    const documentsByCategory = (await grouped.json()).documentsByCategory;
+    expect(
+      documentsByCategory[sharedSlug].map((doc: any) => doc.properties.title).sort(),
+    ).toEqual(["Child Page", "Parent Page", "Sibling Page"]);
+  });
+
+  it("confines a category grantee to the documents that grant reaches", async () => {
+    const user = await createAclTestUser("Scoped Category Confined");
+    await grant({
+      roleOrFeature: "viewer",
+      userId: user.userId,
+      resourceType: "category",
+      resourceId: sharedCategoryId,
+    });
+
+    const listed = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, user.token);
+    expect(await listedTitles(listed)).toEqual([
+      "Child Page",
+      "Parent Page",
+      "Sibling Page",
+    ]);
+
+    const otherCategory = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents?categorySlugs=${otherSlug}&grouped=true`,
+      user.token,
+    );
+    expect((await otherCategory.json()).documentsByCategory[otherSlug]).toEqual([]);
+  });
+
+  it("lists only the granted document for a document-scoped grantee", async () => {
+    const user = await createAclTestUser("Scoped Document Grantee");
+    await grant({
+      roleOrFeature: "viewer",
+      userId: user.userId,
+      resourceType: "document",
+      resourceId: childId,
+    });
+
+    const listed = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, user.token);
+    expect(await listedTitles(listed)).toEqual(["Child Page"]);
+
+    // The ancestor the document is nested under stays out of reach.
+    const parent = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${parentId}`,
+      user.token,
+    );
+    expect(parent.status).toBe(403);
+  });
+
+  it("does not let a grant on a parent enumerate its ungranted children", async () => {
+    const user = await createAclTestUser("Scoped Parent Grantee");
+    await grant({
+      roleOrFeature: "viewer",
+      userId: user.userId,
+      resourceType: "document",
+      resourceId: parentId,
+    });
+
+    const children = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${parentId}/children`,
+      user.token,
+    );
+    expect(children.status).toBe(200);
+    expect((await children.json()).children).toEqual([]);
+
+    const listedChildren = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents?parentId=${parentId}`,
+      user.token,
+    );
+    expect(await listedTitles(listedChildren)).toEqual([]);
+  });
+
+  it("still shows a space member the whole space", async () => {
+    const user = await createAclTestUser("Scoped Space Member");
+    await grant({ roleOrFeature: "viewer", userId: user.userId });
+
+    const listed = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, user.token);
+    expect(await listedTitles(listed)).toEqual([
+      "Child Page",
+      "Parent Page",
+      "Sibling Page",
+      "Unrelated Page",
+    ]);
+  });
+
+  it("still refuses a user holding no grant in the space", async () => {
+    const user = await createAclTestUser("Scoped Outsider");
+
+    const listed = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, user.token);
+    expect(listed.status).toBe(403);
+
+    const unauthenticated = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/documents`);
+    expect(unauthenticated.status).toBe(401);
+  });
+});

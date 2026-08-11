@@ -521,3 +521,73 @@ describe("Search Embedding Rebuild", () => {
     expect(searchData.results.length).toBeGreaterThan(0);
   });
 });
+
+describe("Search Date Filters", () => {
+  const dateFilter = (value: string) =>
+    `filters=${encodeURIComponent(JSON.stringify([{ key: "_date", value }]))}`;
+
+  /**
+   * The stored column is `integer(mode: "timestamp")`, i.e. unix seconds, and
+   * search selects it through raw `sql` — which bypasses drizzle's codec. These
+   * guard the conversion: without it the seconds reach the client as a number
+   * and every date comparison lands in January 1970.
+   */
+  it("returns ISO-string timestamps for a text query", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/search?q=python`);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results.length).toBeGreaterThan(0);
+
+    const result = data.results[0];
+    expect(typeof result.createdAt).toBe("string");
+    expect(typeof result.updatedAt).toBe("string");
+    expect(new Date(result.updatedAt).getUTCFullYear()).toBe(new Date().getUTCFullYear());
+  });
+
+  it("returns ISO-string timestamps for a filters-only search", async () => {
+    // Separate code path: no query means a second raw query with its own conversion.
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?${dateFilter("today")}`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results.length).toBeGreaterThan(0);
+
+    const result = data.results[0];
+    expect(typeof result.updatedAt).toBe("string");
+    expect(new Date(result.updatedAt).getUTCFullYear()).toBe(new Date().getUTCFullYear());
+  });
+
+  it("matches documents updated today", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=javascript&${dateFilter("today")}`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results.length).toBeGreaterThan(0);
+  });
+
+  it("does not match today's documents as older than a month", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=javascript&${dateFilter("older")}`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toEqual([]);
+  });
+
+  it("does not match today's documents as earlier this week", async () => {
+    // "week" is [weekStart, todayStart) — deliberately excludes today.
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=javascript&${dateFilter("week")}`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toEqual([]);
+  });
+});

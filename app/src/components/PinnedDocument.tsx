@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onMount, Show } from "solid-js";
+import { canEdit } from "#acl/permissions.ts";
 import { api, type DocumentWithProperties } from "#api/client.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";

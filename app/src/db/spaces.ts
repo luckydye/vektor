@@ -1,10 +1,7 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
-import { isInMemoryDb } from "#inMemoryDb";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
-import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { slugify } from "#utils/utils.ts";
+import { Permission, PUBLIC_GROUP, ResourceType } from "#acl/permissions.ts";
 import {
   countSpaceMembers,
   getUserGroups,
@@ -12,8 +9,11 @@ import {
   hasAnyResourceScopedAccess,
   hasPermission,
   listUserPermissions,
-  ResourceType,
-} from "./acl.ts";
+} from "#acl/store.ts";
+import { isInMemoryDb } from "#inMemoryDb";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
+import { slugify } from "#utils/utils.ts";
 import { getDatabaseFilePath } from "./connection.ts";
 import {
   closeSpaceDb,
@@ -119,7 +119,7 @@ export async function createSpace(
     ResourceType.SPACE,
     id,
     createdBy,
-    "owner",
+    Permission.OWNER,
     undefined,
     createdBy,
   );
@@ -287,8 +287,8 @@ export async function listPublicSpaces(): Promise<Space[]> {
         ResourceType.SPACE,
         space.id,
         "",
-        "viewer",
-        ["public"],
+        Permission.VIEWER,
+        [PUBLIC_GROUP],
       );
       if (canView) {
         publicSpaces.push({ ...space, userRole: "viewer" });

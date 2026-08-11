@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { Feature, hasFeature } from "#db/acl.ts";
+import { Feature } from "#acl/permissions.ts";
+import { hasFeature } from "#acl/store.ts";
 import { createSpace, deleteSpace } from "#db/spaces.ts";
 import { LOCAL_USER_ID } from "#noAuth";
 

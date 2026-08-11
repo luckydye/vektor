@@ -14,9 +14,9 @@ import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate, normalizeTimestamp } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
 

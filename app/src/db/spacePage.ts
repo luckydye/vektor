@@ -1,12 +1,12 @@
 import type { AstroGlobal } from "astro";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { Permission, PUBLIC_GROUP, ResourceType } from "#acl/permissions.ts";
 import {
   getUserGroups,
   hasAnyResourceScopedAccess,
   hasPermission,
   listUserPermissions,
-  ResourceType,
-} from "./acl.ts";
+} from "#acl/store.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { getSpaceBySlug, type Space } from "./spaces.ts";
 
 type SpacePageResult =
@@ -91,7 +91,7 @@ export async function requireSpaceViewer(
 ): Promise<Response | null> {
   const user = astro.locals.user;
   const userId = user?.id || "";
-  const userGroups = user ? await getUserGroups(user.id) : ["public"];
+  const userGroups = user ? await getUserGroups(user.id) : [PUBLIC_GROUP];
 
   const hasAccess =
     (await hasPermission(
@@ -99,7 +99,7 @@ export async function requireSpaceViewer(
       ResourceType.SPACE,
       space.id,
       userId,
-      "viewer",
+      Permission.VIEWER,
       userGroups,
     )) ||
     (!!user && (await hasAnyResourceScopedAccess(space.id, userId, userGroups)));
