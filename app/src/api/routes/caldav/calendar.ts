@@ -1,11 +1,11 @@
 import { getUserGroups } from "#acl/store.ts";
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   documentToICal,
   optionsPreflight,
   requireCalDAVUserAndAccess,
   xmlResponse,
-} from "#db/caldav.ts";
+} from "#api/caldav.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { listDocuments } from "#db/documents.ts";
 
 /**

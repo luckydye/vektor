@@ -2,13 +2,13 @@ import { eq } from "drizzle-orm";
 import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
+import { validateAccessToken } from "#db/accessTokens.ts";
+import { getAuthDb } from "#db/db.ts";
+import type { DocumentWithProperties } from "#db/documents.ts";
+import { user } from "#db/schema/auth.ts";
+import { listUserSpaces } from "#db/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
-import { validateAccessToken } from "./accessTokens.ts";
-import { getAuthDb } from "./db.ts";
-import type { DocumentWithProperties } from "./documents.ts";
-import { user } from "./schema/auth.ts";
-import { listUserSpaces } from "./spaces.ts";
 
 export interface CalDAVUser {
   id: string;

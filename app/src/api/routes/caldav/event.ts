@@ -1,12 +1,12 @@
 import { Permission } from "#acl/permissions.ts";
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   CORS_HEADERS,
   documentToICal,
   optionsPreflight,
   parseICalEvent,
   requireCalDAVUserAndAccess,
-} from "#db/caldav.ts";
+} from "#api/caldav.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { createDocument, getDocument, updateDocumentProperty } from "#db/documents.ts";
 
 /**
