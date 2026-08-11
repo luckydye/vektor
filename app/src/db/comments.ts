@@ -105,3 +105,64 @@ export async function archiveComments(
     .set({ archived: true, updatedAt: new Date() })
     .where(inArray(comment.id, commentIds));
 }
+
+/**
+ * A comment's `reference` is a JSON blob whose `selector` identifies the
+ * anchored text; two comments are in the same thread when their selectors
+ * match. Falls back to the raw string for references that predate that shape.
+ */
+function normalizeCommentReference(reference: string | null): string | null {
+  if (!reference) return null;
+  try {
+    const parsed = JSON.parse(reference) as { selector?: unknown };
+    return typeof parsed.selector === "string" ? parsed.selector : reference;
+  } catch {
+    return reference;
+  }
+}
+
+/** Authors of every non-archived comment anchored to the same thread. */
+export async function listThreadParticipantIds(
+  spaceId: string,
+  documentId: string,
+  reference: string | null,
+  parentId: string | null,
+): Promise<string[]> {
+  const db = await getSpaceDb(spaceId);
+  const parent = parentId
+    ? await db
+        .select({ createdBy: comment.createdBy, reference: comment.reference })
+        .from(comment)
+        .where(
+          and(
+            eq(comment.id, parentId),
+            eq(comment.resourceType, "document"),
+            eq(comment.resourceId, documentId),
+          ),
+        )
+        .get()
+    : undefined;
+  const normalizedReference = normalizeCommentReference(
+    reference ?? parent?.reference ?? null,
+  );
+  if (!normalizedReference) return [];
+
+  const rows = await db
+    .select({ createdBy: comment.createdBy, reference: comment.reference })
+    .from(comment)
+    .where(
+      and(
+        eq(comment.resourceType, "document"),
+        eq(comment.resourceId, documentId),
+        eq(comment.archived, false),
+      ),
+    )
+    .all();
+
+  return [
+    ...(parent ? [parent.createdBy] : []),
+    ...rows
+      .filter((row) => normalizeCommentReference(row.reference) === normalizedReference)
+      .map(({ createdBy }) => createdBy),
+  ];
+}

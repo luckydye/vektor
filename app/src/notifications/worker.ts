@@ -11,7 +11,7 @@ import {
   markEmailNotificationSent,
   markEmailNotificationSkipped,
   retryEmailNotification,
-} from "#db/emailNotifications.ts";
+} from "#db/emailOutbox.ts";
 import { getRevisionContent } from "#db/revisions.ts";
 import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";

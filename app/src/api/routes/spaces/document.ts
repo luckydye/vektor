@@ -39,7 +39,6 @@ import {
   updateDocument,
   updateDocumentProperty,
 } from "#db/documents.ts";
-import { enqueueDocumentPublishedEmails } from "#db/emailNotifications.ts";
 import {
   createRevision,
   createSuggestion,
@@ -58,6 +57,7 @@ import {
 } from "#documents/types.ts";
 import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
+import { enqueueDocumentPublishedEmails } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";

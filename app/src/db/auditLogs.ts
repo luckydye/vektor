@@ -1,9 +1,9 @@
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
-import type { getSpaceDb } from "./db.ts";
-import { type AuditLog, auditLog } from "./schema.ts";
+import { getSpaceDb } from "./db.ts";
+import { type AuditLog, auditLog, document } from "./schema.ts";
 
 /**
  * Every event kind the audit log records.
@@ -241,4 +241,40 @@ export function parseAuditDetails(log: AuditLog): AuditDetails | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Everyone who has contributed content to a document: its author, plus every
+ * account behind a contribution audit event on it.
+ *
+ * Takes a space ID rather than a handle, unlike the write helpers above — those
+ * are called from inside a document write that already holds one.
+ */
+export async function listDocumentContributorIds(
+  spaceId: string,
+  documentId: string,
+): Promise<string[]> {
+  const db = await getSpaceDb(spaceId);
+  const [doc, rows] = await Promise.all([
+    db
+      .select({ createdBy: document.createdBy })
+      .from(document)
+      .where(eq(document.id, documentId))
+      .get(),
+    db
+      .selectDistinct({ userId: auditLog.userId })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.docId, documentId),
+          inArray(auditLog.event, DOCUMENT_CONTRIBUTION_AUDIT_EVENTS),
+        ),
+      )
+      .all(),
+  ]);
+
+  return [
+    ...(doc ? [doc.createdBy] : []),
+    ...rows.flatMap(({ userId }) => (userId ? [userId] : [])),
+  ];
 }
