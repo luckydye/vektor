@@ -3,6 +3,10 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useTemplates } from "#composeables/useTemplates.ts";
+import { useToast } from "#composeables/useToast.ts";
+import type { DocumentTemplate } from "#documents/templates.ts";
+import { insertTemplateContent } from "#editor/templates.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -54,6 +58,8 @@ export function NewDocumentPicker() {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentSpace } = useSpace();
+  const { templates } = useTemplates();
+  const toast = useToast();
   const [visible, setVisible] = createSignal(true);
 
   const availableDocumentOptions = createMemo(() =>
@@ -80,6 +86,21 @@ export function NewDocumentPicker() {
     const query = new URLSearchParams(location.search);
     query.set("type", type);
     navigate(`/new?${query.toString()}`);
+  }
+
+  /**
+   * A template is content, not a document kind: picking one leaves the user in
+   * the same empty draft the "Doc" option opens, with the template body already
+   * written into it. Nothing is created until they save, and nothing stops them
+   * from adding a second template underneath.
+   */
+  async function selectTemplate(template: DocumentTemplate) {
+    setVisible(false);
+    focusEditor();
+
+    if (!(await insertTemplateContent(template.content))) {
+      toast.error(t("Failed to insert the template"));
+    }
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -145,6 +166,40 @@ export function NewDocumentPicker() {
             )}
           </For>
         </div>
+
+        <Show when={templates().length > 0}>
+          <div class="mt-8">
+            <h2 class="mb-3 font-semibold text-neutral-900 text-size-medium">
+              {t("Start from a template")}
+            </h2>
+
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+              <For each={templates()}>
+                {(template) => (
+                  <button
+                    type="button"
+                    class="flex cursor-pointer items-start gap-3 rounded-lg border border-neutral-200 bg-neutral-10 p-3 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+                    onClick={() => void selectTemplate(template)}
+                  >
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700">
+                      <Icon class="h-4 w-4" name="document" />
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block truncate font-medium text-neutral-900 text-size-medium">
+                        {template.title}
+                      </span>
+                      <Show when={template.description}>
+                        <span class="mt-0.5 line-clamp-2 block text-neutral-500 text-size-small leading-5">
+                          {template.description}
+                        </span>
+                      </Show>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
       </div>
     </div>
   );

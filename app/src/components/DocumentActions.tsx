@@ -200,6 +200,13 @@ export function DocumentActions(props: Props) {
     (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
   }
 
+  async function publishAsTemplate(e: MouseEvent) {
+    const action = Actions.get("document:save:template");
+    if (!action) return;
+    await action.run();
+    (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
+  }
+
   function handleContextMenuMousedown(event: MouseEvent) {
     setDevMode(event.altKey || event.metaKey);
     if (devMode()) setActionsDev(Actions.group("document:dev"));
@@ -533,6 +540,18 @@ export function DocumentActions(props: Props) {
                         <div class="font-medium text-size-small">Save as suggestion</div>
                         <div class="text-neutral-500 text-size-small">
                           Create an open suggestion instead of publishing
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
+                        disabled={isSaving()}
+                        onClick={(e) => void publishAsTemplate(e)}
+                      >
+                        <div class="font-medium text-size-small">Publish as template</div>
+                        <div class="text-neutral-500 text-size-small">
+                          Publish and offer this document when creating a new one
                         </div>
                       </button>
                     </div>
