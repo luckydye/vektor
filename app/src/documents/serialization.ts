@@ -2,7 +2,7 @@ import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/index.ts";
 import { codeToDoc, htmlToDoc } from "./schema/parse.ts";
 import { docToHtml } from "./schema/render.ts";
-import { textOf } from "./schema/specs.ts";
+import { type DocNode, textOf } from "./schema/specs.ts";
 import { yDocToDoc } from "./schema/yDecode.ts";
 import { docToYDoc } from "./schema/yEncode.ts";
 
@@ -58,11 +58,22 @@ export function toCleanHtml(doc: Y.Doc): string {
   return docToHtml(yDocToDoc(doc));
 }
 
+/**
+ * Parses persisted content into the document tree its type describes. Canvas
+ * content has no tree — it lives in Y.Maps, not the `default` fragment.
+ */
+export function docNodeFromContent(
+  type: string | null | undefined,
+  content: string,
+): DocNode {
+  if (type === "workflow") return codeToDoc(content, "javascript");
+  return htmlToDoc(content);
+}
+
 /** Builds a Y.Doc from persisted canvas, workflow-source, or HTML content. */
 export function docFromContent(type: string | null | undefined, content: string): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
-  if (type === "workflow") return docToYDoc(codeToDoc(content, "javascript"));
-  return docToYDoc(htmlToDoc(content));
+  return docToYDoc(docNodeFromContent(type, content));
 }
 
 /** Serializes a Y.Doc to canvas JSON, workflow source, or HTML. */

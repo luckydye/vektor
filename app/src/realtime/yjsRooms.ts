@@ -7,10 +7,11 @@ import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";
 import type { DocNode } from "#documents/schema/specs.ts";
 import { fragmentToNodes } from "#documents/schema/yDecode.ts";
-import { docNodesToY } from "#documents/schema/yEncode.ts";
+import { applyDocToFragment, docNodesToY } from "#documents/schema/yEncode.ts";
 import {
   canvasSnapshotFromDoc,
   contentFromDoc,
+  docNodeFromContent,
   toCleanHtml,
 } from "#documents/serialization.ts";
 import {
@@ -174,6 +175,60 @@ export function getLiveDocumentContent(
   if (type === "canvas" || type === "workflow" || isJsonContent(persisted))
     return persisted;
   return normalizeHtmlContent(persisted);
+}
+
+/**
+ * The write counterpart of `getLiveDocumentContent`: overwrites an open room
+ * with `content` and broadcasts the change, so connected editors converge on it
+ * instead of keeping — and later persisting — the state it replaced.
+ *
+ * Unlike the agent edit path this replaces wholesale rather than splicing the
+ * changed blocks: the callers are deliberate resets (publishing an older
+ * revision), where concurrent edits to the content being reset are what should
+ * lose. Returns false when no room is open, leaving the stored content as the
+ * only state.
+ */
+export function replaceLiveDocumentContent(
+  spaceId: string,
+  documentId: string,
+  type: string | null | undefined,
+  content: string,
+): boolean {
+  const room = yRooms.get(roomKey(spaceId, documentId));
+  if (!room?.doc) return false;
+
+  const doc = room.doc;
+  const updates: Uint8Array[] = [];
+  const captureUpdate = (update: Uint8Array) => updates.push(update);
+
+  doc.on("update", captureUpdate);
+  try {
+    doc.transact(() => {
+      if (type === "canvas") {
+        const snapshot = JSON.parse(content) as { shapes?: unknown; strokes?: unknown };
+        syncCanvasCollection(
+          doc.getMap<Y.Map<unknown>>("canvas.shapes"),
+          snapshot.shapes,
+        );
+        syncCanvasCollection(
+          doc.getMap<Y.Map<unknown>>("canvas.strokes"),
+          snapshot.strokes,
+        );
+        return;
+      }
+      applyDocToFragment(
+        doc.getXmlFragment("default"),
+        docNodeFromContent(type, content),
+      );
+    }, "server-edit");
+  } finally {
+    doc.off("update", captureUpdate);
+  }
+
+  for (const update of updates) {
+    broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+  }
+  return true;
 }
 
 function broadcastToRoom(room: YRoom, frame: Uint8Array): void {

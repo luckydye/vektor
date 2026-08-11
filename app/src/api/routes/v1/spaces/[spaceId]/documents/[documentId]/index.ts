@@ -58,7 +58,10 @@ import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { getLiveDocumentContent } from "#realtime/yjsRooms.ts";
+import {
+  getLiveDocumentContent,
+  replaceLiveDocumentContent,
+} from "#realtime/yjsRooms.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { stripScriptTags } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
@@ -168,7 +171,7 @@ async function handlePublishedRevisionPatch(
 
   const db = await getSpaceDb(spaceId);
   const existing = await db
-    .select({ publishedRev: documentTable.publishedRev })
+    .select({ publishedRev: documentTable.publishedRev, type: documentTable.type })
     .from(documentTable)
     .where(eq(documentTable.id, documentId))
     .get();
@@ -215,6 +218,11 @@ async function handlePublishedRevisionPatch(
     .update(documentTable)
     .set({ content: revisionContent })
     .where(eq(documentTable.id, documentId));
+
+  // An open room outranks the stored content for every reader and persists
+  // itself back over this write, so the draft only really changes once the live
+  // document does.
+  replaceLiveDocumentContent(spaceId, documentId, existing?.type, revisionContent);
 
   try {
     await enqueueDocumentPublishedEmails({

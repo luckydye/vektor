@@ -178,6 +178,97 @@ afterAll(() => {
 });
 
 describe("Realtime WebSocket", () => {
+  it("resets a joined room when an older revision is published", async () => {
+    const created = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "const version = 1;",
+        properties: { title: "Publish Test" },
+        type: "workflow",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const documentId = (await created.json()).document.id;
+
+    const saved = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+      { method: "POST", body: JSON.stringify({ html: "const version = 1;" }) },
+    );
+    expect(saved.status).toBe(200);
+    const firstRev = (await saved.json()).revision.rev;
+
+    // Publishing the first revision keeps the next save from overwriting it in
+    // place, so the document ends up with two distinct revisions.
+    expect(
+      (
+        await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${documentId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ publishedRev: firstRev }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${documentId}`, {
+          method: "PUT",
+          body: JSON.stringify({ content: "const version = 2;" }),
+        })
+      ).status,
+    ).toBe(200);
+
+    const revisions = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}/revisions`,
+    ).then((response) => response.json());
+    const secondRev = Math.max(
+      ...revisions.revisions.map((entry: { rev: number }) => entry.rev),
+    );
+    expect(secondRev).toBeGreaterThan(firstRev);
+    expect(
+      (
+        await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${documentId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ publishedRev: secondRev }),
+        })
+      ).status,
+    ).toBe(200);
+
+    const connection = await connectWebSocket(BASE_URL, testSpaceId);
+    try {
+      const clientDoc = new Y.Doc();
+      connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+      Y.applyUpdate(
+        clientDoc,
+        wsDecodeYjsUpdate(await connection.waitForFrame(WsMsgType.YjsUpdate)).update,
+        "remote",
+      );
+      expect(clientDoc.getXmlFragment("default").toString()).toContain(
+        "const version = 2;",
+      );
+
+      expect(
+        (
+          await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${documentId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ publishedRev: firstRev }),
+          })
+        ).status,
+      ).toBe(200);
+
+      // The room is what every reader sees and what gets persisted back, so
+      // publishing has to reach it rather than only the stored content.
+      Y.applyUpdate(
+        clientDoc,
+        wsDecodeYjsUpdate(await connection.waitForFrame(WsMsgType.YjsUpdate)).update,
+        "remote",
+      );
+      const source = clientDoc.getXmlFragment("default").toString();
+      expect(source).toContain("const version = 1;");
+      expect(source).not.toContain("const version = 2;");
+    } finally {
+      connection.socket.close();
+    }
+  });
+
   it("does not duplicate content when reconnecting to a recreated Yjs room", async () => {
     const initialConnection = await connectWebSocket(BASE_URL, testSpaceId);
     const clientDoc = new Y.Doc();
