@@ -1,4 +1,4 @@
-import { getDocument, getDocumentContent } from "#db/documents.ts";
+import { getDocument, getDocumentContent } from "#db/space/documents.ts";
 import { getLiveDocumentContent } from "#realtime/yjsRooms.ts";
 import { createRun } from "./runStore.ts";
 import { executeWorkflowScript } from "./workflowScript.ts";

@@ -17,7 +17,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { listJobRuns, toJobRunDto } from "#db/jobRuns.ts";
+import { listJobRuns, toJobRunDto } from "#db/space/jobRuns.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

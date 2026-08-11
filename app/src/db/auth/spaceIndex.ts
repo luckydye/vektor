@@ -3,7 +3,6 @@ import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { grantPermission } from "#acl/store.ts";
-import { isInMemoryDb } from "#inMemoryDb";
 import {
   closeDatabase,
   createDatabase,
@@ -14,9 +13,10 @@ import {
   getLocalSpacesDirectory,
   isLocalDatabaseMode,
   withoutDatabaseCredentials,
-} from "./connection.ts";
-import { spaceIndex } from "./schema/auth.ts";
-import { spaceMetadata } from "./schema/space.ts";
+} from "#db/client/connection.ts";
+import { spaceIndex } from "#db/schema/auth.ts";
+import { spaceMetadata } from "#db/schema/space.ts";
+import { isInMemoryDb } from "#inMemoryDb";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
 export type ActiveSpaceIndexRecord = SpaceIndexRecord & {

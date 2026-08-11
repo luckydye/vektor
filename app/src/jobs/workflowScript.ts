@@ -1,4 +1,4 @@
-import { getExtension, getExtensionPackage } from "#db/extensions.ts";
+import { getExtension, getExtensionPackage } from "#db/space/extensions.ts";
 import {
   appendRunLog,
   finalizeRun,

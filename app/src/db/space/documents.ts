@@ -1,6 +1,10 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { type AclViewer, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
+import { createId } from "#db/ids.ts";
+import { document, file as fileTable, property, revision } from "#db/schema/space.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   type DocumentPropertyValue,
@@ -20,12 +24,8 @@ import { appLogger } from "#observability/logger.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { slugify } from "#utils/utils.ts";
 import { createAuditLog } from "./auditLogs.ts";
-import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
-import { getSpaceDb } from "./db.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
-import { createId } from "./ids.ts";
 import { decompressHtml } from "./revisions.ts";
-import { document, file as fileTable, property, revision } from "./schema/space.ts";
 import {
   type DocumentWithProperties,
   fileRowToDocument,

@@ -1,51 +1,16 @@
 import { sql } from "drizzle-orm";
+import * as authSchema from "#db/schema/auth.ts";
+import * as spaceSchema from "#db/schema/space.ts";
 import type { Database } from "./connection.ts";
-
-import * as authSchema from "./schema/auth.ts";
-import * as spaceSchema from "./schema/space.ts";
 import { generateCreateTableSQL } from "./schemaUtils.ts";
 
-export async function getExistingColumnNames(db: Database, tableName: string) {
-  const rows = await db.all<{ name: string }>(
-    sql.raw(`SELECT name FROM pragma_table_info('${tableName}')`),
-  );
-  return new Set(rows.map(({ name }) => name));
-}
-
-export async function ensureColumnExists(
-  db: Database,
-  tableName: string,
-  columnName: string,
-  columnDefinition: string,
-) {
-  const existingColumns = await getExistingColumnNames(db, tableName);
-  if (existingColumns.has(columnName)) {
-    return;
-  }
-
-  await db.run(
-    sql.raw(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`),
-  );
-}
-
-export async function tableExists(db: Database, tableName: string): Promise<boolean> {
-  const rows = await db.all<{ name: string }>(
-    sql.raw(
-      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${tableName}'`,
-    ),
-  );
-  return rows.length > 0;
-}
-
 export async function prepareAuthDb(authDb: Database) {
-  // Generate CREATE TABLE statements from Drizzle schemas
   const userSQL = generateCreateTableSQL(authSchema.user);
   const sessionSQL = generateCreateTableSQL(authSchema.session);
   const accountSQL = generateCreateTableSQL(authSchema.account);
   const verificationSQL = generateCreateTableSQL(authSchema.verification);
   const spaceIndexSQL = generateCreateTableSQL(authSchema.spaceIndex);
 
-  // Execute table creation
   await authDb.run(sql.raw(userSQL));
   await authDb.run(sql.raw(sessionSQL));
   await authDb.run(sql.raw(accountSQL));
@@ -56,14 +21,8 @@ export async function prepareAuthDb(authDb: Database) {
       "CREATE UNIQUE INDEX IF NOT EXISTS space_index_active_slug_unique ON space_index (slug) WHERE status = 'active'",
     ),
   );
-
-  // Auth database initialized
 }
 
-/**
- * Run all DDL migrations on a space database instance.
- * Works for both file-backed and in-memory SQLite databases.
- */
 export async function applySpaceDbPragmas(spaceDb: Database) {
   // WAL mode: concurrent reads don't block writes, and writes batch into the
   // WAL file without per-transaction fsyncs (synchronous=NORMAL handles this).
@@ -73,6 +32,13 @@ export async function applySpaceDbPragmas(spaceDb: Database) {
   await spaceDb.run(sql.raw("PRAGMA wal_autocheckpoint = 1000"));
 }
 
+/**
+ * Create a space database's tables and indexes from the Drizzle schema.
+ *
+ * Every statement is `IF NOT EXISTS`, so this is idempotent — it runs on every
+ * connection open, not just the first. It creates the schema as currently
+ * defined and does not upgrade databases written by an older schema.
+ */
 export async function initSpaceDbSchema(spaceDb: Database, options: { local: boolean }) {
   if (options.local) await applySpaceDbPragmas(spaceDb);
 
@@ -88,7 +54,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
   await spaceDb.run(sql.raw(propertySQL));
   await spaceDb.run(sql.raw(categorySQL));
 
-  // Performance indexes — safe to add to existing DBs
   await spaceDb.run(
     sql.raw(
       "CREATE INDEX IF NOT EXISTS document_updated_at_idx ON document (updated_at DESC)",
@@ -102,20 +67,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
       "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
     ),
   );
-  await spaceDb.run(sql.raw("DROP INDEX IF EXISTS property_document_id_key_idx"));
-  // Deduplicate before creating the unique index — the old code had a SELECT+INSERT
-  // race that could produce duplicate (document_id, key) rows in existing DBs.
-  // Keep the most-recently updated row for each pair; delete the rest.
-  await spaceDb.run(
-    sql.raw(`
-      DELETE FROM property WHERE id NOT IN (
-        SELECT id FROM (
-          SELECT id, row_number() OVER (PARTITION BY document_id, key ORDER BY updated_at DESC, id DESC) AS rn
-          FROM property
-        ) ranked WHERE rn = 1
-      )
-    `),
-  );
   await spaceDb.run(
     sql.raw(
       "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
@@ -127,16 +78,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
 
   const extensionSQL = generateCreateTableSQL(spaceSchema.extension);
   await spaceDb.run(sql.raw(extensionSQL));
-  await ensureColumnExists(spaceDb, "extension", "enabled", "INTEGER NOT NULL DEFAULT 1");
-  await ensureColumnExists(
-    spaceDb,
-    "extension",
-    "source",
-    "TEXT NOT NULL DEFAULT 'upload'",
-  );
-  await ensureColumnExists(spaceDb, "extension", "source_ref", "TEXT");
-  await ensureColumnExists(spaceDb, "extension", "source_publisher", "TEXT");
-  await spaceDb.run(sql.raw("DROP TABLE IF EXISTS extension_storage"));
 
   const commentsSQL = generateCreateTableSQL(spaceSchema.comment);
   await spaceDb.run(sql.raw(commentsSQL));
@@ -161,18 +102,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     spaceSchema.emailNotificationOutbox,
   );
   await spaceDb.run(sql.raw(emailNotificationOutboxSQL));
-  await ensureColumnExists(
-    spaceDb,
-    "email_notification_outbox",
-    "published_revision",
-    "INTEGER",
-  );
-  await ensureColumnExists(
-    spaceDb,
-    "email_notification_outbox",
-    "previous_published_revision",
-    "INTEGER",
-  );
   await spaceDb.run(
     sql.raw(
       "CREATE UNIQUE INDEX IF NOT EXISTS email_notification_outbox_event_recipient_unique ON email_notification_outbox (kind, source_id, recipient_user_id)",
@@ -189,35 +118,9 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
 
   const aiChatSessionSQL = generateCreateTableSQL(spaceSchema.aiChatSession);
   await spaceDb.run(sql.raw(aiChatSessionSQL));
-  await ensureColumnExists(spaceDb, "ai_chat_session", "shell_snapshot", "TEXT");
 
-  // Schedules now always target a workflow document rather than an
-  // extension-manifest job; rename the table and column on databases
-  // created before this change. Rows that previously pointed at an
-  // extension job id become stale — they'll fail to resolve as a workflow
-  // document and get logged as a broken schedule, same as any other
-  // invalid reference.
-  if (
-    (await tableExists(spaceDb, "job_schedule")) &&
-    !(await tableExists(spaceDb, "workflow_schedule"))
-  ) {
-    await spaceDb.run(sql.raw("ALTER TABLE job_schedule RENAME TO workflow_schedule"));
-  }
   const workflowScheduleSQL = generateCreateTableSQL(spaceSchema.workflowSchedule);
   await spaceDb.run(sql.raw(workflowScheduleSQL));
-  const workflowScheduleColumns = await getExistingColumnNames(
-    spaceDb,
-    "workflow_schedule",
-  );
-  if (
-    workflowScheduleColumns.has("job_id") &&
-    !workflowScheduleColumns.has("document_id")
-  ) {
-    await spaceDb.run(
-      sql.raw("ALTER TABLE workflow_schedule RENAME COLUMN job_id TO document_id"),
-    );
-  }
-  await spaceDb.run(sql.raw("DROP INDEX IF EXISTS job_schedule_next_run_at_idx"));
   await spaceDb.run(
     sql.raw(
       "CREATE INDEX IF NOT EXISTS workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
@@ -230,10 +133,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     sql.raw("CREATE INDEX IF NOT EXISTS job_run_queued_at_idx ON job_run (queued_at)"),
   );
 
-  // Workflow executions are now hidden `workflow-run` documents. Old rows
-  // have no compatible meaning and are intentionally discarded.
-  await spaceDb.run(sql.raw("DROP TABLE IF EXISTS workflow_run"));
-
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));
   const oauthIntegrationSQL = generateCreateTableSQL(spaceSchema.oauthIntegration);
@@ -242,25 +141,7 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     spaceSchema.oauthIntegrationState,
   );
   await spaceDb.run(sql.raw(oauthIntegrationStateSQL));
-  await ensureColumnExists(spaceDb, "oauth_integration", "instance_url", "TEXT");
-  await ensureColumnExists(spaceDb, "oauth_integration_state", "instance_url", "TEXT");
-  await ensureColumnExists(spaceDb, "document", "search_text", "TEXT");
-  await ensureColumnExists(spaceDb, "document", "search_embedding", "TEXT");
-  await ensureColumnExists(spaceDb, "document", "search_embedding_model", "TEXT");
-  await ensureColumnExists(spaceDb, "document", "search_updated_at", "INTEGER");
-  await ensureColumnExists(spaceDb, "revision", "status", "TEXT");
 
   const fileSQL = generateCreateTableSQL(spaceSchema.file);
   await spaceDb.run(sql.raw(fileSQL));
-  await ensureColumnExists(spaceDb, "file", "original_name", "TEXT");
-  await ensureColumnExists(spaceDb, "file", "mime_type", "TEXT");
-  await ensureColumnExists(spaceDb, "file", "url", "TEXT");
-  await ensureColumnExists(spaceDb, "file", "updated_at", "INTEGER");
-
-  await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ai"));
-  await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ad"));
-  await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_au"));
-  await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
-
-  // Space database initialized
 }

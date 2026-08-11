@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { config } from "#config";
+import { getSpaceDb } from "#db/client/db.ts";
+import { extension } from "#db/schema/space.ts";
 import {
   type ExtensionManifest,
   type ExtensionRoute,
@@ -13,8 +15,6 @@ import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts"
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { getSpaceDb } from "./db.ts";
-import { extension } from "./schema/space.ts";
 
 export type {
   ExtensionManifest,

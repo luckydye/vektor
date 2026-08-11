@@ -7,7 +7,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { listAIChatSessionSummaries } from "#db/aiChatSessions.ts";
+import { listAIChatSessionSummaries } from "#db/space/aiChatSessions.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

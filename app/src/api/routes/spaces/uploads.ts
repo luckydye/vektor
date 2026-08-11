@@ -11,9 +11,9 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/db.ts";
+import { getSpaceDb } from "#db/client/db.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { updateDocumentEmbedding } from "#db/search.ts";
+import { updateDocumentEmbedding } from "#db/space/search.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";

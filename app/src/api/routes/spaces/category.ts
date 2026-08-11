@@ -16,7 +16,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { deleteCategory, getCategory, updateCategory } from "#db/categories.ts";
+import { deleteCategory, getCategory, updateCategory } from "#db/space/categories.ts";
 
 async function verifyCategoryRead(
   context: Parameters<ApiRouteHandler>[0],

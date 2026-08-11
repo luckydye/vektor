@@ -7,7 +7,7 @@ import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#acl/g
 import { Permission } from "#acl/permissions.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/db.ts";
+import { getSpaceDb } from "#db/client/db.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";

@@ -5,7 +5,7 @@ import {
   xmlResponse,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { listUserSpaces } from "#db/spaces.ts";
+import { listUserSpaces } from "#db/space/spaces.ts";
 
 /**
  * CalDAV calendar home endpoint.

@@ -7,8 +7,8 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getDocumentBySlug } from "#db/documents.ts";
-import { getSpaceBySlug } from "#db/spaces.ts";
+import { getDocumentBySlug } from "#db/space/documents.ts";
+import { getSpaceBySlug } from "#db/space/spaces.ts";
 import { createVektorDocumentAddress } from "#documents/address.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";

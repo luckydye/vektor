@@ -2,21 +2,21 @@ import { eq } from "drizzle-orm";
 import { verifyDocumentRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
-import { getComment } from "#db/comments.ts";
-import { getAuthDb } from "#db/db.ts";
-import { getDocument } from "#db/documents.ts";
-import { isEmailMuted } from "#db/emailNotificationPreferences.ts";
+import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
+import { getAuthDb } from "#db/client/db.ts";
+import { user } from "#db/schema/auth.ts";
+import type { EmailNotificationOutbox } from "#db/schema/space.ts";
+import { getComment } from "#db/space/comments.ts";
+import { getDocument } from "#db/space/documents.ts";
+import { isEmailMuted } from "#db/space/emailNotificationPreferences.ts";
 import {
   claimDueEmailNotifications,
   markEmailNotificationSent,
   markEmailNotificationSkipped,
   retryEmailNotification,
-} from "#db/emailOutbox.ts";
-import { getRevisionContent } from "#db/revisions.ts";
-import { user } from "#db/schema/auth.ts";
-import type { EmailNotificationOutbox } from "#db/schema/space.ts";
-import { listActiveSpaceIds } from "#db/spaceIndex.ts";
-import { getSpace } from "#db/spaces.ts";
+} from "#db/space/emailOutbox.ts";
+import { getRevisionContent } from "#db/space/revisions.ts";
+import { getSpace } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";

@@ -15,7 +15,7 @@ import {
   deleteAIChatSession,
   getAIChatSession,
   upsertAIChatSession,
-} from "#db/aiChatSessions.ts";
+} from "#db/space/aiChatSessions.ts";
 
 function parseSessionInput(
   spaceId: string,

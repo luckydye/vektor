@@ -1,7 +1,7 @@
 import { and, eq, lte, or } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { emailNotificationOutbox } from "./schema/space.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { emailNotificationOutbox } from "#db/schema/space.ts";
 
 export type EmailNotificationKind = "document_published" | "comment_created";
 

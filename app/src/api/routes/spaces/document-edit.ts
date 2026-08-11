@@ -10,7 +10,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getDocument, updateDocument } from "#db/documents.ts";
+import { getDocument, updateDocument } from "#db/space/documents.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
 import { documentIsReadonly } from "#documents/types.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";

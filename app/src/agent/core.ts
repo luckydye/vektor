@@ -11,7 +11,7 @@ import {
   callOpenAIResponses,
 } from "#api/provider/openaiCompatible.ts";
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
-import { getAIProvider } from "#db/aiConfig.ts";
+import { getAIProvider } from "#db/space/aiConfig.ts";
 import { readOnlyDocumentTypes } from "#documents/types.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";

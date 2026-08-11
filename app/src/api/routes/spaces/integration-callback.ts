@@ -10,8 +10,8 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   consumeOAuthIntegrationState,
   upsertOAuthIntegrationForUser,
-} from "#db/oauthIntegrations.ts";
-import { getSpace } from "#db/spaces.ts";
+} from "#db/space/oauthIntegrations.ts";
+import { getSpace } from "#db/space/spaces.ts";
 import {
   exchangeOAuthCode,
   fetchOAuthExternalUser,

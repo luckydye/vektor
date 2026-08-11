@@ -25,7 +25,7 @@ import {
   getExtensionSourcePolicy,
   listExtensionsWithErrors,
   updateExtension,
-} from "#db/extensions.ts";
+} from "#db/space/extensions.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 
@@ -174,7 +174,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       let manifest: ExtensionManifest;
       try {
-        const { extractFile } = await import("#db/extensions.ts");
+        const { extractFile } = await import("#db/space/extensions.ts");
         const manifestData = extractFile(buffer, "manifest.json");
         if (!manifestData) {
           return badRequestResponse("Extension package missing manifest.json");

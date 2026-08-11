@@ -7,7 +7,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getExtensionPackage } from "#db/extensions.ts";
+import { getExtensionPackage } from "#db/space/extensions.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId/package

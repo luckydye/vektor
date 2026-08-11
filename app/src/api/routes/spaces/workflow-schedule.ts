@@ -18,14 +18,14 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/db.ts";
+import { getSpaceDb } from "#db/client/db.ts";
 import {
   deleteWorkflowSchedule,
   getWorkflowSchedule,
   toWorkflowScheduleDto,
   updateWorkflowSchedule,
   validateCronExpression,
-} from "#db/workflowSchedules.ts";
+} from "#db/space/workflowSchedules.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

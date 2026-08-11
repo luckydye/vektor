@@ -6,11 +6,11 @@ import {
   constants as zlibConstants,
 } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { document, revision } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
 import { createAuditLog } from "./auditLogs.ts";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { document, revision } from "./schema/space.ts";
 
 export interface Revision {
   id: string;

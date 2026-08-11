@@ -1,5 +1,9 @@
 import { existsSync } from "node:fs";
 import {
+  getAssignedSpaceDatabase,
+  reconcileLocalSpaceIndex,
+} from "#db/auth/spaceIndex.ts";
+import {
   closeDatabase,
   createDatabase,
   type Database,
@@ -7,8 +11,6 @@ import {
   getDatabaseFilePath,
 } from "./connection.ts";
 import { initSpaceDbSchema, prepareAuthDb } from "./init.ts";
-import * as schema from "./schema.ts";
-import { getAssignedSpaceDatabase, reconcileLocalSpaceIndex } from "./spaceIndex.ts";
 
 declare global {
   // biome-ignore lint: globalThis augmentation requires var
@@ -117,5 +119,3 @@ export function closeSpaceDb(spaceId: string): void {
   spaceDbCache.delete(spaceId);
   spaceDbPreparation.delete(spaceId);
 }
-
-export { schema };

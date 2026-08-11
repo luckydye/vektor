@@ -1,7 +1,7 @@
 import type { WebSocket } from "ws";
 import * as Y from "yjs";
-import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
-import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
+import { getDocument, getDocumentContent, updateDocument } from "#db/space/documents.ts";
+import { createRevision, getLatestRevisionCreatedAt } from "#db/space/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";

@@ -8,7 +8,7 @@
  */
 
 import { eq, sql } from "drizzle-orm";
-import { getAuthDb } from "#db/connection.ts";
+import { getAuthDb } from "#db/client/connection.ts";
 import { spaceIndex, user } from "#db/schema/auth.ts";
 import { activeRuns } from "#jobs/runStore.ts";
 import { getJobQueueStats } from "#jobs/scheduler.ts";

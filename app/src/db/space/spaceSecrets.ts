@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, hasPermission } from "#acl/store.ts";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { spaceSecret } from "./schema/space.ts";
-import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { spaceSecret } from "#db/schema/space.ts";
+import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 import { getSpace } from "./spaces.ts";
 
 export type SpaceSecretMetadata = {

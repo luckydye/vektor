@@ -10,19 +10,6 @@ import {
   hasPermission,
   listUserPermissions,
 } from "#acl/store.ts";
-import { isInMemoryDb } from "#inMemoryDb";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
-import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { slugify } from "#utils/utils.ts";
-import { getDatabaseFilePath } from "./connection.ts";
-import {
-  closeSpaceDb,
-  createAllocatedSpaceDb,
-  getSpaceDb,
-  initializeDatabases,
-} from "./db.ts";
-import { createId } from "./ids.ts";
-import { preference, spaceMetadata } from "./schema/space.ts";
 import {
   allocateSpaceDatabase,
   disableSpaceDatabase,
@@ -33,7 +20,20 @@ import {
   markSpaceDeleted,
   updateIndexedSpaceMetadata,
   upsertSpaceIndex,
-} from "./spaceIndex.ts";
+} from "#db/auth/spaceIndex.ts";
+import { getDatabaseFilePath } from "#db/client/connection.ts";
+import {
+  closeSpaceDb,
+  createAllocatedSpaceDb,
+  getSpaceDb,
+  initializeDatabases,
+} from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { preference, spaceMetadata } from "#db/schema/space.ts";
+import { isInMemoryDb } from "#inMemoryDb";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
+import { slugify } from "#utils/utils.ts";
 
 const DATA_DIR = "./data";
 const DELETED_DIR = join(DATA_DIR, "deleted");

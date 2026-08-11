@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { aiChatSession } from "./schema/space.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { aiChatSession } from "#db/schema/space.ts";
 
 export type StoredAIChatSession = {
   id: string;

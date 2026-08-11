@@ -7,7 +7,11 @@ import {
   requireCalDAVUserAndAccess,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { createDocument, getDocument, updateDocumentProperty } from "#db/documents.ts";
+import {
+  createDocument,
+  getDocument,
+  updateDocumentProperty,
+} from "#db/space/documents.ts";
 
 /**
  * CalDAV individual event endpoint.

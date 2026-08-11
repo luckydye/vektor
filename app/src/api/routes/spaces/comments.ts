@@ -12,7 +12,9 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { createAuditLog } from "#db/auditLogs.ts";
+import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { user as userTable } from "#db/schema/auth.ts";
+import { createAuditLog } from "#db/space/auditLogs.ts";
 import {
   archiveComment,
   archiveComments,
@@ -20,9 +22,7 @@ import {
   getComment,
   listComments,
   updateCommentReferences,
-} from "#db/comments.ts";
-import { getAuthDb, getSpaceDb } from "#db/db.ts";
-import { user as userTable } from "#db/schema/auth.ts";
+} from "#db/space/comments.ts";
 import { enqueueCommentCreatedEmails } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";

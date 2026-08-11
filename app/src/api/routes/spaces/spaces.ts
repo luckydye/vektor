@@ -10,14 +10,14 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { findSpaceForToken } from "#db/accessTokens.ts";
+import { findSpaceForToken } from "#db/space/accessTokens.ts";
 import {
   createSpace,
   getSpace,
   getUserSpaceRole,
   listPublicSpaces,
   listUserSpaces,
-} from "#db/spaces.ts";
+} from "#db/space/spaces.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

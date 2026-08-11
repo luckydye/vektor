@@ -6,7 +6,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { extractFile, getExtensionPackage } from "#db/extensions.ts";
+import { extractFile, getExtensionPackage } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/csp.ts";
 

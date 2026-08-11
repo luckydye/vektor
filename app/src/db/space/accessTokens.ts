@@ -2,10 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResourceType } from "#acl/permissions.ts";
 import { grantPermission, listUserPermissions, revokePermission } from "#acl/store.ts";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import type { AccessToken, AccessTokenInsert } from "./schema/space.ts";
-import { accessToken } from "./schema/space.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import type { AccessToken, AccessTokenInsert } from "#db/schema/space.ts";
+import { accessToken } from "#db/schema/space.ts";
 import { listAllSpaces } from "./spaces.ts";
 
 export interface CreateAccessTokenOptions {

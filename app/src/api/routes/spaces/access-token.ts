@@ -14,7 +14,7 @@ import {
   getAccessToken,
   listTokenResources,
   revokeAccessToken,
-} from "#db/accessTokens.ts";
+} from "#db/space/accessTokens.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens/:tokenId

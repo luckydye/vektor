@@ -12,7 +12,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   deleteOAuthIntegrationForUser,
   getOAuthIntegrationForUser,
-} from "#db/oauthIntegrations.ts";
+} from "#db/space/oauthIntegrations.ts";
 import {
   getOAuthProviderConfiguration,
   getOAuthProviderLabel,

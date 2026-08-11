@@ -13,7 +13,7 @@ import {
   getOpenAICompatibleHeaders,
 } from "#api/provider/openaiCompatible.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getAIProvider } from "#db/aiConfig.ts";
+import { getAIProvider } from "#db/space/aiConfig.ts";
 import { appLogger } from "#observability/logger.ts";
 
 export const POST: ApiRouteHandler = (context) =>

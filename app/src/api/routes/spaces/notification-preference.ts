@@ -8,7 +8,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { isEmailMuted, setEmailMuted } from "#db/emailNotificationPreferences.ts";
+import { isEmailMuted, setEmailMuted } from "#db/space/emailNotificationPreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

@@ -32,10 +32,10 @@ import {
   unauthorizedResponse,
 } from "#api/http.ts";
 import type { ApiContext } from "#api/server/types.ts";
-import type { ValidateTokenResult } from "#db/accessTokens.ts";
-import { getTokenUserId, validateAccessToken } from "#db/accessTokens.ts";
-import { documentExists } from "#db/documents.ts";
-import { getSpace } from "#db/spaces.ts";
+import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
+import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
+import { documentExists } from "#db/space/documents.ts";
+import { getSpace } from "#db/space/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 

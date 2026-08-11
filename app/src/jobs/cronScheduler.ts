@@ -1,11 +1,11 @@
-import { getSpaceDb } from "#db/db.ts";
-import { failStaleJobRuns } from "#db/jobRuns.ts";
+import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
+import { getSpaceDb } from "#db/client/db.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
-import { listActiveSpaceIds } from "#db/spaceIndex.ts";
+import { failStaleJobRuns } from "#db/space/jobRuns.ts";
 import {
   claimDueWorkflowSchedules,
   parseWorkflowScheduleInputs,
-} from "#db/workflowSchedules.ts";
+} from "#db/space/workflowSchedules.ts";
 import { appLogger } from "#observability/logger.ts";
 import { getLatestRunIdForDoc, getRunForRead } from "./runStore.ts";
 import { startWorkflowRun } from "./workflowRuns.ts";

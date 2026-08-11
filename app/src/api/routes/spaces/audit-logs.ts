@@ -12,12 +12,12 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { getSpaceDb } from "#db/client/db.ts";
 import {
   getAuditLogsForDocument,
   getRecentAuditLogs,
   parseAuditDetails,
-} from "#db/auditLogs.ts";
-import { getSpaceDb } from "#db/db.ts";
+} from "#db/space/auditLogs.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

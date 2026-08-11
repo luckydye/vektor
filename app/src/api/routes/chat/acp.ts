@@ -12,9 +12,9 @@ import {
 import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
-import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
-import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
-import { getUserProfile } from "#db/userProfiles.ts";
+import { getAIChatSession, upsertAIChatSession } from "#db/space/aiChatSessions.ts";
+import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
+import { getUserProfile } from "#db/space/userProfiles.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";

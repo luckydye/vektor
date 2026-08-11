@@ -16,9 +16,13 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getTokenUserId } from "#db/accessTokens.ts";
-import { createCategory, listCategories, reorderCategories } from "#db/categories.ts";
-import { getSpace } from "#db/spaces.ts";
+import { getTokenUserId } from "#db/space/accessTokens.ts";
+import {
+  createCategory,
+  listCategories,
+  reorderCategories,
+} from "#db/space/categories.ts";
+import { getSpace } from "#db/space/spaces.ts";
 
 async function visibleCategoryIds(
   context: Parameters<ApiRouteHandler>[0],

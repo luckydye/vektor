@@ -15,9 +15,9 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getAuthDb } from "#db/db.ts";
+import { getAuthDb } from "#db/client/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
-import { getSpace } from "#db/spaces.ts";
+import { getSpace } from "#db/space/spaces.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(

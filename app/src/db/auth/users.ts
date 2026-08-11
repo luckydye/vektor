@@ -1,6 +1,6 @@
 import { inArray, sql } from "drizzle-orm";
-import { getAuthDb } from "./db.ts";
-import { user } from "./schema/auth.ts";
+import { getAuthDb } from "#db/client/db.ts";
+import { user } from "#db/schema/auth.ts";
 
 /** Resolve account IDs from email addresses. Matching is case-insensitive. */
 export async function getUserIdsByEmail(emails: string[]): Promise<string[]> {

@@ -14,7 +14,7 @@ import {
   listSpaceSecrets,
   sanitizeSecretName,
   upsertSpaceSecret,
-} from "#db/spaceSecrets.ts";
+} from "#db/space/spaceSecrets.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

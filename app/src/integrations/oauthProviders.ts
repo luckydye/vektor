@@ -1,5 +1,5 @@
 import { config } from "#config";
-import type { OAuthIntegrationProvider } from "#db/oauthIntegrations.ts";
+import type { OAuthIntegrationProvider } from "#db/space/oauthIntegrations.ts";
 
 export interface OAuthProviderConfiguration {
   id: OAuthIntegrationProvider;

@@ -8,12 +8,15 @@
  */
 
 import { config } from "#config";
-import { listDocumentContributorIds } from "#db/auditLogs.ts";
-import { listThreadParticipantIds } from "#db/comments.ts";
-import { getEmailMutedUserIds } from "#db/emailNotificationPreferences.ts";
-import { type EmailNotificationInit, insertEmailNotifications } from "#db/emailOutbox.ts";
-import { getPublishedContent } from "#db/revisions.ts";
-import { getUserIdsByEmail } from "#db/users.ts";
+import { getUserIdsByEmail } from "#db/auth/users.ts";
+import { listDocumentContributorIds } from "#db/space/auditLogs.ts";
+import { listThreadParticipantIds } from "#db/space/comments.ts";
+import { getEmailMutedUserIds } from "#db/space/emailNotificationPreferences.ts";
+import {
+  type EmailNotificationInit,
+  insertEmailNotifications,
+} from "#db/space/emailOutbox.ts";
+import { getPublishedContent } from "#db/space/revisions.ts";
 import { getUniqueMentionedEmails } from "#documents/mentions.ts";
 
 async function mentionedUserIds(html: string | null): Promise<string[]> {

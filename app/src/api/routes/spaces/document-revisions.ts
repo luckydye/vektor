@@ -20,7 +20,7 @@ import {
   listRevisionMetadata,
   restoreRevision,
   updateRevisionStatus,
-} from "#db/revisions.ts";
+} from "#db/space/revisions.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

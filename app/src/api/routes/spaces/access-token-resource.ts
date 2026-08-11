@@ -18,7 +18,7 @@ import {
   grantTokenAccess,
   listTokenResources,
   revokeTokenAccess,
-} from "#db/accessTokens.ts";
+} from "#db/space/accessTokens.ts";
 
 /**
  * PUT /api/v1/spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId

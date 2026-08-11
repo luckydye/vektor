@@ -7,12 +7,12 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { user } from "#db/schema/auth.ts";
 import {
   DOCUMENT_CONTRIBUTION_AUDIT_EVENTS,
   getAuditLogsForDocument,
-} from "#db/auditLogs.ts";
-import { getAuthDb, getSpaceDb } from "#db/db.ts";
-import { user } from "#db/schema/auth.ts";
+} from "#db/space/auditLogs.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

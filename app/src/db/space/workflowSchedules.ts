@@ -1,12 +1,12 @@
 import { parseCronExpression } from "cron-schedule";
 import { and, eq, isNull, lte } from "drizzle-orm";
-import type { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
+import type { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
 import {
   type WorkflowSchedule,
   type WorkflowScheduleInsert,
   workflowSchedule,
-} from "./schema/space.ts";
+} from "#db/schema/space.ts";
 
 type SpaceDb = Awaited<ReturnType<typeof getSpaceDb>>;
 

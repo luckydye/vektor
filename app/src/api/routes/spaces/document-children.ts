@@ -9,7 +9,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getDocument, getDocumentChildren } from "#db/documents.ts";
+import { getDocument, getDocumentChildren } from "#db/space/documents.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { preference } from "./schema/space.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { preference } from "#db/schema/space.ts";
 
 const DOCUMENT_EMAIL_MUTED_KEY_PREFIX = "email.document_muted:";
 const SPACE_EMAIL_MUTED_KEY = "email.space_muted";

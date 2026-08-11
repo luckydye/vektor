@@ -13,8 +13,8 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getDocument } from "#db/documents.ts";
-import { getRevisionContent, getRevisionMetadata } from "#db/revisions.ts";
+import { getDocument } from "#db/space/documents.ts";
+import { getRevisionContent, getRevisionMetadata } from "#db/space/revisions.ts";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
 import { prettyPrintHtml } from "#utils/html.ts";
 

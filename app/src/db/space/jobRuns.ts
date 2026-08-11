@@ -1,8 +1,8 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { getSpaceDb } from "#db/client/db.ts";
+import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
+import { type JobRun, type JobRunInsert, jobRun } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
-import { decodeSeekCursor, encodeSeekCursor } from "./cursor.ts";
-import { getSpaceDb } from "./db.ts";
-import { type JobRun, type JobRunInsert, jobRun } from "./schema/space.ts";
 
 export type JobRunTrigger = "cron" | "manual" | "workflow";
 

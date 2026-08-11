@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { category } from "#db/schema/space.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { category } from "./schema/space.ts";
 
 export interface Category {
   id: string;

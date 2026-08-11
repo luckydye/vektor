@@ -11,7 +11,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getDocument, getDocumentsByIds } from "#db/documents.ts";
+import { getDocument, getDocumentsByIds } from "#db/space/documents.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import {
   ensureSpaceRecovered,

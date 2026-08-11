@@ -1,5 +1,5 @@
-import { getAIProvider } from "#db/aiConfig.ts";
-import { getUserProfile, setUserProfile } from "#db/userProfiles.ts";
+import { getAIProvider } from "#db/space/aiConfig.ts";
+import { getUserProfile, setUserProfile } from "#db/space/userProfiles.ts";
 import { appLogger } from "#observability/logger.ts";
 import { callModel } from "./core.ts";
 

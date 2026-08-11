@@ -1,8 +1,8 @@
 import { and, eq, lt } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { oauthIntegration, oauthIntegrationState } from "./schema/space.ts";
-import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { oauthIntegration, oauthIntegrationState } from "#db/schema/space.ts";
+import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 
 export type OAuthIntegrationProvider = "gitlab" | "youtrack";
 

@@ -13,7 +13,7 @@ import { ResourceType } from "#acl/permissions.ts";
 import { badRequestResponse, parseJsonBody, withApiErrorHandling } from "#api/http.ts";
 import { pendingCliCodes } from "#api/routes/auth/cli.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { createAccessToken, grantTokenAccess } from "#db/accessTokens.ts";
+import { createAccessToken, grantTokenAccess } from "#db/space/accessTokens.ts";
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

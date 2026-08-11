@@ -6,9 +6,9 @@ import {
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { SpaceApp } from "#components/SpaceApp.tsx";
-import { getDocument, getDocumentBySlug } from "#db/documents.ts";
-import { resolvePublishedDocumentContent } from "#db/revisions.ts";
-import { getSpaceBySlug, getUserSpaceRole } from "#db/spaces.ts";
+import { getDocument, getDocumentBySlug } from "#db/space/documents.ts";
+import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
+import { getSpaceBySlug, getUserSpaceRole } from "#db/space/spaces.ts";
 import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";

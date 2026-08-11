@@ -22,9 +22,10 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getTokenUserId } from "#db/accessTokens.ts";
-import { createAuditLog } from "#db/auditLogs.ts";
-import { getSpaceDb } from "#db/db.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { document as documentTable } from "#db/schema/space.ts";
+import { getTokenUserId } from "#db/space/accessTokens.ts";
+import { createAuditLog } from "#db/space/auditLogs.ts";
 import {
   archiveDocument,
   type DocumentMeta,
@@ -38,16 +39,15 @@ import {
   setDocumentParent,
   updateDocument,
   updateDocumentProperty,
-} from "#db/documents.ts";
+} from "#db/space/documents.ts";
 import {
   createRevision,
   createSuggestion,
   getRevisionContent,
   getRevisionMetadata,
   resolvePublishedDocumentContent,
-} from "#db/revisions.ts";
-import { document as documentTable } from "#db/schema/space.ts";
-import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
+} from "#db/space/revisions.ts";
+import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
 import {
   contentIsHtml,

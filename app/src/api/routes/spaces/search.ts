@@ -8,7 +8,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { type PropertyFilter, searchDocuments } from "#db/search.ts";
+import { type PropertyFilter, searchDocuments } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
 
 export const GET: ApiRouteHandler = (context) =>

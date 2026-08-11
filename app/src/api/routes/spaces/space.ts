@@ -11,7 +11,12 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { deleteSpace, getSpace, getUserSpaceRole, updateSpace } from "#db/spaces.ts";
+import {
+  deleteSpace,
+  getSpace,
+  getUserSpaceRole,
+  updateSpace,
+} from "#db/space/spaces.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>

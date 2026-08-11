@@ -7,7 +7,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
+import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
 import {
   getOAuthIntegrationProviders,
   getOAuthProviderConfiguration,

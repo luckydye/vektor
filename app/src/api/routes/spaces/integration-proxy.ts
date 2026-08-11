@@ -15,7 +15,7 @@ import {
   type OAuthIntegrationCredential,
   type OAuthIntegrationProvider,
   updateOAuthIntegrationTokenSet,
-} from "#db/oauthIntegrations.ts";
+} from "#db/space/oauthIntegrations.ts";
 import {
   getOAuthProviderConfiguration,
   isOAuthIntegrationProvider,

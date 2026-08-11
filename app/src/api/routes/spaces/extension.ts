@@ -14,7 +14,11 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { deleteExtension, getExtension, setExtensionEnabled } from "#db/extensions.ts";
+import {
+  deleteExtension,
+  getExtension,
+  setExtensionEnabled,
+} from "#db/space/extensions.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId

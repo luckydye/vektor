@@ -26,7 +26,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getExtensionPackage, listExtensions } from "#db/extensions.ts";
+import { getExtensionPackage, listExtensions } from "#db/space/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import { appLogger } from "#observability/logger.ts";
 

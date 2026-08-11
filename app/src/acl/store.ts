@@ -11,10 +11,10 @@ import {
   ResourceType,
   resolveFeature,
 } from "#acl/permissions.ts";
-import { createAuditLog } from "#db/auditLogs.ts";
-import { getAuthDb, getSpaceDb } from "#db/db.ts";
+import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
 import { user } from "#db/schema/auth.ts";
 import { acl, category, document, property } from "#db/schema/space.ts";
+import { createAuditLog } from "#db/space/auditLogs.ts";
 import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 

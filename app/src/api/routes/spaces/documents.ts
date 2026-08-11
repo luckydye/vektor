@@ -22,8 +22,8 @@ import {
   listAllDocumentsByCategories,
   listDocuments,
   type PropertyInit,
-} from "#db/documents.ts";
-import { getSpace } from "#db/spaces.ts";
+} from "#db/space/documents.ts";
+import { getSpace } from "#db/space/spaces.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,

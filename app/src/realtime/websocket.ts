@@ -8,7 +8,7 @@ import {
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { auth } from "#auth";
-import { getExtension } from "#db/extensions.ts";
+import { getExtension } from "#db/space/extensions.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import {

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { preference } from "./schema/space.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { preference } from "#db/schema/space.ts";
 
 const PROFILE_KEY = "ai_user_profile";
 

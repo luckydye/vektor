@@ -7,7 +7,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { rebuildSearchIndex } from "#db/search.ts";
+import { rebuildSearchIndex } from "#db/space/search.ts";
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(

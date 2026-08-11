@@ -9,7 +9,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { createOAuthIntegrationState } from "#db/oauthIntegrations.ts";
+import { createOAuthIntegrationState } from "#db/space/oauthIntegrations.ts";
 import {
   buildOAuthAuthorizationUrl,
   getOAuthCallbackUrl,

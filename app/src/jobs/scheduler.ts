@@ -1,11 +1,11 @@
-import { extractFile } from "#db/extensions.ts";
+import { extractFile } from "#db/space/extensions.ts";
 import {
   classifyJobError,
   type JobRunTrigger,
   recordJobRunFinished,
   recordJobRunQueued,
   recordJobRunStarted,
-} from "#db/jobRuns.ts";
+} from "#db/space/jobRuns.ts";
 import { getJobRuntime } from "./runtime/index.ts";
 import type { CapabilityTable } from "./runtime/types.ts";
 

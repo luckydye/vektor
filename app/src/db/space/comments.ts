@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { comment } from "./schema/space.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { comment } from "#db/schema/space.ts";
 
 export type Comment = typeof comment.$inferSelect;
 

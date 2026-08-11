@@ -10,7 +10,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { deleteAIConfig, getAIConfigMeta, setAIConfig } from "#db/aiConfig.ts";
+import { deleteAIConfig, getAIConfigMeta, setAIConfig } from "#db/space/aiConfig.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

@@ -20,7 +20,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { listUserSpaces, type Space } from "#db/spaces.ts";
+import { listUserSpaces, type Space } from "#db/space/spaces.ts";
 import { escapeHtml } from "#utils/html.ts";
 
 // One-time codes: code → { userId, spaceId, expiresAt }

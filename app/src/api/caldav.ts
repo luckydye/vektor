@@ -2,11 +2,11 @@ import { eq } from "drizzle-orm";
 import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
-import { validateAccessToken } from "#db/accessTokens.ts";
-import { getAuthDb } from "#db/db.ts";
-import type { DocumentWithProperties } from "#db/documents.ts";
+import { getAuthDb } from "#db/client/db.ts";
 import { user } from "#db/schema/auth.ts";
-import { listUserSpaces } from "#db/spaces.ts";
+import { validateAccessToken } from "#db/space/accessTokens.ts";
+import type { DocumentWithProperties } from "#db/space/documents.ts";
+import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 

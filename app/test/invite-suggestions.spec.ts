@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getAuthDb } from "#db/db.ts";
+import { getAuthDb } from "#db/client/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import {
   createSessionApiRequest,

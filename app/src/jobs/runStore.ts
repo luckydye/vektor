@@ -1,12 +1,12 @@
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { getSpaceDb } from "#db/db.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { document, property } from "#db/schema/space.ts";
 import {
   assertDocumentCanParent,
   type DocumentWithProperties,
   getDocument,
-} from "#db/documents.ts";
-import { createId } from "#db/ids.ts";
-import { document, property } from "#db/schema/space.ts";
+} from "#db/space/documents.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";

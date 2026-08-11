@@ -1,6 +1,8 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
@@ -8,8 +10,6 @@ import {
 } from "#documents/properties.ts";
 import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
 import { escapeHtml } from "#utils/html.ts";
-import { getSpaceDb } from "./db.ts";
-import { document, file as fileTable, property } from "./schema/space.ts";
 
 // ---------------------------------------------------------------------------
 // SQL helpers shared with documents.ts

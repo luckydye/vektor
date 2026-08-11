@@ -1,9 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
 import type { AIProvider } from "#api/provider/types.ts";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { preference, spaceSecret } from "./schema/space.ts";
-import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { createId } from "#db/ids.ts";
+import { preference, spaceSecret } from "#db/schema/space.ts";
+import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 
 /**
  * Space preference keys holding the AI provider config. The provider config is
