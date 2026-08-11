@@ -277,17 +277,17 @@ export function CommandPalatte() {
                     component={result.type === "document" ? "page-target" : "div"}
                     {...(result.type === "document"
                       ? {
-                          "data-document-id": result.data.id,
-                          "data-document-type": result.data.type ?? undefined,
-                          "data-space-id": currentSpace()?.id,
-                          "data-document-url": spacePath(
+                          "attr:data-document-id": result.data.id,
+                          "attr:data-document-type": result.data.type ?? undefined,
+                          "attr:data-space-id": currentSpace()?.id,
+                          "attr:data-document-url": spacePath(
                             currentSpace()?.slug,
                             `/doc/${result.data.slug}`,
                           ),
                         }
                       : {})}
                     class="block px-1 [&[data-dragging]]:opacity-50"
-                    on:document-drag-start={closePalette}
+                    on:drag={closePalette}
                   >
                     <button
                       type="button"

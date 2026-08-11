@@ -84,6 +84,14 @@ customElements.define(
       this.removeEventListener("dragleave", this.onDragLeave);
       this.removeEventListener("dragover", this.onDragOver);
       this.removeEventListener("drop", this.onDrop);
+
+      // A detached source never gets `dragend`, so the drag would never end for
+      // anyone listening. The microtask tells a removal apart from a reorder,
+      // which disconnects and reconnects within the same task.
+      if (!this.hasAttribute("data-dragging")) return;
+      queueMicrotask(() => {
+        if (!this.isConnected) this.endDrag(window);
+      });
     }
 
     handleDragStart(e: DragEvent) {
@@ -139,13 +147,17 @@ customElements.define(
     }
 
     handleDragEnd(_e: DragEvent) {
+      this.endDrag(this);
+    }
+
+    endDrag(target: EventTarget) {
       const documentId = this.getAttribute("data-document-id");
       activeDrag = null;
       this.removeAttribute("data-dragging");
       this.removeAttribute("data-drag-over");
       this.dragCounter = 0;
 
-      this.dispatchEvent(
+      target.dispatchEvent(
         new CustomEvent("document-drag-end", {
           bubbles: true,
           composed: true,
