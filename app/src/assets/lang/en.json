@@ -408,5 +408,7 @@
   "Database": "Database",
   "Organize and manage data in structured tables.": "Organize and manage data in structured tables.",
   "Spreadsheet": "Spreadsheet",
-  "Lay out numbers and records in rows and columns.": "Lay out numbers and records in rows and columns."
+  "Lay out numbers and records in rows and columns.": "Lay out numbers and records in rows and columns.",
+  "Start from a template": "Start from a template",
+  "Failed to insert the template": "Failed to insert the template"
 }

@@ -6,15 +6,23 @@ import {
   on,
   onCleanup,
 } from "solid-js";
+import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
 import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
+import { useQueryClient } from "./query.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
+import { useProperties } from "./useProperties.ts";
 import { useRevisions } from "./useRevisions.ts";
 import { useToast } from "./useToast.ts";
 
-export type SaveMode = "revision" | "suggestion";
+/**
+ * Where the content of an edit session goes when it ends. `template` is a
+ * publish that also marks the document as one the new-document picker offers
+ * as a starting point.
+ */
+export type SaveMode = "revision" | "suggestion" | "template";
 
 /** Whether the user has an active editing session on the current document. */
 export const [editing, setEditing] = createSignal(false);
@@ -105,6 +113,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   const {
+    spaceId,
     documentId,
     documentType,
     readonly,
@@ -123,6 +132,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveDocument,
   } = useDocument(documentId, documentType);
   const { saveRevision } = useRevisions(documentId);
+  const { updateProperty } = useProperties();
+  const queryClient = useQueryClient();
   const toast = useToast();
 
   let editorSession = 0;
@@ -132,6 +143,22 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     if (!saveStatusTimer) return;
     clearTimeout(saveStatusTimer);
     saveStatusTimer = null;
+  }
+
+  /**
+   * Being a template is a property on a saved document, so there is nothing to
+   * mark until a draft has become one — which is why the action is not offered
+   * before then.
+   */
+  async function markAsTemplate() {
+    const currentDocumentId = documentId();
+    if (!currentDocumentId) {
+      throw new Error("A draft has to be saved before it can become a template");
+    }
+    await updateProperty(currentDocumentId, templatePropertyKey, templatePropertyValue);
+    // The picker caches its list, and the first thing somebody does after
+    // making a template is go looking for it.
+    queryClient.invalidateQueries({ queryKey: ["wiki_templates", spaceId] });
   }
 
   async function finishEditing(mode: SaveMode) {
@@ -150,7 +177,10 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
         if (mode === "suggestion") {
           saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
         } else {
-          saved = await saveDocument(content, { publish: mode === "revision" });
+          // Marked before the publish, so a marker that cannot be written
+          // leaves the document as it was rather than published without it.
+          if (mode === "template") await markAsTemplate();
+          saved = await saveDocument(content, { publish: true });
         }
       }
     } catch (error) {
@@ -174,6 +204,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     }, 2000);
 
     if (mode === "suggestion") setSuggestionSavedCount((count) => count + 1);
+    else if (mode === "template") toast.success("Published as template");
     else toast.success("Document published");
   }
 
@@ -191,11 +222,21 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       group: "edit",
       run: async () => finishEditing("suggestion"),
     });
+
+    if (documentId()) {
+      Actions.register("document:save:template", {
+        title: "Publish as template",
+        description: "Publish and offer this document as a starting point for new ones",
+        group: "edit",
+        run: async () => finishEditing("template"),
+      });
+    }
   }
 
   function unregisterSaveActions() {
     Actions.unregister("document:save:publish");
     Actions.unregister("document:save:suggestion");
+    Actions.unregister("document:save:template");
   }
 
   async function startEditorSession() {
