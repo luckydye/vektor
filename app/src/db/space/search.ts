@@ -1,14 +1,29 @@
+import type { SpaceStore } from "#db/client/store.ts";
 import { eq, inArray, sql } from "drizzle-orm";
 import { ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
-import { getSpaceDb } from "#db/client/db.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
 } from "#documents/properties.ts";
-import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
+import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
+import {
+  buildDocumentSearchText,
+  embedText,
+  parseEmbedding,
+  serializeEmbedding,
+} from "#search/embedding.ts";
+import {
+  buildSearchSnippet,
+  cosineSimilarity,
+  extractQueryTerms,
+  MIN_SEMANTIC_SIMILARITY,
+  scoreKeywordOverlap,
+  scoreToRank,
+  SEMANTIC_RANKING_WEIGHT,
+} from "#search/ranking.ts";
 import { escapeHtml } from "#utils/html.ts";
 
 // ---------------------------------------------------------------------------
@@ -102,174 +117,18 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
 }
 
 // ---------------------------------------------------------------------------
-// Embedding utilities
-// ---------------------------------------------------------------------------
-
-function stripMarkup(input: string): string {
-  return input
-    .replace(/<[^>]+>/g, " ")
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeText(input: string): string {
-  return stripMarkup(input).toLowerCase();
-}
-
-export function buildDocumentSearchText(
-  content: string,
-  properties: Record<string, DocumentPropertyValue>,
-  fileText?: string,
-): string {
-  const titleValue = properties.title;
-  const title = titleValue ? propertyValueToText(titleValue).trim() : "";
-  const propertyText = Object.entries(properties)
-    .map(([key, value]) => `${key}: ${propertyValueToText(value)}`)
-    .join("\n");
-
-  return [title, title, propertyText, content, fileText].filter(Boolean).join("\n\n");
-}
-
-export async function embedText(text: string): Promise<number[]> {
-  const [embedding] = await embedTexts([text]);
-  if (!embedding) {
-    throw new Error("Native embedding runtime returned no vector");
-  }
-  return embedding;
-}
-
-export function parseEmbedding(value: string | null | undefined): number[] | null {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.map((item) => Number(item) || 0) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function serializeEmbedding(embedding: number[]): string {
-  return JSON.stringify(embedding);
-}
-
-export function cosineSimilarity(left: number[], right: number[]): number {
-  if (left.length === 0 || right.length === 0 || left.length !== right.length) {
-    return 0;
-  }
-
-  let total = 0;
-  for (let index = 0; index < left.length; index++) {
-    total += left[index] * right[index];
-  }
-  return total;
-}
-
-export function extractQueryTerms(query: string): string[] {
-  const phrases = [...query.matchAll(/"([^"]+)"/g)].map((match) =>
-    normalizeText(match[1]).trim(),
-  );
-  const unquoted = query.replace(/"[^"]+"/g, " ");
-  const words = (normalizeText(unquoted).match(/[a-z0-9*]+/g) ?? []).map((term) =>
-    term.replace(/\*+$/g, ""),
-  );
-
-  return [...new Set([...phrases, ...words].filter((term) => term.length > 0))];
-}
-
-export function scoreKeywordOverlap(query: string, text: string): number {
-  const haystack = normalizeText(text);
-  const terms = extractQueryTerms(query);
-  if (terms.length === 0) {
-    return 0;
-  }
-
-  let score = 0;
-  for (const term of terms) {
-    const exactIndex = haystack.indexOf(term);
-    if (exactIndex >= 0) {
-      score += term.includes(" ") ? 1.5 : 1;
-      if (exactIndex < 80) {
-        score += 0.5;
-      }
-      if (exactIndex === 0) {
-        score += 0.5;
-      }
-      continue;
-    }
-
-    if (!term.includes(" ")) {
-      const words = haystack.match(/[a-z0-9]+/g) ?? [];
-      const prefixIndex = words.findIndex((word) => word.startsWith(term));
-      if (prefixIndex >= 0) {
-        score += 0.8;
-        if (prefixIndex < 8) {
-          score += 0.3;
-        }
-      }
-    }
-  }
-
-  return score / terms.length;
-}
-
-const MIN_SEMANTIC_SIMILARITY = 0.6;
-const SEMANTIC_RANKING_WEIGHT = 0.4;
-
-function scoreToRank(score: number): number {
-  return 1 / (1 + Math.max(0, score));
-}
-
-export function buildSearchSnippet(query: string, text: string): string {
-  const normalizedText = stripMarkup(text);
-  if (!normalizedText) {
-    return "";
-  }
-
-  const terms = extractQueryTerms(query);
-  const lowerText = normalizedText.toLowerCase();
-  let startIndex = 0;
-
-  for (const term of terms) {
-    const index = lowerText.indexOf(term.toLowerCase());
-    if (index >= 0) {
-      startIndex = Math.max(0, index - 60);
-      break;
-    }
-  }
-
-  const excerpt = normalizedText.slice(startIndex, startIndex + 220).trim();
-  let highlighted = escapeHtml(excerpt);
-
-  for (const term of [...terms].sort((left, right) => right.length - left.length)) {
-    if (!term) continue;
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    highlighted = highlighted.replace(
-      new RegExp(escaped, "gi"),
-      (match) => `<mark>${match}</mark>`,
-    );
-  }
-
-  return highlighted;
-}
-
-// ---------------------------------------------------------------------------
 // Document embedding
 // ---------------------------------------------------------------------------
 
 export async function updateDocumentEmbedding(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
 
   // Check the type without loading `content` — canvases (which can be tens of
   // MB) are never embedded, so pulling the content column here just to bail out
   // wasted memory on every canvas save.
-  const meta = await db
+  const meta = await s.db
     .select({ type: document.type })
     .from(document)
     .where(eq(document.id, documentId))
@@ -280,7 +139,7 @@ export async function updateDocumentEmbedding(
   }
 
   if (meta.type === "canvas") {
-    await db
+    await s.db
       .update(document)
       .set({
         searchText: null,
@@ -292,19 +151,19 @@ export async function updateDocumentEmbedding(
     return;
   }
 
-  const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
+  const doc = await s.db.select().from(document).where(eq(document.id, documentId)).get();
 
   if (!doc) {
     return;
   }
 
-  const props = await db
+  const props = await s.db
     .select()
     .from(property)
     .where(eq(property.documentId, documentId))
     .all();
 
-  const attachedFiles = await db
+  const attachedFiles = await s.db
     .select()
     .from(fileTable)
     .where(eq(fileTable.documentId, documentId))
@@ -325,7 +184,7 @@ export async function updateDocumentEmbedding(
   const searchEmbedding = serializeEmbedding(await embedText(searchText));
   const searchEmbeddingModel = getEmbeddingModel();
 
-  await db
+  await s.db
     .update(document)
     .set({
       searchText,
@@ -336,16 +195,15 @@ export async function updateDocumentEmbedding(
     .where(eq(document.id, documentId));
 }
 
-export async function rebuildSearchIndex(spaceId: string): Promise<void> {
-  const db = await getSpaceDb(spaceId);
+export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
 
-  const docs = await db.select().from(document).all();
+  const docs = await s.db.select().from(document).all();
 
   for (const doc of docs) {
     if (doc.type === "canvas") {
       continue;
     }
-    await updateDocumentEmbedding(spaceId, doc.id);
+    await updateDocumentEmbedding(s, doc.id);
   }
 }
 
@@ -385,13 +243,13 @@ function batches<T>(items: T[]): T[][] {
 
 /** Every document's properties in one read, grouped by document. */
 async function readProperties(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
   documentIds: string[],
 ): Promise<Map<string, Record<string, DocumentPropertyValue>>> {
   const byDocument = new Map<string, Record<string, DocumentPropertyValue>>();
 
   for (const ids of batches(documentIds)) {
-    const rows = await db
+    const rows = await s.db
       .select()
       .from(property)
       .where(inArray(property.documentId, ids))
@@ -409,13 +267,13 @@ async function readProperties(
 
 /** The document rows behind a page of results, keyed by id. */
 async function readDocuments(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
   documentIds: string[],
 ): Promise<Map<string, typeof document.$inferSelect>> {
   const byId = new Map<string, typeof document.$inferSelect>();
 
   for (const ids of batches(documentIds)) {
-    const rows = await db.select().from(document).where(inArray(document.id, ids)).all();
+    const rows = await s.db.select().from(document).where(inArray(document.id, ids)).all();
     for (const row of rows) byId.set(row.id, row);
   }
 
@@ -423,7 +281,7 @@ async function readDocuments(
 }
 
 export async function searchDocuments(
-  spaceId: string,
+  s: SpaceStore,
   userId: string | null,
   query: string,
   limit = 20,
@@ -437,11 +295,9 @@ export async function searchDocuments(
     return { results: [], nextCursor: null };
   }
 
-  const db = await getSpaceDb(spaceId);
-
   let docIds: string[] | null = null;
   if (userId !== null) {
-    docIds = await listAccessibleResources(spaceId, userId, ResourceType.DOCUMENT);
+    docIds = await listAccessibleResources(s.spaceId, userId, ResourceType.DOCUMENT);
     if (docIds !== null && docIds.length === 0) {
       return { results: [], nextCursor: null };
     }
@@ -450,7 +306,7 @@ export async function searchDocuments(
   if (hasQuery) {
     const embeddingModel = getEmbeddingModel();
     try {
-      const missingEmbeddings = await db
+      const missingEmbeddings = await s.db
         .select({ id: document.id })
         .from(document)
         .where(
@@ -461,7 +317,7 @@ export async function searchDocuments(
         .all();
 
       for (const row of missingEmbeddings) {
-        await updateDocumentEmbedding(spaceId, row.id);
+        await updateDocumentEmbedding(s, row.id);
       }
     } catch {
       // Embedding service unavailable — skip catch-up indexing, fall back to keyword search
@@ -530,7 +386,7 @@ export async function searchDocuments(
       // Embedding service unavailable — fall back to keyword-only search
     }
 
-    const candidates = await db.all<{
+    const candidates = await s.db.all<{
       id: string;
       slug: string;
       type: string | null;
@@ -627,7 +483,7 @@ export async function searchDocuments(
 
     allRawResults = ranked;
   } else {
-    const rows = await db.all<{
+    const rows = await s.db.all<{
       id: string;
       type: string | null;
       content: string;
@@ -662,7 +518,7 @@ export async function searchDocuments(
 
   const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
   if (!excludeFiles) {
-    const indexedFiles = await db.select().from(fileTable).all();
+    const indexedFiles = await s.db.select().from(fileTable).all();
 
     for (const f of indexedFiles) {
       let rank = 0;
@@ -745,8 +601,7 @@ export async function searchDocuments(
   const hasPropertyOrTypeFilters = typeFilters.length > 0 || propertyFilters.length > 0;
   if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
-    const propertiesByDocument = await readProperties(
-      db,
+    const propertiesByDocument = await readProperties(s,
       accessibleResults.filter((row) => !row.file).map((row) => row.id),
     );
 
@@ -781,8 +636,8 @@ export async function searchDocuments(
   const results: SearchResult[] = [];
   const pageDocumentIds = rawResults.filter((row) => !row.file).map((row) => row.id);
   const [propertiesByDocument, documentsById] = await Promise.all([
-    readProperties(db, pageDocumentIds),
-    readDocuments(db, pageDocumentIds),
+    readProperties(s, pageDocumentIds),
+    readDocuments(s, pageDocumentIds),
   ]);
 
   for (const row of rawResults) {

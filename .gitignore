@@ -35,5 +35,5 @@ api-example
 /app/native/embedding/models/
 
 # Generated platform-specific native embedding addon and its loader.
-/app/src/embeddings/native/
+/app/src/search/native/
 

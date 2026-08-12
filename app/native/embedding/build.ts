@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { $ } from "bun";
 
 const here = import.meta.dir;
-const outDir = join(here, "../../src/embeddings/native");
+const outDir = join(here, "../../src/search/native");
 const modelDir = join(here, "models");
 const args = process.argv.slice(2);
 const debug = args.includes("--debug");
