@@ -323,9 +323,11 @@ async function shutdown(reason: string, exitCode = 0) {
       clearTimeout(forcedShutdownTimer);
     }
     appLogger.info("Shutdown completed", { reason });
+    await appLogger.flush();
     process.exit(exitCode);
   } catch (error) {
     appLogger.error("Shutdown failed", { reason, error });
+    await appLogger.flush();
     process.exit(1);
   }
 }

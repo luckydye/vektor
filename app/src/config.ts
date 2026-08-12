@@ -151,6 +151,18 @@ export function config() {
       JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
 
       /**
+       * OpenTelemetry log export (OTLP/HTTP, JSON encoding). Logs keep going to
+       * stdout/stderr regardless; a collector base URL adds a second sink and
+       * `/v1/logs` is appended to it. Standard OTEL_* names so an existing
+       * collector deployment configures the app unchanged.
+       */
+      OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      /** Extra request headers as `k1=v1,k2=v2` (e.g. an ingest token). */
+      OTEL_EXPORTER_OTLP_HEADERS: process.env.OTEL_EXPORTER_OTLP_HEADERS,
+      /** Reported as `service.name`; defaults to "vektor". */
+      OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
+
+      /**
        * Comma-separated list of extension sources the server will accept.
        * Valid values: upload, marketplace, system.
        * Defaults to all sources when unset.
