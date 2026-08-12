@@ -71,6 +71,15 @@ export function withoutDatabaseCredentials(databaseUrl: string): string {
   return parsed.toString();
 }
 
+/**
+ * Connections whose database lives only in RAM.
+ *
+ * libsql gives every `:memory:` connection its own private database and tears
+ * it down when a transaction ends, so these cannot run one — the table is gone
+ * on the next query. Tracked here rather than re-parsing the URL later.
+ */
+const memoryBacked = new WeakSet<object>();
+
 export function createDatabase(databaseUrl: string): Database {
   ensureLocalDatabaseDirectory(databaseUrl);
   const client = createClient({
@@ -79,7 +88,19 @@ export function createDatabase(databaseUrl: string): Database {
     // shared credential embedded in VEKTOR_DATABASE_URL is inherited here.
     authToken: authTokenFromUrl(getAuthDatabaseUrl()),
   });
-  return drizzle(client);
+  const database = drizzle(client);
+  if (databaseUrl.startsWith("file::memory:") || databaseUrl === ":memory:") {
+    memoryBacked.add(database);
+  }
+  return database;
+}
+
+/**
+ * Whether `database` can run a transaction. False only for in-memory databases,
+ * which are dev- and test-only — `IN_MEMORY_DB` is refused under NODE_ENV=production.
+ */
+export function supportsTransactions(database: object): boolean {
+  return !memoryBacked.has(database);
 }
 
 export function closeDatabase(database: Database): void {

@@ -1,8 +1,7 @@
 import { eq } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { category } from "#db/schema/space.ts";
-import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 
 export interface Category {
@@ -17,56 +16,20 @@ export interface Category {
   updatedAt: Date;
 }
 
-export async function createCategory(
-  spaceId: string,
-  name: string,
-  slug: string,
-  description?: string,
-  color?: string,
-  icon?: string,
-): Promise<Category> {
-  const db = await getSpaceDb(spaceId);
-  const id = createId("category");
-  const now = new Date();
+export interface CategoryInput {
+  name: string;
+  slug: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+}
 
-  const results = await db.select().from(category).all();
-  const order = results.length;
-
-  await db.insert(category).values({
-    id,
-    name,
-    slug,
-    description: description || null,
-    color: color || null,
-    icon: icon || null,
-    order,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  sendSyncEvent(
-    spaceId,
-    {
-      topic: realtimeTopics.categories,
-      data: { kind: "category_created", categoryId: id, name, slug, order },
-    },
-    {
-      topic: realtimeTopics.documentTree,
-      data: { kind: "category_created", categoryId: id, name, slug, order },
-    },
-  );
-
-  return {
-    id,
-    name,
-    slug,
-    description,
-    color,
-    icon,
-    order,
-    createdAt: now,
-    updatedAt: now,
-  };
+/** Both topics carry the same payload: the tree renders categories too. */
+function categoryEvents(data: Record<string, unknown>) {
+  return [
+    { topic: realtimeTopics.categories, data },
+    { topic: realtimeTopics.documentTree, data },
+  ];
 }
 
 function rowToCategory(result: typeof category.$inferSelect): Category {
@@ -83,140 +46,129 @@ function rowToCategory(result: typeof category.$inferSelect): Category {
   };
 }
 
-export async function getCategory(spaceId: string, id: string): Promise<Category | null> {
-  const db = await getSpaceDb(spaceId);
-  const result = await db.select().from(category).where(eq(category.id, id)).get();
+export async function createCategory(
+  s: SpaceStore,
+  input: CategoryInput,
+): Promise<Category> {
+  const id = createId("category");
+  const now = new Date();
+  const existing = await s.db.select().from(category).all();
+  const order = existing.length;
 
+  await s.db.insert(category).values({
+    id,
+    name: input.name,
+    slug: input.slug,
+    description: input.description || null,
+    color: input.color || null,
+    icon: input.icon || null,
+    order,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  s.emit(
+    ...categoryEvents({
+      kind: "category_created",
+      categoryId: id,
+      name: input.name,
+      slug: input.slug,
+      order,
+    }),
+  );
+
+  return { id, ...input, order, createdAt: now, updatedAt: now };
+}
+
+export async function getCategory(s: SpaceStore, id: string): Promise<Category | null> {
+  const result = await s.db.select().from(category).where(eq(category.id, id)).get();
   return result ? rowToCategory(result) : null;
 }
 
 export async function getCategoryBySlug(
-  spaceId: string,
+  s: SpaceStore,
   slug: string,
 ): Promise<Category | null> {
-  const db = await getSpaceDb(spaceId);
-  const result = await db.select().from(category).where(eq(category.slug, slug)).get();
-
+  const result = await s.db.select().from(category).where(eq(category.slug, slug)).get();
   return result ? rowToCategory(result) : null;
 }
 
-export async function listCategories(spaceId: string): Promise<Category[]> {
-  const db = await getSpaceDb(spaceId);
-  const results = await db.select().from(category).all();
-
+export async function listCategories(s: SpaceStore): Promise<Category[]> {
+  const results = await s.db.select().from(category).all();
   return results.map(rowToCategory).sort((a, b) => a.order - b.order);
 }
 
 export async function updateCategory(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
-  name: string,
-  slug: string,
-  description?: string,
-  color?: string,
-  icon?: string,
+  input: CategoryInput,
 ): Promise<Category | null> {
-  const db = await getSpaceDb(spaceId);
-  const existing = await getCategory(spaceId, id);
+  return s.tx(async (tx) => {
+    const existing = await getCategory(tx, id);
+    if (!existing) return null;
 
-  if (!existing) {
-    return null;
-  }
+    const now = new Date();
+    await tx.db
+      .update(category)
+      .set({
+        name: input.name,
+        slug: input.slug,
+        description: input.description || null,
+        color: input.color || null,
+        icon: input.icon || null,
+        updatedAt: now,
+      })
+      .where(eq(category.id, id));
 
-  const now = new Date();
+    tx.emit(
+      ...categoryEvents({
+        kind: "category_updated",
+        categoryId: id,
+        previousSlug: existing.slug,
+        slug: input.slug,
+        name: input.name,
+        order: existing.order,
+      }),
+    );
 
-  await db
-    .update(category)
-    .set({
-      name,
-      slug,
-      description: description || null,
-      color: color || null,
-      icon: icon || null,
+    return {
+      id,
+      ...input,
+      order: existing.order,
+      createdAt: existing.createdAt,
       updatedAt: now,
-    })
-    .where(eq(category.id, id));
-
-  sendSyncEvent(
-    spaceId,
-    {
-      topic: realtimeTopics.categories,
-      data: {
-        kind: "category_updated",
-        categoryId: id,
-        previousSlug: existing.slug,
-        slug,
-        name,
-        order: existing.order,
-      },
-    },
-    {
-      topic: realtimeTopics.documentTree,
-      data: {
-        kind: "category_updated",
-        categoryId: id,
-        previousSlug: existing.slug,
-        slug,
-        name,
-        order: existing.order,
-      },
-    },
-  );
-
-  return {
-    id,
-    name,
-    slug,
-    description,
-    color,
-    icon,
-    order: existing.order,
-    createdAt: existing.createdAt,
-    updatedAt: now,
-  };
+    };
+  });
 }
 
-export async function deleteCategory(spaceId: string, id: string): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-  const existing = await getCategory(spaceId, id);
-  await db.delete(category).where(eq(category.id, id));
-  sendSyncEvent(
-    spaceId,
-    {
-      topic: realtimeTopics.categories,
-      data: { kind: "category_deleted", categoryId: id, slug: existing?.slug ?? null },
-    },
-    {
-      topic: realtimeTopics.documentTree,
-      data: { kind: "category_deleted", categoryId: id, slug: existing?.slug ?? null },
-    },
-  );
-  return true;
+export async function deleteCategory(s: SpaceStore, id: string): Promise<boolean> {
+  return s.tx(async (tx) => {
+    const existing = await getCategory(tx, id);
+    await tx.db.delete(category).where(eq(category.id, id));
+    tx.emit(
+      ...categoryEvents({
+        kind: "category_deleted",
+        categoryId: id,
+        slug: existing?.slug ?? null,
+      }),
+    );
+    return true;
+  });
 }
 
 export async function reorderCategories(
-  spaceId: string,
+  s: SpaceStore,
   categoryIds: string[],
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-
-  for (let i = 0; i < categoryIds.length; i++) {
-    await db
-      .update(category)
-      .set({ order: i, updatedAt: new Date() })
-      .where(eq(category.id, categoryIds[i]));
-  }
-
-  sendSyncEvent(
-    spaceId,
-    {
-      topic: realtimeTopics.categories,
-      data: { kind: "categories_reordered", categoryIds },
-    },
-    {
-      topic: realtimeTopics.documentTree,
-      data: { kind: "categories_reordered", categoryIds },
-    },
-  );
-  return true;
+  return s.tx(async (tx) => {
+    const now = new Date();
+    for (let i = 0; i < categoryIds.length; i++) {
+      await tx.db
+        .update(category)
+        .set({ order: i, updatedAt: now })
+        .where(eq(category.id, categoryIds[i]));
+    }
+    tx.emit(...categoryEvents({ kind: "categories_reordered", categoryIds }));
+    return true;
+  });
 }

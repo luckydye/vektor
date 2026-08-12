@@ -16,6 +16,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getTokenUserId } from "#db/space/accessTokens.ts";
 import {
   createCategory,
@@ -103,6 +104,7 @@ async function visibleCategoryIds(
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const space = await getSpace(spaceId);
     if (!space) {
       return new Response("Space not found", {
@@ -113,7 +115,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     const visibleIds = await visibleCategoryIds(context, spaceId);
 
-    const categories = await listCategories(spaceId);
+    const categories = await listCategories(store);
     const visibleCategories = visibleIds
       ? categories.filter((category) => visibleIds.has(category.id))
       : categories;
@@ -130,6 +132,7 @@ export const GET: ApiRouteHandler = (context) =>
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
 
     const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
@@ -144,20 +147,20 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Name and slug are required");
     }
 
-    const categoryData = await createCategory(
-      spaceId,
+    const categoryData = await createCategory(store, {
       name,
       slug,
       description,
       color,
       icon,
-    );
+    });
     return createdResponse({ category: categoryData });
   }, "Failed to create category");
 
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
 
     const body = await parseJsonBody(context.req.raw);
@@ -167,6 +170,6 @@ export const PUT: ApiRouteHandler = (context) =>
       throw badRequestResponse("categoryIds array is required");
     }
 
-    await reorderCategories(spaceId, categoryIds);
+    await reorderCategories(store, categoryIds);
     return jsonResponse({ success: true });
   }, "Failed to reorder categories");
