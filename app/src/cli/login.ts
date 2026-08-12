@@ -13,6 +13,17 @@ function openBrowser(url: string): void {
   Bun.spawn([cmd, ...args], { stdout: "ignore", stderr: "ignore" });
 }
 
+/**
+ * What the token exchange returns. The token mirrors the approving user's own
+ * role on the space and expires, both of which the user needs to see.
+ */
+interface CliTokenResult {
+  token: string;
+  spaceId: string;
+  permission?: string;
+  expiresAt?: string;
+}
+
 export async function commandLogin(): Promise<void> {
   const host = resolveHost().replace(/\/$/, "");
 
@@ -21,9 +32,9 @@ export async function commandLogin(): Promise<void> {
   const state = randomBytes(16).toString("hex");
   const redirectUri = `http://localhost:${port}/callback`;
 
-  let resolveCallback: (result: { token: string; spaceId: string }) => void;
+  let resolveCallback: (result: CliTokenResult) => void;
   let rejectCallback: (err: Error) => void;
-  const callbackPromise = new Promise<{ token: string; spaceId: string }>((res, rej) => {
+  const callbackPromise = new Promise<CliTokenResult>((res, rej) => {
     resolveCallback = res;
     rejectCallback = rej;
   });
@@ -75,7 +86,7 @@ export async function commandLogin(): Promise<void> {
           const text = await res.text().catch(() => String(res.status));
           throw new Error(`Token exchange failed (${res.status}): ${text}`);
         }
-        const data = (await res.json()) as { token: string; spaceId: string };
+        const data = (await res.json()) as CliTokenResult;
         resolveCallback(data);
         return htmlResponse({
           title: "Logged in",
@@ -108,11 +119,17 @@ export async function commandLogin(): Promise<void> {
   );
 
   try {
-    const { token, spaceId } = await callbackPromise;
+    const { token, spaceId, permission, expiresAt } = await callbackPromise;
+
+    const scope = [
+      permission ? `${permission} access` : undefined,
+      expiresAt ? `expires ${expiresAt.slice(0, 10)}` : undefined,
+    ].filter((part): part is string => part !== undefined);
 
     process.stdout.write(
       [
         "",
+        ...(scope.length > 0 ? [`Token scope: ${scope.join(", ")}`, ""] : []),
         "Logged in. Add to your shell profile:",
         "",
         `  export VEKTOR_HOST=${host}`,
