@@ -80,7 +80,9 @@ function toAnyValue(value: unknown, depth: number): AnyValue | undefined {
   }
   if (typeof value !== "object") return { stringValue: String(value) };
 
-  return { kvlistValue: { values: toKeyValues(value as Record<string, unknown>, depth + 1) } };
+  return {
+    kvlistValue: { values: toKeyValues(value as Record<string, unknown>, depth + 1) },
+  };
 }
 
 function toKeyValues(source: Record<string, unknown>, depth = 0): KeyValue[] {
@@ -254,7 +256,10 @@ export async function flushOtlpLogs(): Promise<void> {
  * A batch the collector rejects is dropped, not retried: the same lines are on
  * stdout/stderr, so a retry queue would buy little for the state it costs.
  */
-async function sendBatch(otlpConfig: OtlpConfig, records: OtlpLogRecord[]): Promise<void> {
+async function sendBatch(
+  otlpConfig: OtlpConfig,
+  records: OtlpLogRecord[],
+): Promise<void> {
   const payload = JSON.stringify({
     resourceLogs: [
       {
@@ -273,7 +278,10 @@ async function sendBatch(otlpConfig: OtlpConfig, records: OtlpLogRecord[]): Prom
     });
     const detail = await response.text().catch(() => "");
     if (!response.ok) {
-      reportExportFailure(`HTTP ${response.status} ${detail.slice(0, 200)}`, records.length);
+      reportExportFailure(
+        `HTTP ${response.status} ${detail.slice(0, 200)}`,
+        records.length,
+      );
     }
   } catch (error) {
     reportExportFailure(String(error), records.length);

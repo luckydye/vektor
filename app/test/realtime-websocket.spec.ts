@@ -451,9 +451,9 @@ describe("Realtime WebSocket", () => {
     const event = connection.waitForFrame(WsMsgType.Event);
     connection.socket.send(wsEncode(WsMsgType.Ping, {}));
     await createCategory("Pinged category", "pinged-category");
-    expect(
-      wsDecodeJson<{ topics: string[] }>(await event).topics,
-    ).toEqual([realtimeTopics.categories]);
+    expect(wsDecodeJson<{ topics: string[] }>(await event).topics).toEqual([
+      realtimeTopics.categories,
+    ]);
 
     connection.socket.close();
   });

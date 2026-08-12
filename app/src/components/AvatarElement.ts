@@ -253,9 +253,7 @@ const AvatarElement =
 
           // Session profiles contain the stored image only. Resolve any missing
           // image here so every avatar also gets a server-derived Gravatar URL.
-          const userId = (
-            this.providedUser?.id || this.getAttribute("user-id")
-          )?.trim();
+          const userId = (this.providedUser?.id || this.getAttribute("user-id"))?.trim();
           if (!userId || isTokenSeed(userId)) return;
 
           const version = ++this.loadVersion;

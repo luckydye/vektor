@@ -140,7 +140,9 @@ describe("OTLP log export", () => {
       expect(record.severityNumber).toBe(9);
       expect(record.severityText).toBe("INFO");
       expect(record.timeUnixNano).toMatch(/^\d{19}$/);
-      expect(attribute(record.attributes, "documentId")).toEqual({ stringValue: "doc_1" });
+      expect(attribute(record.attributes, "documentId")).toEqual({
+        stringValue: "doc_1",
+      });
     } finally {
       collector.stop();
     }
@@ -207,9 +209,9 @@ describe("OTLP log export", () => {
       expect(attribute(record.attributes, "exception.message")).toEqual({
         stringValue: "bad input",
       });
-      expect(
-        attribute(record.attributes, "exception.stacktrace")?.stringValue,
-      ).toContain("bad input");
+      expect(attribute(record.attributes, "exception.stacktrace")?.stringValue).toContain(
+        "bad input",
+      );
 
       // The original attribute is kept too, so its key stays greppable.
       const serialized = attribute(record.attributes, "error")?.kvlistValue?.values ?? [];
@@ -231,13 +233,9 @@ describe("OTLP log export", () => {
       await logger.flush();
 
       expect(collector.requests).toHaveLength(1);
-      expect(onlyRecords(collector.requests[0].body).map((record) => record.body.stringValue)).toEqual([
-        "line 0",
-        "line 1",
-        "line 2",
-        "line 3",
-        "line 4",
-      ]);
+      expect(
+        onlyRecords(collector.requests[0].body).map((record) => record.body.stringValue),
+      ).toEqual(["line 0", "line 1", "line 2", "line 3", "line 4"]);
     } finally {
       collector.stop();
     }
