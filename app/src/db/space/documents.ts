@@ -20,6 +20,7 @@ import {
 } from "#documents/properties.ts";
 import {
   allowsChildDocumentType,
+  documentIsReadonly,
   fallbackDocumentSlug,
   readOnlyDocumentTypes,
 } from "#documents/types.ts";
@@ -340,6 +341,20 @@ export async function getDocumentAuthState(
       .where(eq(document.id, id)),
   );
   return row ? { archived: Number(row.archived) === 1 } : null;
+}
+
+/** Checks the readonly verdict without loading document content or properties. */
+export async function documentIsReadonlyById(
+  s: SpaceStore,
+  id: string,
+): Promise<boolean> {
+  const row = await one(
+    s.db
+      .select({ readonly: document.readonly, type: document.type })
+      .from(document)
+      .where(eq(document.id, id)),
+  );
+  return row ? documentIsReadonly(row) : true;
 }
 
 export async function getDocumentBySlug(

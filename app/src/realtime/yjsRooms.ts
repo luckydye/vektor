@@ -19,7 +19,7 @@ import {
   deserializeDocContent,
   serializeDocContent,
 } from "#documents/serializationPool.ts";
-import { contentIsHtml } from "#documents/types.ts";
+import { contentIsHtml, documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
@@ -273,6 +273,14 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   // just write; no dedup read/hash needed.
   const meta = await getDocument(await openSpaceStore(ids.spaceId), ids.documentId);
   if (!meta) return;
+
+  if (documentIsReadonly(meta)) {
+    appLogger.info("Skipped persisting a readonly document from its live room", {
+      spaceId: ids.spaceId,
+      documentId: ids.documentId,
+    });
+    return;
+  }
 
   const doc = room.doc;
   const serialized = await traced("persist.serialize", () =>
@@ -629,6 +637,10 @@ export async function transformDocumentContent(
   const dbDoc = await getDocument(await openSpaceStore(spaceId), documentId);
   if (!dbDoc) {
     return null;
+  }
+
+  if (documentIsReadonly(dbDoc)) {
+    throw new Error("Cannot edit readonly document");
   }
 
   const room = yRooms.get(roomKey(spaceId, documentId));

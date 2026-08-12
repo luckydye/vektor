@@ -5,6 +5,7 @@
  */
 
 import { publishAuthorizationChange } from "#acl/events.ts";
+import { documentLockChangedKind } from "./changes.ts";
 import {
   type RealtimeEventInput,
   type RealtimeTopic,
@@ -44,7 +45,10 @@ function drainPendingEvents(): RealtimeEventEnvelope[] {
 
 export function publishSyncEvents(events: RealtimeEventEnvelope[]) {
   for (const event of events) {
-    if (event.topics.includes(realtimeTopics.acl)) {
+    if (
+      event.topics.includes(realtimeTopics.acl) ||
+      event.events.some(({ data }) => data?.kind === documentLockChangedKind)
+    ) {
       publishAuthorizationChange({ spaceId: event.spaceId });
     }
     for (const listener of listeners) {

@@ -1187,3 +1187,209 @@ describe("Realtime WebSocket access revocation", () => {
     TEST_TIMEOUT_MS,
   );
 });
+
+describe("Realtime WebSocket readonly documents", () => {
+  /**
+   * The sync-event debounce (100ms) plus the re-authorization a lock/unlock
+   * triggers. Padded for a loaded machine; the `YjsUpdate` path re-checks a
+   * stale verdict itself, so this only has to outlast the debounce.
+   */
+  const REVALIDATION_MS = 1_500;
+
+  async function createDocument(
+    title: string,
+    content: string,
+    type?: string,
+  ): Promise<string> {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content,
+        properties: { title },
+        ...(type ? { type } : {}),
+      }),
+    });
+    expect(response.status).toBe(201);
+    return (await response.json()).document.id;
+  }
+
+  /** `live` reads the open room's state, otherwise the persisted content. */
+  async function readContent(documentId: string, live: boolean): Promise<string> {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}${live ? "?live=true" : ""}`,
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).document.content;
+  }
+
+  async function setReadonly(documentId: string, readonly: boolean): Promise<void> {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+      { method: "PATCH", body: JSON.stringify({ readonly }) },
+    );
+    expect(response.status).toBe(200);
+  }
+
+  /** Rides out the persist debounce, which runs a second or more after an edit. */
+  async function waitForPersistedContent(
+    documentId: string,
+    text: string,
+  ): Promise<boolean> {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      if ((await readContent(documentId, false)).includes(text)) return true;
+      await Bun.sleep(250);
+    }
+    return false;
+  }
+
+  it(
+    "stops applying and persisting Yjs updates once the document is locked",
+    async () => {
+      const documentId = await createDocument("Locked", "<p>locked</p>");
+      const writer = await connectWebSocket(BASE_URL, testSpaceId);
+      const observer = await connectWebSocket(BASE_URL, testSpaceId);
+
+      try {
+        const writerDoc = await joinRoom(writer, documentId);
+        const observerDoc = await joinRoom(observer, documentId);
+
+        // Establish that this socket really can write, so the assertion after the
+        // lock is about the lock and not about the plumbing.
+        const accepted = observer.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS);
+        writer.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(writerDoc, "before the lock")),
+        );
+        Y.applyUpdate(observerDoc, wsDecodeYjsUpdate(await accepted).update, "remote");
+        expect(await readContent(documentId, true)).toContain("before the lock");
+
+        await setReadonly(documentId, true);
+        await Bun.sleep(REVALIDATION_MS);
+
+        writer.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(writerDoc, "after the lock")),
+        );
+
+        await observer.expectNoFrame(WsMsgType.YjsUpdate, 1_500);
+        // Neither applied to the room nor written back to the document.
+        expect(await readContent(documentId, true)).not.toContain("after the lock");
+        expect(await readContent(documentId, false)).not.toContain("after the lock");
+        // Reading is unaffected: only the write was withdrawn.
+        expect(writer.socket.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        writer.socket.close();
+        observer.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "accepts Yjs updates again once the document is unlocked",
+    async () => {
+      const documentId = await createDocument("Unlocked", "<p>unlocked</p>");
+      const writer = await connectWebSocket(BASE_URL, testSpaceId);
+      const observer = await connectWebSocket(BASE_URL, testSpaceId);
+
+      try {
+        const lockedDoc = await joinRoom(writer, documentId);
+        const observerDoc = await joinRoom(observer, documentId);
+
+        await setReadonly(documentId, true);
+        await Bun.sleep(REVALIDATION_MS);
+
+        writer.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(lockedDoc, "while locked")),
+        );
+        await observer.expectNoFrame(WsMsgType.YjsUpdate, 1_500);
+
+        // Rejoin for a client doc that matches the room again: the dropped update
+        // left this client ahead of it, and Yjs holds anything built on top of a
+        // missing update as pending.
+        const writerDoc = await joinRoom(writer, documentId);
+
+        await setReadonly(documentId, false);
+        await Bun.sleep(REVALIDATION_MS);
+
+        const accepted = observer.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS);
+        writer.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(writerDoc, "after the unlock")),
+        );
+        Y.applyUpdate(observerDoc, wsDecodeYjsUpdate(await accepted).update, "remote");
+
+        expect(observerDoc.getXmlFragment("default").toString()).toContain(
+          "after the unlock",
+        );
+        expect(await readContent(documentId, true)).not.toContain("while locked");
+        expect(await waitForPersistedContent(documentId, "after the unlock")).toBe(true);
+      } finally {
+        writer.socket.close();
+        observer.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps every other document writable while one is locked",
+    async () => {
+      const lockedId = await createDocument("Locked Neighbour", "<p>locked</p>");
+      const openId = await createDocument("Open Neighbour", "<p>open</p>");
+      const writer = await connectWebSocket(BASE_URL, testSpaceId);
+      const observer = await connectWebSocket(BASE_URL, testSpaceId);
+
+      try {
+        await joinRoom(writer, lockedId);
+        const writerDoc = await joinRoom(writer, openId);
+        const observerDoc = await joinRoom(observer, openId);
+
+        // The lock invalidates every cached room verdict in the process, so this
+        // asserts the re-authorization it triggers restores the ones it should.
+        await setReadonly(lockedId, true);
+        await Bun.sleep(REVALIDATION_MS);
+
+        const accepted = observer.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS);
+        writer.socket.send(
+          wsEncodeYjsUpdate(openId, appendParagraph(writerDoc, "still writable")),
+        );
+        Y.applyUpdate(observerDoc, wsDecodeYjsUpdate(await accepted).update, "remote");
+
+        expect(await readContent(openId, true)).toContain("still writable");
+        expect(await waitForPersistedContent(openId, "still writable")).toBe(true);
+      } finally {
+        writer.socket.close();
+        observer.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "drops Yjs updates for a permanently readonly document type",
+    async () => {
+      // `csv` is readonly by type (readOnlyDocumentTypes), which the HTTP write
+      // paths already refuse; the room refuses it on the same terms.
+      const documentId = await createDocument(
+        "Sheet",
+        "<table><tr><td>a</td></tr></table>",
+        "csv",
+      );
+      const writer = await connectWebSocket(BASE_URL, testSpaceId);
+
+      try {
+        const writerDoc = await joinRoom(writer, documentId);
+        writer.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(writerDoc, "injected row")),
+        );
+
+        await Bun.sleep(REVALIDATION_MS);
+        expect(await readContent(documentId, true)).not.toContain("injected row");
+        expect(await readContent(documentId, false)).not.toContain("injected row");
+        expect(writer.socket.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        writer.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
