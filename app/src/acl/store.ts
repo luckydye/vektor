@@ -17,6 +17,7 @@ import { acl, category, document, property } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { resolveProfileImage } from "#utils/gravatar.ts";
 
 export interface AclEntry {
   resourceType: string;
@@ -136,7 +137,12 @@ export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[
           return false;
         }
       })
-      .map(({ id, name, email, image }) => ({ id, name, email, image }))
+      .map(({ id, name, email, image }) => ({
+        id,
+        name,
+        email,
+        image: resolveProfileImage({ email, image }),
+      }))
   );
 }
 

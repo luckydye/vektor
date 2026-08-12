@@ -18,6 +18,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { getSpace } from "#db/space/spaces.ts";
+import { resolveProfileImage } from "#utils/gravatar.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
@@ -80,7 +81,7 @@ export const GET: ApiRouteHandler = (context) =>
                   id: userData.id,
                   name: userData.name,
                   email: canSeeEmails ? userData.email : undefined,
-                  image: userData.image,
+                  image: resolveProfileImage(userData),
                 }
               : undefined,
           };
@@ -117,7 +118,7 @@ export const GET: ApiRouteHandler = (context) =>
                   id: userData.id,
                   name: userData.name,
                   email: canSeeEmails ? userData.email : undefined,
-                  image: userData.image,
+                  image: resolveProfileImage(userData),
                 },
               });
               break;
@@ -145,7 +146,7 @@ export const GET: ApiRouteHandler = (context) =>
             id: userData.id,
             name: userData.name,
             email: canSeeEmails ? userData.email : undefined,
-            image: userData.image,
+            image: resolveProfileImage(userData),
           },
         });
       }

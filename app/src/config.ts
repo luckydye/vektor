@@ -64,6 +64,15 @@ export function config() {
       /** Interface the HTTP server binds to (default 0.0.0.0). */
       SERVER_HOST: process.env.HOST,
 
+      /**
+       * Base URL of a Gravatar-compatible avatar API (e.g. https://gravatar.com
+       * or a self-hosted Libravatar); `<host>/avatar/<email-hash>` is then used
+       * for users whose login provider supplied no picture. Unset means no
+       * lookup: it would disclose an email hash to that host, which would also
+       * see the IP of everyone viewing the avatar.
+       */
+      GRAVATAR_URL: process.env.VEKTOR_GRAVATAR_URL,
+
       EMAIL_AUTH: process.env.VEKTOR_EMAIL_AUTH,
       REQUIRE_EMAIL_VERIFICATION: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION,
       EMAIL_FROM: process.env.VEKTOR_EMAIL_FROM,

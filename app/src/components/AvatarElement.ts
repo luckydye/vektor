@@ -279,18 +279,15 @@ const AvatarElement =
           avatar.style.width = `${size}px`;
           avatar.style.height = `${size}px`;
 
-          if (user?.image) {
-            const image = document.createElement("img");
-            image.src = user.image;
-            image.alt = user.name || user.email || "User profile";
-            image.className = "avatar-image";
-            avatar.appendChild(image);
-          } else {
-            const image = document.createElement("img");
-            // Generated avatars are seeded by the stable user id so the same
-            // person renders identically everywhere, regardless of whether the
-            // caller has their (PII-gated) email.
-            const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
+          const image = document.createElement("img");
+          image.alt = user?.name || user?.email || "User profile";
+          image.className = "avatar-image";
+
+          // Generated avatars are seeded by the stable user id so the same
+          // person renders identically everywhere, regardless of whether the
+          // caller has their (PII-gated) email.
+          const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
+          const drawGeneratedAvatar = () => {
             if (seed) {
               const generatedAvatar = getGeneratedAvatar(seed);
               avatar.style.background = generatedAvatar.color;
@@ -298,10 +295,19 @@ const AvatarElement =
             } else {
               image.src = defaultAvatar;
             }
-            image.alt = user?.name || user?.email || "User profile";
-            image.className = "avatar-image";
-            avatar.appendChild(image);
+          };
+
+          if (user?.image) {
+            // A remote picture can fail for reasons we can't see up front: a
+            // Gravatar URL 404s for an address with no account (d=404), and a
+            // provider URL can expire. Either way, draw the generated face.
+            image.addEventListener("error", drawGeneratedAvatar, { once: true });
+            image.src = user.image;
+          } else {
+            drawGeneratedAvatar();
           }
+
+          avatar.appendChild(image);
 
           root.appendChild(avatar);
           const frame = createCosmeticElement(user?.appearance?.avatarFrame);

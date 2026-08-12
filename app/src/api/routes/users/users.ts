@@ -11,6 +11,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { user } from "#db/schema/auth.ts";
+import { resolveProfileImage } from "#utils/gravatar.ts";
 
 /**
  * GET /api/v1/users
@@ -30,23 +31,36 @@ export const GET: ApiRouteHandler = (context) =>
     const id = new URL(context.req.url).searchParams.get("id");
     const spaceId = new URL(context.req.url).searchParams.get("spaceId");
 
-    // Minimal public profile fields only — never expose email here.
-    const publicFields = {
+    // Email is selected only so resolveProfileImage can derive a Gravatar URL
+    // from it; toPublicProfile drops it again, so it never leaves the server.
+    const profileFields = {
       id: user.id,
       name: user.name,
       image: user.image,
+      email: user.email,
     } as const;
+
+    const toPublicProfile = (row: {
+      id: string;
+      name: string;
+      image: string | null;
+      email: string;
+    }) => ({
+      id: row.id,
+      name: row.name,
+      image: resolveProfileImage(row),
+    });
 
     if (id) {
       const result = await db
-        .select(publicFields)
+        .select(profileFields)
         .from(user)
         .where(eq(user.id, id))
         .get();
       if (!result) {
         throw notFoundResponse("User");
       }
-      return jsonResponse(result);
+      return jsonResponse(toPublicProfile(result));
     }
 
     if (spaceId) {
@@ -63,10 +77,10 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const members = await db
-        .select(publicFields)
+        .select(profileFields)
         .from(user)
         .where(inArray(user.id, memberIds));
-      return jsonResponse(members);
+      return jsonResponse(members.map(toPublicProfile));
     }
 
     throw badRequestResponse("Either 'id' or 'spaceId' query parameter is required");
