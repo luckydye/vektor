@@ -6,6 +6,7 @@
 import type { WebSocket } from "ws";
 import { verifyDocumentRole, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
+import { appLogger } from "#observability/logger.ts";
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
 import {
   isDocumentRealtimeTopic,
@@ -80,6 +81,24 @@ export class TopicSubscriptions {
 
   close(): void {
     this.off();
+  }
+
+  /**
+   * Re-runs the subscribe-time authorization for every topic this connection
+   * holds and drops the ones it may no longer hear. A subscription is
+   * authorized once, so without this a revoked user keeps receiving the feed
+   * for as long as the socket stays up.
+   */
+  async revalidate(): Promise<void> {
+    const hasSpaceRole = this.spaceRoleResolver();
+    for (const topic of [...this.topics]) {
+      if (await this.authorize(topic, hasSpaceRole)) continue;
+      this.topics.delete(topic);
+      appLogger.info("Dropped a realtime subscription that lost its access", {
+        spaceId: this.spaceId,
+        topic,
+      });
+    }
   }
 
   private forward(event: RealtimeEventEnvelope): void {

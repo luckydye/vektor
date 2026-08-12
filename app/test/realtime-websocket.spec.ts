@@ -146,6 +146,33 @@ async function waitForClose(socket: WebSocket, timeoutMs = 5_000): Promise<void>
   });
 }
 
+/**
+ * Generous on purpose: a save in the session-based suites kicks off embedding
+ * work on the same server, which can stall a frame well past the 5s default.
+ */
+const FRAME_TIMEOUT_MS = 20_000;
+const TEST_TIMEOUT_MS = 60_000;
+
+/** Joins `documentId` and returns a client doc holding the room state. */
+async function joinRoom(connection: SocketFrames, documentId: string): Promise<Y.Doc> {
+  connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+  const state = wsDecodeYjsUpdate(
+    await connection.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
+  );
+  const clientDoc = new Y.Doc();
+  Y.applyUpdate(clientDoc, state.update, "remote");
+  return clientDoc;
+}
+
+/** Appends a paragraph to `clientDoc` and returns the update that did it. */
+function appendParagraph(clientDoc: Y.Doc, text: string): Uint8Array {
+  const stateBefore = Y.encodeStateVector(clientDoc);
+  const paragraph = new Y.XmlElement("paragraph");
+  paragraph.insert(0, [new Y.XmlText(text)]);
+  clientDoc.getXmlFragment("default").push([paragraph]);
+  return Y.encodeStateAsUpdate(clientDoc, stateBefore);
+}
+
 async function createCategory(name: string, slug: string): Promise<void> {
   const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/categories`, {
     method: "POST",
@@ -507,10 +534,6 @@ describe("Realtime WebSocket", () => {
  * behind it is still authorized against its own resource.
  */
 describe("Realtime WebSocket document-level grants", () => {
-  /** A save here kicks off embedding work that can stall a frame past 5s. */
-  const FRAME_TIMEOUT_MS = 20_000;
-  const TEST_TIMEOUT_MS = 60_000;
-
   let owner: TestUserSession;
   let documentViewer: TestUserSession;
   let documentEditor: TestUserSession;
@@ -560,25 +583,6 @@ describe("Realtime WebSocket document-level grants", () => {
     );
     expect(response.status).toBe(200);
     return (await response.json()).document.content;
-  }
-
-  /** Joins `documentId` and returns a client doc holding the room state. */
-  async function joinRoom(connection: SocketFrames, documentId: string): Promise<Y.Doc> {
-    connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
-    const state = wsDecodeYjsUpdate(
-      await connection.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
-    );
-    const clientDoc = new Y.Doc();
-    Y.applyUpdate(clientDoc, state.update, "remote");
-    return clientDoc;
-  }
-
-  function appendParagraph(clientDoc: Y.Doc, text: string): Uint8Array {
-    const stateBefore = Y.encodeStateVector(clientDoc);
-    const paragraph = new Y.XmlElement("paragraph");
-    paragraph.insert(0, [new Y.XmlText(text)]);
-    clientDoc.getXmlFragment("default").push([paragraph]);
-    return Y.encodeStateAsUpdate(clientDoc, stateBefore);
   }
 
   beforeAll(async () => {
@@ -844,6 +848,289 @@ describe("Realtime WebSocket document-level grants", () => {
         await ownerConnection.expectNoFrame(WsMsgType.PresenceLeave, 1_500);
       } finally {
         viewerConnection.socket.close();
+        ownerConnection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+/**
+ * Revocation has to reach a socket that is already open. Authorization is
+ * established when a room is joined or a topic is subscribed, so without
+ * re-authorization a revoked user keeps full live read and write until they
+ * choose to disconnect — which is indefinitely.
+ */
+describe("Realtime WebSocket access revocation", () => {
+  /**
+   * The sync-event debounce (100ms) plus the re-authorization it triggers. The
+   * `YjsUpdate` path re-checks a stale verdict itself, so this only has to
+   * outlast the debounce; it is padded for a loaded machine.
+   */
+  const REVALIDATION_MS = 1_500;
+
+  let owner: TestUserSession;
+  let spaceId: string;
+
+  async function permissionRequest(body: Record<string, unknown>): Promise<void> {
+    const response = await authApiRequest(
+      `/api/v1/spaces/${spaceId}/permissions`,
+      owner.token,
+      { method: "POST", body: JSON.stringify({ type: "role", ...body }) },
+    );
+    expect([200, 201]).toContain(response.status);
+  }
+
+  /** Grants `role`, or downgrades to it when an entry already exists. */
+  function setRole(
+    userId: string,
+    role: "viewer" | "editor",
+    documentId?: string,
+  ): Promise<void> {
+    return permissionRequest({
+      roleOrFeature: role,
+      userId,
+      action: "grant",
+      ...(documentId ? { resourceType: "document", resourceId: documentId } : {}),
+    });
+  }
+
+  function revokeRole(userId: string, documentId?: string): Promise<void> {
+    return permissionRequest({
+      // The role is ignored on revoke: the entry for the resource is removed.
+      roleOrFeature: "viewer",
+      userId,
+      action: "revoke",
+      ...(documentId ? { resourceType: "document", resourceId: documentId } : {}),
+    });
+  }
+
+  async function createDocument(title: string, content: string): Promise<string> {
+    const response = await authApiRequest(
+      `/api/v1/spaces/${spaceId}/documents`,
+      owner.token,
+      { method: "POST", body: JSON.stringify({ content, properties: { title } }) },
+    );
+    expect(response.status).toBe(201);
+    return (await response.json()).document.id;
+  }
+
+  /** The live room's content, which is where an accepted update lands. */
+  async function readLiveContent(documentId: string): Promise<string> {
+    const response = await authApiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${documentId}?live=true`,
+      owner.token,
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).document.content;
+  }
+
+  beforeAll(async () => {
+    owner = await createTestUser(AUTH_BASE_URL, "Revoke Owner", "realtime-revoke-owner");
+    const spaceResponse = await authApiRequest("/api/v1/spaces", owner.token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Realtime Revocation Space",
+        slug: `realtime-revocation-${Date.now()}`,
+      }),
+    });
+    expect(spaceResponse.status).toBe(201);
+    spaceId = (await spaceResponse.json()).space.id;
+  }, 60_000);
+
+  it(
+    "stops applying and persisting Yjs updates once the editor is revoked",
+    async () => {
+      const editor = await createTestUser(
+        AUTH_BASE_URL,
+        "Revoked Editor",
+        "realtime-revoked-editor",
+      );
+      const documentId = await createDocument("Revoked", "<p>revoked</p>");
+      // A space-wide viewer role on top of the document grant, so the revocation
+      // below takes the write and nothing else: the connection itself stays up.
+      await setRole(editor.userId, "viewer");
+      await setRole(editor.userId, "editor", documentId);
+
+      const editorConnection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        editor.token,
+      );
+      const ownerConnection = await connectWebSocket(AUTH_BASE_URL, spaceId, owner.token);
+
+      try {
+        const editorDoc = await joinRoom(editorConnection, documentId);
+        const ownerDoc = await joinRoom(ownerConnection, documentId);
+
+        // Establish that this socket really can write, so the assertion after the
+        // revocation is about access and not about the plumbing.
+        const accepted = ownerConnection.waitForFrame(
+          WsMsgType.YjsUpdate,
+          FRAME_TIMEOUT_MS,
+        );
+        editorConnection.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(editorDoc, "before revocation")),
+        );
+        Y.applyUpdate(ownerDoc, wsDecodeYjsUpdate(await accepted).update, "remote");
+
+        await revokeRole(editor.userId, documentId);
+        await Bun.sleep(REVALIDATION_MS);
+
+        editorConnection.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(editorDoc, "after revocation")),
+        );
+
+        await ownerConnection.expectNoFrame(WsMsgType.YjsUpdate, 1_500);
+        const content = await readLiveContent(documentId);
+        expect(content).toContain("before revocation");
+        expect(content).not.toContain("after revocation");
+        // Only the write was withdrawn — the space-wide viewer role survives.
+        expect(editorConnection.socket.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        editorConnection.socket.close();
+        ownerConnection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps a downgraded editor reading while refusing their writes",
+    async () => {
+      const downgraded = await createTestUser(
+        AUTH_BASE_URL,
+        "Downgraded Editor",
+        "realtime-downgraded-editor",
+      );
+      const documentId = await createDocument("Downgraded", "<p>downgraded</p>");
+      await setRole(downgraded.userId, "editor");
+
+      const editorConnection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        downgraded.token,
+      );
+      const ownerConnection = await connectWebSocket(AUTH_BASE_URL, spaceId, owner.token);
+
+      try {
+        const editorDoc = await joinRoom(editorConnection, documentId);
+        const ownerDoc = await joinRoom(ownerConnection, documentId);
+
+        // One call: granting over an existing entry is the downgrade, so the user
+        // is never momentarily without any access.
+        await setRole(downgraded.userId, "viewer");
+        await Bun.sleep(REVALIDATION_MS);
+
+        // Reading is still theirs: the owner's edit reaches them.
+        const broadcast = editorConnection.waitForFrame(
+          WsMsgType.YjsUpdate,
+          FRAME_TIMEOUT_MS,
+        );
+        ownerConnection.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(ownerDoc, "from the owner")),
+        );
+        Y.applyUpdate(editorDoc, wsDecodeYjsUpdate(await broadcast).update, "remote");
+        expect(editorDoc.getXmlFragment("default").toString()).toContain(
+          "from the owner",
+        );
+
+        // Writing is not.
+        editorConnection.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(editorDoc, "from the viewer")),
+        );
+        await ownerConnection.expectNoFrame(WsMsgType.YjsUpdate, 1_500);
+        expect(await readLiveContent(documentId)).not.toContain("from the viewer");
+        expect(editorConnection.socket.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        editorConnection.socket.close();
+        ownerConnection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "closes the connection of a user removed from the space",
+    async () => {
+      const member = await createTestUser(
+        AUTH_BASE_URL,
+        "Removed Member",
+        "realtime-removed-member",
+      );
+      const documentId = await createDocument("Removed", "<p>removed</p>");
+      await setRole(member.userId, "viewer");
+
+      const connection = await connectWebSocket(AUTH_BASE_URL, spaceId, member.token);
+      await joinRoom(connection, documentId);
+      connection.socket.send(
+        wsEncode(WsMsgType.Subscribe, { topics: [realtimeTopics.documents] }),
+      );
+      await connection.expectNoFrame(WsMsgType.Error);
+
+      await revokeRole(member.userId);
+
+      expect(
+        wsDecodeJson<{ message: string }>(
+          await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+        ).message,
+      ).toBe("Forbidden");
+      await waitForClose(connection.socket);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "leaves a document-level grantee alone on an unrelated ACL change",
+    async () => {
+      const grantee = await createTestUser(
+        AUTH_BASE_URL,
+        "Shared Grantee",
+        "realtime-unrelated-grantee",
+      );
+      const bystander = await createTestUser(
+        AUTH_BASE_URL,
+        "Bystander",
+        "realtime-unrelated-bystander",
+      );
+      const documentId = await createDocument("Granted", "<p>granted</p>");
+      // No space-wide role whatsoever: this user reaches the space only through
+      // the document grant, which is exactly what a space-role re-check would
+      // throw away.
+      await setRole(grantee.userId, "editor", documentId);
+
+      const granteeConnection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        grantee.token,
+      );
+      const ownerConnection = await connectWebSocket(AUTH_BASE_URL, spaceId, owner.token);
+
+      try {
+        const granteeDoc = await joinRoom(granteeConnection, documentId);
+        const ownerDoc = await joinRoom(ownerConnection, documentId);
+        expect(ownerDoc.getXmlFragment("default").toString()).toContain("granted");
+
+        // An ACL change elsewhere in the space, which every connection in the
+        // space hears about.
+        await setRole(bystander.userId, "viewer");
+        await Bun.sleep(REVALIDATION_MS);
+
+        await granteeConnection.expectNoFrame(WsMsgType.Error);
+        expect(granteeConnection.socket.readyState).toBe(WebSocket.OPEN);
+
+        // Still an editor of the document they were shared.
+        const broadcast = ownerConnection.waitForFrame(
+          WsMsgType.YjsUpdate,
+          FRAME_TIMEOUT_MS,
+        );
+        granteeConnection.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(granteeDoc, "still granted")),
+        );
+        Y.applyUpdate(ownerDoc, wsDecodeYjsUpdate(await broadcast).update, "remote");
+        expect(await readLiveContent(documentId)).toContain("still granted");
+      } finally {
+        granteeConnection.socket.close();
         ownerConnection.socket.close();
       }
     },

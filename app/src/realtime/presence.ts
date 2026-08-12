@@ -56,26 +56,55 @@ export class PresenceConnection {
   }
 
   close(): void {
-    for (const [roomKey, clientIds] of this.joinedRooms.entries()) {
-      const room = yRooms.get(roomKey);
-      if (!room) {
+    for (const roomKey of [...this.joinedRooms.keys()]) {
+      this.leaveRoomEntirely(roomKey);
+    }
+  }
+
+  /**
+   * Re-runs the join-time authorization for every room this connection holds
+   * presence in and evicts it from the ones it may no longer see.
+   *
+   * Access is verified once in `join()` (see `update()` for why it is not
+   * re-checked per frame), so without this a user whose access was revoked keeps
+   * broadcasting a cursor into — and seeing every cursor in — a document they no
+   * longer hold. The realtime server calls it whenever the ACL changes.
+   */
+  async revalidate(): Promise<void> {
+    for (const roomKey of [...this.joinedRooms.keys()]) {
+      if (await this.authorizeRoom(this.roomIdOf(roomKey))) {
         continue;
       }
+      this.leaveRoomEntirely(roomKey);
+    }
+  }
 
-      const roomId = roomKey.slice(this.spaceId.length + 1);
-      for (const clientId of clientIds) {
-        room.presences.delete(clientId);
-        broadcastPresence(room, this.websocket, WsMsgType.PresenceLeave, {
-          room: roomId,
-          clientId,
-          timestamp: new Date().toISOString(),
-        });
-      }
+  private roomIdOf(roomKey: string): string {
+    return roomKey.slice(this.spaceId.length + 1);
+  }
 
-      room.clients.delete(this.websocket);
-      if (room.clients.size === 0 && room.presences.size === 0) {
-        yRooms.delete(roomKey);
-      }
+  /** Drops every presence entry this connection registered in one room. */
+  private leaveRoomEntirely(roomKey: string): void {
+    const clientIds = this.joinedRooms.get(roomKey);
+    this.joinedRooms.delete(roomKey);
+    const room = yRooms.get(roomKey);
+    if (!room || !clientIds) {
+      return;
+    }
+
+    const roomId = this.roomIdOf(roomKey);
+    for (const clientId of clientIds) {
+      room.presences.delete(clientId);
+      broadcastPresence(room, this.websocket, WsMsgType.PresenceLeave, {
+        room: roomId,
+        clientId,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    room.clients.delete(this.websocket);
+    if (room.clients.size === 0 && room.presences.size === 0) {
+      yRooms.delete(roomKey);
     }
   }
 
