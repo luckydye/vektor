@@ -8,6 +8,7 @@ import {
   verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { type RevisionReader, verifyRevisionAccess } from "#acl/revisionAccess.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -233,6 +234,10 @@ export const GET: ApiRouteHandler = (context) =>
     // view only requires viewer.
     const requiredRole = draft || live ? Permission.EDITOR : Permission.VIEWER;
 
+    // Carried past the gate: reading a specific revision is authorized again,
+    // against this same identity, by the shared revision guard below.
+    let reader: RevisionReader;
+
     const jobToken = context.req.raw.headers.get("X-Job-Token");
     if (jobToken) {
       const parsed = parseJobToken(jobToken, spaceId);
@@ -244,6 +249,9 @@ export const GET: ApiRouteHandler = (context) =>
       if (parsed.userId) {
         await verifyDocumentRole(spaceId, id, parsed.userId, requiredRole);
       }
+      reader = parsed.userId
+        ? { type: "user", userId: parsed.userId }
+        : { type: "system" };
     } else {
       // Authenticate with either user session or access token
       const auth = await tryAuthenticateRequest(context, spaceId);
@@ -255,16 +263,25 @@ export const GET: ApiRouteHandler = (context) =>
           id,
           requiredRole,
         );
+        reader = { type: "token", token: auth.token };
       } else if (auth?.type === "user") {
         await verifyDocumentRole(spaceId, id, auth.user.id, requiredRole);
+        reader = { type: "user", userId: auth.user.id };
       } else {
         // Unauthenticated — verifyDocumentRole handles public access
         await verifyDocumentRole(spaceId, id, null, requiredRole);
+        reader = { type: "user", userId: null };
       }
     }
 
     if (revParam) {
       const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
+
+      // `?rev=N` reads history, which the viewer gate above does not cover: a
+      // plain (or public) viewer gets the published revision and nothing else.
+      // Authorized before the revision is loaded, so a refused caller cannot
+      // tell an existing revision from a missing one.
+      await verifyRevisionAccess(spaceId, id, reader, [rev]);
 
       const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
       if (!metadata) {

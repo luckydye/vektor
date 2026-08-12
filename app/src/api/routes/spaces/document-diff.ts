@@ -5,6 +5,7 @@ import {
   verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { type RevisionReader, verifyRevisionAccess } from "#acl/revisionAccess.ts";
 import {
   badRequestResponse,
   notFoundResponse,
@@ -59,6 +60,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Authenticate with either user session or access token
     const auth = await authenticateRequest(context, spaceId);
 
+    let reader: RevisionReader;
     // Handle token-based authentication
     if (auth.type === "token") {
       await verifyTokenPermission(
@@ -68,10 +70,17 @@ export const GET: ApiRouteHandler = (context) =>
         id,
         Permission.VIEWER,
       );
+      reader = { type: "token", token: auth.token };
     } else {
       // Handle user-based authentication
       await verifyDocumentRole(spaceId, id, auth.user.id, Permission.VIEWER);
+      reader = { type: "user", userId: auth.user.id };
     }
+
+    // A diff serves the content of both sides, so both are held to the same
+    // rule as `GET /documents/:id?rev=N` — the requested revision here, the
+    // resolved base once it is known.
+    await verifyRevisionAccess(spaceId, id, reader, [rev]);
 
     const revisionContent = await getRevision(rev, spaceId, id);
     const store = await openSpaceStore(spaceId);
@@ -95,6 +104,7 @@ export const GET: ApiRouteHandler = (context) =>
     if (!compareBaseRev) {
       throw badRequestResponse("Document has no comparable base revision");
     }
+    await verifyRevisionAccess(spaceId, id, reader, [compareBaseRev]);
 
     const baseContent = await getRevisionContent(store, id, compareBaseRev);
     if (!baseContent) {
