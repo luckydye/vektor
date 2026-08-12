@@ -16,6 +16,8 @@ import {
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
+  toDocumentPropertyBag,
+  toDocumentPropertyBags,
 } from "#documents/properties.ts";
 import {
   allowsChildDocumentType,
@@ -182,7 +184,10 @@ export async function createDocument(
   });
 
   const properties = initialProperties || {};
-  const storedProperties: Record<string, DocumentPropertyValue> = {};
+  // A `Map`, materialised once below: the reserved-key guard above already keeps
+  // `__proto__` out, but bracket-assigning a user-supplied key into an object
+  // literal is the shape of the bug this whole file just stopped repeating.
+  const storedProperties = new Map<string, DocumentPropertyValue>();
 
   for (const [key, raw] of Object.entries(properties)) {
     const isWrappedValue =
@@ -190,7 +195,7 @@ export async function createDocument(
     const propValue = isWrappedValue ? raw.value : raw;
     const propType = isWrappedValue ? (raw.type ?? null) : null;
     const storedValue = serializePropertyValue(propValue);
-    storedProperties[key] = parseStoredPropertyValue(storedValue);
+    storedProperties.set(key, parseStoredPropertyValue(storedValue));
     await s.db.insert(property).values({
       id: createId("property"),
       documentId: id,
@@ -219,7 +224,7 @@ export async function createDocument(
     content,
     currentRev: 0,
     publishedRev: null,
-    properties: storedProperties,
+    properties: Object.fromEntries(storedProperties),
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
     createdBy: createdBy,
@@ -269,10 +274,7 @@ export async function getDocument(
   const props = await many(
     s.db.select().from(property).where(eq(property.documentId, id)),
   );
-  const properties: Record<string, DocumentPropertyValue> = {};
-  for (const prop of props) {
-    properties[prop.key] = parseStoredPropertyValue(prop.value);
-  }
+  const properties = toDocumentPropertyBag(props);
 
   return { ...doc, parentId: doc.parentId || null, properties };
 }
@@ -312,12 +314,7 @@ export async function getDocumentsByIds(
     many(s.db.select().from(property).where(inArray(property.documentId, unique))),
   ]);
 
-  const propertiesByDocument = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of props) {
-    const properties = propertiesByDocument.get(prop.documentId) ?? {};
-    properties[prop.key] = parseStoredPropertyValue(prop.value);
-    propertiesByDocument.set(prop.documentId, properties);
-  }
+  const propertiesByDocument = toDocumentPropertyBags(props);
 
   for (const doc of docs) {
     byId.set(doc.id, {
@@ -372,10 +369,7 @@ export async function getDocumentBySlug(
     s.db.select().from(property).where(eq(property.documentId, doc.id)),
   );
 
-  const properties: Record<string, DocumentPropertyValue> = {};
-  for (const prop of props) {
-    properties[prop.key] = parseStoredPropertyValue(prop.value);
-  }
+  const properties = toDocumentPropertyBag(props);
 
   return {
     id: doc.id,
@@ -690,12 +684,7 @@ export async function listDocuments(
       : [];
 
   // Group properties by document ID
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertyBags(allProps);
 
   // Build results
   const results: DocumentWithProperties[] = docs.map((doc) => ({
@@ -800,12 +789,7 @@ export async function listArchivedDocuments(
 
   const allProps = await many(s.db.select().from(property));
 
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertyBags(allProps);
 
   const results: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
@@ -1138,13 +1122,7 @@ export async function listAllDocumentsByCategories(
   }
 
   const allProps = await many(s.db.select().from(property));
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertyBags(allProps);
 
   const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
@@ -1308,12 +1286,7 @@ export async function getDocumentChildren(
         )
       : [];
 
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertyBags(allProps);
 
   return docs.map((doc) => ({
     id: doc.id,

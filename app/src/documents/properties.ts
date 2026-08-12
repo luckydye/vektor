@@ -100,6 +100,49 @@ export function readDocumentProperty(
   return Object.hasOwn(properties, key) ? properties[key] : undefined;
 }
 
+/**
+ * Build a document's property bag from its stored rows.
+ *
+ * Materialised with `Object.fromEntries`, never by assigning into an object
+ * literal. Property keys are user-controlled, and `bag["__proto__"] = value` on a
+ * literal reassigns the object's prototype instead of storing the value — and
+ * because `parseStoredPropertyValue` can return an array, a property named
+ * `__proto__` would genuinely replace the bag's prototype and type-confuse every
+ * later read. `Object.fromEntries` defines own properties, so the key round-trips
+ * as ordinary data. Later rows win, as they did before.
+ *
+ * The result is a normal object, not a null-prototype one, because this is the
+ * JSON shape of `document.properties` on the wire and plenty of code treats it as
+ * an ordinary object. Indexing it with a key that came from a request must still
+ * go through `readDocumentProperty`.
+ */
+export function toDocumentPropertyBag(
+  rows: { key: string; value: string }[],
+): Record<string, DocumentPropertyValue> {
+  return Object.fromEntries(
+    rows.map((row) => [row.key, parseStoredPropertyValue(row.value)]),
+  );
+}
+
+/** {@link toDocumentPropertyBag} for many documents at once, keyed by document id. */
+export function toDocumentPropertyBags(
+  rows: { documentId: string; key: string; value: string }[],
+): Map<string, Record<string, DocumentPropertyValue>> {
+  const rowsByDocument = new Map<string, { key: string; value: string }[]>();
+  for (const row of rows) {
+    const existing = rowsByDocument.get(row.documentId);
+    if (existing) existing.push(row);
+    else rowsByDocument.set(row.documentId, [row]);
+  }
+
+  return new Map(
+    Array.from(rowsByDocument, ([documentId, documentRows]) => [
+      documentId,
+      toDocumentPropertyBag(documentRows),
+    ]),
+  );
+}
+
 export function propertyValueToText(value: DocumentPropertyValue): string {
   return Array.isArray(value) ? value.join(", ") : value;
 }

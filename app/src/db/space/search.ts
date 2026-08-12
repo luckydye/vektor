@@ -9,6 +9,7 @@ import {
   parseStoredPropertyValue,
   propertyValueToText,
   readDocumentProperty,
+  toDocumentPropertyBags,
 } from "#documents/properties.ts";
 import {
   buildDocumentSearchText,
@@ -241,21 +242,17 @@ async function readProperties(
   s: SpaceStore,
   documentIds: string[],
 ): Promise<Map<string, Record<string, DocumentPropertyValue>>> {
-  const byDocument = new Map<string, Record<string, DocumentPropertyValue>>();
+  const allRows: (typeof property.$inferSelect)[] = [];
 
   for (const ids of batches(documentIds)) {
-    const rows = await many(
-      s.db.select().from(property).where(inArray(property.documentId, ids)),
+    allRows.push(
+      ...(await many(
+        s.db.select().from(property).where(inArray(property.documentId, ids)),
+      )),
     );
-
-    for (const row of rows) {
-      const properties = byDocument.get(row.documentId) ?? {};
-      properties[row.key] = parseStoredPropertyValue(row.value);
-      byDocument.set(row.documentId, properties);
-    }
   }
 
-  return byDocument;
+  return toDocumentPropertyBags(allRows);
 }
 
 /** The document rows behind a page of results, keyed by id. */

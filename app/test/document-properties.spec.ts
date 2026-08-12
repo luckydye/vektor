@@ -18,6 +18,8 @@ import {
   aggregateStoredProperties,
   isReservedDocumentPropertyKey,
   readDocumentProperty,
+  toDocumentPropertyBag,
+  toDocumentPropertyBags,
 } from "#documents/properties.ts";
 import {
   createApiRequest,
@@ -99,6 +101,83 @@ describe("aggregateStoredProperties", () => {
 
   it("returns nothing for no rows", () => {
     expect(aggregateStoredProperties([])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Building a document's property bag
+// ---------------------------------------------------------------------------
+
+describe("toDocumentPropertyBag", () => {
+  it.each(PROTOTYPE_KEYS)("stores a property named %s as own data", (key) => {
+    const bag = toDocumentPropertyBag([
+      { key: "title", value: "A document" },
+      { key, value: "stored" },
+    ]);
+
+    expect(Object.hasOwn(bag, key)).toBe(true);
+    expect(bag[key]).toBe("stored");
+    expect(Object.keys(bag).sort()).toEqual(["title", key].sort());
+  });
+
+  it("does not let a `__proto__` row replace the bag's prototype", () => {
+    // The dangerous case: the stored value parses to an array, which *is* a valid
+    // prototype, so a bracket assignment really would reassign it.
+    const bag = toDocumentPropertyBag([
+      { key: "__proto__", value: JSON.stringify(["a", "b"]) },
+    ]);
+
+    expect(Object.hasOwn(bag, "__proto__")).toBe(true);
+    expect(bag.__proto__).toEqual(["a", "b"]);
+    expect(Object.getPrototypeOf(bag)).toBe(Object.prototype);
+  });
+
+  it("survives a JSON round trip, since this is the shape sent on the wire", () => {
+    const bag = toDocumentPropertyBag([
+      { key: "toString", value: "tuesday" },
+      { key: "title", value: "A document" },
+    ]);
+
+    expect(JSON.parse(JSON.stringify(bag))).toEqual({
+      toString: "tuesday",
+      title: "A document",
+    });
+  });
+
+  it("lets a later row win, and parses multi-value rows", () => {
+    const bag = toDocumentPropertyBag([
+      { key: "valueOf", value: "first" },
+      { key: "valueOf", value: JSON.stringify(["second", "third"]) },
+    ]);
+
+    expect(bag.valueOf).toEqual(["second", "third"]);
+  });
+});
+
+describe("toDocumentPropertyBags", () => {
+  it("groups by document and keeps colliding keys per document", () => {
+    const bags = toDocumentPropertyBags(
+      PROTOTYPE_KEYS.flatMap((key) => [
+        { documentId: "doc_one", key, value: `one-${key}` },
+        { documentId: "doc_two", key, value: `two-${key}` },
+      ]),
+    );
+
+    expect([...bags.keys()].sort()).toEqual(["doc_one", "doc_two"]);
+    for (const key of PROTOTYPE_KEYS) {
+      expect(bags.get("doc_one")?.[key]).toBe(`one-${key}`);
+      expect(bags.get("doc_two")?.[key]).toBe(`two-${key}`);
+    }
+  });
+
+  it("does not leak one document's properties into another", () => {
+    const bags = toDocumentPropertyBags([
+      { documentId: "doc_one", key: "constructor", value: "only-one" },
+      { documentId: "doc_two", key: "title", value: "Two" },
+    ]);
+
+    expect(Object.hasOwn(bags.get("doc_two") ?? {}, "constructor")).toBe(false);
+    expect(Object.keys(bags.get("doc_two") ?? {})).toEqual(["title"]);
   });
 });
 
@@ -241,6 +320,32 @@ describe("colliding property keys survive the space-wide listing", () => {
       const entry = listed.find((property) => property.name === key);
       expect(entry, `expected ${key} in the property listing`).toBeDefined();
       expect(entry?.values).toContain(`value-of-${key}`);
+    }
+  });
+
+  it("reads a colliding key back off the document itself", async () => {
+    const properties: Record<string, string> = { title: "Round Trip" };
+    for (const key of ALLOWED_COLLIDING_KEYS) {
+      properties[key] = `read-back-${key}`;
+    }
+
+    const created = await createDocument(properties);
+    expect(created.status).toBe(201);
+    const created_ = (await created.json()).document;
+
+    // Present on the create response...
+    for (const key of ALLOWED_COLLIDING_KEYS) {
+      expect(created_.properties[key]).toBe(`read-back-${key}`);
+    }
+
+    // ...and on a fresh read, which rebuilds the bag from the stored rows.
+    const fetched = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${created_.id}`,
+    );
+    expect(fetched.status).toBe(200);
+    const document = (await fetched.json()).document;
+    for (const key of ALLOWED_COLLIDING_KEYS) {
+      expect(document.properties[key]).toBe(`read-back-${key}`);
     }
   });
 
