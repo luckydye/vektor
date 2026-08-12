@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { type AclViewer, ResourceType } from "#acl/permissions.ts";
-import { filterReadableResources } from "#acl/store.ts";
+import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -429,29 +429,78 @@ export async function updateDocument(
   };
 }
 
+/**
+ * Drop every ACL grant that names this document.
+ *
+ * Archiving and deleting are both "make this go away" actions, so the shares
+ * that point at the document have to go away with it — otherwise a soft-deleted
+ * document stays readable through its public link while being hidden from the
+ * owner's own lists, i.e. the owner cannot find it to unshare it.
+ *
+ * Only document-scoped rows are touched. Access that comes from the space (or
+ * from an ancestor's document-tree grant) is untouched, which is what lets
+ * space editors and owners still open an archived document to restore it.
+ * `revokePermission` audit-logs each removed grant, so what was un-shared stays
+ * on the record even though it is not reinstated on restore.
+ */
+async function revokeDocumentGrants(
+  s: SpaceStore,
+  id: string,
+  actorUserId?: string,
+): Promise<void> {
+  await revokePermission(
+    s.spaceId,
+    ResourceType.DOCUMENT,
+    id,
+    undefined,
+    undefined,
+    actorUserId,
+  );
+  await revokePermission(
+    s.spaceId,
+    ResourceType.DOCUMENT_TREE,
+    id,
+    undefined,
+    undefined,
+    actorUserId,
+  );
+}
+
 export async function archiveDocument(
   s: SpaceStore,
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  if (userId) {
-    await createAuditLog(s, {
-      spaceId: s.spaceId,
-      docId: id,
-      userId,
-      event: "archive",
-      details: { message: "Document archived" },
-    });
-  }
+  await s.tx(async (tx) => {
+    if (userId) {
+      await createAuditLog(tx, {
+        spaceId: tx.spaceId,
+        docId: id,
+        userId,
+        event: "archive",
+        details: { message: "Document archived" },
+      });
+    }
 
-  await s.db
-    .update(document)
-    .set({ archived: true, updatedAt: new Date() })
-    .where(eq(document.id, id));
+    await tx.db
+      .update(document)
+      .set({ archived: true, updatedAt: new Date() })
+      .where(eq(document.id, id));
+
+    await revokeDocumentGrants(tx, id, userId);
+  });
 
   return true;
 }
 
+/**
+ * Restore does NOT reinstate the grants that `archiveDocument` revoked.
+ *
+ * Re-publishing a document to the public group as a side effect of undeleting
+ * it would fail open — the archive may well have been the user's way of pulling
+ * a mistaken share back. Re-sharing is left as an explicit action; the revoked
+ * grants are recoverable from the document's `acl_revoke` audit entries.
+ */
 export async function restoreDocument(
   s: SpaceStore,
   id: string,
@@ -491,6 +540,10 @@ export async function deleteDocument(
   }
 
   await deleteDocumentEmailPreferences(await openSpaceStore(s.spaceId), id);
+  // SQLite runs with `PRAGMA foreign_keys = 0`, so dropping the document row
+  // does not cascade — the grants pointing at it would outlive it and be
+  // inherited by the next document to reuse the id.
+  await revokeDocumentGrants(s, id, userId);
   await s.db.delete(document).where(eq(document.id, id));
 
   return true;
