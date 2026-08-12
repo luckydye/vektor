@@ -483,6 +483,45 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
     expect(response.status).toBe(200);
     expect(html).not.toContain("Private Document");
     expect(html).not.toContain("This is a private document.");
+    expect(html).not.toContain(privateDocumentId);
+  });
+
+  it("answers a refused document url exactly as an unresolvable one, for the same caller", async () => {
+    // The refusal may not become an existence oracle: a slug the caller may not
+    // read has to be indistinguishable from a slug that resolves to nothing.
+    const refusedSlug = privateDocumentSlug;
+    const unresolvableSlug = "no-document-answers-to-this-slug";
+    const refused = await pageRequest(
+      `/${testSpaceSlug}/doc/${refusedSlug}`,
+      docLevelToken,
+    );
+    const unresolvable = await pageRequest(
+      `/${testSpaceSlug}/doc/${unresolvableSlug}`,
+      docLevelToken,
+    );
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
+    // Byte-identical once two things that cannot carry a verdict are masked: the
+    // address the caller typed, which the shell echoes back as the router's
+    // initial url, and Astro's per-render hydration id.
+    const mask = (body: string, slug: string) =>
+      body.replaceAll(slug, "<addr>").replace(/uid="[^"]*"/g, 'uid="<uid>"');
+    expect(mask(await refused.text(), refusedSlug)).toBe(
+      mask(await unresolvable.text(), unresolvableSlug),
+    );
+  });
+
+  it("still lets a space viewer read the document a document-level grantee is refused", async () => {
+    // testUser2 holds space-wide viewer by now: the refusal above is scoped to
+    // the grant, not to the document.
+    const response = await pageRequest(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+      session2Token,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Private Document");
   });
 
   it.skip("should deny space index access without space membership", async () => {
