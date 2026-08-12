@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { inArray } from "drizzle-orm";
 import { verifyDocumentAccess } from "#acl/guards.ts";
 import {
@@ -9,6 +8,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import {
   DOCUMENT_CONTRIBUTION_AUDIT_EVENTS,

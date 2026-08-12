@@ -21,9 +21,9 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
+    const store = await openSpaceStore(spaceId);
     const secrets = await listSpaceSecrets(store);
     return jsonResponse({ secrets });
   }, "Failed to list secrets");
@@ -32,7 +32,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
     const body = await parseJsonBody<{
@@ -61,6 +60,7 @@ export const POST: ApiRouteHandler = (context) =>
         ? null
         : String(body.description).trim();
 
+    const store = await openSpaceStore(spaceId);
     const secret = await upsertSpaceSecret(store, name, body.value, user.id, description);
     return createdResponse({ secret });
   }, "Failed to save secret");

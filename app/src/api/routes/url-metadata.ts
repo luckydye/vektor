@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifyDocumentAccess } from "#acl/guards.ts";
 import {
   badRequestResponse,
@@ -8,6 +7,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocumentBySlug } from "#db/space/documents.ts";
 import { getSpaceBySlug } from "#db/space/spaces.ts";
 import { createVektorDocumentAddress } from "#documents/address.ts";
@@ -508,7 +508,10 @@ export const GET: ApiRouteHandler = (context) =>
           throw badRequestResponse("Space not found");
         }
 
-        const doc = await getDocumentBySlug(await openSpaceStore(space.id), internalPath.documentSlug);
+        const doc = await getDocumentBySlug(
+          await openSpaceStore(space.id),
+          internalPath.documentSlug,
+        );
         if (!doc) {
           throw badRequestResponse("Document not found");
         }

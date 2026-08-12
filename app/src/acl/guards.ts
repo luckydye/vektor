@@ -8,7 +8,6 @@
  * verdict, so a route that forgets to handle the failure path fails closed.
  */
 
-import { openSpaceStore } from "#db/client/store.ts";
 import {
   type AclViewer,
   allPermissions,
@@ -33,6 +32,7 @@ import {
   unauthorizedResponse,
 } from "#api/http.ts";
 import type { ApiContext } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
 import { documentExists } from "#db/space/documents.ts";
@@ -759,7 +759,7 @@ export async function authenticateWithToken(
     return null;
   }
 
-  const result = await validateAccessToken(await openSpaceStore(token), spaceId);
+  const result = await validateAccessToken(await openSpaceStore(spaceId), token);
   if (!result) {
     throw unauthorizedResponse();
   }

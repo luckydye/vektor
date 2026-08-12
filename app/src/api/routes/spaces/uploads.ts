@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { createHash } from "node:crypto";
 import { authenticateJobTokenOrSpaceRole, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
@@ -13,6 +12,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { updateDocumentEmbedding } from "#db/space/search.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
@@ -50,7 +50,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const store = await openSpaceStore(spaceId);
       const auth = await authenticateJobTokenOrSpaceRole(
         context,
         spaceId,
@@ -124,6 +123,7 @@ export const POST: ApiRouteHandler = (context) =>
           },
         });
 
+      const store = await openSpaceStore(spaceId);
       if (documentId) {
         // Re-index the parent document (reads from file table, no FS scan)
         updateDocumentEmbedding(store, documentId).catch((err) => {

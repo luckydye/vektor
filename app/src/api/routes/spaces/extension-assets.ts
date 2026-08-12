@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifyExtensionAccess } from "#acl/guards.ts";
 import {
   notFoundResponse,
@@ -7,6 +6,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { extractFile, getExtensionPackage } from "#db/space/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/csp.ts";
@@ -45,7 +45,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const extensionId = requireParam(context.var.params, "extensionId");
     const assetPath = context.var.params.path;
 
@@ -56,6 +55,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Check ACL-based access to extension
     await verifyExtensionAccess(spaceId, extensionId, user.id);
 
+    const store = await openSpaceStore(spaceId);
     const packageBuffer = await getExtensionPackage(store, extensionId);
     if (!packageBuffer) {
       return notFoundResponse("Extension");

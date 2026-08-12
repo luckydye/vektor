@@ -51,10 +51,10 @@ async function verifyCategoryRead(
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "id");
     await verifyCategoryRead(context, spaceId, id);
 
+    const store = await openSpaceStore(spaceId);
     const categoryData = await getCategory(store, id);
     if (!categoryData) {
       throw notFoundResponse("Category");
@@ -66,7 +66,6 @@ export const GET: ApiRouteHandler = (context) =>
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "id");
     await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR, {
       type: ResourceType.CATEGORY,
@@ -85,6 +84,7 @@ export const PUT: ApiRouteHandler = (context) =>
       throw badRequestResponse("Name and slug are required");
     }
 
+    const store = await openSpaceStore(spaceId);
     const categoryData = await updateCategory(store, id, {
       name,
       slug,
@@ -103,13 +103,13 @@ export const PUT: ApiRouteHandler = (context) =>
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "id");
     await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR, {
       type: ResourceType.CATEGORY,
       id,
     });
 
+    const store = await openSpaceStore(spaceId);
     await deleteCategory(store, id);
     return successResponse();
   }, "Failed to delete category");

@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateSpaceAccess } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -9,6 +8,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { type PropertyFilter, searchDocuments } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
 
@@ -16,7 +16,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const store = await openSpaceStore(spaceId);
 
       const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
       // searchDocuments uses null for "trusted system view" (no per-document
@@ -64,6 +63,7 @@ export const GET: ApiRouteHandler = (context) =>
         return jsonResponse({ results: [], nextCursor: null, query: "", filters: [] });
       }
 
+      const store = await openSpaceStore(spaceId);
       const { results, nextCursor } = await searchDocuments(
         store,
         userId,

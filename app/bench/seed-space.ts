@@ -357,7 +357,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   const { getAuthDb, getSpaceDb, initializeDatabases } = await import("#db/client/db.ts");
   const { createSpace } = await import("#db/space/spaces.ts");
   const { createId } = await import("#db/ids.ts");
-  const { buildDocumentSearchText } = await import("#db/space/search.ts");
+  const { buildDocumentSearchText } = await import("#search/embedding.ts");
   const { slugify } = await import("#utils/utils.ts");
   const authSchema = await import("#db/schema/auth.ts");
   const space = await import("#db/schema/space.ts");

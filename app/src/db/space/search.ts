@@ -1,30 +1,28 @@
-import type { SpaceStore } from "#db/client/store.ts";
 import { eq, inArray, sql } from "drizzle-orm";
 import { ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
 } from "#documents/properties.ts";
-import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import {
   buildDocumentSearchText,
   embedText,
   parseEmbedding,
   serializeEmbedding,
 } from "#search/embedding.ts";
+import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import {
   buildSearchSnippet,
   cosineSimilarity,
-  extractQueryTerms,
   MIN_SEMANTIC_SIMILARITY,
+  SEMANTIC_RANKING_WEIGHT,
   scoreKeywordOverlap,
   scoreToRank,
-  SEMANTIC_RANKING_WEIGHT,
 } from "#search/ranking.ts";
-import { escapeHtml } from "#utils/html.ts";
 
 // ---------------------------------------------------------------------------
 // SQL helpers shared with documents.ts
@@ -124,7 +122,6 @@ export async function updateDocumentEmbedding(
   s: SpaceStore,
   documentId: string,
 ): Promise<void> {
-
   // Check the type without loading `content` — canvases (which can be tens of
   // MB) are never embedded, so pulling the content column here just to bail out
   // wasted memory on every canvas save.
@@ -196,7 +193,6 @@ export async function updateDocumentEmbedding(
 }
 
 export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
-
   const docs = await s.db.select().from(document).all();
 
   for (const doc of docs) {
@@ -273,7 +269,11 @@ async function readDocuments(
   const byId = new Map<string, typeof document.$inferSelect>();
 
   for (const ids of batches(documentIds)) {
-    const rows = await s.db.select().from(document).where(inArray(document.id, ids)).all();
+    const rows = await s.db
+      .select()
+      .from(document)
+      .where(inArray(document.id, ids))
+      .all();
     for (const row of rows) byId.set(row.id, row);
   }
 
@@ -601,7 +601,8 @@ export async function searchDocuments(
   const hasPropertyOrTypeFilters = typeFilters.length > 0 || propertyFilters.length > 0;
   if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
-    const propertiesByDocument = await readProperties(s,
+    const propertiesByDocument = await readProperties(
+      s,
       accessibleResults.filter((row) => !row.file).map((row) => row.id),
     );
 

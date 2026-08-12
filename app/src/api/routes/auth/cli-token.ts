@@ -9,11 +9,11 @@
  * Returns: { token: string, spaceId: string }
  */
 
-import { openSpaceStore } from "#db/client/store.ts";
 import { ResourceType } from "#acl/permissions.ts";
 import { badRequestResponse, parseJsonBody, withApiErrorHandling } from "#api/http.ts";
 import { pendingCliCodes } from "#api/routes/auth/cli.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { createAccessToken, grantTokenAccess } from "#db/space/accessTokens.ts";
 
 export const POST: ApiRouteHandler = (context) =>

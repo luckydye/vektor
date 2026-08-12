@@ -79,7 +79,6 @@ export async function createAccessToken(
   s: SpaceStore,
   options: CreateAccessTokenOptions,
 ): Promise<{ id: string; token: string }> {
-
   const token = generateToken();
   const hashedToken = hashToken(token);
   const id = createId("accessToken");
@@ -227,7 +226,6 @@ export async function revokeAccessToken(
   s: SpaceStore,
   tokenId: string,
 ): Promise<boolean> {
-
   const result = await s.db
     .update(accessToken)
     .set({ revokedAt: new Date() })
@@ -249,7 +247,6 @@ export async function revokeAccessToken(
 export async function listAccessTokens(
   s: SpaceStore,
 ): Promise<Omit<AccessToken, "token">[]> {
-
   const tokens = await s.db
     .select({
       id: accessToken.id,
@@ -333,7 +330,6 @@ export async function deleteAccessToken(
   s: SpaceStore,
   tokenId: string,
 ): Promise<boolean> {
-
   const result = await s.db
     .delete(accessToken)
     .where(eq(accessToken.id, tokenId))

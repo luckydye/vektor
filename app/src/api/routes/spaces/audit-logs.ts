@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import {
   verifyDocumentAccess,
   verifyFeatureAccess,
@@ -14,6 +13,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   getAuditLogsForDocument,
   getRecentAuditLogs,

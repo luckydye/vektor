@@ -1,6 +1,6 @@
-import type { SpaceStore } from "#db/client/store.ts";
 import { and, eq } from "drizzle-orm";
 import { config } from "#config";
+import type { SpaceStore } from "#db/client/store.ts";
 import { extension } from "#db/schema/space.ts";
 import {
   type ExtensionManifest,
@@ -13,7 +13,6 @@ import {
 } from "#extensions/manifest.ts";
 import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
 import { appLogger } from "#observability/logger.ts";
-import { realtimeTopics } from "#realtime/protocol.ts";
 
 export type {
   ExtensionManifest,
@@ -181,7 +180,7 @@ export async function createExtension(
     createdBy: userId,
   });
 
-  s.emit(realtimeTopics.extensions);
+  s.emit({ kind: "extensions" });
 
   return {
     id: extensionId,
@@ -229,7 +228,7 @@ export async function updateExtension(
     })
     .where(eq(extension.id, extensionId));
 
-  s.emit(realtimeTopics.extensions);
+  s.emit({ kind: "extensions" });
 
   const manifest = extractManifest(packageBuffer);
   return {
@@ -279,7 +278,7 @@ export async function setExtensionEnabled(
     })
     .where(eq(extension.id, extensionId));
 
-  s.emit(realtimeTopics.extensions);
+  s.emit({ kind: "extensions" });
 
   const result = safeExtractManifest(existing.package, extensionId);
   if (!result.manifest) {
@@ -319,14 +318,13 @@ export async function deleteExtension(
   s: SpaceStore,
   extensionId: string,
 ): Promise<boolean> {
-
   const result = await s.db
     .delete(extension)
     .where(eq(extension.id, extensionId))
     .returning({ id: extension.id });
 
   if (result.length > 0) {
-    s.emit(realtimeTopics.extensions);
+    s.emit({ kind: "extensions" });
   }
 
   return result.length > 0;

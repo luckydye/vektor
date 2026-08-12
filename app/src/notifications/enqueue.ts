@@ -36,7 +36,6 @@ async function enqueueRecipients(
   notification: EmailNotificationInit,
   recipientUserIds: Iterable<string>,
 ): Promise<number> {
-  const store = await openSpaceStore(spaceId);
   const appConfig = config();
   const deliveryConfigured =
     !!appConfig.EMAIL_FROM?.trim() && !!appConfig.SMTP_HOST?.trim();
@@ -46,6 +45,7 @@ async function enqueueRecipients(
   const candidates = [...new Set(recipientUserIds)].filter(
     (userId) => userId !== notification.actorId,
   );
+  const store = await openSpaceStore(spaceId);
   const muted = await getEmailMutedUserIds(store, candidates, notification.documentId);
 
   return insertEmailNotifications(

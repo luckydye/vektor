@@ -24,7 +24,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
@@ -35,6 +34,7 @@ export const GET: ApiRouteHandler = (context) =>
     const scheduleId =
       new URL(context.req.url).searchParams.get("scheduleId") ?? undefined;
 
+    const store = await openSpaceStore(spaceId);
     const { runs, nextCursor } = await listJobRuns(store, {
       jobId,
       scheduleId,

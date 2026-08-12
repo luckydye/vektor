@@ -33,7 +33,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = context.var.user;
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const documentId = new URL(context.req.url).searchParams.get("documentId");
 
     if (!documentId) {
@@ -43,6 +42,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Allow viewing comments if user has access to document (including public docs)
     await verifyDocumentAccess(spaceId, documentId, user?.id || null);
 
+    const store = await openSpaceStore(spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
 
     // Fetch user data for comment creators. Only id/name/image — the client
@@ -80,7 +80,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const { content, parentId, type, reference, documentId } = body;
@@ -111,6 +110,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Reference is required for top-level comments");
     }
 
+    const store = await openSpaceStore(spaceId);
     const comment = await createComment(
       store,
       ResourceType.DOCUMENT,
@@ -171,7 +171,6 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const { commentIds, reference, archived, documentId } = body;
@@ -192,6 +191,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     // Only operate on comments that belong to this document
+    const store = await openSpaceStore(spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
     const documentCommentIds = new Set(comments.map((c) => c.id));
     const validIds = commentIds.filter((id) => documentCommentIds.has(id));
@@ -226,7 +226,6 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const { commentId, documentId } = body;
@@ -245,6 +244,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     // Get the comment and verify user is the creator
+    const store = await openSpaceStore(spaceId);
     const comment = await getComment(store, commentId);
     if (!comment) {
       throw notFoundResponse("Comment");

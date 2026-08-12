@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, getUserGroups } from "#acl/store.ts";
@@ -12,6 +11,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentsByIds } from "#db/space/documents.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import {
@@ -34,7 +34,6 @@ import { appLogger } from "#observability/logger.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
@@ -97,6 +96,7 @@ export const GET: ApiRouteHandler = (context) =>
       spaceRuns.map((entry) => entry.run.documentId),
     );
     const readableRuns = spaceRuns.filter((entry) => readable.has(entry.run.documentId));
+    const store = await openSpaceStore(spaceId);
     const documentsById = await getDocumentsByIds(
       store,
       readableRuns.map((entry) => entry.run.documentId),
@@ -132,7 +132,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const store = await openSpaceStore(spaceId);
       const auth = await authenticateJobTokenOrSpaceRole(
         context,
         spaceId,
@@ -178,6 +177,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (!documentId) return badRequestResponse("documentId is required");
 
+      const store = await openSpaceStore(spaceId);
       const doc = await getDocument(store, documentId);
       if (!doc) return notFoundResponse("Document");
       if (doc.type !== "workflow") {

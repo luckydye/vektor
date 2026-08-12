@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifyDocumentAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, listAccessibleResources } from "#acl/store.ts";
@@ -10,16 +9,17 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentChildren } from "#db/space/documents.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
     await verifyDocumentAccess(spaceId, id, user.id);
 
+    const store = await openSpaceStore(spaceId);
     const document = await getDocument(store, id);
     if (!document) {
       throw notFoundResponse("Document");

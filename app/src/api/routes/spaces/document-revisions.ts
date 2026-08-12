@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import {
   verifyDocumentAccess,
   verifyDocumentRole,
@@ -16,6 +15,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   getRevisionMetadata,
   listRevisionMetadata,
@@ -27,7 +27,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
@@ -35,6 +34,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Verify user has history viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_HISTORY, user.id);
 
+    const store = await openSpaceStore(spaceId);
     const revisions = await listRevisionMetadata(store, documentId);
 
     return jsonResponse({ revisions });
@@ -44,7 +44,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
@@ -59,6 +58,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.req.raw);
     const message = typeof body.message === "string" ? body.message : undefined;
+    const store = await openSpaceStore(spaceId);
     const revision = await restoreRevision(store, documentId, rev, user.id, message);
     if (!revision) {
       throw notFoundResponse("Revision");
@@ -83,7 +83,6 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
@@ -102,6 +101,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse('Status must be "open", "applied", or "dismissed"');
     }
 
+    const store = await openSpaceStore(spaceId);
     const currentRevision = await getRevisionMetadata(store, documentId, rev);
     if (!currentRevision) {
       throw notFoundResponse("Revision");

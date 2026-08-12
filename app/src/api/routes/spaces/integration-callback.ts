@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -8,6 +7,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   consumeOAuthIntegrationState,
   upsertOAuthIntegrationForUser,
@@ -42,7 +42,6 @@ async function resolveFallbackPath(spaceId: string): Promise<string> {
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
@@ -88,6 +87,7 @@ export const GET: ApiRouteHandler = (context) =>
           message: "Missing OAuth callback parameters",
         });
       }
+      const store = await openSpaceStore(spaceId);
 
       const statePayload = await consumeOAuthIntegrationState(
         store,

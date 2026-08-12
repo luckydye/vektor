@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { category } from "#db/schema/space.ts";
-import { realtimeTopics } from "#realtime/protocol.ts";
 
 export interface Category {
   id: string;
@@ -22,14 +21,6 @@ export interface CategoryInput {
   description?: string;
   color?: string;
   icon?: string;
-}
-
-/** Both topics carry the same payload: the tree renders categories too. */
-function categoryEvents(data: Record<string, unknown>) {
-  return [
-    { topic: realtimeTopics.categories, data },
-    { topic: realtimeTopics.documentTree, data },
-  ];
 }
 
 function rowToCategory(result: typeof category.$inferSelect): Category {
@@ -67,15 +58,11 @@ export async function createCategory(
     updatedAt: now,
   });
 
-  s.emit(
-    ...categoryEvents({
-      kind: "category_created",
-      categoryId: id,
-      name: input.name,
-      slug: input.slug,
-      order,
-    }),
-  );
+  s.emit({
+    kind: "category",
+    action: "created",
+    data: { categoryId: id, name: input.name, slug: input.slug, order },
+  });
 
   return { id, ...input, order, createdAt: now, updatedAt: now };
 }
@@ -120,16 +107,17 @@ export async function updateCategory(
       })
       .where(eq(category.id, id));
 
-    tx.emit(
-      ...categoryEvents({
-        kind: "category_updated",
+    tx.emit({
+      kind: "category",
+      action: "updated",
+      data: {
         categoryId: id,
         previousSlug: existing.slug,
         slug: input.slug,
         name: input.name,
         order: existing.order,
-      }),
-    );
+      },
+    });
 
     return {
       id,
@@ -145,13 +133,11 @@ export async function deleteCategory(s: SpaceStore, id: string): Promise<boolean
   return s.tx(async (tx) => {
     const existing = await getCategory(tx, id);
     await tx.db.delete(category).where(eq(category.id, id));
-    tx.emit(
-      ...categoryEvents({
-        kind: "category_deleted",
-        categoryId: id,
-        slug: existing?.slug ?? null,
-      }),
-    );
+    tx.emit({
+      kind: "category",
+      action: "deleted",
+      data: { categoryId: id, slug: existing?.slug ?? null },
+    });
     return true;
   });
 }
@@ -168,7 +154,7 @@ export async function reorderCategories(
         .set({ order: i, updatedAt: now })
         .where(eq(category.id, categoryIds[i]));
     }
-    tx.emit(...categoryEvents({ kind: "categories_reordered", categoryIds }));
+    tx.emit({ kind: "category", action: "reordered", data: { categoryIds } });
     return true;
   });
 }

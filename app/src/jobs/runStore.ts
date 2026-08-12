@@ -1,6 +1,6 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import {
@@ -418,7 +418,11 @@ export async function createRun(
     logs: [],
   };
   const db = await getSpaceDb(spaceId);
-  await assertDocumentCanParent(await openSpaceStore(spaceId), documentId, workflowRunDocumentType);
+  await assertDocumentCanParent(
+    await openSpaceStore(spaceId),
+    documentId,
+    workflowRunDocumentType,
+  );
   await db.insert(document).values({
     id: runId,
     slug: `workflow-run-${runId.slice("doc_".length)}`,

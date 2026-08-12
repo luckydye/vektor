@@ -119,7 +119,6 @@ export async function runJob(
     extraCapabilities?: CapabilityTable;
   },
 ): Promise<Record<string, unknown>> {
-  const store = await openSpaceStore(spaceId);
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     signal,
@@ -132,6 +131,7 @@ export async function runJob(
 
   const executionId = crypto.randomUUID();
   jobsQueuedTotal += 1;
+  const store = await openSpaceStore(spaceId);
   await recordJobRunQueued(store, {
     id: executionId,
     scheduleId: scheduleId ?? null,

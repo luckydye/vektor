@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
 import {
   Feature,
@@ -17,6 +16,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   createAccessToken,
   getTokenUserId,
@@ -42,7 +42,10 @@ export const GET: ApiRouteHandler = (context) =>
     // For each token, get its resources
     const tokensWithResources = await Promise.all(
       tokens.map(async (token) => {
-        const resources = await listTokenResources(await openSpaceStore(token.id), spaceId);
+        const resources = await listTokenResources(
+          await openSpaceStore(spaceId),
+          token.id,
+        );
         return {
           ...token,
           resources,
@@ -146,7 +149,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     // Get the resources to return
-    const resources = await listTokenResources(await openSpaceStore(result.id), spaceId);
+    const resources = await listTokenResources(await openSpaceStore(spaceId), result.id);
 
     return createdResponse({
       id: result.id,

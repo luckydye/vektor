@@ -468,7 +468,7 @@ function renderTable(rows: Probe[], identities: IdentityName[]): string[] {
  * `outcome = allowed`, and pivots work without reshaping.
  */
 function renderCsv(rows: Probe[]): string {
-  const escape = (value: string): string =>
+  const quoteCell = (value: string): string =>
     /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
   const header = ["route", "method", "identity", "status", "outcome", "scope", "note"];
@@ -483,7 +483,7 @@ function renderCsv(rows: Probe[]): string {
         scopeOf(probe),
         noteFor(probe),
       ]
-        .map(escape)
+        .map(quoteCell)
         .join(","),
     ),
   );

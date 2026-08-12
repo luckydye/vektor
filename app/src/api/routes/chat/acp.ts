@@ -831,7 +831,9 @@ export const POST: ApiRouteHandler = (context) =>
             ? getUserProfile(await openSpaceStore(spaceId), userId).catch(() => null)
             : Promise.resolve(null),
           userId !== null
-            ? listOAuthIntegrationsForUser(await openSpaceStore(spaceId), userId).catch(() => [])
+            ? listOAuthIntegrationsForUser(await openSpaceStore(spaceId), userId).catch(
+                () => [],
+              )
             : Promise.resolve([]),
         ]);
         const connectedProviders = oauthIntegrations.map((i) => i.provider);

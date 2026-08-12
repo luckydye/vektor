@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { eq } from "drizzle-orm";
 import {
   authenticateJobTokenOrSpaceRole,
@@ -24,6 +23,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
@@ -115,7 +115,12 @@ async function handlePropertiesPatch(
     }
 
     if (propertyPatch === null) {
-      await deleteDocumentProperty(await openSpaceStore(spaceId), documentId, propertyKey, userId);
+      await deleteDocumentProperty(
+        await openSpaceStore(spaceId),
+        documentId,
+        propertyKey,
+        userId,
+      );
       continue;
     }
 
@@ -383,7 +388,10 @@ export const GET: ApiRouteHandler = (context) =>
         content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
       });
     } else {
-      document = { ...meta, content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "" };
+      document = {
+        ...meta,
+        content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
+      };
     }
 
     const accept = context.req.raw.headers.get("Accept") ?? "";
@@ -416,9 +424,9 @@ export const GET: ApiRouteHandler = (context) =>
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
 
+    const store = await openSpaceStore(spaceId);
     const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
@@ -561,8 +569,8 @@ export const PUT: ApiRouteHandler = (context) =>
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
+    const store = await openSpaceStore(spaceId);
     const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
@@ -620,14 +628,12 @@ export const PATCH: ApiRouteHandler = (context) =>
         await verifyDocumentAccess(spaceId, parentId, userId);
       }
 
-      const parentChange = await setDocumentParent(store, id, parentId).catch(
-        (error) => {
-          if (error instanceof InvalidDocumentParentError) {
-            throw badRequestResponse(error.message);
-          }
-          throw error;
-        },
-      );
+      const parentChange = await setDocumentParent(store, id, parentId).catch((error) => {
+        if (error instanceof InvalidDocumentParentError) {
+          throw badRequestResponse(error.message);
+        }
+        throw error;
+      });
       const parentChangeData = {
         kind: "document_parent_changed",
         documentId: id,
@@ -673,7 +679,6 @@ export const PATCH: ApiRouteHandler = (context) =>
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
     const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
     const auth = await authenticateJobTokenOrSpaceRole(
@@ -690,6 +695,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       throw forbiddenResponse("Job token is missing user context");
     }
 
+    const store = await openSpaceStore(spaceId);
     if (permanent) {
       await verifyDocumentRole(spaceId, id, userId, Permission.OWNER);
       await deleteDocument(store, id, userId);
@@ -705,11 +711,11 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
+    const store = await openSpaceStore(spaceId);
     const document = await getDocument(store, documentId);
     if (!document) {
       throw badRequestResponse("Document not found");

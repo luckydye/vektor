@@ -14,10 +14,10 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
+    const store = await openSpaceStore(spaceId);
     const sessions = await listAIChatSessionSummaries(store, user.id);
     return jsonResponse({ sessions });
   }, "Failed to list AI chat sessions");

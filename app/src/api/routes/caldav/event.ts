@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
   CORS_HEADERS,
@@ -8,6 +7,7 @@ import {
   requireCalDAVUserAndAccess,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   createDocument,
   getDocument,
@@ -90,9 +90,15 @@ export const PUT: ApiRouteHandler = async (context) => {
     });
   }
 
-  const doc = await createDocument(await openSpaceStore(spaceId), caldavUser.id, event.summary, "", {
-    title: event.summary,
-  });
+  const doc = await createDocument(
+    await openSpaceStore(spaceId),
+    caldavUser.id,
+    event.summary,
+    "",
+    {
+      title: event.summary,
+    },
+  );
   await updateDocumentProperty(
     await openSpaceStore(spaceId),
     doc.id,

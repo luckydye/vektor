@@ -7,8 +7,8 @@
  * the handle rather than by an argument that is easy to transpose.
  */
 
+import { changeToEvents, type SpaceChange } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
-import type { RealtimeEventInput } from "#realtime/protocol.ts";
 import { type Database, supportsTransactions } from "./connection.ts";
 import { getSpaceDb } from "./db.ts";
 
@@ -24,29 +24,38 @@ export interface SpaceStore {
    * open transaction, so the outermost call is the commit boundary.
    */
   tx<T>(fn: (store: SpaceStore) => Promise<T>): Promise<T>;
-  /** Announce a change to subscribed clients. */
-  emit(...events: RealtimeEventInput[]): void;
+  /** Record what this write changed. Who hears about it is decided above. */
+  emit(...changes: SpaceChange[]): void;
+}
+
+/**
+ * The one place the data layer touches the realtime layer. Repositories emit
+ * changes; translating those into topics and delivering them happens here.
+ */
+function publish(spaceId: string, changes: SpaceChange[]): void {
+  if (changes.length === 0) return;
+  sendSyncEvent(spaceId, ...changes.flatMap(changeToEvents));
 }
 
 function createStore(
   spaceId: string,
   db: SpaceDb,
-  pending: RealtimeEventInput[] | null,
+  pending: SpaceChange[] | null,
 ): SpaceStore {
   const store: SpaceStore = {
     spaceId,
     db,
-    emit(...events) {
-      if (events.length === 0) return;
-      // Outside a transaction there is no commit to wait for, so events go out
-      // immediately; inside one they are buffered until it lands.
-      if (pending) pending.push(...events);
-      else sendSyncEvent(spaceId, ...events);
+    emit(...changes) {
+      if (changes.length === 0) return;
+      // Outside a transaction there is no commit to wait for, so changes are
+      // published immediately; inside one they are held until it lands.
+      if (pending) pending.push(...changes);
+      else publish(spaceId, changes);
     },
     async tx(fn) {
       if (pending) return fn(store);
 
-      const buffered: RealtimeEventInput[] = [];
+      const buffered: SpaceChange[] = [];
       // An in-memory database cannot open a transaction, so there the callback
       // runs directly and the writes are not atomic. Event buffering is
       // identical either way: nothing is announced unless `fn` returns.
@@ -55,7 +64,7 @@ function createStore(
             fn(createStore(spaceId, txDb, buffered)),
           )
         : await fn(createStore(spaceId, db, buffered));
-      sendSyncEvent(spaceId, ...buffered);
+      publish(spaceId, buffered);
       return result;
     },
   };

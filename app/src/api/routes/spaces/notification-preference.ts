@@ -15,7 +15,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const documentId =
       new URL(context.req.url).searchParams.get("documentId") || undefined;
 
@@ -25,6 +24,7 @@ export const GET: ApiRouteHandler = (context) =>
       await verifySpaceAccess(spaceId, user.id);
     }
 
+    const store = await openSpaceStore(spaceId);
     return jsonResponse({
       muted: await isEmailMuted(store, user.id, documentId),
     });
@@ -34,7 +34,6 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const documentId = typeof body.documentId === "string" ? body.documentId : undefined;
@@ -49,6 +48,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse("muted must be a boolean");
     }
 
+    const store = await openSpaceStore(spaceId);
     await setEmailMuted(store, user.id, body.muted, documentId);
     return jsonResponse({ muted: body.muted });
   }, "Failed to update notification preference");

@@ -104,7 +104,6 @@ async function visibleCategoryIds(
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const space = await getSpace(spaceId);
     if (!space) {
       return new Response("Space not found", {
@@ -115,6 +114,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     const visibleIds = await visibleCategoryIds(context, spaceId);
 
+    const store = await openSpaceStore(spaceId);
     const categories = await listCategories(store);
     const visibleCategories = visibleIds
       ? categories.filter((category) => visibleIds.has(category.id))
@@ -132,7 +132,6 @@ export const GET: ApiRouteHandler = (context) =>
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
 
     const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
@@ -147,6 +146,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Name and slug are required");
     }
 
+    const store = await openSpaceStore(spaceId);
     const categoryData = await createCategory(store, {
       name,
       slug,
@@ -160,7 +160,6 @@ export const POST: ApiRouteHandler = (context) =>
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
 
     const body = await parseJsonBody(context.req.raw);
@@ -170,6 +169,7 @@ export const PUT: ApiRouteHandler = (context) =>
       throw badRequestResponse("categoryIds array is required");
     }
 
+    const store = await openSpaceStore(spaceId);
     await reorderCategories(store, categoryIds);
     return jsonResponse({ success: true });
   }, "Failed to reorder categories");

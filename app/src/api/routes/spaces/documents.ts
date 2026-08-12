@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
@@ -15,6 +14,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   createDocument,
   EmptyDocumentSlugError,
@@ -51,7 +51,6 @@ function propertyInitToSlugText(value: PropertyInit | undefined): string | undef
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
 
     // Resource-scoped grantees browse here too: a user shared into a single
     // category or document tree has no space-wide role, and the sidebar reads
@@ -83,13 +82,14 @@ export const GET: ApiRouteHandler = (context) =>
           .filter(Boolean)
       : [];
 
+    const store = await openSpaceStore(spaceId);
     if (categorySlugs.length > 0) {
       const userEmail = access.user?.email;
       const documentsByCategory = await listAllDocumentsByCategories(
         store,
         categorySlugs,
-        userEmail,
         viewer,
+        userEmail,
       );
       const filteredDocumentsByCategory = Object.fromEntries(
         Object.entries(documentsByCategory).map(([slug, docs]) => [
@@ -150,7 +150,6 @@ export const GET: ApiRouteHandler = (context) =>
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
@@ -236,6 +235,7 @@ export const POST: ApiRouteHandler = (context) =>
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
 
     // createDocument now handles slug uniqueness internally
+    const store = await openSpaceStore(spaceId);
     const document = await createDocument(
       store,
       userId,

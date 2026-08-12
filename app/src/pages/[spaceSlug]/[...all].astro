@@ -6,6 +6,7 @@ import {
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { SpaceApp } from "#components/SpaceApp.tsx";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentBySlug } from "#db/space/documents.ts";
 import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
 import { getSpaceBySlug, getUserSpaceRole } from "#db/space/spaces.ts";
@@ -20,6 +21,8 @@ if (!spaceSlug) return Astro.redirect("/");
 // grants viewer to the `public` group must render without a session.
 const space = await getSpaceBySlug(spaceSlug);
 if (!space) return new Response(null, { status: 404, statusText: "Space not found" });
+
+const store = await openSpaceStore(space.id);
 
 const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
 const settingsPath =
@@ -43,14 +46,14 @@ if (settingsPath) {
 }
 
 const storedDocumentRecord = docSlugMatch
-  ? await getDocumentBySlug(space.id, docSlugMatch[1])
+  ? await getDocumentBySlug(store, docSlugMatch[1])
   : null;
 
 if (docSlugMatch && !storedDocumentRecord) {
   // A document addressed by its ID redirects to its canonical slug URL, matching
   // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
   // rendering the shell for a document whose slug the URL never resolved.
-  const documentById = await getDocument(space.id, docSlugMatch[1]);
+  const documentById = await getDocument(store, docSlugMatch[1]);
   if (documentById) {
     return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
   }
@@ -94,7 +97,7 @@ if (!hasDirectDocumentAccess) {
 }
 
 const documentRecord = storedDocumentRecord
-  ? await resolvePublishedDocumentContent(space.id, storedDocumentRecord)
+  ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
   : null;
 let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))

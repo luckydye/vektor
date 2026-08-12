@@ -11,8 +11,8 @@ import {
   multiply,
   transformPoint,
   type Vec3,
-} from "../math.ts";
-import { computeNormals, type Mesh, mergeMeshes } from "../mesh.ts";
+} from "#components/model-viewer/math.ts";
+import { computeNormals, type Mesh, mergeMeshes } from "#components/model-viewer/mesh.ts";
 
 type GltfJson = {
   scene?: number;

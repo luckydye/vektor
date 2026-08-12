@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { createPatch } from "diff";
 import {
   authenticateRequest,
@@ -14,6 +13,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument } from "#db/space/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/space/revisions.ts";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
@@ -43,7 +43,6 @@ async function getRevision(rev: number, spaceId: string, id: string) {
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
     const searchParams = new URL(context.req.url).searchParams;
     const revParam = searchParams.get("rev");
@@ -75,6 +74,7 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     const revisionContent = await getRevision(rev, spaceId, id);
+    const store = await openSpaceStore(spaceId);
     const revisionMetadata = await getRevisionMetadata(store, id, rev);
     if (!revisionMetadata) {
       throw notFoundResponse("Revision");

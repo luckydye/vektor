@@ -1,6 +1,6 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import type { WebSocket } from "ws";
 import * as Y from "yjs";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentContent, updateDocument } from "#db/space/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/space/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
@@ -296,9 +296,15 @@ export async function persistYRoomDraft(key: string): Promise<void> {
     Date.now() - latestRevisionCreatedAt.getTime() >= COLLABORATION_REVISION_INTERVAL_MS;
   if (!revisionIsDue) return;
 
-  await createRevision(await openSpaceStore(ids.spaceId), ids.documentId, content, room.lastEditorId, {
-    message: "Collaboration checkpoint",
-  });
+  await createRevision(
+    await openSpaceStore(ids.spaceId),
+    ids.documentId,
+    content,
+    room.lastEditorId,
+    {
+      message: "Collaboration checkpoint",
+    },
+  );
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
@@ -622,7 +628,8 @@ export async function transformDocumentContent(
 
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
-    const persisted = (await getDocumentContent(await openSpaceStore(spaceId), documentId)) ?? "";
+    const persisted =
+      (await getDocumentContent(await openSpaceStore(spaceId), documentId)) ?? "";
     // Append/prepend splice at the very end/start, so they don't need the
     // content re-flowed to one-block-per-line — skip the normalize pass, which
     // is O(doc) and is what OOMs the process on large append-only logs edited

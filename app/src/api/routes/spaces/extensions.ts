@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
@@ -19,6 +18,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   createExtension,
   type ExtensionManifest,
@@ -38,13 +38,13 @@ import { appLogger } from "#observability/logger.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
       Permission.EDITOR,
     );
 
+    const store = await openSpaceStore(spaceId);
     const { extensions: allExtensions, errors: manifestErrors } =
       await listExtensionsWithErrors(store, { includeDisabled: true });
 
@@ -89,7 +89,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const store = await openSpaceStore(spaceId);
 
       // Authorize before touching the body. The gate below is the space-wide
       // `manage_extensions` capability and never looks at which extension is
@@ -192,6 +191,7 @@ export const POST: ApiRouteHandler = (context) =>
       const extensionId = manifest.id;
 
       // Check if extension already exists - update it if so
+      const store = await openSpaceStore(spaceId);
       const existing = await getExtension(store, extensionId, {
         includeDisabled: true,
       });

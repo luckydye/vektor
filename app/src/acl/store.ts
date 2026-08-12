@@ -1,4 +1,3 @@
-import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
 import {
   type AclViewer,
@@ -13,6 +12,7 @@ import {
   resolveFeature,
 } from "#acl/permissions.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { acl, category, document, property } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";

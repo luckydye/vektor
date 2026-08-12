@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateJobTokenOrSpaceRole, verifyDocumentRole } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
@@ -11,6 +10,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, updateDocument } from "#db/space/documents.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
 import { documentIsReadonly } from "#documents/types.ts";
@@ -26,9 +26,9 @@ import { stripScriptTags } from "#utils/html.ts";
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
 
+    const store = await openSpaceStore(spaceId);
     const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");

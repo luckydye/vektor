@@ -127,7 +127,10 @@ export async function executeWorkflowScript(
       throw new Error(`Job "${workflowJobId}" not found in extension "${extensionId}"`);
     }
 
-    const zipBuffer = await getExtensionPackage(await openSpaceStore(spaceId), extensionId);
+    const zipBuffer = await getExtensionPackage(
+      await openSpaceStore(spaceId),
+      extensionId,
+    );
     if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
 
     if (controller.signal.aborted) throw new Error("Workflow cancelled");

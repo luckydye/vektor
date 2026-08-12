@@ -17,9 +17,9 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
+    const store = await openSpaceStore(spaceId);
     const meta = await getAIConfigMeta(store);
     return jsonResponse({ aiProvider: meta });
   }, "Failed to get AI provider config");
@@ -28,7 +28,6 @@ export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
     const body = await parseJsonBody<{
@@ -48,6 +47,7 @@ export const PUT: ApiRouteHandler = (context) =>
     const provider = body.provider;
     const model = body.model.trim();
 
+    const store = await openSpaceStore(spaceId);
     if (provider === "ollama") {
       if (typeof body.baseUrl !== "string" || !body.baseUrl.trim()) {
         throw badRequestResponse("baseUrl is required for ollama provider");
@@ -83,9 +83,9 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
+    const store = await openSpaceStore(spaceId);
     await deleteAIConfig(store);
     return successResponse();
   }, "Failed to delete AI provider config");

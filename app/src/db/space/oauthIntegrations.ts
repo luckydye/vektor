@@ -1,5 +1,5 @@
-import type { SpaceStore } from "#db/client/store.ts";
 import { and, eq, lt } from "drizzle-orm";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { oauthIntegration, oauthIntegrationState } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
@@ -274,7 +274,9 @@ export async function createOAuthIntegrationState(
         eq(oauthIntegrationState.provider, provider),
       ),
     );
-  await s.db.delete(oauthIntegrationState).where(lt(oauthIntegrationState.expiresAt, now));
+  await s.db
+    .delete(oauthIntegrationState)
+    .where(lt(oauthIntegrationState.expiresAt, now));
 
   await s.db.insert(oauthIntegrationState).values({
     id: createId("oauthIntegrationState"),

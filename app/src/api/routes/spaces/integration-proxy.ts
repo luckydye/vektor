@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -11,6 +10,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   getOAuthIntegrationCredentialForUser,
   type OAuthIntegrationCredential,
@@ -157,7 +157,6 @@ async function resolveAccessToken(
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const providerParam = requireParam(context.var.params, "provider");
     if (!isOAuthIntegrationProvider(providerParam)) {
       throw badRequestResponse("Unsupported integration provider");
@@ -190,6 +189,7 @@ export const POST: ApiRouteHandler = (context) =>
       );
     }
 
+    const store = await openSpaceStore(spaceId);
     const credential = await getOAuthIntegrationCredentialForUser(
       store,
       userId,

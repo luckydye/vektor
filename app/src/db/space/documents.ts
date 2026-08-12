@@ -1,7 +1,7 @@
-import type { SpaceStore } from "#db/client/store.ts";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { type AclViewer, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { createId } from "#db/ids.ts";
@@ -22,7 +22,6 @@ import {
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
-import { realtimeTopics } from "#realtime/protocol.ts";
 import { slugify } from "#utils/utils.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
@@ -41,7 +40,6 @@ export type {
   SearchResult,
 } from "./search.ts";
 export { rebuildSearchIndex, searchDocuments } from "./search.ts";
-
 
 const archivedDocumentCondition = sql`
   (
@@ -78,7 +76,6 @@ async function generateUniqueSlug(
   baseTitle: string,
   excludeDocumentId?: string,
 ): Promise<string> {
-
   const baseSlug = slugify(baseTitle);
   if (!baseSlug) {
     throw new EmptyDocumentSlugError("Title must contain at least one letter or number");
@@ -262,7 +259,11 @@ export async function getDocument(
     return null;
   }
 
-  const props = await s.db.select().from(property).where(eq(property.documentId, id)).all();
+  const props = await s.db
+    .select()
+    .from(property)
+    .where(eq(property.documentId, id))
+    .all();
   const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
     properties[prop.key] = parseStoredPropertyValue(prop.value);
@@ -441,7 +442,6 @@ export async function archiveDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-
   if (userId) {
     await createAuditLog(s, {
       spaceId: s.spaceId,
@@ -465,7 +465,6 @@ export async function restoreDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-
   if (userId) {
     await createAuditLog(s, {
       spaceId: s.spaceId,
@@ -489,7 +488,6 @@ export async function deleteDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-
   if (userId) {
     await createAuditLog(s, {
       spaceId: s.spaceId,
@@ -506,15 +504,15 @@ export async function deleteDocument(
   return true;
 }
 
-async function syncFileIndex(
-  s: SpaceStore,
-): Promise<void> {
+async function syncFileIndex(s: SpaceStore): Promise<void> {
   const storage = getFileStorage();
   const diskFiles = await storage.list(s.spaceId);
   if (diskFiles.length === 0) return;
 
   const indexed = new Set(
-    (await s.db.select({ path: fileTable.path }).from(fileTable).all()).map((r) => r.path),
+    (await s.db.select({ path: fileTable.path }).from(fileTable).all()).map(
+      (r) => r.path,
+    ),
   );
 
   const toIndex = diskFiles.filter((f) => !indexed.has(f.key)).slice(0, 200);
@@ -556,7 +554,8 @@ export async function listDocuments(
   options: {
     limit?: number;
     type?: string;
-    viewer?: AclViewer | null;
+    /** Required: pass null only where the caller has already authorised. */
+    viewer: AclViewer | null;
     cursor?: string;
     /**
      * Append the space's uploaded files, as pseudo-documents, to the first
@@ -565,7 +564,7 @@ export async function listDocuments(
      * only want documents must not pay for either.
      */
     includeFiles?: boolean;
-  } = {},
+  },
 ): Promise<{
   documents: DocumentWithProperties[];
   total: number;
@@ -683,7 +682,11 @@ export async function listDocuments(
   const docIds = docs.map((d) => d.id);
   const allProps =
     docIds.length > 0
-      ? await s.db.select().from(property).where(inArray(property.documentId, docIds)).all()
+      ? await s.db
+          .select()
+          .from(property)
+          .where(inArray(property.documentId, docIds))
+          .all()
       : [];
 
   // Group properties by document ID
@@ -762,10 +765,9 @@ export async function listDocuments(
 
 export async function listArchivedDocuments(
   s: SpaceStore,
-  viewer?: AclViewer | null,
+  viewer: AclViewer | null,
   options?: { limit?: number; cursor?: string },
 ): Promise<{ documents: DocumentWithProperties[]; nextCursor: string | null }> {
-
   let docs = await s.db
     .select({
       id: document.id,
@@ -938,26 +940,11 @@ export async function updateDocumentProperty(
   const treeRelevantProperty = ["title", "category", "collection"].includes(key);
 
   s.emit({
-      topic: realtimeTopics.properties,
-      data: propertyChangeData,
-    },
-    {
-      topic: realtimeTopics.document(documentId),
-      data: propertyChangeData,
-    },
-    ...(treeRelevantProperty
-      ? [
-          {
-            topic: realtimeTopics.documentTree,
-            data: propertyChangeData,
-          },
-          {
-            topic: realtimeTopics.categoryDocuments,
-            data: propertyChangeData,
-          },
-        ]
-      : []),
-  );
+    kind: "documentProperty",
+    documentId,
+    affectsTree: treeRelevantProperty,
+    data: propertyChangeData,
+  });
 
   return renamedSlug ? { slug: renamedSlug } : {};
 }
@@ -1010,26 +997,11 @@ export async function deleteDocumentProperty(
   const treeRelevantProperty = ["title", "category", "collection"].includes(key);
 
   s.emit({
-      topic: realtimeTopics.properties,
-      data: propertyDeleteData,
-    },
-    {
-      topic: realtimeTopics.document(documentId),
-      data: propertyDeleteData,
-    },
-    ...(treeRelevantProperty
-      ? [
-          {
-            topic: realtimeTopics.documentTree,
-            data: propertyDeleteData,
-          },
-          {
-            topic: realtimeTopics.categoryDocuments,
-            data: propertyDeleteData,
-          },
-        ]
-      : []),
-  );
+    kind: "documentProperty",
+    documentId,
+    affectsTree: treeRelevantProperty,
+    data: propertyDeleteData,
+  });
 }
 
 /**
@@ -1114,8 +1086,8 @@ async function countMentionsForUser(
 export async function listAllDocumentsByCategories(
   s: SpaceStore,
   categorySlugs: string[],
+  viewer: AclViewer | null,
   userEmail?: string,
-  viewer?: AclViewer | null,
 ): Promise<Record<string, DocumentWithProperties[]>> {
   const uniqueSlugs = Array.from(new Set(categorySlugs.filter(Boolean)));
   if (uniqueSlugs.length === 0) {
@@ -1290,7 +1262,7 @@ export async function setDocumentParent(
 export async function getDocumentChildren(
   s: SpaceStore,
   parentId: string,
-  viewer?: AclViewer | null,
+  viewer: AclViewer | null,
 ): Promise<DocumentWithProperties[]> {
   let docs = await s.db
     .select()
@@ -1351,10 +1323,7 @@ export interface PropertyInfo {
   values: string[];
 }
 
-export async function getAllPropertiesWithValues(
-  s: SpaceStore,
-): Promise<PropertyInfo[]> {
-
+export async function getAllPropertiesWithValues(s: SpaceStore): Promise<PropertyInfo[]> {
   const allProperties = await s.db.select().from(property).all();
 
   const propertyMap: Record<string, { type: string | null; values: Set<string> }> = {};

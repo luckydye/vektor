@@ -77,11 +77,11 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
+    const store = await openSpaceStore(spaceId);
     const session = await getAIChatSession(store, sessionId, user.id);
     if (!session) {
       throw notFoundResponse("AI chat session");
@@ -94,13 +94,13 @@ export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
     const body = await parseJsonBody(context.req.raw);
     const session = parseSessionInput(spaceId, sessionId, body);
+    const store = await openSpaceStore(spaceId);
     const saved = await upsertAIChatSession(store, user.id, session);
 
     return jsonResponse({ session: saved });
@@ -110,11 +110,11 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    const store = await openSpaceStore(spaceId);
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
+    const store = await openSpaceStore(spaceId);
     const session = await getAIChatSession(store, sessionId, user.id);
     if (!session) {
       throw notFoundResponse("AI chat session");

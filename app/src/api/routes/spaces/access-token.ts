@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -10,6 +9,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   deleteAccessToken,
   getAccessToken,
@@ -34,7 +34,7 @@ export const GET: ApiRouteHandler = (context) =>
       throw notFoundResponse("Access token");
     }
 
-    const resources = await listTokenResources(await openSpaceStore(tokenId), spaceId);
+    const resources = await listTokenResources(await openSpaceStore(spaceId), tokenId);
 
     return jsonResponse({ token: { ...token, resources } });
   }, "Failed to get access token");

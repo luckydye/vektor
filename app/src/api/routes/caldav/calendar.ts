@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { getUserGroups } from "#acl/store.ts";
 import {
   documentToICal,
@@ -7,6 +6,7 @@ import {
   xmlResponse,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { listDocuments } from "#db/space/documents.ts";
 
 /**

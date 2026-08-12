@@ -15,7 +15,6 @@
  *   data: [DONE]
  */
 
-import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -27,6 +26,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getExtensionPackage, listExtensions } from "#db/space/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -35,7 +35,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const store = await openSpaceStore(spaceId);
 
       // Auth: job token OR user session
       const auth = await authenticateJobTokenOrSpaceRole(
@@ -55,6 +54,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (!jobId) return badRequestResponse("jobId is required");
 
       // Resolve job across all extensions in the space
+      const store = await openSpaceStore(spaceId);
       const extensions = await listExtensions(store);
       let extensionId: string | undefined;
       let entry: string | undefined;

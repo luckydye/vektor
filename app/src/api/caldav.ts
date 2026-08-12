@@ -1,9 +1,9 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { eq } from "drizzle-orm";
 import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { validateAccessToken } from "#db/space/accessTokens.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
@@ -63,7 +63,7 @@ export async function verifyBasicAuth(
 
   const spaces = await listUserSpaces(foundUser.id);
   for (const space of spaces) {
-    const result = await validateAccessToken(await openSpaceStore(token), space.id);
+    const result = await validateAccessToken(await openSpaceStore(space.id), token);
     if (result && result.token.createdBy === foundUser.id) {
       return { id: foundUser.id, email: foundUser.email, name: foundUser.name };
     }

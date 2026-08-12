@@ -1,4 +1,3 @@
-import type { SpaceStore } from "#db/client/store.ts";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import {
@@ -7,6 +6,7 @@ import {
   constants as zlibConstants,
 } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, revision } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -67,7 +67,6 @@ function calculateChecksum(html: string): string {
 }
 
 async function getDocumentSlug(s: SpaceStore, documentId: string): Promise<string> {
-
   const doc = await s.db
     .select({ slug: document.slug })
     .from(document)
@@ -266,7 +265,6 @@ export async function getRevision(
   documentId: string,
   rev: number,
 ): Promise<Revision | null> {
-
   const revisionRecord = await s.db
     .select()
     .from(revision)
@@ -362,7 +360,6 @@ export async function getRevisionMetadata(
   documentId: string,
   rev: number,
 ): Promise<Omit<Revision, "snapshot"> | null> {
-
   const revisionRecord = await s.db
     .select({
       id: revision.id,
@@ -393,7 +390,6 @@ export async function updateRevisionStatus(
   rev: number,
   status: NonNullable<Revision["status"]>,
 ): Promise<Omit<Revision, "snapshot"> | null> {
-
   await s.db
     .update(revision)
     .set({ status })
@@ -406,7 +402,6 @@ export async function listRevisionMetadata(
   s: SpaceStore,
   documentId: string,
 ): Promise<Omit<Revision, "snapshot">[]> {
-
   const revisions = await s.db
     .select({
       id: revision.id,

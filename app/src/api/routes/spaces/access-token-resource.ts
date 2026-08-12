@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
 import {
   Permission,
@@ -15,6 +14,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   grantTokenAccess,
   listTokenResources,
@@ -68,7 +68,7 @@ export const PUT: ApiRouteHandler = (context) =>
       permission,
     });
 
-    const resources = await listTokenResources(await openSpaceStore(tokenId), spaceId);
+    const resources = await listTokenResources(await openSpaceStore(spaceId), tokenId);
 
     return jsonResponse({ resources, message: "Access granted successfully" });
   }, "Failed to grant access token resource");
@@ -94,8 +94,8 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     await revokeTokenAccess(
-      await openSpaceStore(tokenId),
-      spaceId,
+      await openSpaceStore(spaceId),
+      tokenId,
       resourceType as ResourceTypeValue,
       resourceId,
     );

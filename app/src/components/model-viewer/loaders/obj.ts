@@ -3,7 +3,7 @@
 // discarded — the preview is untextured. Faces without normals fall back to
 // computed ones.
 
-import { computeNormals, type Mesh, mergeMeshes } from "../mesh.ts";
+import { computeNormals, type Mesh, mergeMeshes } from "#components/model-viewer/mesh.ts";
 
 function parseFaceIndex(token: string, count: number): number {
   const raw = Number.parseInt(token, 10);

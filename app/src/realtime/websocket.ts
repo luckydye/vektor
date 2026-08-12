@@ -1,4 +1,3 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
@@ -9,6 +8,7 @@ import {
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { auth } from "#auth";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";

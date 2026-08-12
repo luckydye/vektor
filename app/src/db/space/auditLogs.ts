@@ -2,8 +2,6 @@ import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { type AuditLog, auditLog, document } from "#db/schema/space.ts";
-import { sendSyncEvent } from "#realtime/events.ts";
-import { realtimeTopics } from "#realtime/protocol.ts";
 
 /**
  * Every event kind the audit log records.
@@ -84,49 +82,7 @@ export interface CreateAuditLogParams {
   details?: AuditDetails;
 }
 
-/**
- * Events that notify connected clients, and the topics they publish to.
- * An event absent from this map is recorded without any websocket traffic.
- */
-const EVENT_TO_SYNC_TOPICS: Partial<Record<AuditEvent, (docId: string) => string[]>> = {
-  save: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
-  publish: (docId) => [
-    realtimeTopics.documents,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  unpublish: (docId) => [
-    realtimeTopics.documents,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  restore: (docId) => [
-    realtimeTopics.documents,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  archive: (docId) => [
-    realtimeTopics.documents,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  delete: (docId) => [
-    realtimeTopics.documents,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  create: (docId) => [
-    realtimeTopics.documents,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  lock: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
-  unlock: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
-  acl_grant: () => [realtimeTopics.acl],
-  acl_revoke: () => [realtimeTopics.acl],
-};
-
-/** Record an audit entry, and sync it to clients if the event has topics. */
+/** Record an audit entry, and tell the realtime layer it happened. */
 export async function createAuditLog(
   s: SpaceStore,
   params: CreateAuditLogParams,
@@ -146,9 +102,9 @@ export async function createAuditLog(
     throw new Error("Failed to create audit log entry");
   }
 
-  const syncTopics = EVENT_TO_SYNC_TOPICS[params.event]?.(params.docId);
-  if (params.spaceId && syncTopics?.length) {
-    sendSyncEvent(params.spaceId, ...syncTopics);
+  // Callers that leave spaceId unset are recording history, not announcing it.
+  if (params.spaceId) {
+    s.emit({ kind: "audit", event: params.event, documentId: params.docId });
   }
 
   return result[0];
