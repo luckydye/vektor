@@ -465,6 +465,96 @@ describe("mid-session group sync", () => {
   });
 });
 
+/**
+ * The IdP mapping is the only writer of `groups`; everything a client can reach
+ * has to leave it alone. Driven through `auth.handler` because the hole was in
+ * how better-auth binds a request body to the user row, not in our own code.
+ */
+describe("client-supplied groups", () => {
+  const PASSWORD = "correct-horse-battery-staple";
+  let emailAuth: ReturnType<typeof createAuth>;
+
+  beforeAll(() => {
+    emailAuth = createAuth(testConfig({ EMAIL_AUTH: "1" }), authDb);
+  });
+
+  async function signUp(email: string, body: Record<string, unknown> = {}) {
+    return emailAuth.handler(
+      new Request(`${SITE_URL}/api/auth/sign-up/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: SITE_URL },
+        body: JSON.stringify({ name: "Attacker", email, password: PASSWORD, ...body }),
+      }),
+    );
+  }
+
+  it("stores no groups for a sign-up that claims a privileged one", async () => {
+    const email = "signup-claiming-groups@example.com";
+
+    const response = await signUp(email, { groups: '["eng-team","admins"]' });
+    expect(response.status).toBe(200);
+
+    // The account exists, it just holds nothing the ACL will match a grant to.
+    expect(await storedGroups(email)).toEqual([]);
+    const returned = (await response.json()) as { user?: { groups?: unknown } };
+    expect(returned.user?.groups).toBe("[]");
+  });
+
+  it("stores no groups for an array-shaped claim either", async () => {
+    const email = "signup-claiming-groups-array@example.com";
+
+    expect((await signUp(email, { groups: ["eng-team"] })).status).toBe(200);
+
+    expect(await storedGroups(email)).toEqual([]);
+  });
+
+  it("refuses a user update that carries groups", async () => {
+    const email = "update-claiming-groups@example.com";
+    const created = await signUp(email);
+    expect(created.status).toBe(200);
+    const cookie = collectCookies(created).join("; ");
+    expect(cookie).toBeTruthy();
+
+    const response = await emailAuth.handler(
+      new Request(`${SITE_URL}/api/auth/update-user`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: SITE_URL, cookie },
+        body: JSON.stringify({ name: "Renamed", groups: '["eng-team"]' }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await storedGroups(email)).toEqual([]);
+  });
+
+  it("leaves IdP-provisioned groups untouched when an update is refused", async () => {
+    const email = "oauth-then-update@example.com";
+    profile = {
+      sub: "idp-subject-update",
+      email,
+      email_verified: true,
+      name: "Katherine Johnson",
+      picture: "https://idp.example.com/katherine.png",
+      wiki_groups: ["engineering"],
+    };
+    const callback = await signIn();
+    const cookie = collectCookies(callback).join("; ");
+    expect(cookie).toBeTruthy();
+
+    const response = await auth.handler(
+      new Request(`${SITE_URL}/api/auth/update-user`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: SITE_URL, cookie },
+        body: JSON.stringify({ groups: "[]" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    // A refusal must not double as a way to drop your own groups.
+    expect(await storedGroups(email)).toEqual(["engineering"]);
+  });
+});
+
 describe("group claim sanitizing", () => {
   it("caps how many groups an IdP can assign", () => {
     const many = Array.from({ length: 150 }, (_, index) => `group-${index}`);
