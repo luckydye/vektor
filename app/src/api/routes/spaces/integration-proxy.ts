@@ -78,7 +78,22 @@ function getProviderBaseUrl(providerConfig: OAuthProviderConfiguration): URL {
   return new URL(providerConfig.userInfoUrl);
 }
 
-function buildIntegrationApiUrl(
+/**
+ * Resolve the caller's `path` against the configured provider origin.
+ *
+ * Every request built here carries the caller's OAuth access token, so leaving
+ * the configured origin means handing that token to whoever the caller named.
+ * Two things keep that from happening, and both apply to *every* provider:
+ *
+ * - A relative `path` must be a plain absolute path. WHATWG `URL` reads a leading
+ *   `//` or `/\` as protocol-relative and throws `base` away, so
+ *   `new URL("//evil.example/x", base)` resolves off-origin.
+ * - Whatever comes out is checked against `base.origin` unconditionally. The
+ *   GitLab `/api/v4` prefix rule used to be the only thing standing between the
+ *   relative branch and an off-origin URL, which was an accident rather than a
+ *   guard.
+ */
+export function buildIntegrationApiUrl(
   provider: OAuthIntegrationProvider,
   providerConfig: OAuthProviderConfiguration,
   rawPath: string,
@@ -89,27 +104,36 @@ function buildIntegrationApiUrl(
   }
 
   const base = getProviderBaseUrl(providerConfig);
+  let resolved: URL;
 
   if (/^https?:\/\//i.test(trimmed)) {
-    const parsed = new URL(trimmed);
-    if (parsed.origin !== base.origin) {
-      throw badRequestResponse(`${provider} request URL must match configured origin`);
-    }
+    resolved = new URL(trimmed);
     if (
       provider === "gitlab" &&
-      !parsed.pathname.startsWith("/api/v4/") &&
-      parsed.pathname !== "/api/v4"
+      !resolved.pathname.startsWith("/api/v4/") &&
+      resolved.pathname !== "/api/v4"
     ) {
       throw badRequestResponse("GitLab request URL must target /api/v4");
     }
-    return parsed;
+  } else {
+    // `URL` strips tab/CR/LF before parsing, so `/\t/evil.example` would slip
+    // past the check below and come back out protocol-relative.
+    const stripped = trimmed.replace(/[\t\n\r]/g, "");
+    const path = stripped.startsWith("/") ? stripped : `/${stripped}`;
+    if (path[1] === "/" || path[1] === "\\") {
+      throw badRequestResponse("path must be a plain absolute path");
+    }
+    resolved =
+      provider === "gitlab"
+        ? new URL(path.startsWith("/api/v4") ? path : `/api/v4${path}`, base)
+        : new URL(path, base);
   }
 
-  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  if (provider === "gitlab") {
-    return new URL(path.startsWith("/api/v4") ? path : `/api/v4${path}`, base);
+  if (resolved.origin !== base.origin) {
+    throw badRequestResponse(`${provider} request URL must match configured origin`);
   }
-  return new URL(path, base);
+
+  return resolved;
 }
 
 /** Seconds before expiry at which we proactively refresh the access token. */
@@ -217,6 +241,10 @@ export const POST: ApiRouteHandler = (context) =>
         method,
         headers,
         body: method === "GET" || method === "DELETE" ? undefined : body.body,
+        // The Authorization header above is the user's own access token. Following
+        // a redirect would re-send it to wherever the upstream points, so the 3xx
+        // is relayed to the caller instead of followed.
+        redirect: "manual",
       },
     );
 
