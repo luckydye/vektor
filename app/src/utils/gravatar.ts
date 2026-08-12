@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 import { config } from "#config";
-import { appLogger } from "#observability/logger.ts";
 
 // Covers the largest avatar we render (64px) on a 3x display.
 const gravatarSize = 256;
 
-let warnedInvalidHost = false;
-
 /**
  * Base URL of the Gravatar-compatible service to consult, or null when the
- * operator has not configured one and profile pictures stay local. A malformed
- * or non-HTTP value disables the lookup rather than emitting a broken URL.
+ * operator has not configured one and profile pictures stay local.
+ *
+ * A malformed or non-HTTP value disables the lookup rather than emitting a
+ * broken URL, and does so silently: a typo in `VEKTOR_GRAVATAR_URL` shows up as
+ * avatars staying local, not as a log line.
  */
 function gravatarHost(): string | null {
   const raw = config().GRAVATAR_URL?.trim();
@@ -22,16 +22,9 @@ function gravatarHost(): string | null {
       return parsed.href.replace(/\/+$/, "");
     }
   } catch {
-    // Fall through to the warning below.
+    // Not a URL at all — same outcome as a non-HTTP one.
   }
 
-  if (!warnedInvalidHost) {
-    warnedInvalidHost = true;
-    appLogger.warn(
-      "VEKTOR_GRAVATAR_URL is not a valid http(s) URL; avatar lookups are disabled",
-      { value: raw },
-    );
-  }
   return null;
 }
 
