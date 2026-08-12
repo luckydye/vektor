@@ -19,8 +19,8 @@ import {
 } from "#acl/store.ts";
 import {
   badRequestResponse,
+  errorResponse,
   jsonResponse,
-  notFoundResponse,
   parseJsonBody,
   requireParam,
   requireUser,
@@ -156,7 +156,7 @@ export const POST: ApiRouteHandler = (context) =>
         .where(sql`lower(${userTable.email}) = ${email.toLowerCase()}`)
         .get();
       if (!match) {
-        throw notFoundResponse(`No user found with email "${email}"`);
+        throw errorResponse(`No user found with email "${email}"`, 404);
       }
       userId = match.id;
     }
