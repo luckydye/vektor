@@ -12,6 +12,7 @@ import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
 import { getSpaceBySlug, getUserSpaceRole } from "#db/space/spaces.ts";
 import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
+import { LAST_VISITED_SPACE_KEY } from "#utils/activeSpace.server.ts";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 
 const { spaceSlug } = Astro.params;
@@ -111,7 +112,7 @@ if (initialDocument) {
 }
 
 if (Astro.locals.session) {
-  Astro.cookies.set("lastVisitedSpace", space.slug, {
+  Astro.cookies.set(LAST_VISITED_SPACE_KEY, space.slug, {
     path: "/",
     maxAge: 60 * 60 * 24 * 90, // 90 days
     sameSite: "lax",
