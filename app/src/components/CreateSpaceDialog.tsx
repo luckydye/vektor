@@ -1,5 +1,5 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
-import { slugify } from "#utils/utils.ts";
+import { slugify, spaceSlugRejection } from "#utils/utils.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
@@ -20,7 +20,6 @@ interface Props {
   }) => void | Promise<void>;
 }
 
-const isValidSlug = (slug: string) => /^[a-z0-9-]+$/.test(slug);
 const isValidHexColor = (color: string) => /^#[0-9A-Fa-f]{6}$/.test(color);
 
 export function CreateSpaceDialog(props: Props) {
@@ -82,11 +81,10 @@ export function CreateSpaceDialog(props: Props) {
 
     if (!name().trim()) return setFormError("Please enter a space name");
     if (!slug().trim()) return setFormError("Please enter a slug");
-    if (!isValidSlug(slug())) {
-      return setFormError(
-        "Slug must contain only lowercase letters, numbers, and hyphens",
-      );
-    }
+    // Same rule set the create endpoint applies, so a reserved slug like "docs"
+    // is refused here with the reason rather than after a round trip.
+    const slugRejection = spaceSlugRejection(slug());
+    if (slugRejection) return setFormError(slugRejection);
     if (!isValidHexColor(brandColor())) {
       return setFormError("Please enter a valid hex color (e.g., #42516d)");
     }

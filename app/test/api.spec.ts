@@ -366,7 +366,9 @@ describe("API Tests - Documents", () => {
     expect(fetched.slug).toBe("finally-named");
   });
 
-  it("should reject a title with nothing sluggable in it", async () => {
+  it("should create a document whose title has nothing sluggable in it", async () => {
+    // A title the URL cannot represent is ordinary input, not a bad request:
+    // see test/slugs-api.spec.ts for the non-Latin scripts this also covers.
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
       body: JSON.stringify({
@@ -375,9 +377,10 @@ describe("API Tests - Documents", () => {
       }),
     });
 
-    expect(response.status).toBe(400);
-    const data = await response.json();
-    expect(data.error).toContain("letter or number");
+    expect(response.status).toBe(201);
+    const { document } = await response.json();
+    expect(document.properties.title).toBe("-----------------------");
+    expect(document.slug).toMatch(/^document-[0-9a-f]{8}$/);
   });
 
   it("should list documents", async () => {

@@ -23,7 +23,7 @@ import {
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
-import { slugify } from "#utils/utils.ts";
+import { isReservedDocumentSlug, slugify } from "#utils/utils.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { decompressHtml } from "./revisions.ts";
@@ -67,20 +67,23 @@ async function updateDocumentEmbeddingBestEffort(
 }
 
 /**
- * A title with nothing sluggable in it (e.g. "-----") leaves no usable URL, so
- * it is a bad request rather than a server fault.
+ * Slug for a title the URL cannot carry.
+ *
+ * Every script without an ASCII fold (CJK, Cyrillic, Arabic, Hebrew, Greek,
+ * Thai, …) and every symbol- or emoji-only title lands here. Such a title is
+ * ordinary user input, so the document is created under a generated slug rather
+ * than refused — the title itself is stored intact as a property.
  */
-export class EmptyDocumentSlugError extends Error {}
+function fallbackDocumentSlug(): string {
+  return `document-${createId("document").slice(-8)}`;
+}
 
 async function generateUniqueSlug(
   s: SpaceStore,
   baseTitle: string,
   excludeDocumentId?: string,
 ): Promise<string> {
-  const baseSlug = slugify(baseTitle);
-  if (!baseSlug) {
-    throw new EmptyDocumentSlugError("Title must contain at least one letter or number");
-  }
+  const baseSlug = slugify(baseTitle) || fallbackDocumentSlug();
 
   // Get all existing slugs in the space
   const allDocs = await many(
@@ -90,19 +93,21 @@ async function generateUniqueSlug(
   const existingSlugs = new Set(
     allDocs.filter((d) => d.id !== excludeDocumentId).map((d) => d.slug),
   );
+  const isTaken = (candidate: string) =>
+    existingSlugs.has(candidate) || isReservedDocumentSlug(candidate);
 
   // If the base slug is available, use it
-  if (!existingSlugs.has(baseSlug)) {
+  if (!isTaken(baseSlug)) {
     return baseSlug;
   }
 
   // Otherwise, append a counter to make it unique
-  let slug = baseSlug;
   let counter = 1;
+  let slug = `${baseSlug}-${counter}`;
 
-  while (existingSlugs.has(slug)) {
-    slug = `${baseSlug}-${counter}`;
+  while (isTaken(slug)) {
     counter++;
+    slug = `${baseSlug}-${counter}`;
   }
 
   return slug;
@@ -953,15 +958,11 @@ export async function updateDocumentProperty(
         .where(eq(document.id, documentId)),
     );
 
-    if (current && isPlaceholderDocumentSlug(current.slug)) {
-      // An unsluggable title still renames the document; only the derived slug
-      // can't follow, so it stays where it was.
-      renamedSlug = await generateUniqueSlug(s, value, documentId).catch(
-        (error: unknown) => {
-          if (error instanceof EmptyDocumentSlugError) return undefined;
-          throw error;
-        },
-      );
+    // An unsluggable title still renames the document; only the derived slug
+    // can't follow, so the placeholder stays where it was rather than being
+    // replaced by a generated one that names the document no better.
+    if (current && isPlaceholderDocumentSlug(current.slug) && slugify(value)) {
+      renamedSlug = await generateUniqueSlug(s, value, documentId);
     }
   }
 

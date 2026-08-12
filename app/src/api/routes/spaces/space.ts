@@ -15,6 +15,8 @@ import {
   deleteSpace,
   getSpace,
   getUserSpaceRole,
+  InvalidSpaceSlugError,
+  SpaceSlugTakenError,
   updateSpace,
 } from "#db/space/spaces.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
@@ -112,7 +114,10 @@ export const PATCH: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to update space",
       onError: (error) => {
-        if (error instanceof Error && error.message.includes("already exists")) {
+        if (
+          error instanceof InvalidSpaceSlugError ||
+          error instanceof SpaceSlugTakenError
+        ) {
           return badRequestResponse(error.message);
         }
         return undefined;

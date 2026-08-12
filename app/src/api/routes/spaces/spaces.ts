@@ -15,8 +15,10 @@ import {
   createSpace,
   getSpace,
   getUserSpaceRole,
+  InvalidSpaceSlugError,
   listPublicSpaces,
   listUserSpaces,
+  SpaceSlugTakenError,
 } from "#db/space/spaces.ts";
 
 export const GET: ApiRouteHandler = (context) =>
@@ -64,7 +66,10 @@ export const POST: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to create space",
       onError: (error) => {
-        if (error instanceof Error && error.message.includes("already exists")) {
+        if (
+          error instanceof InvalidSpaceSlugError ||
+          error instanceof SpaceSlugTakenError
+        ) {
           return badRequestResponse(error.message);
         }
         if (

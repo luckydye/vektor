@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { LOCAL_USER_ID } from "#noAuth";
 import { CalDAVSource } from "./caldav/caldav-client.ts";
 import {
   createApiRequest,
@@ -165,5 +166,58 @@ describe("CalDAV API", () => {
     expect(icalText).toContain("BEGIN:VCALENDAR");
     expect(icalText).toContain("BEGIN:VEVENT");
     expect(icalText).toContain("Test Document 1");
+  });
+});
+
+/**
+ * A summary the slug generator cannot represent used to leave `createDocument`
+ * throwing through a handler with no error wrapper, so a calendar client syncing
+ * an event with a Japanese or emoji title got an opaque 500 and retried forever.
+ */
+describe("CalDAV event PUT with an unsluggable summary", () => {
+  function putEvent(eventId: string, summary: string): Promise<Response> {
+    const ical = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      `UID:${eventId}`,
+      `SUMMARY:${summary}`,
+      "DTSTART;VALUE=DATE:20260701",
+      "DTEND;VALUE=DATE:20260702",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+
+    return fetch(
+      `${BASE_URL}/api/caldav/calendars/${LOCAL_USER_ID}/${testSpaceId}/${eventId}.ics`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Basic ${btoa(`${LOCAL_USER_EMAIL}:noauth`)}`,
+          "Content-Type": "text/calendar; charset=utf-8",
+        },
+        body: ical,
+      },
+    );
+  }
+
+  it("creates an event with a Japanese summary", async () => {
+    const response = await putEvent("evt-japanese", "日本語会議");
+    expect(response.status).toBe(201);
+  });
+
+  it("creates an event with a symbol-only summary", async () => {
+    const response = await putEvent("evt-symbols", "-----");
+    expect(response.status).toBe(201);
+  });
+
+  it("creates an event with an emoji-only summary", async () => {
+    const response = await putEvent("evt-emoji", "🎉🎉🎉");
+    expect(response.status).toBe(201);
+  });
+
+  it("still creates an event with an ordinary summary", async () => {
+    const response = await putEvent("evt-latin", "Team Meeting");
+    expect(response.status).toBe(201);
   });
 });

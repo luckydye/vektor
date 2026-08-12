@@ -39,7 +39,7 @@ import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { slugify } from "#utils/utils.ts";
+import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/utils.ts";
 
 const DATA_DIR = "./data";
 const DELETED_DIR = join(DATA_DIR, "deleted");
@@ -57,6 +57,51 @@ export interface Space {
   memberCount?: number;
 }
 
+/** A caller-supplied space slug that cannot become a space URL. */
+export class InvalidSpaceSlugError extends Error {}
+
+/** A space slug another space already owns. */
+export class SpaceSlugTakenError extends Error {
+  constructor(slug: string) {
+    super(`Space with slug "${slug}" already exists`);
+  }
+}
+
+/**
+ * Whether a write failed on the partial unique index over active space slugs
+ * (`space_index_active_slug_unique`, created in `prepareAuthDb`).
+ *
+ * The database is the authority on slug uniqueness; the pre-checks below only
+ * exist to turn the common case into a clear message instead of a constraint
+ * error. This maps the race that slips past them onto the same failure.
+ */
+function isSlugUniqueViolation(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("space_index_active_slug_unique") ||
+    /UNIQUE constraint failed:\s*space_index\.slug/i.test(message)
+  );
+}
+
+/**
+ * The single place a caller-supplied space slug becomes a stored one.
+ *
+ * Both `createSpace` and `updateSpace` go through it, so they cannot drift apart
+ * again — creation used to sanitize silently while the update endpoint stored
+ * whatever it was handed, including a slug another space already owned.
+ */
+async function resolveSpaceSlug(input: string, spaceId?: string): Promise<string> {
+  const rejection = spaceSlugRejection(input);
+  if (rejection) throw new InvalidSpaceSlugError(rejection);
+
+  const slug = canonicalSpaceSlug(input);
+  await initializeDatabases();
+  const owner = await getIndexedSpaceBySlug(slug);
+  if (owner && owner.spaceId !== spaceId) throw new SpaceSlugTakenError(slug);
+
+  return slug;
+}
+
 export async function createSpace(
   createdBy: string,
   name: string,
@@ -66,18 +111,7 @@ export async function createSpace(
   const id = createId("space");
   const now = new Date();
 
-  // Sanitize slug to contain only URL-compatible characters
-  slug = slugify(slug);
-
-  if (!slug) {
-    throw new Error("Slug not valid");
-  }
-
-  // Check if slug already exists
-  const existingSpace = await getSpaceBySlug(slug);
-  if (existingSpace) {
-    throw new Error(`Space with slug "${slug}" already exists`);
-  }
+  slug = await resolveSpaceSlug(slug);
 
   const allocation = await allocateSpaceDatabase(id);
   let spaceDb: Awaited<ReturnType<typeof getSpaceDb>>;
@@ -116,7 +150,7 @@ export async function createSpace(
   } catch (error) {
     closeSpaceDb(id);
     await disableSpaceDatabase(allocation.id, id);
-    throw error;
+    throw isSlugUniqueViolation(error) ? new SpaceSlugTakenError(slug) : error;
   }
 
   // Grant owner permission to creator (after closing initial connection)
@@ -315,12 +349,10 @@ export async function updateSpace(
     return null;
   }
 
-  // Check if slug is changing and if new slug already exists
+  // Validated only when it changes: a space that predates the reserved-slug
+  // rules keeps its slug, so renaming it stays possible.
   if (slug !== existing.slug) {
-    const existingSpace = await getSpaceBySlug(slug);
-    if (existingSpace && existingSpace.id !== id) {
-      throw new Error(`Space with slug "${slug}" already exists`);
-    }
+    slug = await resolveSpaceSlug(slug, id);
   }
 
   const now = new Date();
@@ -348,7 +380,7 @@ export async function updateSpace(
         `Failed to update the space index and restore metadata for space ${id}`,
       );
     }
-    throw indexError;
+    throw isSlugUniqueViolation(indexError) ? new SpaceSlugTakenError(slug) : indexError;
   }
 
   // Update preferences if provided

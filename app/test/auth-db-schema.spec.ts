@@ -7,13 +7,13 @@
  * to decide whether an OAuth access token needs refreshing.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createDatabase } from "#db/client/connection.ts";
 import { prepareAuthDb } from "#db/client/init.ts";
-import { one } from "#db/client/query.ts";
+import { exec, many, one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
-import { account, user } from "#db/schema/auth.ts";
+import { account, spaceIndex, user } from "#db/schema/auth.ts";
 
 let authDb: ReturnType<typeof createDatabase>;
 
@@ -53,5 +53,57 @@ describe("auth database schema", () => {
       '"access_token_expires_at" INTEGER',
     );
     expect(generateCreateTableSQL(user)).toContain('"email_verified" INTEGER');
+  });
+});
+
+/**
+ * Two active spaces on one slug hide one of them for good, so the database is
+ * what enforces uniqueness — a check in a handler is only there to produce a
+ * readable message. `PATCH /api/v1/spaces/:id` used to store any slug it was
+ * handed, so a database written by an older build can already hold a collision,
+ * and building the index over those rows fails: the repair has to come first.
+ */
+describe("active space slug uniqueness", () => {
+  function activeSpaceRow(index: number, slug: string) {
+    return {
+      id: `database_${index}`,
+      location: `memory:space_${index}`,
+      status: "active" as const,
+      spaceId: `space_${index}`,
+      name: `Space ${index}`,
+      slug,
+      createdBy: "local",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  it("refuses a second active space on the same slug", async () => {
+    const database = createDatabase("file::memory:");
+    await prepareAuthDb(database);
+
+    await database.insert(spaceIndex).values(activeSpaceRow(1, "engineering"));
+    await expect(
+      database.insert(spaceIndex).values(activeSpaceRow(2, "engineering")),
+    ).rejects.toThrow();
+  });
+
+  it("separates slugs a previous build let collide, then builds the index", async () => {
+    const database = createDatabase("file::memory:");
+    await prepareAuthDb(database);
+    // Drop the guard to reproduce a database written before it existed.
+    await exec(database, sql.raw("DROP INDEX space_index_active_slug_unique"));
+
+    await database.insert(spaceIndex).values(activeSpaceRow(1, "collide"));
+    await database.insert(spaceIndex).values(activeSpaceRow(2, "collide"));
+    await database.insert(spaceIndex).values(activeSpaceRow(3, "collide"));
+
+    // Would throw on `CREATE UNIQUE INDEX` without the repair, taking the whole
+    // server start with it.
+    await prepareAuthDb(database);
+
+    const slugs = (await many(database.select().from(spaceIndex))).map((row) => row.slug);
+    expect(slugs).toContain("collide");
+    expect(new Set(slugs).size).toBe(3);
   });
 });

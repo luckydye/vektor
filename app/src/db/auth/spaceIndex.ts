@@ -6,6 +6,7 @@ import { grantPermission } from "#acl/store.ts";
 import {
   closeDatabase,
   createDatabase,
+  type Database,
   getAuthDatabaseUrl,
   getAuthDb,
   getLocalSpaceDatabaseUrl,
@@ -18,6 +19,8 @@ import { many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
+import { appLogger } from "#observability/logger.ts";
+import { availableSpaceSlug, spaceSlugRejection } from "#utils/utils.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
 export type ActiveSpaceIndexRecord = SpaceIndexRecord & {
@@ -579,6 +582,51 @@ async function indexLocalSpace(
   await upsertSpaceIndex(metadata, recordId, metadata.id);
 }
 
+/**
+ * Move a space off a slug it can never be reached at, and record the slug it
+ * ends up holding.
+ *
+ * A space on `docs`, `login` or `api` is shadowed by a static route in
+ * `src/pages/`: it is listed in the switcher and every click lands on Vektor's
+ * own page. A space sharing a slug with another one is hidden behind it. Neither
+ * has a UI path to a rename — reaching a space's settings means opening the
+ * space, which is exactly what is impossible — so nothing but this frees them.
+ *
+ * Both sides are rewritten by the caller: this writes `space_metadata`, and
+ * `indexLocalSpace` then carries the repaired slug into the index.
+ */
+async function repairSpaceSlug(
+  database: Database,
+  metadata: IndexedSpaceMetadata,
+  claimedSlugs: Set<string>,
+): Promise<IndexedSpaceMetadata> {
+  if (
+    spaceSlugRejection(metadata.slug) === undefined &&
+    !claimedSlugs.has(metadata.slug)
+  ) {
+    claimedSlugs.add(metadata.slug);
+    return metadata;
+  }
+
+  const slug = availableSpaceSlug(metadata.slug, (candidate) =>
+    claimedSlugs.has(candidate),
+  );
+  claimedSlugs.add(slug);
+
+  await database
+    .update(spaceMetadata)
+    .set({ slug, updatedAt: new Date() })
+    .where(eq(spaceMetadata.id, metadata.id));
+
+  appLogger.warn("Renamed a space whose slug the app's own routes shadowed", {
+    spaceId: metadata.id,
+    previousSlug: metadata.slug,
+    slug,
+  });
+
+  return { ...metadata, slug };
+}
+
 export async function reconcileLocalSpaceIndex(): Promise<void> {
   if (!isLocalDatabaseMode() || isInMemoryDb()) return;
 
@@ -589,6 +637,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     .filter((name) => name.endsWith(".db"))
     .map((name) => path.join(spacesDirectory, name));
   const discoveredPaths = new Set(discoveredFiles.map((file) => path.resolve(file)));
+  const claimedSlugs = new Set<string>();
 
   for (const databasePath of discoveredFiles) {
     const location = getLocalSpaceDatabaseUrl(path.basename(databasePath, ".db"));
@@ -596,6 +645,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     let metadata: IndexedSpaceMetadata | undefined;
     try {
       metadata = await one(database.select().from(spaceMetadata));
+      if (metadata) metadata = await repairSpaceSlug(database, metadata, claimedSlugs);
     } catch {
       // Ignore files that are not initialized space databases. They remain on
       // disk for an operator to inspect and are never added to the live index.

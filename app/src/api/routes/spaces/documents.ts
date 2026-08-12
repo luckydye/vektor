@@ -17,7 +17,6 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   createDocument,
-  EmptyDocumentSlugError,
   getDocumentChildren,
   InvalidDocumentParentError,
   listAllDocumentsByCategories,
@@ -247,10 +246,7 @@ export const POST: ApiRouteHandler = (context) =>
       createdAt,
       updatedAt,
     ).catch((error) => {
-      if (
-        error instanceof InvalidDocumentParentError ||
-        error instanceof EmptyDocumentSlugError
-      ) {
+      if (error instanceof InvalidDocumentParentError) {
         throw badRequestResponse(error.message);
       }
       throw error;

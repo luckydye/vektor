@@ -5,13 +5,17 @@ import {
   verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { withApiErrorHandling } from "#api/http.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
-import type { DocumentWithProperties } from "#db/space/documents.ts";
+import {
+  type DocumentWithProperties,
+  InvalidDocumentParentError,
+} from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
@@ -398,6 +402,36 @@ async function authorizeCalDAVToken(
   }
 
   return caldavUser;
+}
+
+export function calDavBadRequest(message: string): Response {
+  return new Response(message, {
+    status: 400,
+    headers: CORS_HEADERS,
+  });
+}
+
+/**
+ * The API routes' error handling, in the form a calendar client can read.
+ *
+ * The CalDAV handlers used to be bare `async (context) => …`, so a validation
+ * error thrown by the document layer left the router unhandled and reached the
+ * client as a generic 500 — which a syncing calendar can only retry, and which
+ * leaks whatever the exception happened to say. Known validation failures become
+ * a plain-text 4xx; anything else stays a logged 500, exactly as under
+ * `withApiErrorHandling` elsewhere.
+ */
+export function withCalDavErrorHandling(
+  handler: () => Promise<Response> | Response,
+  fallbackMessage: string,
+): Promise<Response> {
+  return withApiErrorHandling(handler, {
+    fallbackMessage,
+    onError: (error) =>
+      error instanceof InvalidDocumentParentError
+        ? calDavBadRequest(error.message)
+        : undefined,
+  });
 }
 
 export async function requireCalDAVUserAndAccess(
