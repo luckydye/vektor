@@ -155,13 +155,16 @@ export async function getSpace(id: string): Promise<Space | null> {
     spaceDb.select().from(preference).where(isNull(preference.userId)),
   );
 
-  const preferences: Record<string, string> = {};
-  for (const pref of prefs) {
-    preferences[pref.key] = pref.value;
-  }
+  // Collected in a `Map`: preference keys are user-supplied, and
+  // `preferences["__proto__"] = value` on an object literal is a silent no-op for
+  // a string value, so a stored `__proto__` preference could never be read back
+  // — and, being invisible, made the emptiness check below insert a default
+  // brandColor row on what is supposed to be a read. `Object.fromEntries` defines
+  // own keys, so every stored preference round-trips.
+  const preferenceEntries = new Map(prefs.map((pref) => [pref.key, pref.value]));
 
   // Set default preferences if none exist
-  if (Object.keys(preferences).length === 0) {
+  if (preferenceEntries.size === 0) {
     const now = new Date();
     await spaceDb.insert(preference).values({
       id: createId("preference"),
@@ -170,8 +173,10 @@ export async function getSpace(id: string): Promise<Space | null> {
       createdAt: now,
       updatedAt: now,
     });
-    preferences.brandColor = "#1e293b";
+    preferenceEntries.set("brandColor", "#1e293b");
   }
+
+  const preferences: Record<string, string> = Object.fromEntries(preferenceEntries);
 
   const memberCount = await countSpaceMembers(id);
 
@@ -343,8 +348,10 @@ export async function updateSpace(
     throw indexError;
   }
 
-  // Update preferences if provided
-  const updatedPreferences = { ...existing.preferences };
+  // Update preferences if provided. A `Map` for the same reason as in `getSpace`:
+  // the response has to report back a `__proto__` preference it just wrote, and
+  // bracket assignment on an object would drop it.
+  const updatedPreferences = new Map(Object.entries(existing.preferences));
   if (preferences) {
     for (const [key, value] of Object.entries(preferences)) {
       // Check if preference exists
@@ -371,7 +378,7 @@ export async function updateSpace(
           updatedAt: now,
         });
       }
-      updatedPreferences[key] = value;
+      updatedPreferences.set(key, value);
     }
   }
 
@@ -380,7 +387,7 @@ export async function updateSpace(
     name,
     slug,
     createdBy: existing.createdBy,
-    preferences: updatedPreferences,
+    preferences: Object.fromEntries(updatedPreferences),
     createdAt: existing.createdAt,
     updatedAt: now,
   };

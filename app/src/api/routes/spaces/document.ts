@@ -51,6 +51,7 @@ import {
 } from "#db/space/revisions.ts";
 import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
+import { isReservedDocumentPropertyKey } from "#documents/properties.ts";
 import {
   contentIsHtml,
   documentIsReadonly,
@@ -113,6 +114,12 @@ async function handlePropertiesPatch(
   for (const [propertyKey, propertyPatch] of propertyEntries) {
     if (!propertyKey || typeof propertyKey !== "string") {
       throw badRequestResponse("Property key is required and must be a non-empty string");
+    }
+
+    // A delete is always allowed, even for a reserved key: a document poisoned
+    // before this check existed has to stay cleanable through the API.
+    if (propertyPatch !== null && isReservedDocumentPropertyKey(propertyKey)) {
+      throw badRequestResponse(`Property key "${propertyKey}" is reserved`);
     }
 
     if (propertyPatch === null) {

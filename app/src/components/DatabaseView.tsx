@@ -9,6 +9,7 @@ import { useToast } from "#composeables/useToast.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,
+  readDocumentProperty,
 } from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
@@ -22,7 +23,10 @@ const DEFAULT_COL_WIDTH = 180;
 const NAME_COL_WIDTH = 240;
 
 function cellValue(row: Record<string, DocumentPropertyValue>, col: string): string {
-  const value = row[col];
+  // Column names come from the space's property keys, so a column called
+  // `toString` would read `Object.prototype.toString` off the row and render the
+  // function's source into the cell.
+  const value = readDocumentProperty(row, col);
   return value ? propertyValueToText(value) : "";
 }
 

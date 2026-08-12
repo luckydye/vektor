@@ -9,6 +9,8 @@ import { createId } from "#db/ids.ts";
 import { document, file as fileTable, property, revision } from "#db/schema/space.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
+  aggregateStoredProperties,
+  assertWritableDocumentPropertyKey,
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToScalar,
@@ -149,6 +151,12 @@ export async function createDocument(
   updatedAt?: Date,
 ): Promise<DocumentWithProperties> {
   if (parentId) await assertDocumentCanParent(s, parentId, type);
+  // Every key up front, before the document row exists: the property inserts
+  // below are not in one transaction with it, so rejecting halfway would leave a
+  // document behind that the caller was told was never created.
+  for (const key of Object.keys(initialProperties ?? {})) {
+    assertWritableDocumentPropertyKey(key);
+  }
   const id = createId("document");
   const now = new Date();
   const documentCreatedAt = createdAt || now;
@@ -846,6 +854,7 @@ export async function updateDocumentProperty(
   type?: string | null,
   userId?: string,
 ): Promise<{ slug?: string }> {
+  assertWritableDocumentPropertyKey(key);
   const now = new Date();
   const storedValue = serializePropertyValue(value);
 
@@ -1080,16 +1089,22 @@ async function countMentionsForUser(
 /**
  * List documents for multiple categories in one pass.
  * For each category slug, includes documents directly in that category plus all descendants.
+ *
+ * Returns a `Map`, not a `Record`: the slugs come straight off the query string,
+ * and `result["__proto__"] = docs` on an object literal reassigns the prototype
+ * instead of storing the bucket — the slug then vanishes from `Object.entries`
+ * and the caller reads `Object.prototype` back in its place, which is not an
+ * array and so 500s the whole listing.
  */
 export async function listAllDocumentsByCategories(
   s: SpaceStore,
   categorySlugs: string[],
   viewer: AclViewer | null,
   userEmail?: string,
-): Promise<Record<string, DocumentWithProperties[]>> {
+): Promise<Map<string, DocumentWithProperties[]>> {
   const uniqueSlugs = Array.from(new Set(categorySlugs.filter(Boolean)));
   if (uniqueSlugs.length === 0) {
-    return {};
+    return new Map();
   }
 
   let docs = await many(
@@ -1206,11 +1221,11 @@ export async function listAllDocumentsByCategories(
     );
   }
 
-  const result: Record<string, DocumentWithProperties[]> = {};
+  const result = new Map<string, DocumentWithProperties[]>();
 
   for (const slug of uniqueSlugs) {
     const ids = docIdsBySlug.get(slug) || new Set<string>();
-    result[slug] = typeFilteredResults
+    const bucket = typeFilteredResults
       .filter((doc) => ids.has(doc.id))
       .map((doc) => {
         if (!userEmail) return doc;
@@ -1219,6 +1234,7 @@ export async function listAllDocumentsByCategories(
           mentionCount: mentionCountByDocId.get(doc.id) || 0,
         };
       });
+    result.set(slug, bucket);
   }
 
   return result;
@@ -1323,27 +1339,18 @@ export interface PropertyInfo {
 }
 
 export async function getAllPropertiesWithValues(s: SpaceStore): Promise<PropertyInfo[]> {
-  const allProperties = await many(s.db.select().from(property));
-
-  const propertyMap: Record<string, { type: string | null; values: Set<string> }> = {};
-
-  for (const prop of allProperties) {
-    if (!propertyMap[prop.key]) {
-      propertyMap[prop.key] = {
-        type: prop.type || null,
-        values: new Set(),
-      };
-    }
-    const propValue = parseStoredPropertyValue(prop.value);
-    const values = Array.isArray(propValue) ? propValue : [propValue];
-    for (const value of values) {
-      if (!value) continue;
-      propertyMap[prop.key].values.add(value);
-    }
-    if (prop.type && !propertyMap[prop.key].type) {
-      propertyMap[prop.key].type = prop.type;
-    }
-  }
+  // Joined to `document` rather than scanning `property` alone: property rows
+  // outlive their document because deletes do not cascade, and an orphan would
+  // otherwise be listed as a property of the space that no document explains and
+  // no API can remove. The join also drops archived documents, which is what the
+  // `type` values below already do.
+  const allProperties = await many(
+    s.db
+      .select({ key: property.key, value: property.value, type: property.type })
+      .from(property)
+      .innerJoin(document, eq(property.documentId, document.id))
+      .where(sql`${nonArchivedDocumentCondition}`),
+  );
 
   // Add document type as a virtual property
   const docTypes = await many(
@@ -1363,14 +1370,10 @@ export async function getAllPropertiesWithValues(s: SpaceStore): Promise<Propert
     typeValues.sort();
   }
 
-  const result: PropertyInfo[] = [{ name: "type", type: "select", values: typeValues }];
-  for (const [key, data] of Object.entries(propertyMap)) {
-    result.push({
-      name: key,
-      type: data.type,
-      values: Array.from(data.values).sort(),
-    });
-  }
+  const result: PropertyInfo[] = [
+    { name: "type", type: "select", values: typeValues },
+    ...aggregateStoredProperties(allProperties),
+  ];
 
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }

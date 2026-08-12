@@ -8,6 +8,7 @@ import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
+  readDocumentProperty,
 } from "#documents/properties.ts";
 import {
   buildDocumentSearchText,
@@ -337,7 +338,10 @@ export async function searchDocuments(
       }
     }
     for (const filter of propertyFilters) {
-      const propValue = properties[filter.key];
+      // Own keys only: `filter.key` comes straight from the request, so a filter
+      // on `toString` would otherwise read `Object.prototype.toString` and throw
+      // `value.toLowerCase is not a function` below.
+      const propValue = readDocumentProperty(properties, filter.key);
       if (filter.value === null) {
         if (
           propValue === undefined ||
@@ -347,11 +351,10 @@ export async function searchDocuments(
           return false;
         }
       } else {
+        if (propValue === undefined) return false;
         const values = Array.isArray(propValue) ? propValue : [propValue];
-        if (
-          propValue === undefined ||
-          !values.some((value) => value.toLowerCase() === filter.value?.toLowerCase())
-        ) {
+        const expected = filter.value.toLowerCase();
+        if (!values.some((value) => value.toLowerCase() === expected)) {
           return false;
         }
       }
