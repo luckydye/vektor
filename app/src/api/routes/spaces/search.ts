@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateSpaceAccess } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -15,6 +16,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
+      const store = await openSpaceStore(spaceId);
 
       const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
       // searchDocuments uses null for "trusted system view" (no per-document
@@ -63,7 +65,7 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const { results, nextCursor } = await searchDocuments(
-        spaceId,
+        store,
         userId,
         query,
         limit,

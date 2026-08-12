@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { eq } from "drizzle-orm";
 import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
@@ -62,7 +63,7 @@ export async function verifyBasicAuth(
 
   const spaces = await listUserSpaces(foundUser.id);
   for (const space of spaces) {
-    const result = await validateAccessToken(token, space.id);
+    const result = await validateAccessToken(await openSpaceStore(token), space.id);
     if (result && result.token.createdBy === foundUser.id) {
       return { id: foundUser.id, email: foundUser.email, name: foundUser.name };
     }

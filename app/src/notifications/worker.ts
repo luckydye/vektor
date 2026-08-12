@@ -4,6 +4,7 @@ import { Permission } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
 import { getComment } from "#db/space/comments.ts";
@@ -50,10 +51,9 @@ async function deliver(
   spaceId: string,
   notification: EmailNotificationOutbox,
 ): Promise<void> {
-  if (
-    await isEmailMuted(spaceId, notification.recipientUserId, notification.documentId)
-  ) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "Document muted");
+  const store = await openSpaceStore(spaceId);
+  if (await isEmailMuted(store, notification.recipientUserId, notification.documentId)) {
+    await markEmailNotificationSkipped(store, notification.id, "Document muted");
     return;
   }
 
@@ -65,11 +65,7 @@ async function deliver(
       Permission.VIEWER,
     );
   } catch {
-    await markEmailNotificationSkipped(
-      spaceId,
-      notification.id,
-      "Document access revoked",
-    );
+    await markEmailNotificationSkipped(store, notification.id, "Document access revoked");
     return;
   }
 
@@ -85,16 +81,16 @@ async function deliver(
       .from(user)
       .where(eq(user.id, notification.actorId))
       .get(),
-    getDocument(spaceId, notification.documentId),
+    getDocument(await openSpaceStore(spaceId), notification.documentId),
     getSpace(spaceId),
   ]);
 
   if (!recipient?.email || !recipient.emailVerified) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "No verified email");
+    await markEmailNotificationSkipped(store, notification.id, "No verified email");
     return;
   }
   if (!doc || !space) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "Document unavailable");
+    await markEmailNotificationSkipped(store, notification.id, "Document unavailable");
     return;
   }
 
@@ -102,12 +98,12 @@ async function deliver(
   const title = titleValue ? propertyValueToText(titleValue).trim() : doc.slug;
   const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
     notification.kind === "comment_created"
-      ? getComment(spaceId, notification.sourceId)
+      ? getComment(store, notification.sourceId)
       : undefined,
     notification.kind === "document_published" &&
     typeof notification.publishedRevision === "number"
       ? getRevisionContent(
-          spaceId,
+          await openSpaceStore(spaceId),
           notification.documentId,
           notification.publishedRevision,
         )
@@ -115,14 +111,14 @@ async function deliver(
     notification.kind === "document_published" &&
     typeof notification.previousPublishedRevision === "number"
       ? getRevisionContent(
-          spaceId,
+          await openSpaceStore(spaceId),
           notification.documentId,
           notification.previousPublishedRevision,
         )
       : undefined,
   ]);
   if (notification.kind === "comment_created" && !commentRecord) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "Comment unavailable");
+    await markEmailNotificationSkipped(store, notification.id, "Comment unavailable");
     return;
   }
 
@@ -138,7 +134,7 @@ async function deliver(
     publishedContent,
   });
   await sendEmail({ to: recipient.email, ...rendered });
-  await markEmailNotificationSent(spaceId, notification.id);
+  await markEmailNotificationSent(store, notification.id);
 }
 
 async function tick(): Promise<void> {
@@ -146,13 +142,14 @@ async function tick(): Promise<void> {
   tickInProgress = true;
   try {
     for (const spaceId of await listActiveSpaceIds()) {
+      const store = await openSpaceStore(spaceId);
       try {
-        const due = await claimDueEmailNotifications(spaceId);
+        const due = await claimDueEmailNotifications(store);
         for (const notification of due) {
           try {
             await deliver(spaceId, notification);
           } catch (error) {
-            await retryEmailNotification(spaceId, notification, error);
+            await retryEmailNotification(store, notification, error);
             appLogger.warn("Email notification delivery failed", {
               error,
               spaceId,

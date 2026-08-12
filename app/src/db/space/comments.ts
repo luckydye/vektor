@@ -1,12 +1,12 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { comment } from "#db/schema/space.ts";
 
 export type Comment = typeof comment.$inferSelect;
 
 export async function createComment(
-  spaceId: string,
+  s: SpaceStore,
   resourceType: string,
   resourceId: string,
   content: string,
@@ -15,11 +15,10 @@ export async function createComment(
   type: string = "comment",
   reference?: string,
 ): Promise<Comment> {
-  const db = await getSpaceDb(spaceId);
   const id = createId("comment");
   const now = new Date();
 
-  const [newComment] = await db
+  const [newComment] = await s.db
     .insert(comment)
     .values({
       id,
@@ -44,13 +43,11 @@ export async function createComment(
 }
 
 export async function listComments(
-  spaceId: string,
+  s: SpaceStore,
   resourceType: string,
   resourceId: string,
 ): Promise<Comment[]> {
-  const db = await getSpaceDb(spaceId);
-
-  return db
+  return s.db
     .select()
     .from(comment)
     .where(
@@ -64,43 +61,41 @@ export async function listComments(
 }
 
 export async function getComment(
-  spaceId: string,
+  s: SpaceStore,
   commentId: string,
 ): Promise<Comment | undefined> {
-  const db = await getSpaceDb(spaceId);
-
-  const [foundComment] = await db.select().from(comment).where(eq(comment.id, commentId));
+  const [foundComment] = await s.db
+    .select()
+    .from(comment)
+    .where(eq(comment.id, commentId));
 
   return foundComment;
 }
 
 export async function updateCommentReferences(
-  spaceId: string,
+  s: SpaceStore,
   commentIds: string[],
   reference: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  await db
+  await s.db
     .update(comment)
     .set({ reference, updatedAt: new Date() })
     .where(inArray(comment.id, commentIds));
 }
 
-export async function archiveComment(spaceId: string, commentId: string): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  await db
+export async function archiveComment(s: SpaceStore, commentId: string): Promise<void> {
+  await s.db
     .update(comment)
     .set({ archived: true, updatedAt: new Date() })
     .where(eq(comment.id, commentId));
 }
 
 export async function archiveComments(
-  spaceId: string,
+  s: SpaceStore,
   commentIds: string[],
 ): Promise<void> {
   if (commentIds.length === 0) return;
-  const db = await getSpaceDb(spaceId);
-  await db
+  await s.db
     .update(comment)
     .set({ archived: true, updatedAt: new Date() })
     .where(inArray(comment.id, commentIds));
@@ -123,14 +118,13 @@ function normalizeCommentReference(reference: string | null): string | null {
 
 /** Authors of every non-archived comment anchored to the same thread. */
 export async function listThreadParticipantIds(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   reference: string | null,
   parentId: string | null,
 ): Promise<string[]> {
-  const db = await getSpaceDb(spaceId);
   const parent = parentId
-    ? await db
+    ? await s.db
         .select({ createdBy: comment.createdBy, reference: comment.reference })
         .from(comment)
         .where(
@@ -147,7 +141,7 @@ export async function listThreadParticipantIds(
   );
   if (!normalizedReference) return [];
 
-  const rows = await db
+  const rows = await s.db
     .select({ createdBy: comment.createdBy, reference: comment.reference })
     .from(comment)
     .where(

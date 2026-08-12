@@ -10,6 +10,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   type AIChatSessionInput,
   deleteAIChatSession,
@@ -76,11 +77,12 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
-    const session = await getAIChatSession(spaceId, sessionId, user.id);
+    const session = await getAIChatSession(store, sessionId, user.id);
     if (!session) {
       throw notFoundResponse("AI chat session");
     }
@@ -92,13 +94,14 @@ export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
     const body = await parseJsonBody(context.req.raw);
     const session = parseSessionInput(spaceId, sessionId, body);
-    const saved = await upsertAIChatSession(spaceId, user.id, session);
+    const saved = await upsertAIChatSession(store, user.id, session);
 
     return jsonResponse({ session: saved });
   }, "Failed to save AI chat session");
@@ -107,15 +110,16 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
-    const session = await getAIChatSession(spaceId, sessionId, user.id);
+    const session = await getAIChatSession(store, sessionId, user.id);
     if (!session) {
       throw notFoundResponse("AI chat session");
     }
 
-    await deleteAIChatSession(spaceId, sessionId, user.id);
+    await deleteAIChatSession(store, sessionId, user.id);
     return jsonResponse({ success: true });
   }, "Failed to delete AI chat session");

@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -18,9 +19,10 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
-    const existing = await listOAuthIntegrationsForUser(spaceId, user.id);
+    const existing = await listOAuthIntegrationsForUser(store, user.id);
 
     const connections = getOAuthIntegrationProviders().map((provider) => {
       const connection = existing.find((item) => item.provider === provider) ?? null;

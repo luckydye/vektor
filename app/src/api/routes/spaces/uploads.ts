@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { createHash } from "node:crypto";
 import { authenticateJobTokenOrSpaceRole, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
@@ -49,6 +50,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
+      const store = await openSpaceStore(spaceId);
       const auth = await authenticateJobTokenOrSpaceRole(
         context,
         spaceId,
@@ -124,7 +126,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (documentId) {
         // Re-index the parent document (reads from file table, no FS scan)
-        updateDocumentEmbedding(spaceId, documentId).catch((err) => {
+        updateDocumentEmbedding(store, documentId).catch((err) => {
           appLogger.warn("Failed to re-index document after upload", { error: err });
         });
       }

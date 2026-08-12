@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifyDocumentAccess } from "#acl/guards.ts";
 import {
   badRequestResponse,
@@ -507,7 +508,7 @@ export const GET: ApiRouteHandler = (context) =>
           throw badRequestResponse("Space not found");
         }
 
-        const doc = await getDocumentBySlug(space.id, internalPath.documentSlug);
+        const doc = await getDocumentBySlug(await openSpaceStore(space.id), internalPath.documentSlug);
         if (!doc) {
           throw badRequestResponse("Document not found");
         }

@@ -13,6 +13,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import {
@@ -32,6 +33,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = context.var.user;
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const documentId = new URL(context.req.url).searchParams.get("documentId");
 
     if (!documentId) {
@@ -41,7 +43,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Allow viewing comments if user has access to document (including public docs)
     await verifyDocumentAccess(spaceId, documentId, user?.id || null);
 
-    const comments = await listComments(spaceId, ResourceType.DOCUMENT, documentId);
+    const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
 
     // Fetch user data for comment creators. Only id/name/image — the client
     // renders the author name and an id-seeded avatar; email is PII and is
@@ -78,6 +80,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const { content, parentId, type, reference, documentId } = body;
@@ -109,7 +112,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const comment = await createComment(
-      spaceId,
+      store,
       ResourceType.DOCUMENT,
       documentId,
       content,
@@ -119,7 +122,7 @@ export const POST: ApiRouteHandler = (context) =>
       typeof reference === "string" ? reference : undefined,
     );
 
-    await createAuditLog(await getSpaceDb(spaceId), {
+    await createAuditLog(store, {
       spaceId,
       docId: documentId,
       userId: user.id,
@@ -168,6 +171,7 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const { commentIds, reference, archived, documentId } = body;
@@ -188,7 +192,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     // Only operate on comments that belong to this document
-    const comments = await listComments(spaceId, ResourceType.DOCUMENT, documentId);
+    const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
     const documentCommentIds = new Set(comments.map((c) => c.id));
     const validIds = commentIds.filter((id) => documentCommentIds.has(id));
     if (validIds.length === 0) {
@@ -196,7 +200,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     if (archived === true) {
-      await archiveComments(spaceId, validIds);
+      await archiveComments(store, validIds);
 
       sendSyncEvent(spaceId, {
         topic: realtimeTopics.document(documentId),
@@ -207,7 +211,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("Reference is required");
       }
 
-      await updateCommentReferences(spaceId, validIds, reference);
+      await updateCommentReferences(store, validIds, reference);
 
       sendSyncEvent(spaceId, {
         topic: realtimeTopics.document(documentId),
@@ -222,6 +226,7 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
 
     const body = await parseJsonBody(context.req.raw);
     const { commentId, documentId } = body;
@@ -240,7 +245,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     // Get the comment and verify user is the creator
-    const comment = await getComment(spaceId, commentId);
+    const comment = await getComment(store, commentId);
     if (!comment) {
       throw notFoundResponse("Comment");
     }
@@ -249,7 +254,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       throw forbiddenResponse("You can only delete your own comments");
     }
 
-    await archiveComment(spaceId, commentId);
+    await archiveComment(store, commentId);
 
     sendSyncEvent(spaceId, {
       topic: realtimeTopics.document(documentId),

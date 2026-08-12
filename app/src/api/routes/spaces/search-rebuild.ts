@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -14,10 +15,11 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
+      const store = await openSpaceStore(spaceId);
 
       await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-      await rebuildSearchIndex(spaceId);
+      await rebuildSearchIndex(store);
 
       return successResponse("Search embeddings rebuilt successfully");
     },

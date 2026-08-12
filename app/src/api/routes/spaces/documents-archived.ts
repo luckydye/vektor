@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceAccess } from "#acl/guards.ts";
 import { getUserGroups } from "#acl/store.ts";
 import {
@@ -14,6 +15,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceAccess(spaceId, user.id);
     const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
@@ -23,7 +25,7 @@ export const GET: ApiRouteHandler = (context) =>
       },
     );
     const { documents, nextCursor } = await listArchivedDocuments(
-      spaceId,
+      store,
       { userId: user.id, userGroups: await getUserGroups(user.id) },
       { limit, cursor },
     );

@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifyFeatureAccess } from "#acl/guards.ts";
 import { Feature } from "#acl/permissions.ts";
 import {
@@ -18,11 +19,12 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const extensionId = requireParam(context.var.params, "extensionId");
 
     await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
 
-    const pkg = await getExtensionPackage(spaceId, extensionId);
+    const pkg = await getExtensionPackage(store, extensionId);
     if (!pkg) {
       return notFoundResponse("Extension");
     }

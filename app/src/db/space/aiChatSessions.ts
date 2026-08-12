@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { aiChatSession } from "#db/schema/space.ts";
 
 export type StoredAIChatSession = {
@@ -49,13 +49,13 @@ function parseJsonArray(value: string, field: string): unknown[] {
 }
 
 function toStoredAIChatSession(
-  spaceId: string,
+  s: SpaceStore,
   row: typeof aiChatSession.$inferSelect,
 ): StoredAIChatSession {
   return {
     id: row.id,
     title: row.title,
-    spaceId,
+    spaceId: s.spaceId,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     messages: parseJsonArray(row.messages, "messages"),
@@ -65,11 +65,10 @@ function toStoredAIChatSession(
 }
 
 export async function listAIChatSessionSummaries(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
 ): Promise<AIChatSessionSummary[]> {
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
+  const rows = await s.db
     .select({
       id: aiChatSession.id,
       title: aiChatSession.title,
@@ -88,7 +87,7 @@ export async function listAIChatSessionSummaries(
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
-    spaceId,
+    spaceId: s.spaceId,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     lastMessageRole: row.lastMessageRole ?? null,
@@ -96,26 +95,24 @@ export async function listAIChatSessionSummaries(
 }
 
 export async function getAIChatSession(
-  spaceId: string,
+  s: SpaceStore,
   sessionId: string,
   userId: string,
 ): Promise<StoredAIChatSession | null> {
-  const db = await getSpaceDb(spaceId);
-  const [row] = await db
+  const [row] = await s.db
     .select()
     .from(aiChatSession)
     .where(and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)));
 
-  return row ? toStoredAIChatSession(spaceId, row) : null;
+  return row ? toStoredAIChatSession(s, row) : null;
 }
 
 export async function upsertAIChatSession(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   session: AIChatSessionInput,
 ): Promise<StoredAIChatSession> {
-  const db = await getSpaceDb(spaceId);
-  const existing = await getAIChatSession(spaceId, session.id, userId);
+  const existing = await getAIChatSession(s, session.id, userId);
   const values = {
     id: session.id,
     title: session.title,
@@ -131,7 +128,7 @@ export async function upsertAIChatSession(
   };
 
   if (existing) {
-    const [updated] = await db
+    const [updated] = await s.db
       .update(aiChatSession)
       .set(values)
       .where(and(eq(aiChatSession.id, session.id), eq(aiChatSession.createdBy, userId)))
@@ -139,23 +136,22 @@ export async function upsertAIChatSession(
     if (!updated) {
       throw new Error("Failed to update AI chat session");
     }
-    return toStoredAIChatSession(spaceId, updated);
+    return toStoredAIChatSession(s, updated);
   }
 
-  const [created] = await db.insert(aiChatSession).values(values).returning();
+  const [created] = await s.db.insert(aiChatSession).values(values).returning();
   if (!created) {
     throw new Error("Failed to create AI chat session");
   }
-  return toStoredAIChatSession(spaceId, created);
+  return toStoredAIChatSession(s, created);
 }
 
 export async function deleteAIChatSession(
-  spaceId: string,
+  s: SpaceStore,
   sessionId: string,
   userId: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  await db
+  await s.db
     .delete(aiChatSession)
     .where(and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)));
 }

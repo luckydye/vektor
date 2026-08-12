@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { getUserGroups } from "#acl/store.ts";
 import {
   documentToICal,
@@ -25,7 +26,7 @@ export const ALL: ApiRouteHandler = async (context) => {
   if (method === "REPORT") {
     // Filter by per-document ACL so the calendar feed doesn't expose
     // documents the authenticated user cannot read.
-    const { documents } = await listDocuments(spaceId, {
+    const { documents } = await listDocuments(await openSpaceStore(spaceId), {
       viewer: {
         userId: caldavUser.id,
         userGroups: await getUserGroups(caldavUser.id),
@@ -68,7 +69,7 @@ ${eventEntries}
     // Scope the collection tag to the documents this user can actually read,
     // matching the REPORT feed — otherwise the ctag leaks the space-wide
     // document count and desyncs from the filtered event list.
-    const { total } = await listDocuments(spaceId, {
+    const { total } = await listDocuments(await openSpaceStore(spaceId), {
       viewer: {
         userId: caldavUser.id,
         userGroups: await getUserGroups(caldavUser.id),

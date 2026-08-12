@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { eq } from "drizzle-orm";
 import {
   authenticateJobTokenOrSpaceRole,
@@ -114,7 +115,7 @@ async function handlePropertiesPatch(
     }
 
     if (propertyPatch === null) {
-      await deleteDocumentProperty(spaceId, documentId, propertyKey, userId);
+      await deleteDocumentProperty(await openSpaceStore(spaceId), documentId, propertyKey, userId);
       continue;
     }
 
@@ -143,7 +144,7 @@ async function handlePropertiesPatch(
     }
 
     const changedProperties = await updateDocumentProperty(
-      spaceId,
+      await openSpaceStore(spaceId),
       documentId,
       propertyKey,
       Array.isArray(nextValue)
@@ -184,7 +185,7 @@ async function handlePublishedRevisionPatch(
   const revisionContent =
     revToPublish === null
       ? null
-      : await getRevisionContent(spaceId, documentId, revToPublish);
+      : await getRevisionContent(await openSpaceStore(spaceId), documentId, revToPublish);
   if (revToPublish !== null && !revisionContent) {
     throw notFoundResponse("Revision");
   }
@@ -194,7 +195,7 @@ async function handlePublishedRevisionPatch(
     .set({ publishedRev: revToPublish })
     .where(eq(documentTable.id, documentId));
 
-  const auditEntry = await createAuditLog(db, {
+  const auditEntry = await createAuditLog(await openSpaceStore(spaceId), {
     spaceId,
     docId: documentId,
     revisionId: revToPublish || undefined,
@@ -262,7 +263,7 @@ async function handleReadonlyPatch(
     .set({ readonly: readonly })
     .where(eq(documentTable.id, documentId));
 
-  await createAuditLog(db, {
+  await createAuditLog(await openSpaceStore(spaceId), {
     spaceId,
     docId: documentId,
     userId,
@@ -292,9 +293,9 @@ export const GET: ApiRouteHandler = (context) =>
     // Resolve slug → ID: try by ID first, fall back to slug so client-side
     // routing and cross-host callers can pass URL slugs directly.
     let id = rawId;
-    const preCheck = await getDocument(spaceId, rawId);
+    const preCheck = await getDocument(await openSpaceStore(spaceId), rawId);
     if (!preCheck) {
-      const bySlug = await getDocumentBySlug(spaceId, rawId);
+      const bySlug = await getDocumentBySlug(await openSpaceStore(spaceId), rawId);
       if (bySlug) id = bySlug.id;
     }
 
@@ -335,12 +336,12 @@ export const GET: ApiRouteHandler = (context) =>
     if (revParam) {
       const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
 
-      const metadata = await getRevisionMetadata(spaceId, id, rev);
+      const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
       if (!metadata) {
         throw notFoundResponse("Revision");
       }
 
-      const content = await getRevisionContent(spaceId, id, rev);
+      const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
       if (!content) {
         throw notFoundResponse("Revision");
       }
@@ -355,7 +356,7 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    const meta = await getDocument(spaceId, id);
+    const meta = await getDocument(await openSpaceStore(spaceId), id);
     if (!meta) {
       throw notFoundResponse("Document");
     }
@@ -373,16 +374,16 @@ export const GET: ApiRouteHandler = (context) =>
           spaceId,
           id,
           meta.type,
-          (await getDocumentContent(spaceId, id)) ?? "",
+          (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
         ),
       };
     } else if (!draft && meta.publishedRev !== null) {
-      document = await resolvePublishedDocumentContent(spaceId, {
+      document = await resolvePublishedDocumentContent(await openSpaceStore(spaceId), {
         ...meta,
-        content: (await getDocumentContent(spaceId, id)) ?? "",
+        content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
       });
     } else {
-      document = { ...meta, content: (await getDocumentContent(spaceId, id)) ?? "" };
+      document = { ...meta, content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "" };
     }
 
     const accept = context.req.raw.headers.get("Accept") ?? "";
@@ -415,9 +416,10 @@ export const GET: ApiRouteHandler = (context) =>
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
 
-    const existingDoc = await getDocument(spaceId, id);
+    const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
     }
@@ -483,7 +485,7 @@ export const PUT: ApiRouteHandler = (context) =>
           throw forbiddenResponse("Invalid restore request");
         }
 
-        await restoreDocument(spaceId, id, userId);
+        await restoreDocument(store, id, userId);
         sendSyncEvent(
           spaceId,
           realtimeTopics.categoryDocuments,
@@ -525,13 +527,13 @@ export const PUT: ApiRouteHandler = (context) =>
     // createRevision records the canonical content-save audit event, including
     // its revision ID. Do not also record the draft write or the activity feed
     // shows a duplicate edit without revision actions.
-    let document = await updateDocument(spaceId, id, contentSanitized, nextType);
+    let document = await updateDocument(store, id, contentSanitized, nextType);
     if (!document) {
       throw notFoundResponse("Document");
     }
 
     if (userId) {
-      const revision = await createRevision(spaceId, id, contentSanitized, userId, {
+      const revision = await createRevision(store, id, contentSanitized, userId, {
         message: "Document updated",
       });
       if (publish === true) {
@@ -539,7 +541,7 @@ export const PUT: ApiRouteHandler = (context) =>
         // updateDocument returns before the newly-created revision is assigned
         // to publishedRev. Return the final canonical document so clients can
         // replace their optimistic publish state with the real revision number.
-        const publishedDocument = await getDocument(spaceId, id);
+        const publishedDocument = await getDocument(store, id);
         if (!publishedDocument) {
           throw notFoundResponse("Document");
         }
@@ -559,8 +561,9 @@ export const PUT: ApiRouteHandler = (context) =>
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
-    const existingDoc = await getDocument(spaceId, id);
+    const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
     }
@@ -617,7 +620,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         await verifyDocumentAccess(spaceId, parentId, userId);
       }
 
-      const parentChange = await setDocumentParent(spaceId, id, parentId).catch(
+      const parentChange = await setDocumentParent(store, id, parentId).catch(
         (error) => {
           if (error instanceof InvalidDocumentParentError) {
             throw badRequestResponse(error.message);
@@ -670,6 +673,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
     const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
     const auth = await authenticateJobTokenOrSpaceRole(
@@ -688,10 +692,10 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     if (permanent) {
       await verifyDocumentRole(spaceId, id, userId, Permission.OWNER);
-      await deleteDocument(spaceId, id, userId);
+      await deleteDocument(store, id, userId);
     } else {
       await verifyDocumentRole(spaceId, id, userId, Permission.EDITOR);
-      await archiveDocument(spaceId, id, userId);
+      await archiveDocument(store, id, userId);
     }
 
     return successResponse();
@@ -701,11 +705,12 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
-    const document = await getDocument(spaceId, documentId);
+    const document = await getDocument(store, documentId);
     if (!document) {
       throw badRequestResponse("Document not found");
     }
@@ -735,8 +740,8 @@ export const POST: ApiRouteHandler = (context) =>
 
       const revision =
         mode === "suggestion"
-          ? await createSuggestion(spaceId, documentId, html, user.id, message)
-          : await createRevision(spaceId, documentId, html, user.id, {
+          ? await createSuggestion(store, documentId, html, user.id, message)
+          : await createRevision(store, documentId, html, user.id, {
               message,
             });
 
@@ -762,7 +767,7 @@ export const POST: ApiRouteHandler = (context) =>
       html = toHtmlIfMarkdown(rawContent, contentType, document.type);
     }
 
-    const revision = await createRevision(spaceId, documentId, html, user.id, {
+    const revision = await createRevision(store, documentId, html, user.id, {
       message,
     });
 

@@ -9,6 +9,7 @@
  * Returns: { token: string, spaceId: string }
  */
 
+import { openSpaceStore } from "#db/client/store.ts";
 import { ResourceType } from "#acl/permissions.ts";
 import { badRequestResponse, parseJsonBody, withApiErrorHandling } from "#api/http.ts";
 import { pendingCliCodes } from "#api/routes/auth/cli.ts";
@@ -38,7 +39,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const { userId, spaceId } = entry;
 
-    const result = await createAccessToken({
+    const result = await createAccessToken(await openSpaceStore(spaceId), {
       spaceId,
       name: `CLI (${new Date().toISOString().slice(0, 10)})`,
       createdBy: userId,

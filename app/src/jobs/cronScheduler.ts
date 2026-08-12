@@ -1,5 +1,5 @@
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
 import { failStaleJobRuns } from "#db/space/jobRuns.ts";
 import {
@@ -43,7 +43,7 @@ export function stopCronScheduler(): void {
 
 async function cleanupStaleRuns(cutoff: Date): Promise<void> {
   for (const spaceId of await listActiveSpaceIds()) {
-    const count = await failStaleJobRuns(spaceId, cutoff);
+    const count = await failStaleJobRuns(await openSpaceStore(spaceId), cutoff);
     if (count > 0) {
       appLogger.warn("Marked stale job runs as failed after restart", {
         spaceId,
@@ -61,8 +61,8 @@ async function tick(): Promise<void> {
     const now = new Date();
     for (const spaceId of await listActiveSpaceIds()) {
       try {
-        const db = await getSpaceDb(spaceId);
-        const due = await claimDueWorkflowSchedules(db, now);
+        const store = await openSpaceStore(spaceId);
+        const due = await claimDueWorkflowSchedules(store, now);
         for (const schedule of due) {
           // Fire-and-forget: the overlap guard inside runScheduledWorkflow
           // prevents concurrent runs of the same workflow document.

@@ -25,7 +25,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument } from "#db/space/documents.ts";
 import {
   createWorkflowSchedule,
@@ -41,8 +41,8 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const db = await getSpaceDb(spaceId);
-    const schedules = await listWorkflowSchedules(db);
+    const store = await openSpaceStore(spaceId);
+    const schedules = await listWorkflowSchedules(store);
 
     return jsonResponse({ schedules: schedules.map(toWorkflowScheduleDto) });
   }, "Failed to list workflow schedules");
@@ -51,6 +51,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
 
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
@@ -87,7 +88,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     // The schedule must target an existing workflow document.
-    const doc = await getDocument(spaceId, documentId);
+    const doc = await getDocument(store, documentId);
     if (!doc) {
       throw badRequestResponse(`Document "${documentId}" not found`);
     }
@@ -95,8 +96,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Document type must be 'workflow'");
     }
 
-    const db = await getSpaceDb(spaceId);
-    const schedule = await createWorkflowSchedule(db, {
+    const schedule = await createWorkflowSchedule(store, {
       documentId,
       cronExpression,
       timezone,

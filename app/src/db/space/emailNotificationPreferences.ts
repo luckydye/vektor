@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
 
@@ -17,14 +17,12 @@ function emailMutedKey(documentId?: string): string {
  * otherwise the space-wide default applies. Neither set means "not muted".
  */
 export async function isEmailMuted(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   documentId?: string,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-
   if (documentId) {
-    const documentRow = await db
+    const documentRow = await s.db
       .select({ value: preference.value })
       .from(preference)
       .where(
@@ -34,7 +32,7 @@ export async function isEmailMuted(
     if (documentRow) return documentRow.value === "true";
   }
 
-  const spaceRow = await db
+  const spaceRow = await s.db
     .select({ value: preference.value })
     .from(preference)
     .where(and(eq(preference.key, emailMutedKey()), eq(preference.userId, userId)))
@@ -43,15 +41,13 @@ export async function isEmailMuted(
 }
 
 export async function getEmailMutedUserIds(
-  spaceId: string,
+  s: SpaceStore,
   userIds: string[],
   documentId?: string,
 ): Promise<Set<string>> {
   if (userIds.length === 0) return new Set();
 
-  const db = await getSpaceDb(spaceId);
-
-  const spaceRows = await db
+  const spaceRows = await s.db
     .select({ userId: preference.userId, value: preference.value })
     .from(preference)
     .where(and(eq(preference.key, emailMutedKey()), inArray(preference.userId, userIds)))
@@ -62,7 +58,7 @@ export async function getEmailMutedUserIds(
   }
 
   if (documentId) {
-    const documentRows = await db
+    const documentRows = await s.db
       .select({ userId: preference.userId, value: preference.value })
       .from(preference)
       .where(
@@ -83,15 +79,14 @@ export async function getEmailMutedUserIds(
 }
 
 export async function setEmailMuted(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   muted: boolean,
   documentId?: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const key = emailMutedKey(documentId);
 
-  const existing = await db
+  const existing = await s.db
     .select({ id: preference.id })
     .from(preference)
     .where(and(eq(preference.key, key), eq(preference.userId, userId)))
@@ -99,14 +94,14 @@ export async function setEmailMuted(
   const now = new Date();
 
   if (existing) {
-    await db
+    await s.db
       .update(preference)
       .set({ value: muted ? "true" : "false", updatedAt: now })
       .where(eq(preference.id, existing.id));
     return;
   }
 
-  await db.insert(preference).values({
+  await s.db.insert(preference).values({
     id: createId("preference"),
     key,
     value: muted ? "true" : "false",
@@ -117,9 +112,8 @@ export async function setEmailMuted(
 }
 
 export async function deleteDocumentEmailPreferences(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  await db.delete(preference).where(eq(preference.key, emailMutedKey(documentId)));
+  await s.db.delete(preference).where(eq(preference.key, emailMutedKey(documentId)));
 }

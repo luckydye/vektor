@@ -12,6 +12,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   deleteSpaceSecret,
   getSpaceSecretMetadata,
@@ -24,6 +25,7 @@ import {
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const name = requireParam(context.var.params, "name");
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
@@ -36,9 +38,9 @@ export const GET: ApiRouteHandler = (context) =>
       throw forbiddenResponse("Job is not associated with a user");
     }
 
-    const value = await getSpaceSecretValueForUser(spaceId, name, userId);
+    const value = await getSpaceSecretValueForUser(store, name, userId);
     if (value === null) {
-      if (await hasSpaceSecret(spaceId, name)) {
+      if (await hasSpaceSecret(store, name)) {
         throw forbiddenResponse("Secret access denied");
       }
       throw notFoundResponse("Secret");
@@ -51,6 +53,7 @@ export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const name = requireParam(context.var.params, "name");
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
@@ -77,7 +80,7 @@ export const PUT: ApiRouteHandler = (context) =>
         : String(body.description).trim();
 
     const secret = await upsertSpaceSecret(
-      spaceId,
+      store,
       normalized,
       body.value,
       user.id,
@@ -91,10 +94,11 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const name = requireParam(context.var.params, "name");
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    const deleted = await deleteSpaceSecret(spaceId, name);
+    const deleted = await deleteSpaceSecret(store, name);
     if (!deleted) {
       throw notFoundResponse("Secret");
     }
@@ -106,10 +110,11 @@ export const HEAD: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const name = requireParam(context.var.params, "name");
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const secret = await getSpaceSecretMetadata(spaceId, name);
+    const secret = await getSpaceSecretMetadata(store, name);
     if (!secret) {
       throw notFoundResponse("Secret");
     }

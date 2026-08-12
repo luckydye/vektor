@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, getUserGroups } from "#acl/store.ts";
@@ -33,6 +34,7 @@ import { appLogger } from "#observability/logger.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
@@ -96,7 +98,7 @@ export const GET: ApiRouteHandler = (context) =>
     );
     const readableRuns = spaceRuns.filter((entry) => readable.has(entry.run.documentId));
     const documentsById = await getDocumentsByIds(
-      spaceId,
+      store,
       readableRuns.map((entry) => entry.run.documentId),
     );
 
@@ -130,6 +132,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
+      const store = await openSpaceStore(spaceId);
       const auth = await authenticateJobTokenOrSpaceRole(
         context,
         spaceId,
@@ -175,7 +178,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (!documentId) return badRequestResponse("documentId is required");
 
-      const doc = await getDocument(spaceId, documentId);
+      const doc = await getDocument(store, documentId);
       if (!doc) return notFoundResponse("Document");
       if (doc.type !== "workflow") {
         return badRequestResponse("Document type must be 'workflow'");

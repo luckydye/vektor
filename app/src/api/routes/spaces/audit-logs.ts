@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   verifyDocumentAccess,
   verifyFeatureAccess,
@@ -38,10 +39,10 @@ export const GET: ApiRouteHandler = (context) =>
       new URL(context.req.url).searchParams,
     );
 
-    const db = await getSpaceDb(spaceId);
+    const store = await openSpaceStore(spaceId);
     const { rows, nextCursor } = documentId
-      ? await getAuditLogsForDocument(db, documentId, limit, cursor)
-      : await getRecentAuditLogs(db, limit, cursor);
+      ? await getAuditLogsForDocument(store, documentId, limit, cursor)
+      : await getRecentAuditLogs(store, limit, cursor);
 
     const auditLogs = rows.map((log) => ({
       ...log,

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, hasPermission } from "#acl/store.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { spaceSecret } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
@@ -30,9 +30,8 @@ export function sanitizeSecretName(value: string): string {
   return name;
 }
 
-export async function listSpaceSecrets(spaceId: string): Promise<SpaceSecretMetadata[]> {
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
+export async function listSpaceSecrets(s: SpaceStore): Promise<SpaceSecretMetadata[]> {
+  const rows = await s.db
     .select({
       name: spaceSecret.name,
       description: spaceSecret.description,
@@ -47,14 +46,13 @@ export async function listSpaceSecrets(spaceId: string): Promise<SpaceSecretMeta
 }
 
 export async function upsertSpaceSecret(
-  spaceId: string,
+  s: SpaceStore,
   name: string,
   value: string,
   createdBy: string,
   description?: string | null,
 ): Promise<SpaceSecretMetadata> {
-  const db = await getSpaceDb(spaceId);
-  const existing = await db
+  const existing = await s.db
     .select()
     .from(spaceSecret)
     .where(eq(spaceSecret.name, name))
@@ -65,7 +63,7 @@ export async function upsertSpaceSecret(
   const encrypted = encryptSecret(value);
 
   if (existing) {
-    await db
+    await s.db
       .update(spaceSecret)
       .set({
         description: description ?? null,
@@ -86,7 +84,7 @@ export async function upsertSpaceSecret(
     };
   }
 
-  await db.insert(spaceSecret).values({
+  await s.db.insert(spaceSecret).values({
     id: createId("secret"),
     name,
     description: description ?? null,
@@ -110,11 +108,10 @@ export async function upsertSpaceSecret(
 }
 
 export async function getSpaceSecretValue(
-  spaceId: string,
+  s: SpaceStore,
   name: string,
 ): Promise<string | null> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+  const row = await s.db
     .select()
     .from(spaceSecret)
     .where(eq(spaceSecret.name, name))
@@ -125,7 +122,7 @@ export async function getSpaceSecretValue(
     return null;
   }
 
-  await db
+  await s.db
     .update(spaceSecret)
     .set({
       lastUsedAt: new Date(),
@@ -139,9 +136,8 @@ export async function getSpaceSecretValue(
   });
 }
 
-export async function deleteSpaceSecret(spaceId: string, name: string): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-  const result = await db
+export async function deleteSpaceSecret(s: SpaceStore, name: string): Promise<boolean> {
+  const result = await s.db
     .delete(spaceSecret)
     .where(eq(spaceSecret.name, name))
     .returning({ id: spaceSecret.id });
@@ -149,11 +145,11 @@ export async function deleteSpaceSecret(spaceId: string, name: string): Promise<
 }
 
 export async function userCanReadSpaceSecret(
-  spaceId: string,
+  s: SpaceStore,
   name: string,
   userId: string,
 ): Promise<boolean> {
-  const space = await getSpace(spaceId);
+  const space = await getSpace(s.spaceId);
   if (!space) {
     return false;
   }
@@ -164,9 +160,9 @@ export async function userCanReadSpaceSecret(
   }
 
   const isSpaceEditor = await hasPermission(
-    spaceId,
+    s.spaceId,
     ResourceType.SPACE,
-    spaceId,
+    s.spaceId,
     userId,
     Permission.EDITOR,
     groups,
@@ -176,7 +172,7 @@ export async function userCanReadSpaceSecret(
   }
 
   return hasPermission(
-    spaceId,
+    s.spaceId,
     ResourceType.SECRET,
     name,
     userId,
@@ -186,21 +182,20 @@ export async function userCanReadSpaceSecret(
 }
 
 export async function getSpaceSecretValueForUser(
-  spaceId: string,
+  s: SpaceStore,
   name: string,
   userId: string,
 ): Promise<string | null> {
-  const allowed = await userCanReadSpaceSecret(spaceId, name, userId);
+  const allowed = await userCanReadSpaceSecret(s, name, userId);
   if (!allowed) {
     return null;
   }
 
-  return getSpaceSecretValue(spaceId, name);
+  return getSpaceSecretValue(s, name);
 }
 
-export async function hasSpaceSecret(spaceId: string, name: string): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+export async function hasSpaceSecret(s: SpaceStore, name: string): Promise<boolean> {
+  const row = await s.db
     .select({ name: spaceSecret.name })
     .from(spaceSecret)
     .where(eq(spaceSecret.name, name))
@@ -211,11 +206,10 @@ export async function hasSpaceSecret(spaceId: string, name: string): Promise<boo
 }
 
 export async function getSpaceSecretMetadata(
-  spaceId: string,
+  s: SpaceStore,
   name: string,
 ): Promise<SpaceSecretMetadata | null> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+  const row = await s.db
     .select({
       name: spaceSecret.name,
       description: spaceSecret.description,

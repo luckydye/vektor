@@ -1,6 +1,6 @@
+import type { SpaceStore } from "#db/client/store.ts";
 import { and, eq } from "drizzle-orm";
 import { config } from "#config";
-import { getSpaceDb } from "#db/client/db.ts";
 import { extension } from "#db/schema/space.ts";
 import {
   type ExtensionManifest,
@@ -13,7 +13,6 @@ import {
 } from "#extensions/manifest.ts";
 import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
 import { appLogger } from "#observability/logger.ts";
-import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 
 export type {
@@ -49,19 +48,18 @@ interface ExtensionQueryOptions {
 }
 
 export async function listExtensions(
-  spaceId: string,
+  s: SpaceStore,
   options: ExtensionQueryOptions = {},
 ): Promise<Extension[]> {
-  const { extensions } = await listExtensionsWithErrors(spaceId, options);
+  const { extensions } = await listExtensionsWithErrors(s, options);
   return extensions;
 }
 
 export async function listExtensionsWithErrors(
-  spaceId: string,
+  s: SpaceStore,
   options: ExtensionQueryOptions = {},
 ): Promise<{ extensions: Extension[]; errors: ExtensionManifestLoadError[] }> {
-  const db = await getSpaceDb(spaceId);
-  const rows = await db.select().from(extension);
+  const rows = await s.db.select().from(extension);
 
   const extensions: Extension[] = [];
   const errors: ExtensionManifestLoadError[] = [];
@@ -97,19 +95,17 @@ export async function listExtensionsWithErrors(
 }
 
 export async function getExtension(
-  spaceId: string,
+  s: SpaceStore,
   extensionId: string,
   options: ExtensionQueryOptions = {},
 ): Promise<Extension | null> {
   const local = getLocalExtension();
   if (local && extensionId === local.id) return local;
-
-  const db = await getSpaceDb(spaceId);
   const conditions = [eq(extension.id, extensionId)];
   if (!options.includeDisabled) {
     conditions.push(eq(extension.enabled, true));
   }
-  const rows = await db
+  const rows = await s.db
     .select()
     .from(extension)
     .where(and(...conditions));
@@ -137,14 +133,12 @@ export async function getExtension(
 }
 
 export async function getExtensionPackage(
-  spaceId: string,
+  s: SpaceStore,
   extensionId: string,
 ): Promise<Buffer | null> {
   const local = getLocalExtension();
   if (local && extensionId === local.id) return getLocalExtensionPackage();
-
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
+  const rows = await s.db
     .select({ package: extension.package })
     .from(extension)
     .where(eq(extension.id, extensionId));
@@ -163,20 +157,19 @@ export interface CreateExtensionOptions {
 }
 
 export async function createExtension(
-  spaceId: string,
+  s: SpaceStore,
   extensionId: string,
   packageBuffer: Buffer,
   userId: string,
   options: CreateExtensionOptions = {},
 ): Promise<Extension> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
   const manifest = extractManifest(packageBuffer);
   const source = options.source ?? "upload";
   const sourceRef = options.sourceRef ?? null;
   const sourcePublisher = options.sourcePublisher ?? null;
 
-  await db.insert(extension).values({
+  await s.db.insert(extension).values({
     id: extensionId,
     package: packageBuffer,
     enabled: true,
@@ -188,7 +181,7 @@ export async function createExtension(
     createdBy: userId,
   });
 
-  sendSyncEvent(spaceId, realtimeTopics.extensions);
+  s.emit(realtimeTopics.extensions);
 
   return {
     id: extensionId,
@@ -204,14 +197,13 @@ export async function createExtension(
 }
 
 export async function updateExtension(
-  spaceId: string,
+  s: SpaceStore,
   extensionId: string,
   packageBuffer: Buffer,
 ): Promise<Extension | null> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
-  const existingRows = await db
+  const existingRows = await s.db
     .select({
       id: extension.id,
       enabled: extension.enabled,
@@ -229,7 +221,7 @@ export async function updateExtension(
     return null;
   }
 
-  await db
+  await s.db
     .update(extension)
     .set({
       package: packageBuffer,
@@ -237,7 +229,7 @@ export async function updateExtension(
     })
     .where(eq(extension.id, extensionId));
 
-  sendSyncEvent(spaceId, realtimeTopics.extensions);
+  s.emit(realtimeTopics.extensions);
 
   const manifest = extractManifest(packageBuffer);
   return {
@@ -254,16 +246,14 @@ export async function updateExtension(
 }
 
 export async function setExtensionEnabled(
-  spaceId: string,
+  s: SpaceStore,
   extensionId: string,
   enabled: boolean,
 ): Promise<Extension | null> {
   const local = getLocalExtension();
   if (local && extensionId === local.id) return null;
-
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
-  const rows = await db
+  const rows = await s.db
     .select({
       id: extension.id,
       package: extension.package,
@@ -281,7 +271,7 @@ export async function setExtensionEnabled(
     return null;
   }
 
-  await db
+  await s.db
     .update(extension)
     .set({
       enabled,
@@ -289,7 +279,7 @@ export async function setExtensionEnabled(
     })
     .where(eq(extension.id, extensionId));
 
-  sendSyncEvent(spaceId, realtimeTopics.extensions);
+  s.emit(realtimeTopics.extensions);
 
   const result = safeExtractManifest(existing.package, extensionId);
   if (!result.manifest) {
@@ -326,18 +316,17 @@ export function safeExtractManifest(
 }
 
 export async function deleteExtension(
-  spaceId: string,
+  s: SpaceStore,
   extensionId: string,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
 
-  const result = await db
+  const result = await s.db
     .delete(extension)
     .where(eq(extension.id, extensionId))
     .returning({ id: extension.id });
 
   if (result.length > 0) {
-    sendSyncEvent(spaceId, realtimeTopics.extensions);
+    s.emit(realtimeTopics.extensions);
   }
 
   return result.length > 0;
@@ -347,10 +336,10 @@ export async function deleteExtension(
  * Find an extension that handles a given route path
  */
 export async function findExtensionForRoute(
-  spaceId: string,
+  s: SpaceStore,
   routePath: string,
 ): Promise<{ extension: Extension; route: ExtensionRoute } | null> {
-  const extensions = await listExtensions(spaceId);
+  const extensions = await listExtensions(s);
 
   for (const ext of extensions) {
     if (!ext.manifest.routes) continue;

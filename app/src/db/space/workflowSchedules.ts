@@ -1,14 +1,12 @@
 import { parseCronExpression } from "cron-schedule";
 import { and, eq, isNull, lte } from "drizzle-orm";
-import type { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import {
   type WorkflowSchedule,
   type WorkflowScheduleInsert,
   workflowSchedule,
 } from "#db/schema/space.ts";
-
-type SpaceDb = Awaited<ReturnType<typeof getSpaceDb>>;
 
 /**
  * cron-schedule evaluates expressions in the process's local time and has no
@@ -146,7 +144,7 @@ export function computeNextRunAt(
 }
 
 export async function createWorkflowSchedule(
-  db: SpaceDb,
+  s: SpaceStore,
   params: {
     documentId: string;
     cronExpression: string;
@@ -159,7 +157,7 @@ export async function createWorkflowSchedule(
   const now = new Date();
   const enabled = params.enabled ?? true;
 
-  const result = await db
+  const result = await s.db
     .insert(workflowSchedule)
     .values({
       id: createId("workflowSchedule"),
@@ -185,10 +183,10 @@ export async function createWorkflowSchedule(
 }
 
 export async function getWorkflowSchedule(
-  db: SpaceDb,
+  s: SpaceStore,
   id: string,
 ): Promise<WorkflowSchedule | null> {
-  const result = await db
+  const result = await s.db
     .select()
     .from(workflowSchedule)
     .where(eq(workflowSchedule.id, id))
@@ -197,12 +195,12 @@ export async function getWorkflowSchedule(
   return result || null;
 }
 
-export async function listWorkflowSchedules(db: SpaceDb): Promise<WorkflowSchedule[]> {
-  return db.select().from(workflowSchedule).all();
+export async function listWorkflowSchedules(s: SpaceStore): Promise<WorkflowSchedule[]> {
+  return s.db.select().from(workflowSchedule).all();
 }
 
 export async function updateWorkflowSchedule(
-  db: SpaceDb,
+  s: SpaceStore,
   id: string,
   params: {
     cronExpression?: string;
@@ -211,7 +209,7 @@ export async function updateWorkflowSchedule(
     enabled?: boolean;
   },
 ): Promise<WorkflowSchedule> {
-  const existing = await getWorkflowSchedule(db, id);
+  const existing = await getWorkflowSchedule(s, id);
   if (!existing) {
     throw new Error("Workflow schedule not found");
   }
@@ -245,7 +243,7 @@ export async function updateWorkflowSchedule(
     );
   }
 
-  const result = await db
+  const result = await s.db
     .update(workflowSchedule)
     .set(updates)
     .where(eq(workflowSchedule.id, id))
@@ -258,8 +256,8 @@ export async function updateWorkflowSchedule(
   return result[0];
 }
 
-export async function deleteWorkflowSchedule(db: SpaceDb, id: string): Promise<void> {
-  await db.delete(workflowSchedule).where(eq(workflowSchedule.id, id));
+export async function deleteWorkflowSchedule(s: SpaceStore, id: string): Promise<void> {
+  await s.db.delete(workflowSchedule).where(eq(workflowSchedule.id, id));
 }
 
 /**
@@ -269,20 +267,20 @@ export async function deleteWorkflowSchedule(db: SpaceDb, id: string): Promise<v
  * down) collapse into a single fire.
  */
 export async function claimDueWorkflowSchedules(
-  db: SpaceDb,
+  s: SpaceStore,
   now: Date = new Date(),
 ): Promise<WorkflowSchedule[]> {
   // Backfill next_run_at for enabled schedules that lost it (e.g. rows
   // written by an older version). They start firing from their next
   // occurrence rather than immediately.
-  const missing = await db
+  const missing = await s.db
     .select()
     .from(workflowSchedule)
     .where(and(eq(workflowSchedule.enabled, true), isNull(workflowSchedule.nextRunAt)))
     .all();
   for (const schedule of missing) {
     try {
-      await db
+      await s.db
         .update(workflowSchedule)
         .set({
           nextRunAt: computeNextRunAt(schedule.cronExpression, schedule.timezone, now),
@@ -295,7 +293,7 @@ export async function claimDueWorkflowSchedules(
     }
   }
 
-  const due = await db
+  const due = await s.db
     .select()
     .from(workflowSchedule)
     .where(and(eq(workflowSchedule.enabled, true), lte(workflowSchedule.nextRunAt, now)))
@@ -310,7 +308,7 @@ export async function claimDueWorkflowSchedules(
       // Invalid expression: park the schedule instead of re-firing every tick.
     }
 
-    const result = await db
+    const result = await s.db
       .update(workflowSchedule)
       .set({ nextRunAt, lastRunAt: now })
       .where(

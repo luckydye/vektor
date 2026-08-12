@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentContent } from "#db/space/documents.ts";
 import { getLiveDocumentContent } from "#realtime/yjsRooms.ts";
 import { createRun } from "./runStore.ts";
@@ -20,7 +21,7 @@ export async function startWorkflowRun(
     seedCache?: WorkflowStepCache;
   },
 ): Promise<string> {
-  const doc = await getDocument(spaceId, documentId);
+  const doc = await getDocument(await openSpaceStore(spaceId), documentId);
   if (!doc) {
     throw new Error("Workflow document not found");
   }
@@ -33,7 +34,7 @@ export async function startWorkflowRun(
     spaceId,
     documentId,
     doc.type,
-    (await getDocumentContent(spaceId, documentId)) ?? "",
+    (await getDocumentContent(await openSpaceStore(spaceId), documentId)) ?? "",
   );
   if (!code?.trim()) {
     throw new Error("Workflow script is empty");

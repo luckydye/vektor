@@ -1,16 +1,15 @@
 import { and, eq } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
 
 const PROFILE_KEY = "ai_user_profile";
 
 export async function getUserProfile(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
 ): Promise<string | null> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+  const row = await s.db
     .select()
     .from(preference)
     .where(and(eq(preference.key, PROFILE_KEY), eq(preference.userId, userId)))
@@ -19,25 +18,24 @@ export async function getUserProfile(
 }
 
 export async function setUserProfile(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   profile: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
-  const existing = await db
+  const existing = await s.db
     .select()
     .from(preference)
     .where(and(eq(preference.key, PROFILE_KEY), eq(preference.userId, userId)))
     .get();
 
   if (existing) {
-    await db
+    await s.db
       .update(preference)
       .set({ value: profile, updatedAt: now })
       .where(eq(preference.id, existing.id));
   } else {
-    await db.insert(preference).values({
+    await s.db.insert(preference).values({
       id: createId("preference"),
       key: PROFILE_KEY,
       value: profile,

@@ -1,3 +1,4 @@
+import type { SpaceStore } from "#db/client/store.ts";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import {
@@ -6,7 +7,6 @@ import {
   constants as zlibConstants,
 } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
 import { createId } from "#db/ids.ts";
 import { document, revision } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -66,10 +66,9 @@ function calculateChecksum(html: string): string {
   return createHash("sha256").update(html, "utf-8").digest("hex");
 }
 
-async function getDocumentSlug(spaceId: string, documentId: string): Promise<string> {
-  const db = await getSpaceDb(spaceId);
+async function getDocumentSlug(s: SpaceStore, documentId: string): Promise<string> {
 
-  const doc = await db
+  const doc = await s.db
     .select({ slug: document.slug })
     .from(document)
     .where(eq(document.id, documentId))
@@ -84,11 +83,10 @@ async function getDocumentSlug(spaceId: string, documentId: string): Promise<str
 
 /** Returns when the most recent revision was created without loading its snapshot. */
 export async function getLatestRevisionCreatedAt(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<Date | null> {
-  const db = await getSpaceDb(spaceId);
-  const latestRevision = await db
+  const latestRevision = await s.db
     .select({ createdAt: revision.createdAt })
     .from(revision)
     .where(eq(revision.documentId, documentId))
@@ -100,17 +98,16 @@ export async function getLatestRevisionCreatedAt(
 }
 
 export async function createRevision(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   html: string,
   userId: string,
   options: CreateRevisionOptions = {},
 ): Promise<Revision> {
-  const db = await getSpaceDb(spaceId);
   const checksum = calculateChecksum(html);
   const status = options.status ?? null;
 
-  const lastRevision = await db
+  const lastRevision = await s.db
     .select()
     .from(revision)
     .where(eq(revision.documentId, documentId))
@@ -145,7 +142,7 @@ export async function createRevision(
     lastRevision &&
     Date.now() - new Date(lastRevision.createdAt).getTime() < OVERWRITE_WINDOW_MS;
 
-  const doc = await db
+  const doc = await s.db
     .select({ publishedRev: document.publishedRev })
     .from(document)
     .where(eq(document.id, documentId))
@@ -162,13 +159,13 @@ export async function createRevision(
   ) {
     const compressed = await compressHtml(html);
     const updatedMessage = options.message ?? lastRevision?.message;
-    await db
+    await s.db
       .update(revision)
       .set({ snapshot: compressed, checksum, message: updatedMessage })
       .where(eq(revision.id, lastRevision?.id));
 
-    await createAuditLog(db, {
-      spaceId,
+    await createAuditLog(s, {
+      spaceId: s.spaceId,
       docId: documentId,
       revisionId: lastRevision?.rev,
       userId,
@@ -195,9 +192,9 @@ export async function createRevision(
   const compressed = await compressHtml(html);
   const id = createId("revision");
   const now = new Date();
-  const slug = await getDocumentSlug(spaceId, documentId);
+  const slug = await getDocumentSlug(s, documentId);
 
-  await db.insert(revision).values({
+  await s.db.insert(revision).values({
     id,
     documentId,
     rev: nextRev,
@@ -212,14 +209,14 @@ export async function createRevision(
   });
 
   if (status === null) {
-    await db
+    await s.db
       .update(document)
       .set({ currentRev: nextRev })
       .where(eq(document.id, documentId));
   }
 
-  await createAuditLog(db, {
-    spaceId,
+  await createAuditLog(s, {
+    spaceId: s.spaceId,
     docId: documentId,
     revisionId: nextRev,
     userId,
@@ -265,13 +262,12 @@ function rowToRevisionMetadata(
 }
 
 export async function getRevision(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   rev: number,
 ): Promise<Revision | null> {
-  const db = await getSpaceDb(spaceId);
 
-  const revisionRecord = await db
+  const revisionRecord = await s.db
     .select()
     .from(revision)
     .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)))
@@ -288,11 +284,11 @@ export async function getRevision(
 }
 
 export async function getRevisionContent(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   rev: number,
 ): Promise<string | null> {
-  const revisionRecord = await getRevision(spaceId, documentId, rev);
+  const revisionRecord = await getRevision(s, documentId, rev);
   if (!revisionRecord) {
     return null;
   }
@@ -312,44 +308,43 @@ export async function resolvePublishedDocumentContent<
     content?: string;
     publishedRev: number | null;
   },
->(spaceId: string, document: T): Promise<T> {
+>(s: SpaceStore, document: T): Promise<T> {
   if (document.publishedRev === null) return document;
 
-  const content = await getRevisionContent(spaceId, document.id, document.publishedRev);
+  const content = await getRevisionContent(s, document.id, document.publishedRev);
   return content === null ? document : { ...document, content };
 }
 
 export async function getPublishedContent(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<string | null> {
-  const db = await getSpaceDb(spaceId);
-  const storedDocument = await db
+  const storedDocument = await s.db
     .select({ publishedRev: document.publishedRev })
     .from(document)
     .where(eq(document.id, documentId))
     .get();
 
   if (!storedDocument || storedDocument.publishedRev === null) return null;
-  return getRevisionContent(spaceId, documentId, storedDocument.publishedRev);
+  return getRevisionContent(s, documentId, storedDocument.publishedRev);
 }
 
 export async function restoreRevision(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   rev: number,
   userId: string,
   message?: string,
 ): Promise<Revision | null> {
-  const content = await getRevisionContent(spaceId, documentId, rev);
+  const content = await getRevisionContent(s, documentId, rev);
   if (!content) {
     return null;
   }
 
   const restoredMessage = message || `Restored from revision ${rev}`;
 
-  await createAuditLog(await getSpaceDb(spaceId), {
-    spaceId,
+  await createAuditLog(s, {
+    spaceId: s.spaceId,
     docId: documentId,
     revisionId: rev,
     userId,
@@ -357,19 +352,18 @@ export async function restoreRevision(
     details: { message: restoredMessage },
   });
 
-  return createRevision(spaceId, documentId, content, userId, {
+  return createRevision(s, documentId, content, userId, {
     message: restoredMessage,
   });
 }
 
 export async function getRevisionMetadata(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   rev: number,
 ): Promise<Omit<Revision, "snapshot"> | null> {
-  const db = await getSpaceDb(spaceId);
 
-  const revisionRecord = await db
+  const revisionRecord = await s.db
     .select({
       id: revision.id,
       documentId: revision.documentId,
@@ -394,28 +388,26 @@ export async function getRevisionMetadata(
 }
 
 export async function updateRevisionStatus(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   rev: number,
   status: NonNullable<Revision["status"]>,
 ): Promise<Omit<Revision, "snapshot"> | null> {
-  const db = await getSpaceDb(spaceId);
 
-  await db
+  await s.db
     .update(revision)
     .set({ status })
     .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)));
 
-  return getRevisionMetadata(spaceId, documentId, rev);
+  return getRevisionMetadata(s, documentId, rev);
 }
 
 export async function listRevisionMetadata(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<Omit<Revision, "snapshot">[]> {
-  const db = await getSpaceDb(spaceId);
 
-  const revisions = await db
+  const revisions = await s.db
     .select({
       id: revision.id,
       documentId: revision.documentId,
@@ -437,14 +429,13 @@ export async function listRevisionMetadata(
 }
 
 export async function createSuggestion(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   html: string,
   userId: string,
   message?: string,
 ): Promise<Revision> {
-  const db = await getSpaceDb(spaceId);
-  const doc = await db
+  const doc = await s.db
     .select({ publishedRev: document.publishedRev })
     .from(document)
     .where(eq(document.id, documentId))
@@ -459,7 +450,7 @@ export async function createSuggestion(
     throw new Error("Cannot create suggestion without a published revision");
   }
 
-  return createRevision(spaceId, documentId, html, userId, {
+  return createRevision(s, documentId, html, userId, {
     message,
     status: "open",
     parentRev,

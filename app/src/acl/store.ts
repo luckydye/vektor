@@ -1,3 +1,4 @@
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
 import {
   type AclViewer,
@@ -174,7 +175,7 @@ async function resolveGranteeName(userId?: string): Promise<string | undefined> 
  * feature overrides) is logged against the space.
  */
 async function logAclChange(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  store: SpaceStore,
   spaceId: string,
   params: {
     event: "acl_grant" | "acl_revoke";
@@ -199,7 +200,7 @@ async function logAclChange(
       ? "the space"
       : `${params.resourceType} ${params.resourceId}`;
 
-  await createAuditLog(db, {
+  await createAuditLog(store, {
     spaceId,
     docId: isDocumentScoped ? params.resourceId : spaceId,
     userId: params.actorUserId,
@@ -278,7 +279,7 @@ export async function grantPermission(
 
   // Re-granting the same permission is a no-op; only log real changes.
   if (existing?.permission !== permission) {
-    await logAclChange(db, spaceId, {
+    await logAclChange(await openSpaceStore(spaceId), spaceId, {
       event: "acl_grant",
       resourceType,
       resourceId,
@@ -331,7 +332,7 @@ export async function revokePermission(
   await db.delete(acl).where(and(...conditions));
 
   for (const entry of removed) {
-    await logAclChange(db, spaceId, {
+    await logAclChange(await openSpaceStore(spaceId), spaceId, {
       event: "acl_revoke",
       resourceType,
       resourceId,

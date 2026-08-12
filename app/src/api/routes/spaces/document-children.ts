@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifyDocumentAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, listAccessibleResources } from "#acl/store.ts";
@@ -15,16 +16,17 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
     await verifyDocumentAccess(spaceId, id, user.id);
 
-    const document = await getDocument(spaceId, id);
+    const document = await getDocument(store, id);
     if (!document) {
       throw notFoundResponse("Document");
     }
 
     const userGroups = await getUserGroups(user.id);
-    const children = await getDocumentChildren(spaceId, id, {
+    const children = await getDocumentChildren(store, id, {
       userId: user.id,
       userGroups,
       // Access to this parent can come from a grant on the parent alone. Without

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { type AuditLog, auditLog, document } from "#db/schema/space.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
@@ -128,10 +128,10 @@ const EVENT_TO_SYNC_TOPICS: Partial<Record<AuditEvent, (docId: string) => string
 
 /** Record an audit entry, and sync it to clients if the event has topics. */
 export async function createAuditLog(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
   params: CreateAuditLogParams,
 ): Promise<AuditLog> {
-  const result = await db
+  const result = await s.db
     .insert(auditLog)
     .values({
       docId: params.docId,
@@ -168,7 +168,7 @@ export function decodeAuditCursor(
 }
 
 export async function getAuditLogsForDocument(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
   docId: string,
   limit = 50,
   cursor?: string,
@@ -186,7 +186,7 @@ export async function getAuditLogsForDocument(
     : where;
 
   const fetchLimit = limit + 1;
-  const rows = await db
+  const rows = await s.db
     .select()
     .from(auditLog)
     .where(seekCondition)
@@ -204,7 +204,7 @@ export async function getAuditLogsForDocument(
 }
 
 export async function getRecentAuditLogs(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
   limit = 50,
   cursor?: string,
 ): Promise<{ rows: AuditLog[]; nextCursor: string | null }> {
@@ -217,7 +217,7 @@ export async function getRecentAuditLogs(
     : undefined;
 
   const fetchLimit = limit + 1;
-  const rows = await db
+  const rows = await s.db
     .select()
     .from(auditLog)
     .where(seekCondition)
@@ -246,22 +246,18 @@ export function parseAuditDetails(log: AuditLog): AuditDetails | null {
 /**
  * Everyone who has contributed content to a document: its author, plus every
  * account behind a contribution audit event on it.
- *
- * Takes a space ID rather than a handle, unlike the write helpers above — those
- * are called from inside a document write that already holds one.
  */
 export async function listDocumentContributorIds(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<string[]> {
-  const db = await getSpaceDb(spaceId);
   const [doc, rows] = await Promise.all([
-    db
+    s.db
       .select({ createdBy: document.createdBy })
       .from(document)
       .where(eq(document.id, documentId))
       .get(),
-    db
+    s.db
       .selectDistinct({ userId: auditLog.userId })
       .from(auditLog)
       .where(

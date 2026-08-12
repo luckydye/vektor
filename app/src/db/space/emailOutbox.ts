@@ -1,5 +1,5 @@
 import { and, eq, lte, or } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { emailNotificationOutbox } from "#db/schema/space.ts";
 
@@ -20,15 +20,13 @@ export interface EmailNotificationInit {
  * conflict clause rather than notified twice.
  */
 export async function insertEmailNotifications(
-  spaceId: string,
+  s: SpaceStore,
   notification: EmailNotificationInit,
   recipientUserIds: string[],
 ): Promise<number> {
   if (recipientUserIds.length === 0) return 0;
-
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
-  const inserted = await db
+  const inserted = await s.db
     .insert(emailNotificationOutbox)
     .values(
       recipientUserIds.map((recipientUserId) => ({
@@ -53,13 +51,12 @@ export async function insertEmailNotifications(
 }
 
 export async function claimDueEmailNotifications(
-  spaceId: string,
+  s: SpaceStore,
   limit = 50,
 ): Promise<(typeof emailNotificationOutbox.$inferSelect)[]> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
   const staleAt = new Date(now.getTime() - 5 * 60 * 1000);
-  const due = await db
+  const due = await s.db
     .select()
     .from(emailNotificationOutbox)
     .where(
@@ -79,7 +76,7 @@ export async function claimDueEmailNotifications(
 
   const claimed: (typeof emailNotificationOutbox.$inferSelect)[] = [];
   for (const row of due) {
-    const updated = await db
+    const updated = await s.db
       .update(emailNotificationOutbox)
       .set({ status: "sending", updatedAt: now })
       .where(
@@ -102,40 +99,37 @@ export async function claimDueEmailNotifications(
 }
 
 export async function markEmailNotificationSent(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
-  await db
+  await s.db
     .update(emailNotificationOutbox)
     .set({ status: "sent", sentAt: now, updatedAt: now, lastError: null })
     .where(eq(emailNotificationOutbox.id, id));
 }
 
 export async function markEmailNotificationSkipped(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
   reason: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  await db
+  await s.db
     .update(emailNotificationOutbox)
     .set({ status: "skipped", lastError: reason, updatedAt: new Date() })
     .where(eq(emailNotificationOutbox.id, id));
 }
 
 export async function retryEmailNotification(
-  spaceId: string,
+  s: SpaceStore,
   row: typeof emailNotificationOutbox.$inferSelect,
   error: unknown,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const attempts = row.attempts + 1;
   const permanentlyFailed = attempts >= 5;
   const delayMs = Math.min(60 * 60 * 1000, 30_000 * 2 ** (attempts - 1));
   const now = new Date();
-  await db
+  await s.db
     .update(emailNotificationOutbox)
     .set({
       status: permanentlyFailed ? "failed" : "pending",

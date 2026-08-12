@@ -10,6 +10,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   listSpaceSecrets,
   sanitizeSecretName,
@@ -20,9 +21,10 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const secrets = await listSpaceSecrets(spaceId);
+    const secrets = await listSpaceSecrets(store);
     return jsonResponse({ secrets });
   }, "Failed to list secrets");
 
@@ -30,6 +32,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
     const body = await parseJsonBody<{
@@ -58,12 +61,6 @@ export const POST: ApiRouteHandler = (context) =>
         ? null
         : String(body.description).trim();
 
-    const secret = await upsertSpaceSecret(
-      spaceId,
-      name,
-      body.value,
-      user.id,
-      description,
-    );
+    const secret = await upsertSpaceSecret(store, name, body.value, user.id, description);
     return createdResponse({ secret });
   }, "Failed to save secret");

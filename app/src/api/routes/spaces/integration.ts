@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -23,6 +24,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
@@ -31,7 +33,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
-    const connection = await getOAuthIntegrationForUser(spaceId, user.id, providerParam);
+    const connection = await getOAuthIntegrationForUser(store, user.id, providerParam);
     const configured = getOAuthProviderConfiguration(providerParam);
     const instanceUrl = configured.configured
       ? configured.config.instanceUrl
@@ -60,6 +62,7 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
@@ -68,6 +71,6 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
 
-    await deleteOAuthIntegrationForUser(spaceId, user.id, providerParam);
+    await deleteOAuthIntegrationForUser(store, user.id, providerParam);
     return successResponse();
   }, "Failed to disconnect integration");

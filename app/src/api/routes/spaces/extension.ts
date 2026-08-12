@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   authenticateJobTokenOrSpaceRole,
   verifyExtensionAccess,
@@ -28,6 +29,7 @@ import {
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const extensionId = requireParam(context.var.params, "extensionId");
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
@@ -39,7 +41,7 @@ export const GET: ApiRouteHandler = (context) =>
       await verifyExtensionAccess(spaceId, extensionId, auth.user.id);
     }
 
-    const ext = await getExtension(spaceId, extensionId, { includeDisabled: true });
+    const ext = await getExtension(store, extensionId, { includeDisabled: true });
     if (!ext) {
       return notFoundResponse("Extension");
     }
@@ -70,6 +72,7 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const extensionId = requireParam(context.var.params, "extensionId");
 
     await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
@@ -79,7 +82,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       return jsonResponse({ error: "enabled must be a boolean" }, 400);
     }
 
-    const ext = await setExtensionEnabled(spaceId, extensionId, body.enabled);
+    const ext = await setExtensionEnabled(store, extensionId, body.enabled);
     if (!ext) {
       return notFoundResponse("Extension");
     }
@@ -110,12 +113,13 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const extensionId = requireParam(context.var.params, "extensionId");
 
     // Deleting an extension requires the space-wide manage_extensions capability
     await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
 
-    const deleted = await deleteExtension(spaceId, extensionId);
+    const deleted = await deleteExtension(store, extensionId);
     if (!deleted) {
       return notFoundResponse("Extension");
     }

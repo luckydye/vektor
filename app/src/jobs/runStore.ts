@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { getSpaceDb } from "#db/client/db.ts";
 import { createId } from "#db/ids.ts";
@@ -332,7 +333,7 @@ async function listStoredRuns(
 
   const runs = await Promise.all(
     pageRows.map(async ({ id }) => {
-      const doc = await getDocument(spaceId, id);
+      const doc = await getDocument(await openSpaceStore(spaceId), id);
       const run = doc ? deserializeRun(id, doc) : undefined;
       return run ? { runId: id, run: { ...run, spaceId } } : undefined;
     }),
@@ -417,7 +418,7 @@ export async function createRun(
     logs: [],
   };
   const db = await getSpaceDb(spaceId);
-  await assertDocumentCanParent(spaceId, documentId, workflowRunDocumentType);
+  await assertDocumentCanParent(await openSpaceStore(spaceId), documentId, workflowRunDocumentType);
   await db.insert(document).values({
     id: runId,
     slug: `workflow-run-${runId.slice("doc_".length)}`,
@@ -538,7 +539,7 @@ export async function getRunForRead(
 ): Promise<RunState | undefined> {
   const active = activeRuns.get(runId);
   if (active && active.spaceId === spaceId) return active;
-  const doc = await getDocument(spaceId, runId);
+  const doc = await getDocument(await openSpaceStore(spaceId), runId);
   const run = doc ? deserializeRun(runId, doc) : undefined;
   return run ? { ...run, spaceId } : undefined;
 }

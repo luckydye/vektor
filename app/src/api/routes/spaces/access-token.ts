@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -28,12 +29,12 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const token = await getAccessToken(spaceId, tokenId);
+    const token = await getAccessToken(await openSpaceStore(spaceId), tokenId);
     if (!token) {
       throw notFoundResponse("Access token");
     }
 
-    const resources = await listTokenResources(tokenId, spaceId);
+    const resources = await listTokenResources(await openSpaceStore(tokenId), spaceId);
 
     return jsonResponse({ token: { ...token, resources } });
   }, "Failed to get access token");
@@ -50,7 +51,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    const success = await revokeAccessToken(spaceId, tokenId);
+    const success = await revokeAccessToken(await openSpaceStore(spaceId), tokenId);
     if (!success) {
       throw notFoundResponse("Access token");
     }
@@ -70,7 +71,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    const success = await deleteAccessToken(spaceId, tokenId);
+    const success = await deleteAccessToken(await openSpaceStore(spaceId), tokenId);
     if (!success) {
       throw notFoundResponse("Access token");
     }

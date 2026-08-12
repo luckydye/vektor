@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateJobTokenOrSpaceRole, verifyDocumentRole } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
@@ -25,9 +26,10 @@ import { stripScriptTags } from "#utils/html.ts";
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
 
-    const existingDoc = await getDocument(spaceId, id);
+    const existingDoc = await getDocument(store, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
     }
@@ -70,6 +72,6 @@ export const POST: ApiRouteHandler = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const document = await updateDocument(spaceId, id, result.content);
+    const document = await updateDocument(store, id, result.content);
     return jsonResponse({ document, live: result.live });
   }, "Failed to edit document");

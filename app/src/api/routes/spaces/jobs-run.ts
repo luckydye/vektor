@@ -15,6 +15,7 @@
  *   data: [DONE]
  */
 
+import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -34,6 +35,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
+      const store = await openSpaceStore(spaceId);
 
       // Auth: job token OR user session
       const auth = await authenticateJobTokenOrSpaceRole(
@@ -53,7 +55,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (!jobId) return badRequestResponse("jobId is required");
 
       // Resolve job across all extensions in the space
-      const extensions = await listExtensions(spaceId);
+      const extensions = await listExtensions(store);
       let extensionId: string | undefined;
       let entry: string | undefined;
       for (const ext of extensions) {
@@ -67,7 +69,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (!extensionId || !entry) return badRequestResponse(`Job "${jobId}" not found`);
 
-      const zipBuffer = await getExtensionPackage(spaceId, extensionId);
+      const zipBuffer = await getExtensionPackage(store, extensionId);
       if (!zipBuffer)
         return badRequestResponse(`Extension package not found for job "${jobId}"`);
 

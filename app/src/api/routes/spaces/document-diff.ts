@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { createPatch } from "diff";
 import {
   authenticateRequest,
@@ -19,12 +20,12 @@ import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
 import { prettyPrintHtml } from "#utils/html.ts";
 
 async function getRevision(rev: number, spaceId: string, id: string) {
-  const metadata = await getRevisionMetadata(spaceId, id, rev);
+  const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
   if (!metadata) {
     throw notFoundResponse("Revision");
   }
 
-  const content = await getRevisionContent(spaceId, id, rev);
+  const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
   if (!content) {
     throw notFoundResponse("Revision");
   }
@@ -42,6 +43,7 @@ async function getRevision(rev: number, spaceId: string, id: string) {
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
     const searchParams = new URL(context.req.url).searchParams;
     const revParam = searchParams.get("rev");
@@ -73,14 +75,14 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     const revisionContent = await getRevision(rev, spaceId, id);
-    const revisionMetadata = await getRevisionMetadata(spaceId, id, rev);
+    const revisionMetadata = await getRevisionMetadata(store, id, rev);
     if (!revisionMetadata) {
       throw notFoundResponse("Revision");
     }
 
     let compareBaseRev = requestedBaseRev;
     if (compareBaseRev === null) {
-      const document = await getDocument(spaceId, id);
+      const document = await getDocument(store, id);
       if (!document) {
         throw notFoundResponse("Document");
       }
@@ -94,7 +96,7 @@ export const GET: ApiRouteHandler = (context) =>
       throw badRequestResponse("Document has no comparable base revision");
     }
 
-    const baseContent = await getRevisionContent(spaceId, id, compareBaseRev);
+    const baseContent = await getRevisionContent(store, id, compareBaseRev);
     if (!baseContent) {
       throw requestedBaseRev === null
         ? badRequestResponse("Document has no comparable base content")

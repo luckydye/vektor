@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   tryAuthenticateRequest,
   verifyPublicSpaceRole,
@@ -11,6 +12,7 @@ import { getDocumentBreadcrumbs } from "#db/space/documents.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const id = requireParam(context.var.params, "documentId");
 
     const auth = await tryAuthenticateRequest(context, spaceId);
@@ -20,6 +22,6 @@ export const GET: ApiRouteHandler = (context) =>
       await verifyPublicSpaceRole(spaceId, Permission.VIEWER);
     }
 
-    const breadcrumbs = await getDocumentBreadcrumbs(spaceId, id);
+    const breadcrumbs = await getDocumentBreadcrumbs(store, id);
     return jsonResponse({ breadcrumbs });
   }, "Failed to get document breadcrumbs");

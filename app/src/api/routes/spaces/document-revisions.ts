@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   verifyDocumentAccess,
   verifyDocumentRole,
@@ -26,6 +27,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
@@ -33,7 +35,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Verify user has history viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_HISTORY, user.id);
 
-    const revisions = await listRevisionMetadata(spaceId, documentId);
+    const revisions = await listRevisionMetadata(store, documentId);
 
     return jsonResponse({ revisions });
   }, "Failed to list revisions");
@@ -42,6 +44,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
@@ -56,7 +59,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.req.raw);
     const message = typeof body.message === "string" ? body.message : undefined;
-    const revision = await restoreRevision(spaceId, documentId, rev, user.id, message);
+    const revision = await restoreRevision(store, documentId, rev, user.id, message);
     if (!revision) {
       throw notFoundResponse("Revision");
     }
@@ -80,6 +83,7 @@ export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
@@ -98,7 +102,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse('Status must be "open", "applied", or "dismissed"');
     }
 
-    const currentRevision = await getRevisionMetadata(spaceId, documentId, rev);
+    const currentRevision = await getRevisionMetadata(store, documentId, rev);
     if (!currentRevision) {
       throw notFoundResponse("Revision");
     }
@@ -106,7 +110,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse("Revision is not a suggestion");
     }
 
-    const revision = await updateRevisionStatus(spaceId, documentId, rev, status);
+    const revision = await updateRevisionStatus(store, documentId, rev, status);
     if (!revision) {
       throw notFoundResponse("Revision");
     }

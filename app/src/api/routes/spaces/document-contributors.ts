@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { inArray } from "drizzle-orm";
 import { verifyDocumentAccess } from "#acl/guards.ts";
 import {
@@ -22,8 +23,8 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifyDocumentAccess(spaceId, documentId, currentUser.id);
 
-    const db = await getSpaceDb(spaceId);
-    const { rows: logs } = await getAuditLogsForDocument(db, documentId, 1000);
+    const store = await openSpaceStore(spaceId);
+    const { rows: logs } = await getAuditLogsForDocument(store, documentId, 1000);
 
     // Extract unique user IDs from audit logs
     const userIds = new Set<string>();

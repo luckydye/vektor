@@ -9,6 +9,7 @@
 
 import { config } from "#config";
 import { getUserIdsByEmail } from "#db/auth/users.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { listDocumentContributorIds } from "#db/space/auditLogs.ts";
 import { listThreadParticipantIds } from "#db/space/comments.ts";
 import { getEmailMutedUserIds } from "#db/space/emailNotificationPreferences.ts";
@@ -35,6 +36,7 @@ async function enqueueRecipients(
   notification: EmailNotificationInit,
   recipientUserIds: Iterable<string>,
 ): Promise<number> {
+  const store = await openSpaceStore(spaceId);
   const appConfig = config();
   const deliveryConfigured =
     !!appConfig.EMAIL_FROM?.trim() && !!appConfig.SMTP_HOST?.trim();
@@ -44,10 +46,10 @@ async function enqueueRecipients(
   const candidates = [...new Set(recipientUserIds)].filter(
     (userId) => userId !== notification.actorId,
   );
-  const muted = await getEmailMutedUserIds(spaceId, candidates, notification.documentId);
+  const muted = await getEmailMutedUserIds(store, candidates, notification.documentId);
 
   return insertEmailNotifications(
-    spaceId,
+    store,
     notification,
     candidates.filter((userId) => !muted.has(userId)),
   );
@@ -63,7 +65,7 @@ export async function enqueueDocumentPublishedEmails(params: {
   actorId: string;
 }): Promise<number> {
   const [contributors, mentioned] = await Promise.all([
-    listDocumentContributorIds(params.spaceId, params.documentId),
+    listDocumentContributorIds(await openSpaceStore(params.spaceId), params.documentId),
     mentionedUserIds(params.publishedHtml),
   ]);
 
@@ -90,10 +92,10 @@ export async function enqueueCommentCreatedEmails(params: {
   actorId: string;
 }): Promise<number> {
   const [contributors, publishedHtml, threadParticipants] = await Promise.all([
-    listDocumentContributorIds(params.spaceId, params.documentId),
-    getPublishedContent(params.spaceId, params.documentId),
+    listDocumentContributorIds(await openSpaceStore(params.spaceId), params.documentId),
+    getPublishedContent(await openSpaceStore(params.spaceId), params.documentId),
     listThreadParticipantIds(
-      params.spaceId,
+      await openSpaceStore(params.spaceId),
       params.documentId,
       params.commentReference,
       params.commentParentId,

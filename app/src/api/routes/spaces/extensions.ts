@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
@@ -37,6 +38,7 @@ import { appLogger } from "#observability/logger.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
@@ -44,7 +46,7 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     const { extensions: allExtensions, errors: manifestErrors } =
-      await listExtensionsWithErrors(spaceId, { includeDisabled: true });
+      await listExtensionsWithErrors(store, { includeDisabled: true });
 
     const extensions =
       auth.type === "job"
@@ -87,6 +89,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
+      const store = await openSpaceStore(spaceId);
 
       // Authorize before touching the body. The gate below is the space-wide
       // `manage_extensions` capability and never looks at which extension is
@@ -189,15 +192,15 @@ export const POST: ApiRouteHandler = (context) =>
       const extensionId = manifest.id;
 
       // Check if extension already exists - update it if so
-      const existing = await getExtension(spaceId, extensionId, {
+      const existing = await getExtension(store, extensionId, {
         includeDisabled: true,
       });
 
       let ext = null;
       try {
         ext = existing
-          ? await updateExtension(spaceId, extensionId, buffer)
-          : await createExtension(spaceId, extensionId, buffer, createdBy);
+          ? await updateExtension(store, extensionId, buffer)
+          : await createExtension(store, extensionId, buffer, createdBy);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Invalid extension package";
         return badRequestResponse(`Invalid extension package: ${message}`);

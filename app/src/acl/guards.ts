@@ -8,6 +8,7 @@
  * verdict, so a route that forgets to handle the failure path fails closed.
  */
 
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   type AclViewer,
   allPermissions,
@@ -506,7 +507,7 @@ export async function verifyDocumentRole(
   // -circuits to true) would authorize any documentId, real or not. Use an
   // id-only existence check — loading the full document (with its content
   // column) here cost tens of MB per auth call on large canvases.
-  if (!(await documentExists(spaceId, documentId))) {
+  if (!(await documentExists(await openSpaceStore(spaceId), documentId))) {
     throw notFoundResponse("Document");
   }
 
@@ -758,7 +759,7 @@ export async function authenticateWithToken(
     return null;
   }
 
-  const result = await validateAccessToken(token, spaceId);
+  const result = await validateAccessToken(await openSpaceStore(token), spaceId);
   if (!result) {
     throw unauthorizedResponse();
   }

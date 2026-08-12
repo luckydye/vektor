@@ -13,6 +13,7 @@ import {
   getOpenAICompatibleHeaders,
 } from "#api/provider/openaiCompatible.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import { appLogger } from "#observability/logger.ts";
 
@@ -31,7 +32,7 @@ export const POST: ApiRouteHandler = (context) =>
       // which a signature-only check cannot do.
       await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.VIEWER);
 
-      const provider = await getAIProvider(spaceId);
+      const provider = await getAIProvider(await openSpaceStore(spaceId));
       const bodyJson = await parseJsonBody(context.req.raw);
 
       if (provider.provider === "anthropic") {

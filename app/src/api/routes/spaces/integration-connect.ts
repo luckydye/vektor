@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -27,6 +28,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
@@ -52,7 +54,7 @@ export const POST: ApiRouteHandler = (context) =>
     const redirectUri = getOAuthCallbackUrl(spaceId, providerParam);
 
     await createOAuthIntegrationState(
-      spaceId,
+      store,
       user.id,
       providerParam,
       state,

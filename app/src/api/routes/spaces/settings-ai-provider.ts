@@ -10,15 +10,17 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { deleteAIConfig, getAIConfigMeta, setAIConfig } from "#db/space/aiConfig.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const meta = await getAIConfigMeta(spaceId);
+    const meta = await getAIConfigMeta(store);
     return jsonResponse({ aiProvider: meta });
   }, "Failed to get AI provider config");
 
@@ -26,6 +28,7 @@ export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
     const body = await parseJsonBody<{
@@ -50,7 +53,7 @@ export const PUT: ApiRouteHandler = (context) =>
         throw badRequestResponse("baseUrl is required for ollama provider");
       }
       await setAIConfig(
-        spaceId,
+        store,
         { provider: "ollama", model, baseUrl: body.baseUrl.trim().replace(/\/$/, "") },
         user.id,
       );
@@ -65,18 +68,14 @@ export const PUT: ApiRouteHandler = (context) =>
           "apiKey is required for anthropic, openai, openrouter and opencode-zen providers",
         );
       }
-      await setAIConfig(
-        spaceId,
-        { provider, model, apiKey: body.apiKey.trim() },
-        user.id,
-      );
+      await setAIConfig(store, { provider, model, apiKey: body.apiKey.trim() }, user.id);
     } else {
       throw badRequestResponse(
         `Unknown provider "${provider}". Valid values: anthropic, openai, openrouter, opencode-zen, ollama`,
       );
     }
 
-    const meta = await getAIConfigMeta(spaceId);
+    const meta = await getAIConfigMeta(store);
     return jsonResponse({ aiProvider: meta });
   }, "Failed to update AI provider config");
 
@@ -84,8 +83,9 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    await deleteAIConfig(spaceId);
+    await deleteAIConfig(store);
     return successResponse();
   }, "Failed to delete AI provider config");

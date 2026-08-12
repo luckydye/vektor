@@ -1,7 +1,8 @@
+import type { SpaceStore } from "#db/client/store.ts";
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { type AclViewer, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { createId } from "#db/ids.ts";
 import { document, file as fileTable, property, revision } from "#db/schema/space.ts";
@@ -41,7 +42,6 @@ export type {
 } from "./search.ts";
 export { rebuildSearchIndex, searchDocuments } from "./search.ts";
 
-import { sendSyncEvent } from "#realtime/events.ts";
 
 const archivedDocumentCondition = sql`
   (
@@ -53,15 +53,15 @@ const archivedDocumentCondition = sql`
 `;
 
 async function updateDocumentEmbeddingBestEffort(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<void> {
   try {
-    await updateDocumentEmbedding(spaceId, documentId);
+    await updateDocumentEmbedding(s, documentId);
   } catch (error) {
     appLogger.warn("Failed to update document embedding", {
       error,
-      spaceId,
+      spaceId: s.spaceId,
       documentId,
     });
   }
@@ -74,11 +74,10 @@ async function updateDocumentEmbeddingBestEffort(
 export class EmptyDocumentSlugError extends Error {}
 
 async function generateUniqueSlug(
-  spaceId: string,
+  s: SpaceStore,
   baseTitle: string,
   excludeDocumentId?: string,
 ): Promise<string> {
-  const db = await getSpaceDb(spaceId);
 
   const baseSlug = slugify(baseTitle);
   if (!baseSlug) {
@@ -86,7 +85,7 @@ async function generateUniqueSlug(
   }
 
   // Get all existing slugs in the space
-  const allDocs = await db
+  const allDocs = await s.db
     .select({ id: document.id, slug: document.slug })
     .from(document)
     .all();
@@ -126,12 +125,11 @@ export class InvalidDocumentParentError extends Error {}
  * reparenting a document.
  */
 export async function assertDocumentCanParent(
-  spaceId: string,
+  s: SpaceStore,
   parentId: string,
   childType: string | null | undefined,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  const parent = await db
+  const parent = await s.db
     .select({ type: document.type })
     .from(document)
     .where(eq(document.id, parentId))
@@ -145,7 +143,7 @@ export async function assertDocumentCanParent(
 }
 
 export async function createDocument(
-  spaceId: string,
+  s: SpaceStore,
   createdBy: string,
   slug: string,
   content: string,
@@ -155,8 +153,7 @@ export async function createDocument(
   createdAt?: Date,
   updatedAt?: Date,
 ): Promise<DocumentWithProperties> {
-  const db = await getSpaceDb(spaceId);
-  if (parentId) await assertDocumentCanParent(spaceId, parentId, type);
+  if (parentId) await assertDocumentCanParent(s, parentId, type);
   const id = createId("document");
   const now = new Date();
   const documentCreatedAt = createdAt || now;
@@ -164,9 +161,9 @@ export async function createDocument(
   const isReadonly = readOnlyDocumentTypes.includes(type ?? "");
 
   // Generate a unique slug if the provided slug already exists
-  const uniqueSlug = await generateUniqueSlug(spaceId, slug);
+  const uniqueSlug = await generateUniqueSlug(s, slug);
 
-  await db.insert(document).values({
+  await s.db.insert(document).values({
     id,
     slug: uniqueSlug,
     type: type || null,
@@ -191,7 +188,7 @@ export async function createDocument(
     const propType = isWrappedValue ? (raw.type ?? null) : null;
     const storedValue = serializePropertyValue(propValue);
     storedProperties[key] = parseStoredPropertyValue(storedValue);
-    await db.insert(property).values({
+    await s.db.insert(property).values({
       id: createId("property"),
       documentId: id,
       key,
@@ -202,10 +199,10 @@ export async function createDocument(
     });
   }
 
-  await updateDocumentEmbeddingBestEffort(spaceId, id);
+  await updateDocumentEmbeddingBestEffort(s, id);
 
-  await createAuditLog(await getSpaceDb(spaceId), {
-    spaceId,
+  await createAuditLog(s, {
+    spaceId: s.spaceId,
     docId: id,
     userId: createdBy,
     event: "create",
@@ -240,11 +237,10 @@ export type DocumentMeta = Omit<DocumentWithProperties, "content">;
  * column into memory.
  */
 export async function getDocument(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
 ): Promise<DocumentMeta | null> {
-  const db = await getSpaceDb(spaceId);
-  const doc = await db
+  const doc = await s.db
     .select({
       id: document.id,
       slug: document.slug,
@@ -266,7 +262,7 @@ export async function getDocument(
     return null;
   }
 
-  const props = await db.select().from(property).where(eq(property.documentId, id)).all();
+  const props = await s.db.select().from(property).where(eq(property.documentId, id)).all();
   const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
     properties[prop.key] = parseStoredPropertyValue(prop.value);
@@ -282,16 +278,14 @@ export async function getDocument(
  * activity log — where the metadata is wanted and the bodies are not.
  */
 export async function getDocumentsByIds(
-  spaceId: string,
+  s: SpaceStore,
   ids: string[],
 ): Promise<Map<string, DocumentMeta>> {
   const byId = new Map<string, DocumentMeta>();
   const unique = [...new Set(ids)];
   if (unique.length === 0) return byId;
-
-  const db = await getSpaceDb(spaceId);
   const [docs, props] = await Promise.all([
-    db
+    s.db
       .select({
         id: document.id,
         slug: document.slug,
@@ -308,7 +302,7 @@ export async function getDocumentsByIds(
       .from(document)
       .where(inArray(document.id, unique))
       .all(),
-    db.select().from(property).where(inArray(property.documentId, unique)).all(),
+    s.db.select().from(property).where(inArray(property.documentId, unique)).all(),
   ]);
 
   const propertiesByDocument = new Map<string, Record<string, DocumentPropertyValue>>();
@@ -334,11 +328,10 @@ export async function getDocumentsByIds(
  * metadata and body are needed.
  */
 export async function getDocumentContent(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
 ): Promise<string | null> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+  const row = await s.db
     .select({ content: document.content })
     .from(document)
     .where(eq(document.id, id))
@@ -353,9 +346,8 @@ export async function getDocumentContent(
  * canvases) into memory on every request, which saturated the server under
  * presence/collaboration traffic.
  */
-export async function documentExists(spaceId: string, id: string): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+export async function documentExists(s: SpaceStore, id: string): Promise<boolean> {
+  const row = await s.db
     .select({ id: document.id })
     .from(document)
     .where(eq(document.id, id))
@@ -364,17 +356,16 @@ export async function documentExists(spaceId: string, id: string): Promise<boole
 }
 
 export async function getDocumentBySlug(
-  spaceId: string,
+  s: SpaceStore,
   slug: string,
 ): Promise<DocumentWithProperties | null> {
-  const db = await getSpaceDb(spaceId);
-  const doc = await db.select().from(document).where(eq(document.slug, slug)).get();
+  const doc = await s.db.select().from(document).where(eq(document.slug, slug)).get();
 
   if (!doc) {
     return null;
   }
 
-  const props = await db
+  const props = await s.db
     .select()
     .from(property)
     .where(eq(property.documentId, doc.id))
@@ -403,16 +394,15 @@ export async function getDocumentBySlug(
 }
 
 export async function updateDocument(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
   content: string,
   type?: string | null,
 ): Promise<DocumentWithProperties | null> {
-  const db = await getSpaceDb(spaceId);
   // getDocument is metadata-only — `existing.content` is never read here (the
   // write uses the new `content`), so we avoid loading the old content (tens of
   // MB on large canvases) every save.
-  const existing = await getDocument(spaceId, id);
+  const existing = await getDocument(s, id);
   if (!existing) {
     return null;
   }
@@ -422,12 +412,12 @@ export async function updateDocument(
   const nextReadonly =
     existing.readonly || readOnlyDocumentTypes.includes(nextType ?? "");
 
-  await db
+  await s.db
     .update(document)
     .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
     .where(eq(document.id, id));
 
-  await updateDocumentEmbeddingBestEffort(spaceId, id);
+  await updateDocumentEmbeddingBestEffort(s, id);
 
   return {
     id,
@@ -447,15 +437,14 @@ export async function updateDocument(
 }
 
 export async function archiveDocument(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
 
   if (userId) {
-    await createAuditLog(db, {
-      spaceId,
+    await createAuditLog(s, {
+      spaceId: s.spaceId,
       docId: id,
       userId,
       event: "archive",
@@ -463,7 +452,7 @@ export async function archiveDocument(
     });
   }
 
-  await db
+  await s.db
     .update(document)
     .set({ archived: true, updatedAt: new Date() })
     .where(eq(document.id, id));
@@ -472,15 +461,14 @@ export async function archiveDocument(
 }
 
 export async function restoreDocument(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
 
   if (userId) {
-    await createAuditLog(db, {
-      spaceId,
+    await createAuditLog(s, {
+      spaceId: s.spaceId,
       docId: id,
       userId,
       event: "restore",
@@ -488,7 +476,7 @@ export async function restoreDocument(
     });
   }
 
-  await db
+  await s.db
     .update(document)
     .set({ archived: false, updatedAt: new Date() })
     .where(eq(document.id, id));
@@ -497,15 +485,14 @@ export async function restoreDocument(
 }
 
 export async function deleteDocument(
-  spaceId: string,
+  s: SpaceStore,
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
 
   if (userId) {
-    await createAuditLog(db, {
-      spaceId,
+    await createAuditLog(s, {
+      spaceId: s.spaceId,
       docId: id,
       userId,
       event: "delete",
@@ -513,33 +500,32 @@ export async function deleteDocument(
     });
   }
 
-  await deleteDocumentEmailPreferences(spaceId, id);
-  await db.delete(document).where(eq(document.id, id));
+  await deleteDocumentEmailPreferences(await openSpaceStore(s.spaceId), id);
+  await s.db.delete(document).where(eq(document.id, id));
 
   return true;
 }
 
 async function syncFileIndex(
-  spaceId: string,
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
 ): Promise<void> {
   const storage = getFileStorage();
-  const diskFiles = await storage.list(spaceId);
+  const diskFiles = await storage.list(s.spaceId);
   if (diskFiles.length === 0) return;
 
   const indexed = new Set(
-    (await db.select({ path: fileTable.path }).from(fileTable).all()).map((r) => r.path),
+    (await s.db.select({ path: fileTable.path }).from(fileTable).all()).map((r) => r.path),
   );
 
   const toIndex = diskFiles.filter((f) => !indexed.has(f.key)).slice(0, 200);
 
   for (const { key, updatedAt } of toIndex) {
-    const buf = await storage.read(spaceId, key);
+    const buf = await storage.read(s.spaceId, key);
     if (!buf) continue;
     const name = key.split("/").pop() ?? key;
     const extracted = extractFileTextFromBuffer(buf, name, undefined);
-    const url = storage.url(spaceId, key);
-    await db
+    const url = storage.url(s.spaceId, key);
+    await s.db
       .insert(fileTable)
       .values({
         path: key,
@@ -566,7 +552,7 @@ export function decodeListCursor(cursor: string): { updatedAt: Date; id: string 
 }
 
 export async function listDocuments(
-  spaceId: string,
+  s: SpaceStore,
   options: {
     limit?: number;
     type?: string;
@@ -586,7 +572,6 @@ export async function listDocuments(
   nextCursor: string | null;
 }> {
   const { limit, type, viewer, cursor, includeFiles = false } = options;
-  const db = await getSpaceDb(spaceId);
   const baseCondition = type
     ? and(nonArchivedDocumentCondition, eq(document.type, type))
     : nonArchivedDocumentCondition;
@@ -628,14 +613,14 @@ export async function listDocuments(
 
   if (viewer) {
     // ACL filtering requires fetching all docs before paginating.
-    const allDocs = await db
+    const allDocs = await s.db
       .select(selectFields)
       .from(document)
       .where(baseCondition)
       .orderBy(desc(document.updatedAt), desc(document.id))
       .all();
     const readable = await filterReadableResources(
-      spaceId,
+      s.spaceId,
       ResourceType.DOCUMENT,
       allDocs.map((d) => d.id),
       viewer,
@@ -676,7 +661,7 @@ export async function listDocuments(
       : baseCondition;
 
     const fetchLimit = (limit ?? 50) + 1;
-    const rows = (await db
+    const rows = (await s.db
       .select(selectFields)
       .from(document)
       .where(seekCondition)
@@ -698,7 +683,7 @@ export async function listDocuments(
   const docIds = docs.map((d) => d.id);
   const allProps =
     docIds.length > 0
-      ? await db.select().from(property).where(inArray(property.documentId, docIds)).all()
+      ? await s.db.select().from(property).where(inArray(property.documentId, docIds)).all()
       : [];
 
   // Group properties by document ID
@@ -727,9 +712,9 @@ export async function listDocuments(
   }));
 
   if (type === "file" || (includeFiles && !type)) {
-    await syncFileIndex(spaceId, db).catch(() => {});
+    await syncFileIndex(s).catch(() => {});
 
-    let visibleFiles = await db
+    let visibleFiles = await s.db
       .select()
       .from(fileTable)
       .orderBy(desc(fileTable.updatedAt))
@@ -744,7 +729,7 @@ export async function listDocuments(
         ),
       ];
       const readableParentIds = await filterReadableResources(
-        spaceId,
+        s.spaceId,
         ResourceType.DOCUMENT,
         parentDocumentIds,
         viewer,
@@ -776,13 +761,12 @@ export async function listDocuments(
 }
 
 export async function listArchivedDocuments(
-  spaceId: string,
+  s: SpaceStore,
   viewer?: AclViewer | null,
   options?: { limit?: number; cursor?: string },
 ): Promise<{ documents: DocumentWithProperties[]; nextCursor: string | null }> {
-  const db = await getSpaceDb(spaceId);
 
-  let docs = await db
+  let docs = await s.db
     .select({
       id: document.id,
       createdAt: document.createdAt,
@@ -805,7 +789,7 @@ export async function listArchivedDocuments(
   // must not expose archived documents the caller cannot read.
   if (viewer) {
     const readable = await filterReadableResources(
-      spaceId,
+      s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
       viewer,
@@ -813,7 +797,7 @@ export async function listArchivedDocuments(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  const allProps = await db.select().from(property).all();
+  const allProps = await s.db.select().from(property).all();
 
   const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
   for (const prop of allProps) {
@@ -862,19 +846,18 @@ export async function listArchivedDocuments(
 }
 
 export async function updateDocumentProperty(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   key: string,
   value: DocumentPropertyValue,
   type?: string | null,
   userId?: string,
 ): Promise<{ slug?: string }> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
   const storedValue = serializePropertyValue(value);
 
   // Read existing value for audit log (indexed lookup, very fast)
-  const existing = await db
+  const existing = await s.db
     .select()
     .from(property)
     .where(and(eq(property.documentId, documentId), eq(property.key, key)))
@@ -888,9 +871,9 @@ export async function updateDocumentProperty(
       updatedAt: now,
     };
     if (type !== undefined) updateData.type = type;
-    await db.update(property).set(updateData).where(eq(property.id, existing.id));
+    await s.db.update(property).set(updateData).where(eq(property.id, existing.id));
   } else {
-    await db.insert(property).values({
+    await s.db.insert(property).values({
       id: createId("property"),
       documentId,
       key,
@@ -901,8 +884,8 @@ export async function updateDocumentProperty(
     });
   }
 
-  await createAuditLog(db, {
-    spaceId,
+  await createAuditLog(s, {
+    spaceId: s.spaceId,
     docId: documentId,
     userId,
     event: "property_update",
@@ -920,7 +903,7 @@ export async function updateDocumentProperty(
   // title claims it.
   let renamedSlug: string | undefined;
   if (key === "title" && typeof value === "string" && value) {
-    const current = await db
+    const current = await s.db
       .select({ slug: document.slug })
       .from(document)
       .where(eq(document.id, documentId))
@@ -929,7 +912,7 @@ export async function updateDocumentProperty(
     if (current && isPlaceholderDocumentSlug(current.slug)) {
       // An unsluggable title still renames the document; only the derived slug
       // can't follow, so it stays where it was.
-      renamedSlug = await generateUniqueSlug(spaceId, value, documentId).catch(
+      renamedSlug = await generateUniqueSlug(s, value, documentId).catch(
         (error: unknown) => {
           if (error instanceof EmptyDocumentSlugError) return undefined;
           throw error;
@@ -938,12 +921,12 @@ export async function updateDocumentProperty(
     }
   }
 
-  await db
+  await s.db
     .update(document)
     .set({ ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now })
     .where(eq(document.id, documentId));
 
-  void updateDocumentEmbeddingBestEffort(spaceId, documentId);
+  void updateDocumentEmbeddingBestEffort(s, documentId);
   const propertyChangeData = {
     kind: "document_property_changed",
     documentId,
@@ -954,9 +937,7 @@ export async function updateDocumentProperty(
   };
   const treeRelevantProperty = ["title", "category", "collection"].includes(key);
 
-  sendSyncEvent(
-    spaceId,
-    {
+  s.emit({
       topic: realtimeTopics.properties,
       data: propertyChangeData,
     },
@@ -982,29 +963,28 @@ export async function updateDocumentProperty(
 }
 
 export async function deleteDocumentProperty(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   key: string,
   userId?: string,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   // Get the property value before deletion for audit log
-  const existing = await db
+  const existing = await s.db
     .select()
     .from(property)
     .where(and(eq(property.documentId, documentId), eq(property.key, key)))
     .get();
 
-  await db
+  await s.db
     .delete(property)
     .where(and(eq(property.documentId, documentId), eq(property.key, key)));
 
   // Create audit log for property deletion
   if (existing) {
-    await createAuditLog(db, {
-      spaceId,
+    await createAuditLog(s, {
+      spaceId: s.spaceId,
       docId: documentId,
       userId,
       event: "property_delete",
@@ -1017,9 +997,9 @@ export async function deleteDocumentProperty(
   }
 
   // Update the document's updatedAt timestamp
-  await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
+  await s.db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
-  void updateDocumentEmbeddingBestEffort(spaceId, documentId);
+  void updateDocumentEmbeddingBestEffort(s, documentId);
   const propertyDeleteData = {
     kind: "document_property_deleted",
     documentId,
@@ -1029,9 +1009,7 @@ export async function deleteDocumentProperty(
   };
   const treeRelevantProperty = ["title", "category", "collection"].includes(key);
 
-  sendSyncEvent(
-    spaceId,
-    {
+  s.emit({
       topic: realtimeTopics.properties,
       data: propertyDeleteData,
     },
@@ -1080,11 +1058,11 @@ export function invalidateMentionCache(documentId: string) {
  * Results are cached in memory to avoid recomputing on every request
  */
 async function countMentionsForUser(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
+  s: SpaceStore,
   documentId: string,
   userEmail: string,
 ): Promise<number> {
-  const doc = await db
+  const doc = await s.db
     .select({
       publishedRev: document.publishedRev,
     })
@@ -1103,7 +1081,7 @@ async function countMentionsForUser(
     return cached;
   }
 
-  const rev = await db
+  const rev = await s.db
     .select({
       snapshot: revision.snapshot,
     })
@@ -1134,7 +1112,7 @@ async function countMentionsForUser(
  * For each category slug, includes documents directly in that category plus all descendants.
  */
 export async function listAllDocumentsByCategories(
-  spaceId: string,
+  s: SpaceStore,
   categorySlugs: string[],
   userEmail?: string,
   viewer?: AclViewer | null,
@@ -1144,9 +1122,7 @@ export async function listAllDocumentsByCategories(
     return {};
   }
 
-  const db = await getSpaceDb(spaceId);
-
-  let docs = await db
+  let docs = await s.db
     .select({
       id: document.id,
       createdAt: document.createdAt,
@@ -1167,7 +1143,7 @@ export async function listAllDocumentsByCategories(
 
   if (viewer) {
     const readable = await filterReadableResources(
-      spaceId,
+      s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
       viewer,
@@ -1175,7 +1151,7 @@ export async function listAllDocumentsByCategories(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  const allProps = await db.select().from(property).all();
+  const allProps = await s.db.select().from(property).all();
   const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
 
   for (const prop of allProps) {
@@ -1253,7 +1229,7 @@ export async function listAllDocumentsByCategories(
 
     await Promise.all(
       Array.from(docIds).map(async (docId) => {
-        const count = await countMentionsForUser(db, docId, userEmail);
+        const count = await countMentionsForUser(s, docId, userEmail);
         mentionCountByDocId.set(docId, count);
       }),
     );
@@ -1278,7 +1254,7 @@ export async function listAllDocumentsByCategories(
 }
 
 export async function setDocumentParent(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
   parentId: string | null,
 ): Promise<{
@@ -1286,9 +1262,8 @@ export async function setDocumentParent(
   previousParentId: string | null;
   parentId: string | null;
 }> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
-  const existing = await db
+  const existing = await s.db
     .select({ parentId: document.parentId, type: document.type })
     .from(document)
     .where(eq(document.id, documentId))
@@ -1298,9 +1273,9 @@ export async function setDocumentParent(
     throw new Error("Cannot set parent: a child cant be a parent");
   }
   if (!existing) throw new InvalidDocumentParentError("Child document not found");
-  if (parentId) await assertDocumentCanParent(spaceId, parentId, existing.type);
+  if (parentId) await assertDocumentCanParent(s, parentId, existing.type);
 
-  await db
+  await s.db
     .update(document)
     .set({ parentId, updatedAt: now })
     .where(eq(document.id, documentId));
@@ -1313,12 +1288,11 @@ export async function setDocumentParent(
 }
 
 export async function getDocumentChildren(
-  spaceId: string,
+  s: SpaceStore,
   parentId: string,
   viewer?: AclViewer | null,
 ): Promise<DocumentWithProperties[]> {
-  const db = await getSpaceDb(spaceId);
-  let docs = await db
+  let docs = await s.db
     .select()
     .from(document)
     .where(and(eq(document.parentId, parentId), nonArchivedDocumentCondition))
@@ -1329,7 +1303,7 @@ export async function getDocumentChildren(
   // A null viewer is a trusted system caller and sees everything.
   if (viewer) {
     const readable = await filterReadableResources(
-      spaceId,
+      s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
       viewer,
@@ -1340,7 +1314,7 @@ export async function getDocumentChildren(
   const childIds = docs.map((d) => d.id);
   const allProps =
     childIds.length > 0
-      ? await db
+      ? await s.db
           .select()
           .from(property)
           .where(inArray(property.documentId, childIds))
@@ -1378,11 +1352,10 @@ export interface PropertyInfo {
 }
 
 export async function getAllPropertiesWithValues(
-  spaceId: string,
+  s: SpaceStore,
 ): Promise<PropertyInfo[]> {
-  const db = await getSpaceDb(spaceId);
 
-  const allProperties = await db.select().from(property).all();
+  const allProperties = await s.db.select().from(property).all();
 
   const propertyMap: Record<string, { type: string | null; values: Set<string> }> = {};
 
@@ -1405,7 +1378,7 @@ export async function getAllPropertiesWithValues(
   }
 
   // Add document type as a virtual property
-  const docTypes = await db
+  const docTypes = await s.db
     .selectDistinct({ type: document.type })
     .from(document)
     .where(sql`${nonArchivedDocumentCondition}`)
@@ -1441,10 +1414,9 @@ export interface BreadcrumbItem {
 }
 
 export async function getDocumentBreadcrumbs(
-  spaceId: string,
+  s: SpaceStore,
   documentId: string,
 ): Promise<BreadcrumbItem[]> {
-  const db = await getSpaceDb(spaceId);
   const breadcrumbs: BreadcrumbItem[] = [];
 
   let currentId: string | null = documentId;
@@ -1456,7 +1428,7 @@ export async function getDocumentBreadcrumbs(
     }
     visited.add(currentId);
 
-    const doc = await db
+    const doc = await s.db
       .select({
         id: document.id,
         slug: document.slug,
@@ -1470,7 +1442,7 @@ export async function getDocumentBreadcrumbs(
       break;
     }
 
-    const props = await db
+    const props = await s.db
       .select()
       .from(property)
       .where(

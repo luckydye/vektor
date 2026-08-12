@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
@@ -124,7 +125,7 @@ async function handleRealtimeWebSocket(
     if (extensionId !== null) {
       // A malformed extension room must not fall through to document ACLs.
       if (!extensionId) return false;
-      if (!(await getExtension(spaceId, extensionId))) return false;
+      if (!(await getExtension(await openSpaceStore(spaceId), extensionId))) return false;
       if (isNoAuthMode()) return true;
       try {
         await verifyExtensionAccess(spaceId, extensionId, userId);

@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
@@ -50,6 +51,7 @@ function propertyInitToSlugText(value: PropertyInit | undefined): string | undef
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
 
     // Resource-scoped grantees browse here too: a user shared into a single
     // category or document tree has no space-wide role, and the sidebar reads
@@ -84,7 +86,7 @@ export const GET: ApiRouteHandler = (context) =>
     if (categorySlugs.length > 0) {
       const userEmail = access.user?.email;
       const documentsByCategory = await listAllDocumentsByCategories(
-        spaceId,
+        store,
         categorySlugs,
         userEmail,
         viewer,
@@ -125,7 +127,7 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     if (parentIdParam) {
-      const documents = await getDocumentChildren(spaceId, parentIdParam, viewer);
+      const documents = await getDocumentChildren(store, parentIdParam, viewer);
       return jsonResponse({
         documents,
         total: documents.length,
@@ -135,7 +137,7 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     // Always return documents without content (content fetched separately when viewing)
-    const { documents, total, nextCursor } = await listDocuments(spaceId, {
+    const { documents, total, nextCursor } = await listDocuments(store, {
       limit,
       type: typeParam,
       viewer,
@@ -148,6 +150,7 @@ export const GET: ApiRouteHandler = (context) =>
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
@@ -234,7 +237,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     // createDocument now handles slug uniqueness internally
     const document = await createDocument(
-      spaceId,
+      store,
       userId,
       slugBase,
       content,

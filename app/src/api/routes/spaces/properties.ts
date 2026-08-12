@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { authenticateSpaceAccess } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { jsonResponse, requireParam, withApiErrorHandling } from "#api/http.ts";
@@ -7,9 +8,10 @@ import { getAllPropertiesWithValues, type PropertyInfo } from "#db/space/documen
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
 
-    const properties: PropertyInfo[] = await getAllPropertiesWithValues(spaceId);
+    const properties: PropertyInfo[] = await getAllPropertiesWithValues(store);
 
     return jsonResponse({ properties });
   }, "Failed to list space properties");

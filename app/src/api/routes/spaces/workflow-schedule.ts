@@ -18,7 +18,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   deleteWorkflowSchedule,
   getWorkflowSchedule,
@@ -35,8 +35,8 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const db = await getSpaceDb(spaceId);
-    const schedule = await getWorkflowSchedule(db, scheduleId);
+    const store = await openSpaceStore(spaceId);
+    const schedule = await getWorkflowSchedule(store, scheduleId);
 
     if (!schedule) {
       throw notFoundResponse("Workflow schedule");
@@ -53,8 +53,8 @@ export const PATCH: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const db = await getSpaceDb(spaceId);
-    const existing = await getWorkflowSchedule(db, scheduleId);
+    const store = await openSpaceStore(spaceId);
+    const existing = await getWorkflowSchedule(store, scheduleId);
 
     if (!existing) {
       throw notFoundResponse("Workflow schedule");
@@ -93,7 +93,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       }
     }
 
-    const schedule = await updateWorkflowSchedule(db, scheduleId, {
+    const schedule = await updateWorkflowSchedule(store, scheduleId, {
       cronExpression,
       timezone,
       inputs: inputs as Record<string, unknown> | null | undefined,
@@ -111,14 +111,14 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
 
-    const db = await getSpaceDb(spaceId);
-    const schedule = await getWorkflowSchedule(db, scheduleId);
+    const store = await openSpaceStore(spaceId);
+    const schedule = await getWorkflowSchedule(store, scheduleId);
 
     if (!schedule) {
       throw notFoundResponse("Workflow schedule");
     }
 
-    await deleteWorkflowSchedule(db, scheduleId);
+    await deleteWorkflowSchedule(store, scheduleId);
 
     return jsonResponse({ success: true });
   }, "Failed to delete workflow schedule");

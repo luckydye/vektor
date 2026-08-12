@@ -12,6 +12,7 @@ import {
 import type { ChatImage, ChatImageAttachment } from "#api/provider/types.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getAIChatSession, upsertAIChatSession } from "#db/space/aiChatSessions.ts";
 import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
 import { getUserProfile } from "#db/space/userProfiles.ts";
@@ -318,7 +319,11 @@ async function persistCancelledChatTurn(options: {
   userAttachments: ChatAttachment[];
   events: AgentEvent[];
 }) {
-  const session = await getAIChatSession(options.spaceId, options.chatId, options.userId);
+  const session = await getAIChatSession(
+    await openSpaceStore(options.spaceId),
+    options.chatId,
+    options.userId,
+  );
   if (!session) return;
 
   const lastUserRequest = [...options.requestMessages]
@@ -345,7 +350,7 @@ async function persistCancelledChatTurn(options: {
     .join("");
   const stoppedMessage = partialAssistantContent.trim() || "Response stopped by user.";
 
-  await upsertAIChatSession(options.spaceId, options.userId, {
+  await upsertAIChatSession(await openSpaceStore(options.spaceId), options.userId, {
     id: session.id,
     title: session.title,
     createdAt: session.createdAt,
@@ -372,7 +377,11 @@ async function persistCompletedChatTurn(options: {
   events: AgentEvent[];
   result: AgentRunResult;
 }) {
-  const session = await getAIChatSession(options.spaceId, options.chatId, options.userId);
+  const session = await getAIChatSession(
+    await openSpaceStore(options.spaceId),
+    options.chatId,
+    options.userId,
+  );
   if (!session) return;
 
   // The last user-role entry in requestMessages is the message that triggered
@@ -404,7 +413,7 @@ async function persistCompletedChatTurn(options: {
     { role: "assistant", content: options.result.content },
   ];
 
-  await upsertAIChatSession(options.spaceId, options.userId, {
+  await upsertAIChatSession(await openSpaceStore(options.spaceId), options.userId, {
     id: session.id,
     title: session.title,
     createdAt: session.createdAt,
@@ -672,7 +681,7 @@ function getOrStartActiveChatTurn(options: {
         // Schedule a profile update after idle.  Fetch the freshly-persisted
         // session so the updater has the complete display message history.
         const updatedSession = await getAIChatSession(
-          options.spaceId,
+          await openSpaceStore(options.spaceId),
           options.chatId,
           options.userId,
         );
@@ -810,17 +819,19 @@ export const POST: ApiRouteHandler = (context) =>
 
         // Load existing conversation history, user profile, and connected integrations from DB.
         const persistedSession =
-          userId === null ? null : await getAIChatSession(spaceId, sessionId, userId);
+          userId === null
+            ? null
+            : await getAIChatSession(await openSpaceStore(spaceId), sessionId, userId);
         const history = (persistedSession?.conversationHistory ??
           (userId === null && Array.isArray(params.messages)
             ? params.messages
             : [])) as ChatMessage[];
         const [userProfile, oauthIntegrations] = await Promise.all([
           userId !== null
-            ? getUserProfile(spaceId, userId).catch(() => null)
+            ? getUserProfile(await openSpaceStore(spaceId), userId).catch(() => null)
             : Promise.resolve(null),
           userId !== null
-            ? listOAuthIntegrationsForUser(spaceId, userId).catch(() => [])
+            ? listOAuthIntegrationsForUser(await openSpaceStore(spaceId), userId).catch(() => [])
             : Promise.resolve([]),
         ]);
         const connectedProviders = oauthIntegrations.map((i) => i.provider);
@@ -865,7 +876,7 @@ export const POST: ApiRouteHandler = (context) =>
         // the pending message and getSessionStatus returns "awaiting".
         if (userId !== null && persistedSession && lastHistoryRole !== "user") {
           try {
-            await upsertAIChatSession(spaceId, userId, {
+            await upsertAIChatSession(await openSpaceStore(spaceId), userId, {
               id: persistedSession.id,
               title: persistedSession.title,
               createdAt: persistedSession.createdAt,

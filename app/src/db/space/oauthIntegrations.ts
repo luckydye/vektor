@@ -1,5 +1,5 @@
+import type { SpaceStore } from "#db/client/store.ts";
 import { and, eq, lt } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
 import { createId } from "#db/ids.ts";
 import { oauthIntegration, oauthIntegrationState } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
@@ -51,11 +51,10 @@ function rowToConnection(
 }
 
 export async function listOAuthIntegrationsForUser(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
 ): Promise<OAuthIntegrationConnection[]> {
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
+  const rows = await s.db
     .select()
     .from(oauthIntegration)
     .where(eq(oauthIntegration.userId, userId));
@@ -64,12 +63,11 @@ export async function listOAuthIntegrationsForUser(
 }
 
 export async function getOAuthIntegrationForUser(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   provider: OAuthIntegrationProvider,
 ): Promise<OAuthIntegrationConnection | null> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+  const row = await s.db
     .select()
     .from(oauthIntegration)
     .where(
@@ -82,12 +80,11 @@ export async function getOAuthIntegrationForUser(
 }
 
 export async function getOAuthIntegrationCredentialForUser(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   provider: OAuthIntegrationProvider,
 ): Promise<OAuthIntegrationCredential | null> {
-  const db = await getSpaceDb(spaceId);
-  const row = await db
+  const row = await s.db
     .select()
     .from(oauthIntegration)
     .where(
@@ -101,7 +98,7 @@ export async function getOAuthIntegrationCredentialForUser(
   }
 
   const now = new Date();
-  await db
+  await s.db
     .update(oauthIntegration)
     .set({ lastUsedAt: now })
     .where(eq(oauthIntegration.id, row.id));
@@ -126,7 +123,7 @@ export async function getOAuthIntegrationCredentialForUser(
 }
 
 export async function upsertOAuthIntegrationForUser(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   provider: OAuthIntegrationProvider,
   externalAccountId: string,
@@ -134,8 +131,7 @@ export async function upsertOAuthIntegrationForUser(
   instanceUrl: string | null,
   tokenSet: OAuthIntegrationTokenSet,
 ): Promise<OAuthIntegrationConnection> {
-  const db = await getSpaceDb(spaceId);
-  const existing = await db
+  const existing = await s.db
     .select()
     .from(oauthIntegration)
     .where(
@@ -162,7 +158,7 @@ export async function upsertOAuthIntegrationForUser(
   };
 
   if (existing) {
-    await db
+    await s.db
       .update(oauthIntegration)
       .set({
         externalAccountId,
@@ -189,7 +185,7 @@ export async function upsertOAuthIntegrationForUser(
   }
 
   const id = createId("oauthIntegration");
-  await db.insert(oauthIntegration).values({
+  await s.db.insert(oauthIntegration).values({
     id,
     provider,
     userId,
@@ -218,17 +214,16 @@ export async function upsertOAuthIntegrationForUser(
 }
 
 export async function updateOAuthIntegrationTokenSet(
-  spaceId: string,
+  s: SpaceStore,
   integrationId: string,
   tokenSet: OAuthIntegrationTokenSet,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const accessEncrypted = encryptSecret(tokenSet.accessToken);
   const refreshEncrypted = tokenSet.refreshToken
     ? encryptSecret(tokenSet.refreshToken)
     : null;
 
-  await db
+  await s.db
     .update(oauthIntegration)
     .set({
       accessTokenCiphertext: accessEncrypted.ciphertext,
@@ -245,12 +240,11 @@ export async function updateOAuthIntegrationTokenSet(
 }
 
 export async function deleteOAuthIntegrationForUser(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   provider: OAuthIntegrationProvider,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
-  const result = await db
+  const result = await s.db
     .delete(oauthIntegration)
     .where(
       and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
@@ -260,7 +254,7 @@ export async function deleteOAuthIntegrationForUser(
 }
 
 export async function createOAuthIntegrationState(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   provider: OAuthIntegrationProvider,
   state: string,
@@ -269,11 +263,10 @@ export async function createOAuthIntegrationState(
   instanceUrl: string | null,
   ttlMs = 10 * 60 * 1000,
 ): Promise<void> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttlMs);
 
-  await db
+  await s.db
     .delete(oauthIntegrationState)
     .where(
       and(
@@ -281,9 +274,9 @@ export async function createOAuthIntegrationState(
         eq(oauthIntegrationState.provider, provider),
       ),
     );
-  await db.delete(oauthIntegrationState).where(lt(oauthIntegrationState.expiresAt, now));
+  await s.db.delete(oauthIntegrationState).where(lt(oauthIntegrationState.expiresAt, now));
 
-  await db.insert(oauthIntegrationState).values({
+  await s.db.insert(oauthIntegrationState).values({
     id: createId("oauthIntegrationState"),
     state,
     provider,
@@ -297,7 +290,7 @@ export async function createOAuthIntegrationState(
 }
 
 export async function consumeOAuthIntegrationState(
-  spaceId: string,
+  s: SpaceStore,
   userId: string,
   provider: OAuthIntegrationProvider,
   state: string,
@@ -306,10 +299,9 @@ export async function consumeOAuthIntegrationState(
   redirectTo: string | null;
   instanceUrl: string | null;
 } | null> {
-  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
-  const row = await db
+  const row = await s.db
     .select()
     .from(oauthIntegrationState)
     .where(
@@ -326,7 +318,7 @@ export async function consumeOAuthIntegrationState(
     return null;
   }
 
-  await db.delete(oauthIntegrationState).where(eq(oauthIntegrationState.id, row.id));
+  await s.db.delete(oauthIntegrationState).where(eq(oauthIntegrationState.id, row.id));
 
   if (row.expiresAt.getTime() <= now.getTime()) {
     return null;

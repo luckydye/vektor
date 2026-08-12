@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
+import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { type JobRun, type JobRunInsert, jobRun } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -22,7 +22,7 @@ export type JobRunStatus =
  * out of the database.
  */
 export async function recordJobRunQueued(
-  spaceId: string,
+  s: SpaceStore,
   params: {
     id: string;
     scheduleId?: string | null;
@@ -32,8 +32,7 @@ export async function recordJobRunQueued(
   },
 ): Promise<void> {
   try {
-    const db = await getSpaceDb(spaceId);
-    await db.insert(jobRun).values({
+    await s.db.insert(jobRun).values({
       id: params.id,
       scheduleId: params.scheduleId ?? null,
       jobId: params.jobId,
@@ -43,31 +42,33 @@ export async function recordJobRunQueued(
       initiatedBy: params.initiatedBy ?? null,
     });
   } catch (error) {
-    appLogger.warn("Failed to record job run", { spaceId, runId: params.id, error });
+    appLogger.warn("Failed to record job run", {
+      spaceId: s.spaceId,
+      runId: params.id,
+      error,
+    });
   }
 }
 
-export async function recordJobRunStarted(spaceId: string, runId: string): Promise<void> {
+export async function recordJobRunStarted(s: SpaceStore, runId: string): Promise<void> {
   try {
-    const db = await getSpaceDb(spaceId);
-    await db
+    await s.db
       .update(jobRun)
       .set({ status: "running", startedAt: new Date() })
       .where(eq(jobRun.id, runId));
   } catch (error) {
-    appLogger.warn("Failed to update job run", { spaceId, runId, error });
+    appLogger.warn("Failed to update job run", { spaceId: s.spaceId, runId, error });
   }
 }
 
 export async function recordJobRunFinished(
-  spaceId: string,
+  s: SpaceStore,
   runId: string,
   result:
     | { status: "success" }
     | { status: "failed" | "cancelled" | "timeout"; error: string },
 ): Promise<void> {
   try {
-    const db = await getSpaceDb(spaceId);
     const updates: Partial<JobRunInsert> = {
       status: result.status,
       finishedAt: new Date(),
@@ -75,9 +76,9 @@ export async function recordJobRunFinished(
     if (result.status !== "success") {
       updates.error = result.error;
     }
-    await db.update(jobRun).set(updates).where(eq(jobRun.id, runId));
+    await s.db.update(jobRun).set(updates).where(eq(jobRun.id, runId));
   } catch (error) {
-    appLogger.warn("Failed to finalize job run", { spaceId, runId, error });
+    appLogger.warn("Failed to finalize job run", { spaceId: s.spaceId, runId, error });
   }
 }
 
@@ -93,10 +94,9 @@ export function classifyJobError(error: unknown): "failed" | "cancelled" | "time
  * Only touches rows queued before `cutoff` so runs started by the freshly
  * booted server are never clobbered.
  */
-export async function failStaleJobRuns(spaceId: string, cutoff: Date): Promise<number> {
+export async function failStaleJobRuns(s: SpaceStore, cutoff: Date): Promise<number> {
   try {
-    const db = await getSpaceDb(spaceId);
-    const result = await db
+    const result = await s.db
       .update(jobRun)
       .set({ status: "failed", error: "Server restarted", finishedAt: new Date() })
       .where(
@@ -105,7 +105,7 @@ export async function failStaleJobRuns(spaceId: string, cutoff: Date): Promise<n
       .returning({ id: jobRun.id });
     return result.length;
   } catch (error) {
-    appLogger.warn("Failed to clean up stale job runs", { spaceId, error });
+    appLogger.warn("Failed to clean up stale job runs", { spaceId: s.spaceId, error });
     return 0;
   }
 }
@@ -124,10 +124,9 @@ export function decodeJobRunCursor(
 }
 
 export async function listJobRuns(
-  spaceId: string,
+  s: SpaceStore,
   options?: { jobId?: string; scheduleId?: string; limit?: number; cursor?: string },
 ): Promise<{ runs: JobRun[]; nextCursor: string | null }> {
-  const db = await getSpaceDb(spaceId);
   const conditions = [];
   if (options?.jobId) conditions.push(eq(jobRun.jobId, options.jobId));
   if (options?.scheduleId) conditions.push(eq(jobRun.scheduleId, options.scheduleId));
@@ -145,7 +144,7 @@ export async function listJobRuns(
 
   const limit = options?.limit ?? 50;
   const fetchLimit = limit + 1;
-  const rows = await db
+  const rows = await s.db
     .select()
     .from(jobRun)
     .where(where)

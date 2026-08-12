@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
@@ -143,7 +144,7 @@ async function resolveAccessToken(
 
   const refreshed = await refreshOAuthToken({ providerConfig, refreshToken });
 
-  await updateOAuthIntegrationTokenSet(spaceId, credential.id, {
+  await updateOAuthIntegrationTokenSet(await openSpaceStore(spaceId), credential.id, {
     accessToken: refreshed.accessToken,
     refreshToken: refreshed.refreshToken ?? refreshToken, // keep old refresh token if provider didn't return a new one
     expiresAt: refreshed.expiresAt,
@@ -156,6 +157,7 @@ async function resolveAccessToken(
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const store = await openSpaceStore(spaceId);
     const providerParam = requireParam(context.var.params, "provider");
     if (!isOAuthIntegrationProvider(providerParam)) {
       throw badRequestResponse("Unsupported integration provider");
@@ -189,7 +191,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const credential = await getOAuthIntegrationCredentialForUser(
-      spaceId,
+      store,
       userId,
       providerParam,
     );

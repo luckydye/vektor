@@ -1,3 +1,4 @@
+import { openSpaceStore } from "#db/client/store.ts";
 import { Permission } from "#acl/permissions.ts";
 import {
   CORS_HEADERS,
@@ -29,7 +30,7 @@ export const GET: ApiRouteHandler = async (context) => {
   if (caldavUser instanceof Response) return caldavUser;
 
   const docId = eventId.replace(/\.ics$/, "");
-  const doc = await getDocument(spaceId, docId);
+  const doc = await getDocument(await openSpaceStore(spaceId), docId);
   if (!doc) return new Response("Not Found", { status: 404 });
 
   const ical = documentToICal(doc);
@@ -56,11 +57,11 @@ export const PUT: ApiRouteHandler = async (context) => {
   if (!event) return new Response("Bad Request", { status: 400 });
 
   const docId = eventId.replace(/\.ics$/, "");
-  const existing = await getDocument(spaceId, docId);
+  const existing = await getDocument(await openSpaceStore(spaceId), docId);
 
   if (existing) {
     await updateDocumentProperty(
-      spaceId,
+      await openSpaceStore(spaceId),
       docId,
       "title",
       event.summary,
@@ -68,7 +69,7 @@ export const PUT: ApiRouteHandler = async (context) => {
       caldavUser.id,
     );
     await updateDocumentProperty(
-      spaceId,
+      await openSpaceStore(spaceId),
       docId,
       "eventStart",
       event.start,
@@ -76,7 +77,7 @@ export const PUT: ApiRouteHandler = async (context) => {
       caldavUser.id,
     );
     await updateDocumentProperty(
-      spaceId,
+      await openSpaceStore(spaceId),
       docId,
       "eventEnd",
       event.end,
@@ -89,11 +90,11 @@ export const PUT: ApiRouteHandler = async (context) => {
     });
   }
 
-  const doc = await createDocument(spaceId, caldavUser.id, event.summary, "", {
+  const doc = await createDocument(await openSpaceStore(spaceId), caldavUser.id, event.summary, "", {
     title: event.summary,
   });
   await updateDocumentProperty(
-    spaceId,
+    await openSpaceStore(spaceId),
     doc.id,
     "eventStart",
     event.start,
@@ -101,7 +102,7 @@ export const PUT: ApiRouteHandler = async (context) => {
     caldavUser.id,
   );
   await updateDocumentProperty(
-    spaceId,
+    await openSpaceStore(spaceId),
     doc.id,
     "eventEnd",
     event.end,
