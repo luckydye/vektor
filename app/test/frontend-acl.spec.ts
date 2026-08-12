@@ -179,6 +179,145 @@ describe("Frontend ACL Tests - Document Page Access", () => {
   });
 });
 
+describe("Frontend ACL Tests - Document Addressed By ID", () => {
+  // A syntactically plausible id that resolves as neither an id nor a slug.
+  const missingDocumentId = "doc_0000000000000000000000000000";
+  let outsiderToken: string;
+  let granteeToken: string;
+  let otherDocGranteeToken: string;
+
+  async function pageShape(
+    path: string,
+    token: string,
+  ): Promise<{ status: number; location: string | null; body: string }> {
+    const response = await pageRequest(path, token);
+    return {
+      status: response.status,
+      location: response.headers.get("location"),
+      body: await response.text(),
+    };
+  }
+
+  beforeAll(async () => {
+    outsiderToken = (await createTestUser("Doc Id Outsider")).token;
+
+    // Viewer on the private document itself: authorized, so still redirected.
+    const grantee = await createTestUser("Doc Id Grantee");
+    granteeToken = grantee.token;
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: grantee.userId,
+        resourceType: "document",
+        resourceId: privateDocumentId,
+        action: "grant",
+      }),
+    });
+
+    // Viewer on a *different* document: reaches the space, may not read the
+    // private one.
+    const otherDocGrantee = await createTestUser("Doc Id Other Grantee");
+    otherDocGranteeToken = otherDocGrantee.token;
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: otherDocGrantee.userId,
+        resourceType: "document",
+        resourceId: testDocumentId,
+        action: "grant",
+      }),
+    });
+  });
+
+  it("answers a non-member the same by id, by slug and for a missing id", async () => {
+    const byId = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentId}`,
+      outsiderToken,
+    );
+    const bySlug = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+      outsiderToken,
+    );
+    const missing = await pageShape(
+      `/${testSpaceSlug}/doc/${missingDocumentId}`,
+      outsiderToken,
+    );
+
+    expect(byId.status).toBe(bySlug.status);
+    expect(byId.location).toBe(bySlug.location);
+    expect(byId.status).toBe(missing.status);
+    expect(byId.location).toBe(missing.location);
+    expect(byId.status).toBe(403);
+    expect(byId.location).toBeNull();
+    // The slug is derived from the title: it must not come back either way.
+    expect(byId.body).not.toContain(privateDocumentSlug);
+  });
+
+  it("answers an anonymous caller the same by id, by slug and for a missing id", async () => {
+    const byId = await pageShape(`/${testSpaceSlug}/doc/${privateDocumentId}`, "");
+    const bySlug = await pageShape(`/${testSpaceSlug}/doc/${privateDocumentSlug}`, "");
+    const missing = await pageShape(`/${testSpaceSlug}/doc/${missingDocumentId}`, "");
+
+    expect(byId.status).toBe(bySlug.status);
+    expect(byId.location).toBe(bySlug.location);
+    expect(byId.status).toBe(missing.status);
+    expect(byId.location).toBe(missing.location);
+    expect(byId.status).toBe(302);
+    expect(byId.location).toBe("/login");
+    expect(byId.body).not.toContain(privateDocumentSlug);
+  });
+
+  it("answers a space member who may not read the document the same by id as by slug", async () => {
+    const byId = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentId}`,
+      otherDocGranteeToken,
+    );
+    const bySlug = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+      otherDocGranteeToken,
+    );
+    const missing = await pageShape(
+      `/${testSpaceSlug}/doc/${missingDocumentId}`,
+      otherDocGranteeToken,
+    );
+
+    expect(byId.status).toBe(bySlug.status);
+    expect(byId.location).toBe(bySlug.location);
+    expect(byId.status).toBe(missing.status);
+    expect(byId.location).toBe(missing.location);
+    expect(byId.location).toBeNull();
+    expect(byId.body).not.toContain(privateDocumentSlug);
+  });
+
+  it("still redirects the owner from a document id to the canonical slug url", async () => {
+    const response = await pageRequest(
+      `/${testSpaceSlug}/doc/${privateDocumentId}?panel=comments`,
+      session1Token,
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}?panel=comments`,
+    );
+  });
+
+  it("still redirects a document-level grantee from a document id to the canonical slug url", async () => {
+    const response = await pageRequest(
+      `/${testSpaceSlug}/doc/${privateDocumentId}`,
+      granteeToken,
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+    );
+  });
+});
+
 describe("Frontend ACL Tests - Space Access", () => {
   it("should allow owner to view space index", async () => {
     const response = await pageRequest(`/${testSpaceSlug}`, session1Token);

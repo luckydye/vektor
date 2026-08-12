@@ -50,33 +50,34 @@ const storedDocumentRecord = docSlugMatch
   ? await getDocumentBySlug(store, docSlugMatch[1])
   : null;
 
-if (docSlugMatch && !storedDocumentRecord) {
-  // A document addressed by its ID redirects to its canonical slug URL, matching
-  // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
-  // rendering the shell for a document whose slug the URL never resolved.
-  const documentById = await getDocument(store, docSlugMatch[1]);
-  if (documentById) {
-    return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
+/**
+ * Viewer verdict for one document, without the Response `verifyDocumentRole`
+ * throws: both call sites below have to keep going on a failure instead of
+ * answering with it, so neither may leak the guard's 403/404 distinction.
+ */
+async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
+  try {
+    await verifyDocumentRole(
+      space.id,
+      documentId,
+      Astro.locals.user?.id ?? null,
+      Permission.VIEWER,
+    );
+    return true;
+  } catch (error) {
+    if (!(error instanceof Response)) throw error;
+    return false;
   }
 }
 
 let hasDirectDocumentAccess = false;
 if (storedDocumentRecord) {
-  try {
-    await verifyDocumentRole(
-      space.id,
-      storedDocumentRecord.id,
-      Astro.locals.user?.id ?? null,
-      Permission.VIEWER,
-    );
-    hasDirectDocumentAccess = true;
-  } catch (error) {
-    if (!Astro.locals.session && error instanceof Response) {
-      return new Response(null, {
-        status: 302,
-        headers: { Location: "/login" },
-      });
-    }
+  hasDirectDocumentAccess = await holdsDocumentViewerRole(storedDocumentRecord.id);
+  if (!hasDirectDocumentAccess && !Astro.locals.session) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/login" },
+    });
   }
 }
 
@@ -94,6 +95,23 @@ if (!hasDirectDocumentAccess) {
       });
     }
     return new Response(null, { status: 403, statusText: "Forbidden" });
+  }
+}
+
+if (docSlugMatch && !storedDocumentRecord) {
+  // A document addressed by its ID redirects to its canonical slug URL, matching
+  // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
+  // rendering the shell for a document whose slug the URL never resolved.
+  //
+  // It runs after the checks above and only for a caller who may read the
+  // document: slugs are derived from titles, so redirecting anyone else would
+  // hand out the title and confirm the document exists. An ID that is unknown
+  // and an ID the caller may not read both fall through to the response an
+  // unresolved slug produces for that same caller, so the two are
+  // indistinguishable and the redirect is no oracle.
+  const documentById = await getDocument(store, docSlugMatch[1]);
+  if (documentById && (await holdsDocumentViewerRole(documentById.id))) {
+    return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
   }
 }
 
