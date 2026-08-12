@@ -730,10 +730,9 @@ export async function listDocumentAccess(
   }
 
   return [...grantees.values()].map(({ userId, groupId, grants }) => {
-    // A grant on the document, its tree or its category overrides the space
-    // role — even a lower one — so the space grant only counts on its own.
-    const scoped = grants.filter((grant) => grant.resourceType !== ResourceType.SPACE);
-    const via = bestGrant(scoped.length > 0 ? scoped : grants);
+    // Mirrors hasPermission: the strongest grant wins, space role included, so
+    // a narrower grant never reads as a downgrade of it.
+    const via = bestGrant(grants);
     return { userId, groupId, permission: via.permission, via, grants };
   });
 }
@@ -948,16 +947,6 @@ export async function hasPermission(
       userGroups,
     );
 
-    const documentPermission = bestAclEntry(
-      [directPermission, treePermission, categoryPermission].filter(
-        (entry): entry is AclEntry => !!entry,
-      ),
-    );
-
-    if (documentPermission) {
-      return meetsPermissionLevel(documentPermission.permission, requiredPermission);
-    }
-
     const spacePermission = await getPermission(
       spaceId,
       ResourceType.SPACE,
@@ -966,9 +955,18 @@ export async function hasPermission(
       userGroups,
     );
 
+    // Grants add up, they never subtract: there is no deny entry in this model,
+    // so a narrow grant must not drop someone below the role they already hold
+    // on the space — sharing a document as viewer would lock out its owner.
+    const documentPermission = bestAclEntry(
+      [directPermission, treePermission, categoryPermission, spacePermission].filter(
+        (entry): entry is AclEntry => !!entry,
+      ),
+    );
+
     return !!(
-      spacePermission &&
-      meetsPermissionLevel(spacePermission.permission, requiredPermission)
+      documentPermission &&
+      meetsPermissionLevel(documentPermission.permission, requiredPermission)
     );
   }
 

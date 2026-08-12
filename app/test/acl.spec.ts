@@ -3424,6 +3424,7 @@ describe("ACL API Tests - Document Access List", () => {
   let pageUser: Awaited<ReturnType<typeof createAclTestUser>>;
   let treeUser: Awaited<ReturnType<typeof createAclTestUser>>;
   let spaceUser: Awaited<ReturnType<typeof createAclTestUser>>;
+  let downgradeUser: Awaited<ReturnType<typeof createAclTestUser>>;
 
   function grant(body: Record<string, unknown>) {
     return apiRequest(`/api/v1/spaces/${spaceId}/permissions`, session1Token, {
@@ -3466,6 +3467,7 @@ describe("ACL API Tests - Document Access List", () => {
     pageUser = await createAclTestUser("Page Grantee");
     treeUser = await createAclTestUser("Tree Grantee");
     spaceUser = await createAclTestUser("Space Grantee");
+    downgradeUser = await createAclTestUser("Downgrade Grantee");
 
     await grant({
       roleOrFeature: "editor",
@@ -3473,15 +3475,23 @@ describe("ACL API Tests - Document Access List", () => {
       resourceType: "document",
       resourceId: childId,
     });
-    // A space role plus a narrower grant on an ancestor: the narrower one wins.
-    await grant({ roleOrFeature: "editor", userId: treeUser.userId });
+    // A space role plus a stronger grant on an ancestor: the stronger one wins.
+    await grant({ roleOrFeature: "viewer", userId: treeUser.userId });
     await grant({
-      roleOrFeature: "viewer",
+      roleOrFeature: "editor",
       userId: treeUser.userId,
       resourceType: "document_tree",
       resourceId: parentId,
     });
     await grant({ roleOrFeature: "editor", userId: spaceUser.userId });
+    // The reverse: a narrower grant below the space role must not subtract.
+    await grant({ roleOrFeature: "editor", userId: downgradeUser.userId });
+    await grant({
+      roleOrFeature: "viewer",
+      userId: downgradeUser.userId,
+      resourceType: "document",
+      resourceId: childId,
+    });
   });
 
   it("lists direct, inherited and space-level access to a document", async () => {
@@ -3503,8 +3513,12 @@ describe("ACL API Tests - Document Access List", () => {
     expect(inherited.via.resourceType).toBe("document_tree");
     expect(inherited.via.inherited).toBe(true);
     expect(inherited.via.resourceLabel).toBe("Parent Page");
-    // The tree grant overrides the space role, even though the space role is higher.
-    expect(inherited.permission).toBe("viewer");
+    expect(inherited.permission).toBe("editor");
+
+    // A document grant below the space role leaves the space role in charge.
+    const notDowngraded = byUser.get(downgradeUser.userId);
+    expect(notDowngraded.permission).toBe("editor");
+    expect(notDowngraded.via.resourceType).toBe("space");
 
     const viaSpace = byUser.get(spaceUser.userId);
     expect(viaSpace.permission).toBe("editor");
@@ -3524,6 +3538,32 @@ describe("ACL API Tests - Document Access List", () => {
       viewer.token,
     );
     expect(response.status).toBe(403);
+  });
+
+  // Sharing a document as viewer with someone who already outranks that — the
+  // space owner most of all — used to lock them out of their own document,
+  // including out of the sharing screen needed to take the grant back.
+  it("keeps the space owner in control after a viewer grant on their document", async () => {
+    const response = await grant({
+      roleOrFeature: "viewer",
+      userId: testUser1.id,
+      resourceType: "document",
+      resourceId: childId,
+    });
+    expect(response.status).toBe(200);
+
+    const access = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
+      session1Token,
+    );
+    expect(access.status).toBe(200);
+
+    const update = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}`,
+      session1Token,
+      { method: "PUT", body: JSON.stringify({ content: "<p>Child Page edited</p>" }) },
+    );
+    expect(update.status).toBe(200);
   });
 });
 
