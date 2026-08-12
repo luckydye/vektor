@@ -143,10 +143,14 @@ export function config() {
        */
       JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
       /**
-       * Allow job `fetch` to reach loopback and private address ranges. Off by
+       * Allow server-side fetches of user-configured URLs to reach loopback and
+       * private address ranges: job `fetch`, and an AI provider base URL. Off by
        * default: that is where the internal API, the database and cloud metadata
        * endpoints live, and jobs have capabilities for the space data they need.
-       * Only enable for local development against a private service.
+       * Enable it for local development against a private service, or to point a
+       * space at a self-hosted Ollama on the private network — with the
+       * understanding that a space owner can then aim it at any internal host and
+       * any viewer can read the reply.
        */
       JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
 

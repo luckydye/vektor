@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { callOllama, ollamaChatUrl, proxyToOllama } from "#api/provider/ollama.ts";
 import { buildIntegrationApiUrl } from "#api/routes/spaces/integration-proxy.ts";
+import { normalizeOllamaBaseUrl } from "#api/routes/spaces/settings-ai-provider.ts";
 import type { OAuthProviderConfiguration } from "#integrations/oauthProviders.ts";
 import { assertEgressAllowed } from "#jobs/runtime/capabilities.ts";
 import {
@@ -200,6 +202,10 @@ const upstream = serveTestOrigin((_request, pathname) => {
     });
   }
   if (pathname === "/end") return new Response("arrived", { status: 200 });
+  // Stands in for a self-hosted Ollama on the private network.
+  if (pathname === "/api/chat") {
+    return Response.json({ message: { content: "from ollama" }, done_reason: "stop" });
+  }
   return null;
 });
 const upstreamOrigin = `http://127.0.0.1:${upstream.port}`;
@@ -443,6 +449,181 @@ describe("job egress policy", () => {
     } finally {
       stub.mockRestore();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The AI provider base URL
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Runs `body` with the private-egress opt-in on, restoring the env afterwards. */
+async function withPrivateEgress<T>(body: () => Promise<T>): Promise<T> {
+  const previous = process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE;
+  process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE = "1";
+  try {
+    return await body();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE;
+    } else {
+      process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE = previous;
+    }
+  }
+}
+
+// `${baseUrl}/api/chat` was concatenation, not resolution: a trailing slash gave
+// `//api/chat`, and a base ending in `?` or `#` swallowed the path so the request
+// went to `/` on the host with `/api/chat` in the query or fragment.
+describe("ollamaChatUrl", () => {
+  it.each([
+    ["http://93.184.216.34:11434", "http://93.184.216.34:11434/api/chat"],
+    ["http://93.184.216.34:11434/", "http://93.184.216.34:11434/api/chat"],
+    ["http://93.184.216.34:11434///", "http://93.184.216.34:11434/api/chat"],
+    ["http://93.184.216.34:11434?", "http://93.184.216.34:11434/api/chat"],
+    ["http://93.184.216.34:11434/#", "http://93.184.216.34:11434/api/chat"],
+    ["https://ollama.example.com/proxy", "https://ollama.example.com/proxy/api/chat"],
+    ["https://ollama.example.com/proxy/", "https://ollama.example.com/proxy/api/chat"],
+  ])("resolves %s to %s", (baseUrl, expected) => {
+    expect(ollamaChatUrl(baseUrl)).toBe(expected);
+  });
+
+  it.each([
+    "http://93.184.216.34/?x=1",
+    "http://93.184.216.34/#frag",
+    "http://user:pass@93.184.216.34",
+    "ftp://93.184.216.34",
+    "file:///etc/passwd",
+    "127.0.0.1:11434",
+    "",
+  ])("refuses %j as a base URL", (baseUrl) => {
+    expect(() => ollamaChatUrl(baseUrl)).toThrow(SsrfError);
+  });
+});
+
+// Audit 037: the base URL was stored on a "non-empty string" check and then
+// fetched, so an owner could aim the server at loopback or the metadata endpoint
+// and any viewer could read the reply out of the completion.
+describe("AI provider base URL on write", () => {
+  it.each([
+    "http://127.0.0.1:9097",
+    "http://localhost:11434",
+    "http://10.1.2.3:11434",
+    "http://192.168.1.5:11434",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://[fd00::1]:11434",
+    "http://[::ffff:127.0.0.1]:11434",
+    "http://ollama.internal:11434",
+    "file:///etc/passwd",
+    "not a url",
+    "",
+    undefined,
+  ])("rejects %j with 400", async (baseUrl) => {
+    let thrown: unknown;
+    try {
+      await normalizeOllamaBaseUrl(baseUrl);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown, `accepted ${JSON.stringify(baseUrl)}`).toBeInstanceOf(Response);
+    expect((thrown as Response).status).toBe(400);
+  });
+
+  it("accepts a public base URL and normalises it", async () => {
+    await expect(
+      normalizeOllamaBaseUrl("  http://93.184.216.34:11434//  "),
+    ).resolves.toBe("http://93.184.216.34:11434");
+  });
+
+  it("accepts a private base URL under the private-egress opt-in", async () => {
+    await withPrivateEgress(async () => {
+      await expect(normalizeOllamaBaseUrl("http://127.0.0.1:11434/")).resolves.toBe(
+        "http://127.0.0.1:11434",
+      );
+    });
+  });
+});
+
+// Write-time validation cannot vouch for the value at request time: it may predate
+// the check, and the name may resolve somewhere else by now.
+describe("AI provider base URL at fetch time", () => {
+  const signal = () => new AbortController().signal;
+
+  it.each([
+    "http://127.0.0.1:9097",
+    "http://169.254.169.254",
+    "http://[fd00::1]:11434",
+    "http://ollama.internal:11434",
+  ])("refuses the stored private baseUrl %s before connecting", async (baseUrl) => {
+    const stub = vi.spyOn(globalThis, "fetch").mockImplementation((() => {
+      throw new Error("upstream must not be reached");
+    }) as typeof fetch);
+
+    try {
+      await expect(
+        proxyToOllama(baseUrl, "llama", { messages: [] }, signal()),
+      ).rejects.toBeInstanceOf(SsrfError);
+      expect(stub).not.toHaveBeenCalled();
+    } finally {
+      stub.mockRestore();
+    }
+  });
+
+  it("refuses it on the agent path as well", async () => {
+    await expect(
+      callOllama({
+        provider: {
+          provider: "ollama",
+          baseUrl: "http://127.0.0.1:9097",
+          model: "llama",
+        },
+        messages: [],
+        tools: [],
+      }),
+    ).rejects.toBeInstanceOf(SsrfError);
+  });
+
+  it("still calls a public baseUrl, at the resolved chat URL", async () => {
+    const calls: string[] = [];
+    const stub = vi.spyOn(globalThis, "fetch").mockImplementation(((
+      input: string | URL | Request,
+    ) => {
+      calls.push(String(input));
+      return Promise.resolve(
+        Response.json({ message: { content: "hello" }, done_reason: "stop" }),
+      );
+    }) as typeof fetch);
+
+    try {
+      const response = await proxyToOllama(
+        "http://93.184.216.34:11434/",
+        "llama",
+        { messages: [] },
+        signal(),
+      );
+      expect(response.status).toBe(200);
+      const completion = (await response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
+      expect(completion.choices[0]?.message.content).toBe("hello");
+    } finally {
+      stub.mockRestore();
+    }
+
+    expect(calls).toEqual(["http://93.184.216.34:11434/api/chat"]);
+  });
+
+  // Self-hosted Ollama on the private network is a real deployment, so the opt-in
+  // has to actually work: policy, URL construction and the request itself, against
+  // a real listener on loopback.
+  it("reaches a private baseUrl under the private-egress opt-in", async () => {
+    const response = await withPrivateEgress(() =>
+      proxyToOllama(upstreamOrigin, "llama", { messages: [] }, signal()),
+    );
+    expect(response.status).toBe(200);
+    const completion = (await response.json()) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+    expect(completion.choices[0]?.message.content).toBe("from ollama");
   });
 });
 

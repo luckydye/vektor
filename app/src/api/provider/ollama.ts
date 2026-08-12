@@ -1,7 +1,73 @@
+import { config } from "#config";
+import {
+  resolvePublicUrl,
+  SsrfError,
+  safeFetch,
+  type UrlValidator,
+} from "#utils/ssrf.ts";
 import type { ChatMessage } from "./types.ts";
 import { type PartialToolCall, parseNDJSON } from "./utils.ts";
 
 type OllamaProvider = { provider: "ollama"; baseUrl: string; model: string };
+
+function parseHttpUrl(rawUrl: string): URL {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new SsrfError("Invalid URL provided");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new SsrfError("Only HTTP(S) URLs are allowed");
+  }
+  return url;
+}
+
+/**
+ * Egress policy for a configured provider base URL.
+ *
+ * The base URL is space configuration, but the request it produces is made by
+ * the server on behalf of *any viewer* and the upstream body is handed back
+ * inside the completion — so an unchecked value is a read primitive against
+ * loopback, the private ranges and the cloud metadata endpoint, not merely a
+ * misconfiguration.
+ *
+ * Self-hosted Ollama is why this is a policy rather than a flat denylist: a
+ * private base URL is the normal deployment for it. Private targets are allowed
+ * only under `VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1`, the same opt-in the job runtime
+ * uses for private egress, which is off by default.
+ */
+export const resolveProviderUrl: UrlValidator = async (rawUrl) => {
+  if (config().JOB_FETCH_ALLOW_PRIVATE !== "1") return await resolvePublicUrl(rawUrl);
+  // No pinning under the hatch: its whole point is to reach names that resolve
+  // into the local network.
+  return { url: parseHttpUrl(rawUrl), addresses: [] };
+};
+
+/**
+ * The absolute chat URL under a configured Ollama base URL.
+ *
+ * `${baseUrl}/api/chat` was concatenation, not resolution, and the two differ
+ * exactly where it matters. A base ending in `#` or `?` swallowed the path
+ * (`http://host/#` + `/api/chat` requests `/`, with the rest in the fragment), a
+ * trailing slash produced `//api/chat`, and a base carrying userinfo or a query
+ * ends up in a URL no one looked at as a whole. Here only the parsed base's path
+ * grows, so the URL that gets checked is the URL that gets requested — and
+ * {@link safeFetch} re-validates that final URL, not the base it came from.
+ */
+export function ollamaChatUrl(baseUrl: string): string {
+  const url = parseHttpUrl(baseUrl.trim());
+  if (url.username || url.password || url.search || url.hash) {
+    throw new SsrfError(
+      "Base URL must not contain credentials, a query string or a fragment",
+    );
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/api/chat`;
+  // Both are empty here, so this only drops a bare trailing `?`/`#` delimiter.
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
 
 export function toOllamaMessages(
   messages: ChatMessage[],
@@ -72,18 +138,25 @@ export async function callOllama(options: {
   onText?: (text: string) => void | Promise<void>;
   onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
-  const response = await fetch(`${options.provider.baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: options.provider.model,
-      messages: toOllamaMessages(options.messages),
-      tools: options.tools,
-      stream: true,
-      think: true,
-    }),
-    signal: options.signal,
-  });
+  // `safeFetch` with the provider policy, never a bare `fetch`: the base URL is
+  // stored configuration, so write-time validation cannot vouch for it here — the
+  // value may predate the check and the name may resolve somewhere else now.
+  const response = await safeFetch(
+    ollamaChatUrl(options.provider.baseUrl),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: options.provider.model,
+        messages: toOllamaMessages(options.messages),
+        tools: options.tools,
+        stream: true,
+        think: true,
+      }),
+      signal: options.signal,
+    },
+    resolveProviderUrl,
+  );
 
   if (!response.ok || !response.body) {
     throw new Error(`Ollama ${response.status}: ${await response.text()}`);
@@ -178,12 +251,16 @@ export async function proxyToOllama(
     ...(typeof maxTokens === "number" ? { options: { num_predict: maxTokens } } : {}),
   };
 
-  const response = await fetch(`${baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(ollamaBody),
-    signal,
-  });
+  const response = await safeFetch(
+    ollamaChatUrl(baseUrl),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ollamaBody),
+      signal,
+    },
+    resolveProviderUrl,
+  );
 
   if (!response.ok) {
     return new Response(response.body, {
