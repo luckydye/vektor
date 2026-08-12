@@ -131,7 +131,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveError: documentSaveError,
     saveDocument,
   } = useDocument(documentId, documentType);
-  const { saveRevision } = useRevisions(documentId);
+  const { saveRevision, error: revisionError } = useRevisions(documentId);
   const { updateProperty } = useProperties();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -170,27 +170,39 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     setSaveStatus("saving");
     setSaveError(null);
 
-    let saved = false;
-    try {
-      const content = getEditorHtml();
-      if (content) {
-        if (mode === "suggestion") {
-          saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
-        } else {
-          // Marked before the publish, so a marker that cannot be written
-          // leaves the document as it was rather than published without it.
-          if (mode === "template") await markAsTemplate();
-          saved = await saveDocument(content, { publish: true });
-        }
-      }
-    } catch (error) {
-      setSaveStatus("error");
-      setSaveError(error instanceof Error ? error : new Error(String(error)));
+    const content = getEditorHtml();
+    if (!content) {
+      // No editor, or nothing in it. Not a failure, so nothing to report.
+      setSaveStatus("idle");
       return;
     }
 
-    if (!saved) {
-      setSaveStatus("idle");
+    try {
+      if (mode === "suggestion") {
+        // `saveRevision` keeps its failure to itself and answers null, so the
+        // message has to be picked up from the composable's own error signal.
+        if (!(await saveRevision(content, "Suggested changes", "suggestion"))) {
+          throw new Error(revisionError() ?? "Could not save the suggestion");
+        }
+      } else {
+        // Marked before the publish, so a marker that cannot be written
+        // leaves the document as it was rather than published without it.
+        if (mode === "template") await markAsTemplate();
+        if (!(await saveDocument(content, { publish: true }))) {
+          // Also swallowed, but `useDocument` has raised the toast already —
+          // record it so the editor keeps showing that nothing was published.
+          setSaveStatus("error");
+          setSaveError(
+            new Error(documentSaveError() ?? "Could not publish the document"),
+          );
+          return;
+        }
+      }
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      setSaveStatus("error");
+      setSaveError(failure);
+      toast.error(failure.message);
       return;
     }
 
@@ -242,13 +254,21 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   async function startEditorSession() {
     const session = ++editorSession;
     if (!canMountEditor()) return;
+    // A new session has not failed yet — a message left over from the previous
+    // one would sit next to the button as if it had.
+    setSaveStatus("");
+    setSaveError(null);
     registerSaveActions();
     try {
       await collaboration.joinUntilReady();
     } catch (error) {
       if (session === editorSession) {
+        const failure = error instanceof Error ? error : new Error(String(error));
         setSaveStatus("error");
-        setSaveError(error instanceof Error ? error : new Error(String(error)));
+        setSaveError(failure);
+        // Editing is turned back off here, so without this the click on Edit
+        // looks like it simply did nothing.
+        toast.error(`Could not start editing: ${failure.message}`);
         setEditing(false);
       }
       return;

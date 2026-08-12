@@ -31,6 +31,12 @@ export interface RealtimeEventMessage {
   topics: RealtimeTopic[];
   events: RealtimeTopicEvent[];
   timestamp: string;
+  /**
+   * Synthesised after a reconnect, standing in for the events missed while the
+   * socket was down. Carries no per-event `data`, so subscribers that filter on
+   * `data` must refetch on it regardless.
+   */
+  resync?: true;
 }
 
 export interface PresenceUser {
@@ -151,6 +157,13 @@ export const WsMsgType = {
   PresenceUpdate: 7,
   PresenceLeave: 8,
   PresenceSnapshot: 9,
+  /**
+   * Liveness probe, client to server, answered with `Pong`. Protocol pings are
+   * answered by the browser and never reach script, so only a round trip the
+   * page can observe detects a half-open socket.
+   */
+  Ping: 10,
+  Pong: 11,
 } as const;
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];

@@ -229,6 +229,11 @@ async function handleRealtimeWebSocket(
         return;
       }
 
+      if (type === WsMsgType.Ping) {
+        websocket.send(wsEncode(WsMsgType.Pong, {}));
+        return;
+      }
+
       if (await presence.handle(type, payload)) {
         return;
       }
@@ -287,9 +292,28 @@ export interface RealtimeWebSocketServer {
   close(): void;
 }
 
+/**
+ * How long a connection may go without a frame before it is dropped, and how
+ * often the sweep looks. Clients ping every 25s, so silence this long is three
+ * missed rounds — a connection that died without a close frame, holding its
+ * Yjs rooms and presence entries.
+ */
+const CONNECTION_IDLE_TIMEOUT_MS = 90_000;
+const IDLE_SWEEP_INTERVAL_MS = 30_000;
+
 /** Attaches the realtime collaboration endpoint to the HTTP server. */
 export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocketServer {
   const websocketServer = new WebSocketServer({ noServer: true });
+  const lastSeenAt = new WeakMap<WebSocket, number>();
+
+  const idleSweep = setInterval(() => {
+    const deadline = Date.now() - CONNECTION_IDLE_TIMEOUT_MS;
+    for (const client of websocketServer.clients) {
+      if ((lastSeenAt.get(client) ?? 0) > deadline) continue;
+      client.terminate();
+    }
+  }, IDLE_SWEEP_INTERVAL_MS);
+  idleSweep.unref?.();
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -302,12 +326,15 @@ export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocket
     websocketServer.handleUpgrade(request, socket, head, (websocket) => {
       incrementWebSocketConnections();
       websocket.once("close", decrementWebSocketConnections);
+      lastSeenAt.set(websocket, Date.now());
+      websocket.on("message", () => lastSeenAt.set(websocket, Date.now()));
       void handleRealtimeWebSocket(websocket, request, match[1]);
     });
   });
 
   return {
     close(): void {
+      clearInterval(idleSweep);
       websocketServer.close();
       for (const client of websocketServer.clients) {
         try {

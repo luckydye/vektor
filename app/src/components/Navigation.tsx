@@ -92,15 +92,13 @@ export function Navigation() {
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}
           onCreate={async (data) => {
-            try {
-              const newSpace = await createSpace(data.name, data.slug, {
-                brandColor: data.brandColor,
-                logoSvg: data.logoSvg,
-              });
-              window.location.href = `/${newSpace.slug}/`;
-            } catch (err) {
-              console.error("Failed to create space:", err);
-            }
+            // Failures propagate on purpose: the dialog shows them in its form
+            // error and stays open so the slug can be corrected.
+            const newSpace = await createSpace(data.name, data.slug, {
+              brandColor: data.brandColor,
+              logoSvg: data.logoSvg,
+            });
+            window.location.href = `/${newSpace.slug}/`;
           }}
         />
         <SpaceSelector

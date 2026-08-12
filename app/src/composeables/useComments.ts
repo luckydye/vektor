@@ -85,6 +85,12 @@ export function useComments(options: {
       return documentId ? [realtimeTopics.document(documentId)] : [];
     },
     (_, event) => {
+      // A resync names topics but no kinds; anything held may be stale.
+      if (event.resync) {
+        void refetch();
+        return;
+      }
+
       const hasCommentEvent = event.events.some(
         ({ data }) =>
           typeof data?.kind === "string" &&

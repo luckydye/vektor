@@ -62,6 +62,8 @@ export function DocumentShareDialog(props: Props) {
   const [selectedCategoryId, setSelectedCategoryId] = createSignal("");
   const [usersMap, setUsersMap] = createSignal(new Map<string, User>());
   const [isLoading, setIsLoading] = createSignal(false);
+  const [loadError, setLoadError] = createSignal<string | null>(null);
+  const [categoryError, setCategoryError] = createSignal<string | null>(null);
 
   const [newMemberEmail, setNewMemberEmail] = createSignal("");
   const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
@@ -69,6 +71,10 @@ export function DocumentShareDialog(props: Props) {
   const [addMemberError, setAddMemberError] = createSignal<string | null>(null);
 
   const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
+
+  // The category panel reads both loads: the dropdown comes from the shared
+  // one, the list from its own.
+  const categoryPanelError = createMemo(() => loadError() ?? categoryError());
 
   const roleOptions = createMemo(() =>
     userIsOwner()
@@ -93,21 +99,34 @@ export function DocumentShareDialog(props: Props) {
   async function loadCategoryPermissions() {
     const spaceId = currentSpaceId();
     const categoryId = selectedCategoryId();
+    setCategoryError(null);
     if (!spaceId || !categoryId) {
       setCategoryPermissions([]);
       return;
     }
-    const response = await api.permissions.list(spaceId, "role", {
-      resourceType: "category",
-      resourceId: categoryId,
-    });
-    setCategoryPermissions((response.permissions || []).filter((p) => p.type === "role"));
+    try {
+      const response = await api.permissions.list(spaceId, "role", {
+        resourceType: "category",
+        resourceId: categoryId,
+      });
+      setCategoryPermissions(
+        (response.permissions || []).filter((p) => p.type === "role"),
+      );
+    } catch (err) {
+      // Handled here rather than thrown: this also runs on its own when the
+      // category picker changes, where there is no caller to report to.
+      setCategoryPermissions([]);
+      setCategoryError(
+        err instanceof Error ? err.message : "Failed to load category access",
+      );
+    }
   }
 
   async function load() {
     const spaceId = currentSpaceId();
     if (!spaceId || !props.documentId) return;
     setIsLoading(true);
+    setLoadError(null);
     try {
       const [access, spacePerms, members, categoryList] = await Promise.all([
         api.documentAccess.get(spaceId, props.documentId),
@@ -134,7 +153,13 @@ export function DocumentShareDialog(props: Props) {
       setUsersMap(map);
       await loadCategoryPermissions();
     } catch (err) {
-      console.error("Failed to load sharing data:", err);
+      // Every list in this dialog is a statement about who has access, so a
+      // failed load must not fall through to the empty state — "no one has
+      // access" is the opposite of "we could not find out".
+      setDocumentAccess([]);
+      setSpacePermissions([]);
+      setCategoryPermissions([]);
+      setLoadError(err instanceof Error ? err.message : "Failed to load sharing data");
     } finally {
       setIsLoading(false);
     }
@@ -376,6 +401,20 @@ export function DocumentShareDialog(props: Props) {
     </div>
   );
 
+  /** Shown in place of a list whose load failed, so nothing reads as "empty". */
+  const LoadError = (errorProps: { message: string; onRetry: () => void }) => (
+    <div role="alert" class="rounded-md border border-red-200 bg-red-50 p-3">
+      <p class="text-red-600 text-size-small">{errorProps.message}</p>
+      <button
+        type="button"
+        class="mt-1.5 text-red-700 text-size-small underline"
+        onClick={errorProps.onRetry}
+      >
+        Try again
+      </button>
+    </div>
+  );
+
   const EmailAndRoleFields = () => (
     <>
       <input
@@ -470,46 +509,53 @@ export function DocumentShareDialog(props: Props) {
 
             <Show when={!isLoading()} fallback={<Spinner />}>
               <Show
-                when={sortedDocumentAccess().length > 0}
+                when={!loadError()}
                 fallback={
-                  <p class="text-neutral-400 text-size-small">
-                    No one has access to this document yet.
-                  </p>
+                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
                 }
               >
-                <p class="text-neutral-400 text-size-small">
-                  {sortedDocumentAccess().length} with access
-                </p>
-                <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                  <For each={sortedDocumentAccess()}>
-                    {(entry) => (
-                      <PermissionRow
-                        userId={entry.userId}
-                        groupId={entry.groupId}
-                        detail={accessSourceLabel(entry)}
-                        trailing={
-                          <>
-                            <RoleBadge role={entry.permission} />
-                            <Show
-                              when={
-                                directGrants(entry).length > 0 &&
-                                entry.userId !== user()?.id
-                              }
-                            >
-                              <button
-                                type="button"
-                                class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                onClick={() => void removeDocumentAccess(entry)}
+                <Show
+                  when={sortedDocumentAccess().length > 0}
+                  fallback={
+                    <p class="text-neutral-400 text-size-small">
+                      No one has access to this document yet.
+                    </p>
+                  }
+                >
+                  <p class="text-neutral-400 text-size-small">
+                    {sortedDocumentAccess().length} with access
+                  </p>
+                  <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
+                    <For each={sortedDocumentAccess()}>
+                      {(entry) => (
+                        <PermissionRow
+                          userId={entry.userId}
+                          groupId={entry.groupId}
+                          detail={accessSourceLabel(entry)}
+                          trailing={
+                            <>
+                              <RoleBadge role={entry.permission} />
+                              <Show
+                                when={
+                                  directGrants(entry).length > 0 &&
+                                  entry.userId !== user()?.id
+                                }
                               >
-                                Remove
-                              </button>
-                            </Show>
-                          </>
-                        }
-                      />
-                    )}
-                  </For>
-                </div>
+                                <button
+                                  type="button"
+                                  class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
+                                  onClick={() => void removeDocumentAccess(entry)}
+                                >
+                                  Remove
+                                </button>
+                              </Show>
+                            </>
+                          }
+                        />
+                      )}
+                    </For>
+                  </div>
+                </Show>
               </Show>
             </Show>
           </div>
@@ -549,37 +595,49 @@ export function DocumentShareDialog(props: Props) {
 
             <Show when={!isLoading()} fallback={<Spinner />}>
               <Show
-                when={categoryPermissions().length > 0}
+                when={!categoryPanelError()}
                 fallback={
-                  <p class="text-neutral-400 text-size-small">
-                    No one has been given direct access to this category yet.
-                  </p>
+                  <LoadError
+                    message={categoryPanelError() ?? ""}
+                    onRetry={() =>
+                      void (loadError() ? load() : loadCategoryPermissions())
+                    }
+                  />
                 }
               >
-                <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                  <For each={categoryPermissions()}>
-                    {(perm) => (
-                      <PermissionRow
-                        userId={perm.permission.userId}
-                        groupId={perm.permission.groupId}
-                        trailing={
-                          <>
-                            <RoleBadge role={perm.permission.permission} />
-                            <Show when={!isSelf(perm)}>
-                              <button
-                                type="button"
-                                class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                onClick={() => void removeCategoryPerm(perm)}
-                              >
-                                Remove
-                              </button>
-                            </Show>
-                          </>
-                        }
-                      />
-                    )}
-                  </For>
-                </div>
+                <Show
+                  when={categoryPermissions().length > 0}
+                  fallback={
+                    <p class="text-neutral-400 text-size-small">
+                      No one has been given direct access to this category yet.
+                    </p>
+                  }
+                >
+                  <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
+                    <For each={categoryPermissions()}>
+                      {(perm) => (
+                        <PermissionRow
+                          userId={perm.permission.userId}
+                          groupId={perm.permission.groupId}
+                          trailing={
+                            <>
+                              <RoleBadge role={perm.permission.permission} />
+                              <Show when={!isSelf(perm)}>
+                                <button
+                                  type="button"
+                                  class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
+                                  onClick={() => void removeCategoryPerm(perm)}
+                                >
+                                  Remove
+                                </button>
+                              </Show>
+                            </>
+                          }
+                        />
+                      )}
+                    </For>
+                  </div>
+                </Show>
               </Show>
             </Show>
           </div>
@@ -603,50 +661,57 @@ export function DocumentShareDialog(props: Props) {
 
             <Show when={!isLoading()} fallback={<Spinner />}>
               <Show
-                when={spacePermissions().length > 0}
+                when={!loadError()}
                 fallback={
-                  <p class="text-neutral-400 text-size-small">No space members yet.</p>
+                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
                 }
               >
-                <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                  <For each={spacePermissions()}>
-                    {(perm) => (
-                      <PermissionRow
-                        userId={perm.permission.userId}
-                        groupId={perm.permission.groupId}
-                        trailing={
-                          <>
-                            <Show
-                              when={userIsOwner() && !isSelf(perm)}
-                              fallback={<RoleBadge role={perm.permission.permission} />}
-                            >
-                              <select
-                                value={perm.permission.permission}
-                                onChange={(e) =>
-                                  void changeSpaceRole(perm, e.currentTarget.value)
-                                }
-                                class="rounded-md border border-neutral-200 bg-background px-2 py-0.5 text-neutral-700 text-size-small focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                <Show
+                  when={spacePermissions().length > 0}
+                  fallback={
+                    <p class="text-neutral-400 text-size-small">No space members yet.</p>
+                  }
+                >
+                  <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
+                    <For each={spacePermissions()}>
+                      {(perm) => (
+                        <PermissionRow
+                          userId={perm.permission.userId}
+                          groupId={perm.permission.groupId}
+                          trailing={
+                            <>
+                              <Show
+                                when={userIsOwner() && !isSelf(perm)}
+                                fallback={<RoleBadge role={perm.permission.permission} />}
                               >
-                                <option value={Permission.VIEWER}>Viewer</option>
-                                <option value={Permission.EDITOR}>Editor</option>
-                                <option value={Permission.OWNER}>Owner</option>
-                              </select>
-                            </Show>
-                            <Show when={canRemoveSpaceMember(perm)}>
-                              <button
-                                type="button"
-                                class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                onClick={() => void removeSpacePerm(perm)}
-                              >
-                                Remove
-                              </button>
-                            </Show>
-                          </>
-                        }
-                      />
-                    )}
-                  </For>
-                </div>
+                                <select
+                                  value={perm.permission.permission}
+                                  onChange={(e) =>
+                                    void changeSpaceRole(perm, e.currentTarget.value)
+                                  }
+                                  class="rounded-md border border-neutral-200 bg-background px-2 py-0.5 text-neutral-700 text-size-small focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                                >
+                                  <option value={Permission.VIEWER}>Viewer</option>
+                                  <option value={Permission.EDITOR}>Editor</option>
+                                  <option value={Permission.OWNER}>Owner</option>
+                                </select>
+                              </Show>
+                              <Show when={canRemoveSpaceMember(perm)}>
+                                <button
+                                  type="button"
+                                  class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
+                                  onClick={() => void removeSpacePerm(perm)}
+                                >
+                                  Remove
+                                </button>
+                              </Show>
+                            </>
+                          }
+                        />
+                      )}
+                    </For>
+                  </div>
+                </Show>
               </Show>
             </Show>
           </div>

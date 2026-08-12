@@ -76,6 +76,8 @@ export function ToastContainer() {
             return (
               <div
                 ref={(el) => registerToast(toast.id, el)}
+                // A failure has to be announced, not just drawn.
+                role={toast.type === "error" ? "alert" : "status"}
                 class="pointer-events-auto relative flex min-w-64 items-center gap-2.5 overflow-hidden rounded-lg px-4 py-2.5 font-medium text-size-small shadow-large"
                 classList={{
                   "bg-red-600 text-white": toast.type === "error",

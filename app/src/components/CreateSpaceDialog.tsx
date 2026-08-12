@@ -10,12 +10,14 @@ const MAX_LOGO_BYTES = 300 * 1024;
 interface Props {
   show?: boolean;
   onUpdateShow?: (value: boolean) => void;
+  // Awaited: a rejection (a taken slug, most often) has to keep the dialog
+  // open and land in `formError`, so the handler must report back here.
   onCreate?: (data: {
     name: string;
     slug: string;
     brandColor: string;
     logoSvg: string;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 const isValidSlug = (slug: string) => /^[a-z0-9-]+$/.test(slug);
@@ -27,6 +29,7 @@ export function CreateSpaceDialog(props: Props) {
   const [brandColor, setBrandColor] = createSignal(DEFAULT_BRAND_COLOR);
   const [logoSvg, setLogoSvg] = createSignal("");
   const [formError, setFormError] = createSignal("");
+  const [pending, setPending] = createSignal(false);
 
   function reset() {
     setName("");
@@ -73,8 +76,9 @@ export function CreateSpaceDialog(props: Props) {
     }
   }
 
-  function handleSubmit(event: Event) {
+  async function handleSubmit(event: Event) {
     event.preventDefault();
+    if (pending()) return;
 
     if (!name().trim()) return setFormError("Please enter a space name");
     if (!slug().trim()) return setFormError("Please enter a slug");
@@ -88,12 +92,20 @@ export function CreateSpaceDialog(props: Props) {
     }
 
     setFormError("");
-    props.onCreate?.({
-      name: name().trim(),
-      slug: slug().trim(),
-      brandColor: brandColor(),
-      logoSvg: logoSvg(),
-    });
+    setPending(true);
+    try {
+      await props.onCreate?.({
+        name: name().trim(),
+        slug: slug().trim(),
+        brandColor: brandColor(),
+        logoSvg: logoSvg(),
+      });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create space");
+      return;
+    } finally {
+      setPending(false);
+    }
     reset();
     handleClose();
   }
@@ -119,6 +131,8 @@ export function CreateSpaceDialog(props: Props) {
         <DialogFooter
           form="create-space-form"
           confirmLabel="Create"
+          pendingLabel="Creating…"
+          pending={pending()}
           onCancel={handleClose}
         />
       }

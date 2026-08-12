@@ -435,6 +435,29 @@ describe("Realtime WebSocket", () => {
     connection.socket.close();
   });
 
+  it("answers a client liveness ping", async () => {
+    const connection = await connectWebSocket(BASE_URL, testSpaceId);
+    const pong = connection.waitForFrame(WsMsgType.Pong);
+
+    connection.socket.send(wsEncode(WsMsgType.Ping, {}));
+    await pong;
+
+    // The probe must not disturb the subscriptions it is checking on.
+    connection.socket.send(
+      wsEncode(WsMsgType.Subscribe, { topics: [realtimeTopics.categories] }),
+    );
+    await Bun.sleep(50);
+
+    const event = connection.waitForFrame(WsMsgType.Event);
+    connection.socket.send(wsEncode(WsMsgType.Ping, {}));
+    await createCategory("Pinged category", "pinged-category");
+    expect(
+      wsDecodeJson<{ topics: string[] }>(await event).topics,
+    ).toEqual([realtimeTopics.categories]);
+
+    connection.socket.close();
+  });
+
   it("rejects forbidden document subscriptions", async () => {
     const connection = await connectWebSocket(BASE_URL, testSpaceId);
     connection.socket.send(

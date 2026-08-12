@@ -49,7 +49,7 @@ export function DocumentActions(props: Props) {
     removeHeaderImage,
     dialogOpen,
   } = useHeaderImage();
-  const { editing, saveStatus, hasChanges } = useEditor();
+  const { editing, saveStatus, saveError, hasChanges } = useEditor();
   const { documentContext, canUseDocumentEditor, hasPublishedVersion } =
     useDocumentContext();
   const toast = useToast();
@@ -502,63 +502,84 @@ export function DocumentActions(props: Props) {
 
       <Show when={canUseDocumentEditor() && editing()}>
         <div class="flex items-center gap-2">
-          <div class="button-primary-base button-with-icon items-stretch overflow-hidden">
-            <button
-              type="button"
-              class="button-primary-pointer inline-flex items-center justify-center px-3xs"
-              disabled={publishDisabled()}
-              onClick={(e) => void publishDocument(e)}
-            >
-              <Icon name="publish" />
-              <span>
-                {isSaving() ? "Saving..." : isNewDocument() ? "Create" : "Publish"}
-              </span>
-            </button>
-            <Show when={!isNewDocument()}>
-              <a-popover-trigger class="group flex items-stretch">
-                <button
-                  slot="trigger"
-                  type="button"
-                  class="button-primary-pointer flex items-center justify-center border-primary-300 border-l px-4xs"
-                  disabled={isSaving()}
-                  aria-label="Publish options"
-                >
-                  <Icon name="chevron-down" />
-                </button>
-                <a-popover class="group" placements="bottom-end">
-                  <div class="mt-2 w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
-                    <div
-                      class="flex w-[220px] flex-col gap-[4px] rounded-lg border border-neutral-100 bg-background p-[4px]"
-                      style={{ "box-shadow": "-2px 2px 24px 0px rgba(0, 0, 0, 0.1)" }}
-                    >
-                      <button
-                        type="button"
-                        class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
-                        disabled={suggestionSaveDisabled()}
-                        onClick={(e) => void saveAsSuggestion(e)}
-                      >
-                        <div class="font-medium text-size-small">Save as suggestion</div>
-                        <div class="text-neutral-500 text-size-small">
-                          Create an open suggestion instead of publishing
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
-                        disabled={isSaving()}
-                        onClick={(e) => void publishAsTemplate(e)}
-                      >
-                        <div class="font-medium text-size-small">Publish as template</div>
-                        <div class="text-neutral-500 text-size-small">
-                          Publish and offer this document when creating a new one
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                </a-popover>
-              </a-popover-trigger>
+          {/* `relative` for the failure bubble below, which the group's own
+              `overflow-hidden` would otherwise clip. */}
+          <div class="relative flex">
+            {/* A toast is gone in four seconds; the editor is still open on a
+              failed publish, so the reason has to stay with the button. Floated
+              like a tooltip rather than placed in the row, which would shift the
+              toolbar the moment a publish fails. */}
+            <Show when={saveStatus() === "error"}>
+              <p
+                role="alert"
+                class="pointer-events-none absolute top-[calc(100%+9px)] right-0 z-[100] w-max max-w-[280px] rounded-[7px] bg-red-600 px-2.5 py-1.5 text-size-small text-white shadow-large"
+              >
+                <span class="absolute -top-1 right-4 h-2 w-2 rotate-45 bg-red-600" />
+                {saveError()?.message ?? "Publishing failed"}
+              </p>
             </Show>
+            <div class="button-primary-base button-with-icon items-stretch overflow-hidden">
+              <button
+                type="button"
+                class="button-primary-pointer inline-flex items-center justify-center px-3xs"
+                disabled={publishDisabled()}
+                onClick={(e) => void publishDocument(e)}
+              >
+                <Icon name="publish" />
+                <span>
+                  {isSaving() ? "Saving..." : isNewDocument() ? "Create" : "Publish"}
+                </span>
+              </button>
+              <Show when={!isNewDocument()}>
+                <a-popover-trigger class="group flex items-stretch">
+                  <button
+                    slot="trigger"
+                    type="button"
+                    class="button-primary-pointer flex items-center justify-center border-primary-300 border-l px-4xs"
+                    disabled={isSaving()}
+                    aria-label="Publish options"
+                  >
+                    <Icon name="chevron-down" />
+                  </button>
+                  <a-popover class="group" placements="bottom-end">
+                    <div class="mt-2 w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
+                      <div
+                        class="flex w-[220px] flex-col gap-[4px] rounded-lg border border-neutral-100 bg-background p-[4px]"
+                        style={{ "box-shadow": "-2px 2px 24px 0px rgba(0, 0, 0, 0.1)" }}
+                      >
+                        <button
+                          type="button"
+                          class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
+                          disabled={suggestionSaveDisabled()}
+                          onClick={(e) => void saveAsSuggestion(e)}
+                        >
+                          <div class="font-medium text-size-small">
+                            Save as suggestion
+                          </div>
+                          <div class="text-neutral-500 text-size-small">
+                            Create an open suggestion instead of publishing
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
+                          disabled={isSaving()}
+                          onClick={(e) => void publishAsTemplate(e)}
+                        >
+                          <div class="font-medium text-size-small">
+                            Publish as template
+                          </div>
+                          <div class="text-neutral-500 text-size-small">
+                            Publish and offer this document when creating a new one
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </a-popover>
+                </a-popover-trigger>
+              </Show>
+            </div>
           </div>
 
           <Show when={showCancel()}>

@@ -535,6 +535,14 @@ export interface AIChatSessionListEntry {
  */
 const REALTIME_IDLE_GRACE_MS = 2_000;
 
+/**
+ * How often the client probes its socket, and how long it waits for the answer.
+ * A dropped socket stays in `readyState` OPEN with no `close` ever firing, so
+ * without this round trip the connection is silently dead until a reload.
+ */
+const REALTIME_PING_INTERVAL_MS = 25_000;
+const REALTIME_PONG_TIMEOUT_MS = 10_000;
+
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
   callback: (event: RealtimeEventMessage) => void;
@@ -559,10 +567,15 @@ interface RealtimeConnection {
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
+  /** True once a socket has opened; every later open is a reconnect. */
+  hasConnected: boolean;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   /** Pending idle teardown; see `REALTIME_IDLE_GRACE_MS`. */
   idleTimer: ReturnType<typeof setTimeout> | null;
+  /** Liveness probe; see `REALTIME_PING_INTERVAL_MS`. */
+  pingTimer: ReturnType<typeof setInterval> | null;
+  pongTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface PresenceSubscription<TState = unknown> {
@@ -602,6 +615,13 @@ export class ApiClient {
     this.baseUrl = options.baseUrl ?? "";
     this.accessToken = options.accessToken;
     this.socketHost = options?.socketHost;
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", () => this.reconnectRealtimeNow());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") this.reconnectRealtimeNow();
+      });
+    }
   }
 
   /**
@@ -2334,9 +2354,12 @@ export class ApiClient {
       yjsRooms: new Map(),
       presenceJoinPayloads: new Map(),
       closed: false,
+      hasConnected: false,
       reconnectAttempts: 0,
       reconnectTimer: null,
       idleTimer: null,
+      pingTimer: null,
+      pongTimer: null,
     };
 
     this.openRealtimeSocket(connection);
@@ -2367,7 +2390,11 @@ export class ApiClient {
     socket.addEventListener("open", () => {
       if (connection.socket !== socket) return; // stale handler from a prior socket
       connection.reconnectAttempts = 0;
+      const isReconnect = connection.hasConnected;
+      connection.hasConnected = true;
       this.resyncRealtimeConnection(connection);
+      this.startRealtimeHeartbeat(connection);
+      if (isReconnect) this.notifyRealtimeResync(connection);
     });
 
     socket.addEventListener("message", (event) => {
@@ -2389,6 +2416,11 @@ export class ApiClient {
   ): void {
     if (!(event.data instanceof ArrayBuffer)) return;
     const { type, payload } = wsDecode(new Uint8Array(event.data));
+
+    if (type === WsMsgType.Pong) {
+      this.clearRealtimePongTimeout(connection);
+      return;
+    }
 
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
@@ -2442,7 +2474,89 @@ export class ApiClient {
     }
   }
 
+  /**
+   * Replace the events that happened while the socket was down. The server
+   * keeps no per-connection backlog, so a subscriber's only way back to the
+   * truth is to refetch everything it holds for the topics it subscribes to.
+   */
+  private notifyRealtimeResync(connection: RealtimeConnection): void {
+    for (const subscription of connection.subscriptions) {
+      const topics = [...subscription.topics];
+      if (topics.length === 0) continue;
+      subscription.callback({
+        type: "event",
+        resync: true,
+        topics,
+        events: topics.map((topic) => ({ topic })),
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  private pingRealtimeConnection(connection: RealtimeConnection): void {
+    if (connection.socket.readyState !== WebSocket.OPEN) return;
+    if (connection.pongTimer !== null) return;
+
+    connection.socket.send(wsEncode(WsMsgType.Ping, {}));
+    connection.pongTimer = setTimeout(() => {
+      connection.pongTimer = null;
+      // Unanswered: the socket is dead but still reports OPEN, so nothing else
+      // will ever close it. Closing it here runs the reconnect path.
+      try {
+        connection.socket.close();
+      } catch {
+        // already closing — the close handler still runs
+      }
+      this.handleRealtimeClose(connection);
+    }, REALTIME_PONG_TIMEOUT_MS);
+  }
+
+  private startRealtimeHeartbeat(connection: RealtimeConnection): void {
+    this.stopRealtimeHeartbeat(connection);
+    connection.pingTimer = setInterval(
+      () => this.pingRealtimeConnection(connection),
+      REALTIME_PING_INTERVAL_MS,
+    );
+  }
+
+  private clearRealtimePongTimeout(connection: RealtimeConnection): void {
+    if (connection.pongTimer === null) return;
+    clearTimeout(connection.pongTimer);
+    connection.pongTimer = null;
+  }
+
+  private stopRealtimeHeartbeat(connection: RealtimeConnection): void {
+    if (connection.pingTimer !== null) {
+      clearInterval(connection.pingTimer);
+      connection.pingTimer = null;
+    }
+    this.clearRealtimePongTimeout(connection);
+  }
+
+  /**
+   * Called when the device comes back: the browser knows the network returned
+   * long before the next backoff attempt is due, and a socket that died while
+   * the tab was hidden is worth probing rather than trusting for another cycle.
+   */
+  private reconnectRealtimeNow(): void {
+    for (const connection of this.realtimeConnections.values()) {
+      if (connection.closed) continue;
+
+      if (connection.socket.readyState === WebSocket.OPEN) {
+        this.pingRealtimeConnection(connection);
+        continue;
+      }
+
+      if (connection.reconnectTimer === null) continue;
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
+      connection.reconnectAttempts = 0;
+      this.openRealtimeSocket(connection);
+    }
+  }
+
   private handleRealtimeClose(connection: RealtimeConnection): void {
+    this.stopRealtimeHeartbeat(connection);
     if (connection.closed) return;
 
     // No active interest left — let it stay closed rather than reconnecting.
@@ -2501,6 +2615,7 @@ export class ApiClient {
   /** Permanently close a connection and stop any pending reconnect. */
   private teardownRealtimeConnection(connection: RealtimeConnection): void {
     connection.closed = true;
+    this.stopRealtimeHeartbeat(connection);
     if (connection.reconnectTimer !== null) {
       clearTimeout(connection.reconnectTimer);
       connection.reconnectTimer = null;
