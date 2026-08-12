@@ -81,8 +81,6 @@ export function config() {
       SMTP_SECURE: process.env.VEKTOR_SMTP_SECURE,
       SMTP_USER: process.env.VEKTOR_SMTP_USER,
       SMTP_PASSWORD: process.env.VEKTOR_SMTP_PASSWORD,
-      /** Comma-separated allowlist of OAuth group claims the IdP may assign. */
-      OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
 
       /** CLI connection settings (vektor document/workflow commands). */
       CLI_HOST: process.env.VEKTOR_HOST,
@@ -106,6 +104,8 @@ export function config() {
       OAUTH_TOKEN_URL: process.env.OAUTH_TOKEN_URL,
       OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
+      /** Seconds a group claim may age before the next re-read. 0 is off. */
+      OAUTH_GROUP_SYNC_INTERVAL: process.env.OAUTH_GROUP_SYNC_INTERVAL,
 
       /**
        * Google social login. When both id and secret are set, a "Continue with

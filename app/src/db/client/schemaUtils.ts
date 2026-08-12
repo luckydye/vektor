@@ -173,6 +173,14 @@ function getSQLiteType(column: ColumnInfo): string {
     return "INTEGER";
   }
 
+  // `integer({ mode })` reports itself as SQLiteTimestamp/SQLiteBoolean rather
+  // than SQLiteInteger, and TEXT affinity would store the epoch value as a
+  // string — which drizzle reads back for a `timestamp_ms` column as
+  // `Invalid Date`, breaking OAuth token refresh (`access_token_expires_at`).
+  if (colType.includes("Timestamp") || colType.includes("Boolean")) {
+    return "INTEGER";
+  }
+
   if (colType.includes("Real")) {
     return "REAL";
   }

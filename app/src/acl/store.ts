@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { ensureFreshGroups } from "#acl/idpSync.ts";
 import {
   type AclViewer,
   type Feature,
@@ -46,6 +47,10 @@ export async function getUserGroups(userId: string): Promise<string[]> {
   if (!authDb) {
     return [PUBLIC_GROUP];
   }
+
+  // Every authorization decision funnels through here, which is why the claim's
+  // staleness is bounded at this point rather than at the request edge.
+  await ensureFreshGroups(userId);
 
   const userRecord = await one(authDb.select().from(user).where(eq(user.id, userId)));
 
