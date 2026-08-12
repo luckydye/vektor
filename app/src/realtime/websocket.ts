@@ -4,6 +4,7 @@ import * as Y from "yjs";
 import {
   verifyDocumentRole,
   verifyExtensionAccess,
+  verifyResourceAccess,
   verifySpaceRole,
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
@@ -39,6 +40,12 @@ import {
   yRooms,
 } from "./yjsRooms.ts";
 
+/**
+ * Topics whose events describe the space as a whole rather than one resource:
+ * they carry document titles, property values, category names and ids from
+ * anywhere in the space, so there is no per-resource check that could scope
+ * them to a document-level grantee. They stay gated on a space-wide role.
+ */
 const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.acl,
   realtimeTopics.categories,
@@ -50,13 +57,23 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.workflowRuns,
 ]);
 
+/**
+ * Decide whether `userId` may subscribe to `topic`.
+ *
+ * Every topic is authorized against the resource it describes — the connection
+ * itself grants nothing beyond a relationship to the space (see
+ * {@link verifyResourceAccess}). `hasSpaceRole` resolves the caller's space-wide
+ * viewer role for the space-scoped topics that need one; it is passed in so a
+ * single subscribe frame naming several such topics costs one lookup.
+ */
 async function authorizeRealtimeTopic(
   spaceId: string,
   userId: string,
   topic: string,
+  hasSpaceRole: () => Promise<boolean>,
 ): Promise<boolean> {
   if (realtimeSpaceTopics.has(topic)) {
-    return true;
+    return await hasSpaceRole();
   }
 
   if (isDocumentRealtimeTopic(topic)) {
@@ -76,12 +93,29 @@ async function authorizeRealtimeTopic(
   }
 
   // Per-run topics are pure change signals; the run data itself is fetched via
-  // the ACL-checked run endpoints. The connection is already space-viewer authed.
+  // the ACL-checked run endpoints. Which runs exist is still space-wide
+  // information, so a space-wide role is required to listen for the signal.
   if (isWorkflowRunRealtimeTopic(topic)) {
-    return true;
+    return await hasSpaceRole();
   }
 
   return false;
+}
+
+/**
+ * A space-viewer verdict for one message, computed at most once. Fresh per
+ * frame rather than cached on the connection, so a revoked role stops
+ * authorizing new subscriptions.
+ */
+function spaceRoleResolver(spaceId: string, userId: string): () => Promise<boolean> {
+  let verdict: Promise<boolean> | undefined;
+  return () => {
+    verdict ??= verifySpaceRole(spaceId, userId, Permission.VIEWER).then(
+      () => true,
+      () => false,
+    );
+    return verdict;
+  };
 }
 
 async function handleRealtimeWebSocket(
@@ -105,7 +139,13 @@ async function handleRealtimeWebSocket(
     }
 
     try {
-      await verifySpaceRole(spaceId, session.user.id, Permission.VIEWER);
+      // Only a cheap "does this user have any business in this space" gate: a
+      // space role OR any document/tree/category grant, mirroring
+      // `authenticateSpaceAccess` so a document-level grantee is admitted here
+      // exactly as it is over HTTP. It authorizes nothing on its own — every
+      // topic, Yjs room and presence room is verified against its own resource
+      // below.
+      await verifyResourceAccess(spaceId, session.user.id);
     } catch {
       websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       websocket.close();
@@ -243,9 +283,10 @@ async function handleRealtimeWebSocket(
       }
 
       const { topics } = wsDecodeJson<{ topics: string[] }>(payload);
+      const hasSpaceRole = spaceRoleResolver(spaceId, userId);
       const authorizedTopics = new Set<string>();
       for (const topic of topics) {
-        if (await authorizeRealtimeTopic(spaceId, userId, topic)) {
+        if (await authorizeRealtimeTopic(spaceId, userId, topic, hasSpaceRole)) {
           authorizedTopics.add(topic);
         }
       }
