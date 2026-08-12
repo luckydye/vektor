@@ -1,5 +1,6 @@
 import { parseCronExpression } from "cron-schedule";
 import { and, eq, isNull, lte } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import {
@@ -186,17 +187,15 @@ export async function getWorkflowSchedule(
   s: SpaceStore,
   id: string,
 ): Promise<WorkflowSchedule | null> {
-  const result = await s.db
-    .select()
-    .from(workflowSchedule)
-    .where(eq(workflowSchedule.id, id))
-    .get();
+  const result = await one(
+    s.db.select().from(workflowSchedule).where(eq(workflowSchedule.id, id)),
+  );
 
   return result || null;
 }
 
 export async function listWorkflowSchedules(s: SpaceStore): Promise<WorkflowSchedule[]> {
-  return s.db.select().from(workflowSchedule).all();
+  return many(s.db.select().from(workflowSchedule));
 }
 
 export async function updateWorkflowSchedule(
@@ -273,11 +272,12 @@ export async function claimDueWorkflowSchedules(
   // Backfill next_run_at for enabled schedules that lost it (e.g. rows
   // written by an older version). They start firing from their next
   // occurrence rather than immediately.
-  const missing = await s.db
-    .select()
-    .from(workflowSchedule)
-    .where(and(eq(workflowSchedule.enabled, true), isNull(workflowSchedule.nextRunAt)))
-    .all();
+  const missing = await many(
+    s.db
+      .select()
+      .from(workflowSchedule)
+      .where(and(eq(workflowSchedule.enabled, true), isNull(workflowSchedule.nextRunAt))),
+  );
   for (const schedule of missing) {
     try {
       await s.db
@@ -293,11 +293,14 @@ export async function claimDueWorkflowSchedules(
     }
   }
 
-  const due = await s.db
-    .select()
-    .from(workflowSchedule)
-    .where(and(eq(workflowSchedule.enabled, true), lte(workflowSchedule.nextRunAt, now)))
-    .all();
+  const due = await many(
+    s.db
+      .select()
+      .from(workflowSchedule)
+      .where(
+        and(eq(workflowSchedule.enabled, true), lte(workflowSchedule.nextRunAt, now)),
+      ),
+  );
 
   const claimed: WorkflowSchedule[] = [];
   for (const schedule of due) {

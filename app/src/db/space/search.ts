@@ -1,6 +1,7 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
@@ -125,11 +126,12 @@ export async function updateDocumentEmbedding(
   // Check the type without loading `content` — canvases (which can be tens of
   // MB) are never embedded, so pulling the content column here just to bail out
   // wasted memory on every canvas save.
-  const meta = await s.db
-    .select({ type: document.type })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const meta = await one(
+    s.db
+      .select({ type: document.type })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (!meta) {
     return;
@@ -148,23 +150,19 @@ export async function updateDocumentEmbedding(
     return;
   }
 
-  const doc = await s.db.select().from(document).where(eq(document.id, documentId)).get();
+  const doc = await one(s.db.select().from(document).where(eq(document.id, documentId)));
 
   if (!doc) {
     return;
   }
 
-  const props = await s.db
-    .select()
-    .from(property)
-    .where(eq(property.documentId, documentId))
-    .all();
+  const props = await many(
+    s.db.select().from(property).where(eq(property.documentId, documentId)),
+  );
 
-  const attachedFiles = await s.db
-    .select()
-    .from(fileTable)
-    .where(eq(fileTable.documentId, documentId))
-    .all();
+  const attachedFiles = await many(
+    s.db.select().from(fileTable).where(eq(fileTable.documentId, documentId)),
+  );
   const fileTexts = attachedFiles.map((f) =>
     f.extractedText
       ? `[${f.originalName ?? f.path}]\n${f.extractedText}`
@@ -193,7 +191,7 @@ export async function updateDocumentEmbedding(
 }
 
 export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
-  const docs = await s.db.select().from(document).all();
+  const docs = await many(s.db.select().from(document));
 
   for (const doc of docs) {
     if (doc.type === "canvas") {
@@ -245,11 +243,9 @@ async function readProperties(
   const byDocument = new Map<string, Record<string, DocumentPropertyValue>>();
 
   for (const ids of batches(documentIds)) {
-    const rows = await s.db
-      .select()
-      .from(property)
-      .where(inArray(property.documentId, ids))
-      .all();
+    const rows = await many(
+      s.db.select().from(property).where(inArray(property.documentId, ids)),
+    );
 
     for (const row of rows) {
       const properties = byDocument.get(row.documentId) ?? {};
@@ -269,11 +265,9 @@ async function readDocuments(
   const byId = new Map<string, typeof document.$inferSelect>();
 
   for (const ids of batches(documentIds)) {
-    const rows = await s.db
-      .select()
-      .from(document)
-      .where(inArray(document.id, ids))
-      .all();
+    const rows = await many(
+      s.db.select().from(document).where(inArray(document.id, ids)),
+    );
     for (const row of rows) byId.set(row.id, row);
   }
 
@@ -306,15 +300,16 @@ export async function searchDocuments(
   if (hasQuery) {
     const embeddingModel = getEmbeddingModel();
     try {
-      const missingEmbeddings = await s.db
-        .select({ id: document.id })
-        .from(document)
-        .where(
-          sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)
+      const missingEmbeddings = await many(
+        s.db
+          .select({ id: document.id })
+          .from(document)
+          .where(
+            sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)
             AND (type IS NULL OR type != 'canvas')
             AND ${nonArchivedDocumentCondition}`,
-        )
-        .all();
+          ),
+      );
 
       for (const row of missingEmbeddings) {
         await updateDocumentEmbedding(s, row.id);
@@ -518,7 +513,7 @@ export async function searchDocuments(
 
   const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
   if (!excludeFiles) {
-    const indexedFiles = await s.db.select().from(fileTable).all();
+    const indexedFiles = await many(s.db.select().from(fileTable));
 
     for (const f of indexedFiles) {
       let rank = 0;

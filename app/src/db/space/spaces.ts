@@ -21,13 +21,14 @@ import {
   updateIndexedSpaceMetadata,
   upsertSpaceIndex,
 } from "#db/auth/spaceIndex.ts";
-import { getDatabaseFilePath } from "#db/client/connection.ts";
+import { resolveSpaceLocation } from "#db/client/connection.ts";
 import {
   closeSpaceDb,
   createAllocatedSpaceDb,
   getSpaceDb,
   initializeDatabases,
 } from "#db/client/db.ts";
+import { many, one } from "#db/client/query.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
@@ -141,22 +142,18 @@ export async function getSpace(id: string): Promise<Space | null> {
 
   const spaceDb = await getSpaceDb(id);
 
-  const result = await spaceDb
-    .select()
-    .from(spaceMetadata)
-    .where(eq(spaceMetadata.id, id))
-    .get();
+  const result = await one(
+    spaceDb.select().from(spaceMetadata).where(eq(spaceMetadata.id, id)),
+  );
 
   if (!result) {
     return null;
   }
 
   // Load preferences
-  const prefs = await spaceDb
-    .select()
-    .from(preference)
-    .where(isNull(preference.userId))
-    .all();
+  const prefs = await many(
+    spaceDb.select().from(preference).where(isNull(preference.userId)),
+  );
 
   const preferences: Record<string, string> = {};
   for (const pref of prefs) {
@@ -351,11 +348,12 @@ export async function updateSpace(
   if (preferences) {
     for (const [key, value] of Object.entries(preferences)) {
       // Check if preference exists
-      const existingPref = await spaceDb
-        .select()
-        .from(preference)
-        .where(and(eq(preference.key, key), isNull(preference.userId)))
-        .get();
+      const existingPref = await one(
+        spaceDb
+          .select()
+          .from(preference)
+          .where(and(eq(preference.key, key), isNull(preference.userId))),
+      );
 
       if (existingPref) {
         // Update existing preference
@@ -398,7 +396,7 @@ export async function deleteSpace(id: string): Promise<boolean> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   let databaseExisted = true;
 
-  const spacePath = getDatabaseFilePath(databaseRecord.databaseUrl);
+  const spacePath = resolveSpaceLocation(databaseRecord.location).filePath;
   if (!isInMemoryDb() && spacePath) {
     databaseExisted = existsSync(spacePath);
     if (databaseExisted) {

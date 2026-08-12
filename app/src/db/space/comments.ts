@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { comment } from "#db/schema/space.ts";
@@ -124,34 +125,36 @@ export async function listThreadParticipantIds(
   parentId: string | null,
 ): Promise<string[]> {
   const parent = parentId
-    ? await s.db
-        .select({ createdBy: comment.createdBy, reference: comment.reference })
-        .from(comment)
-        .where(
-          and(
-            eq(comment.id, parentId),
-            eq(comment.resourceType, "document"),
-            eq(comment.resourceId, documentId),
+    ? await one(
+        s.db
+          .select({ createdBy: comment.createdBy, reference: comment.reference })
+          .from(comment)
+          .where(
+            and(
+              eq(comment.id, parentId),
+              eq(comment.resourceType, "document"),
+              eq(comment.resourceId, documentId),
+            ),
           ),
-        )
-        .get()
+      )
     : undefined;
   const normalizedReference = normalizeCommentReference(
     reference ?? parent?.reference ?? null,
   );
   if (!normalizedReference) return [];
 
-  const rows = await s.db
-    .select({ createdBy: comment.createdBy, reference: comment.reference })
-    .from(comment)
-    .where(
-      and(
-        eq(comment.resourceType, "document"),
-        eq(comment.resourceId, documentId),
-        eq(comment.archived, false),
+  const rows = await many(
+    s.db
+      .select({ createdBy: comment.createdBy, reference: comment.reference })
+      .from(comment)
+      .where(
+        and(
+          eq(comment.resourceType, "document"),
+          eq(comment.resourceId, documentId),
+          eq(comment.archived, false),
+        ),
       ),
-    )
-    .all();
+  );
 
   return [
     ...(parent ? [parent.createdBy] : []),

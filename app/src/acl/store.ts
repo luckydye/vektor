@@ -12,6 +12,7 @@ import {
   resolveFeature,
 } from "#acl/permissions.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { many, one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { acl, category, document, property } from "#db/schema/space.ts";
@@ -46,7 +47,7 @@ export async function getUserGroups(userId: string): Promise<string[]> {
     return [PUBLIC_GROUP];
   }
 
-  const userRecord = await authDb.select().from(user).where(eq(user.id, userId)).get();
+  const userRecord = await one(authDb.select().from(user).where(eq(user.id, userId)));
 
   const groups = [PUBLIC_GROUP];
 
@@ -104,17 +105,18 @@ export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[
   // a prefix of another (`"dev"` never matches inside `"developers"`).
   const conditions = groups.map((groupId) => like(user.groups, `%"${groupId}"%`));
 
-  const rows = await authDb
-    .select({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      image: user.image,
-      groups: user.groups,
-    })
-    .from(user)
-    .where(or(...conditions))
-    .all();
+  const rows = await many(
+    authDb
+      .select({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        groups: user.groups,
+      })
+      .from(user)
+      .where(or(...conditions)),
+  );
 
   const groupSet = new Set(groups);
 
@@ -156,11 +158,12 @@ async function resolveGranteeName(userId?: string): Promise<string | undefined> 
   const authDb = getAuthDb();
   if (!authDb) return undefined;
   try {
-    const record = await authDb
-      .select({ name: user.name, email: user.email })
-      .from(user)
-      .where(eq(user.id, userId))
-      .get();
+    const record = await one(
+      authDb
+        .select({ name: user.name, email: user.email })
+        .from(user)
+        .where(eq(user.id, userId)),
+    );
     return record?.name || record?.email || undefined;
   } catch {
     return undefined;
@@ -252,11 +255,12 @@ export async function grantPermission(
     conditions.push(eq(acl.groupId, groupId));
   }
 
-  const existing = await db
-    .select()
-    .from(acl)
-    .where(and(...conditions))
-    .get();
+  const existing = await one(
+    db
+      .select()
+      .from(acl)
+      .where(and(...conditions)),
+  );
 
   if (existing) {
     // Update existing permission
@@ -323,11 +327,12 @@ export async function revokePermission(
 
   // Read first so the audit entry can record what was actually removed, and
   // so revoking a permission that does not exist does not log anything.
-  const removed = await db
-    .select()
-    .from(acl)
-    .where(and(...conditions))
-    .all();
+  const removed = await many(
+    db
+      .select()
+      .from(acl)
+      .where(and(...conditions)),
+  );
 
   await db.delete(acl).where(and(...conditions));
 
@@ -366,18 +371,19 @@ export async function getPermission(
   }> = [];
 
   // Get user-specific permission
-  const userResult = await db
-    .select()
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, resourceType),
-        eq(acl.resourceId, resourceId),
-        eq(acl.userId, userId),
-        isNull(acl.groupId),
+  const userResult = await one(
+    db
+      .select()
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, resourceType),
+          eq(acl.resourceId, resourceId),
+          eq(acl.userId, userId),
+          isNull(acl.groupId),
+        ),
       ),
-    )
-    .get();
+  );
 
   if (userResult) {
     allPermissions.push(userResult);
@@ -388,18 +394,19 @@ export async function getPermission(
     userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
 
   // Get group-based permissions (including "public")
-  const groupResults = await db
-    .select()
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, resourceType),
-        eq(acl.resourceId, resourceId),
-        isNull(acl.userId),
-        inArray(acl.groupId, effectiveGroups),
+  const groupResults = await many(
+    db
+      .select()
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, resourceType),
+          eq(acl.resourceId, resourceId),
+          isNull(acl.userId),
+          inArray(acl.groupId, effectiveGroups),
+        ),
       ),
-    )
-    .all();
+  );
 
   allPermissions.push(...groupResults);
 
@@ -459,35 +466,37 @@ async function getBestPermissionForResourceIds(
   const db = await getSpaceDb(spaceId);
   const allPermissions: AclRow[] = [];
 
-  const userResults = await db
-    .select()
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, resourceType),
-        inArray(acl.resourceId, resourceIds),
-        eq(acl.userId, userId),
-        isNull(acl.groupId),
+  const userResults = await many(
+    db
+      .select()
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, resourceType),
+          inArray(acl.resourceId, resourceIds),
+          eq(acl.userId, userId),
+          isNull(acl.groupId),
+        ),
       ),
-    )
-    .all();
+  );
 
   allPermissions.push(...userResults);
 
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
-  const groupResults = await db
-    .select()
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, resourceType),
-        inArray(acl.resourceId, resourceIds),
-        isNull(acl.userId),
-        inArray(acl.groupId, effectiveGroups),
+  const groupResults = await many(
+    db
+      .select()
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, resourceType),
+          inArray(acl.resourceId, resourceIds),
+          isNull(acl.userId),
+          inArray(acl.groupId, effectiveGroups),
+        ),
       ),
-    )
-    .all();
+  );
 
   allPermissions.push(...groupResults);
   return bestAclEntry(allPermissions);
@@ -498,10 +507,9 @@ async function getDocumentAncestorIds(
   documentId: string,
 ): Promise<string[]> {
   const db = await getSpaceDb(spaceId);
-  const rows = await db
-    .select({ id: document.id, parentId: document.parentId })
-    .from(document)
-    .all();
+  const rows = await many(
+    db.select({ id: document.id, parentId: document.parentId }).from(document),
+  );
 
   const parentById = new Map(rows.map((row) => [row.id, row.parentId]));
   const ancestors: string[] = [];
@@ -526,10 +534,9 @@ async function getDocumentDescendantIds(
   const descendants = new Set(rootIds);
   if (rootIds.length === 0) return descendants;
 
-  const rows = await db
-    .select({ id: document.id, parentId: document.parentId })
-    .from(document)
-    .all();
+  const rows = await many(
+    db.select({ id: document.id, parentId: document.parentId }).from(document),
+  );
 
   const childrenByParent = new Map<string, string[]>();
   for (const row of rows) {
@@ -561,25 +568,24 @@ async function getDocumentCategoryResourceIds(
     documentId,
     ...(await getDocumentAncestorIds(spaceId, documentId)),
   ];
-  const categoryProperties = await db
-    .select({ value: property.value })
-    .from(property)
-    .where(
-      and(
-        inArray(property.documentId, documentIds),
-        inArray(property.key, ["category", "collection"]),
+  const categoryProperties = await many(
+    db
+      .select({ value: property.value })
+      .from(property)
+      .where(
+        and(
+          inArray(property.documentId, documentIds),
+          inArray(property.key, ["category", "collection"]),
+        ),
       ),
-    )
-    .all();
+  );
 
   const slugs = [...new Set(categoryProperties.map((row) => row.value).filter(Boolean))];
   if (slugs.length === 0) return [];
 
-  const categoryRows = await db
-    .select({ id: category.id })
-    .from(category)
-    .where(inArray(category.slug, slugs))
-    .all();
+  const categoryRows = await many(
+    db.select({ id: category.id }).from(category).where(inArray(category.slug, slugs)),
+  );
 
   return categoryRows.map((row) => row.id);
 }
@@ -592,24 +598,26 @@ async function getDocumentIdsForCategoryRoots(
   const ids = new Set<string>();
   if (categoryIds.length === 0) return ids;
 
-  const categories = await db
-    .select({ slug: category.slug })
-    .from(category)
-    .where(inArray(category.id, categoryIds))
-    .all();
+  const categories = await many(
+    db
+      .select({ slug: category.slug })
+      .from(category)
+      .where(inArray(category.id, categoryIds)),
+  );
   const slugs = categories.map((row) => row.slug);
   if (slugs.length === 0) return ids;
 
-  const directRows = await db
-    .select({ documentId: property.documentId })
-    .from(property)
-    .where(
-      and(
-        inArray(property.key, ["category", "collection"]),
-        inArray(property.value, slugs),
+  const directRows = await many(
+    db
+      .select({ documentId: property.documentId })
+      .from(property)
+      .where(
+        and(
+          inArray(property.key, ["category", "collection"]),
+          inArray(property.value, slugs),
+        ),
       ),
-    )
-    .all();
+  );
 
   const rootIds = directRows.map((row) => row.documentId);
   const descendantIds = await getDocumentDescendantIds(spaceId, rootIds);
@@ -624,11 +632,12 @@ export async function listPermissions(
 ): Promise<AclEntry[]> {
   const db = await getSpaceDb(spaceId);
 
-  const results = await db
-    .select()
-    .from(acl)
-    .where(and(eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId)))
-    .all();
+  const results = await many(
+    db
+      .select()
+      .from(acl)
+      .where(and(eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId))),
+  );
 
   return results.map((r) => ({
     resourceType: r.resourceType,
@@ -697,11 +706,12 @@ export async function listDocumentAccess(
     );
   }
 
-  const rows = await db
-    .select()
-    .from(acl)
-    .where(or(...scopes))
-    .all();
+  const rows = await many(
+    db
+      .select()
+      .from(acl)
+      .where(or(...scopes)),
+  );
 
   const labels = await getAclResourceLabels(spaceId, rows);
 
@@ -771,16 +781,18 @@ async function getAclResourceLabels(
   ];
 
   if (documentIds.length > 0) {
-    const titles = await db
-      .select({ documentId: property.documentId, value: property.value })
-      .from(property)
-      .where(and(inArray(property.documentId, documentIds), eq(property.key, "title")))
-      .all();
-    const slugs = await db
-      .select({ id: document.id, slug: document.slug })
-      .from(document)
-      .where(inArray(document.id, documentIds))
-      .all();
+    const titles = await many(
+      db
+        .select({ documentId: property.documentId, value: property.value })
+        .from(property)
+        .where(and(inArray(property.documentId, documentIds), eq(property.key, "title"))),
+    );
+    const slugs = await many(
+      db
+        .select({ id: document.id, slug: document.slug })
+        .from(document)
+        .where(inArray(document.id, documentIds)),
+    );
 
     const titleById = new Map(
       titles.map((row) => [
@@ -796,11 +808,12 @@ async function getAclResourceLabels(
   }
 
   if (categoryIds.length > 0) {
-    const categories = await db
-      .select({ id: category.id, name: category.name })
-      .from(category)
-      .where(inArray(category.id, categoryIds))
-      .all();
+    const categories = await many(
+      db
+        .select({ id: category.id, name: category.name })
+        .from(category)
+        .where(inArray(category.id, categoryIds)),
+    );
     for (const row of categories) {
       labels.set(`${ResourceType.CATEGORY}:${row.id}`, row.name);
     }
@@ -812,7 +825,7 @@ async function getAclResourceLabels(
 /** List every role grant in a space, including resource-scoped grants. */
 export async function listAllRolePermissions(spaceId: string): Promise<AclEntry[]> {
   const db = await getSpaceDb(spaceId);
-  const results = await db.select().from(acl).all();
+  const results = await many(db.select().from(acl));
 
   return results
     .filter((row) => row.resourceType !== ResourceType.FEATURE)
@@ -840,11 +853,12 @@ export async function listUserPermissions(
     conditions.push(eq(acl.resourceType, resourceType));
   }
 
-  const results = await db
-    .select()
-    .from(acl)
-    .where(and(...conditions))
-    .all();
+  const results = await many(
+    db
+      .select()
+      .from(acl)
+      .where(and(...conditions)),
+  );
 
   // Also get group-based permissions
   if (userGroups && userGroups.length > 0) {
@@ -853,11 +867,12 @@ export async function listUserPermissions(
       groupConditions.push(eq(acl.resourceType, resourceType));
     }
 
-    const groupResults = await db
-      .select()
-      .from(acl)
-      .where(and(...groupConditions))
-      .all();
+    const groupResults = await many(
+      db
+        .select()
+        .from(acl)
+        .where(and(...groupConditions)),
+    );
 
     results.push(...groupResults);
   }
@@ -897,12 +912,13 @@ export async function hasAnyResourceScopedAccess(
     granteeConditions.push(and(isNull(acl.userId), inArray(acl.groupId, userGroups))!);
   }
 
-  const row = await db
-    .select({ resourceId: acl.resourceId })
-    .from(acl)
-    .where(and(resourceTypeCondition, or(...granteeConditions)))
-    .limit(1)
-    .get();
+  const row = await one(
+    db
+      .select({ resourceId: acl.resourceId })
+      .from(acl)
+      .where(and(resourceTypeCondition, or(...granteeConditions)))
+      .limit(1),
+  );
 
   return !!row;
 }
@@ -1029,18 +1045,19 @@ export async function hasFeature(
   const db = await getSpaceDb(spaceId);
 
   // Check for explicit feature ACL entry (user-specific)
-  const userEntry = await db
-    .select()
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, ResourceType.FEATURE),
-        eq(acl.resourceId, feature),
-        eq(acl.userId, userId),
-        isNull(acl.groupId),
+  const userEntry = await one(
+    db
+      .select()
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, ResourceType.FEATURE),
+          eq(acl.resourceId, feature),
+          eq(acl.userId, userId),
+          isNull(acl.groupId),
+        ),
       ),
-    )
-    .get();
+  );
 
   if (userEntry) {
     return userEntry.permission !== "denied";
@@ -1049,18 +1066,19 @@ export async function hasFeature(
   // Check for explicit feature ACL entry (group-based)
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
-  const groupEntry = await db
-    .select()
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, ResourceType.FEATURE),
-        eq(acl.resourceId, feature),
-        isNull(acl.userId),
-        inArray(acl.groupId, effectiveGroups),
+  const groupEntry = await one(
+    db
+      .select()
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, ResourceType.FEATURE),
+          eq(acl.resourceId, feature),
+          isNull(acl.userId),
+          inArray(acl.groupId, effectiveGroups),
+        ),
       ),
-    )
-    .get();
+  );
 
   if (groupEntry) {
     return groupEntry.permission !== "denied";
@@ -1159,11 +1177,9 @@ export async function revokeFeature(
 export async function listFeaturePermissions(spaceId: string): Promise<AclEntry[]> {
   const db = await getSpaceDb(spaceId);
 
-  const results = await db
-    .select()
-    .from(acl)
-    .where(eq(acl.resourceType, ResourceType.FEATURE))
-    .all();
+  const results = await many(
+    db.select().from(acl).where(eq(acl.resourceType, ResourceType.FEATURE)),
+  );
 
   return results.map((r) => ({
     resourceType: r.resourceType,
@@ -1183,6 +1199,12 @@ export async function listAccessibleResources(
   userGroups?: string[],
   minPermission?: Permission,
 ): Promise<string[] | null> {
+  // Same bypass as hasPermission(): the local user holds no ACL rows in a space
+  // it did not create, and without this every such space reads as empty.
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return null;
+  }
+
   const db = await getSpaceDb(spaceId);
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : await getUserGroups(userId);
@@ -1208,11 +1230,12 @@ export async function listAccessibleResources(
     conditions.push(inArray(acl.permission, validPermissions));
   }
 
-  const results = await db
-    .select({ resourceId: acl.resourceId })
-    .from(acl)
-    .where(and(...conditions))
-    .all();
+  const results = await many(
+    db
+      .select({ resourceId: acl.resourceId })
+      .from(acl)
+      .where(and(...conditions)),
+  );
 
   // Also get group-based accessible resources
   if (effectiveGroups.length > 0) {
@@ -1226,11 +1249,12 @@ export async function listAccessibleResources(
       groupConditions.push(inArray(acl.permission, validPermissions));
     }
 
-    const groupResults = await db
-      .select({ resourceId: acl.resourceId })
-      .from(acl)
-      .where(and(...groupConditions))
-      .all();
+    const groupResults = await many(
+      db
+        .select({ resourceId: acl.resourceId })
+        .from(acl)
+        .where(and(...groupConditions)),
+    );
 
     results.push(...groupResults);
   }
@@ -1248,11 +1272,12 @@ export async function listAccessibleResources(
       treeConditions.push(inArray(acl.permission, validPermissions));
     }
 
-    const treeRoots = await db
-      .select({ resourceId: acl.resourceId })
-      .from(acl)
-      .where(and(...treeConditions))
-      .all();
+    const treeRoots = await many(
+      db
+        .select({ resourceId: acl.resourceId })
+        .from(acl)
+        .where(and(...treeConditions)),
+    );
 
     const descendantIds = await getDocumentDescendantIds(
       spaceId,
@@ -1275,11 +1300,12 @@ export async function listAccessibleResources(
       categoryConditions.push(inArray(acl.permission, validPermissions));
     }
 
-    const categoryRoots = await db
-      .select({ resourceId: acl.resourceId })
-      .from(acl)
-      .where(and(...categoryConditions))
-      .all();
+    const categoryRoots = await many(
+      db
+        .select({ resourceId: acl.resourceId })
+        .from(acl)
+        .where(and(...categoryConditions)),
+    );
 
     const categoryDocumentIds = await getDocumentIdsForCategoryRoots(
       spaceId,
@@ -1327,19 +1353,20 @@ export async function filterReadableResources(
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
 
-  const rows = await db
-    .select({ resourceId: acl.resourceId, permission: acl.permission })
-    .from(acl)
-    .where(
-      and(
-        eq(acl.resourceType, resourceType),
-        or(
-          and(eq(acl.userId, userId), isNull(acl.groupId)),
-          and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+  const rows = await many(
+    db
+      .select({ resourceId: acl.resourceId, permission: acl.permission })
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, resourceType),
+          or(
+            and(eq(acl.userId, userId), isNull(acl.groupId)),
+            and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+          ),
         ),
       ),
-    )
-    .all();
+  );
 
   const bestLevel = new Map<string, number>();
   for (const row of rows) {
@@ -1355,19 +1382,20 @@ export async function filterReadableResources(
   let categoryDocumentBestLevel: Map<string, number> | null = null;
 
   if (resourceType === ResourceType.DOCUMENT) {
-    const treeRows = await db
-      .select({ resourceId: acl.resourceId, permission: acl.permission })
-      .from(acl)
-      .where(
-        and(
-          eq(acl.resourceType, ResourceType.DOCUMENT_TREE),
-          or(
-            and(eq(acl.userId, userId), isNull(acl.groupId)),
-            and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+    const treeRows = await many(
+      db
+        .select({ resourceId: acl.resourceId, permission: acl.permission })
+        .from(acl)
+        .where(
+          and(
+            eq(acl.resourceType, ResourceType.DOCUMENT_TREE),
+            or(
+              and(eq(acl.userId, userId), isNull(acl.groupId)),
+              and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+            ),
           ),
         ),
-      )
-      .all();
+    );
 
     treeBestLevel = new Map<string, number>();
     for (const row of treeRows) {
@@ -1378,25 +1406,25 @@ export async function filterReadableResources(
       }
     }
 
-    const docRows = await db
-      .select({ id: document.id, parentId: document.parentId })
-      .from(document)
-      .all();
+    const docRows = await many(
+      db.select({ id: document.id, parentId: document.parentId }).from(document),
+    );
     parentById = new Map(docRows.map((row) => [row.id, row.parentId]));
 
-    const categoryRows = await db
-      .select({ resourceId: acl.resourceId, permission: acl.permission })
-      .from(acl)
-      .where(
-        and(
-          eq(acl.resourceType, ResourceType.CATEGORY),
-          or(
-            and(eq(acl.userId, userId), isNull(acl.groupId)),
-            and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+    const categoryRows = await many(
+      db
+        .select({ resourceId: acl.resourceId, permission: acl.permission })
+        .from(acl)
+        .where(
+          and(
+            eq(acl.resourceType, ResourceType.CATEGORY),
+            or(
+              and(eq(acl.userId, userId), isNull(acl.groupId)),
+              and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+            ),
           ),
         ),
-      )
-      .all();
+    );
 
     // Expanded per permission level rather than per grant: the expansion walks
     // the category tree and every document's properties, and only the level a
@@ -1468,11 +1496,12 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
   const db = await getSpaceDb(spaceId);
   const authDb = getAuthDb();
 
-  const results = await db
-    .select()
-    .from(acl)
-    .where(and(eq(acl.resourceType, ResourceType.SPACE), eq(acl.resourceId, spaceId)))
-    .all();
+  const results = await many(
+    db
+      .select()
+      .from(acl)
+      .where(and(eq(acl.resourceType, ResourceType.SPACE), eq(acl.resourceId, spaceId))),
+  );
 
   const memberIds = new Set<string>();
   const groupsToCheck: string[] = [];
@@ -1491,11 +1520,12 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
       like(user.groups, `%"${groupId}"%`),
     );
 
-    const groupMembers = await authDb
-      .select({ id: user.id })
-      .from(user)
-      .where(or(...conditions))
-      .all();
+    const groupMembers = await many(
+      authDb
+        .select({ id: user.id })
+        .from(user)
+        .where(or(...conditions)),
+    );
 
     for (const member of groupMembers) {
       memberIds.add(member.id);
@@ -1520,11 +1550,12 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
   const db = await getSpaceDb(spaceId);
   const authDb = getAuthDb();
 
-  const results = await db
-    .select()
-    .from(acl)
-    .where(and(eq(acl.resourceType, ResourceType.SPACE), eq(acl.resourceId, spaceId)))
-    .all();
+  const results = await many(
+    db
+      .select()
+      .from(acl)
+      .where(and(eq(acl.resourceType, ResourceType.SPACE), eq(acl.resourceId, spaceId))),
+  );
 
   const directUserIds = new Set<string>();
   const groupsToCheck: string[] = [];
@@ -1545,11 +1576,12 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
       like(user.groups, `%"${groupId}"%`),
     );
 
-    const members = await authDb
-      .select({ id: user.id, groups: user.groups })
-      .from(user)
-      .where(or(...conditions))
-      .all();
+    const members = await many(
+      authDb
+        .select({ id: user.id, groups: user.groups })
+        .from(user)
+        .where(or(...conditions)),
+    );
 
     for (const member of members) {
       if (!directUserIds.has(member.id)) {
@@ -1580,20 +1612,21 @@ export async function getResourceScopedGranteeUserIds(
 ): Promise<Set<string>> {
   const db = await getSpaceDb(spaceId);
 
-  const rows = await db
-    .selectDistinct({ userId: acl.userId })
-    .from(acl)
-    .where(
-      and(
-        inArray(acl.resourceType, [
-          ResourceType.DOCUMENT,
-          ResourceType.DOCUMENT_TREE,
-          ResourceType.CATEGORY,
-        ]),
-        isNull(acl.groupId),
+  const rows = await many(
+    db
+      .selectDistinct({ userId: acl.userId })
+      .from(acl)
+      .where(
+        and(
+          inArray(acl.resourceType, [
+            ResourceType.DOCUMENT,
+            ResourceType.DOCUMENT_TREE,
+            ResourceType.CATEGORY,
+          ]),
+          isNull(acl.groupId),
+        ),
       ),
-    )
-    .all();
+  );
 
   const userIds = new Set<string>();
   for (const row of rows) {

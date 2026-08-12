@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, hasPermission } from "#acl/store.ts";
+import { one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { spaceSecret } from "#db/schema/space.ts";
@@ -52,12 +53,9 @@ export async function upsertSpaceSecret(
   createdBy: string,
   description?: string | null,
 ): Promise<SpaceSecretMetadata> {
-  const existing = await s.db
-    .select()
-    .from(spaceSecret)
-    .where(eq(spaceSecret.name, name))
-    .limit(1)
-    .get();
+  const existing = await one(
+    s.db.select().from(spaceSecret).where(eq(spaceSecret.name, name)).limit(1),
+  );
 
   const now = new Date();
   const encrypted = encryptSecret(value);
@@ -111,12 +109,9 @@ export async function getSpaceSecretValue(
   s: SpaceStore,
   name: string,
 ): Promise<string | null> {
-  const row = await s.db
-    .select()
-    .from(spaceSecret)
-    .where(eq(spaceSecret.name, name))
-    .limit(1)
-    .get();
+  const row = await one(
+    s.db.select().from(spaceSecret).where(eq(spaceSecret.name, name)).limit(1),
+  );
 
   if (!row) {
     return null;
@@ -195,12 +190,13 @@ export async function getSpaceSecretValueForUser(
 }
 
 export async function hasSpaceSecret(s: SpaceStore, name: string): Promise<boolean> {
-  const row = await s.db
-    .select({ name: spaceSecret.name })
-    .from(spaceSecret)
-    .where(eq(spaceSecret.name, name))
-    .limit(1)
-    .get();
+  const row = await one(
+    s.db
+      .select({ name: spaceSecret.name })
+      .from(spaceSecret)
+      .where(eq(spaceSecret.name, name))
+      .limit(1),
+  );
 
   return !!row;
 }
@@ -209,19 +205,20 @@ export async function getSpaceSecretMetadata(
   s: SpaceStore,
   name: string,
 ): Promise<SpaceSecretMetadata | null> {
-  const row = await s.db
-    .select({
-      name: spaceSecret.name,
-      description: spaceSecret.description,
-      createdBy: spaceSecret.createdBy,
-      createdAt: spaceSecret.createdAt,
-      updatedAt: spaceSecret.updatedAt,
-      lastUsedAt: spaceSecret.lastUsedAt,
-    })
-    .from(spaceSecret)
-    .where(eq(spaceSecret.name, name))
-    .limit(1)
-    .get();
+  const row = await one(
+    s.db
+      .select({
+        name: spaceSecret.name,
+        description: spaceSecret.description,
+        createdBy: spaceSecret.createdBy,
+        createdAt: spaceSecret.createdAt,
+        updatedAt: spaceSecret.updatedAt,
+        lastUsedAt: spaceSecret.lastUsedAt,
+      })
+      .from(spaceSecret)
+      .where(eq(spaceSecret.name, name))
+      .limit(1),
+  );
 
   return row ?? null;
 }

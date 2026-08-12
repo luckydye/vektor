@@ -8,6 +8,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { many } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import {
@@ -49,15 +50,16 @@ export const GET: ApiRouteHandler = (context) =>
     // and is never needed here, so it is not selected or returned.
     const authDb = getAuthDb();
     const userIdsArray = Array.from(userIds);
-    const contributors = await authDb
-      .select({
-        userId: user.id,
-        name: user.name,
-        image: user.image,
-      })
-      .from(user)
-      .where(inArray(user.id, userIdsArray))
-      .all();
+    const contributors = await many(
+      authDb
+        .select({
+          userId: user.id,
+          name: user.name,
+          image: user.image,
+        })
+        .from(user)
+        .where(inArray(user.id, userIdsArray)),
+    );
 
     return jsonResponse({ contributors });
   }, "Failed to list contributors");

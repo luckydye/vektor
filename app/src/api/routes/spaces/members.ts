@@ -16,6 +16,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { many } from "#db/client/query.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
@@ -56,11 +57,9 @@ export const GET: ApiRouteHandler = (context) =>
       const allUserIds = [
         ...new Set([...directUserIds, ...groupMembers.keys(), ...resourceScopedUserIds]),
       ];
-      const users = await authDb
-        .select()
-        .from(userTable)
-        .where(inArray(userTable.id, allUserIds))
-        .all();
+      const users = await many(
+        authDb.select().from(userTable).where(inArray(userTable.id, allUserIds)),
+      );
 
       const userMap = new Map(users.map((u) => [u.id, u]));
 

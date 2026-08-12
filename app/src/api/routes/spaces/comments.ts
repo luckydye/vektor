@@ -13,6 +13,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { many } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
@@ -50,11 +51,12 @@ export const GET: ApiRouteHandler = (context) =>
     // never needed here, so it is not selected or returned.
     const authDb = getAuthDb();
     const userIds = [...new Set(comments.map((c) => c.createdBy))];
-    const users = await authDb
-      .select({ id: userTable.id, name: userTable.name, image: userTable.image })
-      .from(userTable)
-      .where(inArray(userTable.id, userIds))
-      .all();
+    const users = await many(
+      authDb
+        .select({ id: userTable.id, name: userTable.name, image: userTable.image })
+        .from(userTable)
+        .where(inArray(userTable.id, userIds)),
+    );
 
     const userMap = new Map(users.map((u) => [u.id, u]));
 

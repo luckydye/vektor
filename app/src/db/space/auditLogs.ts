@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { type AuditLog, auditLog, document } from "#db/schema/space.ts";
@@ -208,21 +209,23 @@ export async function listDocumentContributorIds(
   documentId: string,
 ): Promise<string[]> {
   const [doc, rows] = await Promise.all([
-    s.db
-      .select({ createdBy: document.createdBy })
-      .from(document)
-      .where(eq(document.id, documentId))
-      .get(),
-    s.db
-      .selectDistinct({ userId: auditLog.userId })
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.docId, documentId),
-          inArray(auditLog.event, DOCUMENT_CONTRIBUTION_AUDIT_EVENTS),
+    one(
+      s.db
+        .select({ createdBy: document.createdBy })
+        .from(document)
+        .where(eq(document.id, documentId)),
+    ),
+    many(
+      s.db
+        .selectDistinct({ userId: auditLog.userId })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.docId, documentId),
+            inArray(auditLog.event, DOCUMENT_CONTRIBUTION_AUDIT_EVENTS),
+          ),
         ),
-      )
-      .all(),
+    ),
   ]);
 
   return [

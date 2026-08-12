@@ -3,6 +3,7 @@ import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { validateAccessToken } from "#db/space/accessTokens.ts";
@@ -58,7 +59,7 @@ export async function verifyBasicAuth(
   }
 
   const authDb = getAuthDb();
-  const foundUser = await authDb.select().from(user).where(eq(user.email, email)).get();
+  const foundUser = await one(authDb.select().from(user).where(eq(user.email, email)));
   if (!foundUser) return null;
 
   const spaces = await listUserSpaces(foundUser.id);

@@ -28,6 +28,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
@@ -150,11 +151,12 @@ export const POST: ApiRouteHandler = (context) =>
     // space-role authorization already enforced above.
     if (!userId && !groupId && email) {
       const authDb = getAuthDb();
-      const match = await authDb
-        .select({ id: userTable.id })
-        .from(userTable)
-        .where(sql`lower(${userTable.email}) = ${email.toLowerCase()}`)
-        .get();
+      const match = await one(
+        authDb
+          .select({ id: userTable.id })
+          .from(userTable)
+          .where(sql`lower(${userTable.email}) = ${email.toLowerCase()}`),
+      );
       if (!match) {
         throw errorResponse(`No user found with email "${email}"`, 404);
       }

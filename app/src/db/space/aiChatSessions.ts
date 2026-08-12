@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { SpaceStore } from "#db/client/store.ts";
 import { aiChatSession } from "#db/schema/space.ts";
 
@@ -40,6 +40,14 @@ export type AIChatSessionInput = {
   shellSnapshot?: string | null;
 };
 
+/** The turn role the picker's status dot reads, or null for an empty history. */
+export function lastMessageRoleOf(conversationHistory: unknown[]): string | null {
+  const last = conversationHistory.at(-1);
+  if (typeof last !== "object" || last === null) return null;
+  const role = (last as { role?: unknown }).role;
+  return typeof role === "string" ? role : null;
+}
+
 function parseJsonArray(value: string, field: string): unknown[] {
   const parsed = JSON.parse(value) as unknown;
   if (!Array.isArray(parsed)) {
@@ -74,11 +82,9 @@ export async function listAIChatSessionSummaries(
       title: aiChatSession.title,
       createdAt: aiChatSession.createdAt,
       updatedAt: aiChatSession.updatedAt,
-      // The status dot needs the last turn's role, not the turns. SQLite reads
-      // it out of the stored JSON so the column never leaves the database.
-      lastMessageRole: sql<
-        string | null
-      >`json_extract(${aiChatSession.conversationHistory}, '$[#-1].role')`,
+      // The status dot needs the last turn's role, not the turns, so the role is
+      // denormalised at write time and the transcript never leaves the database.
+      lastMessageRole: aiChatSession.lastMessageRole,
     })
     .from(aiChatSession)
     .where(eq(aiChatSession.createdBy, userId))
@@ -121,6 +127,7 @@ export async function upsertAIChatSession(
     updatedAt: new Date(session.updatedAt),
     messages: JSON.stringify(session.messages),
     conversationHistory: JSON.stringify(session.conversationHistory),
+    lastMessageRole: lastMessageRoleOf(session.conversationHistory),
     shellSnapshot:
       session.shellSnapshot === undefined
         ? (existing?.shellSnapshot ?? null)

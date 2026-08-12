@@ -62,6 +62,37 @@ export function getLocalSpaceDatabaseUrl(spaceId: string): string {
   return `file:./data/spaces/${spaceId}.db`;
 }
 
+/** A space location, read for the driver in use. */
+export type ResolvedSpaceLocation = {
+  /** What the driver connects to. */
+  url: string;
+  /** Backing file, or null when the location is not one. */
+  filePath: string | null;
+  /** A durable file on this host, and so wants the local pragmas. */
+  localFile: boolean;
+};
+
+/**
+ * Read `space_index.location` for the driver in use.
+ *
+ * The index stores a locator, not a connection string: under libsql that is a
+ * file URL, in tests `memory:{spaceId}`, and under a server dialect it would be
+ * a schema name. This is the only place that distinction is interpreted, so a
+ * new dialect adds a branch here rather than at every caller.
+ */
+export function resolveSpaceLocation(location: string): ResolvedSpaceLocation {
+  // Every `:memory:` connection gets its own private database, so the space ID
+  // in the locator identifies the record rather than anything to connect to.
+  const inMemory = location.startsWith("memory:");
+  const url = inMemory ? "file::memory:" : location;
+
+  return {
+    url,
+    filePath: getDatabaseFilePath(url),
+    localFile: !inMemory && url.startsWith("file:"),
+  };
+}
+
 export function withoutDatabaseCredentials(databaseUrl: string): string {
   if (databaseUrl.startsWith("file:")) return databaseUrl;
   const parsed = new URL(databaseUrl);

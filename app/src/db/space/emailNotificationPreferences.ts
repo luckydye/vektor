@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
@@ -22,21 +23,26 @@ export async function isEmailMuted(
   documentId?: string,
 ): Promise<boolean> {
   if (documentId) {
-    const documentRow = await s.db
-      .select({ value: preference.value })
-      .from(preference)
-      .where(
-        and(eq(preference.key, emailMutedKey(documentId)), eq(preference.userId, userId)),
-      )
-      .get();
+    const documentRow = await one(
+      s.db
+        .select({ value: preference.value })
+        .from(preference)
+        .where(
+          and(
+            eq(preference.key, emailMutedKey(documentId)),
+            eq(preference.userId, userId),
+          ),
+        ),
+    );
     if (documentRow) return documentRow.value === "true";
   }
 
-  const spaceRow = await s.db
-    .select({ value: preference.value })
-    .from(preference)
-    .where(and(eq(preference.key, emailMutedKey()), eq(preference.userId, userId)))
-    .get();
+  const spaceRow = await one(
+    s.db
+      .select({ value: preference.value })
+      .from(preference)
+      .where(and(eq(preference.key, emailMutedKey()), eq(preference.userId, userId))),
+  );
   return spaceRow?.value === "true";
 }
 
@@ -47,27 +53,31 @@ export async function getEmailMutedUserIds(
 ): Promise<Set<string>> {
   if (userIds.length === 0) return new Set();
 
-  const spaceRows = await s.db
-    .select({ userId: preference.userId, value: preference.value })
-    .from(preference)
-    .where(and(eq(preference.key, emailMutedKey()), inArray(preference.userId, userIds)))
-    .all();
+  const spaceRows = await many(
+    s.db
+      .select({ userId: preference.userId, value: preference.value })
+      .from(preference)
+      .where(
+        and(eq(preference.key, emailMutedKey()), inArray(preference.userId, userIds)),
+      ),
+  );
   const resolved = new Map<string, boolean>();
   for (const { userId, value } of spaceRows) {
     if (userId) resolved.set(userId, value === "true");
   }
 
   if (documentId) {
-    const documentRows = await s.db
-      .select({ userId: preference.userId, value: preference.value })
-      .from(preference)
-      .where(
-        and(
-          eq(preference.key, emailMutedKey(documentId)),
-          inArray(preference.userId, userIds),
+    const documentRows = await many(
+      s.db
+        .select({ userId: preference.userId, value: preference.value })
+        .from(preference)
+        .where(
+          and(
+            eq(preference.key, emailMutedKey(documentId)),
+            inArray(preference.userId, userIds),
+          ),
         ),
-      )
-      .all();
+    );
     for (const { userId, value } of documentRows) {
       if (userId) resolved.set(userId, value === "true");
     }
@@ -86,11 +96,12 @@ export async function setEmailMuted(
 ): Promise<void> {
   const key = emailMutedKey(documentId);
 
-  const existing = await s.db
-    .select({ id: preference.id })
-    .from(preference)
-    .where(and(eq(preference.key, key), eq(preference.userId, userId)))
-    .get();
+  const existing = await one(
+    s.db
+      .select({ id: preference.id })
+      .from(preference)
+      .where(and(eq(preference.key, key), eq(preference.userId, userId))),
+  );
   const now = new Date();
 
   if (existing) {

@@ -4,6 +4,7 @@ import { Permission } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
@@ -71,16 +72,18 @@ async function deliver(
 
   const authDb = getAuthDb();
   const [recipient, actor, doc, space] = await Promise.all([
-    authDb
-      .select({ email: user.email, emailVerified: user.emailVerified })
-      .from(user)
-      .where(eq(user.id, notification.recipientUserId))
-      .get(),
-    authDb
-      .select({ name: user.name, email: user.email, image: user.image })
-      .from(user)
-      .where(eq(user.id, notification.actorId))
-      .get(),
+    one(
+      authDb
+        .select({ email: user.email, emailVerified: user.emailVerified })
+        .from(user)
+        .where(eq(user.id, notification.recipientUserId)),
+    ),
+    one(
+      authDb
+        .select({ name: user.name, email: user.email, image: user.image })
+        .from(user)
+        .where(eq(user.id, notification.actorId)),
+    ),
     getDocument(await openSpaceStore(spaceId), notification.documentId),
     getSpace(spaceId),
   ]);

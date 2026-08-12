@@ -23,6 +23,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { getTokenUserId } from "#db/space/accessTokens.ts";
@@ -178,11 +179,12 @@ async function handlePublishedRevisionPatch(
   const revToPublish = publishedRev === null ? null : publishedRev;
 
   const db = await getSpaceDb(spaceId);
-  const existing = await db
-    .select({ publishedRev: documentTable.publishedRev, type: documentTable.type })
-    .from(documentTable)
-    .where(eq(documentTable.id, documentId))
-    .get();
+  const existing = await one(
+    db
+      .select({ publishedRev: documentTable.publishedRev, type: documentTable.type })
+      .from(documentTable)
+      .where(eq(documentTable.id, documentId)),
+  );
   if (existing?.publishedRev === revToPublish) {
     return;
   }

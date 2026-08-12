@@ -320,6 +320,11 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
   messages: text("messages").notNull(),
   conversationHistory: text("conversation_history").notNull(),
   shellSnapshot: text("shell_snapshot"),
+  /**
+   * Role of the last conversation turn, denormalised out of the history so the
+   * session picker can list a space without reading its transcripts.
+   */
+  lastMessageRole: text("last_message_role"),
 });
 
 /** Ephemeral full-text index of uploaded files. Fully rebuildable by scanning the uploads directory. */

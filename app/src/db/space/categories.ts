@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { category } from "#db/schema/space.ts";
@@ -43,7 +44,7 @@ export async function createCategory(
 ): Promise<Category> {
   const id = createId("category");
   const now = new Date();
-  const existing = await s.db.select().from(category).all();
+  const existing = await many(s.db.select().from(category));
   const order = existing.length;
 
   await s.db.insert(category).values({
@@ -68,7 +69,7 @@ export async function createCategory(
 }
 
 export async function getCategory(s: SpaceStore, id: string): Promise<Category | null> {
-  const result = await s.db.select().from(category).where(eq(category.id, id)).get();
+  const result = await one(s.db.select().from(category).where(eq(category.id, id)));
   return result ? rowToCategory(result) : null;
 }
 
@@ -76,12 +77,12 @@ export async function getCategoryBySlug(
   s: SpaceStore,
   slug: string,
 ): Promise<Category | null> {
-  const result = await s.db.select().from(category).where(eq(category.slug, slug)).get();
+  const result = await one(s.db.select().from(category).where(eq(category.slug, slug)));
   return result ? rowToCategory(result) : null;
 }
 
 export async function listCategories(s: SpaceStore): Promise<Category[]> {
-  const results = await s.db.select().from(category).all();
+  const results = await many(s.db.select().from(category));
   return results.map(rowToCategory).sort((a, b) => a.order - b.order);
 }
 

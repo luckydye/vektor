@@ -6,6 +6,7 @@ import {
   constants as zlibConstants,
 } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, revision } from "#db/schema/space.ts";
@@ -67,11 +68,12 @@ function calculateChecksum(html: string): string {
 }
 
 async function getDocumentSlug(s: SpaceStore, documentId: string): Promise<string> {
-  const doc = await s.db
-    .select({ slug: document.slug })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const doc = await one(
+    s.db
+      .select({ slug: document.slug })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (!doc) {
     throw new Error(`Document ${documentId} not found`);
@@ -85,13 +87,14 @@ export async function getLatestRevisionCreatedAt(
   s: SpaceStore,
   documentId: string,
 ): Promise<Date | null> {
-  const latestRevision = await s.db
-    .select({ createdAt: revision.createdAt })
-    .from(revision)
-    .where(eq(revision.documentId, documentId))
-    .orderBy(desc(revision.rev))
-    .limit(1)
-    .get();
+  const latestRevision = await one(
+    s.db
+      .select({ createdAt: revision.createdAt })
+      .from(revision)
+      .where(eq(revision.documentId, documentId))
+      .orderBy(desc(revision.rev))
+      .limit(1),
+  );
 
   return latestRevision?.createdAt ?? null;
 }
@@ -106,13 +109,14 @@ export async function createRevision(
   const checksum = calculateChecksum(html);
   const status = options.status ?? null;
 
-  const lastRevision = await s.db
-    .select()
-    .from(revision)
-    .where(eq(revision.documentId, documentId))
-    .orderBy(desc(revision.rev))
-    .limit(1)
-    .get();
+  const lastRevision = await one(
+    s.db
+      .select()
+      .from(revision)
+      .where(eq(revision.documentId, documentId))
+      .orderBy(desc(revision.rev))
+      .limit(1),
+  );
 
   // Identical content — return existing revision as-is.
   if (
@@ -141,11 +145,12 @@ export async function createRevision(
     lastRevision &&
     Date.now() - new Date(lastRevision.createdAt).getTime() < OVERWRITE_WINDOW_MS;
 
-  const doc = await s.db
-    .select({ publishedRev: document.publishedRev })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const doc = await one(
+    s.db
+      .select({ publishedRev: document.publishedRev })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
   const lastIsPublished = lastRevision && lastRevision.rev === doc?.publishedRev;
 
   // Overwrite the last revision in place if it's a regular save within the 3-hour window,
@@ -265,11 +270,12 @@ export async function getRevision(
   documentId: string,
   rev: number,
 ): Promise<Revision | null> {
-  const revisionRecord = await s.db
-    .select()
-    .from(revision)
-    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)))
-    .get();
+  const revisionRecord = await one(
+    s.db
+      .select()
+      .from(revision)
+      .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev))),
+  );
 
   if (!revisionRecord) {
     return null;
@@ -317,11 +323,12 @@ export async function getPublishedContent(
   s: SpaceStore,
   documentId: string,
 ): Promise<string | null> {
-  const storedDocument = await s.db
-    .select({ publishedRev: document.publishedRev })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const storedDocument = await one(
+    s.db
+      .select({ publishedRev: document.publishedRev })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (!storedDocument || storedDocument.publishedRev === null) return null;
   return getRevisionContent(s, documentId, storedDocument.publishedRev);
@@ -360,22 +367,23 @@ export async function getRevisionMetadata(
   documentId: string,
   rev: number,
 ): Promise<Omit<Revision, "snapshot"> | null> {
-  const revisionRecord = await s.db
-    .select({
-      id: revision.id,
-      documentId: revision.documentId,
-      rev: revision.rev,
-      slug: revision.slug,
-      checksum: revision.checksum,
-      parentRev: revision.parentRev,
-      status: revision.status,
-      message: revision.message,
-      createdAt: revision.createdAt,
-      createdBy: revision.createdBy,
-    })
-    .from(revision)
-    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)))
-    .get();
+  const revisionRecord = await one(
+    s.db
+      .select({
+        id: revision.id,
+        documentId: revision.documentId,
+        rev: revision.rev,
+        slug: revision.slug,
+        checksum: revision.checksum,
+        parentRev: revision.parentRev,
+        status: revision.status,
+        message: revision.message,
+        createdAt: revision.createdAt,
+        createdBy: revision.createdBy,
+      })
+      .from(revision)
+      .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev))),
+  );
 
   if (!revisionRecord) {
     return null;
@@ -402,23 +410,24 @@ export async function listRevisionMetadata(
   s: SpaceStore,
   documentId: string,
 ): Promise<Omit<Revision, "snapshot">[]> {
-  const revisions = await s.db
-    .select({
-      id: revision.id,
-      documentId: revision.documentId,
-      rev: revision.rev,
-      slug: revision.slug,
-      checksum: revision.checksum,
-      parentRev: revision.parentRev,
-      status: revision.status,
-      message: revision.message,
-      createdAt: revision.createdAt,
-      createdBy: revision.createdBy,
-    })
-    .from(revision)
-    .where(eq(revision.documentId, documentId))
-    .orderBy(desc(revision.rev))
-    .all();
+  const revisions = await many(
+    s.db
+      .select({
+        id: revision.id,
+        documentId: revision.documentId,
+        rev: revision.rev,
+        slug: revision.slug,
+        checksum: revision.checksum,
+        parentRev: revision.parentRev,
+        status: revision.status,
+        message: revision.message,
+        createdAt: revision.createdAt,
+        createdBy: revision.createdBy,
+      })
+      .from(revision)
+      .where(eq(revision.documentId, documentId))
+      .orderBy(desc(revision.rev)),
+  );
 
   return revisions.map(rowToRevisionMetadata);
 }
@@ -430,11 +439,12 @@ export async function createSuggestion(
   userId: string,
   message?: string,
 ): Promise<Revision> {
-  const doc = await s.db
-    .select({ publishedRev: document.publishedRev })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const doc = await one(
+    s.db
+      .select({ publishedRev: document.publishedRev })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (!doc) {
     throw new Error(`Document ${documentId} not found`);

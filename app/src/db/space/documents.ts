@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { type AclViewer, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
@@ -82,10 +83,9 @@ async function generateUniqueSlug(
   }
 
   // Get all existing slugs in the space
-  const allDocs = await s.db
-    .select({ id: document.id, slug: document.slug })
-    .from(document)
-    .all();
+  const allDocs = await many(
+    s.db.select({ id: document.id, slug: document.slug }).from(document),
+  );
 
   const existingSlugs = new Set(
     allDocs.filter((d) => d.id !== excludeDocumentId).map((d) => d.slug),
@@ -126,11 +126,9 @@ export async function assertDocumentCanParent(
   parentId: string,
   childType: string | null | undefined,
 ): Promise<void> {
-  const parent = await s.db
-    .select({ type: document.type })
-    .from(document)
-    .where(eq(document.id, parentId))
-    .get();
+  const parent = await one(
+    s.db.select({ type: document.type }).from(document).where(eq(document.id, parentId)),
+  );
   if (!parent) throw new InvalidDocumentParentError("Parent document not found");
   if (!allowsChildDocumentType(parent.type, childType)) {
     throw new InvalidDocumentParentError(
@@ -237,33 +235,32 @@ export async function getDocument(
   s: SpaceStore,
   id: string,
 ): Promise<DocumentMeta | null> {
-  const doc = await s.db
-    .select({
-      id: document.id,
-      slug: document.slug,
-      type: document.type,
-      currentRev: document.currentRev,
-      publishedRev: document.publishedRev,
-      parentId: document.parentId,
-      createdAt: document.createdAt,
-      updatedAt: document.updatedAt,
-      createdBy: document.createdBy,
-      readonly: document.readonly,
-      archived: document.archived,
-    })
-    .from(document)
-    .where(eq(document.id, id))
-    .get();
+  const doc = await one(
+    s.db
+      .select({
+        id: document.id,
+        slug: document.slug,
+        type: document.type,
+        currentRev: document.currentRev,
+        publishedRev: document.publishedRev,
+        parentId: document.parentId,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        createdBy: document.createdBy,
+        readonly: document.readonly,
+        archived: document.archived,
+      })
+      .from(document)
+      .where(eq(document.id, id)),
+  );
 
   if (!doc) {
     return null;
   }
 
-  const props = await s.db
-    .select()
-    .from(property)
-    .where(eq(property.documentId, id))
-    .all();
+  const props = await many(
+    s.db.select().from(property).where(eq(property.documentId, id)),
+  );
   const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
     properties[prop.key] = parseStoredPropertyValue(prop.value);
@@ -286,24 +283,25 @@ export async function getDocumentsByIds(
   const unique = [...new Set(ids)];
   if (unique.length === 0) return byId;
   const [docs, props] = await Promise.all([
-    s.db
-      .select({
-        id: document.id,
-        slug: document.slug,
-        type: document.type,
-        currentRev: document.currentRev,
-        publishedRev: document.publishedRev,
-        parentId: document.parentId,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-        createdBy: document.createdBy,
-        readonly: document.readonly,
-        archived: document.archived,
-      })
-      .from(document)
-      .where(inArray(document.id, unique))
-      .all(),
-    s.db.select().from(property).where(inArray(property.documentId, unique)).all(),
+    many(
+      s.db
+        .select({
+          id: document.id,
+          slug: document.slug,
+          type: document.type,
+          currentRev: document.currentRev,
+          publishedRev: document.publishedRev,
+          parentId: document.parentId,
+          createdAt: document.createdAt,
+          updatedAt: document.updatedAt,
+          createdBy: document.createdBy,
+          readonly: document.readonly,
+          archived: document.archived,
+        })
+        .from(document)
+        .where(inArray(document.id, unique)),
+    ),
+    many(s.db.select().from(property).where(inArray(property.documentId, unique))),
   ]);
 
   const propertiesByDocument = new Map<string, Record<string, DocumentPropertyValue>>();
@@ -332,11 +330,9 @@ export async function getDocumentContent(
   s: SpaceStore,
   id: string,
 ): Promise<string | null> {
-  const row = await s.db
-    .select({ content: document.content })
-    .from(document)
-    .where(eq(document.id, id))
-    .get();
+  const row = await one(
+    s.db.select({ content: document.content }).from(document).where(eq(document.id, id)),
+  );
   return row?.content ?? null;
 }
 
@@ -348,11 +344,9 @@ export async function getDocumentContent(
  * presence/collaboration traffic.
  */
 export async function documentExists(s: SpaceStore, id: string): Promise<boolean> {
-  const row = await s.db
-    .select({ id: document.id })
-    .from(document)
-    .where(eq(document.id, id))
-    .get();
+  const row = await one(
+    s.db.select({ id: document.id }).from(document).where(eq(document.id, id)),
+  );
   return row != null;
 }
 
@@ -360,17 +354,15 @@ export async function getDocumentBySlug(
   s: SpaceStore,
   slug: string,
 ): Promise<DocumentWithProperties | null> {
-  const doc = await s.db.select().from(document).where(eq(document.slug, slug)).get();
+  const doc = await one(s.db.select().from(document).where(eq(document.slug, slug)));
 
   if (!doc) {
     return null;
   }
 
-  const props = await s.db
-    .select()
-    .from(property)
-    .where(eq(property.documentId, doc.id))
-    .all();
+  const props = await many(
+    s.db.select().from(property).where(eq(property.documentId, doc.id)),
+  );
 
   const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
@@ -510,7 +502,7 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
   if (diskFiles.length === 0) return;
 
   const indexed = new Set(
-    (await s.db.select({ path: fileTable.path }).from(fileTable).all()).map(
+    (await many(s.db.select({ path: fileTable.path }).from(fileTable))).map(
       (r) => r.path,
     ),
   );
@@ -612,12 +604,13 @@ export async function listDocuments(
 
   if (viewer) {
     // ACL filtering requires fetching all docs before paginating.
-    const allDocs = await s.db
-      .select(selectFields)
-      .from(document)
-      .where(baseCondition)
-      .orderBy(desc(document.updatedAt), desc(document.id))
-      .all();
+    const allDocs = await many(
+      s.db
+        .select(selectFields)
+        .from(document)
+        .where(baseCondition)
+        .orderBy(desc(document.updatedAt), desc(document.id)),
+    );
     const readable = await filterReadableResources(
       s.spaceId,
       ResourceType.DOCUMENT,
@@ -660,13 +653,14 @@ export async function listDocuments(
       : baseCondition;
 
     const fetchLimit = (limit ?? 50) + 1;
-    const rows = (await s.db
-      .select(selectFields)
-      .from(document)
-      .where(seekCondition)
-      .orderBy(desc(document.updatedAt), desc(document.id))
-      .limit(fetchLimit)
-      .all()) as DocRow[];
+    const rows = (await many(
+      s.db
+        .select(selectFields)
+        .from(document)
+        .where(seekCondition)
+        .orderBy(desc(document.updatedAt), desc(document.id))
+        .limit(fetchLimit),
+    )) as DocRow[];
 
     if (rows.length === fetchLimit) {
       docs = rows.slice(0, -1);
@@ -682,11 +676,9 @@ export async function listDocuments(
   const docIds = docs.map((d) => d.id);
   const allProps =
     docIds.length > 0
-      ? await s.db
-          .select()
-          .from(property)
-          .where(inArray(property.documentId, docIds))
-          .all()
+      ? await many(
+          s.db.select().from(property).where(inArray(property.documentId, docIds)),
+        )
       : [];
 
   // Group properties by document ID
@@ -717,11 +709,9 @@ export async function listDocuments(
   if (type === "file" || (includeFiles && !type)) {
     await syncFileIndex(s).catch(() => {});
 
-    let visibleFiles = await s.db
-      .select()
-      .from(fileTable)
-      .orderBy(desc(fileTable.updatedAt))
-      .all();
+    let visibleFiles = await many(
+      s.db.select().from(fileTable).orderBy(desc(fileTable.updatedAt)),
+    );
 
     if (viewer) {
       const parentDocumentIds = [
@@ -768,24 +758,25 @@ export async function listArchivedDocuments(
   viewer: AclViewer | null,
   options?: { limit?: number; cursor?: string },
 ): Promise<{ documents: DocumentWithProperties[]; nextCursor: string | null }> {
-  let docs = await s.db
-    .select({
-      id: document.id,
-      createdAt: document.createdAt,
-      updatedAt: document.updatedAt,
-      parentId: document.parentId,
-      publishedRev: document.publishedRev,
-      slug: document.slug,
-      type: document.type,
-      currentRev: document.currentRev,
-      createdBy: document.createdBy,
-      readonly: document.readonly,
-      archived: document.archived,
-    })
-    .from(document)
-    .where(archivedDocumentCondition)
-    .orderBy(desc(document.updatedAt), desc(document.id))
-    .all();
+  let docs = await many(
+    s.db
+      .select({
+        id: document.id,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        parentId: document.parentId,
+        publishedRev: document.publishedRev,
+        slug: document.slug,
+        type: document.type,
+        currentRev: document.currentRev,
+        createdBy: document.createdBy,
+        readonly: document.readonly,
+        archived: document.archived,
+      })
+      .from(document)
+      .where(archivedDocumentCondition)
+      .orderBy(desc(document.updatedAt), desc(document.id)),
+  );
 
   // Per-document ACL filtering, mirroring listDocuments. Space access alone
   // must not expose archived documents the caller cannot read.
@@ -799,7 +790,7 @@ export async function listArchivedDocuments(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  const allProps = await s.db.select().from(property).all();
+  const allProps = await many(s.db.select().from(property));
 
   const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
   for (const prop of allProps) {
@@ -859,11 +850,12 @@ export async function updateDocumentProperty(
   const storedValue = serializePropertyValue(value);
 
   // Read existing value for audit log (indexed lookup, very fast)
-  const existing = await s.db
-    .select()
-    .from(property)
-    .where(and(eq(property.documentId, documentId), eq(property.key, key)))
-    .get();
+  const existing = await one(
+    s.db
+      .select()
+      .from(property)
+      .where(and(eq(property.documentId, documentId), eq(property.key, key))),
+  );
 
   const previousValue = existing ? parseStoredPropertyValue(existing.value) : undefined;
 
@@ -905,11 +897,12 @@ export async function updateDocumentProperty(
   // title claims it.
   let renamedSlug: string | undefined;
   if (key === "title" && typeof value === "string" && value) {
-    const current = await s.db
-      .select({ slug: document.slug })
-      .from(document)
-      .where(eq(document.id, documentId))
-      .get();
+    const current = await one(
+      s.db
+        .select({ slug: document.slug })
+        .from(document)
+        .where(eq(document.id, documentId)),
+    );
 
     if (current && isPlaceholderDocumentSlug(current.slug)) {
       // An unsluggable title still renames the document; only the derived slug
@@ -958,11 +951,12 @@ export async function deleteDocumentProperty(
   const now = new Date();
 
   // Get the property value before deletion for audit log
-  const existing = await s.db
-    .select()
-    .from(property)
-    .where(and(eq(property.documentId, documentId), eq(property.key, key)))
-    .get();
+  const existing = await one(
+    s.db
+      .select()
+      .from(property)
+      .where(and(eq(property.documentId, documentId), eq(property.key, key))),
+  );
 
   await s.db
     .delete(property)
@@ -1034,13 +1028,14 @@ async function countMentionsForUser(
   documentId: string,
   userEmail: string,
 ): Promise<number> {
-  const doc = await s.db
-    .select({
-      publishedRev: document.publishedRev,
-    })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const doc = await one(
+    s.db
+      .select({
+        publishedRev: document.publishedRev,
+      })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (!doc?.publishedRev) {
     return 0;
@@ -1053,13 +1048,16 @@ async function countMentionsForUser(
     return cached;
   }
 
-  const rev = await s.db
-    .select({
-      snapshot: revision.snapshot,
-    })
-    .from(revision)
-    .where(and(eq(revision.documentId, documentId), eq(revision.rev, doc.publishedRev)))
-    .get();
+  const rev = await one(
+    s.db
+      .select({
+        snapshot: revision.snapshot,
+      })
+      .from(revision)
+      .where(
+        and(eq(revision.documentId, documentId), eq(revision.rev, doc.publishedRev)),
+      ),
+  );
 
   if (!rev?.snapshot) {
     return 0;
@@ -1094,24 +1092,25 @@ export async function listAllDocumentsByCategories(
     return {};
   }
 
-  let docs = await s.db
-    .select({
-      id: document.id,
-      createdAt: document.createdAt,
-      updatedAt: document.updatedAt,
-      parentId: document.parentId,
-      publishedRev: document.publishedRev,
-      slug: document.slug,
-      type: document.type,
-      currentRev: document.currentRev,
-      createdBy: document.createdBy,
-      readonly: document.readonly,
-      archived: document.archived,
-    })
-    .from(document)
-    .where(nonArchivedDocumentCondition)
-    .orderBy(desc(document.updatedAt), desc(document.id))
-    .all();
+  let docs = await many(
+    s.db
+      .select({
+        id: document.id,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        parentId: document.parentId,
+        publishedRev: document.publishedRev,
+        slug: document.slug,
+        type: document.type,
+        currentRev: document.currentRev,
+        createdBy: document.createdBy,
+        readonly: document.readonly,
+        archived: document.archived,
+      })
+      .from(document)
+      .where(nonArchivedDocumentCondition)
+      .orderBy(desc(document.updatedAt), desc(document.id)),
+  );
 
   if (viewer) {
     const readable = await filterReadableResources(
@@ -1123,7 +1122,7 @@ export async function listAllDocumentsByCategories(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  const allProps = await s.db.select().from(property).all();
+  const allProps = await many(s.db.select().from(property));
   const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
 
   for (const prop of allProps) {
@@ -1235,11 +1234,12 @@ export async function setDocumentParent(
   parentId: string | null;
 }> {
   const now = new Date();
-  const existing = await s.db
-    .select({ parentId: document.parentId, type: document.type })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  const existing = await one(
+    s.db
+      .select({ parentId: document.parentId, type: document.type })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (parentId === documentId) {
     throw new Error("Cannot set parent: a child cant be a parent");
@@ -1264,11 +1264,12 @@ export async function getDocumentChildren(
   parentId: string,
   viewer: AclViewer | null,
 ): Promise<DocumentWithProperties[]> {
-  let docs = await s.db
-    .select()
-    .from(document)
-    .where(and(eq(document.parentId, parentId), nonArchivedDocumentCondition))
-    .all();
+  let docs = await many(
+    s.db
+      .select()
+      .from(document)
+      .where(and(eq(document.parentId, parentId), nonArchivedDocumentCondition)),
+  );
 
   // Per-document ACL filtering: a caller with access to the parent must not be
   // able to enumerate (or read the content of) children they cannot access.
@@ -1286,11 +1287,9 @@ export async function getDocumentChildren(
   const childIds = docs.map((d) => d.id);
   const allProps =
     childIds.length > 0
-      ? await s.db
-          .select()
-          .from(property)
-          .where(inArray(property.documentId, childIds))
-          .all()
+      ? await many(
+          s.db.select().from(property).where(inArray(property.documentId, childIds)),
+        )
       : [];
 
   const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
@@ -1324,7 +1323,7 @@ export interface PropertyInfo {
 }
 
 export async function getAllPropertiesWithValues(s: SpaceStore): Promise<PropertyInfo[]> {
-  const allProperties = await s.db.select().from(property).all();
+  const allProperties = await many(s.db.select().from(property));
 
   const propertyMap: Record<string, { type: string | null; values: Set<string> }> = {};
 
@@ -1347,11 +1346,12 @@ export async function getAllPropertiesWithValues(s: SpaceStore): Promise<Propert
   }
 
   // Add document type as a virtual property
-  const docTypes = await s.db
-    .selectDistinct({ type: document.type })
-    .from(document)
-    .where(sql`${nonArchivedDocumentCondition}`)
-    .all();
+  const docTypes = await many(
+    s.db
+      .selectDistinct({ type: document.type })
+      .from(document)
+      .where(sql`${nonArchivedDocumentCondition}`),
+  );
 
   const typeValues = docTypes
     .map((d) => d.type || "document")
@@ -1397,30 +1397,35 @@ export async function getDocumentBreadcrumbs(
     }
     visited.add(currentId);
 
-    const doc = await s.db
-      .select({
-        id: document.id,
-        slug: document.slug,
-        parentId: document.parentId,
-      })
-      .from(document)
-      .where(eq(document.id, currentId))
-      .get();
+    // Fixed before the query: `currentId` is reassigned from the row this loads,
+    // and inferring the row's type through a narrowed `currentId` is circular.
+    const id: string = currentId;
+    const doc = await one(
+      s.db
+        .select({
+          id: document.id,
+          slug: document.slug,
+          parentId: document.parentId,
+        })
+        .from(document)
+        .where(eq(document.id, id)),
+    );
 
     if (!doc) {
       break;
     }
 
-    const props = await s.db
-      .select()
-      .from(property)
-      .where(
-        and(
-          eq(property.documentId, doc.id),
-          inArray(property.key, ["title", "category"]),
+    const props = await many(
+      s.db
+        .select()
+        .from(property)
+        .where(
+          and(
+            eq(property.documentId, doc.id),
+            inArray(property.key, ["title", "category"]),
+          ),
         ),
-      )
-      .all();
+    );
 
     const titleValue = props.find((p) => p.key === "title")?.value;
     const categoryValue = props.find((p) => p.key === "category")?.value;
