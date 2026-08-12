@@ -4,12 +4,10 @@
  * upstream would go on granting access until the user next logged in.
  *
  * A failed re-read changes nothing: the stored groups stay in force and the next
- * check tries again. An unreachable IdP must not read as "this user lost every
- * group" — that would turn an outage into an instance-wide lockout.
- *
- * The re-read needs a usable access token, so the IdP must issue refresh tokens
- * (`offline_access` in `OAUTH_SCOPES`) to keep working past the lifetime of the
- * token minted at sign-in.
+ * check tries again, because an unreachable IdP must not read as "this user lost
+ * every group". The re-read needs a usable access token, so the IdP has to issue
+ * refresh tokens (`offline_access` in `OAUTH_SCOPES`) to keep working past the
+ * lifetime of the token minted at sign-in.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -28,8 +26,6 @@ const GROUPS_CLAIM = "wiki_groups";
 /** Cap on how long an ACL check waits for the IdP before using what it has. */
 const USERINFO_TIMEOUT_MS = 5_000;
 
-const DEFAULT_SYNC_INTERVAL_SECONDS = 60;
-
 export interface IdpSyncDeps {
   auth: Pick<typeof auth, "api">;
   authDb: Database;
@@ -44,46 +40,20 @@ type UserSyncState = {
   notFederated?: boolean;
 };
 
-function seconds(raw: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(raw ?? "", 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-export function createIdpGroupSync(deps: IdpSyncDeps) {
-  const { appConfig } = deps;
+export function createIdpGroupSync({ auth, authDb, appConfig }: IdpSyncDeps) {
+  const configured = Number.parseInt(appConfig.OAUTH_GROUP_SYNC_INTERVAL ?? "", 10);
   const intervalMs =
-    seconds(appConfig.OAUTH_GROUP_SYNC_INTERVAL, DEFAULT_SYNC_INTERVAL_SECONDS) * 1000;
-  const providerId = appConfig.OAUTH_PROVIDER_ID;
-  const userInfoUrl = appConfig.OAUTH_USERINFO_URL;
+    (Number.isFinite(configured) && configured >= 0 ? configured : 60) * 1000;
+  const providerId = appConfig.OAUTH_PROVIDER_ID as string;
+  const userInfoUrl = appConfig.OAUTH_USERINFO_URL as string;
 
   const enabled = !isNoAuthMode() && !!providerId && !!userInfoUrl && intervalMs > 0;
 
+  // One small entry per user seen since boot, so bounded by the user table.
   const states = new Map<string, UserSyncState>();
 
-  function sweep(): void {
-    if (states.size < 1000) return;
-    const cutoff = Date.now() - intervalMs;
-    for (const [userId, state] of states) {
-      if (!state.inFlight && !state.notFederated && state.checkedAt < cutoff) {
-        states.delete(userId);
-      }
-    }
-  }
-
-  async function federatedAccountId(userId: string): Promise<string | null> {
-    const row = await one(
-      deps.authDb
-        .select({ accountId: account.accountId })
-        .from(account)
-        .where(
-          and(eq(account.userId, userId), eq(account.providerId, providerId as string)),
-        ),
-    );
-    return row?.accountId ?? null;
-  }
-
   function readUserInfo(accessToken: string): Promise<Response> {
-    return fetch(userInfoUrl as string, {
+    return fetch(userInfoUrl, {
       headers: { Authorization: `Bearer ${accessToken}`, accept: "application/json" },
       signal: AbortSignal.timeout(USERINFO_TIMEOUT_MS),
     });
@@ -94,66 +64,63 @@ export function createIdpGroupSync(deps: IdpSyncDeps) {
    * covers a token revoked before its nominal lifetime was up.
    */
   async function fetchClaims(userId: string): Promise<Record<string, unknown>> {
-    const stored = await deps.auth.api.getAccessToken({
-      body: { providerId: providerId as string, userId },
-    });
+    const stored = await auth.api.getAccessToken({ body: { providerId, userId } });
     if (!stored.accessToken) throw new Error("no access token stored for account");
 
     let response = await readUserInfo(stored.accessToken);
     if (response.status === 401 || response.status === 403) {
-      const refreshed = await deps.auth.api.refreshToken({
-        body: { providerId: providerId as string, userId },
-      });
-      if (!refreshed.accessToken) throw new Error("refresh returned no access token");
-      response = await readUserInfo(refreshed.accessToken);
+      const fresh = await auth.api.refreshToken({ body: { providerId, userId } });
+      if (!fresh.accessToken) throw new Error("refresh returned no access token");
+      response = await readUserInfo(fresh.accessToken);
     }
-    if (!response.ok) {
-      throw new Error(`userinfo responded ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`userinfo responded ${response.status}`);
     return (await response.json()) as Record<string, unknown>;
   }
 
-  async function reread(userId: string): Promise<void> {
+  /** False when the user has no account with the provider, so nothing to sync. */
+  async function reread(userId: string): Promise<boolean> {
     try {
-      if (!(await federatedAccountId(userId))) {
-        states.set(userId, { checkedAt: Date.now(), notFederated: true });
-        return;
-      }
+      const federated = await one(
+        authDb
+          .select({ id: account.id })
+          .from(account)
+          .where(and(eq(account.userId, userId), eq(account.providerId, providerId))),
+      );
+      if (!federated) return false;
 
       const claims = await fetchClaims(userId);
       const groups = sanitizeOAuthGroups(claims[GROUPS_CLAIM]);
       const image = typeof claims.picture === "string" ? claims.picture : undefined;
-
-      const stored = await one(
-        deps.authDb
-          .select({ groups: user.groups, image: user.image })
-          .from(user)
-          .where(eq(user.id, userId)),
-      );
-      if (stored && (groups !== undefined || image !== undefined)) {
-        const changed = groups !== undefined && groups !== stored.groups;
-        if (changed || (image !== undefined && image !== stored.image)) {
-          await deps.authDb
-            .update(user)
-            .set({
-              ...(groups !== undefined ? { groups } : {}),
-              ...(image !== undefined ? { image } : {}),
-              updatedAt: new Date(),
-            })
-            .where(eq(user.id, userId));
-        }
-        if (changed) {
-          appLogger.info("Refreshed OAuth groups from IdP", {
-            userId,
-            groups,
-            previous: stored.groups,
-          });
-        }
-      }
       if (groups === undefined) {
         appLogger.warn("IdP userinfo carried no group claim; keeping stored groups", {
           userId,
           claim: GROUPS_CLAIM,
+        });
+      }
+
+      const stored = await one(
+        authDb
+          .select({ groups: user.groups, image: user.image })
+          .from(user)
+          .where(eq(user.id, userId)),
+      );
+      if (!stored) return true;
+
+      const changes = {
+        ...(groups !== undefined && groups !== stored.groups ? { groups } : {}),
+        ...(image !== undefined && image !== stored.image ? { image } : {}),
+      };
+      if (Object.keys(changes).length === 0) return true;
+
+      await authDb
+        .update(user)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(user.id, userId));
+      if (changes.groups) {
+        appLogger.info("Refreshed OAuth groups from IdP", {
+          userId,
+          groups: changes.groups,
+          previous: stored.groups,
         });
       }
     } catch (error) {
@@ -162,30 +129,32 @@ export function createIdpGroupSync(deps: IdpSyncDeps) {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    return true;
   }
 
   return {
     enabled,
 
-    async ensureFresh(userId: string): Promise<void> {
+    ensureFresh(userId: string): Promise<void> | void {
       if (!enabled) return;
 
-      const state = states.get(userId);
-      if (state?.notFederated) return;
-      if (state?.inFlight) return state.inFlight;
+      const known = states.get(userId);
+      if (known?.notFederated) return;
+      if (known?.inFlight) return known.inFlight;
       // Stamped on the attempt, not on success, so an IdP that is down costs one
       // call per interval instead of one per ACL check.
-      if (state && Date.now() - state.checkedAt < intervalMs) return;
+      if (known && Date.now() - known.checkedAt < intervalMs) return;
 
-      sweep();
-      const inFlight = reread(userId);
-      states.set(userId, { checkedAt: Date.now(), inFlight });
-      try {
-        await inFlight;
-      } finally {
-        const settled = states.get(userId);
-        if (settled?.inFlight === inFlight) delete settled.inFlight;
-      }
+      const state: UserSyncState = { checkedAt: Date.now() };
+      states.set(userId, state);
+      state.inFlight = reread(userId)
+        .then((federated) => {
+          state.notFederated = !federated;
+        })
+        .finally(() => {
+          state.inFlight = undefined;
+        });
+      return state.inFlight;
     },
   };
 }
