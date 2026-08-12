@@ -58,7 +58,7 @@
 | `/api/v1/spaces/[spaceId]/documents/[documentId]` | DELETE | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]` | PATCH | 401 | 403 | 403 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/documents/[documentId]` | POST | 401 | 403 | 400 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/documents/[documentId]` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]` | PUT | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/access` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs` | GET | 401 | 403 | 200 | 200 | 200 |  |

@@ -5,7 +5,7 @@ import {
   brotliDecompressSync,
   constants as zlibConstants,
 } from "node:zlib";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -432,13 +432,18 @@ export async function listRevisionMetadata(
   return revisions.map(rowToRevisionMetadata);
 }
 
+/**
+ * A revision proposed rather than saved: `status: "open"`, based on the
+ * published revision or else the latest ordinary one. Returns `null` when there
+ * is no document or no revision to base it on, which the caller reports.
+ */
 export async function createSuggestion(
   s: SpaceStore,
   documentId: string,
   html: string,
   userId: string,
   message?: string,
-): Promise<Revision> {
+): Promise<Revision | null> {
   const doc = await one(
     s.db
       .select({ publishedRev: document.publishedRev })
@@ -447,12 +452,23 @@ export async function createSuggestion(
   );
 
   if (!doc) {
-    throw new Error(`Document ${documentId} not found`);
+    return null;
   }
 
-  const parentRev = doc.publishedRev;
-  if (!parentRev) {
-    throw new Error("Cannot create suggestion without a published revision");
+  // Never another suggestion: proposals are made against the document's own
+  // line of revisions.
+  const latestSaved = await one(
+    s.db
+      .select({ rev: revision.rev })
+      .from(revision)
+      .where(and(eq(revision.documentId, documentId), isNull(revision.status)))
+      .orderBy(desc(revision.rev))
+      .limit(1),
+  );
+
+  const parentRev = doc.publishedRev ?? latestSaved?.rev ?? null;
+  if (parentRev === null) {
+    return null;
   }
 
   return createRevision(s, documentId, html, userId, {

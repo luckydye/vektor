@@ -5,10 +5,11 @@ import {
   tryAuthenticateRequest,
   verifyDocumentAccess,
   verifyDocumentRole,
+  verifyFeatureAccess,
   verifyRevisionAccess,
   verifyTokenPermission,
 } from "#acl/guards.ts";
-import { Permission, ResourceType } from "#acl/permissions.ts";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -563,7 +564,9 @@ export const PATCH: ApiRouteHandler = (context) =>
         }
 
         if (parentId) {
-          await verifyDocumentAccess(spaceId, parentId, userId);
+          // EDITOR on the parent, not read access: document ACLs inherit down
+          // the tree, so this splices the document into grants it did not have.
+          await verifyDocumentRole(spaceId, parentId, userId, Permission.EDITOR);
         }
 
         const parentChange = await setDocumentParent(store, id, parentId).catch(
@@ -661,12 +664,33 @@ export const DELETE: ApiRouteHandler = (context) =>
     return successResponse();
   }, "Failed to delete document");
 
+/**
+ * Authorize a write to a document's revision history. A full revision is a
+ * document write like any other here, so `EDITOR`; a suggestion changes nothing
+ * until an editor applies it, so it takes `Feature.COMMENT` instead (audit 014).
+ */
+async function verifyRevisionWrite(
+  spaceId: string,
+  documentId: string,
+  userId: string,
+  mode: "revision" | "suggestion",
+): Promise<void> {
+  if (mode === "suggestion") {
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, userId);
+    return;
+  }
+
+  await verifyDocumentRole(spaceId, documentId, userId, Permission.EDITOR);
+}
+
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = requireParam(context.var.params, "documentId");
 
+    // Not redundant with the suggestion gate below: COMMENT is granted per
+    // space, so this is what confines a suggester to documents they can read.
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
     const store = await openSpaceStore(spaceId);
@@ -680,44 +704,38 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
+    const isJson = contentType === "application/json";
+    // A non-JSON body carries content and nothing else, so it can only ever be
+    // a full revision.
+    const body = isJson
+      ? await parseJsonBody<{ html?: unknown; message?: unknown; mode?: unknown }>(
+          context.req.raw,
+        )
+      : { mode: "revision" as const };
+
+    if (
+      body.mode !== undefined &&
+      body.mode !== "revision" &&
+      body.mode !== "suggestion"
+    ) {
+      throw badRequestResponse('Mode must be "revision" or "suggestion"');
+    }
+    const mode = body.mode ?? "revision";
+
+    // Before the content is validated, so a refused caller gets that verdict
+    // rather than a critique of their payload. Only `mode` is read first.
+    await verifyRevisionWrite(spaceId, documentId, user.id, mode);
+
     let html: string;
     let message: string | undefined;
 
-    if (contentType === "application/json") {
-      const body = await parseJsonBody(context.req.raw);
-      const { html: jsonHtml, message: jsonMessage, mode } = body;
-
-      if (!jsonHtml || typeof jsonHtml !== "string") {
+    if (isJson) {
+      if (!body.html || typeof body.html !== "string") {
         throw badRequestResponse("HTML content is required and must be a string");
       }
 
-      if (mode !== undefined && mode !== "revision" && mode !== "suggestion") {
-        throw badRequestResponse('Mode must be "revision" or "suggestion"');
-      }
-
-      html = toHtmlIfMarkdown(jsonHtml, contentType, document.type);
-      message = typeof jsonMessage === "string" ? jsonMessage : undefined;
-
-      const revision =
-        mode === "suggestion"
-          ? await createSuggestion(store, documentId, html, user.id, message)
-          : await createRevision(store, documentId, html, user.id, {
-              message,
-            });
-
-      return jsonResponse({
-        revision: {
-          id: revision.id,
-          documentId: revision.documentId,
-          rev: revision.rev,
-          checksum: revision.checksum,
-          parentRev: revision.parentRev,
-          status: revision.status,
-          message: revision.message,
-          createdAt: revision.createdAt,
-          createdBy: revision.createdBy,
-        },
-      });
+      html = toHtmlIfMarkdown(body.html, contentType, document.type);
+      message = typeof body.message === "string" ? body.message : undefined;
     } else {
       const rawContent = await context.req.raw.text();
       if (!rawContent) {
@@ -727,9 +745,17 @@ export const POST: ApiRouteHandler = (context) =>
       html = toHtmlIfMarkdown(rawContent, contentType, document.type);
     }
 
-    const revision = await createRevision(store, documentId, html, user.id, {
-      message,
-    });
+    const revision =
+      mode === "suggestion"
+        ? await createSuggestion(store, documentId, html, user.id, message)
+        : await createRevision(store, documentId, html, user.id, { message });
+
+    if (!revision) {
+      // Only createSuggestion answers null, and only for this reason.
+      throw badRequestResponse(
+        "Cannot suggest changes to a document with no saved revision",
+      );
+    }
 
     return jsonResponse({
       revision: {
