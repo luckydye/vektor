@@ -3,7 +3,7 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { parsePatch } from "diff";
-import { prettyPrintHtml, stripScriptTags } from "#utils/html.ts";
+import { prettyPrintHtml, sanitizeDocumentHtml } from "#utils/html.ts";
 
 export interface InlineSuggestion {
   rev: number;
@@ -343,7 +343,10 @@ function createLineElement(line: DiffLine) {
   const content = document.createElement("span");
   content.className = "wiki-inline-suggestion-content";
   if (line.type !== "empty") {
-    content.innerHTML = stripScriptTags(line.content || "&nbsp;");
+    // A diff line is a fragment of document HTML, so it is sanitized with the
+    // document policy: an unbalanced line sanitizes to what a browser would
+    // have made of it anyway (a stray `</p>` renders as nothing either way).
+    content.innerHTML = sanitizeDocumentHtml(line.content) || "&nbsp;";
   }
 
   row.append(marker, content);

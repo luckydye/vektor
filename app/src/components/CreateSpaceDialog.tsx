@@ -1,4 +1,6 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
+import { isHexColor } from "#utils/color.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
@@ -19,8 +21,6 @@ interface Props {
     logoSvg: string;
   }) => void | Promise<void>;
 }
-
-const isValidHexColor = (color: string) => /^#[0-9A-Fa-f]{6}$/.test(color);
 
 export function CreateSpaceDialog(props: Props) {
   const [name, setName] = createSignal("");
@@ -58,11 +58,12 @@ export function CreateSpaceDialog(props: Props) {
 
     try {
       if (file.type === "image/svg+xml") {
-        const text = (await file.text())
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-          .replace(/on\w+="[^"]*"/g, "")
-          .replace(/on\w+='[^']*'/g, "");
-        setLogoSvg(text);
+        const svg = sanitizeSvgMarkup(await file.text());
+        if (!svg) {
+          setFormError("That file is not an SVG image");
+          return;
+        }
+        setLogoSvg(svg);
       } else {
         const reader = new FileReader();
         reader.onload = (loadEvent) => setLogoSvg(loadEvent.target?.result as string);
@@ -85,7 +86,7 @@ export function CreateSpaceDialog(props: Props) {
     // rather than after a round trip.
     const slugRejection = spaceSlugRejection(slug());
     if (slugRejection) return setFormError(slugRejection);
-    if (!isValidHexColor(brandColor())) {
+    if (!isHexColor(brandColor())) {
       return setFormError("Please enter a valid hex color (e.g., #42516d)");
     }
 

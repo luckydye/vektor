@@ -71,7 +71,7 @@ import {
   getLiveDocumentContent,
   replaceLiveDocumentContent,
 } from "#realtime/yjsRooms.ts";
-import { stripScriptTags } from "#utils/html.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
 
 type DocumentPatchBody = {
@@ -451,11 +451,12 @@ export const PUT: ApiRouteHandler = (context) =>
       content = toHtmlIfMarkdown(rawContent, contentType, nextType);
     }
 
-    // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.
-    // Canvas/app documents store serialized JSON, not HTML — stripping script
-    // tags there is meaningless and, on tens-of-MB canvases, an expensive
-    // event-loop-blocking regex scan, so skip it for non-HTML types.
-    const contentSanitized = contentIsHtml(nextType) ? stripScriptTags(content) : content;
+    // Canvas/app documents store serialized JSON, not HTML — parsing it as
+    // markup is meaningless and, on tens-of-MB canvases, an expensive
+    // event-loop-blocking scan, so skip it for non-HTML types.
+    const contentSanitized = contentIsHtml(nextType)
+      ? sanitizeDocumentHtml(content)
+      : content;
 
     // createRevision records the canonical content-save audit event, including
     // its revision ID. Do not also record the draft write or the activity feed

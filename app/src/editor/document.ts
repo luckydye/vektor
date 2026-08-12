@@ -12,6 +12,7 @@ import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
 import { appendCaretDecoration } from "#cosmetics/render.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   colorForPresenceProfile,
   type DocumentPresenceProfile,
@@ -537,7 +538,9 @@ export class DocumentView extends HTMLElement {
     content.setAttribute("part", "content");
 
     const inner = document.createElement("div");
-    inner.innerHTML = html;
+    // Read mode renders stored HTML. It is sanitized on write, and again here:
+    // content stored before that boundary existed still has to render safely.
+    inner.innerHTML = sanitizeDocumentHtml(html);
     content.appendChild(inner);
 
     shadow.querySelector('[part="content"]')?.replaceWith(content) ??

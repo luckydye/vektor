@@ -1,5 +1,6 @@
 import { createEffect, createSignal, on, onMount, Show } from "solid-js";
 import { api } from "#api/client.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
@@ -30,13 +31,13 @@ export function FirstSpacePrompt() {
     }
 
     try {
-      let text = await file.text();
+      const svg = sanitizeSvgMarkup(await file.text());
+      if (!svg) {
+        setError("That file is not an SVG image");
+        return;
+      }
 
-      text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-      text = text.replace(/on\w+="[^"]*"/g, "");
-      text = text.replace(/on\w+='[^']*'/g, "");
-
-      setLogoSvg(text);
+      setLogoSvg(svg);
       setError(null);
     } catch (err) {
       setError("Failed to read SVG file");

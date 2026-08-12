@@ -306,20 +306,205 @@ export function htmlToPlainText(html: string): string {
     .trim();
 }
 
+// ---------------------------------------------------------------------------
+// Sanitizing untrusted HTML
+// ---------------------------------------------------------------------------
+
 /**
- * Strip all script tags from HTML content to prevent XSS attacks
+ * Three policies, one walker.
+ *
+ * Every path that stores or renders markup a user could have written goes
+ * through one of the entry points at the bottom of this module:
+ *
+ *  - `sanitizeDocumentHtml` — document content, the format the editor writes.
+ *    Keeps the whole document vocabulary (custom elements, `data-` attributes,
+ *    inline styles, task-item checkboxes) and removes what executes.
+ *  - `sanitizeVektorDocumentPreviewHtml` — markup fetched from somewhere else
+ *    and shown as a preview card. Nothing but prose survives.
+ *  - `sanitizeSvgMarkup` — a space logo or extension icon, injected as markup.
+ *
+ * A policy names the tags it keeps and the tags it drops together with their
+ * subtree. A tag that is neither is *unwrapped*: its children survive, the
+ * element does not. On top of that the shared rules below hold for all three:
+ * no event handler, no attribute a browser resolves into a navigation or a
+ * fetch unless the URL passes `isSafeUrlValue`, no CSS that can load a
+ * resource, and no comment (see `sanitizeNode`).
+ *
+ * Sanitizing is idempotent and, for markup this app wrote itself, byte-stable:
+ * content is sanitized on write *and* on render, and a document whose bytes
+ * changed on every save would rewrite its own revision history.
  */
-export function stripScriptTags(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/<script[^>]*>/gi, "");
+interface SanitizePolicy {
+  /** Dropped with their whole subtree — their content is not prose. */
+  readonly drop: ReadonlySet<string>;
+  /** Kept as an element. Anything else is unwrapped. */
+  keeps(tag: string): boolean;
+  /** Kept on a kept element, on top of the shared attribute rules. */
+  keepsAttribute(tag: string, attribute: string): boolean;
+  /** URLs may only address this document (`#id`) or inline image data. */
+  readonly localUrlsOnly?: boolean;
+  /** `<html-block data-html>` payloads are sanitized with the same policy. */
+  readonly sanitizesHtmlBlocks?: boolean;
+  /** Links keeping an `href` get a `rel` when they carry none. */
+  readonly hardensLinks?: boolean;
+  /** `width` / `height` / `colspan` / `rowspan` must be plain integers. */
+  readonly numericSizesOnly?: boolean;
+}
+
+/**
+ * A structurally valid attribute name. Anything else is dropped rather than
+ * inspected: `html5parser` reports `<img/onerror="alert(1)">` — which browsers
+ * read as an `onerror` handler — as an attribute literally named `/onerror`,
+ * which no `on*` prefix test would catch.
+ */
+const ATTRIBUTE_NAME_PATTERN = /^[a-z_:][a-z\d_:.-]*$/;
+
+/**
+ * Attributes dropped on every element in every policy: each one either points a
+ * browser at a URL in a context we do not want to underwrite (`srcdoc`,
+ * `formaction`, `ping`, `background`, …) or changes what an element *is* (`is`
+ * upgrades it to a custom element).
+ */
+const DANGEROUS_ATTRIBUTES = new Set([
+  "action",
+  "background",
+  "classid",
+  "codebase",
+  "data",
+  "dynsrc",
+  "formaction",
+  "http-equiv",
+  "is",
+  "lowsrc",
+  "ping",
+  "srcdoc",
+  "srcset",
+]);
+
+/** Attributes holding a URL, kept only when the URL itself is safe. */
+const URL_ATTRIBUTES = new Set([
+  "cite",
+  "href",
+  "longdesc",
+  "manifest",
+  "poster",
+  "profile",
+  "src",
+  "xlink:href",
+]);
+
+/** URL attributes that address a subresource rather than a navigation. */
+const MEDIA_URL_ATTRIBUTES = new Set(["poster", "src", "xlink:href"]);
+
+/**
+ * Elements whose URL attributes address a subresource however they are named:
+ * SVG 1.1 writes an image reference as `xlink:href` and SVG 2 as plain `href`,
+ * which on an `<a>` would be a navigation.
+ */
+const MEDIA_TAGS = new Set([
+  "audio",
+  "image",
+  "img",
+  "input",
+  "source",
+  "track",
+  "video",
+]);
+
+const SAFE_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+const SAFE_MEDIA_PROTOCOLS = new Set(["http:", "https:", "blob:"]);
+
+/**
+ * Inline image data, which an editor can legitimately paste. `image/svg+xml` is
+ * deliberately absent: an inline SVG document is markup, and this is the one
+ * place a `data:` URL would carry markup rather than pixels.
+ */
+const INLINE_IMAGE_DATA_URL =
+  /^data:image\/(?:apng|avif|bmp|gif|jpeg|jpg|png|webp|x-icon)[;,]/i;
+
+/**
+ * CSS that can reach outside the page. `url()` in any declaration makes every
+ * reader's browser fetch an attacker-chosen host (see the `brandColor` and
+ * `background` shorthand sinks); a backslash is CSS's escape character, so a
+ * declaration carrying one cannot be read at face value.
+ */
+const RESOURCE_LOADING_CSS = /url\(|image-set\(|expression\(|javascript:|@import|\\/i;
+
+function isSanitizableAttributeName(name: string): boolean {
+  if (!ATTRIBUTE_NAME_PATTERN.test(name)) return false;
+  // Every event handler, including the ones no browser has shipped yet.
+  if (name.startsWith("on")) return false;
+  return !DANGEROUS_ATTRIBUTES.has(name);
+}
+
+/**
+ * Is this attribute value a URL we are willing to hand a browser?
+ *
+ * The value is entity-decoded first because a browser decodes it before
+ * resolving it, so `&#106;avascript:alert(1)` has to be judged as
+ * `javascript:alert(1)`. Anything without a parseable scheme is a relative
+ * reference, which cannot name one; anything with a scheme has to be in the
+ * allow-list. Unknown entities leave the value unparseable, so it fails closed.
+ */
+function isSafeUrlValue(
+  value: string,
+  options: { localOnly?: boolean; media?: boolean } = {},
+): boolean {
+  const decoded = decodeHtmlEntities(value).trim();
+  if (!decoded) return true;
+  if (decoded.startsWith("#")) return true;
+  if (options.media && INLINE_IMAGE_DATA_URL.test(decoded)) return true;
+  if (options.localOnly) return false;
+
+  let protocol: string;
+  try {
+    // The URL parser strips the tabs and newlines a browser strips too, so
+    // `java\nscript:alert(1)` is recognised as the `javascript:` it becomes.
+    protocol = new URL(decoded).protocol;
+  } catch {
+    return true;
+  }
+
+  return (options.media ? SAFE_MEDIA_PROTOCOLS : SAFE_LINK_PROTOCOLS).has(protocol);
+}
+
+/**
+ * The declarations of an inline style that cannot load a resource, or `null`
+ * when none are left. An untouched style is returned as it came in: documents
+ * are stored as HTML and re-sanitized on every save, so rewriting a style that
+ * was already safe would churn every stored document.
+ */
+function sanitizedStyleValue(value: string): string | null {
+  const declarations = value.split(";");
+  if (!declarations.some((declaration) => RESOURCE_LOADING_CSS.test(declaration))) {
+    return value;
+  }
+
+  const safe = declarations.filter(
+    (declaration) => declaration.trim() && !RESOURCE_LOADING_CSS.test(declaration),
+  );
+  return safe.length ? `${safe.join(";")};` : null;
+}
+
+/**
+ * Text as text. Only `<` is escaped: a text node arrives holding its own source
+ * (`&amp;` is still `&amp;`), so escaping `&` as well would double-escape every
+ * entity in the document each time it is saved.
+ */
+function escapeSanitizedText(value: string): string {
+  return value.replaceAll("<", "&lt;");
+}
+
+/** Attribute values are emitted double-quoted, so `"` and `<` are enough. */
+function escapeSanitizedAttributeValue(value: string): string {
+  return value.replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 }
 
 // ---------------------------------------------------------------------------
-// Sanitizing untrusted document HTML
+// Policy: remote document previews
 // ---------------------------------------------------------------------------
 
-const DROP_WITH_CONTENT_TAGS = new Set([
+const PREVIEW_DROP_TAGS = new Set([
   "base",
   "canvas",
   "embed",
@@ -338,7 +523,7 @@ const DROP_WITH_CONTENT_TAGS = new Set([
   "textarea",
 ]);
 
-const ALLOWED_TAGS = new Set([
+const PREVIEW_TAGS = new Set([
   "a",
   "article",
   "blockquote",
@@ -394,106 +579,465 @@ const GLOBAL_ATTRIBUTES = new Set(["class", "title"]);
 const LINK_ATTRIBUTES = new Set(["href"]);
 const IMAGE_ATTRIBUTES = new Set(["alt", "height", "src", "width"]);
 const TABLE_CELL_ATTRIBUTES = new Set(["colspan", "rowspan"]);
+const SIZE_ATTRIBUTES = new Set(["colspan", "height", "rowspan", "width"]);
 
-function safeUrl(
-  value: string,
-  options: { allowImagesOnly?: boolean } = {},
-): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
+const PREVIEW_POLICY: SanitizePolicy = {
+  drop: PREVIEW_DROP_TAGS,
+  hardensLinks: true,
+  numericSizesOnly: true,
+  keeps: (tag) => PREVIEW_TAGS.has(tag),
+  keepsAttribute: (tag, attribute) => {
+    if (GLOBAL_ATTRIBUTES.has(attribute)) return true;
+    if (tag === "a" && LINK_ATTRIBUTES.has(attribute)) return true;
+    if (tag === "img" && IMAGE_ATTRIBUTES.has(attribute)) return true;
+    return (tag === "td" || tag === "th") && TABLE_CELL_ATTRIBUTES.has(attribute);
+  },
+};
 
-  if (trimmed.startsWith("#") || trimmed.startsWith("/")) return trimmed;
+// ---------------------------------------------------------------------------
+// Policy: document content
+// ---------------------------------------------------------------------------
 
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return parsed.toString();
-    }
-    if (
-      !options.allowImagesOnly &&
-      (parsed.protocol === "mailto:" || parsed.protocol === "tel:")
-    ) {
-      return trimmed;
-    }
-  } catch {
-    if (/^(?:\.\.?\/)[^\s]*$/u.test(trimmed)) return trimmed;
-  }
+/**
+ * Elements dropped with their content in document HTML.
+ *
+ * `script`, `style`, `textarea`, `title`, `noscript`, `xmp`, `plaintext` and
+ * `listing` are all elements whose children a browser reads as raw text rather
+ * than as markup — a sanitizer that walked into them and re-serialized what it
+ * found would be arguing with the parser about where the element ends. The
+ * rest (`iframe`, `object`, `embed`, `form`, `math`, `base`, `meta`, `link`,
+ * `template`, `frame*`) either run code, issue a request, or move the document's
+ * base URL, and no document needs any of them.
+ */
+const DOCUMENT_DROP_TAGS = new Set([
+  "base",
+  "embed",
+  "form",
+  "frame",
+  "frameset",
+  "head",
+  "iframe",
+  "link",
+  "listing",
+  "math",
+  "meta",
+  "noembed",
+  "noframes",
+  "noscript",
+  "object",
+  "plaintext",
+  "script",
+  "style",
+  "template",
+  "textarea",
+  "title",
+  "xmp",
+]);
 
-  return null;
+/**
+ * The element vocabulary of a document, which is wider than a preview's: the
+ * editor stores task-item checkboxes, tables with colgroups, media, and — for
+ * markup the schema has no node of its own for — whatever the author wrote,
+ * verbatim, inside an `html-block` payload (see `HTML_BLOCK_TAGS`). Custom
+ * elements are kept by shape (`isCustomElementTag`) rather than by name, since
+ * that is the rule the document schema itself uses.
+ */
+const DOCUMENT_TAGS = new Set([
+  "a",
+  "abbr",
+  "address",
+  "article",
+  "aside",
+  "audio",
+  "b",
+  "bdi",
+  "bdo",
+  "blockquote",
+  "br",
+  "button",
+  "canvas",
+  "caption",
+  "cite",
+  "code",
+  "col",
+  "colgroup",
+  "data",
+  "dd",
+  "del",
+  "details",
+  "dfn",
+  "dialog",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hgroup",
+  "hr",
+  "i",
+  "img",
+  "input",
+  "ins",
+  "kbd",
+  "label",
+  "legend",
+  "li",
+  "main",
+  "mark",
+  "menu",
+  "meter",
+  "nav",
+  "ol",
+  "optgroup",
+  "option",
+  "output",
+  "p",
+  "picture",
+  "pre",
+  "progress",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "section",
+  "select",
+  "small",
+  "source",
+  "span",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "svg",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "time",
+  "tr",
+  "track",
+  "u",
+  "ul",
+  "var",
+  "video",
+  "wbr",
+]);
+
+/** A custom element, which is any tag name containing a hyphen. */
+function isCustomElementTag(tag: string): boolean {
+  return tag.includes("-");
 }
 
-function normalizedAttrValue(attr: IAttribute): string {
-  return attr.value?.value ?? "";
+const DOCUMENT_POLICY: SanitizePolicy = {
+  drop: DOCUMENT_DROP_TAGS,
+  sanitizesHtmlBlocks: true,
+  keeps: (tag) => DOCUMENT_TAGS.has(tag) || isCustomElementTag(tag),
+  // A deny-list, unlike the preview policy: a document carries the schema's
+  // `data-` attributes on its own elements and arbitrary attributes inside an
+  // `html-block` payload, and none of them are dangerous once the shared rules
+  // have taken the handlers, the URLs and the resource-loading CSS out.
+  keepsAttribute: () => true,
+};
+
+// ---------------------------------------------------------------------------
+// Policy: SVG
+// ---------------------------------------------------------------------------
+
+/**
+ * SVG is markup with its own script surface, and a space logo is markup an
+ * editor typed. `script` and `foreignObject` (which switches back to HTML)
+ * carry code; `style` can load a resource; the animation elements exist to
+ * assign attributes at runtime, which is a way to write an `href` or a handler
+ * after the fact.
+ */
+const SVG_DROP_TAGS = new Set([
+  "animate",
+  "animatemotion",
+  "animatetransform",
+  "discard",
+  "foreignobject",
+  "handler",
+  "script",
+  "set",
+  "style",
+]);
+
+/**
+ * Shapes, text, gradients, filters and structure — the elements a logo or icon
+ * is drawn from. `a` is absent (a logo does not navigate) and so is anything
+ * that loads a document; `image` stays, but the shared URL rules leave it
+ * `#`-fragments and inline image data only.
+ */
+const SVG_TAGS = new Set([
+  "circle",
+  "clippath",
+  "defs",
+  "desc",
+  "ellipse",
+  "feblend",
+  "fecolormatrix",
+  "fecomponenttransfer",
+  "fecomposite",
+  "feconvolvematrix",
+  "fediffuselighting",
+  "fedisplacementmap",
+  "fedistantlight",
+  "fedropshadow",
+  "feflood",
+  "fefunca",
+  "fefuncb",
+  "fefuncg",
+  "fefuncr",
+  "fegaussianblur",
+  "femerge",
+  "femergenode",
+  "femorphology",
+  "feoffset",
+  "fepointlight",
+  "fespecularlighting",
+  "fespotlight",
+  "fetile",
+  "feturbulence",
+  "filter",
+  "g",
+  "image",
+  "line",
+  "lineargradient",
+  "marker",
+  "mask",
+  "metadata",
+  "path",
+  "pattern",
+  "polygon",
+  "polyline",
+  "radialgradient",
+  "rect",
+  "stop",
+  "svg",
+  "switch",
+  "symbol",
+  "text",
+  "textpath",
+  "title",
+  "tspan",
+  "use",
+  "view",
+]);
+
+const SVG_POLICY: SanitizePolicy = {
+  drop: SVG_DROP_TAGS,
+  localUrlsOnly: true,
+  keeps: (tag) => SVG_TAGS.has(tag),
+  keepsAttribute: () => true,
+};
+
+// ---------------------------------------------------------------------------
+// The walker
+// ---------------------------------------------------------------------------
+
+/** How deep `html-block` payloads may nest before the innermost is dropped. */
+const MAX_HTML_BLOCK_DEPTH = 4;
+
+function attributeName(attribute: IAttribute): string {
+  return attribute.name.value.toLowerCase();
 }
 
-function isAllowedAttribute(tagName: string, attrName: string): boolean {
-  if (attrName.startsWith("on")) return false;
-  if (GLOBAL_ATTRIBUTES.has(attrName)) return true;
-  if (tagName === "a" && LINK_ATTRIBUTES.has(attrName)) return true;
-  if (tagName === "img" && IMAGE_ATTRIBUTES.has(attrName)) return true;
-  if ((tagName === "td" || tagName === "th") && TABLE_CELL_ATTRIBUTES.has(attrName)) {
-    return true;
-  }
-  return false;
-}
-
-function sanitizedAttributes(tag: ITag): string {
-  const tagName = tag.name.toLowerCase();
+function sanitizedAttributes(
+  tag: ITag,
+  name: string,
+  policy: SanitizePolicy,
+  skip?: (attribute: string) => boolean,
+): string {
   const attrs: string[] = [];
+  let keptHref = false;
+  let keptRel = false;
 
-  for (const attr of tag.attributes ?? []) {
-    const name = attr.name.value.toLowerCase();
-    if (!isAllowedAttribute(tagName, name)) continue;
+  for (const attribute of tag.attributes ?? []) {
+    const attributeKey = attributeName(attribute);
+    if (skip?.(attributeKey)) continue;
+    if (!isSanitizableAttributeName(attributeKey)) continue;
+    if (!policy.keepsAttribute(name, attributeKey)) continue;
 
-    let value = normalizedAttrValue(attr);
-    if (name === "href") {
-      const safe = safeUrl(value);
-      if (!safe) continue;
-      value = safe;
-    } else if (name === "src") {
-      const safe = safeUrl(value, { allowImagesOnly: true });
-      if (!safe) continue;
-      value = safe;
+    // `<input checked>`: a valueless attribute stays valueless.
+    if (attribute.value === undefined) {
+      attrs.push(attributeKey);
+      continue;
+    }
+
+    let value = attribute.value.value;
+
+    if (URL_ATTRIBUTES.has(attributeKey)) {
+      if (
+        !isSafeUrlValue(value, {
+          localOnly: policy.localUrlsOnly,
+          media: MEDIA_URL_ATTRIBUTES.has(attributeKey) || MEDIA_TAGS.has(name),
+        })
+      ) {
+        continue;
+      }
+    } else if (attributeKey === "style") {
+      const style = sanitizedStyleValue(value);
+      if (style === null) continue;
+      value = style;
     } else if (
-      (name === "width" ||
-        name === "height" ||
-        name === "colspan" ||
-        name === "rowspan") &&
+      policy.numericSizesOnly &&
+      SIZE_ATTRIBUTES.has(attributeKey) &&
       !/^\d{1,4}$/u.test(value)
     ) {
       continue;
     }
 
-    attrs.push(`${name}="${escapeHtml(value)}"`);
+    if (attributeKey === "href") keptHref = true;
+    if (attributeKey === "rel") keptRel = true;
+    attrs.push(`${attributeKey}="${escapeSanitizedAttributeValue(value)}"`);
   }
 
-  if (tagName === "a" && attrs.some((attr) => attr.startsWith("href="))) {
+  if (policy.hardensLinks && name === "a" && keptHref && !keptRel) {
     attrs.push('rel="noopener noreferrer"');
   }
 
   return attrs.length ? ` ${attrs.join(" ")}` : "";
 }
 
-function sanitizeNode(node: INode): string {
+/**
+ * An `html-block` carries a whole HTML fragment in its `data-html` attribute,
+ * which the element re-renders into a shadow root — so the payload is sanitized
+ * with the same policy and written back in the encoding the schema renders it
+ * with (`documents/schema/specs.ts`).
+ */
+function sanitizeHtmlBlock(tag: ITag, policy: SanitizePolicy, depth: number): string {
+  const attrs = sanitizedAttributes(tag, "html-block", policy, (attribute) =>
+    attribute.startsWith("data-html"),
+  );
+
+  const payload = tag.attributes?.find(
+    (attribute) => attributeName(attribute) === "data-html",
+  );
+  if (!payload) return `<html-block${attrs}></html-block>`;
+
+  const encoding = tag.attributes?.find(
+    (attribute) => attributeName(attribute) === "data-html-encoding",
+  );
+  let source = payload.value?.value ?? "";
+  if (encoding?.value?.value === "uri") {
+    try {
+      source = decodeURIComponent(source);
+    } catch {
+      // Keep the raw value: an undecodable payload is still sanitized below.
+    }
+  }
+
+  const sanitized =
+    depth >= MAX_HTML_BLOCK_DEPTH ? "" : sanitizeNodes(parse(source), policy, depth + 1);
+
+  // `encodeURIComponent` leaves nothing a parser could read as markup, so the
+  // payload needs no further escaping.
+  return `<html-block${attrs} data-html="${encodeURIComponent(sanitized)}" data-html-encoding="uri"></html-block>`;
+}
+
+function sanitizeNodes(nodes: INode[], policy: SanitizePolicy, depth: number): string {
+  let out = "";
+  for (const node of nodes) out += sanitizeNode(node, policy, depth);
+  return out;
+}
+
+function sanitizeNode(node: INode, policy: SanitizePolicy, depth: number): string {
   if (node.type === SyntaxKind.Text) {
-    return escapeHtml((node as IText).value);
+    return escapeSanitizedText((node as IText).value);
   }
 
   if (node.type !== SyntaxKind.Tag) return "";
 
   const tag = node as ITag;
   const name = tag.name.toLowerCase();
-  if (DROP_WITH_CONTENT_TAGS.has(name)) return "";
 
-  const inner = (tag.body ?? []).map(sanitizeNode).join("");
-  if (!ALLOWED_TAGS.has(name)) return inner;
+  // Comments and declarations, which `html5parser` reports as tags named `!--`
+  // and `!doctype`. They are dropped with their content because the two parsers
+  // disagree about where a malformed comment ends: `<!--><img src=x onerror=…>`
+  // is one comment node here and an abruptly-closed comment followed by a live
+  // `<img>` in a browser, so passing the text through would ship the payload.
+  if (name.startsWith("!")) return "";
 
-  const attrs = sanitizedAttributes(tag);
+  if (policy.drop.has(name)) return "";
+
+  // An `<svg>` subtree is SVG, whatever policy it was found under.
+  const scoped = name === "svg" ? SVG_POLICY : policy;
+
+  if (!scoped.keeps(name)) return sanitizeNodes(tag.body ?? [], scoped, depth);
+
+  if (name === "html-block" && scoped.sanitizesHtmlBlocks) {
+    return sanitizeHtmlBlock(tag, scoped, depth);
+  }
+
+  const attrs = sanitizedAttributes(tag, name, scoped);
   if (VOID_TAGS.has(name)) return `<${name}${attrs}>`;
-  return `<${name}${attrs}>${inner}</${name}>`;
+  return `<${name}${attrs}>${sanitizeNodes(tag.body ?? [], scoped, depth)}</${name}>`;
 }
 
+// ---------------------------------------------------------------------------
+// Entry points
+// ---------------------------------------------------------------------------
+
+/**
+ * Document HTML, safe to store and to hand `innerHTML`.
+ *
+ * This is the sanitization boundary for document content: the save, edit and
+ * collaboration-persist paths run it on the way in, and every render path runs
+ * it again on the way out, so content stored before the boundary existed is
+ * still rendered safely.
+ */
+export function sanitizeDocumentHtml(html: string): string {
+  if (!html.trim()) return "";
+  return sanitizeNodes(parse(html), DOCUMENT_POLICY, 0);
+}
+
+/**
+ * Is this a URL an `<img src>` may point at?
+ *
+ * The same rule the sanitizer applies to a document's own images, exposed for
+ * the stored values that reach a `src` without passing through markup — a space
+ * logo given as a URL rather than as inline SVG.
+ */
+export function isSafeImageUrl(value: string): boolean {
+  return isSafeUrlValue(value, { media: true });
+}
+
+/** Someone else's HTML, reduced to the prose a preview card shows. */
 export function sanitizeVektorDocumentPreviewHtml(html: string): string {
   if (!html.trim()) return "";
-  return parse(html).map(sanitizeNode).join("");
+  return sanitizeNodes(parse(html), PREVIEW_POLICY, 0);
+}
+
+/**
+ * An `<svg>` document, safe to hand `innerHTML` — used for the space logo and
+ * for extension-supplied icons, which are stored as markup.
+ *
+ * Only `<svg>` roots survive: a value that is not an SVG document (a URL, a
+ * bare `<img onerror>`) sanitizes to the empty string, which the caller reads
+ * as "no icon".
+ */
+export function sanitizeSvgMarkup(svg: string): string {
+  if (!svg.trim()) return "";
+
+  let out = "";
+  for (const node of parse(svg)) {
+    if (node.type !== SyntaxKind.Tag) continue;
+    if ((node as ITag).name.toLowerCase() !== "svg") continue;
+    out += sanitizeNode(node, SVG_POLICY, 0);
+  }
+  return out;
 }

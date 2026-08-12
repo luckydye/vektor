@@ -24,6 +24,7 @@ import {
   reorderCategories,
 } from "#db/space/categories.ts";
 import { getSpace } from "#db/space/spaces.ts";
+import { isHexColor } from "#utils/color.ts";
 
 async function visibleCategoryIds(
   context: Parameters<ApiRouteHandler>[0],
@@ -144,6 +145,11 @@ export const POST: ApiRouteHandler = (context) =>
 
     if (!name || !slug) {
       throw badRequestResponse("Name and slug are required");
+    }
+
+    // A category colour is rendered into a style attribute for every member.
+    if (color && !isHexColor(color)) {
+      throw badRequestResponse("color must be a hex color, e.g. #4ecdc4");
     }
 
     const store = await openSpaceStore(spaceId);

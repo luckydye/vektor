@@ -33,6 +33,8 @@ import {
   propertyValueToText,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
+import { contentIsHtml } from "#documents/types.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
@@ -241,6 +243,10 @@ export const POST: ApiRouteHandler = (context) =>
         throw forbiddenResponse("Workflow creation is disabled for this space");
       }
     }
+
+    // Sanitized at rest, on the same boundary the save and collaboration paths
+    // use. Non-HTML types (canvas, app) store serialized JSON, not markup.
+    if (contentIsHtml(type)) content = sanitizeDocumentHtml(content);
 
     const titleValue = properties?.title;
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";

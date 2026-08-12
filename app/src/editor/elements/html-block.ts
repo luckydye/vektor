@@ -1,4 +1,4 @@
-import { stripScriptTags } from "#utils/html.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 if (typeof customElements !== "undefined" && !customElements.get("html-block")) {
   customElements.define(
@@ -40,7 +40,7 @@ if (typeof customElements !== "undefined" && !customElements.get("html-block")) 
         }
 
         const container = document.createElement("div");
-        container.innerHTML = stripScriptTags(htmlString);
+        container.innerHTML = sanitizeDocumentHtml(htmlString);
         container.contentEditable =
           this.getAttribute("contenteditable") === "true" ? "true" : "false";
         container.addEventListener("input", () => {

@@ -5,8 +5,8 @@ import {
   jsonResponse,
   parseJsonBody,
   requireParam,
-  requirePreferencesSize,
   requireUser,
+  requireValidPreferences,
   successResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -59,30 +59,11 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("slug must be a non-empty string");
       }
 
-      if (
-        hasPreferences &&
-        (typeof preferences !== "object" ||
-          preferences === null ||
-          Array.isArray(preferences))
-      ) {
-        throw badRequestResponse("preferences must be an object");
-      }
-
-      if (hasPreferences) {
-        requirePreferencesSize(preferences);
-      }
+      const validatedPreferences = requireValidPreferences(preferences);
 
       const updatesWorkflowCreationPreference =
-        hasPreferences &&
-        Object.hasOwn(preferences as object, spacePreferenceKeys.workflowCreationEnabled);
-      if (updatesWorkflowCreationPreference) {
-        const value = (preferences as Record<string, unknown>)[
-          spacePreferenceKeys.workflowCreationEnabled
-        ];
-        if (value !== "true" && value !== "false") {
-          throw badRequestResponse("workflowCreationEnabled must be 'true' or 'false'");
-        }
-      }
+        validatedPreferences !== undefined &&
+        Object.hasOwn(validatedPreferences, spacePreferenceKeys.workflowCreationEnabled);
 
       if (updatesMetadata || updatesWorkflowCreationPreference) {
         await verifySpaceRole(spaceId, user.id, Permission.OWNER);
@@ -99,7 +80,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         spaceId,
         hasName ? name : space.name,
         hasSlug ? slug : space.slug,
-        hasPreferences ? (preferences as Record<string, string>) : undefined,
+        validatedPreferences,
       );
 
       if (!updated) {
