@@ -115,6 +115,17 @@ const ROUTE_BODY: Record<string, (fixture: Fixture) => unknown> = {
     documentId: f.documentId,
     body: "matrix probe",
   }),
+  "/api/v1/spaces/[spaceId]/permissions": () => ({
+    type: "role",
+    roleOrFeature: "viewer",
+    // A well-formed id that belongs to nobody. The route validates the whole
+    // body before it authorizes anything — deliberately, so an unknown action
+    // cannot fall through to a weaker branch — so without a valid body every
+    // cell here would read 400 and prove nothing. Granting to an id no account
+    // owns reaches the guard without handing anyone real access.
+    userId: "matrix-missing-user",
+    action: "grant",
+  }),
   "/api/v1/spaces/[spaceId]/integrations/[provider]/proxy": () => ({
     path: "/api/v4/user",
   }),
