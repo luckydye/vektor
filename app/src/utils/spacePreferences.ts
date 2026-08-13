@@ -120,12 +120,35 @@ const PREFERENCE_KEY_PATTERN = /^[a-z\d_.:-]{1,64}$/i;
 const RESERVED_PREFERENCE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
- * Namespaces another write path owns. `ai:baseUrl` is fetched by the server, so
- * `settings-ai-provider.ts` validates it against the SSRF policy before storing
- * it — a generic string check here would be a way around that, not an addition
- * to it. Everything outside these namespaces is the caller's to use.
+ * Preferences that decide something for the whole space rather than for the
+ * member writing them, and so take the role their own settings page takes.
+ *
+ * `ai:*` is the space's AI provider config, which `settings-ai-provider.ts`
+ * gates at `OWNER`: whoever sets `ai:baseUrl` chooses the host every member's
+ * prompts are sent to. Writing it here is fine — it is a preference like any
+ * other — but not at a lower role than the page that owns it.
+ *
+ * The value is not re-validated here. `ai:baseUrl` is checked against the SSRF
+ * policy where that settings route stores it, and again by the `safeFetch` that
+ * reads it, which is the check that actually holds for a value already stored.
  */
-const RESERVED_PREFERENCE_PREFIXES = ["ai:"];
+const OWNER_ONLY_PREFERENCE_PREFIXES = ["ai:"];
+
+/**
+ * Does writing these preferences require space ownership rather than write
+ * access? `PATCH /spaces/:id` asks before it picks the role to verify.
+ */
+export function preferencesRequireSpaceOwner(
+  preferences: Record<string, string> | undefined,
+): boolean {
+  if (!preferences) return false;
+
+  return Object.keys(preferences).some(
+    (key) =>
+      key === spacePreferenceKeys.workflowCreationEnabled ||
+      OWNER_ONLY_PREFERENCE_PREFIXES.some((prefix) => key.startsWith(prefix)),
+  );
+}
 
 /**
  * The preferences to store for a space write, or the first reason to refuse it.
@@ -168,10 +191,6 @@ export function validateSpacePreferences(
   for (const [key, raw] of Object.entries(preferences)) {
     if (!PREFERENCE_KEY_PATTERN.test(key) || RESERVED_PREFERENCE_KEYS.has(key)) {
       return { error: `"${key}" is not a usable preference key` };
-    }
-
-    if (RESERVED_PREFERENCE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-      return { error: `"${key}" is set by its own settings endpoint` };
     }
 
     if (typeof raw !== "string") return { error: `${key} must be a string` };

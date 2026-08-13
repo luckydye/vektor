@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validateSpacePreferences } from "#utils/spacePreferences.ts";
+import {
+  preferencesRequireSpaceOwner,
+  validateSpacePreferences,
+} from "#utils/spacePreferences.ts";
 
 /** The validated preferences, or a failure if the input was refused. */
 function validated(preferences: unknown): Record<string, string> {
@@ -79,15 +82,12 @@ describe("validateSpacePreferences", () => {
     expect(refused({ [`${"k".repeat(65)}`]: "x" })).toContain("not a usable");
   });
 
-  it("refuses a key another write path validates more strictly", () => {
-    // `ai:baseUrl` is fetched by the server and checked against the SSRF policy
-    // where it is set, which this path cannot do.
-    expect(refused({ "ai:baseUrl": "http://169.254.169.254" })).toContain(
-      "its own settings endpoint",
-    );
-    expect(refused({ "ai:provider": "ollama" })).toContain("its own settings endpoint");
+  it("stores the namespaced keys another settings page also writes", () => {
+    expect(validated({ "ai:provider": "ollama", "ai:model": "llama3" })).toEqual({
+      "ai:provider": "ollama",
+      "ai:model": "llama3",
+    });
   });
-
   it("refuses a brandColor that is not a hex color", () => {
     // The sink is a CSS `background`, which resolves `url()`.
     expect(refused({ brandColor: "url(/CSS_INJECT_MARKER.png)" })).toContain("hex color");
@@ -125,5 +125,23 @@ describe("validateSpacePreferences", () => {
     expect(refused({ workflowCreationEnabled: "yes" })).toContain(
       "must be 'true' or 'false'",
     );
+  });
+});
+
+describe("preferencesRequireSpaceOwner", () => {
+  it("takes ownership for the settings that decide something space-wide", () => {
+    // Whoever sets `ai:baseUrl` picks the host every member's prompts go to, and
+    // the AI settings page gates that at OWNER — writing it as a preference must
+    // not be the cheaper way in.
+    expect(preferencesRequireSpaceOwner({ "ai:baseUrl": "http://x" })).toBe(true);
+    expect(preferencesRequireSpaceOwner({ "ai:provider": "ollama" })).toBe(true);
+    expect(preferencesRequireSpaceOwner({ workflowCreationEnabled: "false" })).toBe(true);
+  });
+
+  it("leaves the rest to write access", () => {
+    expect(preferencesRequireSpaceOwner({ brandColor: "#1e293b" })).toBe(false);
+    expect(preferencesRequireSpaceOwner({ "acme:layout": "grid" })).toBe(false);
+    expect(preferencesRequireSpaceOwner(undefined)).toBe(false);
+    expect(preferencesRequireSpaceOwner({})).toBe(false);
   });
 });
