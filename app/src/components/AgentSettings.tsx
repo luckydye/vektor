@@ -249,9 +249,13 @@ export function AgentSettings() {
                   onInput={(e) => setForm("baseUrl", e.currentTarget.value)}
                   type="url"
                   required
-                  placeholder="http://127.0.0.1:11434"
+                  placeholder="https://ollama.example.com"
                   class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 font-mono text-size-medium"
                 />
+                <p class="mt-1 text-neutral-500 text-size-small">
+                  Loopback and private addresses are refused unless the server runs with{" "}
+                  <code class="font-mono">VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1</code>.
+                </p>
               </div>
             </Show>
 

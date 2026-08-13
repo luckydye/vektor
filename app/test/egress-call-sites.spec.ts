@@ -61,17 +61,23 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   // Not a server-side egress surface.
   "src/api/ApiClient.ts": { calls: 7, why: "browser-side client for our own API" },
 
-  // Known SSRF, tracked and unfixed: the provider baseUrl is operator-supplied
-  // and reaches wherever it points.
-  "src/api/provider/ollama.ts": { calls: 2, why: "issue #71" },
-  "src/api/provider/openaiCompatible.ts": { calls: 2, why: "issue #71" },
-  "src/api/routes/chat/completions.ts": { calls: 1, why: "issue #71" },
+  // A fixed endpoint table, no user input in the URL (#71).
+  "src/api/provider/openaiCompatible.ts": {
+    calls: 2,
+    why: "fixed CHAT_COMPLETIONS_URLS table, no user input in the URL",
+  },
+  "src/api/routes/chat/completions.ts": {
+    calls: 1,
+    why: "openai-compatible branch only, at that same fixed table URL",
+  },
 };
 
 /** Files that take a URL straight from a caller, so nothing but safeFetch will do. */
 const MUST_USE_SAFE_FETCH = [
   "src/api/routes/proxy-media.ts",
   "src/agent/commands/curl.ts",
+  // The operator-supplied provider baseUrl, which reaches wherever it points (#71).
+  "src/api/provider/ollama.ts",
 ];
 
 function sourceFiles(dir: string): string[] {

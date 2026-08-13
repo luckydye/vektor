@@ -16,6 +16,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import { appLogger } from "#observability/logger.ts";
+import { SsrfError } from "#utils/ssrf.ts";
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
@@ -76,6 +77,14 @@ export const POST: ApiRouteHandler = (context) =>
         appLogger.error("Chat completions proxy failed", {
           error,
         });
+        // Stored configuration, not an upstream failure — and the settings page
+        // still reports the baseUrl as configured, so a generic 500 strands them.
+        if (error instanceof SsrfError) {
+          return errorResponse(
+            `AI provider base URL is not allowed: ${error.message}. Update it in space settings, or start the server with VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1 to reach a private host.`,
+            502,
+          );
+        }
         return errorResponse("Proxy request failed", 500);
       },
     },

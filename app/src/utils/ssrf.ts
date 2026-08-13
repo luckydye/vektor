@@ -147,6 +147,33 @@ export function isBlockedHostname(hostname: string): boolean {
 }
 
 /**
+ * The hostname to judge, without the brackets a URL keeps around an IPv6 literal.
+ * `isIP("[::1]")` is 0, so leaving them on sends the literal down the DNS path
+ * instead of past {@link isPrivateOrBlockedIp}.
+ */
+export function urlHostname(url: URL): string {
+  return url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+}
+
+/**
+ * Parse a URL and require an HTTP(S) scheme, the first two steps of every egress
+ * policy here. Separate so a caller can parse the URL it is about to build a
+ * request from before there is anything to validate.
+ */
+export function parseHttpUrl(rawUrl: string): URL {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new SsrfError("Invalid URL provided");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new SsrfError("Only HTTP(S) URLs are allowed");
+  }
+  return url;
+}
+
+/**
  * A URL that passed validation, with the addresses it resolved to during it.
  * `addresses` is empty when there is nothing to pin — a literal-IP host, or a
  * validator that skipped resolution.
@@ -164,18 +191,9 @@ export type UrlValidator = (url: string) => Promise<ValidatedUrl>;
  * report the addresses it resolved to, so the caller can pin to them.
  */
 export async function resolvePublicUrl(url: string): Promise<ValidatedUrl> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new SsrfError("Invalid URL provided");
-  }
+  const parsed = parseHttpUrl(url);
 
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new SsrfError("Only HTTP(S) URLs are allowed");
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = urlHostname(parsed);
   if (isBlockedHostname(hostname)) {
     throw new SsrfError();
   }

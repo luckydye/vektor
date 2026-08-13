@@ -9,9 +9,34 @@ import {
   successResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
+import { ollamaChatUrl, resolveProviderUrl } from "#api/provider/ollama.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { deleteAIConfig, getAIConfigMeta, setAIConfig } from "#db/space/aiConfig.ts";
+import { SsrfError } from "#utils/ssrf.ts";
+
+/**
+ * Normalize a configured Ollama base URL, refusing one the server must not call.
+ * The 400 here is the door; {@link resolveProviderUrl} at fetch time is the lock,
+ * because a stored value can predate this check and DNS can move afterwards.
+ */
+export async function normalizeOllamaBaseUrl(rawBaseUrl: unknown): Promise<string> {
+  if (typeof rawBaseUrl !== "string" || !rawBaseUrl.trim()) {
+    throw badRequestResponse("baseUrl is required for ollama provider");
+  }
+  const baseUrl = rawBaseUrl.trim().replace(/\/+$/, "");
+  try {
+    // Validate the URL that will actually be requested, not just the base.
+    await resolveProviderUrl(ollamaChatUrl(baseUrl));
+  } catch (error) {
+    throw badRequestResponse(
+      error instanceof SsrfError
+        ? `baseUrl is not allowed: ${error.message}`
+        : "baseUrl is not a valid URL",
+    );
+  }
+  return baseUrl;
+}
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -49,14 +74,8 @@ export const PUT: ApiRouteHandler = (context) =>
 
     const store = await openSpaceStore(spaceId);
     if (provider === "ollama") {
-      if (typeof body.baseUrl !== "string" || !body.baseUrl.trim()) {
-        throw badRequestResponse("baseUrl is required for ollama provider");
-      }
-      await setAIConfig(
-        store,
-        { provider: "ollama", model, baseUrl: body.baseUrl.trim().replace(/\/$/, "") },
-        user.id,
-      );
+      const baseUrl = await normalizeOllamaBaseUrl(body.baseUrl);
+      await setAIConfig(store, { provider: "ollama", model, baseUrl }, user.id);
     } else if (
       provider === "anthropic" ||
       provider === "openai" ||
