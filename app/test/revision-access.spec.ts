@@ -36,7 +36,8 @@ const apiRequest = createSessionApiRequest(BASE_URL);
 const REV1_CONTENT = "<p>rev1 PRE-PUBLICATION-SECRET credential-abc</p>";
 const REV2_CONTENT = "<p>rev2 PUBLISHED public-ok</p>";
 const REV3_CONTENT = "<p>rev3 UNPUBLISHED-SECRET merger-price-9999</p>";
-const SECRETS = ["PRE-PUBLICATION-SECRET", "UNPUBLISHED-SECRET"];
+const SUGGESTION_CONTENT = "<p>SUGGESTION-SECRET rejected-counteroffer</p>";
+const SECRETS = ["PRE-PUBLICATION-SECRET", "UNPUBLISHED-SECRET", "SUGGESTION-SECRET"];
 
 let serverProcess: TestServerProcess;
 let ownerToken: string;
@@ -46,11 +47,26 @@ let viewerToken: string;
 let historyViewerToken: string;
 /** Space editor. */
 let editorToken: string;
+/** Editor on the document alone, with no role on the space at all. */
+let sharedEditorToken: string;
+/** Viewer on the document alone, with no role on the space at all. */
+let sharedViewerToken: string;
 let spaceId: string;
 let documentId: string;
 let publishedRev: number;
 let oldRev: number;
 let draftRev: number;
+
+/**
+ * A second document, for the case position alone gets wrong: a suggestion that
+ * a later publish left *below* the publish pointer. It was never published, so
+ * `rev <= publishedRev` must not be what decides it.
+ */
+let suggestionDocumentId: string;
+let suggestionRev: number;
+
+/** A workflow run — a type this route refuses whole, by any parameter. */
+let workflowRunDocumentId: string;
 
 /** Anonymous — no session cookie at all. */
 function anonRequest(path: string): Promise<Response> {
@@ -59,6 +75,10 @@ function anonRequest(path: string): Promise<Response> {
 
 function documentPath(query = ""): string {
   return `/api/v1/spaces/${spaceId}/documents/${documentId}${query}`;
+}
+
+function pathFor(id: string, query = ""): string {
+  return `/api/v1/spaces/${spaceId}/documents/${id}${query}`;
 }
 
 async function grant(body: Record<string, unknown>): Promise<void> {
@@ -73,25 +93,42 @@ async function grant(body: Record<string, unknown>): Promise<void> {
   }
 }
 
-async function saveRevision(html: string): Promise<number> {
-  const response = await apiRequest(documentPath(), ownerToken, {
+async function saveRevision(
+  html: string,
+  id = documentId,
+  mode: "revision" | "suggestion" = "revision",
+): Promise<number> {
+  const response = await apiRequest(pathFor(id), ownerToken, {
     method: "POST",
-    body: JSON.stringify({ html, mode: "revision" }),
+    body: JSON.stringify({ html, mode }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to save revision (${response.status})`);
+    throw new Error(`Failed to save ${mode} (${response.status})`);
   }
   return (await response.json()).revision.rev;
 }
 
-async function publish(rev: number): Promise<void> {
-  const response = await apiRequest(documentPath(), ownerToken, {
+async function publish(rev: number, id = documentId): Promise<void> {
+  const response = await apiRequest(pathFor(id), ownerToken, {
     method: "PATCH",
     body: JSON.stringify({ publishedRev: rev }),
   });
   if (!response.ok) {
     throw new Error(`Failed to publish revision ${rev} (${response.status})`);
   }
+}
+
+async function createDocument(body: Record<string, unknown>): Promise<string> {
+  const response = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, ownerToken, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to create document (${response.status}): ${await response.text()}`,
+    );
+  }
+  return (await response.json()).document.id;
 }
 
 /** A refusal, plus the guarantee that the refusal did not carry the content anyway. */
@@ -123,6 +160,10 @@ beforeAll(async () => {
   historyViewerToken = historyViewer.token;
   const editor = await createTestUser(BASE_URL, "Revision Editor", "rev-editor");
   editorToken = editor.token;
+  const sharedEditor = await createTestUser(BASE_URL, "Shared Editor", "rev-shared-ed");
+  sharedEditorToken = sharedEditor.token;
+  const sharedViewer = await createTestUser(BASE_URL, "Shared Viewer", "rev-shared-vw");
+  sharedViewerToken = sharedViewer.token;
 
   const spaceResponse = await apiRequest("/api/v1/spaces", ownerToken, {
     method: "POST",
@@ -136,21 +177,10 @@ beforeAll(async () => {
   }
   spaceId = (await spaceResponse.json()).space.id;
 
-  const docResponse = await apiRequest(
-    `/api/v1/spaces/${spaceId}/documents`,
-    ownerToken,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        content: REV1_CONTENT,
-        properties: { title: "Revision Access Document" },
-      }),
-    },
-  );
-  if (!docResponse.ok) {
-    throw new Error(`Failed to create document (${docResponse.status})`);
-  }
-  documentId = (await docResponse.json()).document.id;
+  documentId = await createDocument({
+    content: REV1_CONTENT,
+    properties: { title: "Revision Access Document" },
+  });
 
   // Publishing pins a revision, so the next save cannot overwrite it in place —
   // that is what makes three distinct revisions here.
@@ -160,6 +190,29 @@ beforeAll(async () => {
   await publish(publishedRev);
   draftRev = await saveRevision(REV3_CONTENT);
   expect([oldRev, publishedRev, draftRev]).toEqual([1, 2, 3]);
+
+  suggestionDocumentId = await createDocument({
+    content: REV1_CONTENT,
+    properties: { title: "Suggestion Boundary Document" },
+  });
+  const suggestionBaseRev = await saveRevision(REV1_CONTENT, suggestionDocumentId);
+  await publish(suggestionBaseRev, suggestionDocumentId);
+  suggestionRev = await saveRevision(
+    SUGGESTION_CONTENT,
+    suggestionDocumentId,
+    "suggestion",
+  );
+  // Publishing past the suggestion is what used to release it: it now sits
+  // below the pointer without ever having been published content.
+  const laterRev = await saveRevision(REV2_CONTENT, suggestionDocumentId);
+  await publish(laterRev, suggestionDocumentId);
+  expect(suggestionRev).toBeLessThan(laterRev);
+
+  workflowRunDocumentId = await createDocument({
+    content: REV2_CONTENT,
+    type: "workflow-run",
+    properties: { title: "Workflow Run" },
+  });
 
   // The 043 repro: a private space with this one document shared publicly.
   await grant({
@@ -176,6 +229,22 @@ beforeAll(async () => {
     type: "feature",
     roleOrFeature: "view_history",
     userId: historyViewer.userId,
+  });
+
+  // Shared on the document only — no space role, which is the whole point.
+  await grant({
+    type: "role",
+    roleOrFeature: "editor",
+    userId: sharedEditor.userId,
+    resourceType: "document",
+    resourceId: documentId,
+  });
+  await grant({
+    type: "role",
+    roleOrFeature: "viewer",
+    userId: sharedViewer.userId,
+    resourceType: "document",
+    resourceId: documentId,
   });
 }, 60_000);
 
@@ -338,5 +407,136 @@ describe("editor", () => {
 
     expect(response.status).toBe(200);
     expect((await response.json()).revisions.length).toBe(3);
+  });
+});
+
+/**
+ * The published snapshot is served because the plain GET would serve the same
+ * bytes — which says nothing about who wrote it or why. That description is the
+ * history `/revisions` gates, so it travels with the feature, not the content.
+ */
+describe("revision metadata on the published snapshot", () => {
+  it("is withheld from a caller without the history feature", async () => {
+    const response = await anonRequest(documentPath(`?rev=${publishedRev}`));
+
+    expect(response.status).toBe(200);
+    const { revision } = await response.json();
+    expect(revision.content).toBe(REV2_CONTENT);
+    expect(revision.createdBy).toBeUndefined();
+    expect(revision.message).toBeUndefined();
+    expect(revision.checksum).toBeUndefined();
+    expect(revision.parentRev).toBeUndefined();
+  });
+
+  it("is served to a caller who holds it", async () => {
+    const response = await apiRequest(
+      documentPath(`?rev=${publishedRev}`),
+      historyViewerToken,
+    );
+
+    expect(response.status).toBe(200);
+    const { revision } = await response.json();
+    expect(revision.content).toBe(REV2_CONTENT);
+    expect(revision.createdBy).toBeTruthy();
+  });
+});
+
+/**
+ * A suggestion is a proposal any viewer may create. The publish pointer moving
+ * past it never made it published content, so its position below the pointer
+ * must not read as "published history".
+ */
+describe("a suggestion left below the publish pointer", () => {
+  it("is refused to a viewer with the history feature", async () => {
+    await expectRefused(
+      await apiRequest(
+        pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
+        historyViewerToken,
+      ),
+    );
+  });
+
+  it("is refused through the diff endpoint too", async () => {
+    await expectRefused(
+      await apiRequest(
+        pathFor(suggestionDocumentId, `/diff?rev=${suggestionRev}`),
+        historyViewerToken,
+      ),
+    );
+  });
+
+  it("is still readable by an editor, who may act on it", async () => {
+    const response = await apiRequest(
+      pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
+      editorToken,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.content).toBe(SUGGESTION_CONTENT);
+  });
+});
+
+/**
+ * Access granted on the document alone, with no space role. VIEW_HISTORY used
+ * to resolve against the space only, so sharing a document handed over its
+ * content but never its history — not even to the editor of that document.
+ */
+describe("a caller shared the document directly", () => {
+  it("reads the unpublished draft as its editor", async () => {
+    const response = await apiRequest(
+      documentPath(`?rev=${draftRev}`),
+      sharedEditorToken,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.content).toBe(REV3_CONTENT);
+  });
+
+  it("lists the revision history as its editor", async () => {
+    const response = await apiRequest(documentPath("/revisions"), sharedEditorToken);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revisions.length).toBe(3);
+  });
+
+  it("gets no history from a viewer share, which implies no such feature", async () => {
+    await expectRefused(
+      await apiRequest(documentPath(`?rev=${oldRev}`), sharedViewerToken),
+    );
+    await expectRefused(await apiRequest(documentPath("/revisions"), sharedViewerToken));
+  });
+
+  it("still reads the published revision from a viewer share", async () => {
+    const response = await apiRequest(
+      documentPath(`?rev=${publishedRev}`),
+      sharedViewerToken,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.content).toBe(REV2_CONTENT);
+  });
+});
+
+/**
+ * A workflow run is hidden from this route whole (the result is prose, not a
+ * document). The type check has to precede the revision branch, or `?rev=N`
+ * answers for a document the plain GET refuses to admit exists.
+ */
+describe("workflow run document", () => {
+  it("is not found by revision number, for the owner", async () => {
+    const response = await apiRequest(
+      pathFor(workflowRunDocumentId, "?rev=1"),
+      ownerToken,
+    );
+
+    expect(response.status).toBe(404);
+    // Named the document, so the refusal happened before any revision lookup.
+    expect(await response.text()).toContain("Document not found");
+  });
+
+  it("is not found plainly either", async () => {
+    const response = await apiRequest(pathFor(workflowRunDocumentId), ownerToken);
+
+    expect(response.status).toBe(404);
   });
 });

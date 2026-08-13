@@ -274,6 +274,16 @@ export const GET: ApiRouteHandler = (context) =>
       }
     }
 
+    const meta = await getDocument(await openSpaceStore(spaceId), id);
+    if (!meta) {
+      throw notFoundResponse("Document");
+    }
+    // A workflow run is not a document anyone reads through this route, by any
+    // route parameter: `?rev=N` would otherwise serve the body this hides.
+    if (meta.type === workflowRunDocumentType) {
+      throw notFoundResponse("Document");
+    }
+
     if (revParam) {
       const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
 
@@ -281,7 +291,7 @@ export const GET: ApiRouteHandler = (context) =>
       // plain (or public) viewer gets the published revision and nothing else.
       // Authorized before the revision is loaded, so a refused caller cannot
       // tell an existing revision from a missing one.
-      await verifyRevisionAccess(spaceId, id, reader, [rev]);
+      const access = await verifyRevisionAccess(spaceId, id, reader, [rev]);
 
       const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
       if (!metadata) {
@@ -295,20 +305,13 @@ export const GET: ApiRouteHandler = (context) =>
 
       return withCors(
         jsonResponse({
-          revision: {
-            ...metadata,
-            content,
-          },
+          // Without history access this is the published snapshot and nothing
+          // describing it — `rev` only, so the shape stays recognisable.
+          revision: access.metadata
+            ? { ...metadata, content }
+            : { rev: metadata.rev, content },
         }),
       );
-    }
-
-    const meta = await getDocument(await openSpaceStore(spaceId), id);
-    if (!meta) {
-      throw notFoundResponse("Document");
-    }
-    if (meta.type === workflowRunDocumentType) {
-      throw notFoundResponse("Document");
     }
 
     // getDocument is metadata-only; this route returns the body, so load it
