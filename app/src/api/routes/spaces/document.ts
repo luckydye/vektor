@@ -24,7 +24,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
-import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
@@ -91,25 +91,6 @@ function withCors(response: Response): Response {
     statusText: response.statusText,
     headers,
   });
-}
-
-async function handlePropertiesPatch(
-  store: SpaceStore,
-  documentId: string,
-  userId: string,
-  properties: DocumentPropertyPatch,
-) {
-  try {
-    return await patchDocumentProperties(store, documentId, properties, userId);
-  } catch (error) {
-    if (
-      error instanceof InvalidDocumentPropertyPatchError ||
-      error instanceof ReservedDocumentPropertyKeyError
-    ) {
-      throw badRequestResponse(error.message);
-    }
-    throw error;
-  }
 }
 
 async function handlePublishedRevisionPatch(
@@ -554,7 +535,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("Properties must be an object");
       }
 
-      const payload = await handlePropertiesPatch(store, id, userId, properties);
+      const payload = await patchDocumentProperties(store, id, properties, userId);
       return successResponse(payload);
     }
 
@@ -613,7 +594,17 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     return jsonResponse({ success: true });
-  }, "Failed to patch document");
+  }, {
+    fallbackMessage: "Failed to patch document",
+    onError(error) {
+      if (
+        error instanceof InvalidDocumentPropertyPatchError ||
+        error instanceof ReservedDocumentPropertyKeyError
+      ) {
+        return badRequestResponse(error.message);
+      }
+    },
+  });
 
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
