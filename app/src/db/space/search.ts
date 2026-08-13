@@ -5,10 +5,13 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
-  type DocumentPropertyValue,
+  type DocumentProperties,
   parseStoredPropertyValue,
   propertyValueToText,
+  readDocumentProperty,
+  toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
+import { appLogger } from "#observability/logger.ts";
 import {
   buildDocumentSearchText,
   embedText,
@@ -56,7 +59,7 @@ export interface DocumentWithProperties {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
-  properties: Record<string, DocumentPropertyValue>;
+  properties: DocumentProperties;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -190,6 +193,20 @@ export async function updateDocumentEmbedding(
     .where(eq(document.id, documentId));
 }
 
+/** Start a search refresh without delaying or failing the document write. */
+export function scheduleDocumentSearchRefresh(
+  s: SpaceStore,
+  documentId: string,
+): void {
+  void updateDocumentEmbedding(s, documentId).catch((error) => {
+    appLogger.warn("Failed to refresh document search", {
+      error,
+      spaceId: s.spaceId,
+      documentId,
+    });
+  });
+}
+
 export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
   const docs = await many(s.db.select().from(document));
 
@@ -239,22 +256,18 @@ function batches<T>(items: T[]): T[][] {
 async function readProperties(
   s: SpaceStore,
   documentIds: string[],
-): Promise<Map<string, Record<string, DocumentPropertyValue>>> {
-  const byDocument = new Map<string, Record<string, DocumentPropertyValue>>();
+): Promise<Map<string, DocumentProperties>> {
+  const allRows: (typeof property.$inferSelect)[] = [];
 
   for (const ids of batches(documentIds)) {
-    const rows = await many(
-      s.db.select().from(property).where(inArray(property.documentId, ids)),
+    allRows.push(
+      ...(await many(
+        s.db.select().from(property).where(inArray(property.documentId, ids)),
+      )),
     );
-
-    for (const row of rows) {
-      const properties = byDocument.get(row.documentId) ?? {};
-      properties[row.key] = parseStoredPropertyValue(row.value);
-      byDocument.set(row.documentId, properties);
-    }
   }
 
-  return byDocument;
+  return toDocumentPropertiesByDocument(allRows);
 }
 
 /** The document rows behind a page of results, keyed by id. */
@@ -324,7 +337,7 @@ export async function searchDocuments(
   const propertyFilters = filters.filter((f) => f.key !== "type" && f.key !== "_date");
 
   const matchesFilters = (
-    properties: Record<string, DocumentPropertyValue>,
+    properties: DocumentProperties,
     docType: string | null,
   ): boolean => {
     for (const filter of typeFilters) {
@@ -337,7 +350,10 @@ export async function searchDocuments(
       }
     }
     for (const filter of propertyFilters) {
-      const propValue = properties[filter.key];
+      // Own keys only: `filter.key` comes straight from the request, so a filter
+      // on `toString` would otherwise read `Object.prototype.toString` and throw
+      // `value.toLowerCase is not a function` below.
+      const propValue = readDocumentProperty(properties, filter.key);
       if (filter.value === null) {
         if (
           propValue === undefined ||
@@ -347,11 +363,10 @@ export async function searchDocuments(
           return false;
         }
       } else {
+        if (propValue === undefined) return false;
         const values = Array.isArray(propValue) ? propValue : [propValue];
-        if (
-          propValue === undefined ||
-          !values.some((value) => value.toLowerCase() === filter.value?.toLowerCase())
-        ) {
+        const expected = filter.value.toLowerCase();
+        if (!values.some((value) => value.toLowerCase() === expected)) {
           return false;
         }
       }

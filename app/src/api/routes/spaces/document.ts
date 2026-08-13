@@ -32,7 +32,6 @@ import {
   archiveDocument,
   type DocumentMeta,
   deleteDocument,
-  deleteDocumentProperty,
   getDocument,
   getDocumentBySlug,
   getDocumentContent,
@@ -40,8 +39,8 @@ import {
   restoreDocument,
   setDocumentParent,
   updateDocument,
-  updateDocumentProperty,
 } from "#db/space/documents.ts";
+import { patchDocumentProperties } from "#db/space/properties.ts";
 import {
   createRevision,
   createSuggestion,
@@ -51,6 +50,11 @@ import {
 } from "#db/space/revisions.ts";
 import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
+import {
+  type DocumentPropertyPatch,
+  InvalidDocumentPropertyPatchError,
+  ReservedDocumentPropertyKeyError,
+} from "#documents/properties.ts";
 import {
   contentIsHtml,
   documentIsReadonly,
@@ -70,20 +74,8 @@ import {
 import { stripScriptTags } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
 
-type PropertyPatchValue =
-  | null
-  | string
-  | string[]
-  | number
-  | boolean
-  | Array<string | number | boolean | null>
-  | {
-      value: unknown;
-      type?: string | null;
-    };
-
 type DocumentPatchBody = {
-  properties?: Record<string, PropertyPatchValue>;
+  properties?: DocumentPropertyPatch;
   parentId?: string | null;
   publishedRev?: number | null;
   readonly?: boolean;
@@ -99,75 +91,6 @@ function withCors(response: Response): Response {
     statusText: response.statusText,
     headers,
   });
-}
-
-async function handlePropertiesPatch(
-  spaceId: string,
-  documentId: string,
-  userId: string,
-  properties: Record<string, PropertyPatchValue>,
-) {
-  const propertyEntries = Object.entries(properties);
-  const payload: { slug?: string } = {};
-
-  for (const [propertyKey, propertyPatch] of propertyEntries) {
-    if (!propertyKey || typeof propertyKey !== "string") {
-      throw badRequestResponse("Property key is required and must be a non-empty string");
-    }
-
-    if (propertyPatch === null) {
-      await deleteDocumentProperty(
-        await openSpaceStore(spaceId),
-        documentId,
-        propertyKey,
-        userId,
-      );
-      continue;
-    }
-
-    let nextValue: unknown = propertyPatch;
-    let nextType: string | null | undefined;
-
-    if (
-      typeof propertyPatch === "object" &&
-      propertyPatch !== null &&
-      !Array.isArray(propertyPatch)
-    ) {
-      if (!("value" in propertyPatch)) {
-        throw badRequestResponse(
-          `Property "${propertyKey}" object payload must include "value"`,
-        );
-      }
-
-      nextValue = propertyPatch.value;
-      nextType = propertyPatch.type;
-
-      if (nextType !== undefined && nextType !== null && typeof nextType !== "string") {
-        throw badRequestResponse(
-          `Property "${propertyKey}" type must be a string, null, or undefined`,
-        );
-      }
-    }
-
-    const changedProperties = await updateDocumentProperty(
-      await openSpaceStore(spaceId),
-      documentId,
-      propertyKey,
-      Array.isArray(nextValue)
-        ? nextValue
-            .filter((value) => value !== null && value !== undefined)
-            .map((value) => String(value))
-        : String(nextValue),
-      nextType,
-      userId,
-    );
-
-    if (changedProperties.slug) {
-      payload.slug = changedProperties.slug;
-    }
-  }
-
-  return payload;
 }
 
 async function handlePublishedRevisionPatch(
@@ -612,12 +535,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("Properties must be an object");
       }
 
-      const payload = await handlePropertiesPatch(
-        spaceId,
-        id,
-        userId,
-        properties as Record<string, PropertyPatchValue>,
-      );
+      const payload = await patchDocumentProperties(store, id, properties, userId);
       return successResponse(payload);
     }
 
@@ -676,7 +594,17 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     return jsonResponse({ success: true });
-  }, "Failed to patch document");
+  }, {
+    fallbackMessage: "Failed to patch document",
+    onError(error) {
+      if (
+        error instanceof InvalidDocumentPropertyPatchError ||
+        error instanceof ReservedDocumentPropertyKeyError
+      ) {
+        return badRequestResponse(error.message);
+      }
+    },
+  });
 
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

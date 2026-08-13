@@ -4,14 +4,14 @@
  * No database access: callers read and write the stored columns themselves.
  */
 
-import type { DocumentPropertyValue } from "#documents/properties.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { embedTexts, getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import { normalizeText, stripMarkup } from "#search/text.ts";
 
 export function buildDocumentSearchText(
   content: string,
-  properties: Record<string, DocumentPropertyValue>,
+  properties: DocumentProperties,
   fileText?: string,
 ): string {
   const titleValue = properties.title;

@@ -1,6 +1,6 @@
 import { type Accessor, createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
-import type { DocumentPropertyValue } from "#documents/properties.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
 import { placeholderDocumentTitle } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
@@ -23,7 +23,7 @@ interface AddRowOptions {
 }
 
 interface AddRowMutationVariables {
-  properties?: Record<string, DocumentPropertyValue>;
+  properties?: DocumentProperties;
   invalidate: boolean;
 }
 
@@ -145,7 +145,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   }
 
   async function addRow(
-    properties?: Record<string, DocumentPropertyValue>,
+    properties?: DocumentProperties,
     options?: AddRowOptions,
   ) {
     return await addRowMutation.mutateAsync({
