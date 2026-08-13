@@ -71,25 +71,19 @@ async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
 
 /**
  * The addressed document once the per-document check has passed for it, `null`
- * when it has not — nothing resolved, or the caller may not read what did. Every
- * document-derived value below hangs off this: the container check further down
- * is deliberately broader than one document and cannot stand in for it.
+ * when it has not — nothing resolved, or the caller may not read what did.
+ * Every document-derived value below hangs off this.
  */
 const readableDocumentRecord =
   storedDocumentRecord && (await holdsDocumentViewerRole(storedDocumentRecord.id))
     ? storedDocumentRecord
     : null;
 
-if (storedDocumentRecord && !readableDocumentRecord && !Astro.locals.session) {
-  return new Response(null, {
-    status: 302,
-    headers: { Location: "/login" },
-  });
-}
-
 if (!readableDocumentRecord) {
   // Space-wide viewer, or any document/tree/category grant inside the space —
   // a resource-scoped grantee still has to reach the container it lives in.
+  // Also the only place an anonymous caller is sent to /login: redirecting on
+  // the document verdict would tell a refused slug from an unresolved one.
   try {
     await verifyResourceAccess(space.id, Astro.locals.user?.id ?? "");
   } catch (error) {

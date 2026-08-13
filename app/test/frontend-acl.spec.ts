@@ -34,6 +34,15 @@ let testDocumentSlug: string;
 let privateDocumentId: string;
 let privateDocumentSlug: string;
 
+/**
+ * A page body with the two things that cannot carry an authorization verdict
+ * removed: the address the caller typed, which the shell echoes back as the
+ * router's initial url, and Astro's per-render hydration id.
+ */
+function maskVolatile(body: string, slug: string): string {
+  return body.replaceAll(slug, "<addr>").replace(/uid="[^"]*"/g, 'uid="<uid>"');
+}
+
 async function assignUserToGroup(userId: string, groups: string[]): Promise<void> {
   const authDb = getAuthDb();
   if (!authDb) {
@@ -502,13 +511,8 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
 
     expect(refused.status).toBe(unresolvable.status);
     expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
-    // Byte-identical once two things that cannot carry a verdict are masked: the
-    // address the caller typed, which the shell echoes back as the router's
-    // initial url, and Astro's per-render hydration id.
-    const mask = (body: string, slug: string) =>
-      body.replaceAll(slug, "<addr>").replace(/uid="[^"]*"/g, 'uid="<uid>"');
-    expect(mask(await refused.text(), refusedSlug)).toBe(
-      mask(await unresolvable.text(), unresolvableSlug),
+    expect(maskVolatile(await refused.text(), refusedSlug)).toBe(
+      maskVolatile(await unresolvable.text(), unresolvableSlug),
     );
   });
 
@@ -529,6 +533,105 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
     const response = await pageRequest(`/${testSpaceSlug}`, docLevelToken);
 
     expect(response.status).not.toBe(200);
+  });
+});
+
+/**
+ * Archive raises the role a document needs to `editor`, so a space-wide `public`
+ * viewer grant stops reaching it — the one way a public space comes to hold a
+ * document an anonymous caller may not read. The page must not answer that
+ * caller any differently than it answers them an unresolvable slug, or the
+ * refusal enumerates archived documents by their title-derived slug.
+ */
+describe("Frontend ACL Tests - Archived Document In A Public Space", () => {
+  let publicSpaceId: string;
+  let publicSpaceSlug: string;
+  let archivedDocumentId: string;
+  let archivedDocumentSlug: string;
+
+  beforeAll(async () => {
+    publicSpaceSlug = `frontend-acl-public-${Date.now()}`;
+    const spaceResponse = await apiRequest("/api/v1/spaces", session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Frontend ACL Public Space",
+        slug: publicSpaceSlug,
+      }),
+    });
+    publicSpaceId = (await spaceResponse.json()).space.id;
+
+    const grant = await apiRequest(
+      `/api/v1/spaces/${publicSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "viewer",
+          groupId: "public",
+          action: "grant",
+          resourceType: "space",
+          resourceId: publicSpaceId,
+        }),
+      },
+    );
+    expect(grant.status).toBe(200);
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${publicSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<h1>Archived Document</h1><p>This is an archived document.</p>",
+          properties: { title: "Archived Document" },
+        }),
+      },
+    );
+    const archivedDocData = (await docResponse.json()).document;
+    archivedDocumentId = archivedDocData.id;
+    archivedDocumentSlug = archivedDocData.slug;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (publicSpaceId) await deleteSpace(publicSpaceId);
+  });
+
+  it("answers an archived url exactly as an unresolvable one, anonymously", async () => {
+    const unresolvableSlug = "no-document-answers-to-this-slug";
+
+    // Sanity: a refusal below is then caused by the archive, not a missing grant.
+    const beforeArchive = await pageRequest(
+      `/${publicSpaceSlug}/doc/${archivedDocumentSlug}`,
+      "",
+    );
+    expect(beforeArchive.status).toBe(200);
+    expect(await beforeArchive.text()).toContain("Archived Document");
+
+    const archived = await apiRequest(
+      `/api/v1/spaces/${publicSpaceId}/documents/${archivedDocumentId}`,
+      session1Token,
+      { method: "DELETE" },
+    );
+    expect(archived.status).toBe(200);
+
+    const refused = await pageRequest(
+      `/${publicSpaceSlug}/doc/${archivedDocumentSlug}`,
+      "",
+    );
+    const unresolvable = await pageRequest(
+      `/${publicSpaceSlug}/doc/${unresolvableSlug}`,
+      "",
+    );
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
+    // Pinned, not just equal: both are the shell, not a shared /login redirect.
+    expect(refused.status).toBe(200);
+    expect(refused.headers.get("location")).toBeNull();
+    expect(maskVolatile(await refused.text(), archivedDocumentSlug)).toBe(
+      maskVolatile(await unresolvable.text(), unresolvableSlug),
+    );
   });
 });
 
