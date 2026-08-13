@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { Permission } from "#acl/permissions.ts";
 import {
-  preferencesRequireSpaceOwner,
+  parsePreferenceKey,
+  requiredPreferenceWriteRole,
   validateSpacePreferences,
 } from "#utils/spacePreferences.ts";
 
@@ -72,14 +74,30 @@ describe("validateSpacePreferences", () => {
     });
   });
 
-  it("refuses a key that names something other than a preference", () => {
-    // An own `__proto__` property, which only a parsed body can carry: assigning
-    // it while rebuilding the map writes a prototype, not an entry.
-    expect(refused(JSON.parse('{"__proto__":"x"}'))).toContain("not a usable");
-    expect(refused({ constructor: "x" })).toContain("not a usable");
+  it("refuses a key that is not spelled like one", () => {
     expect(refused({ "has space": "x" })).toContain("not a usable");
     expect(refused({ "<script>": "x" })).toContain("not a usable");
-    expect(refused({ [`${"k".repeat(65)}`]: "x" })).toContain("not a usable");
+    expect(refused({ "two:separators:here": "x" })).toContain("not a usable");
+    expect(refused({ "trailing:": "x" })).toContain("not a usable");
+    expect(refused({ [`${"k".repeat(33)}`]: "x" })).toContain("not a usable");
+  });
+
+  it("stores a key the storage layer round-trips, however odd", () => {
+    // `getSpace` collects preferences into a `Map` and `Object.fromEntries` them,
+    // so `__proto__` is an own property both ways — nothing to protect against.
+    // Asserted by property rather than against a literal, since `{__proto__: …}`
+    // in source sets a prototype instead of defining a key.
+    const stored = validated(JSON.parse('{"__proto__":"x"}'));
+
+    expect(Object.hasOwn(stored, "__proto__")).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(stored, "__proto__")?.value).toBe("x");
+    expect(Object.getPrototypeOf(stored)).toBe(Object.prototype);
+  });
+
+  it("stores a namespaced key for any namespace", () => {
+    expect(
+      validated({ "acme:layout": "grid", "notes:sort": "created", "ai:model": "llama3" }),
+    ).toEqual({ "acme:layout": "grid", "notes:sort": "created", "ai:model": "llama3" });
   });
 
   it("stores the namespaced keys another settings page also writes", () => {
@@ -128,20 +146,59 @@ describe("validateSpacePreferences", () => {
   });
 });
 
-describe("preferencesRequireSpaceOwner", () => {
-  it("takes ownership for the settings that decide something space-wide", () => {
+describe("parsePreferenceKey", () => {
+  it("splits a namespaced key and leaves a core key unnamespaced", () => {
+    expect(parsePreferenceKey("brandColor")).toEqual({
+      namespace: null,
+      name: "brandColor",
+    });
+    expect(parsePreferenceKey("ai:baseUrl")).toEqual({
+      namespace: "ai",
+      name: "baseUrl",
+    });
+    expect(parsePreferenceKey("email.document_muted")).toEqual({
+      namespace: null,
+      name: "email.document_muted",
+    });
+  });
+
+  it("rejects a key that is not one", () => {
+    expect(parsePreferenceKey("a:b:c")).toBeNull();
+    expect(parsePreferenceKey(":name")).toBeNull();
+    expect(parsePreferenceKey("namespace:")).toBeNull();
+    expect(parsePreferenceKey("")).toBeNull();
+    expect(parsePreferenceKey("has space")).toBeNull();
+  });
+});
+
+describe("requiredPreferenceWriteRole", () => {
+  it("takes the namespace's role for a namespace that decides something space-wide", () => {
     // Whoever sets `ai:baseUrl` picks the host every member's prompts go to, and
     // the AI settings page gates that at OWNER — writing it as a preference must
     // not be the cheaper way in.
-    expect(preferencesRequireSpaceOwner({ "ai:baseUrl": "http://x" })).toBe(true);
-    expect(preferencesRequireSpaceOwner({ "ai:provider": "ollama" })).toBe(true);
-    expect(preferencesRequireSpaceOwner({ workflowCreationEnabled: "false" })).toBe(true);
+    expect(requiredPreferenceWriteRole({ "ai:baseUrl": "http://x" })).toBe(
+      Permission.OWNER,
+    );
+    expect(requiredPreferenceWriteRole({ "ai:provider": "ollama" })).toBe(
+      Permission.OWNER,
+    );
+    expect(requiredPreferenceWriteRole({ workflowCreationEnabled: "false" })).toBe(
+      Permission.OWNER,
+    );
+    // The highest role any one key asks for.
+    expect(requiredPreferenceWriteRole({ brandColor: "#fff", "ai:model": "x" })).toBe(
+      Permission.OWNER,
+    );
   });
 
-  it("leaves the rest to write access", () => {
-    expect(preferencesRequireSpaceOwner({ brandColor: "#1e293b" })).toBe(false);
-    expect(preferencesRequireSpaceOwner({ "acme:layout": "grid" })).toBe(false);
-    expect(preferencesRequireSpaceOwner(undefined)).toBe(false);
-    expect(preferencesRequireSpaceOwner({})).toBe(false);
+  it("leaves an unclaimed namespace, and the rest, to write access", () => {
+    expect(requiredPreferenceWriteRole({ brandColor: "#1e293b" })).toBe(
+      Permission.EDITOR,
+    );
+    expect(requiredPreferenceWriteRole({ "acme:layout": "grid" })).toBe(
+      Permission.EDITOR,
+    );
+    expect(requiredPreferenceWriteRole(undefined)).toBe(Permission.EDITOR);
+    expect(requiredPreferenceWriteRole({})).toBe(Permission.EDITOR);
   });
 });

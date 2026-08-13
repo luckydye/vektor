@@ -1,10 +1,28 @@
+import { Permission } from "#acl/permissions.ts";
 import { isHexColor } from "#utils/color.ts";
 import { isSafeImageUrl, sanitizeSvgMarkup } from "#utils/html.ts";
 
 /**
- * The preference keys the app itself reads. Not the set of keys a space may
- * hold: preferences are an open key-value store, and anything may put its own
- * settings there. These are the ones this codebase names.
+ * Space preferences: one open key-value store per space, for anything that has
+ * to remember a setting about it.
+ *
+ * A key is either **core** — a bare name, this app's own settings, the ones
+ * `spacePreferenceKeys` names — or **namespaced**, `namespace:name`, which is
+ * how everything else takes a corner of the store without colliding with the app
+ * or with another namespace. Any namespace may be written; one only needs an
+ * entry in `PREFERENCE_NAMESPACE_WRITE_ROLES` when writing it should take more
+ * than write access on the space.
+ *
+ * The same `preference` table also holds per-*user* rows, distinguished by
+ * `preference.userId`. Those are a different store, reached only by the code that
+ * owns them (`emailNotificationPreferences.ts`, `userProfiles.ts`) and never by a
+ * space write, so their keys (`email.space_muted`, `ai_user_profile`) predate this
+ * grammar and are not namespaced under it.
+ */
+
+/**
+ * The core preference keys the app itself reads. Not the set of keys a space may
+ * hold — the store is open — just the ones this codebase names.
  */
 export const spacePreferenceKeys = {
   brandColor: "brandColor",
@@ -108,46 +126,81 @@ const PREFERENCE_RULES = new Map<string, PreferenceRule>([
  */
 const MAX_PREFERENCES_BYTES = 512 * 1024;
 
-/** What a key may be spelled with, so it survives a URL, a query and a diff. */
-const PREFERENCE_KEY_PATTERN = /^[a-z\d_.:-]{1,64}$/i;
+/** Separates a namespace from the name of a preference inside it. */
+const PREFERENCE_NAMESPACE_SEPARATOR = ":";
 
 /**
- * Keys that name something other than a preference. `preferences[key] = value`
- * against `__proto__` on a plain object writes a prototype instead of an entry —
- * `getSpace` rebuilds the map that way — so the key would be silently lost at
- * best. They are refused rather than made to work: nothing needs them.
+ * What either half of a key may be spelled with, so a key survives a URL, a
+ * query string and a line of diff.
  */
-const RESERVED_PREFERENCE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const PREFERENCE_SEGMENT_PATTERN = /^[a-z\d_.-]{1,32}$/i;
+
+/** A preference key, split into the namespace that owns it and the name in it. */
+export interface PreferenceKey {
+  /** `null` for a core preference, which is the app's own flat namespace. */
+  readonly namespace: string | null;
+  readonly name: string;
+}
 
 /**
- * Preferences that decide something for the whole space rather than for the
- * member writing them, and so take the role their own settings page takes.
- *
- * `ai:*` is the space's AI provider config, which `settings-ai-provider.ts`
- * gates at `OWNER`: whoever sets `ai:baseUrl` chooses the host every member's
- * prompts are sent to. Writing it here is fine — it is a preference like any
- * other — but not at a lower role than the page that owns it.
- *
- * The value is not re-validated here. `ai:baseUrl` is checked against the SSRF
- * policy where that settings route stores it, and again by the `safeFetch` that
- * reads it, which is the check that actually holds for a value already stored.
+ * The parts of a preference key, or `null` if it is not a usable key: one
+ * separator at most, and both halves spelled like a name.
  */
-const OWNER_ONLY_PREFERENCE_PREFIXES = ["ai:"];
+export function parsePreferenceKey(key: string): PreferenceKey | null {
+  const [first, second, ...rest] = key.split(PREFERENCE_NAMESPACE_SEPARATOR);
+  if (first === undefined || rest.length > 0) return null;
+
+  const segments = second === undefined ? [first] : [first, second];
+  if (!segments.every((segment) => PREFERENCE_SEGMENT_PATTERN.test(segment))) return null;
+
+  return second === undefined
+    ? { namespace: null, name: first }
+    : { namespace: first, name: second };
+}
 
 /**
- * Does writing these preferences require space ownership rather than write
- * access? `PATCH /spaces/:id` asks before it picks the role to verify.
+ * The namespaces whose preferences take more than write access on the space,
+ * because they decide something for every member rather than for the member
+ * writing them. A namespace absent from here is open at `EDITOR`: a namespace is
+ * a corner of the store, not a permission to be granted.
  */
-export function preferencesRequireSpaceOwner(
+const PREFERENCE_NAMESPACE_WRITE_ROLES = new Map<string, Permission>([
+  // The space's AI provider, also written by `settings-ai-provider.ts`, which
+  // gates it at OWNER: whoever sets `ai:baseUrl` picks the host every member's
+  // prompts are sent to. Its *value* is not re-checked here — the settings route
+  // validates it against the SSRF policy, and `safeFetch` validates it again on
+  // read, which is the check that holds for a value already stored.
+  ["ai", Permission.OWNER],
+]);
+
+/** Core preferences that decide something for the space, in the same sense. */
+const OWNER_ONLY_CORE_PREFERENCES = new Set<string>([
+  spacePreferenceKeys.workflowCreationEnabled,
+]);
+
+function preferenceWriteRole(key: string): Permission {
+  const parsed = parsePreferenceKey(key);
+  // Unreachable for a validated key, and not a key to hand out cheaply.
+  if (!parsed) return Permission.OWNER;
+
+  if (parsed.namespace !== null) {
+    return PREFERENCE_NAMESPACE_WRITE_ROLES.get(parsed.namespace) ?? Permission.EDITOR;
+  }
+
+  return OWNER_ONLY_CORE_PREFERENCES.has(parsed.name)
+    ? Permission.OWNER
+    : Permission.EDITOR;
+}
+
+/**
+ * The role a space write must hold to set these preferences — the highest any one
+ * of them asks for. `PATCH /spaces/:id` verifies it before writing.
+ */
+export function requiredPreferenceWriteRole(
   preferences: Record<string, string> | undefined,
-): boolean {
-  if (!preferences) return false;
-
-  return Object.keys(preferences).some(
-    (key) =>
-      key === spacePreferenceKeys.workflowCreationEnabled ||
-      OWNER_ONLY_PREFERENCE_PREFIXES.some((prefix) => key.startsWith(prefix)),
-  );
+): Permission {
+  const roles = Object.keys(preferences ?? {}).map(preferenceWriteRole);
+  return roles.includes(Permission.OWNER) ? Permission.OWNER : Permission.EDITOR;
 }
 
 /**
@@ -189,8 +242,10 @@ export function validateSpacePreferences(
   const validated: Record<string, string> = Object.create(null);
 
   for (const [key, raw] of Object.entries(preferences)) {
-    if (!PREFERENCE_KEY_PATTERN.test(key) || RESERVED_PREFERENCE_KEYS.has(key)) {
-      return { error: `"${key}" is not a usable preference key` };
+    if (!parsePreferenceKey(key)) {
+      return {
+        error: `"${key}" is not a usable preference key: a name, or "namespace:name"`,
+      };
     }
 
     if (typeof raw !== "string") return { error: `${key} must be a string` };

@@ -19,7 +19,7 @@ import {
   updateSpace,
 } from "#db/space/spaces.ts";
 import {
-  preferencesRequireSpaceOwner,
+  requiredPreferenceWriteRole,
   validateSpacePreferences,
 } from "#utils/spacePreferences.ts";
 
@@ -65,13 +65,16 @@ export const PATCH: ApiRouteHandler = (context) =>
       if ("error" in validated) throw badRequestResponse(validated.error);
 
       // Preferences are open, so the role follows what is being written rather
-      // than the fact that something is: a space-wide setting takes the role of
-      // the page that owns it, everything else is an editor's to change.
-      if (updatesMetadata || preferencesRequireSpaceOwner(validated.preferences)) {
-        await verifySpaceRole(spaceId, user.id, Permission.OWNER);
-      } else {
-        await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
-      }
+      // than the fact that something is: a preference in a namespace that decides
+      // something space-wide takes that namespace's role, everything else is an
+      // editor's to change.
+      await verifySpaceRole(
+        spaceId,
+        user.id,
+        updatesMetadata
+          ? Permission.OWNER
+          : requiredPreferenceWriteRole(validated.preferences),
+      );
 
       const space = await getSpace(spaceId);
       if (!space) {
