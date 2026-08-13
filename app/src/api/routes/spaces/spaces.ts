@@ -1,4 +1,5 @@
 import { extractAccessToken } from "#acl/guards.ts";
+import { verifyCanCreateSpace } from "#acl/spaceCreation.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -49,6 +50,8 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const user = requireUser(context);
+      await verifyCanCreateSpace(user.id);
+
       const body = await parseJsonBody(context.req.raw);
       const { name, slug, preferences } = body;
 

@@ -22,6 +22,7 @@ interface Props {
   loading?: boolean;
   onTogglePin?: (spaceId: string) => void;
   onCreate?: () => void;
+  canCreate?: boolean;
 }
 
 function SpaceCard(props: {
@@ -110,12 +111,14 @@ export function SpacesOverview(props: Props) {
     <div class="space-y-8 px-xs pt-m pb-20 lg:px-xl">
       <div class="flex items-center justify-between gap-3xs">
         <h1 class="font-semibold text-foreground text-size-title">{t("Spaces")}</h1>
-        <Button
-          variant="secondary"
-          icon="add"
-          text={t("Create new Space")}
-          onClick={() => props.onCreate?.()}
-        />
+        <Show when={props.canCreate}>
+          <Button
+            variant="secondary"
+            icon="add"
+            text={t("Create new Space")}
+            onClick={() => props.onCreate?.()}
+          />
+        </Show>
       </div>
 
       <Show when={props.loading}>

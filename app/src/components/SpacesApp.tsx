@@ -56,7 +56,7 @@ function SpacesRail() {
 }
 
 function SpacesOverviewContainer() {
-  const { spaces, isLoading, createSpace } = useSpace();
+  const { spaces, isLoading, createSpace, canCreateSpace } = useSpace();
   const { pinnedSpaceIds, togglePin } = usePinnedSpaces();
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
 
@@ -96,6 +96,7 @@ function SpacesOverviewContainer() {
         loading={isLoading()}
         onTogglePin={togglePin}
         onCreate={() => setShowCreateDialog(true)}
+        canCreate={canCreateSpace() === true}
       />
     </main>
   );

@@ -1,5 +1,5 @@
 import { type Accessor, createContext, createMemo, useContext } from "solid-js";
-import { api, type Space } from "#api/client.ts";
+import { api, type CurrentUser, type Space } from "#api/client.ts";
 
 export type { Space };
 
@@ -39,6 +39,14 @@ export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
     () => !isPending() && spaces() !== undefined && currentSpace() === null,
   );
 
+  // Whether creation is allowed is the operator's allow list applied to this
+  // user, so only the server can answer it. Shared cache key: every island
+  // asking resolves to the one request.
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["current_user"],
+    queryFn: () => api.users.me(),
+  });
+
   const createSpaceMutation = useMutation({
     mutationFn: async (params: {
       name: string;
@@ -72,6 +80,9 @@ export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
     currentSpaceId: createMemo(() => currentSpace()?.id ?? null),
     spaceNotFound,
     spaces,
+    // Undefined until the answer arrives, so a caller can tell "not allowed"
+    // from "not known yet" and neither flash nor pre-render the affordance.
+    canCreateSpace: createMemo(() => currentUser()?.canCreateSpace),
     createSpace: (name: string, slug: string, preferences?: Record<string, string>) =>
       createSpaceMutation.mutateAsync({ name, slug, preferences }),
     updateSpace: (

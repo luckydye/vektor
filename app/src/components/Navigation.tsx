@@ -20,7 +20,13 @@ export function Navigation() {
   const navigate = useNavigate();
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
-  const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
+  const {
+    currentSpace,
+    spaces,
+    createSpace,
+    canCreateSpace,
+    isLoading: spaceIsLoading,
+  } = useSpace();
   const { pinnedSpaceIds } = usePinnedSpaces();
 
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
@@ -120,6 +126,7 @@ export function Navigation() {
           current={currentUiSpace()}
           allSpacesHref="/spaces"
           canCreateDocs={userCanEdit()}
+          canCreateSpaces={canCreateSpace() === true}
           loading={isLoading()}
           onSelect={(space) => {
             const full = spaces()?.find((s: ApiSpace) => s.id === space.id);

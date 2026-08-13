@@ -25,6 +25,7 @@ interface Props {
   current?: SelectorSpace | null;
   allSpacesHref?: string;
   canCreateDocs?: boolean;
+  canCreateSpaces?: boolean;
   loading?: boolean;
   onSelect?: (space: SelectorSpace) => void;
   onCreate?: () => void;
@@ -143,19 +144,21 @@ export function SpaceSelector(props: Props) {
                       )}
                     </Show>
 
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        props.onCreate?.();
-                        dismissPopover(event.target);
-                      }}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100"
-                    >
-                      <Icon name="add" />
-                      <span class="font-medium text-size-small leading-none">
-                        {t("Create new Space")}
-                      </span>
-                    </button>
+                    <Show when={props.canCreateSpaces}>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          props.onCreate?.();
+                          dismissPopover(event.target);
+                        }}
+                        class="flex w-full items-center gap-2.5 rounded-md px-3xs py-4xs text-neutral-500 transition-colors hover:bg-neutral-100"
+                      >
+                        <Icon name="add" />
+                        <span class="font-medium text-size-small leading-none">
+                          {t("Create new Space")}
+                        </span>
+                      </button>
+                    </Show>
                   </div>
                 </div>
               </div>

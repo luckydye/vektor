@@ -106,6 +106,13 @@ export function config() {
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
       /** Seconds a group claim may age before the next re-read. 0 is off. */
       OAUTH_GROUP_SYNC_INTERVAL: process.env.OAUTH_GROUP_SYNC_INTERVAL,
+      /**
+       * Comma-separated OAuth group ids whose members may create spaces of
+       * their own. Unset leaves creation open to every signed-in user, which is
+       * what it has always been. Set but naming no usable group means nobody
+       * may create one — a misconfigured allow list has to deny, not open up.
+       */
+      SPACE_CREATION_GROUPS: process.env.VEKTOR_SPACE_CREATION_GROUPS,
 
       /**
        * Google social login. When both id and secret are set, a "Continue with

@@ -30,6 +30,14 @@ export interface User {
   appearance?: PublicUserAppearance;
 }
 
+/**
+ * The signed-in caller, as only `users/me` can report them: their profile plus
+ * the things they may do that no space's `permissions/me` covers.
+ */
+export interface CurrentUser extends User {
+  canCreateSpace: boolean;
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -822,7 +830,7 @@ export class ApiClient {
       );
     },
     me: async () => {
-      return await this.apiGet<User>(this.baseUrl, "/api/v1/users/me");
+      return await this.apiGet<CurrentUser>(this.baseUrl, "/api/v1/users/me");
     },
     /**
      * People the caller shares an OAuth group with — invite suggestions.
