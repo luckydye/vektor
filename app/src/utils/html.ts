@@ -326,8 +326,9 @@ export function htmlToPlainText(html: string): string {
  *  - `sanitizeDocumentHtml` — document content, the format the editor writes.
  *    Keeps the whole document vocabulary (custom elements, `data-` attributes,
  *    inline styles, task-item checkboxes) and removes what executes.
- *  - `sanitizeVektorDocumentPreviewHtml` — markup fetched from somewhere else
- *    and shown as a preview card. Nothing but prose survives.
+ *  - `sanitizeVektorDocumentPreviewHtml` — markup this app did not write and
+ *    only displays: a preview card fetched from somewhere else, a workflow
+ *    run's `html` output. Nothing but prose survives.
  *  - `sanitizeSvgMarkup` — a space logo or extension icon, injected as markup.
  *
  * A policy names the tags it keeps and the tags it drops together with their
@@ -472,7 +473,7 @@ function normalizeUrlWhitespace(value: string): string {
  * `javascript:` — so it fails closed rather than being read at face value. That
  * cannot reject a legitimate query string, whose `&` lives past the `?`.
  */
-function isSafeUrlValue(
+export function isSafeUrlValue(
   value: string,
   options: { localOnly?: boolean; media?: boolean } = {},
 ): boolean {

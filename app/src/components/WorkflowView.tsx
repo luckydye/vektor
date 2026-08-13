@@ -18,7 +18,7 @@ import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDateTime } from "#utils/datetime.ts";
-import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
+import { isSafeUrlValue, sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
@@ -349,10 +349,12 @@ export function WorkflowView(props: Props) {
     return typeof name === "string" ? name : null;
   });
 
+  // Run inputs are caller-supplied JSON, and this one becomes an `href`, so a
+  // `javascript:` value would run on click.
   const selectedRunFileUrl = createMemo(() => {
     const file =
       selectedRun()?.runtimeInputs?.file ?? selectedRunDetail()?.runtimeInputs?.file;
-    return typeof file === "string" ? file : null;
+    return typeof file === "string" && isSafeUrlValue(file) ? file : null;
   });
 
   const selectedRunInputs = createMemo(() => {
@@ -453,13 +455,9 @@ export function WorkflowView(props: Props) {
     });
   });
 
-  // A run's HTML output is rendered with `innerHTML` below, and it is the least
-  // trusted markup here: a workflow script runs server-side with `fetch`, so one
-  // that puts a field of some external response into `html` makes a third party's
-  // bytes into markup in every viewer's page. Hence the preview policy rather
-  // than the document one — a report is read, not edited, so it needs none of the
-  // document vocabulary (custom elements the app upgrades, inline styles, SVG,
-  // canvas). Nothing left means no HTML output, which the empty branch checks for.
+  // Whatever a workflow script returned, and a script runs server-side with
+  // `fetch` — so this can be a third party's bytes. Prose only: a report is read,
+  // not edited, and needs none of the document vocabulary.
   const outputHtml = createMemo<string | null>(() => {
     const html = unwrapOutputValue(selectedRunResult()?.html);
     return html === null ? null : sanitizeVektorDocumentPreviewHtml(html) || null;
