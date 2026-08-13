@@ -1,4 +1,5 @@
 import { config } from "#config";
+import { slugify } from "#utils/slug.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function authHeaders(token: string | undefined): Record<string, string> {
@@ -10,15 +11,6 @@ async function resolveConnection() {
   const token = config().CLI_ACCESS_TOKEN;
   const spaceId = await resolveSpaceId(host, token);
   return { host, token, spaceId };
-}
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 type Category = {

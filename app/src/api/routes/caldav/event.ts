@@ -74,17 +74,11 @@ export const PUT: ApiRouteHandler = async (context) => {
     });
   }
 
-  const doc = await createDocument(
-    store,
-    caldavUser.id,
-    event.summary,
-    "",
-    {
-      title: event.summary,
-      eventStart: { value: event.start, type: "date" },
-      eventEnd: { value: event.end, type: "date" },
-    },
-  );
+  const doc = await createDocument(store, caldavUser.id, event.summary, "", {
+    title: event.summary,
+    eventStart: { value: event.start, type: "date" },
+    eventEnd: { value: event.end, type: "date" },
+  });
   return new Response(null, {
     status: 201,
     headers: {

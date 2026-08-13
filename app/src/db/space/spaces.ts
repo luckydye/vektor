@@ -38,8 +38,8 @@ import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { slugify } from "#utils/utils.ts";
 
 const DATA_DIR = "./data";
 const DELETED_DIR = join(DATA_DIR, "deleted");
@@ -57,6 +57,46 @@ export interface Space {
   memberCount?: number;
 }
 
+/** A caller-supplied space slug that cannot become a space URL. */
+export class InvalidSpaceSlugError extends Error {}
+
+/** A space slug another space already owns. */
+export class SpaceSlugTakenError extends Error {
+  constructor(slug: string) {
+    super(`Space with slug "${slug}" already exists`);
+  }
+}
+
+/**
+ * The database is the authority on slug uniqueness; the pre-check below only
+ * turns the common case into a readable message. This maps the race that slips
+ * past it onto the same failure.
+ */
+function isSlugUniqueViolation(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("space_index_active_slug_unique") ||
+    /UNIQUE constraint failed:\s*space_index\.slug/i.test(message)
+  );
+}
+
+/**
+ * The single place a caller-supplied space slug becomes a stored one, so create
+ * and update cannot drift apart again — creation used to sanitize silently while
+ * update stored whatever it was handed.
+ */
+async function resolveSpaceSlug(input: string, spaceId?: string): Promise<string> {
+  const rejection = spaceSlugRejection(input);
+  if (rejection) throw new InvalidSpaceSlugError(rejection);
+
+  const slug = canonicalSpaceSlug(input);
+  await initializeDatabases();
+  const owner = await getIndexedSpaceBySlug(slug);
+  if (owner && owner.spaceId !== spaceId) throw new SpaceSlugTakenError(slug);
+
+  return slug;
+}
+
 export async function createSpace(
   createdBy: string,
   name: string,
@@ -66,18 +106,7 @@ export async function createSpace(
   const id = createId("space");
   const now = new Date();
 
-  // Sanitize slug to contain only URL-compatible characters
-  slug = slugify(slug);
-
-  if (!slug) {
-    throw new Error("Slug not valid");
-  }
-
-  // Check if slug already exists
-  const existingSpace = await getSpaceBySlug(slug);
-  if (existingSpace) {
-    throw new Error(`Space with slug "${slug}" already exists`);
-  }
+  slug = await resolveSpaceSlug(slug);
 
   const allocation = await allocateSpaceDatabase(id);
   let spaceDb: Awaited<ReturnType<typeof getSpaceDb>>;
@@ -116,7 +145,7 @@ export async function createSpace(
   } catch (error) {
     closeSpaceDb(id);
     await disableSpaceDatabase(allocation.id, id);
-    throw error;
+    throw isSlugUniqueViolation(error) ? new SpaceSlugTakenError(slug) : error;
   }
 
   // Grant owner permission to creator (after closing initial connection)
@@ -320,12 +349,10 @@ export async function updateSpace(
     return null;
   }
 
-  // Check if slug is changing and if new slug already exists
+  // Only when it changes, so a space that predates these rules can still be
+  // renamed.
   if (slug !== existing.slug) {
-    const existingSpace = await getSpaceBySlug(slug);
-    if (existingSpace && existingSpace.id !== id) {
-      throw new Error(`Space with slug "${slug}" already exists`);
-    }
+    slug = await resolveSpaceSlug(slug, id);
   }
 
   const now = new Date();
@@ -353,7 +380,7 @@ export async function updateSpace(
         `Failed to update the space index and restore metadata for space ${id}`,
       );
     }
-    throw indexError;
+    throw isSlugUniqueViolation(indexError) ? new SpaceSlugTakenError(slug) : indexError;
   }
 
   // Update preferences if provided. A `Map` for the same reason as in `getSpace`:

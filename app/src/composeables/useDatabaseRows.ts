@@ -144,10 +144,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
     queryClient.invalidateQueries({ queryKey: queryKey() });
   }
 
-  async function addRow(
-    properties?: DocumentProperties,
-    options?: AddRowOptions,
-  ) {
+  async function addRow(properties?: DocumentProperties, options?: AddRowOptions) {
     return await addRowMutation.mutateAsync({
       properties,
       invalidate: options?.invalidate ?? true,

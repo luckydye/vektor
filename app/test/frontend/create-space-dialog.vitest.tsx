@@ -99,11 +99,28 @@ describe("CreateSpaceDialog", () => {
     await submit();
 
     expect(onCreate).not.toHaveBeenCalled();
+    // The message names the slug that would have been stored, so the user has
+    // something to accept rather than a rule to re-read.
     expect(
       queryByText(
         document.body,
-        "Slug must contain only lowercase letters, numbers, and hyphens",
+        'Slug must be lowercase letters, numbers and single inner hyphens — try "not-a-slug"',
       ),
+    ).toBeTruthy();
+  });
+
+  it("rejects a slug the app's own routes own", async () => {
+    const onCreate = vi.fn();
+    mount({ show: true, onCreate });
+    await settle();
+
+    fill("space-name", "Docs Space");
+    fill("space-slug", "docs");
+    await submit();
+
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(
+      queryByText(document.body, '"docs" is reserved by Vektor — pick another slug'),
     ).toBeTruthy();
   });
 });

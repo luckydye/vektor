@@ -13,7 +13,7 @@ import { createDatabase } from "#db/client/connection.ts";
 import { prepareAuthDb } from "#db/client/init.ts";
 import { one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
-import { account, user } from "#db/schema/auth.ts";
+import { account, spaceIndex, user } from "#db/schema/auth.ts";
 
 let authDb: ReturnType<typeof createDatabase>;
 
@@ -53,5 +53,37 @@ describe("auth database schema", () => {
       '"access_token_expires_at" INTEGER',
     );
     expect(generateCreateTableSQL(user)).toContain('"email_verified" INTEGER');
+  });
+});
+
+/**
+ * Two active spaces on one slug hide one of them for good, so the database is
+ * what enforces uniqueness and `resolveSpaceSlug` only supplies the message.
+ * The index is as old as the table, so no migration pulls colliding rows apart:
+ * they were never storable.
+ */
+describe("active space slug uniqueness", () => {
+  function activeSpaceRow(index: number, slug: string) {
+    return {
+      id: `database_${index}`,
+      location: `memory:space_${index}`,
+      status: "active" as const,
+      spaceId: `space_${index}`,
+      name: `Space ${index}`,
+      slug,
+      createdBy: "local",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  it("refuses a second active space on the same slug", async () => {
+    const database = createDatabase("file::memory:");
+    await prepareAuthDb(database);
+
+    await database.insert(spaceIndex).values(activeSpaceRow(1, "engineering"));
+    await expect(
+      database.insert(spaceIndex).values(activeSpaceRow(2, "engineering")),
+    ).rejects.toThrow();
   });
 });

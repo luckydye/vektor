@@ -6,21 +6,6 @@ export function kebabToTitle(kebab: string): string {
     .join(" ");
 }
 
-export function slugify(text: string) {
-  const reservedSlugs = ["new"];
-
-  let slug = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  if (reservedSlugs.includes(slug)) {
-    slug = `${slug}-1`;
-  }
-
-  return slug;
-}
-
 export function detectAppType(
   label: string,
 ): "jira" | "youtrack" | "linear" | "github" | "gitlab" | undefined {

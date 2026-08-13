@@ -18,6 +18,7 @@ import { many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
+import { appLogger } from "#observability/logger.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
 export type ActiveSpaceIndexRecord = SpaceIndexRecord & {
@@ -602,7 +603,19 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     } finally {
       closeDatabase(database);
     }
-    if (metadata) await indexLocalSpace(location, metadata);
+    if (!metadata) continue;
+    const space = metadata;
+
+    // `initializeDatabases` caches its promise, so a throw here would reject
+    // every later database call for the life of the process. Two space files
+    // claiming one slug is how that happens: the index refuses the second.
+    await indexLocalSpace(location, space).catch((error: unknown) =>
+      appLogger.error("Failed to index a local space", {
+        spaceId: space.id,
+        location: withoutDatabaseCredentials(location),
+        error,
+      }),
+    );
   }
 
   const indexedDatabases = await many(

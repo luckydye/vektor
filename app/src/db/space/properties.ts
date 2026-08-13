@@ -11,16 +11,14 @@ import {
   normalizeDocumentPropertyPatch,
   parseStoredPropertyValue,
   propertyValueToText,
-  serializePropertyValue,
   type SpaceProperty,
+  serializePropertyValue,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
+import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
-import { EmptyDocumentSlugError, generateUniqueSlug } from "./documents.ts";
-import {
-  nonArchivedDocumentCondition,
-  scheduleDocumentSearchRefresh,
-} from "./search.ts";
+import { generateUniqueSlug } from "./documents.ts";
+import { nonArchivedDocumentCondition, scheduleDocumentSearchRefresh } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
@@ -57,13 +55,11 @@ async function resolveRenamedSlug(
       .where(eq(document.id, documentId)),
   );
   if (!current || !isPlaceholderDocumentSlug(current.slug)) return undefined;
+  // The rename still happens; only the derived slug cannot follow, so the
+  // placeholder stays rather than becoming a no-better generated slug.
+  if (!slugify(titleUpdate.value)) return undefined;
 
-  return generateUniqueSlug(s, titleUpdate.value, documentId).catch(
-    (error: unknown) => {
-      if (error instanceof EmptyDocumentSlugError) return undefined;
-      throw error;
-    },
-  );
+  return generateUniqueSlug(s, titleUpdate.value, documentId);
 }
 
 /**
@@ -105,10 +101,7 @@ export async function patchDocumentProperties(
         await txStore.db
           .delete(property)
           .where(
-            and(
-              eq(property.documentId, documentId),
-              eq(property.key, operation.key),
-            ),
+            and(eq(property.documentId, documentId), eq(property.key, operation.key)),
           );
 
         if (existing) {

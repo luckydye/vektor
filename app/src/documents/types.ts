@@ -1,4 +1,4 @@
-import { slugify } from "#utils/utils.ts";
+import { slugify } from "#utils/slug.ts";
 
 /** Hidden, immutable system document created for each workflow execution. */
 export const workflowRunDocumentType = "workflow-run";
@@ -90,10 +90,26 @@ const placeholderSlugs = new Set(
 );
 
 /**
+ * The slug a title the URL cannot carry falls back to. Built here, next to
+ * {@link isPlaceholderDocumentSlug}, so the two agree on the shape.
+ */
+export function fallbackDocumentSlug(uniquePart: string): string {
+  return `document-${uniquePart.slice(-8)}`;
+}
+
+const fallbackSlugPattern = /^document-[0-9a-f]{8}$/;
+
+/**
  * Whether a slug still comes from a placeholder title rather than one somebody
  * chose. The uniquifier the generator appends ("-2") belongs to the placeholder
  * just as much, so it stays replaceable too.
+ *
+ * A generated fallback slug counts, since `document-1a2b3c4d` says even less
+ * about the document than `untitled-document` does.
  */
 export function isPlaceholderDocumentSlug(slug: string): boolean {
-  return placeholderSlugs.has(slug.replace(/-\d+$/, ""));
+  // Before stripping the uniquifier too: a fallback slug can end in digits.
+  if (fallbackSlugPattern.test(slug)) return true;
+  const base = slug.replace(/-\d+$/, "");
+  return placeholderSlugs.has(base) || fallbackSlugPattern.test(base);
 }

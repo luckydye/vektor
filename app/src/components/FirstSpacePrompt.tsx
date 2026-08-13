@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on, onMount, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { slugify } from "#utils/utils.ts";
+import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -55,6 +55,14 @@ export function FirstSpacePrompt() {
 
   async function handleCreateSpace() {
     if (!spaceName().trim() || !spaceSlug().trim()) return;
+
+    // The endpoint's own rule set, so "docs" is refused with the reason here
+    // rather than after a round trip.
+    const slugRejection = spaceSlugRejection(spaceSlug());
+    if (slugRejection) {
+      setError(slugRejection);
+      return;
+    }
 
     setIsCreating(true);
     setError(null);
@@ -143,7 +151,7 @@ export function FirstSpacePrompt() {
                 disabled={isCreating()}
               />
               <p class="mt-1 text-neutral text-size-small">
-                Only lowercase letters, numbers, and hyphens
+                Lowercase letters, numbers and single inner hyphens
               </p>
             </div>
 
