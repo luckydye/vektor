@@ -100,9 +100,8 @@ describe("resolvePublicUrl", () => {
     await expect(resolvePublicUrl(url)).rejects.toBeInstanceOf(SsrfError);
   });
 
-  // A URL keeps the brackets around an IPv6 literal and `isIP` scores those 0, so
-  // a bracketed host used to skip the denylist and fail the DNS lookup instead:
-  // the private ones were refused for the wrong reason and the public ones too.
+  // Brackets used to carry into `isIP`, which scores them 0, so these skipped the
+  // denylist and failed the DNS lookup instead — refused, but for the wrong reason.
   it.each([
     "http://[fd00::1]/secret",
     "http://[::1]/secret",
@@ -488,9 +487,8 @@ async function withPrivateEgress<T>(body: () => Promise<T>): Promise<T> {
   }
 }
 
-// `${baseUrl}/api/chat` was concatenation, not resolution: a trailing slash gave
-// `//api/chat`, and a base ending in `?` or `#` swallowed the path so the request
-// went to `/` on the host with `/api/chat` in the query or fragment.
+// Concatenating gave `//api/chat` after a trailing slash, and sent a base ending
+// in `?` or `#` to `/` with the endpoint path in the query or fragment.
 describe("ollamaChatUrl", () => {
   it.each([
     ["http://93.184.216.34:11434", "http://93.184.216.34:11434/api/chat"],
@@ -521,9 +519,8 @@ describe("ollamaChatUrl", () => {
   });
 });
 
-// Audit 037: the base URL was stored on a "non-empty string" check and then
-// fetched, so an owner could aim the server at loopback or the metadata endpoint
-// and any viewer could read the reply out of the completion.
+// Audit 037: stored on a "non-empty string" check and then fetched, so an owner
+// could aim the server at loopback and any viewer could read the reply.
 describe("AI provider base URL on write", () => {
   it.each([
     "http://127.0.0.1:9097",
@@ -555,8 +552,8 @@ describe("AI provider base URL on write", () => {
     ).resolves.toBe("http://93.184.216.34:11434");
   });
 
-  // The bracketed-IPv6 cases above have to be refused by the address policy, which
-  // means a public IPv6 Ollama stays configurable rather than failing to resolve.
+  // The counterpart to the bracketed cases above: refusing them by address policy
+  // rather than by lookup failure is what keeps a public IPv6 Ollama configurable.
   it("accepts a public IPv6 literal base URL", async () => {
     await expect(
       normalizeOllamaBaseUrl("http://[2606:4700:4700::1111]:11434/"),
@@ -641,9 +638,8 @@ describe("AI provider base URL at fetch time", () => {
     expect(calls).toEqual(["http://93.184.216.34:11434/api/chat"]);
   });
 
-  // Self-hosted Ollama on the private network is a real deployment, so the opt-in
-  // has to actually work: policy, URL construction and the request itself, against
-  // a real listener on loopback.
+  // Self-hosted Ollama is a real deployment, so the opt-in has to work end to end:
+  // policy, URL construction and the request, against a real loopback listener.
   it("reaches a private baseUrl under the private-egress opt-in", async () => {
     const response = await withPrivateEgress(() =>
       proxyToOllama(upstreamOrigin, "llama", { messages: [] }, signal()),

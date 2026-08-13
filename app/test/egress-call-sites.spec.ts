@@ -61,9 +61,7 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
   // Not a server-side egress surface.
   "src/api/ApiClient.ts": { calls: 7, why: "browser-side client for our own API" },
 
-  // Endpoints from a fixed table keyed by a closed provider union, with no user
-  // input anywhere in the URL — see the CHAT_COMPLETIONS_URLS docblock. Giving
-  // these a configurable base URL means routing them through a policy first (#71).
+  // A fixed endpoint table, no user input in the URL (#71).
   "src/api/provider/openaiCompatible.ts": {
     calls: 2,
     why: "fixed CHAT_COMPLETIONS_URLS table, no user input in the URL",

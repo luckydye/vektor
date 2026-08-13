@@ -77,9 +77,8 @@ export const POST: ApiRouteHandler = (context) =>
         appLogger.error("Chat completions proxy failed", {
           error,
         });
-        // A refused target is stored configuration, not an upstream failure: say
-        // so, or an install whose baseUrl predates the egress policy sees only a
-        // generic 500 while the settings page still reports it as configured.
+        // Stored configuration, not an upstream failure — and the settings page
+        // still reports the baseUrl as configured, so a generic 500 strands them.
         if (error instanceof SsrfError) {
           return errorResponse(
             `AI provider base URL is not allowed: ${error.message}. Update it in space settings, or start the server with VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1 to reach a private host.`,

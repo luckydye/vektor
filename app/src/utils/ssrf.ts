@@ -148,17 +148,17 @@ export function isBlockedHostname(hostname: string): boolean {
 
 /**
  * The hostname to judge, without the brackets a URL keeps around an IPv6 literal.
- * `isIP("[::1]")` is 0, so leaving them on sends every IPv6 literal down the DNS
- * path — where it fails to resolve — instead of past {@link isPrivateOrBlockedIp}.
+ * `isIP("[::1]")` is 0, so leaving them on sends the literal down the DNS path
+ * instead of past {@link isPrivateOrBlockedIp}.
  */
 export function urlHostname(url: URL): string {
   return url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
 }
 
 /**
- * Parse a URL and require an HTTP(S) scheme: the first two steps of every egress
- * policy here. Exported because a caller that builds the URL it will request
- * needs to parse it before there is anything to validate.
+ * Parse a URL and require an HTTP(S) scheme, the first two steps of every egress
+ * policy here. Separate so a caller can parse the URL it is about to build a
+ * request from before there is anything to validate.
  */
 export function parseHttpUrl(rawUrl: string): URL {
   let url: URL;

@@ -16,16 +16,10 @@ export type OpenAICompatibleProvider = {
 };
 
 /**
- * The only endpoints these providers are ever called at — and, because
- * {@link getOpenAICompatibleHeaders} attaches the configured API key as a bearer
- * token, the only hosts that key can reach. This table *is* the allow-list: the
- * provider name is a closed union and nothing user-supplied enters the URL, which
- * is what keeps this surface out of the SSRF and credential-leak story that a
- * configurable base URL creates (see `resolveProviderUrl` in `ollama.ts`).
- *
- * Giving these providers a configurable base URL therefore means routing them
- * through that policy and refusing to send the key off the allow-list — do not
- * add one without both.
+ * This table *is* the allow-list for the configured API key, which rides along as
+ * a bearer token: the provider is a closed union and nothing user-supplied enters
+ * the URL, so there is no SSRF surface to guard. Adding a configurable base URL
+ * means routing these through an egress policy and keeping the key off it.
  */
 const CHAT_COMPLETIONS_URLS: Record<OpenAICompatibleProvider["provider"], string> = {
   openai: "https://api.openai.com/v1/chat/completions",

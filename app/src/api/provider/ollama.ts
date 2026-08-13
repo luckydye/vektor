@@ -12,36 +12,21 @@ import { type PartialToolCall, parseNDJSON } from "./utils.ts";
 type OllamaProvider = { provider: "ollama"; baseUrl: string; model: string };
 
 /**
- * Egress policy for a configured provider base URL.
- *
- * The base URL is space configuration, but the request it produces is made by
- * the server on behalf of *any viewer* and the upstream body is handed back
- * inside the completion — so an unchecked value is a read primitive against
- * loopback, the private ranges and the cloud metadata endpoint, not merely a
- * misconfiguration.
- *
- * Self-hosted Ollama is why this is a policy rather than a flat denylist: a
- * private base URL is the normal deployment for it. Private targets are allowed
- * only under `VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1`, the same opt-in the job runtime
- * uses for private egress, which is off by default.
+ * Egress policy for a configured provider base URL: any viewer triggers the
+ * request and gets the upstream body back in the completion, so an unchecked
+ * value is a read primitive, not a misconfiguration. Private targets need
+ * `VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1`, since self-hosted Ollama normally is one.
  */
 export const resolveProviderUrl: UrlValidator = async (rawUrl) => {
   if (config().JOB_FETCH_ALLOW_PRIVATE !== "1") return await resolvePublicUrl(rawUrl);
-  // No pinning under the hatch: its whole point is to reach names that resolve
-  // into the local network.
+  // No pinning under the hatch: its point is to reach the local network.
   return { url: parseHttpUrl(rawUrl), addresses: [] };
 };
 
 /**
- * The absolute chat URL under a configured Ollama base URL.
- *
- * `${baseUrl}/api/chat` was concatenation, not resolution, and the two differ
- * exactly where it matters. A base ending in `#` or `?` swallowed the path
- * (`http://host/#` + `/api/chat` requests `/`, with the rest in the fragment), a
- * trailing slash produced `//api/chat`, and a base carrying userinfo or a query
- * ends up in a URL no one looked at as a whole. Here only the parsed base's path
- * grows, so the URL that gets checked is the URL that gets requested — and
- * {@link safeFetch} re-validates that final URL, not the base it came from.
+ * The absolute chat URL under a configured Ollama base URL. Grows the parsed
+ * base's path so the URL that gets validated is the URL that gets requested;
+ * concatenating instead sent `http://host/#` and `http://host?` to `/`.
  */
 export function ollamaChatUrl(baseUrl: string): string {
   const url = parseHttpUrl(baseUrl.trim());
@@ -126,9 +111,8 @@ export async function callOllama(options: {
   onText?: (text: string) => void | Promise<void>;
   onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
-  // `safeFetch` with the provider policy, never a bare `fetch`: the base URL is
-  // stored configuration, so write-time validation cannot vouch for it here — the
-  // value may predate the check and the name may resolve somewhere else now.
+  // Never a bare `fetch`: a stored base URL may predate the write-time check, and
+  // its name may resolve somewhere else by now.
   const response = await safeFetch(
     ollamaChatUrl(options.provider.baseUrl),
     {

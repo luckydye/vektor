@@ -17,12 +17,8 @@ import { SsrfError } from "#utils/ssrf.ts";
 
 /**
  * Normalize a configured Ollama base URL, refusing one the server must not call.
- *
- * The stored value becomes a server-side request triggered by any viewer, with
- * the upstream body returned in the completion, so "non-empty string" was the
- * whole of the check and `http://169.254.169.254` was a valid answer. The 400
- * here is the door; {@link resolveProviderUrl} at fetch time is the lock, because
- * a stored value can predate this check and DNS can move afterwards.
+ * The 400 here is the door; {@link resolveProviderUrl} at fetch time is the lock,
+ * because a stored value can predate this check and DNS can move afterwards.
  */
 export async function normalizeOllamaBaseUrl(rawBaseUrl: unknown): Promise<string> {
   if (typeof rawBaseUrl !== "string" || !rawBaseUrl.trim()) {
