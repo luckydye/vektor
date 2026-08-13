@@ -3,8 +3,11 @@ import { one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
+import { preferenceKey, spacePreferenceNamespaces } from "#utils/spacePreferences.ts";
 
-const PROFILE_KEY = "ai_user_profile";
+// What the agent has worked out about a member: per user, and written only by
+// the agent, which is why `SYSTEM_ONLY_PREFERENCES` keeps requests off it.
+const PROFILE_KEY = preferenceKey(spacePreferenceNamespaces.ai, "user_profile");
 
 export async function getUserProfile(
   s: SpaceStore,

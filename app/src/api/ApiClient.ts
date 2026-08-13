@@ -35,7 +35,13 @@ export interface Space {
   name: string;
   slug: string;
   createdBy: string;
+  /** The space's own preferences, the same for every member. */
   preferences: Record<string, string>;
+  /**
+   * The requester's own preferences for this space — the `user:` namespace, kept
+   * in per-user rows. Written through the same `preferences` body as the space's.
+   */
+  userPreferences?: Record<string, string>;
   createdAt: Date | string;
   updatedAt: Date | string;
   userRole?: string;

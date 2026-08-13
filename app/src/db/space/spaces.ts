@@ -34,8 +34,10 @@ import {
   initializeDatabases,
 } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
+import { getUserPreferences } from "#db/space/userPreferences.ts";
 import { isInMemoryDb } from "#inMemoryDb";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
@@ -247,6 +249,23 @@ export async function listAllSpaces(): Promise<Space[]> {
  * the client caches spaces by id, so a response that omits it overwrites the
  * role the listing established and locks the user out of role-gated UI.
  */
+/**
+ * Each space with the caller's own preferences attached — the `user:` namespace,
+ * which lives in per-user rows and so is not part of the space itself.
+ *
+ * Every response carrying a `Space` sets it for the same reason it sets
+ * `userRole`: the client caches spaces by id, so a response that omits it
+ * overwrites what the last one established.
+ */
+async function withUserPreferences(spaces: Space[], userId: string): Promise<Space[]> {
+  return await Promise.all(
+    spaces.map(async (space) => ({
+      ...space,
+      userPreferences: await getUserPreferences(await openSpaceStore(space.id), userId),
+    })),
+  );
+}
+
 export async function getUserSpaceRole(
   space: Space,
   userId: string,
@@ -283,7 +302,10 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
   const allSpaces = await listAllSpaces();
 
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return allSpaces.map((s) => ({ ...s, userRole: Permission.OWNER }));
+    return withUserPreferences(
+      allSpaces.map((s) => ({ ...s, userRole: Permission.OWNER })),
+      userId,
+    );
   }
 
   const userSpaces: Space[] = [];
@@ -312,7 +334,7 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
     } catch {}
   }
 
-  return userSpaces;
+  return await withUserPreferences(userSpaces, userId);
 }
 
 export async function listPublicSpaces(): Promise<Space[]> {

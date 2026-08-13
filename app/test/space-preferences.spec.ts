@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { Permission } from "#acl/permissions.ts";
 import {
   parsePreferenceKey,
+  preferenceKey,
+  preferenceScope,
   requiredPreferenceWriteRole,
+  splitPreferencesByScope,
   validateSpacePreferences,
 } from "#utils/spacePreferences.ts";
 
@@ -77,9 +80,9 @@ describe("validateSpacePreferences", () => {
   it("refuses a key that is not spelled like one", () => {
     expect(refused({ "has space": "x" })).toContain("not a usable");
     expect(refused({ "<script>": "x" })).toContain("not a usable");
-    expect(refused({ "two:separators:here": "x" })).toContain("not a usable");
     expect(refused({ "trailing:": "x" })).toContain("not a usable");
-    expect(refused({ [`${"k".repeat(33)}`]: "x" })).toContain("not a usable");
+    expect(refused({ [`${"k".repeat(97)}`]: "x" })).toContain("not a usable");
+    expect(refused({ [`${"n".repeat(33)}:name`]: "x" })).toContain("not a usable");
   });
 
   it("stores a key the storage layer round-trips, however odd", () => {
@@ -98,6 +101,27 @@ describe("validateSpacePreferences", () => {
     expect(
       validated({ "acme:layout": "grid", "notes:sort": "created", "ai:model": "llama3" }),
     ).toEqual({ "acme:layout": "grid", "notes:sort": "created", "ai:model": "llama3" });
+  });
+
+  it("stores a member's own preference, separators in the name and all", () => {
+    // The name half keeps its own structure: one of these addresses a document.
+    expect(
+      validated({
+        "user:sidebar": "collapsed",
+        "user:email.space_muted": "true",
+        "user:email.document_muted:document_abc123": "true",
+      }),
+    ).toEqual({
+      "user:sidebar": "collapsed",
+      "user:email.space_muted": "true",
+      "user:email.document_muted:document_abc123": "true",
+    });
+  });
+
+  it("refuses a preference only the system writes", () => {
+    expect(refused({ "ai:user_profile": "knows things" })).toContain(
+      "written by the system",
+    );
   });
 
   it("stores the namespaced keys another settings page also writes", () => {
@@ -162,12 +186,53 @@ describe("parsePreferenceKey", () => {
     });
   });
 
+  it("splits on the first separator, leaving the name its own structure", () => {
+    expect(parsePreferenceKey("user:email.document_muted:document_1")).toEqual({
+      namespace: "user",
+      name: "email.document_muted:document_1",
+    });
+  });
+
   it("rejects a key that is not one", () => {
-    expect(parsePreferenceKey("a:b:c")).toBeNull();
     expect(parsePreferenceKey(":name")).toBeNull();
     expect(parsePreferenceKey("namespace:")).toBeNull();
     expect(parsePreferenceKey("")).toBeNull();
     expect(parsePreferenceKey("has space")).toBeNull();
+  });
+});
+
+describe("preferenceScope", () => {
+  it("puts the user namespace in the member's rows and the rest in the space's", () => {
+    expect(preferenceScope("user:sidebar")).toBe("user");
+    expect(preferenceScope("user:email.space_muted")).toBe("user");
+    expect(preferenceScope("brandColor")).toBe("space");
+    expect(preferenceScope("ai:model")).toBe("space");
+    expect(preferenceScope("acme:layout")).toBe("space");
+  });
+});
+
+describe("splitPreferencesByScope", () => {
+  it("splits a write into the store each half belongs to", () => {
+    expect(
+      splitPreferencesByScope({
+        brandColor: "#1e293b",
+        "user:sidebar": "collapsed",
+        "acme:layout": "grid",
+      }),
+    ).toEqual({
+      space: { brandColor: "#1e293b", "acme:layout": "grid" },
+      user: { "user:sidebar": "collapsed" },
+    });
+  });
+});
+
+describe("preferenceKey", () => {
+  it("is the only place the separator is spelled", () => {
+    expect(preferenceKey("user", "email.space_muted")).toBe("user:email.space_muted");
+    expect(parsePreferenceKey(preferenceKey("ai", "user_profile"))).toEqual({
+      namespace: "ai",
+      name: "user_profile",
+    });
   });
 });
 
@@ -191,6 +256,16 @@ describe("requiredPreferenceWriteRole", () => {
     );
   });
 
+  it("lets a member keep their own preferences at viewer", () => {
+    expect(requiredPreferenceWriteRole({ "user:sidebar": "collapsed" })).toBe(
+      Permission.VIEWER,
+    );
+    // Mixed with a space-level one, the space-level rule is the one that binds.
+    expect(
+      requiredPreferenceWriteRole({ "user:sidebar": "collapsed", brandColor: "#fff" }),
+    ).toBe(Permission.EDITOR);
+  });
+
   it("leaves an unclaimed namespace, and the rest, to write access", () => {
     expect(requiredPreferenceWriteRole({ brandColor: "#1e293b" })).toBe(
       Permission.EDITOR,
@@ -198,7 +273,10 @@ describe("requiredPreferenceWriteRole", () => {
     expect(requiredPreferenceWriteRole({ "acme:layout": "grid" })).toBe(
       Permission.EDITOR,
     );
-    expect(requiredPreferenceWriteRole(undefined)).toBe(Permission.EDITOR);
-    expect(requiredPreferenceWriteRole({})).toBe(Permission.EDITOR);
+  });
+
+  it("asks for the weakest role when nothing is being written", () => {
+    expect(requiredPreferenceWriteRole(undefined)).toBe(Permission.VIEWER);
+    expect(requiredPreferenceWriteRole({})).toBe(Permission.VIEWER);
   });
 });

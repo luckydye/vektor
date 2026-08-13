@@ -3,9 +3,18 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
+import { preferenceKey, spacePreferenceNamespaces } from "#utils/spacePreferences.ts";
 
-const DOCUMENT_EMAIL_MUTED_KEY_PREFIX = "email.document_muted:";
-const SPACE_EMAIL_MUTED_KEY = "email.space_muted";
+// Per-member preferences, so they live in the `user:` namespace of the space
+// preference store and are stored against the member's own `userId`.
+const DOCUMENT_EMAIL_MUTED_KEY_PREFIX = preferenceKey(
+  spacePreferenceNamespaces.user,
+  "email.document_muted:",
+);
+const SPACE_EMAIL_MUTED_KEY = preferenceKey(
+  spacePreferenceNamespaces.user,
+  "email.space_muted",
+);
 
 function emailMutedKey(documentId?: string): string {
   return documentId
