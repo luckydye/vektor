@@ -490,6 +490,13 @@ export function DocumentTree(props: Props) {
                   { docs: [], rootDocs: [] } as ReturnType<typeof categoryDocuments>,
                 );
 
+                const isEmpty = createMemo(
+                  () =>
+                    expandedItems().has(category().id) &&
+                    !isSlugLoading(category().slug) &&
+                    documents().rootDocs.length === 0,
+                );
+
                 return (
                   <div>
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: the drag, long-press and context-menu gestures live on the row; the button inside is the control. */}
@@ -640,6 +647,30 @@ export function DocumentTree(props: Props) {
                             />
                           )}
                         </For>
+
+                        <Show when={isEmpty()}>
+                          <div class="pl-[0.535rem]">
+                            <Show
+                              when={canManageCategories()}
+                              fallback={
+                                <p class="px-1.5 py-1 text-neutral-500 text-size-normal">
+                                  {t("No documents yet.")}
+                                </p>
+                              }
+                            >
+                              <a
+                                href={spacePath(
+                                  currentSpace()?.slug,
+                                  `/new?category=${category().slug}`,
+                                )}
+                                class="flex items-center gap-1.5 rounded-md border border-neutral-300 border-dashed px-2 py-1.5 text-neutral-500 text-size-normal transition-colors hover:border-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
+                              >
+                                <Icon class="h-3.5 w-3.5 flex-none" name="add" />
+                                <span>{t("New document")}</span>
+                              </a>
+                            </Show>
+                          </div>
+                        </Show>
                       </div>
                     </a-expandable>
                   </div>

@@ -1,0 +1,18 @@
+---
+import { SpacesApp } from "#components/SpacesApp.tsx";
+import BaseLayout from "#layouts/BaseLayout.astro";
+
+if (!Astro.locals.session) {
+  return Astro.redirect("/login");
+}
+
+const lang = Astro.preferredLocale || "en";
+---
+
+<BaseLayout title="Spaces">
+  <SpacesApp
+    client:load
+    replicaScope={Astro.locals.user?.id ? `user:${Astro.locals.user.id}` : "public"}
+    lang={lang}
+  />
+</BaseLayout>

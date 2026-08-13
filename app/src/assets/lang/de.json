@@ -405,5 +405,11 @@
   "Lay out numbers and records in rows and columns.": "Zahlen und Datensätze in Zeilen und Spalten anordnen.",
   "Start from a template": "Mit einer Vorlage beginnen",
   "Failed to insert the template": "Vorlage konnte nicht eingefügt werden",
-  "Template": "Vorlage"
+  "Template": "Vorlage",
+  "Spaces": "Spaces",
+  "All spaces": "Alle Spaces",
+  "Pinned": "Angeheftet",
+  "Pin space": "Space anheften",
+  "Unpin space": "Space lösen",
+  "You are not a member of any space yet.": "Du bist noch in keinem Space Mitglied."
 }

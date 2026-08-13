@@ -1,11 +1,13 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { canAccessSettings, canEdit } from "#acl/permissions.ts";
+import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
 import { spacePath } from "#utils/utils.ts";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
@@ -19,6 +21,7 @@ export function Navigation() {
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
   const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
+  const { pinnedSpaceIds } = usePinnedSpaces();
 
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
   const [extensionMenuLinks, setExtensionMenuLinks] = createSignal<
@@ -47,7 +50,18 @@ export function Navigation() {
       members: space.memberCount,
       color: space.preferences?.brandColor,
       logoSvg: space.preferences?.logoSvg,
+      pinned: pinnedSpaceIds().has(space.id),
     })),
+  );
+
+  const selectorSpaces = createMemo(() =>
+    spaceSelectorSlots(uiSpaces(), pinnedSpaceIds()),
+  );
+
+  // Looked up separately: an unpinned current space can fall outside the listed
+  // ones, and the trigger still has to name it.
+  const currentUiSpace = createMemo(
+    () => uiSpaces().find((space) => space.id === currentSpace()?.id) ?? null,
   );
 
   const userCanAccessSettings = createMemo(
@@ -102,8 +116,9 @@ export function Navigation() {
           }}
         />
         <SpaceSelector
-          spaces={uiSpaces()}
-          value={currentSpace()?.id}
+          spaces={selectorSpaces()}
+          current={currentUiSpace()}
+          allSpacesHref="/spaces"
           canCreateDocs={userCanEdit()}
           loading={isLoading()}
           onSelect={(space) => {

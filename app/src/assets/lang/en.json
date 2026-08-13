@@ -409,5 +409,11 @@
   "Lay out numbers and records in rows and columns.": "Lay out numbers and records in rows and columns.",
   "Start from a template": "Start from a template",
   "Failed to insert the template": "Failed to insert the template",
-  "Template": "Template"
+  "Template": "Template",
+  "Spaces": "Spaces",
+  "All spaces": "All spaces",
+  "Pinned": "Pinned",
+  "Pin space": "Pin space",
+  "Unpin space": "Unpin space",
+  "You are not a member of any space yet.": "You are not a member of any space yet."
 }

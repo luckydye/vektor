@@ -264,6 +264,34 @@ details[open] .details-chevron {
   background-color: rgba(254, 242, 242, 0.4);
 }
 
+/**
+ * The app's wordmark ships as two monochrome silhouettes rather than one tinted
+ * asset, so the theme picks a file instead of a colour. Both axes are covered
+ * here — unlike the docs header, the app has an explicit theme toggle sitting on
+ * top of the OS preference.
+ */
+.app-logo-mark-light {
+  display: block;
+}
+.app-logo-mark-dark {
+  display: none;
+}
+:root[data-theme="dark"] .app-logo-mark-light {
+  display: none;
+}
+:root[data-theme="dark"] .app-logo-mark-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-logo-mark-light {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .app-logo-mark-dark {
+    display: block;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   .markdown-content pre {
     background: var(--color-neutral-200);

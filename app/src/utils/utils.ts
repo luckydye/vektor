@@ -1,3 +1,5 @@
+import { t } from "#utils/lang.ts";
+
 /** Inverse of `slugify` for display: "my-extension" → "My Extension". */
 export function kebabToTitle(kebab: string): string {
   return kebab
@@ -38,6 +40,12 @@ export function detectAppType(
 export function spacePath(spaceSlug: string | null | undefined, path: string): string {
   if (!spaceSlug) return path;
   return `/${spaceSlug}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** A space's member count as a label: "1 Member", "12 Members". */
+export function memberCountLabel(count: number | undefined): string {
+  const members = count ?? 0;
+  return `${members} ${members === 1 ? t("Member") : t("Members")}`;
 }
 
 /** Byte count as a short human label: "812 B", "3.4 KB", "1.2 MB". */
