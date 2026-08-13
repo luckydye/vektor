@@ -1,9 +1,7 @@
 /**
- * The endpoints that apply the slug rules: document creation must never refuse a
- * title, and space creation and update must refuse a slug that cannot be reached
- * or that another space already owns.
- *
- * The rules themselves are pinned in `slugs.spec.ts`.
+ * The endpoints applying the slug rules: creation must never refuse a document
+ * title, and must refuse a space slug that cannot be reached or is already
+ * owned. The rules themselves are pinned in `slugs.spec.ts`.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -65,8 +63,8 @@ afterAll(() => {
 });
 
 describe("document creation with a non-Latin title", () => {
-  // Every one of these used to be a 400 "Title must contain at least one letter
-  // or number", which locked non-Latin-script users out of creating documents.
+  // Each of these used to be a 400, which locked non-Latin-script users out of
+  // creating documents at all.
   const titles = ["日本語のドキュメント", "Привет мир", "مرحبا", "한국어", "Ελλάδα"];
 
   for (const title of titles) {
@@ -94,9 +92,8 @@ describe("document creation with a non-Latin title", () => {
   });
 
   it("takes a readable slug once the title becomes one the URL can carry", async () => {
-    // A generated slug names the document no better than "untitled-document"
-    // does, so the first title that slugifies has to replace it — otherwise a
-    // document first named in Japanese keeps `document-1a2b3c4d` for good.
+    // Otherwise a document first named in Japanese keeps `document-1a2b3c4d`
+    // for good, while one created untitled gets a readable slug.
     const created = (await (await createDocument("会議のメモ")).json()).document;
     expect(created.slug).toMatch(/^document-[0-9a-f]{8}$/);
 
@@ -157,8 +154,8 @@ describe("space creation", () => {
   });
 
   it("rejects the reserved names no slug could spell anyway", async () => {
-    // `_astro`, `.well-known` and `favicon.ico` are refused as malformed before
-    // the reserved list is consulted; they are listed there for completeness.
+    // Refused as malformed before the reserved list is consulted; they are
+    // listed there for completeness.
     for (const slug of ["_astro", ".well-known", "favicon.ico"]) {
       expect((await createSpace("Reserved", slug)).status).toBe(400);
     }

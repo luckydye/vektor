@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on, onMount, Show } from "solid-js";
 import { api } from "#api/client.ts";
-import { slugify, spaceSlugRejection } from "#utils/utils.ts";
+import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -56,8 +56,8 @@ export function FirstSpacePrompt() {
   async function handleCreateSpace() {
     if (!spaceName().trim() || !spaceSlug().trim()) return;
 
-    // Same rule set the create endpoint applies, so a reserved slug like "docs"
-    // is refused here with the reason rather than after a round trip.
+    // The endpoint's own rule set, so "docs" is refused with the reason here
+    // rather than after a round trip.
     const slugRejection = spaceSlugRejection(spaceSlug());
     if (slugRejection) {
       setError(slugRejection);

@@ -38,8 +38,8 @@ import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/utils.ts";
 
 const DATA_DIR = "./data";
 const DELETED_DIR = join(DATA_DIR, "deleted");
@@ -68,12 +68,9 @@ export class SpaceSlugTakenError extends Error {
 }
 
 /**
- * Whether a write failed on the partial unique index over active space slugs
- * (`space_index_active_slug_unique`, created in `prepareAuthDb`).
- *
- * The database is the authority on slug uniqueness; the pre-checks below only
- * exist to turn the common case into a clear message instead of a constraint
- * error. This maps the race that slips past them onto the same failure.
+ * The database is the authority on slug uniqueness; the pre-check below only
+ * turns the common case into a readable message. This maps the race that slips
+ * past it onto the same failure.
  */
 function isSlugUniqueViolation(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -84,11 +81,9 @@ function isSlugUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * The single place a caller-supplied space slug becomes a stored one.
- *
- * Both `createSpace` and `updateSpace` go through it, so they cannot drift apart
- * again — creation used to sanitize silently while the update endpoint stored
- * whatever it was handed, including a slug another space already owned.
+ * The single place a caller-supplied space slug becomes a stored one, so create
+ * and update cannot drift apart again — creation used to sanitize silently while
+ * update stored whatever it was handed.
  */
 async function resolveSpaceSlug(input: string, spaceId?: string): Promise<string> {
   const rejection = spaceSlugRejection(input);
@@ -354,8 +349,8 @@ export async function updateSpace(
     return null;
   }
 
-  // Validated only when it changes: a space that predates the reserved-slug
-  // rules keeps its slug, so renaming it stays possible.
+  // Only when it changes, so a space that predates these rules can still be
+  // renamed.
   if (slug !== existing.slug) {
     slug = await resolveSpaceSlug(slug, id);
   }

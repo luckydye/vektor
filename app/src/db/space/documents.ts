@@ -26,7 +26,7 @@ import {
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
-import { isReservedDocumentSlug, slugify } from "#utils/utils.ts";
+import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { decompressHtml } from "./revisions.ts";
@@ -59,14 +59,11 @@ export async function generateUniqueSlug(
   baseTitle: string,
   excludeDocumentId?: string,
 ): Promise<string> {
-  // Every script without an ASCII fold (CJK, Cyrillic, Arabic, Hebrew, Greek,
-  // Thai, …) and every symbol- or emoji-only title slugifies to "". Such a title
-  // is ordinary user input, so the document is created under a generated slug
-  // rather than refused — the title itself is stored intact as a property, and
-  // the slug stays replaceable by the first title the URL can carry.
+  // A title in a script with no ASCII fold is ordinary user input, so it gets a
+  // generated slug rather than a refusal — replaceable by the first title the
+  // URL can carry, see `isPlaceholderDocumentSlug`.
   const baseSlug = slugify(baseTitle) || fallbackDocumentSlug(createId("document"));
 
-  // Get all existing slugs in the space
   const allDocs = await many(
     s.db.select({ id: document.id, slug: document.slug }).from(document),
   );
@@ -77,12 +74,10 @@ export async function generateUniqueSlug(
   const isTaken = (candidate: string) =>
     existingSlugs.has(candidate) || isReservedDocumentSlug(candidate);
 
-  // If the base slug is available, use it
   if (!isTaken(baseSlug)) {
     return baseSlug;
   }
 
-  // Otherwise, append a counter to make it unique
   let counter = 1;
   let slug = `${baseSlug}-${counter}`;
 

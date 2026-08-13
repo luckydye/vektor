@@ -58,10 +58,9 @@ describe("auth database schema", () => {
 
 /**
  * Two active spaces on one slug hide one of them for good, so the database is
- * what enforces uniqueness — the checks in `resolveSpaceSlug` are only there to
- * produce a readable message. The index has existed for as long as the table
- * has, which is why no migration pulls colliding rows apart: they were never
- * storable.
+ * what enforces uniqueness and `resolveSpaceSlug` only supplies the message.
+ * The index is as old as the table, so no migration pulls colliding rows apart:
+ * they were never storable.
  */
 describe("active space slug uniqueness", () => {
   function activeSpaceRow(index: number, slug: string) {

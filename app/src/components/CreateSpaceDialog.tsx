@@ -1,5 +1,5 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
-import { slugify, spaceSlugRejection } from "#utils/utils.ts";
+import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
@@ -81,8 +81,8 @@ export function CreateSpaceDialog(props: Props) {
 
     if (!name().trim()) return setFormError("Please enter a space name");
     if (!slug().trim()) return setFormError("Please enter a slug");
-    // Same rule set the create endpoint applies, so a reserved slug like "docs"
-    // is refused here with the reason rather than after a round trip.
+    // The endpoint's own rule set, so "docs" is refused with the reason here
+    // rather than after a round trip.
     const slugRejection = spaceSlugRejection(slug());
     if (slugRejection) return setFormError(slugRejection);
     if (!isValidHexColor(brandColor())) {

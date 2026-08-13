@@ -15,7 +15,7 @@ import {
   serializePropertyValue,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
-import { slugify } from "#utils/utils.ts";
+import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { generateUniqueSlug } from "./documents.ts";
 import { nonArchivedDocumentCondition, scheduleDocumentSearchRefresh } from "./search.ts";
@@ -55,9 +55,8 @@ async function resolveRenamedSlug(
       .where(eq(document.id, documentId)),
   );
   if (!current || !isPlaceholderDocumentSlug(current.slug)) return undefined;
-  // An unsluggable title still renames the document; only the derived slug
-  // cannot follow, so the placeholder stays where it was rather than being
-  // replaced by a generated one that names the document no better.
+  // The rename still happens; only the derived slug cannot follow, so the
+  // placeholder stays rather than becoming a no-better generated slug.
   if (!slugify(titleUpdate.value)) return undefined;
 
   return generateUniqueSlug(s, titleUpdate.value, documentId);

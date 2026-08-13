@@ -1,10 +1,7 @@
 /**
- * The slug rules, tested without a server.
- *
- * `slugs-api.spec.ts` covers the endpoints that apply them; this file pins the
- * rules themselves, including the one guard that cannot live in the source: that
- * a new top-level route in `src/pages/` or a new file in `public/` has been added
- * to `reservedSpaceSlugs`, so it cannot silently start shadowing a space.
+ * The slug rules themselves; `slugs-api.spec.ts` covers the endpoints applying
+ * them. Includes the one guard that cannot live in the source: that a route or
+ * asset the app owns has been added to `reservedSpaceSlugs`.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -16,7 +13,7 @@ import {
   reservedSpaceSlugs,
   slugify,
   spaceSlugRejection,
-} from "#utils/utils.ts";
+} from "#utils/slug.ts";
 
 // The runner's cwd is `app/`, see test/helpers/server.ts.
 const PAGES_DIR = path.resolve("src/pages");
@@ -46,8 +43,7 @@ describe("slugify", () => {
   });
 
   it("returns an empty slug for scripts with no ASCII fold", () => {
-    // Empty is a legitimate answer, not an error: the caller substitutes a
-    // generated slug rather than refusing the write.
+    // Empty is a legitimate answer, not an error.
     for (const title of [
       "日本語のドキュメント",
       "Привет мир",
@@ -62,8 +58,6 @@ describe("slugify", () => {
   });
 
   it("no longer suffixes reserved names itself", () => {
-    // Reserved names are the caller's business — a document slug and a space
-    // slug compete with different routes.
     expect(slugify("new")).toBe("new");
     expect(slugify("Docs")).toBe("docs");
   });
@@ -88,11 +82,8 @@ describe("reservedSpaceSlugs", () => {
     expect(isReservedSpaceSlug("docs-team")).toBe(false);
   });
 
-  /**
-   * The list cannot be derived at runtime — a compiled binary has no
-   * `src/pages/` — so this is what keeps it honest. A new top-level page or
-   * public asset fails here until it is reserved.
-   */
+  // The list cannot be derived at runtime — a compiled binary has no
+  // `src/pages/` — so this is what keeps it honest.
   it("covers every top-level route in src/pages", () => {
     const routes = readdirSync(PAGES_DIR, { withFileTypes: true })
       .map((entry) =>
@@ -107,11 +98,8 @@ describe("reservedSpaceSlugs", () => {
     }
   });
 
-  /**
-   * `src/pages/` is only half of it: Hono answers its own routes before the
-   * Astro fallback, which runs on a 404 only, so a space on `metrics` serves
-   * Prometheus output at its root and no page file records that.
-   */
+  // `src/pages/` is only half of it: a space on `metrics` serves Prometheus
+  // output at its root, and no page file records that route.
   it("covers every top-level route src/server.ts registers", () => {
     const routes = [
       ...readFileSync(SERVER_FILE, "utf8").matchAll(
@@ -151,8 +139,8 @@ describe("spaceSlugRejection", () => {
   });
 
   it("names the slug it would have stored", () => {
-    // The rule alone does not explain these: both hold nothing but lowercase
-    // letters and hyphens, which is exactly what the form's own hint asks for.
+    // Both hold nothing but lowercase letters and hyphens, which is what the
+    // form's own hint asks for.
     expect(spaceSlugRejection("my-team-")).toMatch(/try "my-team"/);
     expect(spaceSlugRejection("my--team")).toMatch(/try "my-team"/);
     expect(spaceSlugRejection("Café Wien")).toMatch(/try "cafe-wien"/);
@@ -165,8 +153,8 @@ describe("spaceSlugRejection", () => {
   });
 
   it("rejects a reserved slug by name", () => {
-    // Named in the message: the point is that the user learns why, instead of
-    // ending up in a space silently called "docs-1".
+    // Named, so the user learns why instead of landing in a space called
+    // "docs-1".
     expect(spaceSlugRejection("docs")).toMatch(/"docs" is reserved/);
     expect(spaceSlugRejection("login")).toMatch(/reserved/);
     expect(spaceSlugRejection("api")).toMatch(/reserved/);
@@ -182,8 +170,7 @@ describe("isPlaceholderDocumentSlug", () => {
     expect(isPlaceholderDocumentSlug(fallbackDocumentSlug("doc_ffff1a2b3c4d"))).toBe(
       true,
     );
-    // A UUID tail is hex, so it can be all digits, and it can carry the
-    // generator's own uniquifier.
+    // A UUID tail is hex, so it can be all digits.
     expect(isPlaceholderDocumentSlug("document-12345678")).toBe(true);
     expect(isPlaceholderDocumentSlug("document-1a2b3c4d-2")).toBe(true);
   });

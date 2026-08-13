@@ -415,14 +415,9 @@ export function calDavBadRequest(message: string): Response {
 }
 
 /**
- * The API routes' error handling, in the form a calendar client can read.
- *
- * The CalDAV handlers used to be bare `async (context) => …`, so a validation
- * error thrown by the document layer left the router unhandled and reached the
- * client as a generic 500 — which a syncing calendar can only retry, and which
- * leaks whatever the exception happened to say. Known validation failures become
- * a plain-text 4xx; anything else stays a logged 500, exactly as under
- * `withApiErrorHandling` elsewhere.
+ * The API routes' error handling, in the form a calendar client can read: a
+ * plain-text 4xx it can act on rather than a JSON 500 it can only retry, and
+ * which leaks whatever the exception happened to say.
  */
 export function withCalDavErrorHandling(
   handler: () => Promise<Response> | Response,

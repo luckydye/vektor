@@ -606,10 +606,9 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     if (!metadata) continue;
     const space = metadata;
 
-    // One space that cannot be indexed must not take the process with it:
     // `initializeDatabases` caches its promise, so a throw here would reject
-    // every later database call for the lifetime of the process. Two space files
-    // claiming one slug is the way this happens — the index refuses the second.
+    // every later database call for the life of the process. Two space files
+    // claiming one slug is how that happens: the index refuses the second.
     await indexLocalSpace(location, space).catch((error: unknown) =>
       appLogger.error("Failed to index a local space", {
         spaceId: space.id,
