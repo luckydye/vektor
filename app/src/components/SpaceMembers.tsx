@@ -1,5 +1,10 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
-import { isOwner, Permission, permissionLevel } from "#acl/permissions.ts";
+import {
+  highestPermission,
+  isOwner,
+  Permission,
+  permissionLevel,
+} from "#acl/permissions.ts";
 import type {
   Category,
   DocumentWithProperties,
@@ -33,12 +38,9 @@ function getRoleBadgeClass(role: string): string {
 }
 
 function getHighestRole(grants: PermissionEntry[]): string {
-  return grants.reduce(
-    (highest, grant) =>
-      permissionLevel(grant.permission.permission) > permissionLevel(highest)
-        ? grant.permission.permission
-        : highest,
-    Permission.VIEWER as string,
+  return (
+    highestPermission(grants.map((grant) => grant.permission.permission)) ??
+    Permission.VIEWER
   );
 }
 

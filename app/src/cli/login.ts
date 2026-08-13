@@ -24,6 +24,24 @@ interface CliTokenResult {
   expiresAt?: string;
 }
 
+/**
+ * What the approval page's error codes mean in terms the user can act on. The
+ * bare code says nothing about the fix, and `no_space_roles` in particular looks
+ * like a bug from a browser that is happily showing the user several spaces.
+ */
+const LOGIN_ERRORS: Record<string, string> = {
+  access_denied: "Access was canceled in the browser.",
+  no_spaces: "You have no spaces yet. Create one in the web app, then log in again.",
+  no_space_roles:
+    "None of your spaces grant you a space-wide role — the spaces you can see are " +
+    "shared with you per document. A CLI token is space-wide, so ask a space owner " +
+    "for viewer or editor access on the space itself.",
+};
+
+export function loginErrorMessage(code: string): string {
+  return LOGIN_ERRORS[code] ?? `Login failed: ${code}`;
+}
+
 export async function commandLogin(): Promise<void> {
   const host = resolveHost().replace(/\/$/, "");
 
@@ -49,10 +67,10 @@ export async function commandLogin(): Promise<void> {
 
       const error = url.searchParams.get("error");
       if (error) {
-        rejectCallback(new Error(`Login failed: ${error}`));
+        rejectCallback(new Error(loginErrorMessage(error)));
         return htmlResponse({
           title: "Login failed",
-          message: "The CLI did not receive access. You can close this tab.",
+          message: `${loginErrorMessage(error)} You can close this tab.`,
           kind: "error",
         });
       }

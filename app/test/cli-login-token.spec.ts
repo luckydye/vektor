@@ -57,14 +57,19 @@ async function createSpace(user: User, name: string): Promise<string> {
   return (await response.json()).space.id;
 }
 
-async function grant(options: {
+interface RoleGrant {
   role: string;
-  userId: string;
+  userId?: string;
+  groupId?: string;
   resourceType?: string;
   resourceId?: string;
-}): Promise<void> {
+  /** Defaults to the shared `spaceId`. */
+  space?: string;
+}
+
+async function setRole(action: "grant" | "revoke", options: RoleGrant): Promise<void> {
   const response = await apiRequest(
-    `/api/v1/spaces/${spaceId}/permissions`,
+    `/api/v1/spaces/${options.space ?? spaceId}/permissions`,
     owner.token,
     {
       method: "POST",
@@ -72,31 +77,18 @@ async function grant(options: {
         type: "role",
         roleOrFeature: options.role,
         userId: options.userId,
+        groupId: options.groupId,
         resourceType: options.resourceType,
         resourceId: options.resourceId,
-        action: "grant",
+        action,
       }),
     },
   );
   expect([200, 201]).toContain(response.status);
 }
 
-async function revokeSpaceRole(role: string, userId: string): Promise<void> {
-  const response = await apiRequest(
-    `/api/v1/spaces/${spaceId}/permissions`,
-    owner.token,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        type: "role",
-        roleOrFeature: role,
-        userId,
-        action: "revoke",
-      }),
-    },
-  );
-  expect(response.status).toBe(200);
-}
+const grant = (options: RoleGrant) => setRole("grant", options);
+const revoke = (options: RoleGrant) => setRole("revoke", options);
 
 // ---------------------------------------------------------------------------
 // The CLI flow, driven exactly as a browser drives it
@@ -282,12 +274,42 @@ describe("CLI login mints a token at the user's actual role", () => {
     expect(cli.permission).toBe("owner");
   });
 
+  it("resolves the strongest of several grants, not the first one found", async () => {
+    // A user can hold a space role directly and inherit a stronger one from a
+    // group. Reporting the direct grant would hand the CLI a token weaker than
+    // the access the same user has in the browser.
+    const mixedSpaceId = await createSpace(owner, "cli-token-mixed-roles");
+    const member = await createUser("CLI Mixed Roles");
+    await grant({ role: "viewer", userId: member.id, space: mixedSpaceId });
+    // `public` is the one group every test user is in. It has to come back off
+    // again: later specs assert on what a user with no role can reach, and a
+    // lingering public role would make every user a member of this space.
+    await grant({ role: "editor", groupId: "public", space: mixedSpaceId });
+
+    try {
+      const cli = await cliLogin(member, mixedSpaceId);
+      expect(cli.permission).toBe("editor");
+
+      const write = await tokenRequest(
+        `/api/v1/spaces/${mixedSpaceId}/documents`,
+        cli.token,
+        {
+          method: "POST",
+          body: JSON.stringify({ content: "<p>via group role</p>" }),
+        },
+      );
+      expect(write.status).toBe(201);
+    } finally {
+      await revoke({ role: "editor", groupId: "public", space: mixedSpaceId });
+    }
+  });
+
   it("re-resolves the role at exchange time, refusing a role revoked after approval", async () => {
     const temporary = await createUser("CLI Temporary Editor");
     await grant({ role: "editor", userId: temporary.id });
 
     const code = await approvalCode(temporary, spaceId);
-    await revokeSpaceRole("editor", temporary.id);
+    await revoke({ role: "editor", userId: temporary.id });
 
     const response = await exchange(code);
     expect(response.status).toBe(403);
@@ -312,6 +334,66 @@ describe("CLI login and resource-scoped grantees", () => {
     const response = await exchange(code);
     expect(response.status).toBe(200);
     expect((await response.json()).permission).toBe("owner");
+  });
+});
+
+describe("CLI login says why no space is on offer", () => {
+  it("reports no_spaces when the user cannot reach any space", async () => {
+    const stranger = await createUser("CLI Stranger");
+
+    const response = await requestApprovalPage(stranger);
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toContain("error=no_spaces");
+  });
+
+  it("reports no_space_roles when every space they see is a document share", async () => {
+    const shareOnly = await createUser("CLI Share Only");
+    await grant({
+      role: "viewer",
+      userId: shareOnly.id,
+      resourceType: "document",
+      resourceId: documentId,
+    });
+
+    const response = await requestApprovalPage(shareOnly);
+    expect(response.status).toBe(302);
+    // Not `no_spaces`: their browser lists a space, so that code reads as a bug.
+    expect(response.headers.get("location")).toContain("error=no_space_roles");
+  });
+
+  it("reports no_space_roles on approval when the role went away mid-flow", async () => {
+    const demoted = await createUser("CLI Demoted");
+    await grant({ role: "editor", userId: demoted.id });
+    await grant({
+      role: "viewer",
+      userId: demoted.id,
+      resourceType: "document",
+      resourceId: documentId,
+    });
+
+    const { approval } = await approvalTokenFor(demoted);
+    await revoke({ role: "editor", userId: demoted.id });
+
+    const response = await fetch(`${BASE_URL}/api/v1/auth/cli`, {
+      method: "POST",
+      headers: {
+        Cookie: `vektor.session_token=${demoted.token}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        redirect_uri: REDIRECT_URI,
+        state: STATE,
+        approval,
+        intent: "allow",
+        spaceId,
+      }).toString(),
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("error=no_space_roles");
+    expect(html).toContain("No space-wide role");
   });
 });
 

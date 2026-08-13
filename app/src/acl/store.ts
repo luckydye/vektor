@@ -11,6 +11,7 @@ import {
   permissionsAtLeast,
   ResourceType,
   resolveFeature,
+  strongestGrant,
 } from "#acl/permissions.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
@@ -365,15 +366,7 @@ export async function getPermission(
 ): Promise<AclEntry | null> {
   const db = await getSpaceDb(spaceId);
 
-  const allPermissions: Array<{
-    resourceType: string;
-    resourceId: string;
-    userId: string | null;
-    groupId: string | null;
-    permission: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }> = [];
+  const allPermissions: AclRow[] = [];
 
   // Get user-specific permission
   const userResult = await one(
@@ -414,39 +407,13 @@ export async function getPermission(
   );
 
   allPermissions.push(...groupResults);
-
-  // If no permissions found, return null
-  if (allPermissions.length === 0) {
-    return null;
-  }
-
-  // Return the highest permission level from all applicable permissions
-  const sortedResults = allPermissions.sort((a, b) => {
-    const levelA = permissionLevel(a.permission);
-    const levelB = permissionLevel(b.permission);
-    return levelB - levelA;
-  });
-
-  const result = sortedResults[0];
-  return {
-    resourceType: result.resourceType,
-    resourceId: result.resourceId,
-    userId: result.userId || undefined,
-    groupId: result.groupId || undefined,
-    permission: result.permission,
-    createdAt: new Date(result.createdAt),
-    updatedAt: new Date(result.updatedAt),
-  };
+  return bestAclEntry(allPermissions);
 }
 
+/** The strongest of these ACL rows, as an entry. Null when there are none. */
 function bestAclEntry(rows: Array<AclRow | AclEntry>): AclEntry | null {
-  if (rows.length === 0) return null;
-
-  const result = rows.sort((a, b) => {
-    const levelA = permissionLevel(a.permission);
-    const levelB = permissionLevel(b.permission);
-    return levelB - levelA;
-  })[0];
+  const result = strongestGrant(rows, (row) => row.permission);
+  if (!result) return null;
 
   return {
     resourceType: result.resourceType,
@@ -746,16 +713,11 @@ export async function listDocumentAccess(
 
   return [...grantees.values()].map(({ userId, groupId, grants }) => {
     // Mirrors hasPermission: the strongest grant wins, space role included, so
-    // a narrower grant never reads as a downgrade of it.
-    const via = bestGrant(grants);
+    // a narrower grant never reads as a downgrade of it. Every grantee here was
+    // built from at least one row.
+    const via = strongestGrant(grants, (grant) => grant.permission) ?? grants[0];
     return { userId, groupId, permission: via.permission, via, grants };
   });
-}
-
-function bestGrant(grants: DocumentAccessGrant[]): DocumentAccessGrant {
-  return grants.reduce((best, grant) =>
-    permissionLevel(grant.permission) > permissionLevel(best.permission) ? grant : best,
-  );
 }
 
 /** Page titles and category names for the resources these grants sit on. */

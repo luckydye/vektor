@@ -8,6 +8,7 @@ import {
   canViewAudit,
   canViewHistory,
   Feature,
+  highestPermission,
   isOwner,
   meetsPermissionLevel,
   Permission,
@@ -123,6 +124,28 @@ describe("Permission Utilities", () => {
       expect(meetsPermissionLevel(Permission.VIEWER, Permission.OWNER)).toBe(false);
       expect(meetsPermissionLevel(Permission.VIEWER, Permission.EDITOR)).toBe(false);
       expect(meetsPermissionLevel(Permission.VIEWER, Permission.VIEWER)).toBe(true);
+    });
+  });
+
+  describe("highestPermission", () => {
+    it("picks the strongest grant regardless of order", () => {
+      expect(highestPermission([Permission.VIEWER, Permission.EDITOR])).toBe(
+        Permission.EDITOR,
+      );
+      expect(highestPermission([Permission.OWNER, Permission.VIEWER])).toBe(
+        Permission.OWNER,
+      );
+    });
+
+    it("ignores values that are not roles", () => {
+      expect(highestPermission(["comment", undefined, Permission.VIEWER])).toBe(
+        Permission.VIEWER,
+      );
+    });
+
+    it("returns undefined when there is no role to report", () => {
+      expect(highestPermission([])).toBeUndefined();
+      expect(highestPermission([undefined, "admin"])).toBeUndefined();
     });
   });
 

@@ -8,6 +8,7 @@ import {
   commandCategoryRm,
 } from "#cli/category.ts";
 import { commandCreate, commandSet } from "#cli/document.ts";
+import { loginErrorMessage } from "#cli/login.ts";
 import { commandUploadFile, toAbsoluteUrl } from "#cli/upload.ts";
 
 const HOST = "https://vektor.example.com";
@@ -496,5 +497,17 @@ describe("commandSet", () => {
     await captureStdout(() => commandSet(DOC_ID, [], { parent: "-" }));
 
     expect(body.parentId).toBeNull();
+  });
+});
+
+describe("loginErrorMessage", () => {
+  test("explains what a document-only grantee has to do", () => {
+    const message = loginErrorMessage("no_space_roles");
+    expect(message).toContain("space-wide");
+    expect(message).not.toContain("no_space_roles");
+  });
+
+  test("falls back to the raw code for anything unrecognised", () => {
+    expect(loginErrorMessage("server_exploded")).toContain("server_exploded");
   });
 });
