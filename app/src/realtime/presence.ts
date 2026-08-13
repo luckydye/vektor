@@ -138,6 +138,12 @@ export class PresenceConnection {
 
   private leave(leave: PresenceLeavePayload): void {
     const roomKey = `${this.spaceId}:${leave.room}`;
+    // Same rule as update(): only entries this connection created. Otherwise
+    // any client can evict anyone's presence from any room by naming it.
+    if (!this.joinedRooms.get(roomKey)?.has(leave.clientId)) {
+      return;
+    }
+
     const room = yRooms.get(roomKey);
     if (!room) {
       return;

@@ -7,11 +7,15 @@ import {
   wsDecodeJson,
   wsDecodeYjsUpdate,
   wsEncode,
+  wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
 import {
   createApiRequest,
+  createSessionApiRequest,
+  createTestUser,
   startTestServer,
   type TestServerProcess,
+  type TestUserSession,
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
@@ -21,6 +25,7 @@ const AUTH_PORT = 7487;
 const BASE_URL = testBaseUrl(PORT);
 const AUTH_BASE_URL = testBaseUrl(AUTH_PORT);
 const apiRequest = createApiRequest(BASE_URL);
+const authApiRequest = createSessionApiRequest(AUTH_BASE_URL);
 
 interface ReceivedFrame {
   type: WsMsgType;
@@ -42,8 +47,19 @@ function websocketUrl(baseUrl: string, spaceId: string): string {
   return `${baseUrl.replace("http", "ws")}/events/${spaceId}`;
 }
 
-function connectWebSocket(baseUrl: string, spaceId: string): Promise<SocketFrames> {
-  const socket = new WebSocket(websocketUrl(baseUrl, spaceId));
+function connectWebSocket(
+  baseUrl: string,
+  spaceId: string,
+  sessionToken?: string,
+): Promise<SocketFrames> {
+  const url = websocketUrl(baseUrl, spaceId);
+  // Bun's WebSocket takes request headers, which is the only way to hand the
+  // handshake a session cookie.
+  const socket = sessionToken
+    ? new WebSocket(url, {
+        headers: { Cookie: `vektor.session_token=${sessionToken}` },
+      })
+    : new WebSocket(url);
   socket.binaryType = "arraybuffer";
 
   const frames: ReceivedFrame[] = [];
@@ -483,4 +499,354 @@ describe("Realtime WebSocket", () => {
     expect(error.message).toBe("Unauthorized");
     await waitForClose(connection.socket);
   });
+});
+
+/**
+ * Sharing one document with a non-member has to work in the live editor, not
+ * only over HTTP: the connection may not demand a space role, while everything
+ * behind it is still authorized against its own resource.
+ */
+describe("Realtime WebSocket document-level grants", () => {
+  /** A save here kicks off embedding work that can stall a frame past 5s. */
+  const FRAME_TIMEOUT_MS = 20_000;
+  const TEST_TIMEOUT_MS = 60_000;
+
+  let owner: TestUserSession;
+  let documentViewer: TestUserSession;
+  let documentEditor: TestUserSession;
+  let outsider: TestUserSession;
+  let spaceId: string;
+  let sharedDocumentId: string;
+  let privateDocumentId: string;
+  let editableDocumentId: string;
+
+  async function createOwnedDocument(title: string, content: string): Promise<string> {
+    const response = await authApiRequest(
+      `/api/v1/spaces/${spaceId}/documents`,
+      owner.token,
+      { method: "POST", body: JSON.stringify({ content, properties: { title } }) },
+    );
+    expect(response.status).toBe(201);
+    return (await response.json()).document.id;
+  }
+
+  async function grantDocumentRole(
+    userId: string,
+    documentId: string,
+    role: "viewer" | "editor",
+  ): Promise<void> {
+    const response = await authApiRequest(
+      `/api/v1/spaces/${spaceId}/permissions`,
+      owner.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: role,
+          userId,
+          resourceType: "document",
+          resourceId: documentId,
+          action: "grant",
+        }),
+      },
+    );
+    expect([200, 201]).toContain(response.status);
+  }
+
+  async function readContent(documentId: string, query = ""): Promise<string> {
+    const response = await authApiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${documentId}${query}`,
+      owner.token,
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).document.content;
+  }
+
+  /** Joins `documentId` and returns a client doc holding the room state. */
+  async function joinRoom(connection: SocketFrames, documentId: string): Promise<Y.Doc> {
+    connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    const state = wsDecodeYjsUpdate(
+      await connection.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
+    );
+    const clientDoc = new Y.Doc();
+    Y.applyUpdate(clientDoc, state.update, "remote");
+    return clientDoc;
+  }
+
+  function appendParagraph(clientDoc: Y.Doc, text: string): Uint8Array {
+    const stateBefore = Y.encodeStateVector(clientDoc);
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText(text)]);
+    clientDoc.getXmlFragment("default").push([paragraph]);
+    return Y.encodeStateAsUpdate(clientDoc, stateBefore);
+  }
+
+  beforeAll(async () => {
+    owner = await createTestUser(AUTH_BASE_URL, "Share Owner", "realtime-share-owner");
+    documentViewer = await createTestUser(
+      AUTH_BASE_URL,
+      "Document Viewer",
+      "realtime-share-viewer",
+    );
+    documentEditor = await createTestUser(
+      AUTH_BASE_URL,
+      "Document Editor",
+      "realtime-share-editor",
+    );
+    outsider = await createTestUser(AUTH_BASE_URL, "Outsider", "realtime-share-outsider");
+
+    const spaceResponse = await authApiRequest("/api/v1/spaces", owner.token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Realtime Sharing Space",
+        slug: `realtime-sharing-${Date.now()}`,
+      }),
+    });
+    expect(spaceResponse.status).toBe(201);
+    spaceId = (await spaceResponse.json()).space.id;
+
+    sharedDocumentId = await createOwnedDocument("Shared", "<p>shared</p>");
+    privateDocumentId = await createOwnedDocument("Private", "<p>private</p>");
+    editableDocumentId = await createOwnedDocument("Editable", "<p>editable</p>");
+
+    await grantDocumentRole(documentViewer.userId, sharedDocumentId, "viewer");
+    await grantDocumentRole(documentEditor.userId, editableDocumentId, "editor");
+  }, 60_000);
+
+  it(
+    "lets a document-level viewer connect and receive updates for that document",
+    async () => {
+      const connection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+
+      try {
+        // The connection itself must survive: no space role is held.
+        await connection.expectNoFrame(WsMsgType.Error);
+
+        connection.socket.send(
+          wsEncode(WsMsgType.Subscribe, {
+            topics: [realtimeTopics.document(sharedDocumentId)],
+          }),
+        );
+        await connection.expectNoFrame(WsMsgType.Error);
+
+        const clientDoc = await joinRoom(connection, sharedDocumentId);
+        expect(clientDoc.getXmlFragment("default").toString()).toContain("shared");
+
+        const event = connection.waitForFrame(WsMsgType.Event, FRAME_TIMEOUT_MS);
+        const saved = await authApiRequest(
+          `/api/v1/spaces/${spaceId}/documents/${sharedDocumentId}`,
+          owner.token,
+          { method: "POST", body: JSON.stringify({ html: "<p>shared, updated</p>" }) },
+        );
+        expect(saved.status).toBe(200);
+        expect(wsDecodeJson<{ topics: string[] }>(await event).topics).toEqual([
+          realtimeTopics.document(sharedDocumentId),
+        ]);
+      } finally {
+        connection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "refuses topics a document-level viewer holds no grant on",
+    async () => {
+      const connection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+
+      try {
+        for (const topic of [
+          realtimeTopics.document(privateDocumentId),
+          // Space-wide topics carry data about every document in the space.
+          realtimeTopics.properties,
+          realtimeTopics.documents,
+          realtimeTopics.documentTree,
+          realtimeTopics.acl,
+        ]) {
+          connection.socket.send(wsEncode(WsMsgType.Subscribe, { topics: [topic] }));
+          const error = wsDecodeJson<{ message: string }>(
+            await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+          );
+          expect(error.message).toBe("One or more realtime topics are forbidden");
+        }
+
+        // Presence in a document they were not shared is refused too.
+        connection.socket.send(
+          wsEncode(WsMsgType.PresenceJoin, {
+            room: privateDocumentId,
+            clientId: "viewer-client",
+            user: { id: documentViewer.userId, name: "Document Viewer" },
+          }),
+        );
+        expect(
+          wsDecodeJson<{ message: string }>(
+            await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+          ).message,
+        ).toBe("Forbidden");
+        await connection.expectNoFrame(WsMsgType.PresenceSnapshot);
+      } finally {
+        connection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "lets any caller unsubscribe, whatever they may subscribe to",
+    async () => {
+      const connection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+
+      try {
+        // Dropping a subscription leaks nothing, so it must never be refused:
+        // a caller whose role was revoked has to be able to stop the feed.
+        connection.socket.send(
+          wsEncode(WsMsgType.Unsubscribe, {
+            topics: [realtimeTopics.documents, realtimeTopics.acl],
+          }),
+        );
+        await connection.expectNoFrame(WsMsgType.Error, 2_000);
+      } finally {
+        connection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects a user with no grant anywhere in the space",
+    async () => {
+      const connection = await connectWebSocket(AUTH_BASE_URL, spaceId, outsider.token);
+
+      const error = wsDecodeJson<{ message: string }>(
+        await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+      );
+      expect(error.message).toBe("Forbidden");
+      await waitForClose(connection.socket);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "lets a document-level editor edit over the Yjs connection",
+    async () => {
+      const editorConnection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentEditor.token,
+      );
+      const ownerConnection = await connectWebSocket(AUTH_BASE_URL, spaceId, owner.token);
+
+      try {
+        const editorDoc = await joinRoom(editorConnection, editableDocumentId);
+        const ownerDoc = await joinRoom(ownerConnection, editableDocumentId);
+
+        const broadcast = ownerConnection.waitForFrame(
+          WsMsgType.YjsUpdate,
+          FRAME_TIMEOUT_MS,
+        );
+        editorConnection.socket.send(
+          wsEncodeYjsUpdate(
+            editableDocumentId,
+            appendParagraph(editorDoc, "from the document editor"),
+          ),
+        );
+
+        Y.applyUpdate(ownerDoc, wsDecodeYjsUpdate(await broadcast).update, "remote");
+        expect(ownerDoc.getXmlFragment("default").toString()).toContain(
+          "from the document editor",
+        );
+        // The room, not just the other client, took the edit.
+        expect(await readContent(editableDocumentId, "?live=true")).toContain(
+          "from the document editor",
+        );
+      } finally {
+        editorConnection.socket.close();
+        ownerConnection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "still drops Yjs updates from a document-level viewer",
+    async () => {
+      const viewerConnection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+      const ownerConnection = await connectWebSocket(AUTH_BASE_URL, spaceId, owner.token);
+
+      try {
+        const viewerDoc = await joinRoom(viewerConnection, sharedDocumentId);
+        await joinRoom(ownerConnection, sharedDocumentId);
+
+        viewerConnection.socket.send(
+          wsEncodeYjsUpdate(
+            sharedDocumentId,
+            appendParagraph(viewerDoc, "from the document viewer"),
+          ),
+        );
+
+        await ownerConnection.expectNoFrame(WsMsgType.YjsUpdate, 1_500);
+        expect(await readContent(sharedDocumentId, "?live=true")).not.toContain(
+          "from the document viewer",
+        );
+      } finally {
+        viewerConnection.socket.close();
+        ownerConnection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "ignores a presence leave for a room this connection never joined",
+    async () => {
+      const ownerConnection = await connectWebSocket(AUTH_BASE_URL, spaceId, owner.token);
+      const viewerConnection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+
+      try {
+        ownerConnection.socket.send(
+          wsEncode(WsMsgType.PresenceJoin, {
+            room: editableDocumentId,
+            clientId: "owner-client",
+            user: { id: owner.userId, name: "Share Owner" },
+          }),
+        );
+        await ownerConnection.waitForFrame(WsMsgType.PresenceSnapshot, FRAME_TIMEOUT_MS);
+
+        // The viewer holds no grant on this document and never joined the room,
+        // so naming someone else's presence must not evict it.
+        viewerConnection.socket.send(
+          wsEncode(WsMsgType.PresenceLeave, {
+            room: editableDocumentId,
+            clientId: "owner-client",
+          }),
+        );
+
+        await ownerConnection.expectNoFrame(WsMsgType.PresenceLeave, 1_500);
+      } finally {
+        viewerConnection.socket.close();
+        ownerConnection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
 });
