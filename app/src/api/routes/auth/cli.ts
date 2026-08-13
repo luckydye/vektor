@@ -13,6 +13,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { isPermission } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   parseFormBody,
@@ -36,6 +37,25 @@ const pendingCliApprovals = new Map<
 
 const CODE_TTL_MS = 60_000;
 const APPROVAL_TTL_MS = 5 * 60_000;
+
+/**
+ * The spaces a CLI token can be minted for: those carrying a space-wide role,
+ * which is what the exchange delegates. `listUserSpaces` is wider on purpose —
+ * it also returns spaces reached only through a resource-scoped grant, so the
+ * filtering belongs here rather than in the shared listing. The two empty cases
+ * ask different things of the user, hence two error codes.
+ */
+async function listCliTokenSpaces(
+  userId: string,
+): Promise<{ spaces: Space[]; error?: "no_spaces" | "no_space_roles" }> {
+  const spaces = await listUserSpaces(userId);
+  const grantingSpaces = spaces.filter((space) => isPermission(space.userRole));
+
+  if (grantingSpaces.length > 0) {
+    return { spaces: grantingSpaces };
+  }
+  return { spaces: [], error: spaces.length > 0 ? "no_space_roles" : "no_spaces" };
+}
 
 function isLocalhostUri(uri: string): boolean {
   try {
@@ -461,9 +481,9 @@ export const GET: ApiRouteHandler = (context) =>
       throw badRequestResponse("state is required and must be at least 16 characters");
     }
 
-    const spaces = await listUserSpaces(user.id);
-    if (spaces.length === 0) {
-      return redirectToCli(redirectUri, state, { error: "no_spaces" });
+    const { spaces, error } = await listCliTokenSpaces(user.id);
+    if (error) {
+      return redirectToCli(redirectUri, state, { error });
     }
 
     const approval = createCliApproval(user.id, redirectUri, state);
@@ -523,11 +543,11 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Approval has expired. Restart CLI login.");
     }
 
-    const spaces = await listUserSpaces(user.id);
-    if (spaces.length === 0) {
+    const { spaces, error } = await listCliTokenSpaces(user.id);
+    if (error) {
       return renderCliCallbackPage(
-        cliCallbackUrl(redirectUri, state, { error: "no_spaces" }),
-        "No spaces available",
+        cliCallbackUrl(redirectUri, state, { error }),
+        error === "no_space_roles" ? "No space-wide role" : "No spaces available",
         "Returning to the CLI.",
       );
     }

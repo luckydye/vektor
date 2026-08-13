@@ -13,6 +13,27 @@ function openBrowser(url: string): void {
   Bun.spawn([cmd, ...args], { stdout: "ignore", stderr: "ignore" });
 }
 
+interface CliTokenResult {
+  token: string;
+  spaceId: string;
+  permission?: string;
+  expiresAt?: string;
+}
+
+/** The approval page's error codes, in terms the user can act on. */
+const LOGIN_ERRORS: Record<string, string> = {
+  access_denied: "Access was canceled in the browser.",
+  no_spaces: "You have no spaces yet. Create one in the web app, then log in again.",
+  no_space_roles:
+    "None of your spaces grant you a space-wide role — the spaces you can see are " +
+    "shared with you per document. A CLI token is space-wide, so ask a space owner " +
+    "for viewer or editor access on the space itself.",
+};
+
+export function loginErrorMessage(code: string): string {
+  return LOGIN_ERRORS[code] ?? `Login failed: ${code}`;
+}
+
 export async function commandLogin(): Promise<void> {
   const host = resolveHost().replace(/\/$/, "");
 
@@ -21,9 +42,9 @@ export async function commandLogin(): Promise<void> {
   const state = randomBytes(16).toString("hex");
   const redirectUri = `http://localhost:${port}/callback`;
 
-  let resolveCallback: (result: { token: string; spaceId: string }) => void;
+  let resolveCallback: (result: CliTokenResult) => void;
   let rejectCallback: (err: Error) => void;
-  const callbackPromise = new Promise<{ token: string; spaceId: string }>((res, rej) => {
+  const callbackPromise = new Promise<CliTokenResult>((res, rej) => {
     resolveCallback = res;
     rejectCallback = rej;
   });
@@ -38,10 +59,10 @@ export async function commandLogin(): Promise<void> {
 
       const error = url.searchParams.get("error");
       if (error) {
-        rejectCallback(new Error(`Login failed: ${error}`));
+        rejectCallback(new Error(loginErrorMessage(error)));
         return htmlResponse({
           title: "Login failed",
-          message: "The CLI did not receive access. You can close this tab.",
+          message: `${loginErrorMessage(error)} You can close this tab.`,
           kind: "error",
         });
       }
@@ -75,7 +96,7 @@ export async function commandLogin(): Promise<void> {
           const text = await res.text().catch(() => String(res.status));
           throw new Error(`Token exchange failed (${res.status}): ${text}`);
         }
-        const data = (await res.json()) as { token: string; spaceId: string };
+        const data = (await res.json()) as CliTokenResult;
         resolveCallback(data);
         return htmlResponse({
           title: "Logged in",
@@ -108,11 +129,17 @@ export async function commandLogin(): Promise<void> {
   );
 
   try {
-    const { token, spaceId } = await callbackPromise;
+    const { token, spaceId, permission, expiresAt } = await callbackPromise;
+
+    const scope = [
+      permission ? `${permission} access` : undefined,
+      expiresAt ? `expires ${expiresAt.slice(0, 10)}` : undefined,
+    ].filter((part): part is string => part !== undefined);
 
     process.stdout.write(
       [
         "",
+        ...(scope.length > 0 ? [`Token scope: ${scope.join(", ")}`, ""] : []),
         "Logged in. Add to your shell profile:",
         "",
         `  export VEKTOR_HOST=${host}`,

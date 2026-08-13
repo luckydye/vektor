@@ -1,7 +1,12 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
-import { Permission, PUBLIC_GROUP, ResourceType } from "#acl/permissions.ts";
+import {
+  highestPermission,
+  Permission,
+  PUBLIC_GROUP,
+  ResourceType,
+} from "#acl/permissions.ts";
 import {
   countSpaceMembers,
   getUserGroups,
@@ -211,31 +216,40 @@ export async function listAllSpaces(): Promise<Space[]> {
 export async function getUserSpaceRole(
   space: Space,
   userId: string,
-): Promise<string | undefined> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) return "owner";
-  if (space.createdBy === userId) return "owner";
+): Promise<Permission | undefined> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) return Permission.OWNER;
+  if (space.createdBy === userId) return Permission.OWNER;
 
   try {
     const userGroups = await getUserGroups(userId);
-    const permissions = await listUserPermissions(
-      space.id,
-      userId,
-      userGroups,
-      ResourceType.SPACE,
-    );
-    return permissions.find(
-      (p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id,
-    )?.permission;
+    return highestPermission(await spaceGrants(space, userId, userGroups));
   } catch {
     return undefined;
   }
+}
+
+/** The user's own and group-inherited role grants on the space itself. */
+async function spaceGrants(
+  space: Space,
+  userId: string,
+  userGroups: string[],
+): Promise<string[]> {
+  const permissions = await listUserPermissions(
+    space.id,
+    userId,
+    userGroups,
+    ResourceType.SPACE,
+  );
+  return permissions
+    .filter((p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id)
+    .map((p) => p.permission);
 }
 
 export async function listUserSpaces(userId: string): Promise<Space[]> {
   const allSpaces = await listAllSpaces();
 
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return allSpaces.map((s) => ({ ...s, userRole: "owner" }));
+    return allSpaces.map((s) => ({ ...s, userRole: Permission.OWNER }));
   }
 
   const userSpaces: Space[] = [];
@@ -243,24 +257,18 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
   for (const space of allSpaces) {
     // Include space if user created it
     if (space.createdBy === userId) {
-      userSpaces.push({ ...space, userRole: "owner" });
+      userSpaces.push({ ...space, userRole: Permission.OWNER });
       continue;
     }
 
     // Include space if user is a member
     try {
       const userGroups = await getUserGroups(userId);
-      const permissions = await listUserPermissions(
-        space.id,
-        userId,
-        userGroups,
-        ResourceType.SPACE,
-      );
-      const spacePermission = permissions.find(
-        (p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id,
+      const spacePermission = highestPermission(
+        await spaceGrants(space, userId, userGroups),
       );
       if (spacePermission) {
-        userSpaces.push({ ...space, userRole: spacePermission.permission });
+        userSpaces.push({ ...space, userRole: spacePermission });
       } else if (await hasAnyResourceScopedAccess(space.id, userId, userGroups)) {
         // No space-wide grant, but the user has a document/tree/category
         // grant in this space — surface the space so they can reach it.
