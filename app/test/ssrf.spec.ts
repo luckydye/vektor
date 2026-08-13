@@ -99,6 +99,23 @@ describe("resolvePublicUrl", () => {
   ])("refuses %s", async (url) => {
     await expect(resolvePublicUrl(url)).rejects.toBeInstanceOf(SsrfError);
   });
+
+  // A URL keeps the brackets around an IPv6 literal and `isIP` scores those 0, so
+  // a bracketed host used to skip the denylist and fail the DNS lookup instead:
+  // the private ones were refused for the wrong reason and the public ones too.
+  it.each([
+    "http://[fd00::1]/secret",
+    "http://[::1]/secret",
+    "http://[::ffff:127.0.0.1]/secret",
+    "http://[::ffff:169.254.169.254]/latest/meta-data/",
+  ])("refuses %s by the denylist, not by a failed lookup", async (url) => {
+    await expect(resolvePublicUrl(url)).rejects.toThrow("URL host is not allowed");
+  });
+
+  it("allows a public IPv6 literal, with nothing to pin", async () => {
+    const validated = await resolvePublicUrl("http://[2606:4700:4700::1111]/media.mp3");
+    expect(validated.addresses).toEqual([]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -483,6 +500,10 @@ describe("ollamaChatUrl", () => {
     ["http://93.184.216.34:11434/#", "http://93.184.216.34:11434/api/chat"],
     ["https://ollama.example.com/proxy", "https://ollama.example.com/proxy/api/chat"],
     ["https://ollama.example.com/proxy/", "https://ollama.example.com/proxy/api/chat"],
+    [
+      "http://[2606:4700:4700::1111]:11434",
+      "http://[2606:4700:4700::1111]:11434/api/chat",
+    ],
   ])("resolves %s to %s", (baseUrl, expected) => {
     expect(ollamaChatUrl(baseUrl)).toBe(expected);
   });
@@ -532,6 +553,14 @@ describe("AI provider base URL on write", () => {
     await expect(
       normalizeOllamaBaseUrl("  http://93.184.216.34:11434//  "),
     ).resolves.toBe("http://93.184.216.34:11434");
+  });
+
+  // The bracketed-IPv6 cases above have to be refused by the address policy, which
+  // means a public IPv6 Ollama stays configurable rather than failing to resolve.
+  it("accepts a public IPv6 literal base URL", async () => {
+    await expect(
+      normalizeOllamaBaseUrl("http://[2606:4700:4700::1111]:11434/"),
+    ).resolves.toBe("http://[2606:4700:4700::1111]:11434");
   });
 
   it("accepts a private base URL under the private-egress opt-in", async () => {

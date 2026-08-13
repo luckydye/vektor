@@ -1,5 +1,6 @@
 import { config } from "#config";
 import {
+  parseHttpUrl,
   resolvePublicUrl,
   SsrfError,
   safeFetch,
@@ -9,19 +10,6 @@ import type { ChatMessage } from "./types.ts";
 import { type PartialToolCall, parseNDJSON } from "./utils.ts";
 
 type OllamaProvider = { provider: "ollama"; baseUrl: string; model: string };
-
-function parseHttpUrl(rawUrl: string): URL {
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new SsrfError("Invalid URL provided");
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new SsrfError("Only HTTP(S) URLs are allowed");
-  }
-  return url;
-}
 
 /**
  * Egress policy for a configured provider base URL.

@@ -26,7 +26,12 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { config, getLocalOrigin } from "#config";
 import { createJobToken } from "#jobs/jobToken.ts";
-import { isPrivateOrBlockedIp, safeFetch, type UrlValidator } from "#utils/ssrf.ts";
+import {
+  isPrivateOrBlockedIp,
+  safeFetch,
+  type UrlValidator,
+  urlHostname,
+} from "#utils/ssrf.ts";
 import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
@@ -138,7 +143,7 @@ export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
   // No pinning either: the hatch exists to reach the local network.
   if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return { url, addresses: [] };
 
-  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  const hostname = urlHostname(url);
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
     throw new Error(`fetch: ${url.hostname} is not reachable from a job`);
   }
