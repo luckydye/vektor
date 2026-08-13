@@ -180,7 +180,6 @@ describe("Frontend ACL Tests - Document Page Access", () => {
 });
 
 describe("Frontend ACL Tests - Document Addressed By ID", () => {
-  // A syntactically plausible id that resolves as neither an id nor a slug.
   const missingDocumentId = "doc_0000000000000000000000000000";
   let outsiderToken: string;
   let granteeToken: string;
@@ -216,8 +215,7 @@ describe("Frontend ACL Tests - Document Addressed By ID", () => {
       }),
     });
 
-    // Viewer on a *different* document: reaches the space, may not read the
-    // private one.
+    // Viewer on a *different* document: reaches the space, may not read this one.
     const otherDocGrantee = await createTestUser("Doc Id Other Grantee");
     otherDocGranteeToken = otherDocGrantee.token;
     await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
@@ -253,7 +251,7 @@ describe("Frontend ACL Tests - Document Addressed By ID", () => {
     expect(byId.location).toBe(missing.location);
     expect(byId.status).toBe(403);
     expect(byId.location).toBeNull();
-    // The slug is derived from the title: it must not come back either way.
+    // The slug is title-derived: it must not come back.
     expect(byId.body).not.toContain(privateDocumentSlug);
   });
 
@@ -289,13 +287,11 @@ describe("Frontend ACL Tests - Document Addressed By ID", () => {
     expect(byId.location).toBe(bySlug.location);
     expect(byId.status).toBe(missing.status);
     expect(byId.location).toBe(missing.location);
-    // Pinned, not just equal to each other: all three are the shell a caller
-    // who reached the space gets for a document they may not read.
+    // Pinned, not just equal: all three are the shell, not a shared refusal.
     expect(byId.status).toBe(200);
     expect(byId.location).toBeNull();
     expect(byId.body).not.toContain(privateDocumentSlug);
-    // The slug is in the URL the caller typed, so only the document itself can
-    // be asserted absent here.
+    // By slug the caller typed the slug, so only the document can be asserted absent.
     expect(bySlug.body).not.toContain("Private Document");
     expect(bySlug.body).not.toContain("This is a private document.");
   });
@@ -482,9 +478,8 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
     );
     const html = await response.text();
 
-    // The shell still renders — refusing a slug that resolved would confirm the
-    // document exists, and slugs are guessable — but it carries nothing of the
-    // document the grant does not reach.
+    // The shell still renders — a refusal would confirm the slug exists — but it
+    // carries nothing of the document the grant does not reach.
     expect(response.status).toBe(200);
     expect(html).not.toContain("Private Document");
     expect(html).not.toContain("This is a private document.");

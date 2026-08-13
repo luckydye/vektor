@@ -51,9 +51,8 @@ const storedDocumentRecord = docSlugMatch
   : null;
 
 /**
- * Viewer verdict for one document, without the Response `verifyDocumentRole`
- * throws: both call sites below have to keep going on a failure instead of
- * answering with it, so neither may leak the guard's 403/404 distinction.
+ * Viewer verdict for one document, swallowing the Response `verifyDocumentRole`
+ * throws: answering with it would leak the guard's 403/404 distinction.
  */
 async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   try {
@@ -100,25 +99,17 @@ if (!hasDirectDocumentAccess) {
 
 if (docSlugMatch && !storedDocumentRecord) {
   // A document addressed by its ID redirects to its canonical slug URL, matching
-  // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
-  // rendering the shell for a document whose slug the URL never resolved.
-  //
-  // It runs after the checks above and only for a caller who may read the
-  // document: slugs are derived from titles, so redirecting anyone else would
-  // hand out the title and confirm the document exists. An ID that is unknown
-  // and an ID the caller may not read both fall through to the response an
-  // unresolved slug produces for that same caller, so the two are
-  // indistinguishable and the redirect is no oracle.
+  // the dedicated doc page this catch-all replaced. Gated on viewer: slugs are
+  // title-derived, so redirecting anyone else hands out the title.
   const documentById = await getDocument(store, docSlugMatch[1]);
   if (documentById && (await holdsDocumentViewerRole(documentById.id))) {
     return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
   }
 }
 
-// Only a caller who holds viewer on this document gets it inlined: a
-// resource-scoped grantee clears `verifyResourceAccess` on a grant on some
-// *other* document, and slugs are guessable titles. They render the shell an
-// unresolved slug produces — refusing would confirm the slug resolved.
+// Reaching the space is not enough: a resource-scoped grantee clears
+// `verifyResourceAccess` on a grant on some *other* document. They render the
+// shell an unresolved slug produces — a 403 here would confirm the slug exists.
 const documentRecord =
   storedDocumentRecord && hasDirectDocumentAccess
     ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
