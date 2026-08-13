@@ -1,7 +1,11 @@
 import { isHexColor } from "#utils/color.ts";
 import { isSafeImageUrl, sanitizeSvgMarkup } from "#utils/html.ts";
 
-/** Keys for settings that apply to an entire space. */
+/**
+ * The preference keys the app itself reads. Not the set of keys a space may
+ * hold: preferences are an open key-value store, and anything may put its own
+ * settings there. These are the ones this codebase names.
+ */
 export const spacePreferenceKeys = {
   brandColor: "brandColor",
   description: "description",
@@ -32,14 +36,17 @@ const MAX_DESCRIPTION_LENGTH = 2000;
 type PreferenceRule = (value: string) => { value: string } | { error: string };
 
 /**
- * Every space preference, and what a valid value for it looks like.
+ * The preferences this app renders, and what a valid value for each looks like.
  *
- * The map is the allow-list: a space preference is rendered on every page of the
- * space, for every member, and several of them are rendered *as markup or as
- * CSS* (`logoSvg` through `innerHTML`, `brandColor` into a style attribute and
- * into the generated palette). Accepting arbitrary keys with arbitrary values —
- * which is what a bare size cap amounts to — makes each one an injection
- * channel, so anything not described here is refused.
+ * A key with no rule here is stored as the opaque text it is — the store is open
+ * on purpose. A key gets a rule when the app does something with its value other
+ * than show it as text: `logoSvg` is injected as markup, `brandColor` goes into a
+ * style attribute and into the generated palette, and a value that is markup or
+ * CSS is an injection channel unless it is checked on the way in.
+ *
+ * So: anything that starts rendering a preference as markup, as CSS or as a URL
+ * either gives it a rule here or sanitizes at the render site. The render sites
+ * that exist today do both (see `Icon.tsx`).
  *
  * A `Map`, not an object literal: keys arrive from a JSON request body, and
  * `"__proto__"` is a lookup an object would answer with something truthy.
@@ -95,8 +102,30 @@ const PREFERENCE_RULES = new Map<string, PreferenceRule>([
  * Preferences are embedded in every space read and list response, so an
  * oversized value (a multi-megabyte inline logo, say) bloats every request that
  * carries it and can stall request bodies behind dev and reverse proxies.
+ *
+ * This is the budget the open store is bounded by, rather than a list of the
+ * keys it may hold.
  */
 const MAX_PREFERENCES_BYTES = 512 * 1024;
+
+/** What a key may be spelled with, so it survives a URL, a query and a diff. */
+const PREFERENCE_KEY_PATTERN = /^[a-z\d_.:-]{1,64}$/i;
+
+/**
+ * Keys that name something other than a preference. `preferences[key] = value`
+ * against `__proto__` on a plain object writes a prototype instead of an entry —
+ * `getSpace` rebuilds the map that way — so the key would be silently lost at
+ * best. They are refused rather than made to work: nothing needs them.
+ */
+const RESERVED_PREFERENCE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Namespaces another write path owns. `ai:baseUrl` is fetched by the server, so
+ * `settings-ai-provider.ts` validates it against the SSRF policy before storing
+ * it — a generic string check here would be a way around that, not an addition
+ * to it. Everything outside these namespaces is the caller's to use.
+ */
+const RESERVED_PREFERENCE_PREFIXES = ["ai:"];
 
 /**
  * The preferences to store for a space write, or the first reason to refuse it.
@@ -106,6 +135,10 @@ const MAX_PREFERENCES_BYTES = 512 * 1024;
  * The single gate for both space write paths, which turn a refusal into a 400 —
  * it takes the request body's value as it comes, so the shape and the size are
  * checked here too rather than at each caller.
+ *
+ * Any key is storable. What is checked is the key's spelling, the total size, and
+ * the value of the keys in `PREFERENCE_RULES` — the ones this app renders as
+ * something other than text.
  *
  * An empty string is how the client clears a preference (unpinning a document
  * sends `pinnedDocumentId: ""`), so it is accepted for every key without being
@@ -133,14 +166,25 @@ export function validateSpacePreferences(
   const validated: Record<string, string> = Object.create(null);
 
   for (const [key, raw] of Object.entries(preferences)) {
-    // Not "unknown": `ai:provider` and its siblings are real preferences, they
-    // are just written by the AI settings route rather than through here.
-    const rule = PREFERENCE_RULES.get(key);
-    if (!rule) return { error: `"${key}" is not a space preference set here` };
+    if (!PREFERENCE_KEY_PATTERN.test(key) || RESERVED_PREFERENCE_KEYS.has(key)) {
+      return { error: `"${key}" is not a usable preference key` };
+    }
+
+    if (RESERVED_PREFERENCE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      return { error: `"${key}" is set by its own settings endpoint` };
+    }
+
     if (typeof raw !== "string") return { error: `${key} must be a string` };
 
     if (raw === "") {
       validated[key] = "";
+      continue;
+    }
+
+    // No rule means the app does not interpret this key, so its value is text.
+    const rule = PREFERENCE_RULES.get(key);
+    if (!rule) {
+      validated[key] = raw;
       continue;
     }
 

@@ -53,15 +53,39 @@ describe("validateSpacePreferences", () => {
     expect(refused({ description: "x".repeat(600 * 1024) })).toContain("512 KB");
   });
 
-  it("refuses a key that is not a space preference", () => {
-    expect(refused({ "ai:baseUrl": "http://evil.example" })).toContain(
-      "not a space preference set here",
+  it("stores a key it has no rule for as the text it is", () => {
+    // The store is open: anything may keep its own settings here, and a key the
+    // app does not render is not the app's business to validate.
+    expect(
+      validated({
+        "acme-extension:layout": "grid",
+        featureFlags: '{"beta":true}',
+        "notes.pinned": "doc_1",
+      }),
+    ).toEqual({
+      "acme-extension:layout": "grid",
+      featureFlags: '{"beta":true}',
+      "notes.pinned": "doc_1",
+    });
+  });
+
+  it("refuses a key that names something other than a preference", () => {
+    // An own `__proto__` property, which only a parsed body can carry: assigning
+    // it while rebuilding the map writes a prototype, not an entry.
+    expect(refused(JSON.parse('{"__proto__":"x"}'))).toContain("not a usable");
+    expect(refused({ constructor: "x" })).toContain("not a usable");
+    expect(refused({ "has space": "x" })).toContain("not a usable");
+    expect(refused({ "<script>": "x" })).toContain("not a usable");
+    expect(refused({ [`${"k".repeat(65)}`]: "x" })).toContain("not a usable");
+  });
+
+  it("refuses a key another write path validates more strictly", () => {
+    // `ai:baseUrl` is fetched by the server and checked against the SSRF policy
+    // where it is set, which this path cannot do.
+    expect(refused({ "ai:baseUrl": "http://169.254.169.254" })).toContain(
+      "its own settings endpoint",
     );
-    // An own `__proto__` property, which only a parsed body can carry: a lookup
-    // in an object literal would answer it with `Object.prototype`.
-    expect(refused(JSON.parse('{"__proto__":"x"}'))).toContain(
-      "not a space preference set here",
-    );
+    expect(refused({ "ai:provider": "ollama" })).toContain("its own settings endpoint");
   });
 
   it("refuses a brandColor that is not a hex color", () => {
