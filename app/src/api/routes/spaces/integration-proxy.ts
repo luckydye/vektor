@@ -79,19 +79,9 @@ function getProviderBaseUrl(providerConfig: OAuthProviderConfiguration): URL {
 }
 
 /**
- * Resolve the caller's `path` against the configured provider origin.
- *
- * Every request built here carries the caller's OAuth access token, so leaving
- * the configured origin means handing that token to whoever the caller named.
- * Two things keep that from happening, and both apply to *every* provider:
- *
- * - A relative `path` must be a plain absolute path. WHATWG `URL` reads a leading
- *   `//` or `/\` as protocol-relative and throws `base` away, so
- *   `new URL("//evil.example/x", base)` resolves off-origin.
- * - Whatever comes out is checked against `base.origin` unconditionally. The
- *   GitLab `/api/v4` prefix rule used to be the only thing standing between the
- *   relative branch and an off-origin URL, which was an accident rather than a
- *   guard.
+ * Resolve the caller's `path` against the configured provider origin. Every
+ * request built here carries the caller's OAuth access token, so the result is
+ * checked against `base.origin` unconditionally, for every provider.
  */
 export function buildIntegrationApiUrl(
   provider: OAuthIntegrationProvider,
@@ -116,8 +106,8 @@ export function buildIntegrationApiUrl(
       throw badRequestResponse("GitLab request URL must target /api/v4");
     }
   } else {
-    // `URL` strips tab/CR/LF before parsing, so `/\t/evil.example` would slip
-    // past the check below and come back out protocol-relative.
+    // `URL` strips tab/CR/LF itself, so `/\t/evil.example` would slip past the
+    // protocol-relative check below.
     const stripped = trimmed.replace(/[\t\n\r]/g, "");
     const path = stripped.startsWith("/") ? stripped : `/${stripped}`;
     if (path[1] === "/" || path[1] === "\\") {
@@ -241,9 +231,8 @@ export const POST: ApiRouteHandler = (context) =>
         method,
         headers,
         body: method === "GET" || method === "DELETE" ? undefined : body.body,
-        // The Authorization header above is the user's own access token. Following
-        // a redirect would re-send it to wherever the upstream points, so the 3xx
-        // is relayed to the caller (with its `location`, below) instead of followed.
+        // Following a redirect would re-send the access token above to wherever
+        // the upstream points, so the 3xx is relayed to the caller instead.
         redirect: "manual",
       },
     );
@@ -254,9 +243,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (
         [
           "content-type",
-          // Providers redirect for ordinary reasons — GitHub 301s a repo that was
-          // renamed, 302s an asset download — and a relayed 3xx with no `location`
-          // leaves the caller with a dead end it cannot even report on.
+          // Without this, a relayed 3xx is a dead end the caller cannot act on.
           "location",
           "link",
           "x-next-page",

@@ -125,27 +125,17 @@ function checkPayloadSize(bytes: number, what: string): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Reject requests aimed at this host or the local network.
- *
- * Job code legitimately fetches the public internet, so egress is open by
- * default — but the loopback and private ranges are where the internal API,
- * the database and cloud metadata endpoints live. A job that wants space data
- * has capabilities for it and does not need to dial the API itself.
- *
- * The denylist itself is {@link isPrivateOrBlockedIp}, shared with the rest of
- * the app: a second hand-rolled copy drifted from it and missed `fd00::/8`,
- * CGNAT, multicast and reserved space. What is job-specific is only the wording
- * of the errors and the `JOB_FETCH_ALLOW_PRIVATE` escape hatch that the test
- * suite and self-hosted setups use, so this is a {@link UrlValidator} handed to
- * {@link safeFetch} rather than a separate guard.
+ * Reject requests aimed at this host or the local network. Egress is otherwise
+ * open, since job code legitimately fetches the public internet. Only the error
+ * wording and the `JOB_FETCH_ALLOW_PRIVATE` hatch are job-specific, so this is a
+ * {@link UrlValidator} over the shared denylist rather than a second copy of it.
  */
 export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
   const url = new URL(rawUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`fetch: unsupported protocol "${url.protocol}"`);
   }
-  // No pinning either: the point of the hatch is to reach names that resolve
-  // into the local network.
+  // No pinning either: the hatch exists to reach the local network.
   if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return { url, addresses: [] };
 
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
@@ -170,8 +160,7 @@ export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
     }
   }
 
-  // A literal IP has nothing to re-resolve, so there is no rebinding window and
-  // nothing to pin.
+  // A literal IP has nothing to re-resolve, so nothing to pin.
   return { url, addresses: isIP(hostname) ? [] : addresses };
 };
 
@@ -360,11 +349,8 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
             : String(init.body);
 
       onLog(`${method} ${url.href}`);
-      // `safeFetch` runs `assertEgressAllowed` on the initial URL *and* on every
-      // redirect target, and pins each connection to the address that was
-      // checked — a bare `fetch` here let a public 302 walk the server into
-      // loopback or the metadata endpoint. `redirect: "manual"` still hands the
-      // 3xx straight back to the job, as it always did.
+      // Validated and pinned on every hop: a bare `fetch` here let a public 302
+      // walk the server into loopback or the metadata endpoint.
       const response = await safeFetch(
         url.href,
         {

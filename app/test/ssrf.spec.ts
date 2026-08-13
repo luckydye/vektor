@@ -15,9 +15,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("isPrivateOrBlockedIp", () => {
-  // The job runtime used to carry its own copy of this list, which tested
-  // `startsWith("fc")` — only half of fc00::/7 — and knew nothing about CGNAT,
-  // multicast or reserved space. These are the ranges that copy let through.
+  // The ranges the job runtime's own copy of this list let through.
   it.each([
     "fd00::1",
     "fd12:3456:789a::1",
@@ -39,7 +37,7 @@ describe("isPrivateOrBlockedIp", () => {
     "192.168.1.1",
     "169.254.169.254",
     "0.0.0.0",
-    // The rest of 0.0.0.0/8, which the runtime's own copy of the list did block.
+    // The rest of 0.0.0.0/8, which the consolidation dropped.
     "0.0.0.1",
     "0.1.2.3",
     "::1",
@@ -47,8 +45,7 @@ describe("isPrivateOrBlockedIp", () => {
     "0:0:0:0:0:0:0:1",
     "fe80::1",
     "ff02::1",
-    // Every prefix that carries an IPv4 address reaches the v4 internet, so all of
-    // them have to be judged by the v4 rules rather than the v6 CIDRs.
+    // Judged by the v4 rules, not the v6 CIDRs.
     "::ffff:127.0.0.1", // IPv4-mapped
     "::ffff:169.254.169.254",
     "::ffff:7f00:1",
@@ -57,8 +54,7 @@ describe("isPrivateOrBlockedIp", () => {
     "::ffff:0:7f00:1",
     "64:ff9b::127.0.0.1", // NAT64
     "64:ff9b::7f00:1",
-    // Tunnel and translation prefixes that do not say where they land: 6to4 via
-    // whatever relay answers, local-use NAT64 via the site's own translator.
+    // Tunnels that do not say where they land.
     "2002:7f00:1::1",
     "64:ff9b:1::1",
   ])("blocks %s", (ip) => {
@@ -109,8 +105,7 @@ describe("resolvePublicUrl", () => {
 
 describe("safeFetch redirects", () => {
   it("refuses a redirect into loopback instead of following it", async () => {
-    // A public first hop that 302s to an internal address — the bypass that made
-    // the media proxy and the job runtime usable as an SSRF relay.
+    // The bypass that made the media proxy usable as an SSRF relay.
     const calls: string[] = [];
     const stub = vi.spyOn(globalThis, "fetch").mockImplementation(((
       input: string | URL | Request,
@@ -166,10 +161,8 @@ async function echoRequest(request: Request): Promise<Response> {
   });
 }
 
-// A real upstream, so the hop loop is exercised against real 3xx responses rather
-// than a stub. A second origin stands in for the third party a redirect chain
-// routinely ends up at — a CDN, a pre-signed URL — which is where credentials must
-// not follow.
+// A real upstream, for real 3xx responses rather than a stub. The second origin is
+// the third party a chain ends up at, where credentials must not follow.
 function serveTestOrigin(
   routes: (request: Request, pathname: string) => Response | null,
 ) {
@@ -211,16 +204,14 @@ const upstream = serveTestOrigin((_request, pathname) => {
 });
 const upstreamOrigin = `http://127.0.0.1:${upstream.port}`;
 
-// A port nobody listens on: claimed, then released. Connecting there is refused
-// at once on every platform, unlike an unconfigured loopback alias such as
-// 127.0.0.2, which Linux refuses but macOS silently drops.
+// A port nobody listens on: claimed, then released. Refused at once everywhere,
+// unlike alias 127.0.0.2, which Linux refuses but macOS silently drops.
 const vacant = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
 const vacantPort = vacant.port;
 vacant.stop(true);
 
-// The validator lets these two origins through — loopback is exactly what
-// `resolvePublicUrl` exists to refuse — and defers to the real policy for
-// everything else, which is what a redirect target hits.
+// Loopback is what `resolvePublicUrl` exists to refuse, so the two test origins
+// are allowed by name and everything else defers to the real policy.
 const allowUpstream: UrlValidator = async (raw) => {
   const url = new URL(raw);
   if (url.origin === upstreamOrigin || url.origin === partnerOrigin) {
@@ -273,11 +264,8 @@ describe("safeFetch against a real upstream", () => {
     ).rejects.toBeInstanceOf(SsrfError);
   });
 
-  // The DNS-rebinding half of the fix: the socket has to go to the address the
-  // validator checked, not to whatever a second lookup returns. `pinned.test`
-  // resolves nowhere at all, so the request can only arrive if the pin is what
-  // chose the peer — and the `Host` header has to survive it, or virtual hosting
-  // would break for every real caller.
+  // `pinned.test` resolves nowhere, so the request can only arrive if the pin
+  // chose the peer — and `Host` has to survive it, or virtual hosting breaks.
   it("connects to the validated address and keeps the original Host", async () => {
     const pinToUpstream: UrlValidator = async (raw) => ({
       url: new URL(raw),
@@ -294,10 +282,7 @@ describe("safeFetch against a real upstream", () => {
     expect(response.url).toBe(`http://pinned.test:${upstream.port}/host`);
   });
 
-  // A dual-stack name on a single-stack host resolves to records that cannot be
-  // reached. Pinning to the first one only would turn a working fetch into a hard
-  // failure, so the records are raced and the reachable one wins — whether the
-  // unreachable one refuses (Linux) or silently drops (macOS), which is why this
+  // The unreachable record refuses on Linux and silently drops on macOS, so this
   // must not depend on getting an error back from it.
   it("uses the validated address that connects, not just the first", async () => {
     const pinToTwo: UrlValidator = async (raw) => ({
@@ -317,8 +302,7 @@ describe("safeFetch against a real upstream", () => {
   it("reports the transport error when no validated address connects", async () => {
     const pinToNothing: UrlValidator = async (raw) => ({
       url: new URL(raw),
-      // The same refusing address twice: what is under test is the exhausted
-      // race, and a black-holing address would only test the OS connect timeout.
+      // The same refusing address twice: the exhausted race is what is under test.
       addresses: ["127.0.0.1", "127.0.0.1"],
     });
 
@@ -328,8 +312,7 @@ describe("safeFetch against a real upstream", () => {
   });
 });
 
-// Following a redirect by hand means reimplementing what `redirect: "follow"` did
-// for free. Both of these are what native `fetch` does, verified against it.
+// Both of these match native `fetch`, verified against it.
 describe("safeFetch redirect semantics", () => {
   it("keeps credentials on a same-origin redirect", async () => {
     const response = await safeFetch(
@@ -346,8 +329,7 @@ describe("safeFetch redirect semantics", () => {
     });
   });
 
-  // The leak this guards: an API that 302s to a CDN or a pre-signed URL would
-  // otherwise be handed the caller's bearer token.
+  // Otherwise a 302 to a CDN or pre-signed URL is handed the bearer token.
   it("drops credentials when the redirect leaves the origin", async () => {
     const response = await safeFetch(
       `${upstreamOrigin}/to-partner`,
@@ -407,9 +389,8 @@ describe("safeFetch redirect semantics", () => {
 // The job runtime's egress policy
 // ─────────────────────────────────────────────────────────────────────────────
 
-// `jobs.spec.ts` covers this end to end, but only where the workflow-builder
-// extension artifact is present. These exercise the policy itself, including the
-// ranges the runtime's own denylist copy used to miss.
+// `jobs.spec.ts` covers this end to end, but only with the workflow-builder
+// artifact present. These exercise the policy itself.
 describe("job egress policy", () => {
   it.each([
     ["http://127.0.0.1:8080/api/v1/spaces", "127.0.0.1"],
@@ -445,8 +426,7 @@ describe("job egress policy", () => {
     });
   });
 
-  // The bypass from audit 012: the guard passed on a public first hop and the
-  // bare `fetch` then followed the 302 into the metadata endpoint.
+  // Audit 012: the guard passed the public first hop, then `fetch` followed the 302.
   it("refuses a redirect from a public host into a private address", async () => {
     const stub = vi.spyOn(globalThis, "fetch").mockImplementation((() =>
       Promise.resolve(
@@ -503,8 +483,8 @@ describe("buildIntegrationApiUrl", () => {
     );
   });
 
-  // `new URL("//evil.example/x", base)` is protocol-relative: `base` is thrown
-  // away and the request — carrying the caller's OAuth token — goes off-origin.
+  // `new URL("//evil.example/x", base)` is protocol-relative: `base` is discarded
+  // and the request goes off-origin carrying the caller's OAuth token.
   it.each([
     "//evil.example/x",
     "/\\evil.example/x",

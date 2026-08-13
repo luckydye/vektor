@@ -14,21 +14,13 @@ const HEADERS_TO_FORWARD = [
 ];
 
 /**
- * One rejection message for every reason a URL is not proxyable.
- *
- * "URL host is not allowed" and "URL did not return video or audio content" used
- * to be distinguishable, which made the endpoint a reliable host/port scanner:
- * the pair of answers tells the caller whether a target was reachable. The
- * specific reason goes to the server log instead, so operators keep the detail
- * that is actually useful for debugging.
+ * One message for every reason a URL is not proxyable. Distinguishable answers
+ * made the endpoint a host/port scanner: the pair told the caller whether a
+ * target was reachable. The specific reason goes to the server log instead.
  */
 const REJECTED_MESSAGE = "URL cannot be proxied as media";
 
-/**
- * Origin and path only. A media URL routinely carries a signature or a token in
- * its query, and userinfo in its authority, none of which belongs in a log the
- * caller can fill at will.
- */
+/** Origin and path only: the query and userinfo can carry the caller's secrets. */
 function redactForLog(raw: string): string {
   try {
     const url = new URL(raw);
@@ -67,9 +59,8 @@ export const GET: ApiRouteHandler = (context) =>
 
     let upstream: Response;
     try {
-      // `safeFetch`, never a bare `fetch`: it validates and pins every redirect
-      // hop, so a public URL cannot 302 the server into loopback, the private
-      // network or the cloud metadata endpoint.
+      // `safeFetch`, never a bare `fetch`: a public URL must not be able to 302
+      // the server into loopback or the metadata endpoint.
       upstream = await safeFetch(url, {
         method: "GET",
         signal: controller.signal,
