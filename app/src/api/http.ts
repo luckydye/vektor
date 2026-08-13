@@ -1,6 +1,5 @@
 import type { ApiContext } from "#api/server/types.ts";
 import { appLogger } from "#observability/logger.ts";
-import { validateSpacePreferences } from "#utils/spacePreferences.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
   const body = JSON.stringify(data);
@@ -31,48 +30,6 @@ export function notFoundResponse(resource: string): Response {
 
 export function badRequestResponse(message: string): Response {
   return errorResponse(message, 400);
-}
-
-/**
- * Space preferences are embedded in every space read and list response, so an
- * oversized value (e.g. a multi-megabyte inline logo) bloats every request
- * that carries it and can stall request bodies behind dev/reverse proxies.
- */
-const MAX_PREFERENCES_BYTES = 512 * 1024;
-
-function requirePreferencesSize(preferences: unknown): void {
-  if (preferences === undefined) return;
-  if (Buffer.byteLength(JSON.stringify(preferences)) > MAX_PREFERENCES_BYTES) {
-    throw badRequestResponse("preferences must be smaller than 512 KB");
-  }
-}
-
-/**
- * The space preferences to store for a write, refusing the request otherwise.
- *
- * The single entry point for both space write paths: preferences are rendered on
- * every page of a space, some of them as markup or as CSS, so they are checked
- * against the key allow-list in `validateSpacePreferences` — which also hands
- * back the value to persist, since `logoSvg` is stored sanitized.
- */
-export function requireValidPreferences(
-  preferences: unknown,
-): Record<string, string> | undefined {
-  if (preferences === undefined) return undefined;
-
-  if (
-    typeof preferences !== "object" ||
-    preferences === null ||
-    Array.isArray(preferences)
-  ) {
-    throw badRequestResponse("preferences must be an object");
-  }
-
-  requirePreferencesSize(preferences);
-
-  const result = validateSpacePreferences(preferences as Record<string, unknown>);
-  if ("error" in result) throw badRequestResponse(result.error);
-  return result.preferences;
 }
 
 export function successResponse(data?: unknown): Response {

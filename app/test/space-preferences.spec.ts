@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { validateSpacePreferences } from "#utils/spacePreferences.ts";
 
 /** The validated preferences, or a failure if the input was refused. */
-function validated(preferences: Record<string, unknown>): Record<string, string> {
+function validated(preferences: unknown): Record<string, string> {
   const result = validateSpacePreferences(preferences);
   if ("error" in result) throw new Error(`unexpectedly refused: ${result.error}`);
+  if (!result.preferences) throw new Error("unexpectedly stored nothing");
   return result.preferences;
 }
 
 /** The reason the input was refused, or a failure if it was accepted. */
-function refused(preferences: Record<string, unknown>): string {
+function refused(preferences: unknown): string {
   const result = validateSpacePreferences(preferences);
   if (!("error" in result)) {
     throw new Error(`unexpectedly accepted: ${JSON.stringify(result.preferences)}`);
@@ -34,6 +35,22 @@ describe("validateSpacePreferences", () => {
       pinnedDocumentId: "document_abc123",
       workflowCreationEnabled: "false",
     });
+  });
+
+  it("leaves the stored preferences alone for a write that omits them", () => {
+    const result = validateSpacePreferences(undefined);
+
+    expect(result).toEqual({ preferences: undefined });
+  });
+
+  it("refuses a value that is not an object of preferences", () => {
+    expect(refused(["brandColor"])).toContain("must be an object");
+    expect(refused("brandColor=#fff")).toContain("must be an object");
+    expect(refused(null)).toContain("must be an object");
+  });
+
+  it("refuses preferences too large to ship with every space response", () => {
+    expect(refused({ description: "x".repeat(600 * 1024) })).toContain("512 KB");
   });
 
   it("refuses a key that is not a space preference", () => {

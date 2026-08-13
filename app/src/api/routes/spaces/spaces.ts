@@ -6,7 +6,6 @@ import {
   jsonResponse,
   parseJsonBody,
   requireUser,
-  requireValidPreferences,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
@@ -20,6 +19,7 @@ import {
   listUserSpaces,
   SpaceSlugTakenError,
 } from "#db/space/spaces.ts";
+import { validateSpacePreferences } from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -51,12 +51,10 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Name and slug are required");
       }
 
-      const space = await createSpace(
-        user.id,
-        name,
-        slug,
-        requireValidPreferences(preferences),
-      );
+      const validated = validateSpacePreferences(preferences);
+      if ("error" in validated) throw badRequestResponse(validated.error);
+
+      const space = await createSpace(user.id, name, slug, validated.preferences);
       return createdResponse({
         space: { ...space, userRole: await getUserSpaceRole(space, user.id) },
       });

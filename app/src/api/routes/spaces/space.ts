@@ -6,7 +6,6 @@ import {
   parseJsonBody,
   requireParam,
   requireUser,
-  requireValidPreferences,
   successResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -19,7 +18,10 @@ import {
   SpaceSlugTakenError,
   updateSpace,
 } from "#db/space/spaces.ts";
-import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
+import {
+  spacePreferenceKeys,
+  validateSpacePreferences,
+} from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -59,11 +61,12 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("slug must be a non-empty string");
       }
 
-      const validatedPreferences = requireValidPreferences(preferences);
+      const validated = validateSpacePreferences(preferences);
+      if ("error" in validated) throw badRequestResponse(validated.error);
 
       const updatesWorkflowCreationPreference =
-        validatedPreferences !== undefined &&
-        Object.hasOwn(validatedPreferences, spacePreferenceKeys.workflowCreationEnabled);
+        validated.preferences !== undefined &&
+        Object.hasOwn(validated.preferences, spacePreferenceKeys.workflowCreationEnabled);
 
       if (updatesMetadata || updatesWorkflowCreationPreference) {
         await verifySpaceRole(spaceId, user.id, Permission.OWNER);
@@ -80,7 +83,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         spaceId,
         hasName ? name : space.name,
         hasSlug ? slug : space.slug,
-        validatedPreferences,
+        validated.preferences,
       );
 
       if (!updated) {

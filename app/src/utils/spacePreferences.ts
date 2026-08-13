@@ -92,15 +92,44 @@ const PREFERENCE_RULES = new Map<string, PreferenceRule>([
 ]);
 
 /**
+ * Preferences are embedded in every space read and list response, so an
+ * oversized value (a multi-megabyte inline logo, say) bloats every request that
+ * carries it and can stall request bodies behind dev and reverse proxies.
+ */
+const MAX_PREFERENCES_BYTES = 512 * 1024;
+
+/**
  * The preferences to store for a space write, or the first reason to refuse it.
+ * `undefined` in and `undefined` out: a write that does not mention preferences
+ * leaves the stored ones alone.
+ *
+ * The single gate for both space write paths, which turn a refusal into a 400 —
+ * it takes the request body's value as it comes, so the shape and the size are
+ * checked here too rather than at each caller.
  *
  * An empty string is how the client clears a preference (unpinning a document
  * sends `pinnedDocumentId: ""`), so it is accepted for every key without being
  * run through that key's rule.
  */
 export function validateSpacePreferences(
-  preferences: Record<string, unknown>,
-): { preferences: Record<string, string> } | { error: string } {
+  preferences: unknown,
+): { preferences: Record<string, string> | undefined } | { error: string } {
+  if (preferences === undefined) return { preferences: undefined };
+
+  if (
+    typeof preferences !== "object" ||
+    preferences === null ||
+    Array.isArray(preferences)
+  ) {
+    return { error: "preferences must be an object" };
+  }
+
+  if (
+    new TextEncoder().encode(JSON.stringify(preferences)).length > MAX_PREFERENCES_BYTES
+  ) {
+    return { error: "preferences must be smaller than 512 KB" };
+  }
+
   const validated: Record<string, string> = Object.create(null);
 
   for (const [key, raw] of Object.entries(preferences)) {
