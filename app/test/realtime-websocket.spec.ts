@@ -502,16 +502,12 @@ describe("Realtime WebSocket", () => {
 });
 
 /**
- * Sharing a single document with someone who is not a space member has to work
- * in the live editor, not only over HTTP: the connection may not demand a space
- * role, while every topic and room behind it still has to be authorized against
- * its own resource.
+ * Sharing one document with a non-member has to work in the live editor, not
+ * only over HTTP: the connection may not demand a space role, while everything
+ * behind it is still authorized against its own resource.
  */
 describe("Realtime WebSocket document-level grants", () => {
-  /**
-   * Generous on purpose: a save in this suite kicks off embedding work on the
-   * same server, which can stall a frame well past the 5s default.
-   */
+  /** A save here kicks off embedding work that can stall a frame past 5s. */
   const FRAME_TIMEOUT_MS = 20_000;
   const TEST_TIMEOUT_MS = 60_000;
 
@@ -669,8 +665,7 @@ describe("Realtime WebSocket document-level grants", () => {
       try {
         for (const topic of [
           realtimeTopics.document(privateDocumentId),
-          // Space-wide topics carry data about every document in the space, so a
-          // document-level grantee must not reach them either.
+          // Space-wide topics carry data about every document in the space.
           realtimeTopics.properties,
           realtimeTopics.documents,
           realtimeTopics.documentTree,
@@ -697,6 +692,31 @@ describe("Realtime WebSocket document-level grants", () => {
           ).message,
         ).toBe("Forbidden");
         await connection.expectNoFrame(WsMsgType.PresenceSnapshot);
+      } finally {
+        connection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "lets any caller unsubscribe, whatever they may subscribe to",
+    async () => {
+      const connection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+
+      try {
+        // Dropping a subscription leaks nothing, so it must never be refused:
+        // a caller whose role was revoked has to be able to stop the feed.
+        connection.socket.send(
+          wsEncode(WsMsgType.Unsubscribe, {
+            topics: [realtimeTopics.documents, realtimeTopics.acl],
+          }),
+        );
+        await connection.expectNoFrame(WsMsgType.Error, 2_000);
       } finally {
         connection.socket.close();
       }

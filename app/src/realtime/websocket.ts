@@ -41,10 +41,8 @@ import {
 } from "./yjsRooms.ts";
 
 /**
- * Topics whose events describe the space as a whole rather than one resource:
- * they carry document titles, property values, category names and ids from
- * anywhere in the space, so there is no per-resource check that could scope
- * them to a document-level grantee. They stay gated on a space-wide role.
+ * Topics carrying data from anywhere in the space, so no per-resource check
+ * could scope them to a document-level grantee: they stay on a space role.
  */
 const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.acl,
@@ -58,13 +56,10 @@ const realtimeSpaceTopics = new Set<string>([
 ]);
 
 /**
- * Decide whether `userId` may subscribe to `topic`.
- *
- * Every topic is authorized against the resource it describes — the connection
- * itself grants nothing beyond a relationship to the space (see
- * {@link verifyResourceAccess}). `hasSpaceRole` resolves the caller's space-wide
- * viewer role for the space-scoped topics that need one; it is passed in so a
- * single subscribe frame naming several such topics costs one lookup.
+ * Whether `userId` may subscribe to `topic`. The connection grants nothing on
+ * its own, so every topic is authorized against the resource it describes.
+ * `hasSpaceRole` is passed in so one frame naming several space topics costs
+ * a single lookup.
  */
 async function authorizeRealtimeTopic(
   spaceId: string,
@@ -92,9 +87,8 @@ async function authorizeRealtimeTopic(
     return true;
   }
 
-  // Per-run topics are pure change signals; the run data itself is fetched via
-  // the ACL-checked run endpoints. Which runs exist is still space-wide
-  // information, so a space-wide role is required to listen for the signal.
+  // Pure change signals — the run data is fetched via ACL-checked endpoints —
+  // but which runs exist is space-wide information.
   if (isWorkflowRunRealtimeTopic(topic)) {
     return await hasSpaceRole();
   }
@@ -103,9 +97,8 @@ async function authorizeRealtimeTopic(
 }
 
 /**
- * A space-viewer verdict for one message, computed at most once. Fresh per
- * frame rather than cached on the connection, so a revoked role stops
- * authorizing new subscriptions.
+ * A space-viewer verdict for one frame, computed at most once. Deliberately not
+ * cached on the connection, so a revoked role stops authorizing subscriptions.
  */
 function spaceRoleResolver(spaceId: string, userId: string): () => Promise<boolean> {
   let verdict: Promise<boolean> | undefined;
@@ -139,12 +132,9 @@ async function handleRealtimeWebSocket(
     }
 
     try {
-      // Only a cheap "does this user have any business in this space" gate: a
-      // space role OR any document/tree/category grant, mirroring
-      // `authenticateSpaceAccess` so a document-level grantee is admitted here
-      // exactly as it is over HTTP. It authorizes nothing on its own — every
-      // topic, Yjs room and presence room is verified against its own resource
-      // below.
+      // Reachability only — a space role OR any document/tree/category grant,
+      // so a document-level grantee is admitted as it is over HTTP. Authorizes
+      // nothing: every topic, Yjs room and presence room is checked below.
       await verifyResourceAccess(spaceId, session.user.id);
     } catch {
       websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
@@ -283,6 +273,15 @@ async function handleRealtimeWebSocket(
       }
 
       const { topics } = wsDecodeJson<{ topics: string[] }>(payload);
+
+      // Dropping a subscription can leak nothing, so it is never authorized:
+      // a caller whose role was revoked mid-connection has to stay able to
+      // stop the feed, and the fan-out does not re-verify `subscriptions`.
+      if (type === WsMsgType.Unsubscribe) {
+        for (const topic of topics) subscriptions.delete(topic);
+        return;
+      }
+
       const hasSpaceRole = spaceRoleResolver(spaceId, userId);
       const authorizedTopics = new Set<string>();
       for (const topic of topics) {
@@ -299,11 +298,7 @@ async function handleRealtimeWebSocket(
         );
       }
 
-      if (type === WsMsgType.Subscribe) {
-        for (const topic of authorizedTopics) subscriptions.add(topic);
-      } else {
-        for (const topic of authorizedTopics) subscriptions.delete(topic);
-      }
+      for (const topic of authorizedTopics) subscriptions.add(topic);
     } catch (error) {
       appLogger.warn("Failed to handle realtime message", { error, spaceId });
       websocket.send(wsEncode(WsMsgType.Error, { message: "Invalid message" }));
