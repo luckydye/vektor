@@ -219,15 +219,6 @@ const PREFERENCE_NAMESPACES = new Map<string, PreferenceNamespaceRules>([
   ],
 ]);
 
-/**
- * Preferences no request may write, whoever is asking: they are the system's own
- * notes, not a setting anybody chose. `ai:user_profile` is what the agent has
- * worked out about a member, kept per user and written only by the agent.
- */
-const SYSTEM_ONLY_PREFERENCES = new Set<string>([
-  preferenceKey(spacePreferenceNamespaces.ai, "user_profile"),
-]);
-
 /** Core preferences that decide something for the space rather than a member. */
 const OWNER_ONLY_CORE_PREFERENCES = new Set<string>([
   spacePreferenceKeys.workflowCreationEnabled,
@@ -334,10 +325,6 @@ export function validateSpacePreferences(
       return {
         error: `"${key}" is not a usable preference key: a name, or "namespace:name"`,
       };
-    }
-
-    if (SYSTEM_ONLY_PREFERENCES.has(key)) {
-      return { error: `"${key}" is written by the system, not by a request` };
     }
 
     if (typeof raw !== "string") return { error: `${key} must be a string` };

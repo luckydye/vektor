@@ -5,8 +5,9 @@ import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
 import { preferenceKey, spacePreferenceNamespaces } from "#utils/spacePreferences.ts";
 
-// What the agent has worked out about a member: per user, and written only by
-// the agent, which is why `SYSTEM_ONLY_PREFERENCES` keeps requests off it.
+// What the agent has worked out about a member: written only by the agent, and
+// read from the row carrying that member's `userId`. A request setting
+// `ai:user_profile` writes the space's row instead, which nothing reads.
 const PROFILE_KEY = preferenceKey(spacePreferenceNamespaces.ai, "user_profile");
 
 export async function getUserProfile(

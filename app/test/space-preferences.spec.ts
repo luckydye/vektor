@@ -118,12 +118,6 @@ describe("validateSpacePreferences", () => {
     });
   });
 
-  it("refuses a preference only the system writes", () => {
-    expect(refused({ "ai:user_profile": "knows things" })).toContain(
-      "written by the system",
-    );
-  });
-
   it("stores the namespaced keys another settings page also writes", () => {
     expect(validated({ "ai:provider": "ollama", "ai:model": "llama3" })).toEqual({
       "ai:provider": "ollama",

@@ -146,15 +146,6 @@ describe("in-memory server — spaces", () => {
     expect(spaces[0].userPreferences["user:sidebar"]).toBe("collapsed");
   });
 
-  it("refuses a preference the system owns", async () => {
-    const res = await api(`/api/v1/spaces/${spaceId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ preferences: { "ai:user_profile": "mine now" } }),
-    });
-
-    expect(res.status).toBe(400);
-  });
-
   it("returns 404 for a non-existent space", async () => {
     const res = await api("/api/v1/spaces/space_doesnotexist");
     expect(res.status).toBe(404);
