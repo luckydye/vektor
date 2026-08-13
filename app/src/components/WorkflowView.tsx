@@ -18,7 +18,7 @@ import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDateTime } from "#utils/datetime.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
@@ -453,13 +453,16 @@ export function WorkflowView(props: Props) {
     });
   });
 
-  // A run's HTML output is whatever the workflow produced — a fetched page, a
-  // model's answer — and it is rendered with `innerHTML` below, so it goes
-  // through the same boundary as document content. Nothing left of it means no
-  // HTML output, which is what the empty-result branch already checks for.
+  // A run's HTML output is rendered with `innerHTML` below, and it is the least
+  // trusted markup here: a workflow script runs server-side with `fetch`, so one
+  // that puts a field of some external response into `html` makes a third party's
+  // bytes into markup in every viewer's page. Hence the preview policy rather
+  // than the document one — a report is read, not edited, so it needs none of the
+  // document vocabulary (custom elements the app upgrades, inline styles, SVG,
+  // canvas). Nothing left means no HTML output, which the empty branch checks for.
   const outputHtml = createMemo<string | null>(() => {
     const html = unwrapOutputValue(selectedRunResult()?.html);
-    return html === null ? null : sanitizeDocumentHtml(html) || null;
+    return html === null ? null : sanitizeVektorDocumentPreviewHtml(html) || null;
   });
 
   const outputDocumentId = createMemo<string | null>(() =>
