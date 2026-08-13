@@ -111,7 +111,9 @@ async function handlePropertiesPatch(
   const propertyEntries = Object.entries(properties);
   const payload: { slug?: string } = {};
 
-  for (const [propertyKey, propertyPatch] of propertyEntries) {
+  // Validate and normalize the complete payload before applying any entry. A
+  // later invalid property must not turn a rejected PATCH into a partial write.
+  const operations = propertyEntries.map(([propertyKey, propertyPatch]) => {
     if (!propertyKey || typeof propertyKey !== "string") {
       throw badRequestResponse("Property key is required and must be a non-empty string");
     }
@@ -123,23 +125,13 @@ async function handlePropertiesPatch(
     }
 
     if (propertyPatch === null) {
-      await deleteDocumentProperty(
-        await openSpaceStore(spaceId),
-        documentId,
-        propertyKey,
-        userId,
-      );
-      continue;
+      return { kind: "delete", propertyKey } as const;
     }
 
     let nextValue: unknown = propertyPatch;
     let nextType: string | null | undefined;
 
-    if (
-      typeof propertyPatch === "object" &&
-      propertyPatch !== null &&
-      !Array.isArray(propertyPatch)
-    ) {
+    if (typeof propertyPatch === "object" && !Array.isArray(propertyPatch)) {
       if (!("value" in propertyPatch)) {
         throw badRequestResponse(
           `Property "${propertyKey}" object payload must include "value"`,
@@ -156,16 +148,32 @@ async function handlePropertiesPatch(
       }
     }
 
+    const value = Array.isArray(nextValue)
+      ? nextValue
+          .filter((item) => item !== null && item !== undefined)
+          .map((item) => String(item))
+      : String(nextValue);
+
+    return { kind: "update", propertyKey, value, type: nextType } as const;
+  });
+
+  for (const operation of operations) {
+    if (operation.kind === "delete") {
+      await deleteDocumentProperty(
+        await openSpaceStore(spaceId),
+        documentId,
+        operation.propertyKey,
+        userId,
+      );
+      continue;
+    }
+
     const changedProperties = await updateDocumentProperty(
       await openSpaceStore(spaceId),
       documentId,
-      propertyKey,
-      Array.isArray(nextValue)
-        ? nextValue
-            .filter((value) => value !== null && value !== undefined)
-            .map((value) => String(value))
-        : String(nextValue),
-      nextType,
+      operation.propertyKey,
+      operation.value,
+      operation.type,
       userId,
     );
 

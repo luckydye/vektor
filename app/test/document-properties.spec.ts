@@ -286,6 +286,30 @@ describe("reserved property keys are refused", () => {
     expect(await response.text()).toContain(key);
   });
 
+  it("validates every patched property before applying any of them", async () => {
+    const created = await createDocument({ title: "Original title" });
+    expect(created.status).toBe(201);
+    const documentId = (await created.json()).document.id;
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          properties: JSON.parse('{"title":"Changed title","constructor":"value"}'),
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+
+    const fetched = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+    );
+    expect(fetched.status).toBe(200);
+    expect((await fetched.json()).document.properties.title).toBe("Original title");
+  });
+
   it.each(
     RESERVED_KEYS,
   )("still allows deleting %s, so a poisoned document can be cleaned up", async (key) => {
