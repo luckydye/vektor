@@ -11,17 +11,14 @@ import {
   normalizeDocumentPropertyPatch,
   parseStoredPropertyValue,
   propertyValueToText,
-  serializePropertyValue,
   type SpaceProperty,
+  serializePropertyValue,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { slugify } from "#utils/utils.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { generateUniqueSlug } from "./documents.ts";
-import {
-  nonArchivedDocumentCondition,
-  scheduleDocumentSearchRefresh,
-} from "./search.ts";
+import { nonArchivedDocumentCondition, scheduleDocumentSearchRefresh } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
@@ -105,10 +102,7 @@ export async function patchDocumentProperties(
         await txStore.db
           .delete(property)
           .where(
-            and(
-              eq(property.documentId, documentId),
-              eq(property.key, operation.key),
-            ),
+            and(eq(property.documentId, documentId), eq(property.key, operation.key)),
           );
 
         if (existing) {

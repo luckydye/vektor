@@ -1,7 +1,4 @@
-import {
-  type DocumentProperties,
-  propertyValueToText,
-} from "#documents/properties.ts";
+import { type DocumentProperties, propertyValueToText } from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
 
 /**

@@ -194,10 +194,7 @@ export async function updateDocumentEmbedding(
 }
 
 /** Start a search refresh without delaying or failing the document write. */
-export function scheduleDocumentSearchRefresh(
-  s: SpaceStore,
-  documentId: string,
-): void {
+export function scheduleDocumentSearchRefresh(s: SpaceStore, documentId: string): void {
   void updateDocumentEmbedding(s, documentId).catch((error) => {
     appLogger.warn("Failed to refresh document search", {
       error,

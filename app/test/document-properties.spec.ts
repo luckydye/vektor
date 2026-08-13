@@ -177,9 +177,9 @@ describe("toDocumentPropertiesByDocument", () => {
       { documentId: "doc_two", key: "title", value: "Two" },
     ]);
 
-    expect(
-      Object.hasOwn(propertiesByDocument.get("doc_two") ?? {}, "constructor"),
-    ).toBe(false);
+    expect(Object.hasOwn(propertiesByDocument.get("doc_two") ?? {}, "constructor")).toBe(
+      false,
+    );
     expect(Object.keys(propertiesByDocument.get("doc_two") ?? {})).toEqual(["title"]);
   });
 });
@@ -328,9 +328,7 @@ describe("reserved property keys are refused", () => {
 
     expect(response.status).toBe(400);
 
-    const fetched = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/${documentId}`,
-    );
+    const fetched = await apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`);
     expect(fetched.status).toBe(200);
     expect((await fetched.json()).document.properties.title).toBe("Original title");
   });

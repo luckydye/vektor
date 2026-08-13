@@ -492,119 +492,126 @@ export const PUT: ApiRouteHandler = (context) =>
   }, "Failed to update document");
 
 export const PATCH: ApiRouteHandler = (context) =>
-  withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.var.params, "spaceId");
-    const id = requireParam(context.var.params, "documentId");
-    const store = await openSpaceStore(spaceId);
-    const existingDoc = await getDocument(store, id);
-    if (!existingDoc) {
-      throw notFoundResponse("Document");
-    }
+  withApiErrorHandling(
+    async () => {
+      const spaceId = requireParam(context.var.params, "spaceId");
+      const id = requireParam(context.var.params, "documentId");
+      const store = await openSpaceStore(spaceId);
+      const existingDoc = await getDocument(store, id);
+      if (!existingDoc) {
+        throw notFoundResponse("Document");
+      }
 
-    const auth = await authenticateJobTokenOrSpaceRole(
-      context,
-      spaceId,
-      Permission.EDITOR,
-      {
-        type: ResourceType.DOCUMENT,
-        id,
-      },
-    );
-    const userId = auth.type === "user" ? auth.user.id : auth.userId;
-    if (!userId) {
-      throw forbiddenResponse("Job token is missing user context");
-    }
+      const auth = await authenticateJobTokenOrSpaceRole(
+        context,
+        spaceId,
+        Permission.EDITOR,
+        {
+          type: ResourceType.DOCUMENT,
+          id,
+        },
+      );
+      const userId = auth.type === "user" ? auth.user.id : auth.userId;
+      if (!userId) {
+        throw forbiddenResponse("Job token is missing user context");
+      }
 
-    const body = await parseJsonBody<DocumentPatchBody>(context.req.raw);
-    const { properties, parentId, publishedRev, readonly } = body;
+      const body = await parseJsonBody<DocumentPatchBody>(context.req.raw);
+      const { properties, parentId, publishedRev, readonly } = body;
 
-    await verifyDocumentRole(spaceId, id, userId, Permission.EDITOR);
+      await verifyDocumentRole(spaceId, id, userId, Permission.EDITOR);
 
-    if (properties !== undefined) {
-      if (
-        parentId !== undefined ||
-        publishedRev !== undefined ||
-        readonly !== undefined
-      ) {
-        throw badRequestResponse(
-          "Properties patch cannot be combined with parentId, publishedRev, or readonly",
+      if (properties !== undefined) {
+        if (
+          parentId !== undefined ||
+          publishedRev !== undefined ||
+          readonly !== undefined
+        ) {
+          throw badRequestResponse(
+            "Properties patch cannot be combined with parentId, publishedRev, or readonly",
+          );
+        }
+
+        if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
+          throw badRequestResponse("Properties must be an object");
+        }
+
+        const payload = await patchDocumentProperties(store, id, properties, userId);
+        return successResponse(payload);
+      }
+
+      if (parentId !== undefined) {
+        if (parentId !== null && typeof parentId !== "string") {
+          throw badRequestResponse("Parent ID must be a string or null");
+        }
+
+        if (parentId) {
+          await verifyDocumentAccess(spaceId, parentId, userId);
+        }
+
+        const parentChange = await setDocumentParent(store, id, parentId).catch(
+          (error) => {
+            if (error instanceof InvalidDocumentParentError) {
+              throw badRequestResponse(error.message);
+            }
+            throw error;
+          },
+        );
+        const parentChangeData = {
+          kind: "document_parent_changed",
+          documentId: id,
+          previousParentId: parentChange.previousParentId,
+          parentId: parentChange.parentId,
+        };
+
+        sendSyncEvent(
+          spaceId,
+          {
+            topic: realtimeTopics.documentTree,
+            data: parentChangeData,
+          },
+          {
+            topic: realtimeTopics.categoryDocuments,
+            data: parentChangeData,
+          },
+          {
+            topic: realtimeTopics.document(id),
+            data: parentChangeData,
+          },
         );
       }
 
-      if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
-        throw badRequestResponse("Properties must be an object");
-      }
-
-      const payload = await patchDocumentProperties(store, id, properties, userId);
-      return successResponse(payload);
-    }
-
-    if (parentId !== undefined) {
-      if (parentId !== null && typeof parentId !== "string") {
-        throw badRequestResponse("Parent ID must be a string or null");
-      }
-
-      if (parentId) {
-        await verifyDocumentAccess(spaceId, parentId, userId);
-      }
-
-      const parentChange = await setDocumentParent(store, id, parentId).catch((error) => {
-        if (error instanceof InvalidDocumentParentError) {
-          throw badRequestResponse(error.message);
+      if (publishedRev !== undefined) {
+        if (publishedRev !== null && typeof publishedRev !== "number") {
+          throw badRequestResponse("Published revision must be a number or null");
         }
-        throw error;
-      });
-      const parentChangeData = {
-        kind: "document_parent_changed",
-        documentId: id,
-        previousParentId: parentChange.previousParentId,
-        parentId: parentChange.parentId,
-      };
 
-      sendSyncEvent(
-        spaceId,
-        {
-          topic: realtimeTopics.documentTree,
-          data: parentChangeData,
-        },
-        {
-          topic: realtimeTopics.categoryDocuments,
-          data: parentChangeData,
-        },
-        {
-          topic: realtimeTopics.document(id),
-          data: parentChangeData,
-        },
-      );
-    }
-
-    if (publishedRev !== undefined) {
-      if (publishedRev !== null && typeof publishedRev !== "number") {
-        throw badRequestResponse("Published revision must be a number or null");
+        await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev);
       }
 
-      await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev);
-    }
-
-    if (readonly !== undefined) {
-      if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
-        throw badRequestResponse(`Documents of type "${existingDoc.type}" are readonly`);
+      if (readonly !== undefined) {
+        if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
+          throw badRequestResponse(
+            `Documents of type "${existingDoc.type}" are readonly`,
+          );
+        }
+        await handleReadonlyPatch(spaceId, id, userId, readonly);
       }
-      await handleReadonlyPatch(spaceId, id, userId, readonly);
-    }
 
-    return jsonResponse({ success: true });
-  }, {
-    fallbackMessage: "Failed to patch document",
-    onError(error) {
-      if (
-        error instanceof InvalidDocumentPropertyPatchError ||
-        error instanceof ReservedDocumentPropertyKeyError
-      ) {
-        return badRequestResponse(error.message);
-      }
+      return jsonResponse({ success: true });
     },
-  });
+    {
+      fallbackMessage: "Failed to patch document",
+      onError(error) {
+        if (
+          error instanceof InvalidDocumentPropertyPatchError ||
+          error instanceof ReservedDocumentPropertyKeyError
+        ) {
+          return badRequestResponse(error.message);
+        }
+      },
+    },
+  );
 
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
