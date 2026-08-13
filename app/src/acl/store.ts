@@ -891,11 +891,8 @@ export async function hasAnyResourceScopedAccess(
 
 /**
  * The role a user effectively holds on one document: the best of its direct,
- * tree, category and space grants.
- *
- * Grants add up, they never subtract: there is no deny entry in this model, so
- * a narrow grant must not drop someone below the role they already hold on the
- * space — sharing a document as viewer would lock out its owner.
+ * tree, category and space grants. Grants add up so a narrow one cannot demote
+ * someone — sharing a document as viewer would otherwise lock out its owner.
  */
 export async function getDocumentPermission(
   spaceId: string,
@@ -1010,12 +1007,9 @@ export async function hasPermission(
  * Features can be explicitly granted/denied via ACL entries with resourceType "feature".
  * If no explicit entry exists, falls back to defaults based on the user's space permission level.
  *
- * @param documentId Resolve the fallback against this document's effective role
- *   instead of the space role, for a feature being exercised on one document.
- *   Someone who reaches a document through a document- or tree-level share has
- *   no space role at all, so the space-only fallback denies them a feature their
- *   role on that document implies. Explicit feature entries still win, and the
- *   answer is only meaningful for that document — never for the space.
+ * @param documentId Resolve the fallback against this document's role instead of
+ *   the space role, since a document- or tree-level share carries no space role.
+ *   The answer is then only meaningful for that document.
  *
  * @example
  * // Check if user can comment

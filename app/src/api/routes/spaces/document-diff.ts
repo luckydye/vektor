@@ -77,9 +77,7 @@ export const GET: ApiRouteHandler = (context) =>
       reader = { type: "user", userId: auth.user.id };
     }
 
-    // A diff serves the content of both sides, so both are held to the same
-    // rule as `GET /documents/:id?rev=N` — the requested revision here, the
-    // resolved base once it is known.
+    // Both sides are content, so both are held to the `?rev=N` rule.
     await verifyRevisionAccess(spaceId, id, reader, [rev]);
 
     const revisionContent = await getRevision(rev, spaceId, id);

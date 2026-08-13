@@ -234,8 +234,7 @@ export const GET: ApiRouteHandler = (context) =>
     // view only requires viewer.
     const requiredRole = draft || live ? Permission.EDITOR : Permission.VIEWER;
 
-    // Carried past the gate: reading a specific revision is authorized again,
-    // against this same identity, by the shared revision guard below.
+    // Carried past the gate, for the revision guard below to re-authorize.
     let reader: RevisionReader;
 
     const jobToken = context.req.raw.headers.get("X-Job-Token");
@@ -278,8 +277,7 @@ export const GET: ApiRouteHandler = (context) =>
     if (!meta) {
       throw notFoundResponse("Document");
     }
-    // A workflow run is not a document anyone reads through this route, by any
-    // route parameter: `?rev=N` would otherwise serve the body this hides.
+    // Hidden by any parameter, or `?rev=N` serves the body this refuses.
     if (meta.type === workflowRunDocumentType) {
       throw notFoundResponse("Document");
     }
@@ -287,10 +285,8 @@ export const GET: ApiRouteHandler = (context) =>
     if (revParam) {
       const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
 
-      // `?rev=N` reads history, which the viewer gate above does not cover: a
-      // plain (or public) viewer gets the published revision and nothing else.
-      // Authorized before the revision is loaded, so a refused caller cannot
-      // tell an existing revision from a missing one.
+      // History, which the viewer gate above does not cover. Authorized before
+      // the load, so a refusal cannot distinguish a missing revision.
       const access = await verifyRevisionAccess(spaceId, id, reader, [rev]);
 
       const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
@@ -305,8 +301,7 @@ export const GET: ApiRouteHandler = (context) =>
 
       return withCors(
         jsonResponse({
-          // Without history access this is the published snapshot and nothing
-          // describing it — `rev` only, so the shape stays recognisable.
+          // Without history access, the snapshot and nothing describing it.
           revision: access.metadata
             ? { ...metadata, content }
             : { rev: metadata.rev, content },

@@ -1,37 +1,15 @@
 /**
- * The one rule for reading a document's revision history.
+ * The one rule for reading a document's revision history, applied in order:
  *
- * Three endpoints expose the same data — `GET /documents/:id?rev=N`,
- * `GET /documents/:id/revisions` and `GET /documents/:id/diff?rev=N` — and each
- * used to carry its own gate, so the weakest of the three decided what was
- * actually protected: `?rev=N` and `/diff` handed out any revision (including
- * unpublished drafts of a publicly shared document) to anyone who could read
- * the published document, while `/revisions` required `VIEW_HISTORY`. All three
- * call {@link verifyRevisionAccess} now, so the rule cannot diverge again.
+ *  1. Exactly the published revision: plain read access, since the document GET
+ *     serves the same content. Metadata is history, so the verdict says whether
+ *     it may travel with it.
+ *  2. Any other revision: `Feature.VIEW_HISTORY`, never implied by a role.
+ *  3. Never published: also `Permission.EDITOR`.
  *
- * The rule, in the order it is applied:
- *
- *  1. Serving exactly the published revision needs nothing beyond the read
- *     access the caller already has: the plain document GET returns the same
- *     *content*. Only the content — who wrote it and why is history, so the
- *     verdict reports whether metadata may travel with it.
- *  2. Any other revision is history → `Feature.VIEW_HISTORY`, the gate
- *     `/revisions` has always applied. This is deliberately *not* implied by a
- *     role: an explicit feature deny keeps out editors and owners too, exactly
- *     as it does on `/revisions`.
- *  3. A revision that was never published additionally requires
- *     `Permission.EDITOR`, so a viewer with `VIEW_HISTORY` reads published
- *     history but never a draft or a proposal.
- *
- * "Never published" is position plus status: a suggestion is a proposal any
- * viewer can create, and a later publish moving past it never made it published,
- * so it stays behind the boundary wherever it sits. Position alone cannot tell a
- * once-published save from an intermediate draft below the pointer — the schema
- * records no publication history — so both count as published history.
- *
- * This *refines* a route's read gate, it does not replace it: every caller must
- * still have passed its own `verifyDocumentRole`/`verifyTokenPermission` check
- * for plain read access before asking about revisions.
+ * "Never published" is position plus status, so a suggestion stays behind the
+ * boundary wherever the publish pointer later moves. This refines a route's read
+ * gate rather than replacing it.
  */
 
 import {
@@ -50,11 +28,9 @@ import { getRevisionMetadata } from "#db/space/revisions.ts";
 /**
  * Who is asking, in whichever form the route resolved its credential.
  *
- *  - `system`: a user-less HMAC job token, trusted within its space (the same
- *    credential the routes already skip per-document checks for).
+ *  - `system`: a user-less HMAC job token, trusted within its space.
  *  - `user`: a session, or a job token carrying the initiating user's id.
- *    `userId: null` is an unauthenticated caller, admitted through the `public`
- *    group — the case audit 043 was reported against.
+ *    `userId: null` is an unauthenticated caller (audit 043).
  *  - `token`: a space access token, whose authority is its own ACL entries.
  */
 export type RevisionReader =
@@ -80,24 +56,13 @@ async function verifyReaderRole(
     );
     return;
   }
-  // `null` (unauthenticated) is handled inside: it resolves against the
-  // `public` group, so a public-group grant is neither more nor less than the
-  // role it was granted.
+  // `null` resolves against the `public` group inside.
   await verifyDocumentRole(spaceId, documentId, reader.userId, requiredRole);
 }
 
 /**
- * Whether the reader holds `feature` on this document.
- *
- * The feature is resolved against the document rather than the space: someone
- * who reaches it through a document- or tree-level share holds no space role,
- * and a space-scoped fallback would refuse them history on a document they can
- * edit. Explicit feature grants and denies still decide first, so the
- * `/revisions` behaviour of a deny outranking any role is unchanged.
- *
- * A `system` reader is excluded by type rather than waved through here: a
- * trusted system token never reaches a feature check, and the caller has to
- * have said so.
+ * Whether the reader holds `feature` on this document. Scoped to the document
+ * because a document- or tree-level share carries no space role.
  */
 async function readerHasFeature(
   spaceId: string,
@@ -136,11 +101,8 @@ async function verifyReaderFeature(
 }
 
 /**
- * Whether `rev` is content the document never published.
- *
- * A missing revision counts as never published: the caller learns nothing from
- * the distinction (it is refused either way, and the route 404s afterwards),
- * and guessing the other way would exempt revisions that do not exist.
+ * Whether `rev` is content the document never published. A missing revision
+ * counts as never published, so a guess cannot buy the exemption.
  */
 async function isNeverPublished(
   spaceId: string,
@@ -159,12 +121,9 @@ async function isNeverPublished(
 }
 
 /**
- * What a caller may read of a revision, once authorized.
- *
- * `metadata` is false when only the published-snapshot exemption admitted the
- * caller and it holds no `VIEW_HISTORY`: it may have the content, which the
- * plain document GET would serve anyway, but not the authorship, message,
- * checksum or lineage that `/revisions` gates behind the feature.
+ * What a caller may read of a revision, once authorized. `metadata` is false for
+ * a snapshot-exemption caller without `VIEW_HISTORY`: content, but not the
+ * authorship, message, checksum or lineage `/revisions` gates.
  */
 export interface RevisionAccess {
   metadata: boolean;
@@ -174,17 +133,13 @@ export interface RevisionAccess {
  * Authorize a read of a document's revision history. Throws a 401/403/404
  * Response when the caller may not have it.
  *
- * @param revs The revisions whose **content** is about to be served. Omit (or
- *   pass an empty array) for a metadata-only listing of the whole history,
- *   which is treated as history access without a published-snapshot exemption.
+ * @param revs The revisions whose **content** is about to be served. Omit for a
+ *   listing of the whole history, which gets no snapshot exemption.
  * @returns What may be served — see {@link RevisionAccess}.
  *
  * @example
  * ```ts
- * // GET /documents/:id?rev=N — anonymous callers included
  * const access = await verifyRevisionAccess(spaceId, id, { type: "user", userId: null }, [rev]);
- *
- * // GET /documents/:id/revisions — metadata listing
  * await verifyRevisionAccess(spaceId, id, { type: "user", userId: user.id });
  * ```
  */
@@ -194,8 +149,7 @@ export async function verifyRevisionAccess(
   reader: RevisionReader,
   revs?: readonly number[],
 ): Promise<RevisionAccess> {
-  // A user-less system token is the space's own background work; it reads the
-  // history the same way the publish/notification paths do.
+  // A user-less system token is the space's own background work.
   if (reader.type === "system") return { metadata: true };
 
   const requested = revs ?? [];
@@ -208,9 +162,7 @@ export async function verifyRevisionAccess(
     }
     publishedRev = document.publishedRev;
 
-    // The published snapshot is what plain read access already buys — its
-    // content, and nothing that describes it unless the caller could have read
-    // that description from the history anyway.
+    // Plain read access already buys the published snapshot's content.
     if (publishedRev !== null && requested.every((rev) => rev === publishedRev)) {
       return {
         metadata: await readerHasFeature(

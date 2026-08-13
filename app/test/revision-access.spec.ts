@@ -57,11 +57,7 @@ let publishedRev: number;
 let oldRev: number;
 let draftRev: number;
 
-/**
- * A second document, for the case position alone gets wrong: a suggestion that
- * a later publish left *below* the publish pointer. It was never published, so
- * `rev <= publishedRev` must not be what decides it.
- */
+/** A second document: a suggestion a later publish left *below* the pointer. */
 let suggestionDocumentId: string;
 let suggestionRev: number;
 
@@ -202,8 +198,7 @@ beforeAll(async () => {
     suggestionDocumentId,
     "suggestion",
   );
-  // Publishing past the suggestion is what used to release it: it now sits
-  // below the pointer without ever having been published content.
+  // Publishing past the suggestion is what used to release it.
   const laterRev = await saveRevision(REV2_CONTENT, suggestionDocumentId);
   await publish(laterRev, suggestionDocumentId);
   expect(suggestionRev).toBeLessThan(laterRev);
@@ -410,11 +405,7 @@ describe("editor", () => {
   });
 });
 
-/**
- * The published snapshot is served because the plain GET would serve the same
- * bytes — which says nothing about who wrote it or why. That description is the
- * history `/revisions` gates, so it travels with the feature, not the content.
- */
+/** Who wrote the snapshot and why is history, so it travels with the feature. */
 describe("revision metadata on the published snapshot", () => {
   it("is withheld from a caller without the history feature", async () => {
     const response = await anonRequest(documentPath(`?rev=${publishedRev}`));
@@ -441,11 +432,7 @@ describe("revision metadata on the published snapshot", () => {
   });
 });
 
-/**
- * A suggestion is a proposal any viewer may create. The publish pointer moving
- * past it never made it published content, so its position below the pointer
- * must not read as "published history".
- */
+/** A proposal any viewer may create, so position below the pointer decides nothing. */
 describe("a suggestion left below the publish pointer", () => {
   it("is refused to a viewer with the history feature", async () => {
     await expectRefused(
@@ -476,11 +463,7 @@ describe("a suggestion left below the publish pointer", () => {
   });
 });
 
-/**
- * Access granted on the document alone, with no space role. VIEW_HISTORY used
- * to resolve against the space only, so sharing a document handed over its
- * content but never its history — not even to the editor of that document.
- */
+/** No space role at all: VIEW_HISTORY used to resolve against the space only. */
 describe("a caller shared the document directly", () => {
   it("reads the unpublished draft as its editor", async () => {
     const response = await apiRequest(
@@ -517,11 +500,7 @@ describe("a caller shared the document directly", () => {
   });
 });
 
-/**
- * A workflow run is hidden from this route whole (the result is prose, not a
- * document). The type check has to precede the revision branch, or `?rev=N`
- * answers for a document the plain GET refuses to admit exists.
- */
+/** Hidden from this route whole, so the type check precedes the revision branch. */
 describe("workflow run document", () => {
   it("is not found by revision number, for the owner", async () => {
     const response = await apiRequest(

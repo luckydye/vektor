@@ -844,22 +844,11 @@ export async function verifyTokenPermission(
 }
 
 /**
- * Whether a token holds a `feature` capability. The one place a token's feature
- * access is resolved — {@link verifyTokenFeature} is this plus the refusal, so
- * a caller that needs the answer rather than the throw cannot drift from it.
+ * Whether a token holds a `feature` capability — the one place that is resolved.
+ * A token carries no groups, so group grants reach it only through `public`.
  *
- * Features are space-scoped (no resource id), so a feature-granted token can
- * act across the whole space — e.g. a token with `manage_extensions` can
- * install NEW extensions, not just ones that already exist. The check does not
- * fall back to a space role unless the role's defaults include the feature, so
- * a plain viewer/editor token (which lacks the feature by default) is rejected.
- *
- * A token carries no group memberships, so group-granted features reach it only
- * through the `public` group — the same resolution `hasFeature` applies to any
- * caller with no groups.
- *
- * @param documentId Narrow the role fallback to one document, for a feature
- *   exercised on that document alone. See {@link hasFeature}.
+ * @param documentId Narrow the role fallback to one document. See
+ *   {@link hasFeature}.
  */
 export async function tokenHasFeature(
   tokenResult: ValidateTokenResult,

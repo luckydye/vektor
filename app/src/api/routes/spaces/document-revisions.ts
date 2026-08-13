@@ -28,9 +28,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
-    // History access, through the same guard the revision-content endpoints use.
-    // No revisions are named: this lists metadata for all of them, so there is
-    // no published-snapshot exemption and the VIEW_HISTORY feature is required.
+    // No revision is named, so no snapshot exemption: VIEW_HISTORY is required.
     await verifyRevisionAccess(spaceId, documentId, { type: "user", userId: user.id });
 
     const store = await openSpaceStore(spaceId);
