@@ -69,20 +69,21 @@ async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   }
 }
 
-let hasDirectDocumentAccess = false;
-if (storedDocumentRecord) {
-  hasDirectDocumentAccess = await holdsDocumentViewerRole(storedDocumentRecord.id);
-  if (!hasDirectDocumentAccess && !Astro.locals.session) {
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "/login" },
-    });
-  }
-}
+/**
+ * The addressed document once the per-document check has passed for it, `null`
+ * when it has not — nothing resolved, or the caller may not read what did.
+ * Every document-derived value below hangs off this.
+ */
+const readableDocumentRecord =
+  storedDocumentRecord && (await holdsDocumentViewerRole(storedDocumentRecord.id))
+    ? storedDocumentRecord
+    : null;
 
-if (!hasDirectDocumentAccess) {
+if (!readableDocumentRecord) {
   // Space-wide viewer, or any document/tree/category grant inside the space —
   // a resource-scoped grantee still has to reach the container it lives in.
+  // Also the only place an anonymous caller is sent to /login: redirecting on
+  // the document verdict would tell a refused slug from an unresolved one.
   try {
     await verifyResourceAccess(space.id, Astro.locals.user?.id ?? "");
   } catch (error) {
@@ -107,13 +108,11 @@ if (docSlugMatch && !storedDocumentRecord) {
   }
 }
 
-// Reaching the space is not enough: a resource-scoped grantee clears
-// `verifyResourceAccess` on a grant on some *other* document. They render the
+// A caller who reached the space but may not read this document renders the
 // shell an unresolved slug produces — a 403 here would confirm the slug exists.
-const documentRecord =
-  storedDocumentRecord && hasDirectDocumentAccess
-    ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
-    : null;
+const documentRecord = readableDocumentRecord
+  ? await resolvePublishedDocumentContent(store, readableDocumentRecord)
+  : null;
 let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))
   : undefined;
