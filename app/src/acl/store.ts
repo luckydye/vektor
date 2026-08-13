@@ -11,6 +11,7 @@ import {
   permissionsAtLeast,
   ResourceType,
   resolveFeature,
+  strongestGrant,
 } from "#acl/permissions.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
@@ -365,15 +366,7 @@ export async function getPermission(
 ): Promise<AclEntry | null> {
   const db = await getSpaceDb(spaceId);
 
-  const allPermissions: Array<{
-    resourceType: string;
-    resourceId: string;
-    userId: string | null;
-    groupId: string | null;
-    permission: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }> = [];
+  const allPermissions: AclRow[] = [];
 
   // Get user-specific permission
   const userResult = await one(
@@ -414,39 +407,13 @@ export async function getPermission(
   );
 
   allPermissions.push(...groupResults);
-
-  // If no permissions found, return null
-  if (allPermissions.length === 0) {
-    return null;
-  }
-
-  // Return the highest permission level from all applicable permissions
-  const sortedResults = allPermissions.sort((a, b) => {
-    const levelA = permissionLevel(a.permission);
-    const levelB = permissionLevel(b.permission);
-    return levelB - levelA;
-  });
-
-  const result = sortedResults[0];
-  return {
-    resourceType: result.resourceType,
-    resourceId: result.resourceId,
-    userId: result.userId || undefined,
-    groupId: result.groupId || undefined,
-    permission: result.permission,
-    createdAt: new Date(result.createdAt),
-    updatedAt: new Date(result.updatedAt),
-  };
+  return bestAclEntry(allPermissions);
 }
 
+/** The strongest of these ACL rows, as an entry. Null when there are none. */
 function bestAclEntry(rows: Array<AclRow | AclEntry>): AclEntry | null {
-  if (rows.length === 0) return null;
-
-  const result = rows.sort((a, b) => {
-    const levelA = permissionLevel(a.permission);
-    const levelB = permissionLevel(b.permission);
-    return levelB - levelA;
-  })[0];
+  const result = strongestGrant(rows, (row) => row.permission);
+  if (!result) return null;
 
   return {
     resourceType: result.resourceType,
@@ -747,15 +714,9 @@ export async function listDocumentAccess(
   return [...grantees.values()].map(({ userId, groupId, grants }) => {
     // Mirrors hasPermission: the strongest grant wins, space role included, so
     // a narrower grant never reads as a downgrade of it.
-    const via = bestGrant(grants);
+    const via = strongestGrant(grants, (grant) => grant.permission) ?? grants[0];
     return { userId, groupId, permission: via.permission, via, grants };
   });
-}
-
-function bestGrant(grants: DocumentAccessGrant[]): DocumentAccessGrant {
-  return grants.reduce((best, grant) =>
-    permissionLevel(grant.permission) > permissionLevel(best.permission) ? grant : best,
-  );
 }
 
 /** Page titles and category names for the resources these grants sit on. */
@@ -1331,9 +1292,10 @@ export async function listAccessibleResources(
  * `hasPermission` semantics in bulk (one query instead of N):
  *  - a resource with NO ACL row applicable to the user falls back to the
  *    caller's space-level role — callers must have already verified the user
- *    holds at least `viewer` on the space;
+ *    holds at least `minPermission` on the space;
  *  - a resource WITH applicable rows is readable only when the best of those
- *    rows is at least `viewer` (so explicit "denied"-style entries hide it);
+ *    rows is at least `minPermission` (so explicit "denied"-style entries hide
+ *    it);
  *  - a viewer carrying a `documentScope` holds no space-wide role, so that
  *    fallback would grant them everything: the scope is an allowlist and
  *    nothing outside it is readable.
@@ -1343,6 +1305,7 @@ export async function filterReadableResources(
   resourceType: ResourceType,
   resourceIds: string[],
   viewer: AclViewer,
+  minPermission: Permission = Permission.VIEWER,
 ): Promise<Set<string>> {
   const { userId, userGroups } = viewer;
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
@@ -1478,7 +1441,7 @@ export async function filterReadableResources(
       level = categoryLevel;
     }
 
-    if (level === undefined || level >= permissionLevel(Permission.VIEWER)) {
+    if (level === undefined || level >= permissionLevel(minPermission)) {
       readable.add(id);
     }
   }

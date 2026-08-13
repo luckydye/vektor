@@ -1,21 +1,48 @@
 import { eq } from "drizzle-orm";
-import { verifySpaceAccess, verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import {
+  verifySpaceAccess,
+  verifySpaceRole,
+  verifyTokenPermission,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
-import { validateAccessToken } from "#db/space/accessTokens.ts";
+import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 
+/**
+ * The access token a Basic-auth CalDAV client authenticated with.
+ *
+ * `spaceId` is the space whose store holds the token row. Access tokens live in
+ * exactly one space's database, so that space is the only one a token can ever
+ * reach — every other space the user belongs to is out of the token's scope by
+ * construction, and `result` carries the ACL identity (`token:<id>`) that says
+ * what it may do *within* that space.
+ */
+export interface CalDAVToken {
+  spaceId: string;
+  result: ValidateTokenResult;
+}
+
 export interface CalDAVUser {
   id: string;
   email: string;
   name: string;
+  /**
+   * Set only for callers that authenticated with an access token over Basic
+   * auth. Its presence means the caller's authority is the *token's* ACL
+   * grants, not the user's own access — the user identity only records who
+   * delegated the token (and whose name new documents are attributed to).
+   * Session callers leave it undefined and keep being authorized against their
+   * own ACL.
+   */
+  token?: CalDAVToken;
 }
 
 /**
@@ -34,7 +61,12 @@ export async function verifyCalDAVUser(context: ApiContext): Promise<CalDAVUser 
 /**
  * Authenticate a CalDAV request using HTTP Basic auth.
  * Username is the user's email, password is an access token (at_...).
- * The token is validated against any space the user has access to.
+ *
+ * The returned identity carries the token that authenticated it: the token is
+ * NOT merely a way to look the user up. Callers must authorize against
+ * {@link CalDAVUser.token} (see {@link requireCalDAVUserAndAccess}), otherwise a
+ * token scoped to one space at viewer level would grant the user's full access
+ * to every space they belong to.
  */
 export async function verifyBasicAuth(
   authHeader: string | null,
@@ -62,11 +94,20 @@ export async function verifyBasicAuth(
   const foundUser = await one(authDb.select().from(user).where(eq(user.email, email)));
   if (!foundUser) return null;
 
+  // A token row exists only in the database of the space it was created in, so
+  // this search establishes *which* space the token belongs to — it can never
+  // "find" a space-A token by probing space B. The space it is found in is
+  // carried out as the token's scope.
   const spaces = await listUserSpaces(foundUser.id);
   for (const space of spaces) {
     const result = await validateAccessToken(await openSpaceStore(space.id), token);
     if (result && result.token.createdBy === foundUser.id) {
-      return { id: foundUser.id, email: foundUser.email, name: foundUser.name };
+      return {
+        id: foundUser.id,
+        email: foundUser.email,
+        name: foundUser.name,
+        token: { spaceId: space.id, result },
+      };
     }
   }
 
@@ -319,6 +360,46 @@ export function calDavForbidden(): Response {
   });
 }
 
+/**
+ * Authorize a Basic-auth CalDAV caller against the *token's* grants.
+ *
+ * This is the CalDAV counterpart of the API path's `verifyTokenPermission` and
+ * deliberately never consults the user's own ACL: an access token exists to
+ * delegate limited access, so a token scoped "viewer on space A" must not reach
+ * space B and must not write anywhere, no matter what its creator may do.
+ *
+ * `spaceId` is the space named in the CalDAV URL, absent for the principal and
+ * calendar-home collections — those are authorized against the token's own
+ * space, so a credential that holds nothing there cannot browse at all.
+ */
+async function authorizeCalDAVToken(
+  caldavUser: CalDAVUser,
+  token: CalDAVToken,
+  spaceId: string | undefined,
+  requiredRole: Permission,
+): Promise<CalDAVUser | Response> {
+  // The token reaches exactly one space (see CalDAVToken). Any other space in
+  // the URL is outside its scope, whatever the user themselves may access.
+  if (spaceId && spaceId !== token.spaceId) {
+    return calDavForbidden();
+  }
+
+  const targetSpaceId = spaceId ?? token.spaceId;
+  try {
+    await verifyTokenPermission(
+      token.result,
+      targetSpaceId,
+      ResourceType.SPACE,
+      targetSpaceId,
+      requiredRole,
+    );
+  } catch {
+    return calDavForbidden();
+  }
+
+  return caldavUser;
+}
+
 export async function requireCalDAVUserAndAccess(
   context: ApiContext,
   options: { userId?: string; spaceId?: string; requiredRole?: Permission },
@@ -332,12 +413,26 @@ export async function requireCalDAVUserAndAccess(
     return calDavForbidden();
   }
 
+  // Writes (PUT/DELETE) must require the corresponding role, not just read
+  // access — a viewer must not be able to create/modify events.
+  const requiredRole = options.requiredRole ?? Permission.VIEWER;
+
+  // An access token's authority is its own ACL grants, never the access of the
+  // user who created it. Checked before anything space-scoped so that even the
+  // collections without a space in their URL stay inside the token's scope.
+  if (caldavUser.token) {
+    return authorizeCalDAVToken(
+      caldavUser,
+      caldavUser.token,
+      options.spaceId,
+      requiredRole,
+    );
+  }
+
   if (options.spaceId) {
     try {
-      // Writes (PUT/DELETE) must require the corresponding role, not just
-      // read access — a viewer must not be able to create/modify events.
-      if (options.requiredRole && options.requiredRole !== Permission.VIEWER) {
-        await verifySpaceRole(options.spaceId, caldavUser.id, options.requiredRole);
+      if (requiredRole !== Permission.VIEWER) {
+        await verifySpaceRole(options.spaceId, caldavUser.id, requiredRole);
       } else {
         await verifySpaceAccess(options.spaceId, caldavUser.id);
       }

@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { type AclViewer, ResourceType } from "#acl/permissions.ts";
-import { filterReadableResources } from "#acl/store.ts";
+import { type AclViewer, Permission, ResourceType } from "#acl/permissions.ts";
+import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -337,17 +337,27 @@ export async function getDocumentContent(
 }
 
 /**
- * Existence check that selects only the id column. Auth checks
- * (verifyDocumentRole) only need to know the document exists — using
- * getDocument here would pull the entire `content` column (tens of MB for large
- * canvases) into memory on every request, which saturated the server under
- * presence/collaboration traffic.
+ * What an auth check needs about a document: that it exists, and whether it is
+ * archived (which raises the role required to reach it). Null when there is no
+ * such document. Selects no content — getDocument here pulled the entire
+ * `content` column (tens of MB for large canvases) into memory on every request,
+ * which saturated the server under presence/collaboration traffic. `archived`
+ * reuses the listings' condition, so a legacy `'1'`/`'1.0'` row counts as one.
  */
-export async function documentExists(s: SpaceStore, id: string): Promise<boolean> {
+export async function getDocumentAuthState(
+  s: SpaceStore,
+  id: string,
+): Promise<{ archived: boolean } | null> {
   const row = await one(
-    s.db.select({ id: document.id }).from(document).where(eq(document.id, id)),
+    s.db
+      .select({
+        id: document.id,
+        archived: sql<number>`CASE WHEN ${archivedDocumentCondition} THEN 1 ELSE 0 END`,
+      })
+      .from(document)
+      .where(eq(document.id, id)),
   );
-  return row != null;
+  return row ? { archived: Number(row.archived) === 1 } : null;
 }
 
 export async function getDocumentBySlug(
@@ -429,29 +439,63 @@ export async function updateDocument(
   };
 }
 
+/**
+ * Drop every ACL grant that names this document. Archiving does NOT do this — it
+ * raises the role required to reach the document instead, so a restore brings the
+ * shares back with it. Only a permanent delete purges the rows.
+ */
+async function revokeDocumentGrants(
+  s: SpaceStore,
+  id: string,
+  actorUserId?: string,
+): Promise<void> {
+  await revokePermission(
+    s.spaceId,
+    ResourceType.DOCUMENT,
+    id,
+    undefined,
+    undefined,
+    actorUserId,
+  );
+  await revokePermission(
+    s.spaceId,
+    ResourceType.DOCUMENT_TREE,
+    id,
+    undefined,
+    undefined,
+    actorUserId,
+  );
+}
+
 export async function archiveDocument(
   s: SpaceStore,
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  if (userId) {
-    await createAuditLog(s, {
-      spaceId: s.spaceId,
-      docId: id,
-      userId,
-      event: "archive",
-      details: { message: "Document archived" },
-    });
-  }
+  await s.tx(async (tx) => {
+    if (userId) {
+      await createAuditLog(tx, {
+        spaceId: tx.spaceId,
+        docId: id,
+        userId,
+        event: "archive",
+        details: { message: "Document archived" },
+      });
+    }
 
-  await s.db
-    .update(document)
-    .set({ archived: true, updatedAt: new Date() })
-    .where(eq(document.id, id));
+    await tx.db
+      .update(document)
+      .set({ archived: true, updatedAt: new Date() })
+      .where(eq(document.id, id));
+  });
 
   return true;
 }
 
+/**
+ * Clearing `archived` is all a restore has to do: the grants were never revoked,
+ * only outranked while the document sat in the trash, so the shares come back.
+ */
 export async function restoreDocument(
   s: SpaceStore,
   id: string,
@@ -491,6 +535,9 @@ export async function deleteDocument(
   }
 
   await deleteDocumentEmailPreferences(await openSpaceStore(s.spaceId), id);
+  // `PRAGMA foreign_keys = 0` means dropping the row does not cascade: the grants
+  // would outlive it and be inherited by the next document to reuse the id.
+  await revokeDocumentGrants(s, id, userId);
   await s.db.delete(document).where(eq(document.id, id));
 
   return true;
@@ -778,14 +825,16 @@ export async function listArchivedDocuments(
       .orderBy(desc(document.updatedAt), desc(document.id)),
   );
 
-  // Per-document ACL filtering, mirroring listDocuments. Space access alone
-  // must not expose archived documents the caller cannot read.
+  // Per-document ACL filtering, mirroring listDocuments: space access alone must
+  // not expose archived documents the caller cannot read — at `editor`, which is
+  // what reading one takes.
   if (viewer) {
     const readable = await filterReadableResources(
       s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
       viewer,
+      Permission.EDITOR,
     );
     docs = docs.filter((doc) => readable.has(doc.id));
   }

@@ -13,6 +13,7 @@ import {
   allPermissions,
   type Feature,
   isPermission,
+  meetsPermissionLevel,
   Permission,
   PUBLIC_GROUP,
   ResourceType,
@@ -35,7 +36,7 @@ import type { ApiContext } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
-import { documentExists } from "#db/space/documents.ts";
+import { getDocumentAuthState } from "#db/space/documents.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
@@ -456,6 +457,30 @@ export async function verifyResourceAccess(
   }
 }
 
+/**
+ * The role a caller must hold on a document, raised to `editor` while it is
+ * archived: archive is the trash, so a viewer-level grant — a public link
+ * included — stops resolving without being revoked, and a restore brings the
+ * shares back with it. `exists` is returned rather than thrown on because the
+ * two guards below disagree about what a missing document means.
+ */
+async function requiredRoleForDocument(
+  spaceId: string,
+  documentId: string,
+  requiredRole: Permission,
+): Promise<{ exists: boolean; requiredRole: Permission }> {
+  const state = await getDocumentAuthState(await openSpaceStore(spaceId), documentId);
+  if (!state?.archived) {
+    return { exists: state != null, requiredRole };
+  }
+  return {
+    exists: true,
+    requiredRole: meetsPermissionLevel(requiredRole, Permission.EDITOR)
+      ? requiredRole
+      : Permission.EDITOR,
+  };
+}
+
 export async function verifyDocumentAccess(
   spaceId: string,
   documentId: string,
@@ -466,52 +491,15 @@ export async function verifyDocumentAccess(
     throw notFoundResponse("Space");
   }
 
-  // For unauthenticated users, check if document has public access
-  if (!userId) {
-    const hasPublicAccess = await hasPermission(
-      spaceId,
-      ResourceType.DOCUMENT,
-      documentId,
-      "", // Empty userId for public check
-      Permission.VIEWER,
-      [PUBLIC_GROUP],
-    );
-    if (!hasPublicAccess) {
-      throw unauthorizedResponse();
-    }
-    return;
-  }
-
-  const userGroups = await getUserGroups(userId);
-  const hasAccess = await hasPermission(
+  // `exists` is ignored: unlike verifyDocumentRole, this guard has never told
+  // "no such document" apart from "not allowed".
+  const { requiredRole } = await requiredRoleForDocument(
     spaceId,
-    ResourceType.DOCUMENT,
     documentId,
-    userId,
     Permission.VIEWER,
-    userGroups,
   );
-  if (!hasAccess) {
-    throw forbiddenResponse();
-  }
-}
 
-export async function verifyDocumentRole(
-  spaceId: string,
-  documentId: string,
-  userId: string | null,
-  requiredRole: Permission,
-): Promise<void> {
-  // Reject references to documents that do not exist before evaluating access,
-  // mirroring verifySpaceRole. Otherwise no-auth mode (where hasPermission short
-  // -circuits to true) would authorize any documentId, real or not. Use an
-  // id-only existence check — loading the full document (with its content
-  // column) here cost tens of MB per auth call on large canvases.
-  if (!(await documentExists(await openSpaceStore(spaceId), documentId))) {
-    throw notFoundResponse("Document");
-  }
-
-  // For unauthenticated users, check if document has public access with required role
+  // For unauthenticated users, check if document has public access
   if (!userId) {
     const hasPublicAccess = await hasPermission(
       spaceId,
@@ -528,12 +516,60 @@ export async function verifyDocumentRole(
   }
 
   const userGroups = await getUserGroups(userId);
-  const hasRole = await hasPermission(
+  const hasAccess = await hasPermission(
     spaceId,
     ResourceType.DOCUMENT,
     documentId,
     userId,
     requiredRole,
+    userGroups,
+  );
+  if (!hasAccess) {
+    throw forbiddenResponse();
+  }
+}
+
+export async function verifyDocumentRole(
+  spaceId: string,
+  documentId: string,
+  userId: string | null,
+  requiredRole: Permission,
+): Promise<void> {
+  // Reject references to documents that do not exist before evaluating access,
+  // mirroring verifySpaceRole. Otherwise no-auth mode (where hasPermission short
+  // -circuits to true) would authorize any documentId, real or not.
+  const { exists, requiredRole: effectiveRole } = await requiredRoleForDocument(
+    spaceId,
+    documentId,
+    requiredRole,
+  );
+  if (!exists) {
+    throw notFoundResponse("Document");
+  }
+
+  // For unauthenticated users, check if document has public access with required role
+  if (!userId) {
+    const hasPublicAccess = await hasPermission(
+      spaceId,
+      ResourceType.DOCUMENT,
+      documentId,
+      "", // Empty userId for public check
+      effectiveRole,
+      [PUBLIC_GROUP],
+    );
+    if (!hasPublicAccess) {
+      throw unauthorizedResponse();
+    }
+    return;
+  }
+
+  const userGroups = await getUserGroups(userId);
+  const hasRole = await hasPermission(
+    spaceId,
+    ResourceType.DOCUMENT,
+    documentId,
+    userId,
+    effectiveRole,
     userGroups,
   );
   if (!hasRole) {
@@ -784,17 +820,25 @@ export async function verifyTokenPermission(
 ): Promise<void> {
   const tokenUserId = getTokenUserId(tokenResult.tokenId);
 
+  // A token is a delegation of a user's access, so an archived document raises
+  // its bar too.
+  const effectivePermission =
+    resourceType === ResourceType.DOCUMENT
+      ? (await requiredRoleForDocument(spaceId, resourceId, requiredPermission))
+          .requiredRole
+      : requiredPermission;
+
   const hasAccess = await hasPermission(
     spaceId,
     resourceType,
     resourceId,
     tokenUserId,
-    requiredPermission,
+    effectivePermission,
   );
 
   if (!hasAccess) {
     throw forbiddenResponse(
-      `Token does not have ${requiredPermission} permission for this ${resourceType}`,
+      `Token does not have ${effectivePermission} permission for this ${resourceType}`,
     );
   }
 }

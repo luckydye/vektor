@@ -34,6 +34,15 @@ let testDocumentSlug: string;
 let privateDocumentId: string;
 let privateDocumentSlug: string;
 
+/**
+ * A page body with the two things that cannot carry an authorization verdict
+ * removed: the address the caller typed, which the shell echoes back as the
+ * router's initial url, and Astro's per-render hydration id.
+ */
+function maskVolatile(body: string, slug: string): string {
+  return body.replaceAll(slug, "<addr>").replace(/uid="[^"]*"/g, 'uid="<uid>"');
+}
+
 async function assignUserToGroup(userId: string, groups: string[]): Promise<void> {
   const authDb = getAuthDb();
   if (!authDb) {
@@ -176,6 +185,148 @@ describe("Frontend ACL Tests - Document Page Access", () => {
 
     // Should redirect to login or return 403
     expect([302, 303, 307, 401, 403]).toContain(response.status);
+  });
+});
+
+describe("Frontend ACL Tests - Document Addressed By ID", () => {
+  const missingDocumentId = "doc_0000000000000000000000000000";
+  let outsiderToken: string;
+  let granteeToken: string;
+  let otherDocGranteeToken: string;
+
+  async function pageShape(
+    path: string,
+    token: string,
+  ): Promise<{ status: number; location: string | null; body: string }> {
+    const response = await pageRequest(path, token);
+    return {
+      status: response.status,
+      location: response.headers.get("location"),
+      body: await response.text(),
+    };
+  }
+
+  beforeAll(async () => {
+    outsiderToken = (await createTestUser("Doc Id Outsider")).token;
+
+    // Viewer on the private document itself: authorized, so still redirected.
+    const grantee = await createTestUser("Doc Id Grantee");
+    granteeToken = grantee.token;
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: grantee.userId,
+        resourceType: "document",
+        resourceId: privateDocumentId,
+        action: "grant",
+      }),
+    });
+
+    // Viewer on a *different* document: reaches the space, may not read this one.
+    const otherDocGrantee = await createTestUser("Doc Id Other Grantee");
+    otherDocGranteeToken = otherDocGrantee.token;
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: otherDocGrantee.userId,
+        resourceType: "document",
+        resourceId: testDocumentId,
+        action: "grant",
+      }),
+    });
+  });
+
+  it("answers a non-member the same by id, by slug and for a missing id", async () => {
+    const byId = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentId}`,
+      outsiderToken,
+    );
+    const bySlug = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+      outsiderToken,
+    );
+    const missing = await pageShape(
+      `/${testSpaceSlug}/doc/${missingDocumentId}`,
+      outsiderToken,
+    );
+
+    expect(byId.status).toBe(bySlug.status);
+    expect(byId.location).toBe(bySlug.location);
+    expect(byId.status).toBe(missing.status);
+    expect(byId.location).toBe(missing.location);
+    expect(byId.status).toBe(403);
+    expect(byId.location).toBeNull();
+    // The slug is title-derived: it must not come back.
+    expect(byId.body).not.toContain(privateDocumentSlug);
+  });
+
+  it("answers an anonymous caller the same by id, by slug and for a missing id", async () => {
+    const byId = await pageShape(`/${testSpaceSlug}/doc/${privateDocumentId}`, "");
+    const bySlug = await pageShape(`/${testSpaceSlug}/doc/${privateDocumentSlug}`, "");
+    const missing = await pageShape(`/${testSpaceSlug}/doc/${missingDocumentId}`, "");
+
+    expect(byId.status).toBe(bySlug.status);
+    expect(byId.location).toBe(bySlug.location);
+    expect(byId.status).toBe(missing.status);
+    expect(byId.location).toBe(missing.location);
+    expect(byId.status).toBe(302);
+    expect(byId.location).toBe("/login");
+    expect(byId.body).not.toContain(privateDocumentSlug);
+  });
+
+  it("answers a space member who may not read the document the same by id as by slug", async () => {
+    const byId = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentId}`,
+      otherDocGranteeToken,
+    );
+    const bySlug = await pageShape(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+      otherDocGranteeToken,
+    );
+    const missing = await pageShape(
+      `/${testSpaceSlug}/doc/${missingDocumentId}`,
+      otherDocGranteeToken,
+    );
+
+    expect(byId.status).toBe(bySlug.status);
+    expect(byId.location).toBe(bySlug.location);
+    expect(byId.status).toBe(missing.status);
+    expect(byId.location).toBe(missing.location);
+    // Pinned, not just equal: all three are the shell, not a shared refusal.
+    expect(byId.status).toBe(200);
+    expect(byId.location).toBeNull();
+    expect(byId.body).not.toContain(privateDocumentSlug);
+    // By slug the caller typed the slug, so only the document can be asserted absent.
+    expect(bySlug.body).not.toContain("Private Document");
+    expect(bySlug.body).not.toContain("This is a private document.");
+  });
+
+  it("still redirects the owner from a document id to the canonical slug url", async () => {
+    const response = await pageRequest(
+      `/${testSpaceSlug}/doc/${privateDocumentId}?panel=comments`,
+      session1Token,
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}?panel=comments`,
+    );
+  });
+
+  it("still redirects a document-level grantee from a document id to the canonical slug url", async () => {
+    const response = await pageRequest(
+      `/${testSpaceSlug}/doc/${privateDocumentId}`,
+      granteeToken,
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+    );
   });
 });
 
@@ -329,13 +480,52 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
     expect(response.status).toBe(200);
   });
 
-  it.skip("should deny access to other documents without space membership", async () => {
+  it("should serve no other document's content without space membership", async () => {
     const response = await pageRequest(
       `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
       docLevelToken,
     );
+    const html = await response.text();
 
-    expect(response.status).not.toBe(200);
+    // The shell still renders — a refusal would confirm the slug exists — but it
+    // carries nothing of the document the grant does not reach.
+    expect(response.status).toBe(200);
+    expect(html).not.toContain("Private Document");
+    expect(html).not.toContain("This is a private document.");
+    expect(html).not.toContain(privateDocumentId);
+  });
+
+  it("answers a refused document url exactly as an unresolvable one, for the same caller", async () => {
+    // The refusal may not become an existence oracle: a slug the caller may not
+    // read has to be indistinguishable from a slug that resolves to nothing.
+    const refusedSlug = privateDocumentSlug;
+    const unresolvableSlug = "no-document-answers-to-this-slug";
+    const refused = await pageRequest(
+      `/${testSpaceSlug}/doc/${refusedSlug}`,
+      docLevelToken,
+    );
+    const unresolvable = await pageRequest(
+      `/${testSpaceSlug}/doc/${unresolvableSlug}`,
+      docLevelToken,
+    );
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
+    expect(maskVolatile(await refused.text(), refusedSlug)).toBe(
+      maskVolatile(await unresolvable.text(), unresolvableSlug),
+    );
+  });
+
+  it("still lets a space viewer read the document a document-level grantee is refused", async () => {
+    // testUser2 holds space-wide viewer by now: the refusal above is scoped to
+    // the grant, not to the document.
+    const response = await pageRequest(
+      `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
+      session2Token,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Private Document");
   });
 
   it.skip("should deny space index access without space membership", async () => {
@@ -343,6 +533,105 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
     const response = await pageRequest(`/${testSpaceSlug}`, docLevelToken);
 
     expect(response.status).not.toBe(200);
+  });
+});
+
+/**
+ * Archive raises the role a document needs to `editor`, so a space-wide `public`
+ * viewer grant stops reaching it — the one way a public space comes to hold a
+ * document an anonymous caller may not read. The page must not answer that
+ * caller any differently than it answers them an unresolvable slug, or the
+ * refusal enumerates archived documents by their title-derived slug.
+ */
+describe("Frontend ACL Tests - Archived Document In A Public Space", () => {
+  let publicSpaceId: string;
+  let publicSpaceSlug: string;
+  let archivedDocumentId: string;
+  let archivedDocumentSlug: string;
+
+  beforeAll(async () => {
+    publicSpaceSlug = `frontend-acl-public-${Date.now()}`;
+    const spaceResponse = await apiRequest("/api/v1/spaces", session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Frontend ACL Public Space",
+        slug: publicSpaceSlug,
+      }),
+    });
+    publicSpaceId = (await spaceResponse.json()).space.id;
+
+    const grant = await apiRequest(
+      `/api/v1/spaces/${publicSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "viewer",
+          groupId: "public",
+          action: "grant",
+          resourceType: "space",
+          resourceId: publicSpaceId,
+        }),
+      },
+    );
+    expect(grant.status).toBe(200);
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${publicSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<h1>Archived Document</h1><p>This is an archived document.</p>",
+          properties: { title: "Archived Document" },
+        }),
+      },
+    );
+    const archivedDocData = (await docResponse.json()).document;
+    archivedDocumentId = archivedDocData.id;
+    archivedDocumentSlug = archivedDocData.slug;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (publicSpaceId) await deleteSpace(publicSpaceId);
+  });
+
+  it("answers an archived url exactly as an unresolvable one, anonymously", async () => {
+    const unresolvableSlug = "no-document-answers-to-this-slug";
+
+    // Sanity: a refusal below is then caused by the archive, not a missing grant.
+    const beforeArchive = await pageRequest(
+      `/${publicSpaceSlug}/doc/${archivedDocumentSlug}`,
+      "",
+    );
+    expect(beforeArchive.status).toBe(200);
+    expect(await beforeArchive.text()).toContain("Archived Document");
+
+    const archived = await apiRequest(
+      `/api/v1/spaces/${publicSpaceId}/documents/${archivedDocumentId}`,
+      session1Token,
+      { method: "DELETE" },
+    );
+    expect(archived.status).toBe(200);
+
+    const refused = await pageRequest(
+      `/${publicSpaceSlug}/doc/${archivedDocumentSlug}`,
+      "",
+    );
+    const unresolvable = await pageRequest(
+      `/${publicSpaceSlug}/doc/${unresolvableSlug}`,
+      "",
+    );
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
+    // Pinned, not just equal: both are the shell, not a shared /login redirect.
+    expect(refused.status).toBe(200);
+    expect(refused.headers.get("location")).toBeNull();
+    expect(maskVolatile(await refused.text(), archivedDocumentSlug)).toBe(
+      maskVolatile(await unresolvable.text(), unresolvableSlug),
+    );
   });
 });
 

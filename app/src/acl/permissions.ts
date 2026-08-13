@@ -142,6 +142,36 @@ export function permissionLevel(permission: string | undefined): number {
   return isPermission(permission) ? rankOf(permission as unknown as PermissionName) : 0;
 }
 
+/**
+ * The item whose role ranks highest, or undefined when there are none. A user
+ * can hold several grants on one resource — their own plus one per group — and
+ * `hasPermission` lets the strongest decide, so everything reporting or
+ * delegating a role resolves it through here to agree with that.
+ */
+export function strongestGrant<T>(
+  items: Iterable<T>,
+  permissionOf: (item: T) => string | undefined,
+): T | undefined {
+  let best: T | undefined;
+  for (const item of items) {
+    if (
+      best === undefined ||
+      permissionLevel(permissionOf(item)) > permissionLevel(permissionOf(best))
+    ) {
+      best = item;
+    }
+  }
+  return best;
+}
+
+/** As above, for role names: a feature grant or a typo never wins. */
+export function highestPermission(
+  permissions: Iterable<string | undefined>,
+): Permission | undefined {
+  const roles = [...permissions].filter(isPermission);
+  return strongestGrant(roles, (role) => role);
+}
+
 /** Permission names ranking at or above `minPermission`, for ACL queries filtering by level. */
 export function permissionsAtLeast(minPermission: string): string[] {
   const min = permissionLevel(minPermission);
