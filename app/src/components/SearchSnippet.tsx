@@ -1,5 +1,6 @@
 import { createEffect, onMount } from "solid-js";
 import docStyles from "#editor/css/document.css?inline";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 interface Props {
   html: string;
@@ -61,7 +62,9 @@ export function SearchSnippet(props: Props) {
 
     const content = document.createElement("div");
     content.setAttribute("part", "content");
-    content.innerHTML = props.html;
+    // A snippet is either highlighted text or, for the listing query, the first
+    // 200 characters of the stored document — raw markup, cut mid-element.
+    content.innerHTML = sanitizeDocumentHtml(props.html);
 
     shadow.querySelector('[part="content"]')?.remove();
     shadow.appendChild(content);

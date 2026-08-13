@@ -3,14 +3,20 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference } from "#db/schema/space.ts";
+import { preferenceKey, spacePreferenceNamespaces } from "#utils/spacePreferences.ts";
 
-const DOCUMENT_EMAIL_MUTED_KEY_PREFIX = "email.document_muted:";
-const SPACE_EMAIL_MUTED_KEY = "email.space_muted";
+// Per-member preferences, so they live in the `user:` namespace of the space
+// preference store and are stored against the member's own `userId`. The keys
+// name the mute rather than the channel carrying it: email is what delivers a
+// notification today, not what the member asked to stop hearing about.
+const DOCUMENT_MUTED_KEY_PREFIX = preferenceKey(
+  spacePreferenceNamespaces.user,
+  "document_muted:",
+);
+const SPACE_MUTED_KEY = preferenceKey(spacePreferenceNamespaces.user, "space_muted");
 
 function emailMutedKey(documentId?: string): string {
-  return documentId
-    ? `${DOCUMENT_EMAIL_MUTED_KEY_PREFIX}${documentId}`
-    : SPACE_EMAIL_MUTED_KEY;
+  return documentId ? `${DOCUMENT_MUTED_KEY_PREFIX}${documentId}` : SPACE_MUTED_KEY;
 }
 
 /**

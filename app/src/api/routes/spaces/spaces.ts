@@ -5,11 +5,11 @@ import {
   errorResponse,
   jsonResponse,
   parseJsonBody,
-  requirePreferencesSize,
   requireUser,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { findSpaceForToken } from "#db/space/accessTokens.ts";
 import {
   createSpace,
@@ -20,6 +20,11 @@ import {
   listUserSpaces,
   SpaceSlugTakenError,
 } from "#db/space/spaces.ts";
+import { setUserPreferences } from "#db/space/userPreferences.ts";
+import {
+  splitPreferencesByScope,
+  validateSpacePreferences,
+} from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -51,16 +56,31 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Name and slug are required");
       }
 
-      requirePreferencesSize(preferences);
+      const validated = validateSpacePreferences(preferences);
+      if ("error" in validated) throw badRequestResponse(validated.error);
+
+      // The two halves go to different stores, here as on the update path: the
+      // space's preferences are the space's, a `user:` one is the creator's own.
+      const { space: spacePreferences, user: userPreferences } = splitPreferencesByScope(
+        validated.preferences ?? {},
+      );
 
       const space = await createSpace(
         user.id,
         name,
         slug,
-        preferences as Record<string, string> | undefined,
+        validated.preferences === undefined ? undefined : spacePreferences,
       );
+      await setUserPreferences(await openSpaceStore(space.id), user.id, userPreferences);
+
       return createdResponse({
-        space: { ...space, userRole: await getUserSpaceRole(space, user.id) },
+        space: {
+          ...space,
+          userRole: await getUserSpaceRole(space, user.id),
+          // Set wherever a space is returned, like `userRole`: the client caches
+          // spaces by id, so a response that omits it overwrites what is stored.
+          userPreferences,
+        },
       });
     },
     {

@@ -7,6 +7,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { formatRelativeTime } from "#utils/datetime.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
@@ -84,7 +85,7 @@ export function DocumentOverlay() {
 
     const contentDiv = document.createElement("div");
     contentDiv.setAttribute("part", "content");
-    contentDiv.innerHTML = data.content;
+    contentDiv.innerHTML = sanitizeDocumentHtml(data.content);
     shadow.appendChild(contentDiv);
 
     container.appendChild(docView);

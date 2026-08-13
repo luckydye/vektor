@@ -61,7 +61,10 @@ export function SpaceSelector(props: Props) {
               <div class="flex w-full cursor-pointer gap-3xs">
                 <div
                   class="flex aspect-square w-[2.375rem] flex-none items-center justify-center overflow-hidden rounded-md bg-primary-500"
-                  style={{ background: props.current?.color }}
+                  // `background-color`, not the `background` shorthand: the
+                  // shorthand also accepts `url()`, which turns a stored brand
+                  // colour into a request to whatever host it names.
+                  style={{ "background-color": props.current?.color }}
                 >
                   <SpaceLogo
                     logoSvg={props.current?.logoSvg}
@@ -102,7 +105,7 @@ export function SpaceSelector(props: Props) {
                       >
                         <div
                           class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-sm"
-                          style={{ background: space().color || "#6366f1" }}
+                          style={{ "background-color": space().color || "#6366f1" }}
                         >
                           <SpaceLogo
                             logoSvg={space().logoSvg}

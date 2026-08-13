@@ -5,12 +5,12 @@ import {
   jsonResponse,
   parseJsonBody,
   requireParam,
-  requirePreferencesSize,
   requireUser,
   successResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   deleteSpace,
   getSpace,
@@ -19,7 +19,12 @@ import {
   SpaceSlugTakenError,
   updateSpace,
 } from "#db/space/spaces.ts";
-import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
+import { getUserPreferences, setUserPreferences } from "#db/space/userPreferences.ts";
+import {
+  requiredPreferenceWriteRole,
+  splitPreferencesByScope,
+  validateSpacePreferences,
+} from "#utils/spacePreferences.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -28,7 +33,11 @@ export const GET: ApiRouteHandler = (context) =>
     await verifyResourceAccess(spaceId, user.id);
     const space = await getSpace(spaceId);
     if (!space) return jsonResponse(space);
-    return jsonResponse({ ...space, userRole: await getUserSpaceRole(space, user.id) });
+    return jsonResponse({
+      ...space,
+      userRole: await getUserSpaceRole(space, user.id),
+      userPreferences: await getUserPreferences(await openSpaceStore(spaceId), user.id),
+    });
   }, "Failed to get space");
 
 export const PATCH: ApiRouteHandler = (context) =>
@@ -59,56 +68,59 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("slug must be a non-empty string");
       }
 
-      if (
-        hasPreferences &&
-        (typeof preferences !== "object" ||
-          preferences === null ||
-          Array.isArray(preferences))
-      ) {
-        throw badRequestResponse("preferences must be an object");
-      }
+      const validated = validateSpacePreferences(preferences);
+      if ("error" in validated) throw badRequestResponse(validated.error);
 
-      if (hasPreferences) {
-        requirePreferencesSize(preferences);
-      }
+      // Preferences are open, so the role follows what is being written rather
+      // than the fact that something is: a preference in a namespace that decides
+      // something space-wide takes that namespace's role, a member's own takes
+      // `VIEWER`, and everything else is an editor's to change.
+      const { space: spacePreferences, user: userPreferences } = splitPreferencesByScope(
+        validated.preferences ?? {},
+      );
 
-      const updatesWorkflowCreationPreference =
-        hasPreferences &&
-        Object.hasOwn(preferences as object, spacePreferenceKeys.workflowCreationEnabled);
-      if (updatesWorkflowCreationPreference) {
-        const value = (preferences as Record<string, unknown>)[
-          spacePreferenceKeys.workflowCreationEnabled
-        ];
-        if (value !== "true" && value !== "false") {
-          throw badRequestResponse("workflowCreationEnabled must be 'true' or 'false'");
-        }
-      }
-
-      if (updatesMetadata || updatesWorkflowCreationPreference) {
-        await verifySpaceRole(spaceId, user.id, Permission.OWNER);
-      } else {
-        await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
-      }
+      await verifySpaceRole(
+        spaceId,
+        user.id,
+        updatesMetadata
+          ? Permission.OWNER
+          : requiredPreferenceWriteRole(validated.preferences),
+      );
 
       const space = await getSpace(spaceId);
       if (!space) {
         throw badRequestResponse("Space not found");
       }
 
-      const updated = await updateSpace(
-        spaceId,
-        hasName ? name : space.name,
-        hasSlug ? slug : space.slug,
-        hasPreferences ? (preferences as Record<string, string>) : undefined,
-      );
+      // A write of nothing but the member's own preferences does not touch the
+      // space: `updateSpace` would restamp its `updatedAt` and reindex it, which
+      // is not something storing one's own sidebar state should do.
+      const writesSpace = updatesMetadata || Object.keys(spacePreferences).length > 0;
+      const updated = writesSpace
+        ? await updateSpace(
+            spaceId,
+            hasName ? name : space.name,
+            hasSlug ? slug : space.slug,
+            // Only the space's own half — `updateSpace` writes the rows with no
+            // user, and a member's preferences are not the space's to hold.
+            spacePreferences,
+          )
+        : space;
 
       if (!updated) {
         throw badRequestResponse("Space not found");
       }
 
+      const store = await openSpaceStore(spaceId);
+      await setUserPreferences(store, user.id, userPreferences);
+
       return jsonResponse({
         ...updated,
         userRole: await getUserSpaceRole(updated, user.id),
+        // Set on every response carrying a space, for the same reason `userRole`
+        // is: the client caches spaces by id, and a response that omits it
+        // overwrites what the last one established.
+        userPreferences: await getUserPreferences(store, user.id),
       });
     },
     {

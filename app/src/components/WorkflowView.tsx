@@ -18,6 +18,7 @@ import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDateTime } from "#utils/datetime.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
@@ -452,9 +453,14 @@ export function WorkflowView(props: Props) {
     });
   });
 
-  const outputHtml = createMemo<string | null>(() =>
-    unwrapOutputValue(selectedRunResult()?.html),
-  );
+  // A run's HTML output is whatever the workflow produced — a fetched page, a
+  // model's answer — and it is rendered with `innerHTML` below, so it goes
+  // through the same boundary as document content. Nothing left of it means no
+  // HTML output, which is what the empty-result branch already checks for.
+  const outputHtml = createMemo<string | null>(() => {
+    const html = unwrapOutputValue(selectedRunResult()?.html);
+    return html === null ? null : sanitizeDocumentHtml(html) || null;
+  });
 
   const outputDocumentId = createMemo<string | null>(() =>
     unwrapOutputValue(selectedRunResult()?.documentId),

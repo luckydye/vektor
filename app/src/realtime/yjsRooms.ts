@@ -22,7 +22,7 @@ import {
 import { contentIsHtml } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
-import { stripScriptTags } from "#utils/html.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -278,7 +278,9 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   const serialized = await traced("persist.serialize", () =>
     serializeDocContent(meta.type, doc),
   );
-  const content = contentIsHtml(meta.type) ? stripScriptTags(serialized) : serialized;
+  const content = contentIsHtml(meta.type)
+    ? sanitizeDocumentHtml(serialized)
+    : serialized;
 
   const store = await openSpaceStore(ids.spaceId);
   await traced("persist.write", () =>
@@ -573,7 +575,7 @@ function applyBlockSpliceInsert(
   splice: { position: "start" | "end"; content: string },
   onUpdate: (update: Uint8Array) => void,
 ): boolean {
-  const blocks = htmlToDoc(stripScriptTags(splice.content)).content ?? [];
+  const blocks = htmlToDoc(sanitizeDocumentHtml(splice.content)).content ?? [];
   if (blocks.length === 0) return false;
 
   const insertIndex =

@@ -2,6 +2,7 @@ import { createEffect, createSignal, Show } from "solid-js";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 import {
   isWorkflowCreationEnabled,
   spacePreferenceKeys,
@@ -75,11 +76,12 @@ export function SpaceGeneralSettings(props: Props) {
 
     try {
       if (file.type === "image/svg+xml") {
-        let text = await file.text();
-        text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-        text = text.replace(/on\w+="[^"]*"/g, "");
-        text = text.replace(/on\w+='[^']*'/g, "");
-        setLocalLogoSvg(text);
+        const svg = sanitizeSvgMarkup(await file.text());
+        if (!svg) {
+          setError("That file is not an SVG image");
+          return;
+        }
+        setLocalLogoSvg(svg);
       } else {
         const reader = new FileReader();
         reader.onload = (e) => {
