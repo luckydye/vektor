@@ -10,14 +10,14 @@ import { isSafeImageUrl, sanitizeSvgMarkup } from "#utils/html.ts";
  * `spacePreferenceKeys` names — or **namespaced**, `namespace:name`, which is
  * how everything else takes a corner of the store without colliding with the app
  * or with another namespace. Any namespace may be written; one only needs an
- * entry in `PREFERENCE_NAMESPACE_WRITE_ROLES` when writing it should take more
- * than write access on the space.
+ * entry in `PREFERENCE_NAMESPACES` when it takes more than write access on the
+ * space, or when its values are the member's own rather than the space's.
  *
  * The same `preference` table also holds per-*user* rows, distinguished by
  * `preference.userId`. Those are a different store, reached only by the code that
  * owns them (`emailNotificationPreferences.ts`, `userProfiles.ts`) and never by a
- * space write, so their keys (`email.space_muted`, `ai_user_profile`) predate this
- * grammar and are not namespaced under it.
+ * space write. They are namespaced too — `user:space_muted`, `ai:user_profile` —
+ * so the grammar covers the whole table rather than the space's half of it.
  */
 
 /**
@@ -141,7 +141,7 @@ const PREFERENCE_NAMESPACE_PATTERN = /^[a-z\d_-]{1,32}$/i;
 /**
  * A name within a namespace. Separators are allowed *inside* it — a namespace
  * owner structures its own names, and one of them addresses a document
- * (`user:email.document_muted:<documentId>`).
+ * (`user:document_muted:<documentId>`).
  */
 const PREFERENCE_NAME_PATTERN = /^[a-z\d_.:-]{1,96}$/i;
 

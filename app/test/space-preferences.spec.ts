@@ -108,13 +108,13 @@ describe("validateSpacePreferences", () => {
     expect(
       validated({
         "user:sidebar": "collapsed",
-        "user:email.space_muted": "true",
-        "user:email.document_muted:document_abc123": "true",
+        "user:space_muted": "true",
+        "user:document_muted:document_abc123": "true",
       }),
     ).toEqual({
       "user:sidebar": "collapsed",
-      "user:email.space_muted": "true",
-      "user:email.document_muted:document_abc123": "true",
+      "user:space_muted": "true",
+      "user:document_muted:document_abc123": "true",
     });
   });
 
@@ -180,16 +180,16 @@ describe("parsePreferenceKey", () => {
       namespace: "ai",
       name: "baseUrl",
     });
-    expect(parsePreferenceKey("email.document_muted")).toEqual({
+    expect(parsePreferenceKey("notes.sort_order")).toEqual({
       namespace: null,
-      name: "email.document_muted",
+      name: "notes.sort_order",
     });
   });
 
   it("splits on the first separator, leaving the name its own structure", () => {
-    expect(parsePreferenceKey("user:email.document_muted:document_1")).toEqual({
+    expect(parsePreferenceKey("user:document_muted:document_1")).toEqual({
       namespace: "user",
-      name: "email.document_muted:document_1",
+      name: "document_muted:document_1",
     });
   });
 
@@ -204,7 +204,7 @@ describe("parsePreferenceKey", () => {
 describe("preferenceScope", () => {
   it("puts the user namespace in the member's rows and the rest in the space's", () => {
     expect(preferenceScope("user:sidebar")).toBe("user");
-    expect(preferenceScope("user:email.space_muted")).toBe("user");
+    expect(preferenceScope("user:space_muted")).toBe("user");
     expect(preferenceScope("brandColor")).toBe("space");
     expect(preferenceScope("ai:model")).toBe("space");
     expect(preferenceScope("acme:layout")).toBe("space");
@@ -228,7 +228,7 @@ describe("splitPreferencesByScope", () => {
 
 describe("preferenceKey", () => {
   it("is the only place the separator is spelled", () => {
-    expect(preferenceKey("user", "email.space_muted")).toBe("user:email.space_muted");
+    expect(preferenceKey("user", "space_muted")).toBe("user:space_muted");
     expect(parsePreferenceKey(preferenceKey("ai", "user_profile"))).toEqual({
       namespace: "ai",
       name: "user_profile",
