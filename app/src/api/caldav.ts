@@ -5,22 +5,15 @@ import {
   verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { withApiErrorHandling } from "#api/http.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
-import {
-  type DocumentWithProperties,
-  InvalidDocumentParentError,
-} from "#db/space/documents.ts";
+import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
-import {
-  propertyValueToText,
-  ReservedDocumentPropertyKeyError,
-} from "#documents/properties.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 
 /**
@@ -405,32 +398,6 @@ async function authorizeCalDAVToken(
   }
 
   return caldavUser;
-}
-
-export function calDavBadRequest(message: string): Response {
-  return new Response(message, {
-    status: 400,
-    headers: CORS_HEADERS,
-  });
-}
-
-/**
- * The API routes' error handling, in the form a calendar client can read: a
- * plain-text 4xx it can act on rather than a JSON 500 it can only retry, and
- * which leaks whatever the exception happened to say.
- */
-export function withCalDavErrorHandling(
-  handler: () => Promise<Response> | Response,
-  fallbackMessage: string,
-): Promise<Response> {
-  return withApiErrorHandling(handler, {
-    fallbackMessage,
-    onError: (error) =>
-      error instanceof InvalidDocumentParentError ||
-      error instanceof ReservedDocumentPropertyKeyError
-        ? calDavBadRequest(error.message)
-        : undefined,
-  });
 }
 
 export async function requireCalDAVUserAndAccess(

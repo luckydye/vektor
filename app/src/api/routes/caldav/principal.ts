@@ -2,7 +2,6 @@ import {
   escapeXml,
   optionsPreflight,
   requireCalDAVUserAndAccess,
-  withCalDavErrorHandling,
   xmlResponse,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
@@ -11,14 +10,13 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
  * CalDAV principal endpoint.
  * Returns calendar-home-set and calendar-user-address-set for a user.
  */
-export const ALL: ApiRouteHandler = (context) =>
-  withCalDavErrorHandling(async () => {
-    if (context.req.raw.method === "OPTIONS") return optionsPreflight();
-    const { userId } = context.var.params;
-    const caldavUser = await requireCalDAVUserAndAccess(context, { userId });
-    if (caldavUser instanceof Response) return caldavUser;
+export const ALL: ApiRouteHandler = async (context) => {
+  if (context.req.raw.method === "OPTIONS") return optionsPreflight();
+  const { userId } = context.var.params;
+  const caldavUser = await requireCalDAVUserAndAccess(context, { userId });
+  if (caldavUser instanceof Response) return caldavUser;
 
-    const body = `<?xml version="1.0" encoding="utf-8" ?>
+  const body = `<?xml version="1.0" encoding="utf-8" ?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
   <d:response>
     <d:href>/api/caldav/principals/${caldavUser.id}/</d:href>
@@ -36,5 +34,5 @@ export const ALL: ApiRouteHandler = (context) =>
   </d:response>
 </d:multistatus>`;
 
-    return xmlResponse(body);
-  }, "Failed to read calendar principal");
+  return xmlResponse(body);
+};

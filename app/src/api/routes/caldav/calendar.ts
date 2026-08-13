@@ -3,7 +3,6 @@ import {
   documentToICal,
   optionsPreflight,
   requireCalDAVUserAndAccess,
-  withCalDavErrorHandling,
   xmlResponse,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
@@ -15,37 +14,36 @@ import { listDocuments } from "#db/space/documents.ts";
  * - PROPFIND: returns calendar metadata
  * - REPORT: returns all documents as VEVENT iCal data
  */
-export const ALL: ApiRouteHandler = (context) =>
-  withCalDavErrorHandling(async () => {
-    if (context.req.raw.method === "OPTIONS") return optionsPreflight();
-    const { userId, spaceId } = context.var.params;
-    if (!spaceId) return new Response("Bad Request", { status: 400 });
-    const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
-    if (caldavUser instanceof Response) return caldavUser;
+export const ALL: ApiRouteHandler = async (context) => {
+  if (context.req.raw.method === "OPTIONS") return optionsPreflight();
+  const { userId, spaceId } = context.var.params;
+  if (!spaceId) return new Response("Bad Request", { status: 400 });
+  const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
+  if (caldavUser instanceof Response) return caldavUser;
 
-    const method = context.req.raw.method.toUpperCase();
+  const method = context.req.raw.method.toUpperCase();
 
-    if (method === "REPORT") {
-      // Filter by per-document ACL so the calendar feed doesn't expose
-      // documents the authenticated user cannot read.
-      const { documents } = await listDocuments(await openSpaceStore(spaceId), {
-        viewer: {
-          userId: caldavUser.id,
-          userGroups: await getUserGroups(caldavUser.id),
-        },
-      });
+  if (method === "REPORT") {
+    // Filter by per-document ACL so the calendar feed doesn't expose
+    // documents the authenticated user cannot read.
+    const { documents } = await listDocuments(await openSpaceStore(spaceId), {
+      viewer: {
+        userId: caldavUser.id,
+        userGroups: await getUserGroups(caldavUser.id),
+      },
+    });
 
-      const eventEntries = documents
-        .flatMap((doc) => {
-          const icalData = documentToICal(doc);
-          if (!icalData) return [];
-          const escaped = icalData
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
+    const eventEntries = documents
+      .flatMap((doc) => {
+        const icalData = documentToICal(doc);
+        if (!icalData) return [];
+        const escaped = icalData
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
 
-          return [
-            `  <d:response>
+        return [
+          `  <d:response>
     <d:href>/api/caldav/calendars/${caldavUser.id}/${spaceId}/${doc.id}.ics</d:href>
     <d:propstat>
       <d:prop>
@@ -55,30 +53,30 @@ export const ALL: ApiRouteHandler = (context) =>
       <d:status>HTTP/1.1 200 OK</d:status>
     </d:propstat>
   </d:response>`,
-          ];
-        })
-        .join("\n");
+        ];
+      })
+      .join("\n");
 
-      const body = `<?xml version="1.0" encoding="utf-8" ?>
+    const body = `<?xml version="1.0" encoding="utf-8" ?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
 ${eventEntries}
 </d:multistatus>`;
 
-      return xmlResponse(body);
-    }
+    return xmlResponse(body);
+  }
 
-    if (method === "PROPFIND") {
-      // Scope the collection tag to the documents this user can actually read,
-      // matching the REPORT feed — otherwise the ctag leaks the space-wide
-      // document count and desyncs from the filtered event list.
-      const { total } = await listDocuments(await openSpaceStore(spaceId), {
-        viewer: {
-          userId: caldavUser.id,
-          userGroups: await getUserGroups(caldavUser.id),
-        },
-      });
+  if (method === "PROPFIND") {
+    // Scope the collection tag to the documents this user can actually read,
+    // matching the REPORT feed — otherwise the ctag leaks the space-wide
+    // document count and desyncs from the filtered event list.
+    const { total } = await listDocuments(await openSpaceStore(spaceId), {
+      viewer: {
+        userId: caldavUser.id,
+        userGroups: await getUserGroups(caldavUser.id),
+      },
+    });
 
-      const body = `<?xml version="1.0" encoding="utf-8" ?>
+    const body = `<?xml version="1.0" encoding="utf-8" ?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">
   <d:response>
     <d:href>/api/caldav/calendars/${caldavUser.id}/${spaceId}/</d:href>
@@ -92,8 +90,8 @@ ${eventEntries}
   </d:response>
 </d:multistatus>`;
 
-      return xmlResponse(body);
-    }
+    return xmlResponse(body);
+  }
 
-    return new Response("Method Not Allowed", { status: 405 });
-  }, "Failed to read calendar");
+  return new Response("Method Not Allowed", { status: 405 });
+};
