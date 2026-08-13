@@ -1,6 +1,7 @@
 import { badRequestResponse, requireUser, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
+import { appLogger } from "#observability/logger.ts";
+import { SsrfError, safeFetch } from "#utils/ssrf.ts";
 
 // Only relay content types that the canvas link-preview card can meaningfully display.
 const ALLOWED_CONTENT_TYPE_PREFIXES = ["video/", "audio/"];
@@ -11,6 +12,28 @@ const HEADERS_TO_FORWARD = [
   "content-range",
   "accept-ranges",
 ];
+
+/**
+ * One message for every reason a URL is not proxyable. Distinguishable answers
+ * made the endpoint a host/port scanner: the pair told the caller whether a
+ * target was reachable. The specific reason goes to the server log instead.
+ */
+const REJECTED_MESSAGE = "URL cannot be proxied as media";
+
+/** Origin and path only: the query and userinfo can carry the caller's secrets. */
+function redactForLog(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "<unparseable>";
+  }
+}
+
+function rejectMedia(url: string, reason: string): Response {
+  appLogger.warn("proxy-media refused a URL", { url: redactForLog(url), reason });
+  return badRequestResponse(REJECTED_MESSAGE);
+}
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -25,14 +48,7 @@ export const GET: ApiRouteHandler = (context) =>
       throw badRequestResponse("Invalid URL");
     }
 
-    try {
-      await assertPublicUrl(url);
-    } catch (error) {
-      if (error instanceof SsrfError) throw badRequestResponse(error.message);
-      throw error;
-    }
-
-    const upstreamHeaders: HeadersInit = {
+    const upstreamHeaders: Record<string, string> = {
       "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
     };
     const range = context.req.raw.headers.get("range");
@@ -43,17 +59,23 @@ export const GET: ApiRouteHandler = (context) =>
 
     let upstream: Response;
     try {
-      upstream = await fetch(url, {
+      // `safeFetch`, never a bare `fetch`: a public URL must not be able to 302
+      // the server into loopback or the metadata endpoint.
+      upstream = await safeFetch(url, {
+        method: "GET",
         signal: controller.signal,
         headers: upstreamHeaders,
       });
+    } catch (error) {
+      if (error instanceof SsrfError) throw rejectMedia(url, error.message);
+      throw error;
     } finally {
       clearTimeout(timeout);
     }
 
     const contentType = upstream.headers.get("content-type") ?? "";
     if (!ALLOWED_CONTENT_TYPE_PREFIXES.some((p) => contentType.startsWith(p))) {
-      throw badRequestResponse("URL did not return video or audio content");
+      throw rejectMedia(url, `content-type "${contentType}" is not audio or video`);
     }
 
     const out = new Headers();

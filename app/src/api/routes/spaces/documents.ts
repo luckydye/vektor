@@ -29,7 +29,10 @@ import {
   getMimeType,
   toHtmlIfMarkdown,
 } from "#documents/content.ts";
-import { propertyValueToText } from "#documents/properties.ts";
+import {
+  propertyValueToText,
+  ReservedDocumentPropertyKeyError,
+} from "#documents/properties.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
@@ -90,18 +93,27 @@ export const GET: ApiRouteHandler = (context) =>
         viewer,
         userEmail,
       );
-      const filteredDocumentsByCategory = Object.fromEntries(
-        Object.entries(documentsByCategory).map(([slug, docs]) => [
-          slug,
-          docs.filter(
-            (doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam),
-          ),
-        ]),
+      // The Map stays a Map for the lookups below — `categorySlugs` is raw query
+      // input, and indexing a plain object with a slug like `__proto__` reads an
+      // inherited member back instead of a bucket. It becomes an object only at
+      // the point it is serialised, where `Object.fromEntries` defines own keys
+      // and so is not fooled by the same slug.
+      const filteredDocumentsByCategory = new Map(
+        Array.from(
+          documentsByCategory,
+          ([slug, docs]) =>
+            [
+              slug,
+              docs.filter(
+                (doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam),
+              ),
+            ] as const,
+        ),
       );
 
       if (grouped) {
         return jsonResponse({
-          documentsByCategory: filteredDocumentsByCategory,
+          documentsByCategory: Object.fromEntries(filteredDocumentsByCategory),
           categorySlugs,
         });
       }
@@ -110,7 +122,7 @@ export const GET: ApiRouteHandler = (context) =>
       const documents = [];
 
       for (const slug of categorySlugs) {
-        const bucket = filteredDocumentsByCategory[slug] || [];
+        const bucket = filteredDocumentsByCategory.get(slug) ?? [];
         for (const doc of bucket) {
           if (seen.has(doc.id)) continue;
           seen.add(doc.id);
@@ -246,7 +258,10 @@ export const POST: ApiRouteHandler = (context) =>
       createdAt,
       updatedAt,
     ).catch((error) => {
-      if (error instanceof InvalidDocumentParentError) {
+      if (
+        error instanceof InvalidDocumentParentError ||
+        error instanceof ReservedDocumentPropertyKeyError
+      ) {
         throw badRequestResponse(error.message);
       }
       throw error;

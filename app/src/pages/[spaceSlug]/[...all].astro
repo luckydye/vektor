@@ -50,39 +50,40 @@ const storedDocumentRecord = docSlugMatch
   ? await getDocumentBySlug(store, docSlugMatch[1])
   : null;
 
-if (docSlugMatch && !storedDocumentRecord) {
-  // A document addressed by its ID redirects to its canonical slug URL, matching
-  // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
-  // rendering the shell for a document whose slug the URL never resolved.
-  const documentById = await getDocument(store, docSlugMatch[1]);
-  if (documentById) {
-    return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
-  }
-}
-
-let hasDirectDocumentAccess = false;
-if (storedDocumentRecord) {
+/**
+ * Viewer verdict for one document, swallowing the Response `verifyDocumentRole`
+ * throws: answering with it would leak the guard's 403/404 distinction.
+ */
+async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   try {
     await verifyDocumentRole(
       space.id,
-      storedDocumentRecord.id,
+      documentId,
       Astro.locals.user?.id ?? null,
       Permission.VIEWER,
     );
-    hasDirectDocumentAccess = true;
+    return true;
   } catch (error) {
-    if (!Astro.locals.session && error instanceof Response) {
-      return new Response(null, {
-        status: 302,
-        headers: { Location: "/login" },
-      });
-    }
+    if (!(error instanceof Response)) throw error;
+    return false;
   }
 }
 
-if (!hasDirectDocumentAccess) {
+/**
+ * The addressed document once the per-document check has passed for it, `null`
+ * when it has not — nothing resolved, or the caller may not read what did.
+ * Every document-derived value below hangs off this.
+ */
+const readableDocumentRecord =
+  storedDocumentRecord && (await holdsDocumentViewerRole(storedDocumentRecord.id))
+    ? storedDocumentRecord
+    : null;
+
+if (!readableDocumentRecord) {
   // Space-wide viewer, or any document/tree/category grant inside the space —
   // a resource-scoped grantee still has to reach the container it lives in.
+  // Also the only place an anonymous caller is sent to /login: redirecting on
+  // the document verdict would tell a refused slug from an unresolved one.
   try {
     await verifyResourceAccess(space.id, Astro.locals.user?.id ?? "");
   } catch (error) {
@@ -97,8 +98,20 @@ if (!hasDirectDocumentAccess) {
   }
 }
 
-const documentRecord = storedDocumentRecord
-  ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
+if (docSlugMatch && !storedDocumentRecord) {
+  // A document addressed by its ID redirects to its canonical slug URL, matching
+  // the dedicated doc page this catch-all replaced. Gated on viewer: slugs are
+  // title-derived, so redirecting anyone else hands out the title.
+  const documentById = await getDocument(store, docSlugMatch[1]);
+  if (documentById && (await holdsDocumentViewerRole(documentById.id))) {
+    return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
+  }
+}
+
+// A caller who reached the space but may not read this document renders the
+// shell an unresolved slug produces — a 403 here would confirm the slug exists.
+const documentRecord = readableDocumentRecord
+  ? await resolvePublishedDocumentContent(store, readableDocumentRecord)
   : null;
 let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))

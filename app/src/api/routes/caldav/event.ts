@@ -9,11 +9,8 @@ import {
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import {
-  createDocument,
-  getDocument,
-  updateDocumentProperty,
-} from "#db/space/documents.ts";
+import { createDocument, getDocument } from "#db/space/documents.ts";
+import { patchDocumentProperties } from "#db/space/properties.ts";
 
 /**
  * CalDAV individual event endpoint.
@@ -60,31 +57,18 @@ export const PUT: ApiRouteHandler = (context) =>
     if (!event) return new Response("Bad Request", { status: 400 });
 
     const docId = eventId.replace(/\.ics$/, "");
-    const existing = await getDocument(await openSpaceStore(spaceId), docId);
+    const store = await openSpaceStore(spaceId);
+    const existing = await getDocument(store, docId);
 
     if (existing) {
-      await updateDocumentProperty(
-        await openSpaceStore(spaceId),
+      await patchDocumentProperties(
+        store,
         docId,
-        "title",
-        event.summary,
-        null,
-        caldavUser.id,
-      );
-      await updateDocumentProperty(
-        await openSpaceStore(spaceId),
-        docId,
-        "eventStart",
-        event.start,
-        "date",
-        caldavUser.id,
-      );
-      await updateDocumentProperty(
-        await openSpaceStore(spaceId),
-        docId,
-        "eventEnd",
-        event.end,
-        "date",
+        {
+          title: event.summary,
+          eventStart: { value: event.start, type: "date" },
+          eventEnd: { value: event.end, type: "date" },
+        },
         caldavUser.id,
       );
       return new Response(null, {
@@ -93,31 +77,11 @@ export const PUT: ApiRouteHandler = (context) =>
       });
     }
 
-    const doc = await createDocument(
-      await openSpaceStore(spaceId),
-      caldavUser.id,
-      event.summary,
-      "",
-      {
-        title: event.summary,
-      },
-    );
-    await updateDocumentProperty(
-      await openSpaceStore(spaceId),
-      doc.id,
-      "eventStart",
-      event.start,
-      "date",
-      caldavUser.id,
-    );
-    await updateDocumentProperty(
-      await openSpaceStore(spaceId),
-      doc.id,
-      "eventEnd",
-      event.end,
-      "date",
-      caldavUser.id,
-    );
+    const doc = await createDocument(store, caldavUser.id, event.summary, "", {
+      title: event.summary,
+      eventStart: { value: event.start, type: "date" },
+      eventEnd: { value: event.end, type: "date" },
+    });
     return new Response(null, {
       status: 201,
       headers: {

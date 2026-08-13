@@ -1,5 +1,5 @@
 import { type Accessor, createSignal } from "solid-js";
-import type { DocumentPropertyValue } from "#documents/properties.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
 import { parseCsvRows } from "#utils/xlsx.ts";
 import type { DatabaseColumn } from "./useDatabaseRows.ts";
 import { useToast } from "./useToast.ts";
@@ -8,7 +8,7 @@ interface DatabaseCsvImportOptions {
   derivedColumns: Accessor<DatabaseColumn[]>;
   addColumns: (columns: DatabaseColumn[]) => Promise<void>;
   addRow: (
-    properties?: Record<string, DocumentPropertyValue>,
+    properties?: DocumentProperties,
     options?: { invalidate?: boolean },
   ) => Promise<unknown>;
   refreshRows: () => void;
@@ -79,7 +79,7 @@ export function useDatabaseCsvImport(options: DatabaseCsvImportOptions) {
       updateToast(toastId, { message: `0/${total} created..`, progress: 0 });
 
       for (const row of dataRows) {
-        const properties: Record<string, DocumentPropertyValue> = {};
+        const properties: DocumentProperties = {};
         let fallbackTitle = "";
 
         headers.forEach((header, index) => {

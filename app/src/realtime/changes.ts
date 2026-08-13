@@ -16,7 +16,7 @@ export type SpaceChange =
       data: Record<string, unknown>;
     }
   | {
-      kind: "documentProperty";
+      kind: "documentProperties";
       documentId: string;
       affectsTree: boolean;
       data: Record<string, unknown>;
@@ -82,7 +82,7 @@ export function changeToEvents(change: SpaceChange): RealtimeEventInput[] {
       return [realtimeTopics.extensions];
     case "audit":
       return auditTopics(change.event, change.documentId);
-    case "documentProperty":
+    case "documentProperties":
       return [
         { topic: realtimeTopics.properties, data: change.data },
         { topic: realtimeTopics.document(change.documentId), data: change.data },

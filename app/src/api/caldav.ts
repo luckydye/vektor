@@ -17,7 +17,10 @@ import {
   InvalidDocumentParentError,
 } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
-import { propertyValueToText } from "#documents/properties.ts";
+import {
+  propertyValueToText,
+  ReservedDocumentPropertyKeyError,
+} from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 
 /**
@@ -428,7 +431,8 @@ export function withCalDavErrorHandling(
   return withApiErrorHandling(handler, {
     fallbackMessage,
     onError: (error) =>
-      error instanceof InvalidDocumentParentError
+      error instanceof InvalidDocumentParentError ||
+      error instanceof ReservedDocumentPropertyKeyError
         ? calDavBadRequest(error.message)
         : undefined,
   });

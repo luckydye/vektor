@@ -9,16 +9,18 @@ import { createId } from "#db/ids.ts";
 import { document, file as fileTable, property, revision } from "#db/schema/space.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
+  assertWritableDocumentPropertyKey,
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
+  toDocumentProperties,
+  toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
 import {
   allowsChildDocumentType,
   fallbackDocumentSlug,
-  isPlaceholderDocumentSlug,
   readOnlyDocumentTypes,
 } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
@@ -32,7 +34,7 @@ import {
   type DocumentWithProperties,
   fileRowToDocument,
   nonArchivedDocumentCondition,
-  updateDocumentEmbedding,
+  scheduleDocumentSearchRefresh,
 } from "./search.ts";
 
 export type {
@@ -52,22 +54,7 @@ const archivedDocumentCondition = sql`
   )
 `;
 
-async function updateDocumentEmbeddingBestEffort(
-  s: SpaceStore,
-  documentId: string,
-): Promise<void> {
-  try {
-    await updateDocumentEmbedding(s, documentId);
-  } catch (error) {
-    appLogger.warn("Failed to update document embedding", {
-      error,
-      spaceId: s.spaceId,
-      documentId,
-    });
-  }
-}
-
-async function generateUniqueSlug(
+export async function generateUniqueSlug(
   s: SpaceStore,
   baseTitle: string,
   excludeDocumentId?: string,
@@ -148,6 +135,12 @@ export async function createDocument(
   updatedAt?: Date,
 ): Promise<DocumentWithProperties> {
   if (parentId) await assertDocumentCanParent(s, parentId, type);
+  // Every key up front, before the document row exists: the property inserts
+  // below are not in one transaction with it, so rejecting halfway would leave a
+  // document behind that the caller was told was never created.
+  for (const key of Object.keys(initialProperties ?? {})) {
+    assertWritableDocumentPropertyKey(key);
+  }
   const id = createId("document");
   const now = new Date();
   const documentCreatedAt = createdAt || now;
@@ -173,7 +166,10 @@ export async function createDocument(
   });
 
   const properties = initialProperties || {};
-  const storedProperties: Record<string, DocumentPropertyValue> = {};
+  // A `Map`, materialised once below: the reserved-key guard above already keeps
+  // `__proto__` out, but bracket-assigning a user-supplied key into an object
+  // literal is the shape of the bug this whole file just stopped repeating.
+  const storedProperties = new Map<string, DocumentPropertyValue>();
 
   for (const [key, raw] of Object.entries(properties)) {
     const isWrappedValue =
@@ -181,7 +177,7 @@ export async function createDocument(
     const propValue = isWrappedValue ? raw.value : raw;
     const propType = isWrappedValue ? (raw.type ?? null) : null;
     const storedValue = serializePropertyValue(propValue);
-    storedProperties[key] = parseStoredPropertyValue(storedValue);
+    storedProperties.set(key, parseStoredPropertyValue(storedValue));
     await s.db.insert(property).values({
       id: createId("property"),
       documentId: id,
@@ -193,7 +189,7 @@ export async function createDocument(
     });
   }
 
-  await updateDocumentEmbeddingBestEffort(s, id);
+  scheduleDocumentSearchRefresh(s, id);
 
   await createAuditLog(s, {
     spaceId: s.spaceId,
@@ -210,7 +206,7 @@ export async function createDocument(
     content,
     currentRev: 0,
     publishedRev: null,
-    properties: storedProperties,
+    properties: Object.fromEntries(storedProperties),
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
     createdBy: createdBy,
@@ -260,10 +256,7 @@ export async function getDocument(
   const props = await many(
     s.db.select().from(property).where(eq(property.documentId, id)),
   );
-  const properties: Record<string, DocumentPropertyValue> = {};
-  for (const prop of props) {
-    properties[prop.key] = parseStoredPropertyValue(prop.value);
-  }
+  const properties = toDocumentProperties(props);
 
   return { ...doc, parentId: doc.parentId || null, properties };
 }
@@ -303,12 +296,7 @@ export async function getDocumentsByIds(
     many(s.db.select().from(property).where(inArray(property.documentId, unique))),
   ]);
 
-  const propertiesByDocument = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of props) {
-    const properties = propertiesByDocument.get(prop.documentId) ?? {};
-    properties[prop.key] = parseStoredPropertyValue(prop.value);
-    propertiesByDocument.set(prop.documentId, properties);
-  }
+  const propertiesByDocument = toDocumentPropertiesByDocument(props);
 
   for (const doc of docs) {
     byId.set(doc.id, {
@@ -373,10 +361,7 @@ export async function getDocumentBySlug(
     s.db.select().from(property).where(eq(property.documentId, doc.id)),
   );
 
-  const properties: Record<string, DocumentPropertyValue> = {};
-  for (const prop of props) {
-    properties[prop.key] = parseStoredPropertyValue(prop.value);
-  }
+  const properties = toDocumentProperties(props);
 
   return {
     id: doc.id,
@@ -419,7 +404,7 @@ export async function updateDocument(
     .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
     .where(eq(document.id, id));
 
-  await updateDocumentEmbeddingBestEffort(s, id);
+  scheduleDocumentSearchRefresh(s, id);
 
   return {
     id,
@@ -728,12 +713,7 @@ export async function listDocuments(
       : [];
 
   // Group properties by document ID
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   // Build results
   const results: DocumentWithProperties[] = docs.map((doc) => ({
@@ -840,12 +820,7 @@ export async function listArchivedDocuments(
 
   const allProps = await many(s.db.select().from(property));
 
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   const results: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
@@ -884,162 +859,6 @@ export async function listArchivedDocuments(
       ? encodeListCursor(last.updatedAt, last.id)
       : null;
   return { documents: page, nextCursor };
-}
-
-export async function updateDocumentProperty(
-  s: SpaceStore,
-  documentId: string,
-  key: string,
-  value: DocumentPropertyValue,
-  type?: string | null,
-  userId?: string,
-): Promise<{ slug?: string }> {
-  const now = new Date();
-  const storedValue = serializePropertyValue(value);
-
-  // Read existing value for audit log (indexed lookup, very fast)
-  const existing = await one(
-    s.db
-      .select()
-      .from(property)
-      .where(and(eq(property.documentId, documentId), eq(property.key, key))),
-  );
-
-  const previousValue = existing ? parseStoredPropertyValue(existing.value) : undefined;
-
-  if (existing) {
-    const updateData: { value: string; updatedAt: Date; type?: string | null } = {
-      value: storedValue,
-      updatedAt: now,
-    };
-    if (type !== undefined) updateData.type = type;
-    await s.db.update(property).set(updateData).where(eq(property.id, existing.id));
-  } else {
-    await s.db.insert(property).values({
-      id: createId("property"),
-      documentId,
-      key,
-      value: storedValue,
-      type: type || null,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  await createAuditLog(s, {
-    spaceId: s.spaceId,
-    docId: documentId,
-    userId,
-    event: "property_update",
-    details: {
-      propertyKey: key,
-      propertyType: type || undefined,
-      previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
-      newValue: propertyValueToText(value),
-    },
-  });
-
-  // A rename leaves the slug alone so existing links and bookmarks keep
-  // resolving. The exception is a slug still derived from the placeholder title
-  // the document was created with — that one names nothing, so the first real
-  // title claims it.
-  let renamedSlug: string | undefined;
-  if (key === "title" && typeof value === "string" && value) {
-    const current = await one(
-      s.db
-        .select({ slug: document.slug })
-        .from(document)
-        .where(eq(document.id, documentId)),
-    );
-
-    // An unsluggable title still renames the document; only the derived slug
-    // can't follow, so the placeholder stays where it was rather than being
-    // replaced by a generated one that names the document no better.
-    if (current && isPlaceholderDocumentSlug(current.slug) && slugify(value)) {
-      renamedSlug = await generateUniqueSlug(s, value, documentId);
-    }
-  }
-
-  await s.db
-    .update(document)
-    .set({ ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now })
-    .where(eq(document.id, documentId));
-
-  void updateDocumentEmbeddingBestEffort(s, documentId);
-  const propertyChangeData = {
-    kind: "document_property_changed",
-    documentId,
-    propertyKey: key,
-    propertyType: type ?? existing?.type ?? null,
-    previousValue: previousValue ?? null,
-    value,
-  };
-  const treeRelevantProperty = ["title", "category", "collection"].includes(key);
-
-  s.emit({
-    kind: "documentProperty",
-    documentId,
-    affectsTree: treeRelevantProperty,
-    data: propertyChangeData,
-  });
-
-  return renamedSlug ? { slug: renamedSlug } : {};
-}
-
-export async function deleteDocumentProperty(
-  s: SpaceStore,
-  documentId: string,
-  key: string,
-  userId?: string,
-): Promise<void> {
-  const now = new Date();
-
-  // Get the property value before deletion for audit log
-  const existing = await one(
-    s.db
-      .select()
-      .from(property)
-      .where(and(eq(property.documentId, documentId), eq(property.key, key))),
-  );
-
-  await s.db
-    .delete(property)
-    .where(and(eq(property.documentId, documentId), eq(property.key, key)));
-
-  // Create audit log for property deletion
-  if (existing) {
-    await createAuditLog(s, {
-      spaceId: s.spaceId,
-      docId: documentId,
-      userId,
-      event: "property_delete",
-      details: {
-        propertyKey: key,
-        propertyType: existing.type || undefined,
-        previousValue: propertyValueToText(parseStoredPropertyValue(existing.value)),
-      },
-    });
-  }
-
-  // Update the document's updatedAt timestamp
-  await s.db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
-
-  void updateDocumentEmbeddingBestEffort(s, documentId);
-  const propertyDeleteData = {
-    kind: "document_property_deleted",
-    documentId,
-    propertyKey: key,
-    propertyType: existing?.type ?? null,
-    previousValue: existing ? parseStoredPropertyValue(existing.value) : null,
-  };
-  const treeRelevantProperty = ["title", "category", "collection"].includes(key);
-
-  s.emit({
-    kind: "documentProperty",
-    documentId,
-    affectsTree: treeRelevantProperty,
-    data: propertyDeleteData,
-  });
 }
 
 /**
@@ -1124,16 +943,22 @@ async function countMentionsForUser(
 /**
  * List documents for multiple categories in one pass.
  * For each category slug, includes documents directly in that category plus all descendants.
+ *
+ * Returns a `Map`, not a `Record`: the slugs come straight off the query string,
+ * and `result["__proto__"] = docs` on an object literal reassigns the prototype
+ * instead of storing the bucket — the slug then vanishes from `Object.entries`
+ * and the caller reads `Object.prototype` back in its place, which is not an
+ * array and so 500s the whole listing.
  */
 export async function listAllDocumentsByCategories(
   s: SpaceStore,
   categorySlugs: string[],
   viewer: AclViewer | null,
   userEmail?: string,
-): Promise<Record<string, DocumentWithProperties[]>> {
+): Promise<Map<string, DocumentWithProperties[]>> {
   const uniqueSlugs = Array.from(new Set(categorySlugs.filter(Boolean)));
   if (uniqueSlugs.length === 0) {
-    return {};
+    return new Map();
   }
 
   let docs = await many(
@@ -1167,13 +992,7 @@ export async function listAllDocumentsByCategories(
   }
 
   const allProps = await many(s.db.select().from(property));
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
@@ -1250,11 +1069,11 @@ export async function listAllDocumentsByCategories(
     );
   }
 
-  const result: Record<string, DocumentWithProperties[]> = {};
+  const result = new Map<string, DocumentWithProperties[]>();
 
   for (const slug of uniqueSlugs) {
     const ids = docIdsBySlug.get(slug) || new Set<string>();
-    result[slug] = typeFilteredResults
+    const bucket = typeFilteredResults
       .filter((doc) => ids.has(doc.id))
       .map((doc) => {
         if (!userEmail) return doc;
@@ -1263,6 +1082,7 @@ export async function listAllDocumentsByCategories(
           mentionCount: mentionCountByDocId.get(doc.id) || 0,
         };
       });
+    result.set(slug, bucket);
   }
 
   return result;
@@ -1336,12 +1156,7 @@ export async function getDocumentChildren(
         )
       : [];
 
-  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
-  for (const prop of allProps) {
-    const docProps = propsByDocId.get(prop.documentId) ?? {};
-    docProps[prop.key] = parseStoredPropertyValue(prop.value);
-    propsByDocId.set(prop.documentId, docProps);
-  }
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   return docs.map((doc) => ({
     id: doc.id,
@@ -1358,65 +1173,6 @@ export async function getDocumentChildren(
     readonly: doc.readonly,
     archived: doc.archived,
   }));
-}
-
-export interface PropertyInfo {
-  name: string;
-  type: string | null;
-  values: string[];
-}
-
-export async function getAllPropertiesWithValues(s: SpaceStore): Promise<PropertyInfo[]> {
-  const allProperties = await many(s.db.select().from(property));
-
-  const propertyMap: Record<string, { type: string | null; values: Set<string> }> = {};
-
-  for (const prop of allProperties) {
-    if (!propertyMap[prop.key]) {
-      propertyMap[prop.key] = {
-        type: prop.type || null,
-        values: new Set(),
-      };
-    }
-    const propValue = parseStoredPropertyValue(prop.value);
-    const values = Array.isArray(propValue) ? propValue : [propValue];
-    for (const value of values) {
-      if (!value) continue;
-      propertyMap[prop.key].values.add(value);
-    }
-    if (prop.type && !propertyMap[prop.key].type) {
-      propertyMap[prop.key].type = prop.type;
-    }
-  }
-
-  // Add document type as a virtual property
-  const docTypes = await many(
-    s.db
-      .selectDistinct({ type: document.type })
-      .from(document)
-      .where(sql`${nonArchivedDocumentCondition}`),
-  );
-
-  const typeValues = docTypes
-    .map((d) => d.type || "document")
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .sort();
-
-  if (!typeValues.includes("file")) {
-    typeValues.push("file");
-    typeValues.sort();
-  }
-
-  const result: PropertyInfo[] = [{ name: "type", type: "select", values: typeValues }];
-  for (const [key, data] of Object.entries(propertyMap)) {
-    result.push({
-      name: key,
-      type: data.type,
-      values: Array.from(data.values).sort(),
-    });
-  }
-
-  return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export interface BreadcrumbItem {
