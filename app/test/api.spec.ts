@@ -2412,3 +2412,56 @@ describe("API Tests - Contributors (noAuth)", () => {
     expect(data.contributors.length).toBe(0);
   });
 });
+
+/**
+ * The media proxy is the endpoint from issue #50, so the guard is asserted here
+ * rather than only on `safeFetch` in `ssrf.spec.ts`.
+ *
+ * Every refusal has to be the same refusal. Two distinguishable answers — one for
+ * a blocked host, one for a wrong content type — are what made this a host and
+ * port scanner, so a target that is off-limits, one that cannot be resolved and
+ * one with an unusable scheme must all come back identical.
+ *
+ * The redirect hop itself is covered in `ssrf.spec.ts` against a real upstream: a
+ * public first hop cannot be staged here, since the guard refuses loopback, which
+ * is the only thing a test can serve.
+ */
+describe("API Tests - Media Proxy (SSRF)", () => {
+  const REFUSED = "URL cannot be proxied as media";
+
+  it.each([
+    ["loopback", "http://127.0.0.1:9099/secret.mp3"],
+    ["localhost by name", "http://localhost:9099/secret.mp3"],
+    ["the cloud metadata endpoint", "http://169.254.169.254/latest/meta-data/"],
+    ["a private range", "http://10.0.0.5/internal.mp4"],
+    ["IPv6 loopback", "http://[::1]:9099/secret.mp3"],
+    ["an IPv4-mapped loopback", "http://[::ffff:127.0.0.1]:9099/secret.mp3"],
+    ["a name that does not resolve", "http://nonexistent.invalid/clip.mp3"],
+    ["a non-HTTP scheme", "file:///etc/passwd"],
+  ])("refuses %s with nothing but the generic message", async (_case, url) => {
+    const response = await apiRequest(
+      `/api/v1/proxy-media?url=${encodeURIComponent(url)}`,
+    );
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+    expect(body.error).toBe(REFUSED);
+    // Neither which check failed nor whether the target was reachable.
+    expect(JSON.stringify(body)).not.toMatch(
+      /not allowed|resolve|content|scheme|refused/i,
+    );
+  });
+
+  it("does not relay a body for a refused URL", async () => {
+    const response = await apiRequest(
+      "/api/v1/proxy-media?url=http%3A%2F%2F127.0.0.1%3A9099%2Fsecret.mp3",
+    );
+    expect(await response.text()).toBe(JSON.stringify({ error: REFUSED }));
+  });
+
+  it("rejects a missing url parameter distinctly, since that is not about the target", async () => {
+    const response = await apiRequest("/api/v1/proxy-media");
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("url parameter is required");
+  });
+});
