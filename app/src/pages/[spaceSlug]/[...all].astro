@@ -115,9 +115,14 @@ if (docSlugMatch && !storedDocumentRecord) {
   }
 }
 
-const documentRecord = storedDocumentRecord
-  ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
-  : null;
+// Only a caller who holds viewer on this document gets it inlined: a
+// resource-scoped grantee clears `verifyResourceAccess` on a grant on some
+// *other* document, and slugs are guessable titles. They render the shell an
+// unresolved slug produces — refusing would confirm the slug resolved.
+const documentRecord =
+  storedDocumentRecord && hasDirectDocumentAccess
+    ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
+    : null;
 let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))
   : undefined;

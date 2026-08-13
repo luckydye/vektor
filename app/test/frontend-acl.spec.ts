@@ -289,8 +289,15 @@ describe("Frontend ACL Tests - Document Addressed By ID", () => {
     expect(byId.location).toBe(bySlug.location);
     expect(byId.status).toBe(missing.status);
     expect(byId.location).toBe(missing.location);
+    // Pinned, not just equal to each other: all three are the shell a caller
+    // who reached the space gets for a document they may not read.
+    expect(byId.status).toBe(200);
     expect(byId.location).toBeNull();
     expect(byId.body).not.toContain(privateDocumentSlug);
+    // The slug is in the URL the caller typed, so only the document itself can
+    // be asserted absent here.
+    expect(bySlug.body).not.toContain("Private Document");
+    expect(bySlug.body).not.toContain("This is a private document.");
   });
 
   it("still redirects the owner from a document id to the canonical slug url", async () => {
@@ -468,13 +475,19 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
     expect(response.status).toBe(200);
   });
 
-  it.skip("should deny access to other documents without space membership", async () => {
+  it("should serve no other document's content without space membership", async () => {
     const response = await pageRequest(
       `/${testSpaceSlug}/doc/${privateDocumentSlug}`,
       docLevelToken,
     );
+    const html = await response.text();
 
-    expect(response.status).not.toBe(200);
+    // The shell still renders — refusing a slug that resolved would confirm the
+    // document exists, and slugs are guessable — but it carries nothing of the
+    // document the grant does not reach.
+    expect(response.status).toBe(200);
+    expect(html).not.toContain("Private Document");
+    expect(html).not.toContain("This is a private document.");
   });
 
   it.skip("should deny space index access without space membership", async () => {
