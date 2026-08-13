@@ -19,7 +19,7 @@ import { createAuditLog } from "./auditLogs.ts";
 import { EmptyDocumentSlugError, generateUniqueSlug } from "./documents.ts";
 import {
   nonArchivedDocumentCondition,
-  updateDocumentEmbeddingBestEffort,
+  scheduleDocumentSearchRefresh,
 } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
@@ -202,7 +202,7 @@ export async function patchDocumentProperties(
     return renamedSlug ? { slug: renamedSlug } : {};
   });
 
-  void updateDocumentEmbeddingBestEffort(s, documentId);
+  scheduleDocumentSearchRefresh(s, documentId);
   return result;
 }
 

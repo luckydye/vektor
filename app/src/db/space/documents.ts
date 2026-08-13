@@ -30,7 +30,7 @@ import {
   type DocumentWithProperties,
   fileRowToDocument,
   nonArchivedDocumentCondition,
-  updateDocumentEmbeddingBestEffort,
+  scheduleDocumentSearchRefresh,
 } from "./search.ts";
 
 export type {
@@ -187,7 +187,7 @@ export async function createDocument(
     });
   }
 
-  await updateDocumentEmbeddingBestEffort(s, id);
+  scheduleDocumentSearchRefresh(s, id);
 
   await createAuditLog(s, {
     spaceId: s.spaceId,
@@ -392,7 +392,7 @@ export async function updateDocument(
     .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
     .where(eq(document.id, id));
 
-  await updateDocumentEmbeddingBestEffort(s, id);
+  scheduleDocumentSearchRefresh(s, id);
 
   return {
     id,

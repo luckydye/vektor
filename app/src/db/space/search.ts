@@ -193,20 +193,18 @@ export async function updateDocumentEmbedding(
     .where(eq(document.id, documentId));
 }
 
-/** Refresh search data without turning a successful document write into a failure. */
-export async function updateDocumentEmbeddingBestEffort(
+/** Start a search refresh without delaying or failing the document write. */
+export function scheduleDocumentSearchRefresh(
   s: SpaceStore,
   documentId: string,
-): Promise<void> {
-  try {
-    await updateDocumentEmbedding(s, documentId);
-  } catch (error) {
-    appLogger.warn("Failed to update document embedding", {
+): void {
+  void updateDocumentEmbedding(s, documentId).catch((error) => {
+    appLogger.warn("Failed to refresh document search", {
       error,
       spaceId: s.spaceId,
       documentId,
     });
-  }
+  });
 }
 
 export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
