@@ -17,9 +17,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   aggregateStoredProperties,
   isReservedDocumentPropertyKey,
+  normalizeDocumentPropertyPatch,
   readDocumentProperty,
-  toDocumentPropertyBag,
-  toDocumentPropertyBags,
+  toDocumentProperties,
+  toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
 import {
   createApiRequest,
@@ -105,84 +106,86 @@ describe("aggregateStoredProperties", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Building a document's property bag
+// Building document properties
 // ---------------------------------------------------------------------------
 
-describe("toDocumentPropertyBag", () => {
+describe("toDocumentProperties", () => {
   it.each(PROTOTYPE_KEYS)("stores a property named %s as own data", (key) => {
-    const bag = toDocumentPropertyBag([
+    const properties = toDocumentProperties([
       { key: "title", value: "A document" },
       { key, value: "stored" },
     ]);
 
-    expect(Object.hasOwn(bag, key)).toBe(true);
-    expect(bag[key]).toBe("stored");
-    expect(Object.keys(bag).sort()).toEqual(["title", key].sort());
+    expect(Object.hasOwn(properties, key)).toBe(true);
+    expect(properties[key]).toBe("stored");
+    expect(Object.keys(properties).sort()).toEqual(["title", key].sort());
   });
 
-  it("does not let a `__proto__` row replace the bag's prototype", () => {
+  it("does not let a `__proto__` row replace the object's prototype", () => {
     // The dangerous case: the stored value parses to an array, which *is* a valid
     // prototype, so a bracket assignment really would reassign it.
-    const bag = toDocumentPropertyBag([
+    const properties = toDocumentProperties([
       { key: "__proto__", value: JSON.stringify(["a", "b"]) },
     ]);
 
-    expect(Object.hasOwn(bag, "__proto__")).toBe(true);
-    expect(bag.__proto__).toEqual(["a", "b"]);
-    expect(Object.getPrototypeOf(bag)).toBe(Object.prototype);
+    expect(Object.hasOwn(properties, "__proto__")).toBe(true);
+    expect(properties.__proto__).toEqual(["a", "b"]);
+    expect(Object.getPrototypeOf(properties)).toBe(Object.prototype);
   });
 
   it("survives a JSON round trip, since this is the shape sent on the wire", () => {
-    const bag = toDocumentPropertyBag([
+    const properties = toDocumentProperties([
       { key: "toString", value: "tuesday" },
       { key: "title", value: "A document" },
     ]);
 
-    expect(JSON.parse(JSON.stringify(bag))).toEqual({
+    expect(JSON.parse(JSON.stringify(properties))).toEqual({
       toString: "tuesday",
       title: "A document",
     });
   });
 
   it("lets a later row win, and parses multi-value rows", () => {
-    const bag = toDocumentPropertyBag([
+    const properties = toDocumentProperties([
       { key: "valueOf", value: "first" },
       { key: "valueOf", value: JSON.stringify(["second", "third"]) },
     ]);
 
-    expect(bag.valueOf).toEqual(["second", "third"]);
+    expect(properties.valueOf).toEqual(["second", "third"]);
   });
 });
 
-describe("toDocumentPropertyBags", () => {
+describe("toDocumentPropertiesByDocument", () => {
   it("groups by document and keeps colliding keys per document", () => {
-    const bags = toDocumentPropertyBags(
+    const propertiesByDocument = toDocumentPropertiesByDocument(
       PROTOTYPE_KEYS.flatMap((key) => [
         { documentId: "doc_one", key, value: `one-${key}` },
         { documentId: "doc_two", key, value: `two-${key}` },
       ]),
     );
 
-    expect([...bags.keys()].sort()).toEqual(["doc_one", "doc_two"]);
+    expect([...propertiesByDocument.keys()].sort()).toEqual(["doc_one", "doc_two"]);
     for (const key of PROTOTYPE_KEYS) {
-      expect(bags.get("doc_one")?.[key]).toBe(`one-${key}`);
-      expect(bags.get("doc_two")?.[key]).toBe(`two-${key}`);
+      expect(propertiesByDocument.get("doc_one")?.[key]).toBe(`one-${key}`);
+      expect(propertiesByDocument.get("doc_two")?.[key]).toBe(`two-${key}`);
     }
   });
 
   it("does not leak one document's properties into another", () => {
-    const bags = toDocumentPropertyBags([
+    const propertiesByDocument = toDocumentPropertiesByDocument([
       { documentId: "doc_one", key: "constructor", value: "only-one" },
       { documentId: "doc_two", key: "title", value: "Two" },
     ]);
 
-    expect(Object.hasOwn(bags.get("doc_two") ?? {}, "constructor")).toBe(false);
-    expect(Object.keys(bags.get("doc_two") ?? {})).toEqual(["title"]);
+    expect(
+      Object.hasOwn(propertiesByDocument.get("doc_two") ?? {}, "constructor"),
+    ).toBe(false);
+    expect(Object.keys(propertiesByDocument.get("doc_two") ?? {})).toEqual(["title"]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Reading a property bag by a key from a request
+// Reading document properties by a key from a request
 // ---------------------------------------------------------------------------
 
 describe("readDocumentProperty", () => {
@@ -190,9 +193,9 @@ describe("readDocumentProperty", () => {
     expect(readDocumentProperty({ title: "A document" }, key)).toBeUndefined();
   });
 
-  it("returns the value when the bag really has the key", () => {
-    const bag = JSON.parse('{"toString":"tuesday"}');
-    expect(readDocumentProperty(bag, "toString")).toBe("tuesday");
+  it("returns the value when the properties really have the key", () => {
+    const properties = JSON.parse('{"toString":"tuesday"}');
+    expect(readDocumentProperty(properties, "toString")).toBe("tuesday");
   });
 });
 
@@ -207,6 +210,28 @@ describe("isReservedDocumentPropertyKey", () => {
 
   it("is case sensitive, so ordinary names starting with a capital are allowed", () => {
     expect(isReservedDocumentPropertyKey("Constructor")).toBe(false);
+  });
+});
+
+describe("normalizeDocumentPropertyPatch", () => {
+  it("normalizes updates and deletes as one operation list", () => {
+    expect(
+      normalizeDocumentPropertyPatch({
+        status: { value: "published", type: "select" },
+        tags: ["one", null, "two"],
+        obsolete: null,
+      }),
+    ).toEqual([
+      { kind: "update", key: "status", value: "published", type: "select" },
+      { kind: "update", key: "tags", value: ["one", "two"], type: undefined },
+      { kind: "delete", key: "obsolete" },
+    ]);
+  });
+
+  it("keeps reserved keys deletable", () => {
+    expect(normalizeDocumentPropertyPatch({ constructor: null })).toEqual([
+      { kind: "delete", key: "constructor" },
+    ]);
   });
 });
 
@@ -362,7 +387,7 @@ describe("colliding property keys survive the space-wide listing", () => {
       expect(created_.properties[key]).toBe(`read-back-${key}`);
     }
 
-    // ...and on a fresh read, which rebuilds the bag from the stored rows.
+    // ...and on a fresh read, which rebuilds properties from the stored rows.
     const fetched = await apiRequest(
       `/api/v1/spaces/${spaceId}/documents/${created_.id}`,
     );
@@ -429,7 +454,7 @@ describe("colliding property keys survive the space-wide listing", () => {
 
 describe("search filters over colliding property keys", () => {
   it.each(PROTOTYPE_KEYS)("does not 500 when filtering on %s", async (key) => {
-    // A filter key is raw request input, so it reaches the property bag without
+    // A filter key is raw request input, so it reaches document properties without
     // any document having to carry the key first.
     const filters = encodeURIComponent(JSON.stringify([{ key, value: "anything" }]));
     const response = await apiRequest(

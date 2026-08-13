@@ -1,5 +1,6 @@
 import { applyUpdate, encodeStateAsUpdate, Doc as YDoc } from "yjs";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -68,7 +69,7 @@ export interface Document {
 }
 
 export interface DocumentWithProperties extends Document {
-  properties: Record<string, string | string[]>;
+  properties: DocumentProperties;
   mentionCount?: number;
   /** Natural width/height ratio derived from the stored header image. */
   headerImageAspectRatio?: number | null;
@@ -448,7 +449,7 @@ export interface SearchResult {
   slug: string;
   type?: string | null;
   content: string;
-  properties: Record<string, string | string[]>;
+  properties: DocumentProperties;
   createdAt: string;
   updatedAt: string;
   userId: string;

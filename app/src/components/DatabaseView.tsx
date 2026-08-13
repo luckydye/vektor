@@ -7,7 +7,7 @@ import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import {
-  type DocumentPropertyValue,
+  type DocumentProperties,
   propertyValueToText,
   readDocumentProperty,
 } from "#documents/properties.ts";
@@ -22,7 +22,7 @@ interface Props {
 const DEFAULT_COL_WIDTH = 180;
 const NAME_COL_WIDTH = 240;
 
-function cellValue(row: Record<string, DocumentPropertyValue>, col: string): string {
+function cellValue(row: DocumentProperties, col: string): string {
   // Column names come from the space's property keys, so a column called
   // `toString` would read `Object.prototype.toString` off the row and render the
   // function's source into the cell.
@@ -30,7 +30,7 @@ function cellValue(row: Record<string, DocumentPropertyValue>, col: string): str
   return value ? propertyValueToText(value) : "";
 }
 
-function rowTitle(row: Record<string, DocumentPropertyValue>): string {
+function rowTitle(row: DocumentProperties): string {
   return cellValue(row, "title") || "Untitled";
 }
 

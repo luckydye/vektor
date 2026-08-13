@@ -9,21 +9,16 @@ import { createId } from "#db/ids.ts";
 import { document, file as fileTable, property, revision } from "#db/schema/space.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
-  aggregateStoredProperties,
   assertWritableDocumentPropertyKey,
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
-  toDocumentPropertyBag,
-  toDocumentPropertyBags,
+  toDocumentProperties,
+  toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
-import {
-  allowsChildDocumentType,
-  isPlaceholderDocumentSlug,
-  readOnlyDocumentTypes,
-} from "#documents/types.ts";
+import { allowsChildDocumentType, readOnlyDocumentTypes } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -35,7 +30,7 @@ import {
   type DocumentWithProperties,
   fileRowToDocument,
   nonArchivedDocumentCondition,
-  updateDocumentEmbedding,
+  updateDocumentEmbeddingBestEffort,
 } from "./search.ts";
 
 export type {
@@ -55,28 +50,13 @@ const archivedDocumentCondition = sql`
   )
 `;
 
-async function updateDocumentEmbeddingBestEffort(
-  s: SpaceStore,
-  documentId: string,
-): Promise<void> {
-  try {
-    await updateDocumentEmbedding(s, documentId);
-  } catch (error) {
-    appLogger.warn("Failed to update document embedding", {
-      error,
-      spaceId: s.spaceId,
-      documentId,
-    });
-  }
-}
-
 /**
  * A title with nothing sluggable in it (e.g. "-----") leaves no usable URL, so
  * it is a bad request rather than a server fault.
  */
 export class EmptyDocumentSlugError extends Error {}
 
-async function generateUniqueSlug(
+export async function generateUniqueSlug(
   s: SpaceStore,
   baseTitle: string,
   excludeDocumentId?: string,
@@ -274,7 +254,7 @@ export async function getDocument(
   const props = await many(
     s.db.select().from(property).where(eq(property.documentId, id)),
   );
-  const properties = toDocumentPropertyBag(props);
+  const properties = toDocumentProperties(props);
 
   return { ...doc, parentId: doc.parentId || null, properties };
 }
@@ -314,7 +294,7 @@ export async function getDocumentsByIds(
     many(s.db.select().from(property).where(inArray(property.documentId, unique))),
   ]);
 
-  const propertiesByDocument = toDocumentPropertyBags(props);
+  const propertiesByDocument = toDocumentPropertiesByDocument(props);
 
   for (const doc of docs) {
     byId.set(doc.id, {
@@ -369,7 +349,7 @@ export async function getDocumentBySlug(
     s.db.select().from(property).where(eq(property.documentId, doc.id)),
   );
 
-  const properties = toDocumentPropertyBag(props);
+  const properties = toDocumentProperties(props);
 
   return {
     id: doc.id,
@@ -684,7 +664,7 @@ export async function listDocuments(
       : [];
 
   // Group properties by document ID
-  const propsByDocId = toDocumentPropertyBags(allProps);
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   // Build results
   const results: DocumentWithProperties[] = docs.map((doc) => ({
@@ -789,7 +769,7 @@ export async function listArchivedDocuments(
 
   const allProps = await many(s.db.select().from(property));
 
-  const propsByDocId = toDocumentPropertyBags(allProps);
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   const results: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
@@ -828,167 +808,6 @@ export async function listArchivedDocuments(
       ? encodeListCursor(last.updatedAt, last.id)
       : null;
   return { documents: page, nextCursor };
-}
-
-export async function updateDocumentProperty(
-  s: SpaceStore,
-  documentId: string,
-  key: string,
-  value: DocumentPropertyValue,
-  type?: string | null,
-  userId?: string,
-): Promise<{ slug?: string }> {
-  assertWritableDocumentPropertyKey(key);
-  const now = new Date();
-  const storedValue = serializePropertyValue(value);
-
-  // Read existing value for audit log (indexed lookup, very fast)
-  const existing = await one(
-    s.db
-      .select()
-      .from(property)
-      .where(and(eq(property.documentId, documentId), eq(property.key, key))),
-  );
-
-  const previousValue = existing ? parseStoredPropertyValue(existing.value) : undefined;
-
-  if (existing) {
-    const updateData: { value: string; updatedAt: Date; type?: string | null } = {
-      value: storedValue,
-      updatedAt: now,
-    };
-    if (type !== undefined) updateData.type = type;
-    await s.db.update(property).set(updateData).where(eq(property.id, existing.id));
-  } else {
-    await s.db.insert(property).values({
-      id: createId("property"),
-      documentId,
-      key,
-      value: storedValue,
-      type: type || null,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  await createAuditLog(s, {
-    spaceId: s.spaceId,
-    docId: documentId,
-    userId,
-    event: "property_update",
-    details: {
-      propertyKey: key,
-      propertyType: type || undefined,
-      previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
-      newValue: propertyValueToText(value),
-    },
-  });
-
-  // A rename leaves the slug alone so existing links and bookmarks keep
-  // resolving. The exception is a slug still derived from the placeholder title
-  // the document was created with — that one names nothing, so the first real
-  // title claims it.
-  let renamedSlug: string | undefined;
-  if (key === "title" && typeof value === "string" && value) {
-    const current = await one(
-      s.db
-        .select({ slug: document.slug })
-        .from(document)
-        .where(eq(document.id, documentId)),
-    );
-
-    if (current && isPlaceholderDocumentSlug(current.slug)) {
-      // An unsluggable title still renames the document; only the derived slug
-      // can't follow, so it stays where it was.
-      renamedSlug = await generateUniqueSlug(s, value, documentId).catch(
-        (error: unknown) => {
-          if (error instanceof EmptyDocumentSlugError) return undefined;
-          throw error;
-        },
-      );
-    }
-  }
-
-  await s.db
-    .update(document)
-    .set({ ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now })
-    .where(eq(document.id, documentId));
-
-  void updateDocumentEmbeddingBestEffort(s, documentId);
-  const propertyChangeData = {
-    kind: "document_property_changed",
-    documentId,
-    propertyKey: key,
-    propertyType: type ?? existing?.type ?? null,
-    previousValue: previousValue ?? null,
-    value,
-  };
-  const treeRelevantProperty = ["title", "category", "collection"].includes(key);
-
-  s.emit({
-    kind: "documentProperty",
-    documentId,
-    affectsTree: treeRelevantProperty,
-    data: propertyChangeData,
-  });
-
-  return renamedSlug ? { slug: renamedSlug } : {};
-}
-
-export async function deleteDocumentProperty(
-  s: SpaceStore,
-  documentId: string,
-  key: string,
-  userId?: string,
-): Promise<void> {
-  const now = new Date();
-
-  // Get the property value before deletion for audit log
-  const existing = await one(
-    s.db
-      .select()
-      .from(property)
-      .where(and(eq(property.documentId, documentId), eq(property.key, key))),
-  );
-
-  await s.db
-    .delete(property)
-    .where(and(eq(property.documentId, documentId), eq(property.key, key)));
-
-  // Create audit log for property deletion
-  if (existing) {
-    await createAuditLog(s, {
-      spaceId: s.spaceId,
-      docId: documentId,
-      userId,
-      event: "property_delete",
-      details: {
-        propertyKey: key,
-        propertyType: existing.type || undefined,
-        previousValue: propertyValueToText(parseStoredPropertyValue(existing.value)),
-      },
-    });
-  }
-
-  // Update the document's updatedAt timestamp
-  await s.db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
-
-  void updateDocumentEmbeddingBestEffort(s, documentId);
-  const propertyDeleteData = {
-    kind: "document_property_deleted",
-    documentId,
-    propertyKey: key,
-    propertyType: existing?.type ?? null,
-    previousValue: existing ? parseStoredPropertyValue(existing.value) : null,
-  };
-  const treeRelevantProperty = ["title", "category", "collection"].includes(key);
-
-  s.emit({
-    kind: "documentProperty",
-    documentId,
-    affectsTree: treeRelevantProperty,
-    data: propertyDeleteData,
-  });
 }
 
 /**
@@ -1122,7 +941,7 @@ export async function listAllDocumentsByCategories(
   }
 
   const allProps = await many(s.db.select().from(property));
-  const propsByDocId = toDocumentPropertyBags(allProps);
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
@@ -1286,7 +1105,7 @@ export async function getDocumentChildren(
         )
       : [];
 
-  const propsByDocId = toDocumentPropertyBags(allProps);
+  const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   return docs.map((doc) => ({
     id: doc.id,
@@ -1303,52 +1122,6 @@ export async function getDocumentChildren(
     readonly: doc.readonly,
     archived: doc.archived,
   }));
-}
-
-export interface PropertyInfo {
-  name: string;
-  type: string | null;
-  values: string[];
-}
-
-export async function getAllPropertiesWithValues(s: SpaceStore): Promise<PropertyInfo[]> {
-  // Joined to `document` rather than scanning `property` alone: property rows
-  // outlive their document because deletes do not cascade, and an orphan would
-  // otherwise be listed as a property of the space that no document explains and
-  // no API can remove. The join also drops archived documents, which is what the
-  // `type` values below already do.
-  const allProperties = await many(
-    s.db
-      .select({ key: property.key, value: property.value, type: property.type })
-      .from(property)
-      .innerJoin(document, eq(property.documentId, document.id))
-      .where(sql`${nonArchivedDocumentCondition}`),
-  );
-
-  // Add document type as a virtual property
-  const docTypes = await many(
-    s.db
-      .selectDistinct({ type: document.type })
-      .from(document)
-      .where(sql`${nonArchivedDocumentCondition}`),
-  );
-
-  const typeValues = docTypes
-    .map((d) => d.type || "document")
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .sort();
-
-  if (!typeValues.includes("file")) {
-    typeValues.push("file");
-    typeValues.sort();
-  }
-
-  const result: PropertyInfo[] = [
-    { name: "type", type: "select", values: typeValues },
-    ...aggregateStoredProperties(allProperties),
-  ];
-
-  return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export interface BreadcrumbItem {

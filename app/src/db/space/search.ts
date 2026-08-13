@@ -5,12 +5,13 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
-  type DocumentPropertyValue,
+  type DocumentProperties,
   parseStoredPropertyValue,
   propertyValueToText,
   readDocumentProperty,
-  toDocumentPropertyBags,
+  toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
+import { appLogger } from "#observability/logger.ts";
 import {
   buildDocumentSearchText,
   embedText,
@@ -58,7 +59,7 @@ export interface DocumentWithProperties {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
-  properties: Record<string, DocumentPropertyValue>;
+  properties: DocumentProperties;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -192,6 +193,22 @@ export async function updateDocumentEmbedding(
     .where(eq(document.id, documentId));
 }
 
+/** Refresh search data without turning a successful document write into a failure. */
+export async function updateDocumentEmbeddingBestEffort(
+  s: SpaceStore,
+  documentId: string,
+): Promise<void> {
+  try {
+    await updateDocumentEmbedding(s, documentId);
+  } catch (error) {
+    appLogger.warn("Failed to update document embedding", {
+      error,
+      spaceId: s.spaceId,
+      documentId,
+    });
+  }
+}
+
 export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
   const docs = await many(s.db.select().from(document));
 
@@ -241,7 +258,7 @@ function batches<T>(items: T[]): T[][] {
 async function readProperties(
   s: SpaceStore,
   documentIds: string[],
-): Promise<Map<string, Record<string, DocumentPropertyValue>>> {
+): Promise<Map<string, DocumentProperties>> {
   const allRows: (typeof property.$inferSelect)[] = [];
 
   for (const ids of batches(documentIds)) {
@@ -252,7 +269,7 @@ async function readProperties(
     );
   }
 
-  return toDocumentPropertyBags(allRows);
+  return toDocumentPropertiesByDocument(allRows);
 }
 
 /** The document rows behind a page of results, keyed by id. */
@@ -322,7 +339,7 @@ export async function searchDocuments(
   const propertyFilters = filters.filter((f) => f.key !== "type" && f.key !== "_date");
 
   const matchesFilters = (
-    properties: Record<string, DocumentPropertyValue>,
+    properties: DocumentProperties,
     docType: string | null,
   ): boolean => {
     for (const filter of typeFilters) {

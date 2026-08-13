@@ -1,4 +1,28 @@
 export type DocumentPropertyValue = string | string[];
+export type DocumentProperties = Record<string, DocumentPropertyValue>;
+
+export type DocumentPropertyPatchValue =
+  | null
+  | string
+  | string[]
+  | number
+  | boolean
+  | Array<string | number | boolean | null>
+  | {
+      value: unknown;
+      type?: string | null;
+    };
+
+export type DocumentPropertyPatch = Record<string, DocumentPropertyPatchValue>;
+
+export type DocumentPropertyPatchOperation =
+  | { kind: "delete"; key: string }
+  | {
+      kind: "update";
+      key: string;
+      value: DocumentPropertyValue;
+      type: string | null | undefined;
+    };
 
 export const HIDDEN_DOCUMENT_PROPERTY_KEYS = [
   "title",
@@ -16,11 +40,12 @@ export function isHiddenDocumentPropertyKey(key: string): boolean {
 /**
  * Property keys a document may never be given.
  *
- * These are the three names that corrupt an object on *write*: a property bag
- * built as an object literal turns `bag.__proto__ = value` into a prototype
- * reassignment and `bag.constructor = value` / `bag.prototype = value` into a
- * shadowing of members other code reads, so the value either vanishes or
- * changes the object's behaviour instead of being stored.
+ * These are the three names that corrupt an object on *write*: document
+ * properties built as an object literal turn `properties.__proto__ = value`
+ * into a prototype reassignment and `properties.constructor = value` /
+ * `properties.prototype = value` into a shadowing of members other code reads,
+ * so the value either vanishes or changes the object's behaviour instead of
+ * being stored.
  *
  * The other `Object.prototype` collisions — `toString`, `valueOf`,
  * `hasOwnProperty` — are deliberately *not* here. They are legitimate property
@@ -42,6 +67,9 @@ export function isReservedDocumentPropertyKey(key: string): boolean {
  * boundary turn this into a 400.
  */
 export class ReservedDocumentPropertyKeyError extends Error {}
+
+/** Thrown when a property patch has an invalid key or wrapped value shape. */
+export class InvalidDocumentPropertyPatchError extends Error {}
 
 /**
  * Guard every property *write* — not deletes. An already-stored reserved key
@@ -82,52 +110,104 @@ export function serializePropertyValue(value: unknown): string {
 }
 
 /**
- * Read one property out of a document's property bag.
+ * Validate and normalize a complete property patch before persistence starts.
  *
- * The bag has to stay a plain object — it is the JSON shape of
+ * Keeping this pure makes the all-or-nothing preflight available to every
+ * server transport without coupling the shared property model to HTTP or the
+ * database. Reserved keys remain deletable so old poisoned rows can be cleaned
+ * up.
+ */
+export function normalizeDocumentPropertyPatch(
+  patch: DocumentPropertyPatch,
+): DocumentPropertyPatchOperation[] {
+  return Object.entries(patch).map<DocumentPropertyPatchOperation>(
+    ([key, patchValue]) => {
+      if (!key) {
+        throw new InvalidDocumentPropertyPatchError(
+          "Property key is required and must be a non-empty string",
+        );
+      }
+
+      if (patchValue === null) return { kind: "delete", key };
+      assertWritableDocumentPropertyKey(key);
+
+      let rawValue: unknown = patchValue;
+      let type: string | null | undefined;
+      if (typeof patchValue === "object" && !Array.isArray(patchValue)) {
+        if (!("value" in patchValue)) {
+          throw new InvalidDocumentPropertyPatchError(
+            `Property "${key}" object payload must include "value"`,
+          );
+        }
+
+        rawValue = patchValue.value;
+        type = patchValue.type;
+        if (type !== undefined && type !== null && typeof type !== "string") {
+          throw new InvalidDocumentPropertyPatchError(
+            `Property "${key}" type must be a string, null, or undefined`,
+          );
+        }
+      }
+
+      const value = Array.isArray(rawValue)
+        ? rawValue
+            .filter((item) => item !== null && item !== undefined)
+            .map((item) => String(item))
+        : String(rawValue);
+
+      return { kind: "update", key, value, type };
+    },
+  );
+}
+
+/**
+ * Read one value out of a document's properties.
+ *
+ * The collection has to stay a plain object — it is the JSON shape of
  * `document.properties` on the wire — so a lookup by a user-supplied key such as
  * `toString` or `constructor` returns an inherited `Object.prototype` member
  * instead of `undefined`. That value is a function, and every check downstream
  * assumes a string or an array, so the lookup either throws
  * (`value.toLowerCase is not a function`) or silently matches. Restricting the
- * lookup to own keys is the only safe way to index a bag by a key from a
+ * lookup to own keys is the only safe way to index properties by a key from a
  * request.
  */
 export function readDocumentProperty(
-  properties: Record<string, DocumentPropertyValue>,
+  properties: DocumentProperties,
   key: string,
 ): DocumentPropertyValue | undefined {
   return Object.hasOwn(properties, key) ? properties[key] : undefined;
 }
 
 /**
- * Build a document's property bag from its stored rows.
+ * Build a document's properties from its stored rows.
  *
  * Materialised with `Object.fromEntries`, never by assigning into an object
- * literal. Property keys are user-controlled, and `bag["__proto__"] = value` on a
- * literal reassigns the object's prototype instead of storing the value — and
- * because `parseStoredPropertyValue` can return an array, a property named
- * `__proto__` would genuinely replace the bag's prototype and type-confuse every
- * later read. `Object.fromEntries` defines own properties, so the key round-trips
- * as ordinary data. Later rows win, as they did before.
+ * literal. Property keys are user-controlled, and
+ * `properties["__proto__"] = value` on a literal reassigns the object's
+ * prototype instead of storing the value — and because
+ * `parseStoredPropertyValue` can return an array, a property named `__proto__`
+ * would genuinely replace the object's prototype and type-confuse every later
+ * read. `Object.fromEntries` defines own properties, so the key round-trips as
+ * ordinary data. Later rows win, as they did before.
  *
  * The result is a normal object, not a null-prototype one, because this is the
  * JSON shape of `document.properties` on the wire and plenty of code treats it as
  * an ordinary object. Indexing it with a key that came from a request must still
  * go through `readDocumentProperty`.
  */
-export function toDocumentPropertyBag(
+export function toDocumentProperties(
   rows: { key: string; value: string }[],
-): Record<string, DocumentPropertyValue> {
+): DocumentProperties {
   return Object.fromEntries(
     rows.map((row) => [row.key, parseStoredPropertyValue(row.value)]),
   );
 }
 
-/** {@link toDocumentPropertyBag} for many documents at once, keyed by document id. */
-export function toDocumentPropertyBags(
+/** {@link toDocumentProperties} for many documents, keyed by document id. */
+export function toDocumentPropertiesByDocument(
   rows: { documentId: string; key: string; value: string }[],
-): Map<string, Record<string, DocumentPropertyValue>> {
+): Map<string, DocumentProperties> {
   const rowsByDocument = new Map<string, { key: string; value: string }[]>();
   for (const row of rows) {
     const existing = rowsByDocument.get(row.documentId);
@@ -138,7 +218,7 @@ export function toDocumentPropertyBags(
   return new Map(
     Array.from(rowsByDocument, ([documentId, documentRows]) => [
       documentId,
-      toDocumentPropertyBag(documentRows),
+      toDocumentProperties(documentRows),
     ]),
   );
 }

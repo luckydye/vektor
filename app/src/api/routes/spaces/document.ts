@@ -24,7 +24,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
-import { openSpaceStore } from "#db/client/store.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
@@ -32,7 +32,6 @@ import {
   archiveDocument,
   type DocumentMeta,
   deleteDocument,
-  deleteDocumentProperty,
   getDocument,
   getDocumentBySlug,
   getDocumentContent,
@@ -40,8 +39,8 @@ import {
   restoreDocument,
   setDocumentParent,
   updateDocument,
-  updateDocumentProperty,
 } from "#db/space/documents.ts";
+import { patchDocumentProperties } from "#db/space/properties.ts";
 import {
   createRevision,
   createSuggestion,
@@ -51,7 +50,11 @@ import {
 } from "#db/space/revisions.ts";
 import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
-import { isReservedDocumentPropertyKey } from "#documents/properties.ts";
+import {
+  type DocumentPropertyPatch,
+  InvalidDocumentPropertyPatchError,
+  ReservedDocumentPropertyKeyError,
+} from "#documents/properties.ts";
 import {
   contentIsHtml,
   documentIsReadonly,
@@ -71,20 +74,8 @@ import {
 import { stripScriptTags } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
 
-type PropertyPatchValue =
-  | null
-  | string
-  | string[]
-  | number
-  | boolean
-  | Array<string | number | boolean | null>
-  | {
-      value: unknown;
-      type?: string | null;
-    };
-
 type DocumentPatchBody = {
-  properties?: Record<string, PropertyPatchValue>;
+  properties?: DocumentPropertyPatch;
   parentId?: string | null;
   publishedRev?: number | null;
   readonly?: boolean;
@@ -103,86 +94,22 @@ function withCors(response: Response): Response {
 }
 
 async function handlePropertiesPatch(
-  spaceId: string,
+  store: SpaceStore,
   documentId: string,
   userId: string,
-  properties: Record<string, PropertyPatchValue>,
+  properties: DocumentPropertyPatch,
 ) {
-  const propertyEntries = Object.entries(properties);
-  const payload: { slug?: string } = {};
-
-  // Validate and normalize the complete payload before applying any entry. A
-  // later invalid property must not turn a rejected PATCH into a partial write.
-  const operations = propertyEntries.map(([propertyKey, propertyPatch]) => {
-    if (!propertyKey || typeof propertyKey !== "string") {
-      throw badRequestResponse("Property key is required and must be a non-empty string");
+  try {
+    return await patchDocumentProperties(store, documentId, properties, userId);
+  } catch (error) {
+    if (
+      error instanceof InvalidDocumentPropertyPatchError ||
+      error instanceof ReservedDocumentPropertyKeyError
+    ) {
+      throw badRequestResponse(error.message);
     }
-
-    // A delete is always allowed, even for a reserved key: a document poisoned
-    // before this check existed has to stay cleanable through the API.
-    if (propertyPatch !== null && isReservedDocumentPropertyKey(propertyKey)) {
-      throw badRequestResponse(`Property key "${propertyKey}" is reserved`);
-    }
-
-    if (propertyPatch === null) {
-      return { kind: "delete", propertyKey } as const;
-    }
-
-    let nextValue: unknown = propertyPatch;
-    let nextType: string | null | undefined;
-
-    if (typeof propertyPatch === "object" && !Array.isArray(propertyPatch)) {
-      if (!("value" in propertyPatch)) {
-        throw badRequestResponse(
-          `Property "${propertyKey}" object payload must include "value"`,
-        );
-      }
-
-      nextValue = propertyPatch.value;
-      nextType = propertyPatch.type;
-
-      if (nextType !== undefined && nextType !== null && typeof nextType !== "string") {
-        throw badRequestResponse(
-          `Property "${propertyKey}" type must be a string, null, or undefined`,
-        );
-      }
-    }
-
-    const value = Array.isArray(nextValue)
-      ? nextValue
-          .filter((item) => item !== null && item !== undefined)
-          .map((item) => String(item))
-      : String(nextValue);
-
-    return { kind: "update", propertyKey, value, type: nextType } as const;
-  });
-
-  for (const operation of operations) {
-    if (operation.kind === "delete") {
-      await deleteDocumentProperty(
-        await openSpaceStore(spaceId),
-        documentId,
-        operation.propertyKey,
-        userId,
-      );
-      continue;
-    }
-
-    const changedProperties = await updateDocumentProperty(
-      await openSpaceStore(spaceId),
-      documentId,
-      operation.propertyKey,
-      operation.value,
-      operation.type,
-      userId,
-    );
-
-    if (changedProperties.slug) {
-      payload.slug = changedProperties.slug;
-    }
+    throw error;
   }
-
-  return payload;
 }
 
 async function handlePublishedRevisionPatch(
@@ -627,12 +554,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("Properties must be an object");
       }
 
-      const payload = await handlePropertiesPatch(
-        spaceId,
-        id,
-        userId,
-        properties as Record<string, PropertyPatchValue>,
-      );
+      const payload = await handlePropertiesPatch(store, id, userId, properties);
       return successResponse(payload);
     }
 
