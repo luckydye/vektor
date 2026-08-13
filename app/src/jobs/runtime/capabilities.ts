@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { config, getLocalOrigin } from "#config";
 import { createJobToken } from "#jobs/jobToken.ts";
+import { isPrivateOrBlockedIp, safeFetch, type UrlValidator } from "#utils/ssrf.ts";
 import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
@@ -124,33 +125,18 @@ function checkPayloadSize(bytes: number, what: string): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Reject requests aimed at this host or the local network.
- *
- * Job code legitimately fetches the public internet, so egress is open by
- * default — but the loopback and private ranges are where the internal API,
- * the database and cloud metadata endpoints live. A job that wants space data
- * has capabilities for it and does not need to dial the API itself.
+ * Reject requests aimed at this host or the local network. Egress is otherwise
+ * open, since job code legitimately fetches the public internet. Only the error
+ * wording and the `JOB_FETCH_ALLOW_PRIVATE` hatch are job-specific, so this is a
+ * {@link UrlValidator} over the shared denylist rather than a second copy of it.
  */
-function isPrivateAddress(address: string): boolean {
-  if (address === "::1" || address.startsWith("fe80:") || address.startsWith("fc"))
-    return true;
-  if (address.startsWith("::ffff:")) return isPrivateAddress(address.slice(7));
-
-  const parts = address.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n))) return false;
-  const [a, b] = parts;
-  if (a === 127 || a === 0 || a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 169 && b === 254) return true; // link-local, incl. cloud metadata
-  return false;
-}
-
-async function assertEgressAllowed(url: URL): Promise<void> {
+export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
+  const url = new URL(rawUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`fetch: unsupported protocol "${url.protocol}"`);
   }
-  if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return;
+  // No pinning either: the hatch exists to reach the local network.
+  if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return { url, addresses: [] };
 
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
@@ -159,19 +145,24 @@ async function assertEgressAllowed(url: URL): Promise<void> {
 
   // Resolve first so a public name pointing at a private address is caught too.
   const addresses = isIP(hostname)
-    ? [{ address: hostname }]
-    : await lookup(hostname, { all: true }).catch(() => {
-        throw new Error(`fetch: could not resolve ${url.hostname}`);
-      });
+    ? [hostname]
+    : (
+        await lookup(hostname, { all: true }).catch(() => {
+          throw new Error(`fetch: could not resolve ${url.hostname}`);
+        })
+      ).map((record) => record.address);
 
-  for (const { address } of addresses) {
-    if (isPrivateAddress(address)) {
+  for (const address of addresses) {
+    if (isPrivateOrBlockedIp(address)) {
       throw new Error(
         `fetch: ${url.hostname} resolves to the private address ${address}, which jobs cannot reach`,
       );
     }
   }
-}
+
+  // A literal IP has nothing to re-resolve, so nothing to pin.
+  return { url, addresses: isIP(hostname) ? [] : addresses };
+};
 
 /**
  * Flatten a `Response` into the plain shape the prelude rebuilds a
@@ -347,7 +338,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     // ── network ──────────────────────────────────────────────────────────────
     fetch: (async (rawUrl: unknown, rawInit: unknown) => {
       const url = new URL(String(rawUrl));
-      await assertEgressAllowed(url);
 
       const init = asRecord(rawInit);
       const method = String(init.method ?? "GET").toUpperCase();
@@ -359,15 +349,21 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
             : String(init.body);
 
       onLog(`${method} ${url.href}`);
-      const response = await fetch(url, {
-        method,
-        headers: Object.fromEntries(
-          Object.entries(asRecord(init.headers)).map(([k, v]) => [k, String(v)]),
-        ),
-        body,
-        redirect: init.redirect === "manual" ? "manual" : "follow",
-        signal,
-      });
+      // Validated and pinned on every hop: a bare `fetch` here let a public 302
+      // walk the server into loopback or the metadata endpoint.
+      const response = await safeFetch(
+        url.href,
+        {
+          method,
+          headers: Object.fromEntries(
+            Object.entries(asRecord(init.headers)).map(([k, v]) => [k, String(v)]),
+          ),
+          body,
+          ...(init.redirect === "manual" ? { redirect: "manual" as const } : {}),
+          signal,
+        },
+        assertEgressAllowed,
+      );
 
       return await describeResponse(response, url.href);
     }) as never,
