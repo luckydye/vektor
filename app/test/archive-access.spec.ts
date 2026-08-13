@@ -1,23 +1,8 @@
 /**
- * Archiving a document must withdraw it from everyone it was shared with.
- *
- * Archive is the product's "delete": it hides the document from every list and
- * from search. If viewer-level access survives that, a publicly shared document
- * stays readable by anyone holding the link after it was deleted — deleting
- * makes the exposure permanent instead of ending it.
- *
- * Rather than deleting the shares, an archived document raises the role its
- * access requires to `editor`. The rule these specs pin down:
- *   - a public-group grant on a document is honoured while it is live;
- *   - archiving stops a viewer-level grant from resolving, so anonymous reads
- *     and space-viewer reads stop — but the grant itself is left in place, so
- *     restoring the document restores the share with it;
- *   - a grant at editor or above keeps working, which is what lets the people
- *     who can restore or purge the document still open it;
- *   - the trash listing follows the same bar: viewers cannot enumerate it;
- *   - a document that was never shared is unaffected either way;
- *   - a permanent delete does purge the ACL rows, since the resource they point
- *     at ceases to exist.
+ * Archive is the product's "delete", so it must withdraw the document from
+ * everyone it was shared with. It does that by requiring `editor` to read an
+ * archived document rather than by deleting the grants — which is why restoring
+ * one brings its shares back, and why a permanent delete still purges them.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -151,8 +136,8 @@ beforeAll(async () => {
   }
   spaceId = (await spaceResponse.json()).space.id;
 
-  // Both roles come from the space, not from any one document: the editor is who
-  // archiving must leave alone, the viewer is who it must lock out.
+  // Both roles come from the space, not from any one document: archiving must
+  // leave the editor alone and lock the viewer out.
   await grantSpaceRole(editor.userId, "editor");
   await grantSpaceRole(viewer.userId, "viewer");
 });
@@ -187,8 +172,7 @@ describe("archiving a publicly shared document", () => {
     );
     await sharePublicly(documentId);
 
-    // Sanity: the share works before the archive, so a later refusal is caused
-    // by the archive and not by a broken grant.
+    // Sanity: a later refusal is then caused by the archive, not a broken grant.
     const beforeArchive = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
@@ -211,8 +195,6 @@ describe("archiving a publicly shared document", () => {
 
     await archive(documentId);
 
-    // The share is withheld, not undone: nothing about the document's ACL
-    // changes, so the owner still sees who it was shared with.
     const after = await documentGrants(documentId);
     expect(after).toHaveLength(1);
     expect(after[0]?.groupId).toBe("public");
@@ -233,8 +215,7 @@ describe("archiving a publicly shared document", () => {
     const restored = await restore(documentId);
     expect(restored.status).toBe(200);
 
-    // Restoring the document restores the share with it — the grant was never
-    // touched, only outranked while the document sat in the trash.
+    // The grant was never touched, only outranked while the document sat in trash.
     const anonymous = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
@@ -269,8 +250,6 @@ describe("archiving a publicly shared document", () => {
 
     await archive(documentId);
 
-    // `editor` is exactly what an archived document requires, so this share is
-    // not withheld: the bar is the role, not the fact that a grant exists.
     const response = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
@@ -291,7 +270,6 @@ describe("archiving locks out space viewers", () => {
     expect(data.document.archived).toBeTruthy();
     expect(data.document.content).toContain("editor can read");
 
-    // And the editor can act on what they can read.
     expect((await restore(documentId, editorToken)).status).toBe(200);
   });
 
@@ -342,8 +320,6 @@ describe("archiving locks out space viewers", () => {
 
     expect((await archive(documentId)).status).toBe(200);
 
-    // Nothing was shared, nothing is broken: the owner and the editor still read
-    // it, anonymous callers still cannot.
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
     ).toBe(401);
@@ -370,8 +346,7 @@ describe("permanently deleting a document", () => {
     );
     expect(deleted.status).toBe(200);
 
-    // Nothing is left to be inherited by whatever reuses this id, and the
-    // public link is dead rather than pointing at an orphaned grant.
+    // Nothing is left for whatever reuses this id to inherit.
     expect(await documentGrants(documentId)).toHaveLength(0);
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,

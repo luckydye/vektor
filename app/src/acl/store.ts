@@ -1338,10 +1338,6 @@ export async function listAccessibleResources(
  *  - a viewer carrying a `documentScope` holds no space-wide role, so that
  *    fallback would grant them everything: the scope is an allowlist and
  *    nothing outside it is readable.
- *
- * `minPermission` is what a listing of resources gated above plain reading —
- * archived documents, which require `editor` — passes to keep the rows it shows
- * in step with what opening one would allow.
  */
 export async function filterReadableResources(
   spaceId: string,

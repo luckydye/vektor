@@ -458,17 +458,11 @@ export async function verifyResourceAccess(
 }
 
 /**
- * The role a caller must hold on a document, raised to `editor` while the
- * document is archived.
- *
- * Archive is the product's trash. An archived document has to stay reachable for
- * the people who can restore or purge it, and stop being reachable for everyone
- * it was merely shared with — so a viewer-level grant, a public link included,
- * stops resolving the moment the document is archived. The grants themselves are
- * left in place, which is what lets a restore bring the shares back with it.
- *
- * `exists` is reported rather than thrown on, because the two guards below
- * disagree about what a missing document means (404 vs. the ACL's own verdict).
+ * The role a caller must hold on a document, raised to `editor` while it is
+ * archived: archive is the trash, so a viewer-level grant — a public link
+ * included — stops resolving without being revoked, and a restore brings the
+ * shares back with it. `exists` is returned rather than thrown on because the
+ * two guards below disagree about what a missing document means.
  */
 async function requiredRoleForDocument(
   spaceId: string,
@@ -497,9 +491,8 @@ export async function verifyDocumentAccess(
     throw notFoundResponse("Space");
   }
 
-  // A document that does not exist keeps failing on the ACL check below, the way
-  // it always has here — unlike verifyDocumentRole, this guard has never
-  // distinguished "no such document" from "not allowed".
+  // `exists` is ignored: unlike verifyDocumentRole, this guard has never told
+  // "no such document" apart from "not allowed".
   const { requiredRole } = await requiredRoleForDocument(
     spaceId,
     documentId,
@@ -827,8 +820,8 @@ export async function verifyTokenPermission(
 ): Promise<void> {
   const tokenUserId = getTokenUserId(tokenResult.tokenId);
 
-  // A token is a delegation of a user's access, so it meets the same raised bar
-  // on an archived document that a session would (see requiredRoleForDocument).
+  // A token is a delegation of a user's access, so an archived document raises
+  // its bar too.
   const effectivePermission =
     resourceType === ResourceType.DOCUMENT
       ? (await requiredRoleForDocument(spaceId, resourceId, requiredPermission))

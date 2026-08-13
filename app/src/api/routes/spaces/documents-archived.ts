@@ -16,8 +16,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    // The trash is editor territory: an archived document requires `editor` to
-    // read, so listing them is not something a space viewer may do.
+    // Reading an archived document takes `editor`, so listing them does too.
     await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
     const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,

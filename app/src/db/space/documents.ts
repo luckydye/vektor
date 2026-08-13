@@ -337,15 +337,12 @@ export async function getDocumentContent(
 }
 
 /**
- * What an auth check needs to know about a document: that it exists, and
- * whether it is archived (which raises the role required to reach it). Returns
- * null when there is no such document.
- *
- * Selects neither the content nor the properties — using getDocument here would
- * pull the entire `content` column (tens of MB for large canvases) into memory
- * on every request, which saturated the server under presence/collaboration
- * traffic. `archived` is derived with the same condition the listings use, so a
- * legacy row that stored the flag as `'1'` or `'1.0'` reads as archived here too.
+ * What an auth check needs about a document: that it exists, and whether it is
+ * archived (which raises the role required to reach it). Null when there is no
+ * such document. Selects no content — getDocument here pulled the entire
+ * `content` column (tens of MB for large canvases) into memory on every request,
+ * which saturated the server under presence/collaboration traffic. `archived`
+ * reuses the listings' condition, so a legacy `'1'`/`'1.0'` row counts as one.
  */
 export async function getDocumentAuthState(
   s: SpaceStore,
@@ -443,14 +440,9 @@ export async function updateDocument(
 }
 
 /**
- * Drop every ACL grant that names this document, for a document that is going
- * away for good.
- *
- * Archiving does NOT do this — an archived document keeps its grants and is
- * withheld from viewers by raising the role its access requires (see
- * `requiredRoleForDocument`), so restoring it restores its shares too. Only a
- * permanent delete purges the rows, because the resource they point at ceases
- * to exist. `revokePermission` audit-logs each removed grant.
+ * Drop every ACL grant that names this document. Archiving does NOT do this — it
+ * raises the role required to reach the document instead, so a restore brings the
+ * shares back with it. Only a permanent delete purges the rows.
  */
 async function revokeDocumentGrants(
   s: SpaceStore,
@@ -501,9 +493,8 @@ export async function archiveDocument(
 }
 
 /**
- * Clearing `archived` is all a restore has to do: the document's grants were
- * never revoked, they simply stopped resolving for viewers while it sat in the
- * trash, so the shares it had come back with it.
+ * Clearing `archived` is all a restore has to do: the grants were never revoked,
+ * only outranked while the document sat in the trash, so the shares come back.
  */
 export async function restoreDocument(
   s: SpaceStore,
@@ -544,9 +535,8 @@ export async function deleteDocument(
   }
 
   await deleteDocumentEmailPreferences(await openSpaceStore(s.spaceId), id);
-  // SQLite runs with `PRAGMA foreign_keys = 0`, so dropping the document row
-  // does not cascade — the grants pointing at it would outlive it and be
-  // inherited by the next document to reuse the id.
+  // `PRAGMA foreign_keys = 0` means dropping the row does not cascade: the grants
+  // would outlive it and be inherited by the next document to reuse the id.
   await revokeDocumentGrants(s, id, userId);
   await s.db.delete(document).where(eq(document.id, id));
 
@@ -835,10 +825,9 @@ export async function listArchivedDocuments(
       .orderBy(desc(document.updatedAt), desc(document.id)),
   );
 
-  // Per-document ACL filtering, mirroring listDocuments. Space access alone
-  // must not expose archived documents the caller cannot read — and reading an
-  // archived document takes `editor`, so a viewer-level grant does not list it
-  // here either.
+  // Per-document ACL filtering, mirroring listDocuments: space access alone must
+  // not expose archived documents the caller cannot read — at `editor`, which is
+  // what reading one takes.
   if (viewer) {
     const readable = await filterReadableResources(
       s.spaceId,

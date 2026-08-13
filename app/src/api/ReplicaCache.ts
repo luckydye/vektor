@@ -494,9 +494,8 @@ export class ReplicaCache {
 
   /**
    * Archiving keeps the local copy but takes it out of every listing. The server
-   * stops serving an archived document below `editor` (see
-   * `requiredRoleForDocument`), so for a viewer the cached body outlives the
-   * access it was fetched with.
+   * stops serving an archived document below `editor`, so for a viewer the cached
+   * body outlives the access it was fetched with.
    */
   async archiveDocument(spaceId: string, documentId: string): Promise<void> {
     await this.db.writeRemote(async () => await this.archiveWrites(spaceId, documentId));
