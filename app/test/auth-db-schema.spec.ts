@@ -7,11 +7,11 @@
  * to decide whether an OAuth access token needs refreshing.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createDatabase } from "#db/client/connection.ts";
 import { prepareAuthDb } from "#db/client/init.ts";
-import { exec, many, one } from "#db/client/query.ts";
+import { one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
 import { account, spaceIndex, user } from "#db/schema/auth.ts";
 
@@ -58,10 +58,10 @@ describe("auth database schema", () => {
 
 /**
  * Two active spaces on one slug hide one of them for good, so the database is
- * what enforces uniqueness — a check in a handler is only there to produce a
- * readable message. `PATCH /api/v1/spaces/:id` used to store any slug it was
- * handed, so a database written by an older build can already hold a collision,
- * and building the index over those rows fails: the repair has to come first.
+ * what enforces uniqueness — the checks in `resolveSpaceSlug` are only there to
+ * produce a readable message. The index has existed for as long as the table
+ * has, which is why no migration pulls colliding rows apart: they were never
+ * storable.
  */
 describe("active space slug uniqueness", () => {
   function activeSpaceRow(index: number, slug: string) {
@@ -86,24 +86,5 @@ describe("active space slug uniqueness", () => {
     await expect(
       database.insert(spaceIndex).values(activeSpaceRow(2, "engineering")),
     ).rejects.toThrow();
-  });
-
-  it("separates slugs a previous build let collide, then builds the index", async () => {
-    const database = createDatabase("file::memory:");
-    await prepareAuthDb(database);
-    // Drop the guard to reproduce a database written before it existed.
-    await exec(database, sql.raw("DROP INDEX space_index_active_slug_unique"));
-
-    await database.insert(spaceIndex).values(activeSpaceRow(1, "collide"));
-    await database.insert(spaceIndex).values(activeSpaceRow(2, "collide"));
-    await database.insert(spaceIndex).values(activeSpaceRow(3, "collide"));
-
-    // Would throw on `CREATE UNIQUE INDEX` without the repair, taking the whole
-    // server start with it.
-    await prepareAuthDb(database);
-
-    const slugs = (await many(database.select().from(spaceIndex))).map((row) => row.slug);
-    expect(slugs).toContain("collide");
-    expect(new Set(slugs).size).toBe(3);
   });
 });

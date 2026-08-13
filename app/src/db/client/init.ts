@@ -3,7 +3,7 @@ import * as authSchema from "#db/schema/auth.ts";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
 import type { Database } from "./connection.ts";
-import { exec, many } from "./query.ts";
+import { exec } from "./query.ts";
 import {
   addColumnIfMissing,
   generateCreateTableSQL,
@@ -23,57 +23,12 @@ export async function prepareAuthDb(authDb: Database) {
   await exec(authDb, sql.raw(verificationSQL));
   await exec(authDb, sql.raw(spaceIndexSQL));
   await renameColumnIfNeeded(authDb, authSchema.spaceIndex.location, "database_url");
-  await separateDuplicateActiveSpaceSlugs(authDb);
   await exec(
     authDb,
     sql.raw(
       "CREATE UNIQUE INDEX IF NOT EXISTS space_index_active_slug_unique ON space_index (slug) WHERE status = 'active'",
     ),
   );
-}
-
-/**
- * Give every active space its own slug, so the unique index below can be built.
- *
- * `PATCH /api/v1/spaces/:id` used to store any string it was handed, uniqueness
- * unchecked, so a database written by an older build can hold two active spaces
- * on one slug — and `CREATE UNIQUE INDEX` over those rows fails, which would
- * stop the server from starting at all rather than repairing anything.
- *
- * This only pulls the rows apart; `repairSpaceSlugs` then derives a slug that
- * reads properly and writes it back to the space's own database too.
- */
-async function separateDuplicateActiveSpaceSlugs(authDb: Database): Promise<void> {
-  const duplicateCount = async () =>
-    (
-      await many<{ total: number }>(
-        authDb,
-        sql.raw(
-          `SELECT COUNT(*) AS total FROM (
-             SELECT slug FROM space_index
-             WHERE status = 'active' AND slug IS NOT NULL
-             GROUP BY slug HAVING COUNT(*) > 1
-           )`,
-        ),
-      )
-    )[0]?.total ?? 0;
-
-  // A suffixed slug can itself collide with a slug another row already holds,
-  // so this repeats until the column is clean rather than assuming one pass.
-  for (let attempt = 0; attempt < 8 && (await duplicateCount()) > 0; attempt++) {
-    await exec(
-      authDb,
-      sql.raw(
-        `UPDATE space_index
-         SET slug = slug || '-' || rowid
-         WHERE status = 'active' AND slug IS NOT NULL AND rowid NOT IN (
-           SELECT MIN(rowid) FROM space_index
-           WHERE status = 'active' AND slug IS NOT NULL
-           GROUP BY slug
-         )`,
-      ),
-    );
-  }
 }
 
 export async function applySpaceDbPragmas(spaceDb: Database) {

@@ -177,8 +177,7 @@ export async function createSpace(
 
 export async function getSpace(id: string): Promise<Space | null> {
   await initializeDatabases();
-  const indexed = await getIndexedSpace(id);
-  if (!indexed) return null;
+  if (!(await getIndexedSpace(id))) return null;
 
   const spaceDb = await getSpaceDb(id);
 
@@ -223,11 +222,7 @@ export async function getSpace(id: string): Promise<Space | null> {
   return {
     id: result.id,
     name: result.name,
-    // The index, not the metadata: it is what resolves `/{slug}/`, and
-    // `separateDuplicateActiveSpaceSlugs` can move a slug there without being
-    // able to reach the space's own database to follow. Reporting the metadata
-    // slug would hand out a link that opens a different space.
-    slug: indexed.slug ?? result.slug,
+    slug: result.slug,
     createdBy: result.createdBy,
     preferences,
     createdAt: new Date(result.createdAt),

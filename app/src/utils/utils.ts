@@ -168,28 +168,6 @@ export function canonicalSpaceSlug(input: string): string {
   return input.trim().toLowerCase();
 }
 
-/**
- * A space slug that is free to use, derived from `preferred`.
- *
- * Used to repair spaces already sitting on a reserved or duplicated slug, where
- * rejecting is not an option — the row exists and has to land somewhere.
- */
-export function availableSpaceSlug(
-  preferred: string,
-  isTaken: (slug: string) => boolean,
-): string {
-  const base = slugify(preferred) || "space";
-  if (!isReservedSpaceSlug(base) && !isTaken(base)) return base;
-
-  let counter = 1;
-  let candidate = `${base}-${counter}`;
-  while (isReservedSpaceSlug(candidate) || isTaken(candidate)) {
-    counter++;
-    candidate = `${base}-${counter}`;
-  }
-  return candidate;
-}
-
 export function detectAppType(
   label: string,
 ): "jira" | "youtrack" | "linear" | "github" | "gitlab" | undefined {

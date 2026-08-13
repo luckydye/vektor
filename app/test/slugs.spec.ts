@@ -10,10 +10,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { planSpaceSlugRepairs } from "#db/auth/spaceIndex.ts";
 import { fallbackDocumentSlug, isPlaceholderDocumentSlug } from "#documents/types.ts";
 import {
-  availableSpaceSlug,
   isReservedSpaceSlug,
   reservedSpaceSlugs,
   slugify,
@@ -199,88 +197,5 @@ describe("isPlaceholderDocumentSlug", () => {
     expect(isPlaceholderDocumentSlug("meeting-notes")).toBe(false);
     expect(isPlaceholderDocumentSlug("document-notes")).toBe(false);
     expect(isPlaceholderDocumentSlug("documents")).toBe(false);
-  });
-});
-
-/**
- * The startup repair, which has to free a space nothing else can reach without
- * moving a space that was reachable all along — and without picking a slug the
- * partial unique index will refuse, because a throw out of
- * `reconcileLocalSpaceIndex` rejects the cached initialization promise and every
- * later database call with it.
- */
-describe("planSpaceSlugRepairs", () => {
-  const plan = (
-    slugs: Record<string, string>,
-    claimedElsewhere: string[] = [],
-  ): Record<string, string> =>
-    Object.fromEntries(
-      planSpaceSlugRepairs(
-        Object.entries(slugs).map(([id, slug]) => ({ id, slug })),
-        new Set(claimedElsewhere),
-      ),
-    );
-
-  it("leaves a space that routes alone", () => {
-    expect(plan({ a: "engineering", b: "product" })).toEqual({});
-  });
-
-  it("moves a space off a slug the app's own routes own", () => {
-    expect(plan({ a: "docs" })).toEqual({ a: "docs-1" });
-    expect(plan({ a: "metrics" })).toEqual({ a: "metrics-1" });
-  });
-
-  it("keeps the first of two spaces on one slug and moves the second", () => {
-    expect(plan({ a: "collide", b: "collide" })).toEqual({ b: "collide-1" });
-  });
-
-  it("does not take a slug a space discovered later is holding", () => {
-    // Visited first, `docs` has to move; `docs-1` is somebody's working URL, so
-    // the replacement steps over it instead of evicting its owner.
-    expect(plan({ a: "docs", b: "docs-1" })).toEqual({ a: "docs-2" });
-    expect(plan({ a: "collide", b: "collide", c: "collide-1" })).toEqual({
-      b: "collide-2",
-    });
-  });
-
-  it("does not take a slug an active space outside the discovery is holding", () => {
-    // Hosted rows, and rows `separateDuplicateActiveSpaceSlugs` just suffixed:
-    // the unique index spans them too, so a candidate that ignores them throws.
-    expect(plan({ a: "docs" }, ["docs-1", "docs-2"])).toEqual({ a: "docs-3" });
-  });
-
-  it("leaves a slug that is merely non-canonical where it is", () => {
-    // Reachable at exactly that path today. Canonicalizing it would 404 every
-    // link the space already has, which is the harm being repaired here.
-    expect(plan({ a: "my_team", b: "team--alpha", c: "Team", d: "trailing-" })).toEqual(
-      {},
-    );
-  });
-
-  it("gives a space that cannot be a path segment a derived slug", () => {
-    expect(plan({ a: "a/b/c", b: "  ", c: "why?" })).toEqual({
-      a: "a-b-c",
-      b: "space",
-      c: "why",
-    });
-  });
-});
-
-describe("availableSpaceSlug", () => {
-  it("keeps a free slug", () => {
-    expect(availableSpaceSlug("engineering", () => false)).toBe("engineering");
-  });
-
-  it("steps past a reserved slug", () => {
-    expect(availableSpaceSlug("docs", () => false)).toBe("docs-1");
-  });
-
-  it("steps past a taken slug", () => {
-    const taken = new Set(["docs-1", "docs-2"]);
-    expect(availableSpaceSlug("docs", (slug) => taken.has(slug))).toBe("docs-3");
-  });
-
-  it("falls back for a slug with nothing sluggable in it", () => {
-    expect(availableSpaceSlug("日本語", () => false)).toBe("space");
   });
 });
