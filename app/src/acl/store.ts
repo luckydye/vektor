@@ -713,8 +713,7 @@ export async function listDocumentAccess(
 
   return [...grantees.values()].map(({ userId, groupId, grants }) => {
     // Mirrors hasPermission: the strongest grant wins, space role included, so
-    // a narrower grant never reads as a downgrade of it. Every grantee here was
-    // built from at least one row.
+    // a narrower grant never reads as a downgrade of it.
     const via = strongestGrant(grants, (grant) => grant.permission) ?? grants[0];
     return { userId, groupId, permission: via.permission, via, grants };
   });

@@ -1,13 +1,8 @@
 /**
- * The CLI login flow is a token mint, so it is a delegation: the token it hands
- * the terminal must carry exactly the role the approving user holds on the
- * selected space, and no more.
- *
- * It used to hardcode `editor` for everyone, which turned "I can see this space"
- * into "I can write to it" for any viewer — and even for someone who reached the
- * space through a single shared document. These specs drive the real three-step
- * flow (approval page → one-time code → token exchange) for each role and check
- * what the resulting token can actually do.
+ * CLI login mints a token, so it delegates: the token must carry the role the
+ * approving user holds on the selected space and no more (it used to hardcode
+ * `editor` for everyone). These specs drive the real three-step flow — approval
+ * page, one-time code, exchange — and check what the token can actually do.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -176,7 +171,6 @@ function tokenRequest(
   return fetch(`${BASE_URL}${path}`, { ...options, headers });
 }
 
-/** The editor action the audit used as its proof: creating a document. */
 function createDocumentWithToken(token: string, title: string): Promise<Response> {
   return tokenRequest(`/api/v1/spaces/${spaceId}/documents`, token, {
     method: "POST",
@@ -275,15 +269,13 @@ describe("CLI login mints a token at the user's actual role", () => {
   });
 
   it("resolves the strongest of several grants, not the first one found", async () => {
-    // A user can hold a space role directly and inherit a stronger one from a
-    // group. Reporting the direct grant would hand the CLI a token weaker than
-    // the access the same user has in the browser.
+    // Reporting the direct grant would hand the CLI a token weaker than the
+    // access this user has in the browser.
     const mixedSpaceId = await createSpace(owner, "cli-token-mixed-roles");
     const member = await createUser("CLI Mixed Roles");
     await grant({ role: "viewer", userId: member.id, space: mixedSpaceId });
-    // `public` is the one group every test user is in. It has to come back off
-    // again: later specs assert on what a user with no role can reach, and a
-    // lingering public role would make every user a member of this space.
+    // `public` is the one group every test user is in, so it has to come back
+    // off again — later specs assert on what a user with no role can reach.
     await grant({ role: "editor", groupId: "public", space: mixedSpaceId });
 
     try {

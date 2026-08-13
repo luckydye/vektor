@@ -5,10 +5,9 @@
  * access token. No session cookie required — the code itself is the proof of
  * authentication. Single-use; expires 60 seconds after issuance.
  *
- * The token is a delegation of the approving user's own access: it carries the
- * role that user actually holds on the space (resolved here, at exchange time,
- * so a role revoked after approval is honoured) and never more, enforced by the
- * same `verifyCanGrantTokenAccess` rule the access-token endpoint applies.
+ * The token delegates the approving user's own access: it carries the role that
+ * user holds on the space, resolved here rather than at approval so a role
+ * revoked in between is honoured.
  *
  * Body:  { code: string }
  * Returns: { token: string, spaceId: string, permission: string, expiresAt: string }
@@ -28,11 +27,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { createAccessToken, grantTokenAccess } from "#db/space/accessTokens.ts";
 import { getSpace, getUserSpaceRole } from "#db/space/spaces.ts";
 
-/**
- * How long a CLI token stays valid. A CLI login is an interactive act, so the
- * credential it mints must not outlive the user's attention to it — an
- * unbounded token turns a revoked role into standing access.
- */
+/** Bounded so a role revoked later cannot leave standing access forever. */
 const CLI_TOKEN_TTL_DAYS = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -65,18 +60,14 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Selected space is no longer available");
     }
 
-    // The user's real space-wide role — never a fixed level. A viewer gets a
-    // viewer token; someone who reached the space only through a document,
-    // document-tree or category grant holds no space-wide role at all and gets
-    // nothing (the approval step already refuses those spaces; this is the
-    // second line of defence).
+    // A resource-scoped grantee holds no space-wide role, so they get nothing —
+    // the approval step refuses those spaces already, this is the second line.
     const permission = await getUserSpaceRole(space, userId);
     if (!isPermission(permission)) {
       throw forbiddenResponse("You do not hold a role on this space");
     }
 
-    // The same rule the access-token endpoint enforces: a token may never carry
-    // more authority than the user delegating it.
+    // The rule the access-token endpoint enforces, so the two cannot drift.
     await verifyCanGrantTokenAccess(
       spaceId,
       userId,

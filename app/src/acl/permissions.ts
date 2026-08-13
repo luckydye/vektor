@@ -143,13 +143,10 @@ export function permissionLevel(permission: string | undefined): number {
 }
 
 /**
- * The one definition of "strongest grant wins", for grants of any shape: the
- * item whose role ranks highest, or undefined when there are none.
- *
- * A user can hold several grants on the same resource — their own plus one per
- * group they belong to — and `hasPermission` lets the strongest decide. Anything
- * that reports or delegates a role has to agree with it, or a narrow grant reads
- * as a downgrade of a wider one the user still holds.
+ * The item whose role ranks highest, or undefined when there are none. A user
+ * can hold several grants on one resource — their own plus one per group — and
+ * `hasPermission` lets the strongest decide, so everything reporting or
+ * delegating a role resolves it through here to agree with that.
  */
 export function strongestGrant<T>(
   items: Iterable<T>,
@@ -167,10 +164,7 @@ export function strongestGrant<T>(
   return best;
 }
 
-/**
- * The strongest of several role names, or undefined when none of them is a role
- * — a feature grant or a typo never reads as one.
- */
+/** As above, for role names: a feature grant or a typo never wins. */
 export function highestPermission(
   permissions: Iterable<string | undefined>,
 ): Permission | undefined {

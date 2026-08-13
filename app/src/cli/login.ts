@@ -13,10 +13,6 @@ function openBrowser(url: string): void {
   Bun.spawn([cmd, ...args], { stdout: "ignore", stderr: "ignore" });
 }
 
-/**
- * What the token exchange returns. The token mirrors the approving user's own
- * role on the space and expires, both of which the user needs to see.
- */
 interface CliTokenResult {
   token: string;
   spaceId: string;
@@ -24,11 +20,7 @@ interface CliTokenResult {
   expiresAt?: string;
 }
 
-/**
- * What the approval page's error codes mean in terms the user can act on. The
- * bare code says nothing about the fix, and `no_space_roles` in particular looks
- * like a bug from a browser that is happily showing the user several spaces.
- */
+/** The approval page's error codes, in terms the user can act on. */
 const LOGIN_ERRORS: Record<string, string> = {
   access_denied: "Access was canceled in the browser.",
   no_spaces: "You have no spaces yet. Create one in the web app, then log in again.",
