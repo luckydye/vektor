@@ -1,7 +1,7 @@
 /**
  * In-process fan-out for realtime topic events: DB writes call `sendSyncEvent`,
- * which coalesces per space over a short debounce window, and the WebSocket
- * server (`websocket.ts`) subscribes to push them to connected clients.
+ * which coalesces per space over a short debounce window, and every connection's
+ * `TopicSubscriptions` subscribes to push them to the client.
  */
 
 import {
