@@ -1,4 +1,5 @@
-import { verifySpaceAccess } from "#acl/guards.ts";
+import { verifySpaceRole } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/store.ts";
 import {
   jsonResponse,
@@ -15,7 +16,9 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    await verifySpaceAccess(spaceId, user.id);
+    // The trash is editor territory: an archived document requires `editor` to
+    // read, so listing them is not something a space viewer may do.
+    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
     const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
       {

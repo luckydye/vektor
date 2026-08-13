@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { type AclViewer, ResourceType } from "#acl/permissions.ts";
+import { type AclViewer, Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
@@ -337,17 +337,30 @@ export async function getDocumentContent(
 }
 
 /**
- * Existence check that selects only the id column. Auth checks
- * (verifyDocumentRole) only need to know the document exists — using
- * getDocument here would pull the entire `content` column (tens of MB for large
- * canvases) into memory on every request, which saturated the server under
- * presence/collaboration traffic.
+ * What an auth check needs to know about a document: that it exists, and
+ * whether it is archived (which raises the role required to reach it). Returns
+ * null when there is no such document.
+ *
+ * Selects neither the content nor the properties — using getDocument here would
+ * pull the entire `content` column (tens of MB for large canvases) into memory
+ * on every request, which saturated the server under presence/collaboration
+ * traffic. `archived` is derived with the same condition the listings use, so a
+ * legacy row that stored the flag as `'1'` or `'1.0'` reads as archived here too.
  */
-export async function documentExists(s: SpaceStore, id: string): Promise<boolean> {
+export async function getDocumentAuthState(
+  s: SpaceStore,
+  id: string,
+): Promise<{ archived: boolean } | null> {
   const row = await one(
-    s.db.select({ id: document.id }).from(document).where(eq(document.id, id)),
+    s.db
+      .select({
+        id: document.id,
+        archived: sql<number>`CASE WHEN ${archivedDocumentCondition} THEN 1 ELSE 0 END`,
+      })
+      .from(document)
+      .where(eq(document.id, id)),
   );
-  return row != null;
+  return row ? { archived: Number(row.archived) === 1 } : null;
 }
 
 export async function getDocumentBySlug(
@@ -430,18 +443,14 @@ export async function updateDocument(
 }
 
 /**
- * Drop every ACL grant that names this document.
+ * Drop every ACL grant that names this document, for a document that is going
+ * away for good.
  *
- * Archiving and deleting are both "make this go away" actions, so the shares
- * that point at the document have to go away with it — otherwise a soft-deleted
- * document stays readable through its public link while being hidden from the
- * owner's own lists, i.e. the owner cannot find it to unshare it.
- *
- * Only document-scoped rows are touched. Access that comes from the space (or
- * from an ancestor's document-tree grant) is untouched, which is what lets
- * space editors and owners still open an archived document to restore it.
- * `revokePermission` audit-logs each removed grant, so what was un-shared stays
- * on the record even though it is not reinstated on restore.
+ * Archiving does NOT do this — an archived document keeps its grants and is
+ * withheld from viewers by raising the role its access requires (see
+ * `requiredRoleForDocument`), so restoring it restores its shares too. Only a
+ * permanent delete purges the rows, because the resource they point at ceases
+ * to exist. `revokePermission` audit-logs each removed grant.
  */
 async function revokeDocumentGrants(
   s: SpaceStore,
@@ -486,20 +495,15 @@ export async function archiveDocument(
       .update(document)
       .set({ archived: true, updatedAt: new Date() })
       .where(eq(document.id, id));
-
-    await revokeDocumentGrants(tx, id, userId);
   });
 
   return true;
 }
 
 /**
- * Restore does NOT reinstate the grants that `archiveDocument` revoked.
- *
- * Re-publishing a document to the public group as a side effect of undeleting
- * it would fail open — the archive may well have been the user's way of pulling
- * a mistaken share back. Re-sharing is left as an explicit action; the revoked
- * grants are recoverable from the document's `acl_revoke` audit entries.
+ * Clearing `archived` is all a restore has to do: the document's grants were
+ * never revoked, they simply stopped resolving for viewers while it sat in the
+ * trash, so the shares it had come back with it.
  */
 export async function restoreDocument(
   s: SpaceStore,
@@ -832,13 +836,16 @@ export async function listArchivedDocuments(
   );
 
   // Per-document ACL filtering, mirroring listDocuments. Space access alone
-  // must not expose archived documents the caller cannot read.
+  // must not expose archived documents the caller cannot read — and reading an
+  // archived document takes `editor`, so a viewer-level grant does not list it
+  // here either.
   if (viewer) {
     const readable = await filterReadableResources(
       s.spaceId,
       ResourceType.DOCUMENT,
       docs.map((doc) => doc.id),
       viewer,
+      Permission.EDITOR,
     );
     docs = docs.filter((doc) => readable.has(doc.id));
   }

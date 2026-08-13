@@ -1331,18 +1331,24 @@ export async function listAccessibleResources(
  * `hasPermission` semantics in bulk (one query instead of N):
  *  - a resource with NO ACL row applicable to the user falls back to the
  *    caller's space-level role — callers must have already verified the user
- *    holds at least `viewer` on the space;
+ *    holds at least `minPermission` on the space;
  *  - a resource WITH applicable rows is readable only when the best of those
- *    rows is at least `viewer` (so explicit "denied"-style entries hide it);
+ *    rows is at least `minPermission` (so explicit "denied"-style entries hide
+ *    it);
  *  - a viewer carrying a `documentScope` holds no space-wide role, so that
  *    fallback would grant them everything: the scope is an allowlist and
  *    nothing outside it is readable.
+ *
+ * `minPermission` is what a listing of resources gated above plain reading —
+ * archived documents, which require `editor` — passes to keep the rows it shows
+ * in step with what opening one would allow.
  */
 export async function filterReadableResources(
   spaceId: string,
   resourceType: ResourceType,
   resourceIds: string[],
   viewer: AclViewer,
+  minPermission: Permission = Permission.VIEWER,
 ): Promise<Set<string>> {
   const { userId, userGroups } = viewer;
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
@@ -1478,7 +1484,7 @@ export async function filterReadableResources(
       level = categoryLevel;
     }
 
-    if (level === undefined || level >= permissionLevel(Permission.VIEWER)) {
+    if (level === undefined || level >= permissionLevel(minPermission)) {
       readable.add(id);
     }
   }
