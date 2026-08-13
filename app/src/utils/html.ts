@@ -245,10 +245,17 @@ function decodedCodePoint(value: string, radix: number, original: string): strin
  * Decode the character references a text node can carry. One pass only: a
  * decoded `&` must not start a second round of decoding, or `&amp;lt;` — text
  * that means the literal string `&lt;` — would turn into a `<`.
+ *
+ * The trailing semicolon is optional on a numeric reference because it is
+ * optional to a browser: `&#106avascript:` is a parse error the tokenizer
+ * recovers from by emitting the `j` and reading on, which makes it a
+ * `javascript:` URL. Named references are only decoded terminated, which is the
+ * conservative half of the browser's rule — `isSafeUrlValue` and
+ * `sanitizedStyleValue` refuse a value still holding a `&` rather than guess.
  */
 export function decodeHtmlEntities(value: string): string {
   return value.replace(
-    /&(?:#x([\da-f]+)|#(\d+)|(nbsp|amp|lt|gt|quot|apos));/gi,
+    /&(?:#x([\da-f]+);?|#(\d+);?|(nbsp|amp|lt|gt|quot|apos);)/gi,
     (match, hex: string | undefined, decimal: string | undefined, name?: string) => {
       if (hex !== undefined) return decodedCodePoint(hex, 16, match);
       if (decimal !== undefined) return decodedCodePoint(decimal, 10, match);
@@ -438,34 +445,95 @@ function isSanitizableAttributeName(name: string): boolean {
 }
 
 /**
+ * The value a browser will actually resolve: it drops tab, LF and CR wherever
+ * they appear in a URL, and ignores leading and trailing C0 controls and spaces.
+ */
+function normalizeUrlWhitespace(value: string): string {
+  const stripped = value.replaceAll("\t", "").replaceAll("\n", "").replaceAll("\r", "");
+  let start = 0;
+  let end = stripped.length;
+  while (start < end && stripped.charCodeAt(start) <= 0x20) start++;
+  while (end > start && stripped.charCodeAt(end - 1) <= 0x20) end--;
+  return stripped.slice(start, end);
+}
+
+/**
  * Is this attribute value a URL we are willing to hand a browser?
  *
+ * What makes a URL dangerous is its scheme, so the judgement is made on the
+ * region a browser reads before it can tell the value is relative — everything
+ * up to the first `/`, `?` or `#`. A scheme there has to be in the allow-list; a
+ * region with no `:` in it cannot name one and the value is relative.
+ *
  * The value is entity-decoded first because a browser decodes it before
- * resolving it, so `&#106;avascript:alert(1)` has to be judged as
- * `javascript:alert(1)`. Anything without a parseable scheme is a relative
- * reference, which cannot name one; anything with a scheme has to be in the
- * allow-list. Unknown entities leave the value unparseable, so it fails closed.
+ * resolving it, so `&#106;avascript:alert(1)` is judged as `javascript:alert(1)`.
+ * A `&` left in the scheme region after that is a character reference this
+ * module does not decode but a browser might — `java&NewLine;script:` becomes
+ * `javascript:` — so it fails closed rather than being read at face value. That
+ * cannot reject a legitimate query string, whose `&` lives past the `?`.
  */
 function isSafeUrlValue(
   value: string,
   options: { localOnly?: boolean; media?: boolean } = {},
 ): boolean {
-  const decoded = decodeHtmlEntities(value).trim();
+  const decoded = normalizeUrlWhitespace(
+    decodeHtmlEntities(normalizeUrlWhitespace(value)),
+  );
   if (!decoded) return true;
-  if (decoded.startsWith("#")) return true;
   if (options.media && INLINE_IMAGE_DATA_URL.test(decoded)) return true;
-  if (options.localOnly) return false;
+  // A value that opens with `#` is a fragment: no reference in it can move it.
+  if (options.localOnly) return decoded.startsWith("#");
+
+  const schemeRegion = decoded.split(/[/?#]/, 1)[0] ?? "";
+  if (schemeRegion.includes("&")) return false;
+  if (!schemeRegion.includes(":")) return true;
 
   let protocol: string;
   try {
-    // The URL parser strips the tabs and newlines a browser strips too, so
-    // `java\nscript:alert(1)` is recognised as the `javascript:` it becomes.
     protocol = new URL(decoded).protocol;
   } catch {
-    return true;
+    // A scheme region we cannot parse is one we cannot vouch for.
+    return false;
   }
 
   return (options.media ? SAFE_MEDIA_PROTOCOLS : SAFE_LINK_PROTOCOLS).has(protocol);
+}
+
+/**
+ * Split a declaration list on the semicolons that actually end a declaration.
+ * A quoted value may contain one (`font-family:"A;B"`), and splitting there
+ * halves a declaration into two fragments that mean something else.
+ */
+function splitStyleDeclarations(value: string): string[] {
+  const declarations: string[] = [];
+  let start = 0;
+  let quote: string | null = null;
+
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if (quote) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ";") {
+      declarations.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+
+  declarations.push(value.slice(start));
+  return declarations;
+}
+
+/**
+ * A declaration a browser could turn into a request. Decoding comes first
+ * because the browser decodes the attribute before the CSS parser ever sees it:
+ * `background-image:&#117;rl(//evil)` is a `url()` to a browser, and `&#117;`
+ * carries the very semicolon the declaration list is split on. A `&` surviving
+ * the decode is a reference this module does not know, so the declaration goes.
+ */
+function isResourceLoadingDeclaration(declaration: string): boolean {
+  return RESOURCE_LOADING_CSS.test(declaration) || declaration.includes("&");
 }
 
 /**
@@ -475,13 +543,13 @@ function isSafeUrlValue(
  * was already safe would churn every stored document.
  */
 function sanitizedStyleValue(value: string): string | null {
-  const declarations = value.split(";");
-  if (!declarations.some((declaration) => RESOURCE_LOADING_CSS.test(declaration))) {
+  const declarations = splitStyleDeclarations(decodeHtmlEntities(value));
+  if (!declarations.some(isResourceLoadingDeclaration)) {
     return value;
   }
 
   const safe = declarations.filter(
-    (declaration) => declaration.trim() && !RESOURCE_LOADING_CSS.test(declaration),
+    (declaration) => declaration.trim() && !isResourceLoadingDeclaration(declaration),
   );
   return safe.length ? `${safe.join(";")};` : null;
 }
@@ -748,8 +816,10 @@ const DOCUMENT_POLICY: SanitizePolicy = {
   keeps: (tag) => DOCUMENT_TAGS.has(tag) || isCustomElementTag(tag),
   // A deny-list, unlike the preview policy: a document carries the schema's
   // `data-` attributes on its own elements and arbitrary attributes inside an
-  // `html-block` payload, and none of them are dangerous once the shared rules
-  // have taken the handlers, the URLs and the resource-loading CSS out.
+  // `html-block` payload, and none of them execute once the shared rules have
+  // taken the handlers, the URLs and the resource-loading CSS out. What it does
+  // leave a member is layout — `position:fixed` over the app chrome — which is
+  // the price of storing inline styles at all, and is not an escalation.
   keepsAttribute: () => true,
 };
 
@@ -852,6 +922,15 @@ const SVG_POLICY: SanitizePolicy = {
 /** How deep `html-block` payloads may nest before the innermost is dropped. */
 const MAX_HTML_BLOCK_DEPTH = 4;
 
+/**
+ * How deep elements may nest before the rest of the subtree is dropped. The
+ * walker recurses per element and runs on the document write paths, so without a
+ * cap a document nested a few tens of thousands deep — which costs an attacker
+ * one save — overflows the stack instead of being sanitized. Editor documents
+ * nest a dozen levels; a browser stops building the tree around here too.
+ */
+const MAX_ELEMENT_DEPTH = 256;
+
 function attributeName(attribute: IAttribute): string {
   return attribute.name.value.toLowerCase();
 }
@@ -919,7 +998,12 @@ function sanitizedAttributes(
  * with the same policy and written back in the encoding the schema renders it
  * with (`documents/schema/specs.ts`).
  */
-function sanitizeHtmlBlock(tag: ITag, policy: SanitizePolicy, depth: number): string {
+function sanitizeHtmlBlock(
+  tag: ITag,
+  policy: SanitizePolicy,
+  blockDepth: number,
+  depth: number,
+): string {
   const attrs = sanitizedAttributes(tag, "html-block", policy, (attribute) =>
     attribute.startsWith("data-html"),
   );
@@ -942,25 +1026,38 @@ function sanitizeHtmlBlock(tag: ITag, policy: SanitizePolicy, depth: number): st
   }
 
   const sanitized =
-    depth >= MAX_HTML_BLOCK_DEPTH ? "" : sanitizeNodes(parse(source), policy, depth + 1);
+    blockDepth >= MAX_HTML_BLOCK_DEPTH
+      ? ""
+      : sanitizeNodes(parse(source), policy, blockDepth + 1, depth);
 
   // `encodeURIComponent` leaves nothing a parser could read as markup, so the
   // payload needs no further escaping.
   return `<html-block${attrs} data-html="${encodeURIComponent(sanitized)}" data-html-encoding="uri"></html-block>`;
 }
 
-function sanitizeNodes(nodes: INode[], policy: SanitizePolicy, depth: number): string {
+function sanitizeNodes(
+  nodes: INode[],
+  policy: SanitizePolicy,
+  blockDepth: number,
+  depth: number,
+): string {
   let out = "";
-  for (const node of nodes) out += sanitizeNode(node, policy, depth);
+  for (const node of nodes) out += sanitizeNode(node, policy, blockDepth, depth);
   return out;
 }
 
-function sanitizeNode(node: INode, policy: SanitizePolicy, depth: number): string {
+function sanitizeNode(
+  node: INode,
+  policy: SanitizePolicy,
+  blockDepth: number,
+  depth: number,
+): string {
   if (node.type === SyntaxKind.Text) {
     return escapeSanitizedText((node as IText).value);
   }
 
   if (node.type !== SyntaxKind.Tag) return "";
+  if (depth >= MAX_ELEMENT_DEPTH) return "";
 
   const tag = node as ITag;
   const name = tag.name.toLowerCase();
@@ -977,15 +1074,18 @@ function sanitizeNode(node: INode, policy: SanitizePolicy, depth: number): strin
   // An `<svg>` subtree is SVG, whatever policy it was found under.
   const scoped = name === "svg" ? SVG_POLICY : policy;
 
-  if (!scoped.keeps(name)) return sanitizeNodes(tag.body ?? [], scoped, depth);
+  // An unwrapped element does not nest its children any deeper.
+  if (!scoped.keeps(name))
+    return sanitizeNodes(tag.body ?? [], scoped, blockDepth, depth);
 
   if (name === "html-block" && scoped.sanitizesHtmlBlocks) {
-    return sanitizeHtmlBlock(tag, scoped, depth);
+    return sanitizeHtmlBlock(tag, scoped, blockDepth, depth);
   }
 
   const attrs = sanitizedAttributes(tag, name, scoped);
   if (VOID_TAGS.has(name)) return `<${name}${attrs}>`;
-  return `<${name}${attrs}>${sanitizeNodes(tag.body ?? [], scoped, depth)}</${name}>`;
+  const body = sanitizeNodes(tag.body ?? [], scoped, blockDepth, depth + 1);
+  return `<${name}${attrs}>${body}</${name}>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1002,7 +1102,7 @@ function sanitizeNode(node: INode, policy: SanitizePolicy, depth: number): strin
  */
 export function sanitizeDocumentHtml(html: string): string {
   if (!html.trim()) return "";
-  return sanitizeNodes(parse(html), DOCUMENT_POLICY, 0);
+  return sanitizeNodes(parse(html), DOCUMENT_POLICY, 0, 0);
 }
 
 /**
@@ -1019,7 +1119,7 @@ export function isSafeImageUrl(value: string): boolean {
 /** Someone else's HTML, reduced to the prose a preview card shows. */
 export function sanitizeVektorDocumentPreviewHtml(html: string): string {
   if (!html.trim()) return "";
-  return sanitizeNodes(parse(html), PREVIEW_POLICY, 0);
+  return sanitizeNodes(parse(html), PREVIEW_POLICY, 0, 0);
 }
 
 /**
@@ -1037,7 +1137,7 @@ export function sanitizeSvgMarkup(svg: string): string {
   for (const node of parse(svg)) {
     if (node.type !== SyntaxKind.Tag) continue;
     if ((node as ITag).name.toLowerCase() !== "svg") continue;
-    out += sanitizeNode(node, SVG_POLICY, 0);
+    out += sanitizeNode(node, SVG_POLICY, 0, 0);
   }
   return out;
 }

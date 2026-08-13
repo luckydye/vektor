@@ -104,8 +104,10 @@ export function validateSpacePreferences(
   const validated: Record<string, string> = Object.create(null);
 
   for (const [key, raw] of Object.entries(preferences)) {
+    // Not "unknown": `ai:provider` and its siblings are real preferences, they
+    // are just written by the AI settings route rather than through here.
     const rule = PREFERENCE_RULES.get(key);
-    if (!rule) return { error: `Unknown space preference "${key}"` };
+    if (!rule) return { error: `"${key}" is not a space preference set here` };
     if (typeof raw !== "string") return { error: `${key} must be a string` };
 
     if (raw === "") {

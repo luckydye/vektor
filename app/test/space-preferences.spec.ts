@@ -38,12 +38,12 @@ describe("validateSpacePreferences", () => {
 
   it("refuses a key that is not a space preference", () => {
     expect(refused({ "ai:baseUrl": "http://evil.example" })).toContain(
-      "Unknown space preference",
+      "not a space preference set here",
     );
     // An own `__proto__` property, which only a parsed body can carry: a lookup
     // in an object literal would answer it with `Object.prototype`.
     expect(refused(JSON.parse('{"__proto__":"x"}'))).toContain(
-      "Unknown space preference",
+      "not a space preference set here",
     );
   });
 

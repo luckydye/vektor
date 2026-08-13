@@ -58,10 +58,48 @@ describe("sanitizeDocumentHtml", () => {
 
   it("rejects a javascript: URL hidden behind character references", () => {
     // A browser decodes the attribute before resolving it, so the sanitizer has
-    // to judge the decoded value.
-    const html = sanitizeDocumentHtml('<a href="&#106;avascript:alert(1)">x</a>');
+    // to judge the decoded value. Every one of these resolves to
+    // `javascript:alert(1)` in a browser and executes when the link is clicked:
+    // the semicolon is optional on a numeric reference, `&NewLine;` and `&Tab;`
+    // insert characters the URL parser strips, and `&colon;` writes the `:`.
+    const payloads = [
+      "&#106;avascript:alert(1)",
+      "&#106avascript:alert(1)",
+      "java&NewLine;script:alert(1)",
+      "java&Tab;script:alert(1)",
+      "javascript&colon;alert(1)",
+      "&#x6a;avascript:alert(1)",
+    ];
 
-    expect(html).toBe("<a>x</a>");
+    for (const payload of payloads) {
+      expect(sanitizeDocumentHtml(`<a href="${payload}">x</a>`)).toBe("<a>x</a>");
+      expect(sanitizeVektorDocumentPreviewHtml(`<a href="${payload}">x</a>`)).toBe(
+        "<a>x</a>",
+      );
+    }
+  });
+
+  it("keeps the relative URLs and query strings a document links to", () => {
+    // The rule that refuses the payloads above rejects a `&` in the region a
+    // browser reads before it knows the value is relative. A query string's `&`
+    // is past that point, and every one of these has to survive verbatim.
+    const links = [
+      "/docs/page",
+      "/search?a=1&amp;b=2",
+      "https://example.com/p?a=1&amp;b=2#frag",
+      "mailto:a@b.c",
+      "tel:+49123",
+      "#section",
+      "../up/one",
+      "?query=only",
+      "/a/b:c",
+    ];
+
+    for (const href of links) {
+      expect(sanitizeDocumentHtml(`<a href="${href}">x</a>`)).toBe(
+        `<a href="${href}">x</a>`,
+      );
+    }
   });
 
   it("drops an attribute whose name a browser reads differently than the parser", () => {
@@ -86,6 +124,42 @@ describe("sanitizeDocumentHtml", () => {
     );
 
     expect(html).toBe('<p style="text-align:right;">t</p>');
+  });
+
+  it("drops a url() written with character references", () => {
+    // The browser decodes the attribute before the CSS parser reads it, so
+    // `&#117;rl(` is a `url()` — and its own semicolon splits the declaration
+    // list, which is why decoding has to come before the split.
+    for (const declaration of [
+      "background-image:&#117;rl(//evil.example/x.png)",
+      "background-image:url&#40;//evil.example/y.png)",
+      "background-image:&#x75;rl(//evil.example/z.png)",
+    ]) {
+      const html = sanitizeDocumentHtml(`<p style="${declaration}">t</p>`);
+
+      expect(html).toBe("<p>t</p>");
+    }
+  });
+
+  it("keeps a declaration whose quoted value contains a semicolon", () => {
+    // Splitting on every `;` cuts this declaration in half and leaves the
+    // remains of its value as a declaration of its own.
+    const html = sanitizeDocumentHtml(
+      '<p style="background:url(x);font-family:&quot;A;B&quot;">t</p>',
+    );
+
+    expect(html).toBe('<p style="font-family:&quot;A;B&quot;;">t</p>');
+  });
+
+  it("stops at a nesting depth that would overflow the stack", () => {
+    // The walker recurses per element and runs on every document write, so a
+    // document nested this deep costs one save and must not throw.
+    const deep = `${"<div>".repeat(50_000)}x${"</div>".repeat(50_000)}`;
+
+    expect(() => sanitizeDocumentHtml(deep)).not.toThrow();
+    expect(sanitizeDocumentHtml("<div><p>shallow</p></div>")).toBe(
+      "<div><p>shallow</p></div>",
+    );
   });
 
   it("sanitizes an html-block payload, which is re-rendered as markup", () => {
@@ -217,6 +291,8 @@ describe("isSafeImageUrl", () => {
     // An inline SVG is markup, not pixels.
     expect(isSafeImageUrl("data:image/svg+xml,<svg onload=alert(1)>")).toBe(false);
     expect(isSafeImageUrl("java\nscript:alert(1)")).toBe(false);
+    expect(isSafeImageUrl("&#106avascript:alert(1)")).toBe(false);
+    expect(isSafeImageUrl("javascript&colon;alert(1)")).toBe(false);
   });
 });
 
