@@ -124,7 +124,10 @@ function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): vo
       }
     }
     for (const key of [...map.keys()]) {
-      if (!(key in item)) map.delete(key);
+      // `in` would see inherited keys, so a key named after an `Object.prototype`
+      // member (`__proto__`, `toString`, ...) always looked present and was never
+      // deleted — a removal on the wire silently no-op'd on the live document.
+      if (!Object.hasOwn(item, key)) map.delete(key);
     }
   }
 }
