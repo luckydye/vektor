@@ -6,7 +6,6 @@ import { grantPermission } from "#acl/store.ts";
 import {
   closeDatabase,
   createDatabase,
-  type Database,
   getAuthDatabaseUrl,
   getAuthDb,
   getLocalSpaceDatabaseUrl,
@@ -20,7 +19,7 @@ import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
 import { appLogger } from "#observability/logger.ts";
-import { availableSpaceSlug, spaceSlugRejection } from "#utils/utils.ts";
+import { availableSpaceSlug, isReservedSpaceSlug } from "#utils/utils.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
 export type ActiveSpaceIndexRecord = SpaceIndexRecord & {
@@ -583,8 +582,21 @@ async function indexLocalSpace(
 }
 
 /**
- * Move a space off a slug it can never be reached at, and record the slug it
- * ends up holding.
+ * Whether `/{slug}/` can address a space at all.
+ *
+ * Deliberately far narrower than `spaceSlugRejection`, which says what somebody
+ * may type into a slug field. A stored `my_team`, `team--alpha` or `Team` is
+ * served at exactly that path — `[spaceSlug]` matches any single segment and the
+ * lookup is exact — so the repair below has to leave it alone. Rewriting it to
+ * the canonical form would 404 every link that space already has, which is the
+ * harm the repair exists to prevent.
+ */
+function isUnreachableSpaceSlug(slug: string): boolean {
+  return slug.trim() === "" || /[/?#]/.test(slug);
+}
+
+/**
+ * Which discovered spaces have to move off their slug, and where each one lands.
  *
  * A space on `docs`, `login` or `api` is shadowed by a static route in
  * `src/pages/`: it is listed in the switcher and every click lands on Vektor's
@@ -592,39 +604,79 @@ async function indexLocalSpace(
  * has a UI path to a rename — reaching a space's settings means opening the
  * space, which is exactly what is impossible — so nothing but this frees them.
  *
- * Both sides are rewritten by the caller: this writes `space_metadata`, and
- * `indexLocalSpace` then carries the repaired slug into the index.
+ * Planned over every space at once, in two passes, because the order spaces are
+ * discovered in must not decide who keeps their URL: every slug that already
+ * routes is claimed before any replacement is picked. A single pass lets a space
+ * being repaired take the slug of one that was reachable all along, which both
+ * moves that space's URL out from under it and — since `claimedElsewhere` covers
+ * the rows the partial unique index also covers — fails the index write.
  */
-async function repairSpaceSlug(
-  database: Database,
-  metadata: IndexedSpaceMetadata,
-  claimedSlugs: Set<string>,
-): Promise<IndexedSpaceMetadata> {
-  if (
-    spaceSlugRejection(metadata.slug) === undefined &&
-    !claimedSlugs.has(metadata.slug)
-  ) {
-    claimedSlugs.add(metadata.slug);
-    return metadata;
+export function planSpaceSlugRepairs(
+  spaces: readonly { id: string; slug: string }[],
+  claimedElsewhere: ReadonlySet<string>,
+): Map<string, string> {
+  const taken = new Set(claimedElsewhere);
+  const displaced: { id: string; slug: string }[] = [];
+
+  for (const space of spaces) {
+    const reachable =
+      !isUnreachableSpaceSlug(space.slug) && !isReservedSpaceSlug(space.slug);
+    if (reachable && !taken.has(space.slug)) {
+      taken.add(space.slug);
+      continue;
+    }
+    displaced.push(space);
   }
 
-  const slug = availableSpaceSlug(metadata.slug, (candidate) =>
-    claimedSlugs.has(candidate),
+  const repairs = new Map<string, string>();
+  for (const space of displaced) {
+    const slug = availableSpaceSlug(space.slug, (candidate) => taken.has(candidate));
+    taken.add(slug);
+    repairs.set(space.id, slug);
+  }
+  return repairs;
+}
+
+/**
+ * Slugs held by active spaces that this reconcile is not about to rewrite.
+ *
+ * A repaired slug has to clear these too: `space_index_active_slug_unique` spans
+ * every active row, so a candidate chosen without them fails the write — and a
+ * throw out of `reconcileLocalSpaceIndex` is permanent, see `initializeDatabases`.
+ */
+async function slugsClaimedOutsideDiscovery(
+  discoveredSpaceIds: ReadonlySet<string>,
+): Promise<Set<string>> {
+  const active = await many(
+    getAuthDb()
+      .select({ spaceId: spaceIndex.spaceId, slug: spaceIndex.slug })
+      .from(spaceIndex)
+      .where(eq(spaceIndex.status, "active")),
   );
-  claimedSlugs.add(slug);
 
-  await database
-    .update(spaceMetadata)
-    .set({ slug, updatedAt: new Date() })
-    .where(eq(spaceMetadata.id, metadata.id));
+  const claimed = new Set<string>();
+  for (const row of active) {
+    if (!row.slug) continue;
+    if (row.spaceId && discoveredSpaceIds.has(row.spaceId)) continue;
+    claimed.add(row.slug);
+  }
+  return claimed;
+}
 
-  appLogger.warn("Renamed a space whose slug the app's own routes shadowed", {
-    spaceId: metadata.id,
-    previousSlug: metadata.slug,
-    slug,
-  });
-
-  return { ...metadata, slug };
+async function storeRepairedSlug(
+  location: string,
+  spaceId: string,
+  slug: string,
+): Promise<void> {
+  const database = createDatabase(resolveSpaceLocation(location).url);
+  try {
+    await database
+      .update(spaceMetadata)
+      .set({ slug, updatedAt: new Date() })
+      .where(eq(spaceMetadata.id, spaceId));
+  } finally {
+    closeDatabase(database);
+  }
 }
 
 export async function reconcileLocalSpaceIndex(): Promise<void> {
@@ -637,22 +689,63 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     .filter((name) => name.endsWith(".db"))
     .map((name) => path.join(spacesDirectory, name));
   const discoveredPaths = new Set(discoveredFiles.map((file) => path.resolve(file)));
-  const claimedSlugs = new Set<string>();
 
+  const discovered: { location: string; metadata: IndexedSpaceMetadata }[] = [];
   for (const databasePath of discoveredFiles) {
     const location = getLocalSpaceDatabaseUrl(path.basename(databasePath, ".db"));
     const database = createDatabase(resolveSpaceLocation(location).url);
-    let metadata: IndexedSpaceMetadata | undefined;
     try {
-      metadata = await one(database.select().from(spaceMetadata));
-      if (metadata) metadata = await repairSpaceSlug(database, metadata, claimedSlugs);
+      const metadata = await one(database.select().from(spaceMetadata));
+      if (metadata) discovered.push({ location, metadata });
     } catch {
       // Ignore files that are not initialized space databases. They remain on
       // disk for an operator to inspect and are never added to the live index.
     } finally {
       closeDatabase(database);
     }
-    if (metadata) await indexLocalSpace(location, metadata);
+  }
+
+  const repairs = planSpaceSlugRepairs(
+    discovered.map(({ metadata }) => metadata),
+    await slugsClaimedOutsideDiscovery(
+      new Set(discovered.map(({ metadata }) => metadata.id)),
+    ),
+  );
+
+  for (const { location, metadata } of discovered) {
+    const repairedSlug = repairs.get(metadata.id);
+    if (repairedSlug) {
+      appLogger.warn("Renamed a space that could not be reached at its own slug", {
+        spaceId: metadata.id,
+        previousSlug: metadata.slug,
+        slug: repairedSlug,
+      });
+      // The index is what routes, and what `getSpace` reports, so a space
+      // database that refuses the write is still indexed under the repaired slug
+      // rather than left shadowed.
+      await storeRepairedSlug(location, metadata.id, repairedSlug).catch(
+        (error: unknown) =>
+          appLogger.error("Failed to store a repaired space slug", {
+            spaceId: metadata.id,
+            slug: repairedSlug,
+            error,
+          }),
+      );
+    }
+
+    // One space that cannot be indexed must not take the process with it:
+    // `initializeDatabases` caches its promise, so a throw here would reject
+    // every later database call for the lifetime of the process.
+    await indexLocalSpace(
+      location,
+      repairedSlug ? { ...metadata, slug: repairedSlug } : metadata,
+    ).catch((error: unknown) =>
+      appLogger.error("Failed to index a local space", {
+        spaceId: metadata.id,
+        location: withoutDatabaseCredentials(location),
+        error,
+      }),
+    );
   }
 
   const indexedDatabases = await many(

@@ -97,9 +97,13 @@ export const reservedSpaceSlugs: readonly string[] = [
   "docs",
   "login",
   "new",
-  // Server-owned prefixes (src/server.ts, never handed to Astro)
+  // Server-owned prefixes (src/server.ts, never handed to Astro). Hono answers
+  // these before the Astro fallback, which only runs on a 404, so they are not
+  // in `src/pages/` and the test below cannot discover them — a route added to
+  // `src/server.ts` has to be added here by hand.
   "api",
   ".well-known",
+  "metrics",
   // Astro's own output namespaces
   "_astro",
   "_image",
@@ -136,7 +140,9 @@ export function isReservedSpaceSlug(slug: string): boolean {
  *
  * Unlike a document slug this is a value somebody typed into a slug field, so a
  * value `slugify` would have had to rewrite is reported back instead of being
- * quietly corrected.
+ * quietly corrected. The message names the form that would be stored, because
+ * the rule alone does not always explain the rejection: `my-team-` holds nothing
+ * but lowercase letters and hyphens and is still not a slug.
  */
 export function spaceSlugRejection(input: string): string | undefined {
   const trimmed = input.trim();
@@ -146,7 +152,7 @@ export function spaceSlugRejection(input: string): string | undefined {
     return "Slug must contain at least one lowercase letter or number";
   }
   if (slug !== trimmed.toLowerCase()) {
-    return "Slug must contain only lowercase letters, numbers, and hyphens";
+    return `Slug must be lowercase letters, numbers and single inner hyphens — try "${slug}"`;
   }
   if (isReservedSpaceSlug(slug)) {
     return `"${slug}" is reserved by Vektor — pick another slug`;

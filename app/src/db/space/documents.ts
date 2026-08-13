@@ -17,6 +17,7 @@ import {
 } from "#documents/properties.ts";
 import {
   allowsChildDocumentType,
+  fallbackDocumentSlug,
   isPlaceholderDocumentSlug,
   readOnlyDocumentTypes,
 } from "#documents/types.ts";
@@ -66,24 +67,17 @@ async function updateDocumentEmbeddingBestEffort(
   }
 }
 
-/**
- * Slug for a title the URL cannot carry.
- *
- * Every script without an ASCII fold (CJK, Cyrillic, Arabic, Hebrew, Greek,
- * Thai, …) and every symbol- or emoji-only title lands here. Such a title is
- * ordinary user input, so the document is created under a generated slug rather
- * than refused — the title itself is stored intact as a property.
- */
-function fallbackDocumentSlug(): string {
-  return `document-${createId("document").slice(-8)}`;
-}
-
 async function generateUniqueSlug(
   s: SpaceStore,
   baseTitle: string,
   excludeDocumentId?: string,
 ): Promise<string> {
-  const baseSlug = slugify(baseTitle) || fallbackDocumentSlug();
+  // Every script without an ASCII fold (CJK, Cyrillic, Arabic, Hebrew, Greek,
+  // Thai, …) and every symbol- or emoji-only title slugifies to "". Such a title
+  // is ordinary user input, so the document is created under a generated slug
+  // rather than refused — the title itself is stored intact as a property, and
+  // the slug stays replaceable by the first title the URL can carry.
+  const baseSlug = slugify(baseTitle) || fallbackDocumentSlug(createId("document"));
 
   // Get all existing slugs in the space
   const allDocs = await many(

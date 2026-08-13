@@ -90,10 +90,31 @@ const placeholderSlugs = new Set(
 );
 
 /**
+ * The slug a title the URL cannot carry falls back to, e.g. a title written
+ * entirely in a non-Latin script. Built here rather than where it is generated
+ * so that {@link isPlaceholderDocumentSlug} recognizes the same shape.
+ */
+export function fallbackDocumentSlug(uniquePart: string): string {
+  return `document-${uniquePart.slice(-8)}`;
+}
+
+const fallbackSlugPattern = /^document-[0-9a-f]{8}$/;
+
+/**
  * Whether a slug still comes from a placeholder title rather than one somebody
  * chose. The uniquifier the generator appends ("-2") belongs to the placeholder
  * just as much, so it stays replaceable too.
+ *
+ * A generated fallback slug counts: `document-1a2b3c4d` says even less about the
+ * document than `untitled-document` does, so a title the URL *can* carry has to
+ * be able to replace it — otherwise a document first named in Japanese and then
+ * renamed keeps the generated slug for good, while one created untitled and
+ * renamed the same way gets a readable one.
  */
 export function isPlaceholderDocumentSlug(slug: string): boolean {
-  return placeholderSlugs.has(slug.replace(/-\d+$/, ""));
+  // Tested before the uniquifier is stripped as well, because a fallback slug
+  // can end in digits itself.
+  if (fallbackSlugPattern.test(slug)) return true;
+  const base = slug.replace(/-\d+$/, "");
+  return placeholderSlugs.has(base) || fallbackSlugPattern.test(base);
 }

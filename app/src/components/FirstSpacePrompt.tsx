@@ -151,7 +151,7 @@ export function FirstSpacePrompt() {
                 disabled={isCreating()}
               />
               <p class="mt-1 text-neutral text-size-small">
-                Only lowercase letters, numbers, and hyphens
+                Lowercase letters, numbers and single inner hyphens
               </p>
             </div>
 

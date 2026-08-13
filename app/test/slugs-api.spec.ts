@@ -92,6 +92,42 @@ describe("document creation with a non-Latin title", () => {
     expect(response.status).toBe(201);
     expect((await response.json()).document.slug).toMatch(/^document-[0-9a-f]{8}$/);
   });
+
+  it("takes a readable slug once the title becomes one the URL can carry", async () => {
+    // A generated slug names the document no better than "untitled-document"
+    // does, so the first title that slugifies has to replace it — otherwise a
+    // document first named in Japanese keeps `document-1a2b3c4d` for good.
+    const created = (await (await createDocument("会議のメモ")).json()).document;
+    expect(created.slug).toMatch(/^document-[0-9a-f]{8}$/);
+
+    const renamed = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${created.id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ properties: { title: "Meeting Notes" } }),
+      },
+    );
+    expect(renamed.status).toBe(200);
+    expect((await renamed.json()).slug).toBe("meeting-notes");
+  });
+
+  it("keeps the generated slug when the new title is unsluggable too", async () => {
+    const created = (await (await createDocument("設計メモ")).json()).document;
+    const renamed = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${created.id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ properties: { title: "実装メモ" } }),
+      },
+    );
+    expect(renamed.status).toBe(200);
+
+    const fetched = await (
+      await apiRequest(`/api/v1/spaces/${spaceId}/documents/${created.id}`)
+    ).json();
+    expect(fetched.document.properties.title).toBe("実装メモ");
+    expect(fetched.document.slug).toBe(created.slug);
+  });
 });
 
 describe("document creation with diacritics", () => {

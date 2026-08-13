@@ -7,9 +7,11 @@
  * to `reservedSpaceSlugs`, so it cannot silently start shadowing a space.
  */
 
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { planSpaceSlugRepairs } from "#db/auth/spaceIndex.ts";
+import { fallbackDocumentSlug, isPlaceholderDocumentSlug } from "#documents/types.ts";
 import {
   availableSpaceSlug,
   isReservedSpaceSlug,
@@ -21,6 +23,7 @@ import {
 // The runner's cwd is `app/`, see test/helpers/server.ts.
 const PAGES_DIR = path.resolve("src/pages");
 const PUBLIC_DIR = path.resolve("public");
+const SERVER_FILE = path.resolve("src/server.ts");
 
 describe("slugify", () => {
   it("folds diacritics instead of dropping them", () => {
@@ -106,6 +109,24 @@ describe("reservedSpaceSlugs", () => {
     }
   });
 
+  /**
+   * `src/pages/` is only half of it: Hono answers its own routes before the
+   * Astro fallback, which runs on a 404 only, so a space on `metrics` serves
+   * Prometheus output at its root and no page file records that.
+   */
+  it("covers every top-level route src/server.ts registers", () => {
+    const routes = [
+      ...readFileSync(SERVER_FILE, "utf8").matchAll(
+        /\bapp\.(?:get|post|put|patch|delete|all|use)\(\s*"\/([^/"*:]+)/g,
+      ),
+    ].map(([, segment]) => segment);
+
+    expect(routes.length).toBeGreaterThan(0);
+    for (const route of routes) {
+      expect(isReservedSpaceSlug(route), `src/server.ts owns /${route}`).toBe(true);
+    }
+  });
+
   it("covers every asset in public", () => {
     for (const entry of readdirSync(PUBLIC_DIR)) {
       expect(isReservedSpaceSlug(entry), `public/${entry} is not reserved`).toBe(true);
@@ -131,6 +152,14 @@ describe("spaceSlugRejection", () => {
     expect(spaceSlugRejection("café")).toMatch(/lowercase letters/);
   });
 
+  it("names the slug it would have stored", () => {
+    // The rule alone does not explain these: both hold nothing but lowercase
+    // letters and hyphens, which is exactly what the form's own hint asks for.
+    expect(spaceSlugRejection("my-team-")).toMatch(/try "my-team"/);
+    expect(spaceSlugRejection("my--team")).toMatch(/try "my-team"/);
+    expect(spaceSlugRejection("Café Wien")).toMatch(/try "cafe-wien"/);
+  });
+
   it("rejects a slug with nothing sluggable in it", () => {
     expect(spaceSlugRejection("日本語")).toMatch(/at least one/);
     expect(spaceSlugRejection("-----")).toMatch(/at least one/);
@@ -147,6 +176,93 @@ describe("spaceSlugRejection", () => {
 
   it("canonicalizes case rather than rejecting it", () => {
     expect(spaceSlugRejection("Engineering")).toBeUndefined();
+  });
+});
+
+describe("isPlaceholderDocumentSlug", () => {
+  it("counts a generated fallback slug, so a real title can replace it", () => {
+    expect(isPlaceholderDocumentSlug(fallbackDocumentSlug("doc_ffff1a2b3c4d"))).toBe(
+      true,
+    );
+    // A UUID tail is hex, so it can be all digits, and it can carry the
+    // generator's own uniquifier.
+    expect(isPlaceholderDocumentSlug("document-12345678")).toBe(true);
+    expect(isPlaceholderDocumentSlug("document-1a2b3c4d-2")).toBe(true);
+  });
+
+  it("still counts the placeholder titles", () => {
+    expect(isPlaceholderDocumentSlug("untitled-document")).toBe(true);
+    expect(isPlaceholderDocumentSlug("untitled-canvas-3")).toBe(true);
+  });
+
+  it("leaves a slug somebody's title produced alone", () => {
+    expect(isPlaceholderDocumentSlug("meeting-notes")).toBe(false);
+    expect(isPlaceholderDocumentSlug("document-notes")).toBe(false);
+    expect(isPlaceholderDocumentSlug("documents")).toBe(false);
+  });
+});
+
+/**
+ * The startup repair, which has to free a space nothing else can reach without
+ * moving a space that was reachable all along — and without picking a slug the
+ * partial unique index will refuse, because a throw out of
+ * `reconcileLocalSpaceIndex` rejects the cached initialization promise and every
+ * later database call with it.
+ */
+describe("planSpaceSlugRepairs", () => {
+  const plan = (
+    slugs: Record<string, string>,
+    claimedElsewhere: string[] = [],
+  ): Record<string, string> =>
+    Object.fromEntries(
+      planSpaceSlugRepairs(
+        Object.entries(slugs).map(([id, slug]) => ({ id, slug })),
+        new Set(claimedElsewhere),
+      ),
+    );
+
+  it("leaves a space that routes alone", () => {
+    expect(plan({ a: "engineering", b: "product" })).toEqual({});
+  });
+
+  it("moves a space off a slug the app's own routes own", () => {
+    expect(plan({ a: "docs" })).toEqual({ a: "docs-1" });
+    expect(plan({ a: "metrics" })).toEqual({ a: "metrics-1" });
+  });
+
+  it("keeps the first of two spaces on one slug and moves the second", () => {
+    expect(plan({ a: "collide", b: "collide" })).toEqual({ b: "collide-1" });
+  });
+
+  it("does not take a slug a space discovered later is holding", () => {
+    // Visited first, `docs` has to move; `docs-1` is somebody's working URL, so
+    // the replacement steps over it instead of evicting its owner.
+    expect(plan({ a: "docs", b: "docs-1" })).toEqual({ a: "docs-2" });
+    expect(plan({ a: "collide", b: "collide", c: "collide-1" })).toEqual({
+      b: "collide-2",
+    });
+  });
+
+  it("does not take a slug an active space outside the discovery is holding", () => {
+    // Hosted rows, and rows `separateDuplicateActiveSpaceSlugs` just suffixed:
+    // the unique index spans them too, so a candidate that ignores them throws.
+    expect(plan({ a: "docs" }, ["docs-1", "docs-2"])).toEqual({ a: "docs-3" });
+  });
+
+  it("leaves a slug that is merely non-canonical where it is", () => {
+    // Reachable at exactly that path today. Canonicalizing it would 404 every
+    // link the space already has, which is the harm being repaired here.
+    expect(plan({ a: "my_team", b: "team--alpha", c: "Team", d: "trailing-" })).toEqual(
+      {},
+    );
+  });
+
+  it("gives a space that cannot be a path segment a derived slug", () => {
+    expect(plan({ a: "a/b/c", b: "  ", c: "why?" })).toEqual({
+      a: "a-b-c",
+      b: "space",
+      c: "why",
+    });
   });
 });
 

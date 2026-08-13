@@ -185,7 +185,7 @@ export function CreateSpaceDialog(props: Props) {
             onInput={(event) => setSlug(event.currentTarget.value)}
           />
           <p class="mt-1 text-neutral text-size-small">
-            Only lowercase letters, numbers, and hyphens
+            Lowercase letters, numbers and single inner hyphens
           </p>
         </div>
 
