@@ -39,16 +39,28 @@ describe("isPrivateOrBlockedIp", () => {
     "192.168.1.1",
     "169.254.169.254",
     "0.0.0.0",
+    // The rest of 0.0.0.0/8, which the runtime's own copy of the list did block.
+    "0.0.0.1",
+    "0.1.2.3",
     "::1",
     "::",
+    "0:0:0:0:0:0:0:1",
     "fe80::1",
     "ff02::1",
-    // IPv4-mapped and IPv4-compatible forms reach the v4 internet, so they have
-    // to be judged by the v4 rules rather than the v6 CIDRs.
-    "::ffff:127.0.0.1",
+    // Every prefix that carries an IPv4 address reaches the v4 internet, so all of
+    // them have to be judged by the v4 rules rather than the v6 CIDRs.
+    "::ffff:127.0.0.1", // IPv4-mapped
     "::ffff:169.254.169.254",
     "::ffff:7f00:1",
-    "::127.0.0.1",
+    "::127.0.0.1", // IPv4-compatible
+    "::ffff:0:127.0.0.1", // IPv4-translated
+    "::ffff:0:7f00:1",
+    "64:ff9b::127.0.0.1", // NAT64
+    "64:ff9b::7f00:1",
+    // Tunnel and translation prefixes that do not say where they land: 6to4 via
+    // whatever relay answers, local-use NAT64 via the site's own translator.
+    "2002:7f00:1::1",
+    "64:ff9b:1::1",
   ])("blocks %s", (ip) => {
     expect(isPrivateOrBlockedIp(ip)).toBe(true);
   });
@@ -60,6 +72,8 @@ describe("isPrivateOrBlockedIp", () => {
     "99.64.0.1",
     "2606:4700:4700::1111",
     "::ffff:8.8.8.8",
+    "::ffff:0:8.8.8.8",
+    "64:ff9b::8.8.8.8",
   ])("allows %s", (ip) => {
     expect(isPrivateOrBlockedIp(ip)).toBe(false);
   });
@@ -141,43 +155,83 @@ describe("safeFetch redirects", () => {
   });
 });
 
-// A real upstream, so the hop loop is exercised against real 3xx responses
-// rather than a stub. The validator lets this one origin through — loopback is
-// exactly what `resolvePublicUrl` exists to refuse — and defers to the real
-// policy for everything else, which is what a redirect target hits.
-const upstream = Bun.serve({
-  port: 0,
-  hostname: "127.0.0.1",
-  fetch(request) {
-    const { pathname } = new URL(request.url);
-    if (pathname === "/start") {
-      return new Response(null, { status: 302, headers: { location: "/end" } });
-    }
-    if (pathname === "/end") {
-      return new Response("arrived", { status: 200 });
-    }
-    if (pathname === "/off-limits") {
-      return new Response(null, {
-        status: 302,
-        headers: { location: "http://127.0.0.1:9099/secret" },
-      });
-    }
-    if (pathname === "/host") {
-      return new Response(request.headers.get("host") ?? "", { status: 200 });
-    }
-    return new Response("no", { status: 404 });
-  },
+/** What the request looked like by the time it arrived. */
+async function echoRequest(request: Request): Promise<Response> {
+  return Response.json({
+    method: request.method,
+    authorization: request.headers.get("authorization"),
+    cookie: request.headers.get("cookie"),
+    contentType: request.headers.get("content-type"),
+    body: await request.text(),
+  });
+}
+
+// A real upstream, so the hop loop is exercised against real 3xx responses rather
+// than a stub. A second origin stands in for the third party a redirect chain
+// routinely ends up at — a CDN, a pre-signed URL — which is where credentials must
+// not follow.
+function serveTestOrigin(
+  routes: (request: Request, pathname: string) => Response | null,
+) {
+  return Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch(request) {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/echo") return echoRequest(request);
+      if (pathname === "/host") {
+        return new Response(request.headers.get("host") ?? "", { status: 200 });
+      }
+      return routes(request, pathname) ?? new Response("no", { status: 404 });
+    },
+  });
+}
+
+const partner = serveTestOrigin(() => null);
+const partnerOrigin = `http://127.0.0.1:${partner.port}`;
+
+const upstream = serveTestOrigin((_request, pathname) => {
+  const redirects: Record<string, [number, string]> = {
+    "/start": [302, "/end"],
+    "/off-limits": [302, "http://127.0.0.1:9099/secret"],
+    "/moved": [302, "/echo"],
+    "/see-other": [303, "/echo"],
+    "/keeps-method": [307, "/echo"],
+    "/to-partner": [302, `${partnerOrigin}/echo`],
+  };
+  const redirect = redirects[pathname];
+  if (redirect) {
+    return new Response(null, {
+      status: redirect[0],
+      headers: { location: redirect[1] },
+    });
+  }
+  if (pathname === "/end") return new Response("arrived", { status: 200 });
+  return null;
 });
 const upstreamOrigin = `http://127.0.0.1:${upstream.port}`;
 
+// A port nobody listens on: claimed, then released. Connecting there is refused
+// at once on every platform, unlike an unconfigured loopback alias such as
+// 127.0.0.2, which Linux refuses but macOS silently drops.
+const vacant = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
+const vacantPort = vacant.port;
+vacant.stop(true);
+
+// The validator lets these two origins through — loopback is exactly what
+// `resolvePublicUrl` exists to refuse — and defers to the real policy for
+// everything else, which is what a redirect target hits.
 const allowUpstream: UrlValidator = async (raw) => {
   const url = new URL(raw);
-  if (url.origin === upstreamOrigin) return { url, addresses: [] };
+  if (url.origin === upstreamOrigin || url.origin === partnerOrigin) {
+    return { url, addresses: [] };
+  }
   return await resolvePublicUrl(raw);
 };
 
 afterAll(() => {
   upstream.stop(true);
+  partner.stop(true);
 });
 
 describe("safeFetch against a real upstream", () => {
@@ -241,12 +295,13 @@ describe("safeFetch against a real upstream", () => {
   });
 
   // A dual-stack name on a single-stack host resolves to records that cannot be
-  // reached. Pinning to the first one only would turn a working fetch into a
-  // hard failure, so every validated address gets a turn.
-  it("falls back to the next validated address when the first will not connect", async () => {
+  // reached. Pinning to the first one only would turn a working fetch into a hard
+  // failure, so the records are raced and the reachable one wins — whether the
+  // unreachable one refuses (Linux) or silently drops (macOS), which is why this
+  // must not depend on getting an error back from it.
+  it("uses the validated address that connects, not just the first", async () => {
     const pinToTwo: UrlValidator = async (raw) => ({
       url: new URL(raw),
-      // The upstream binds 127.0.0.1 only, so 127.0.0.2 refuses at once.
       addresses: ["127.0.0.2", "127.0.0.1"],
     });
 
@@ -262,16 +317,89 @@ describe("safeFetch against a real upstream", () => {
   it("reports the transport error when no validated address connects", async () => {
     const pinToNothing: UrlValidator = async (raw) => ({
       url: new URL(raw),
-      addresses: ["127.0.0.2", "127.0.0.3"],
+      // The same refusing address twice: what is under test is the exhausted
+      // race, and a black-holing address would only test the OS connect timeout.
+      addresses: ["127.0.0.1", "127.0.0.1"],
     });
 
     await expect(
-      safeFetch(
-        `http://pinned.test:${upstream.port}/host`,
-        { method: "GET" },
-        pinToNothing,
-      ),
+      safeFetch(`http://pinned.test:${vacantPort}/host`, { method: "GET" }, pinToNothing),
     ).rejects.toThrow();
+  });
+});
+
+// Following a redirect by hand means reimplementing what `redirect: "follow"` did
+// for free. Both of these are what native `fetch` does, verified against it.
+describe("safeFetch redirect semantics", () => {
+  it("keeps credentials on a same-origin redirect", async () => {
+    const response = await safeFetch(
+      `${upstreamOrigin}/moved`,
+      {
+        method: "GET",
+        headers: { Authorization: "Bearer secret-token", Cookie: "session=1" },
+      },
+      allowUpstream,
+    );
+    expect(await response.json()).toMatchObject({
+      authorization: "Bearer secret-token",
+      cookie: "session=1",
+    });
+  });
+
+  // The leak this guards: an API that 302s to a CDN or a pre-signed URL would
+  // otherwise be handed the caller's bearer token.
+  it("drops credentials when the redirect leaves the origin", async () => {
+    const response = await safeFetch(
+      `${upstreamOrigin}/to-partner`,
+      {
+        method: "GET",
+        headers: { Authorization: "Bearer secret-token", Cookie: "session=1" },
+      },
+      allowUpstream,
+    );
+    expect(response.url).toBe(`${partnerOrigin}/echo`);
+    expect(await response.json()).toMatchObject({
+      authorization: null,
+      cookie: null,
+    });
+  });
+
+  it.each([
+    ["302", "/moved"],
+    ["303", "/see-other"],
+  ])("turns a POST into a bodyless GET on %s", async (_status, path) => {
+    const response = await safeFetch(
+      `${upstreamOrigin}${path}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ charge: true }),
+      },
+      allowUpstream,
+    );
+    // Re-POSTing would repeat whatever side effect the first hop already had.
+    expect(await response.json()).toMatchObject({
+      method: "GET",
+      body: "",
+      contentType: null,
+    });
+  });
+
+  it("preserves the method and body on 307", async () => {
+    const response = await safeFetch(
+      `${upstreamOrigin}/keeps-method`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ charge: true }),
+      },
+      allowUpstream,
+    );
+    expect(await response.json()).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ charge: true }),
+      contentType: "application/json",
+    });
   });
 });
 

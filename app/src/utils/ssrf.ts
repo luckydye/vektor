@@ -91,6 +91,7 @@ export function isPrivateOrBlockedIp(ip: string): boolean {
 
   if (isIP(ip) === 4) {
     const blockedCidrs = [
+      "0.0.0.0/8",
       "10.0.0.0/8",
       "127.0.0.0/8",
       "169.254.0.0/16",
@@ -106,15 +107,33 @@ export function isPrivateOrBlockedIp(ip: string): boolean {
 
   if (isIP(ip) === 6) {
     const normalized = ip.toLowerCase();
-    const parts = expandIPv6(normalized);
 
-    // IPv4-mapped (`::ffff:127.0.0.1`, `::ffff:7f00:1`) and IPv4-compatible
-    // (`::127.0.0.1`) addresses reach the v4 internet, so they have to be judged
-    // by the v4 rules — the v6 CIDRs below would let every one of them through.
-    const embedsIPv4 =
-      parts.slice(0, 5).every((part) => part === "0000") &&
-      (parts[5] === "ffff" || (parts[5] === "0000" && parts[6] !== "0000"));
-    if (embedsIPv4) {
+    // `::/128` is the unspecified address, which connects to the local host.
+    // 6to4 is deprecated and tunnels to whatever v4 relay answers, and the
+    // local-use NAT64 prefix reaches whatever the site's translator maps — since
+    // neither says where it lands, neither is judgeable.
+    const blockedCidrs = [
+      "::/128",
+      "::1/128",
+      "fc00::/7",
+      "fe80::/10",
+      "ff00::/8",
+      "2002::/16",
+      "64:ff9b:1::/48",
+    ];
+    if (blockedCidrs.some((cidr) => isIPv6InCidr(normalized, cidr))) return true;
+
+    // Prefixes that carry an IPv4 address in their low 32 bits. All of them reach
+    // the v4 internet — NAT64 through a translator, the rest directly — so the v4
+    // rules have to judge them, because nothing above would.
+    const ipv4EmbeddingPrefixes = [
+      "::/96", // IPv4-compatible, `::127.0.0.1`
+      "::ffff:0:0/96", // IPv4-mapped, `::ffff:127.0.0.1`
+      "::ffff:0:0:0/96", // IPv4-translated, `::ffff:0:127.0.0.1`
+      "64:ff9b::/96", // NAT64, `64:ff9b::127.0.0.1`
+    ];
+    if (ipv4EmbeddingPrefixes.some((cidr) => isIPv6InCidr(normalized, cidr))) {
+      const parts = expandIPv6(normalized);
       const high = Number.parseInt(parts[6], 16);
       const low = Number.parseInt(parts[7], 16);
       return isPrivateOrBlockedIp(
@@ -122,9 +141,7 @@ export function isPrivateOrBlockedIp(ip: string): boolean {
       );
     }
 
-    // `::/128` is the unspecified address, which connects to the local host.
-    const blockedCidrs = ["::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8"];
-    return blockedCidrs.some((cidr) => isIPv6InCidr(normalized, cidr));
+    return false;
   }
 
   return true;
@@ -213,8 +230,83 @@ export async function assertPublicUrl(url: string): Promise<URL> {
 
 const MAX_REDIRECTS = 5;
 
-/** Addresses to try before giving up on a name that resolved to several. */
-const MAX_PINNED_ATTEMPTS = 4;
+/** Addresses to race for a name that resolved to several. */
+const MAX_RACED_ADDRESSES = 8;
+
+/** Head start each address gets over the next one, as `fetch`'s own race uses. */
+const CONNECT_STAGGER_MS = 250;
+
+/** Cap on the whole race, after which the first address is used regardless. */
+const CONNECT_RACE_TIMEOUT_MS = 5_000;
+
+/** A timer that does not keep the process alive on its own. */
+function after<T>(ms: number, value: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(value), ms);
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
+}
+
+/** Resolves once `attempt` has failed, and stays pending if it succeeds. */
+function whenFailed(attempt: Promise<unknown>): Promise<null> {
+  return attempt.then(
+    () => new Promise<null>(() => {}),
+    () => null,
+  );
+}
+
+/**
+ * Pick which validated address to connect to, racing them with TCP probes the way
+ * `fetch` does natively. Pinning gives that race up, and a record that black-holes
+ * packets rather than refusing them costs a full OS connect timeout — longer than
+ * most callers' own deadlines — so trying records in series would turn a working
+ * name into a failing one. The winner then takes the request exactly once, which
+ * is also what keeps a request body from being replayed against a second address.
+ */
+async function pickAddress(addresses: string[], url: URL): Promise<string> {
+  const candidates = addresses.slice(0, MAX_RACED_ADDRESSES);
+  if (candidates.length === 1) return candidates[0];
+
+  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+  const attempts: Promise<string>[] = [];
+  let winner: string | undefined;
+
+  for (const [index, address] of candidates.entries()) {
+    attempts.push(
+      (async () => {
+        // Each address gets a head start on the next, cut short as soon as it
+        // fails — so an address that refuses at once costs nothing, and only one
+        // that hangs makes the next address wait.
+        if (index > 0) {
+          await Promise.race([
+            after(index * CONNECT_STAGGER_MS, null),
+            whenFailed(attempts[index - 1]),
+          ]);
+          // Decided while this address waited its turn, so it must not connect —
+          // and must not resolve either, or it could be taken for the winner.
+          if (winner) throw new SsrfError(`${address} was not needed`);
+        }
+        const socket = await Bun.connect({
+          hostname: address,
+          port,
+          socket: { data() {}, error() {}, close() {} },
+        });
+        socket.end();
+        winner ??= address;
+        return address;
+      })(),
+    );
+  }
+
+  // Nothing reachable, or nothing reachable *yet*: fall back to the first address,
+  // whose real failure is a better error than anything a probe could report.
+  const decided = await Promise.race([
+    Promise.any(attempts).catch(() => candidates[0]),
+    after(CONNECT_RACE_TIMEOUT_MS, candidates[0]),
+  ]);
+  winner ??= decided;
+  return decided;
+}
 
 /**
  * Connect to one of `target`'s validated addresses while still addressing the
@@ -226,12 +318,6 @@ const MAX_PINNED_ATTEMPTS = 4;
  * original hostname, and TLS is still verified against it (SNI plus an explicit
  * `checkServerIdentity`), so pinning weakens neither virtual hosting nor
  * certificate validation.
- *
- * The addresses are tried in resolution order, because a dual-stack name on a
- * single-stack host resolves to records that cannot be reached and pinning to
- * only the first would turn a working fetch into a hard failure. Only transport
- * errors move on to the next record — an abort stops immediately, and any HTTP
- * response, including an error status, is final.
  */
 async function fetchPinned(
   target: ValidatedUrl,
@@ -251,19 +337,10 @@ async function fetchPinned(
     };
   }
 
-  let lastError: unknown;
-  for (const address of target.addresses.slice(0, MAX_PINNED_ATTEMPTS)) {
-    const pinned = new URL(target.url.toString());
-    pinned.hostname = isIP(address) === 6 ? `[${address}]` : address;
-    try {
-      return await fetch(pinned, request);
-    } catch (error) {
-      if (init.signal?.aborted) throw error;
-      if (error instanceof Error && error.name === "AbortError") throw error;
-      lastError = error;
-    }
-  }
-  throw lastError;
+  const address = await pickAddress(target.addresses, target.url);
+  const pinned = new URL(target.url.toString());
+  pinned.hostname = isIP(address) === 6 ? `[${address}]` : address;
+  return await fetch(pinned, request);
 }
 
 /**
@@ -279,6 +356,29 @@ function withLogicalUrl(response: Response, url: string, redirected: boolean): R
   return response;
 }
 
+/** Credentials, which a redirect to another origin must not carry along. */
+const CROSS_ORIGIN_HEADERS = ["authorization", "cookie", "proxy-authorization"];
+
+/** Headers that describe a request body, and so mean nothing once it is dropped. */
+const BODY_HEADERS = [
+  "content-encoding",
+  "content-language",
+  "content-length",
+  "content-location",
+  "content-type",
+];
+
+/**
+ * Whether following `status` turns the request into a bodyless GET: 301 and 302 do
+ * that to a POST, 303 does it to anything but GET/HEAD, and 307/308 exist
+ * precisely to preserve the method and body.
+ */
+function redirectBecomesGet(status: number, method: string): boolean {
+  const verb = method.toUpperCase();
+  if (status === 303) return verb !== "GET" && verb !== "HEAD";
+  return (status === 301 || status === 302) && verb === "POST";
+}
+
 /**
  * SSRF-safe fetch: validates the target (and every redirect hop) against the
  * private/blocked-IP denylist before connecting, then pins the socket to the
@@ -288,9 +388,10 @@ function withLogicalUrl(response: Response, url: string, redirected: boolean): R
  *
  * `init.redirect` keeps its `fetch` meaning — "manual" hands the 3xx back and
  * "error" refuses it, and either way the hop that produced it was still validated
- * and pinned. `validate` swaps in a different policy (the job runtime has its own
- * error messages and an escape hatch) while keeping the hop loop and the redirect
- * cap in one place.
+ * and pinned. Following one reproduces by hand what `fetch` would have done:
+ * credentials do not cross an origin change, and a POST is not re-POSTed.
+ * `validate` swaps in a different policy (the job runtime has its own error
+ * messages and an escape hatch) while keeping the hop loop and the cap in one place.
  */
 export async function safeFetch(
   url: string,
@@ -298,8 +399,19 @@ export async function safeFetch(
   validate: UrlValidator = resolvePublicUrl,
 ): Promise<Response> {
   let target = await validate(url);
+  // Mutable across hops: following a redirect is allowed to rewrite all three.
+  let method = init.method;
+  let body = init.body;
+  const headers = new Headers(init.headers);
+
   for (let i = 0; i <= MAX_REDIRECTS; i += 1) {
-    const response = await fetchPinned(target, { ...init, redirect: "manual" });
+    const response = await fetchPinned(target, {
+      ...init,
+      method,
+      body,
+      headers,
+      redirect: "manual",
+    });
     const location =
       response.status >= 300 && response.status < 400
         ? response.headers.get("location")
@@ -309,7 +421,19 @@ export async function safeFetch(
       if (init.redirect === "error") throw new SsrfError("Unexpected redirect");
       if (init.redirect !== "manual") {
         if (i === MAX_REDIRECTS) throw new SsrfError("Too many redirects");
-        target = await validate(new URL(location, target.url).toString());
+        // Nothing here reads the hop's body, and leaving it unread holds the socket.
+        await response.body?.cancel().catch(() => {});
+
+        const next = await validate(new URL(location, target.url).toString());
+        if (next.url.origin !== target.url.origin) {
+          for (const header of CROSS_ORIGIN_HEADERS) headers.delete(header);
+        }
+        if (redirectBecomesGet(response.status, method)) {
+          method = "GET";
+          body = undefined;
+          for (const header of BODY_HEADERS) headers.delete(header);
+        }
+        target = next;
         continue;
       }
     }

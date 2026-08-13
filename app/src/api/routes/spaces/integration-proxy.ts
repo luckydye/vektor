@@ -243,7 +243,7 @@ export const POST: ApiRouteHandler = (context) =>
         body: method === "GET" || method === "DELETE" ? undefined : body.body,
         // The Authorization header above is the user's own access token. Following
         // a redirect would re-send it to wherever the upstream points, so the 3xx
-        // is relayed to the caller instead of followed.
+        // is relayed to the caller (with its `location`, below) instead of followed.
         redirect: "manual",
       },
     );
@@ -254,6 +254,10 @@ export const POST: ApiRouteHandler = (context) =>
       if (
         [
           "content-type",
+          // Providers redirect for ordinary reasons — GitHub 301s a repo that was
+          // renamed, 302s an asset download — and a relayed 3xx with no `location`
+          // leaves the caller with a dead end it cannot even report on.
+          "location",
           "link",
           "x-next-page",
           "x-page",

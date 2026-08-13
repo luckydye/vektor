@@ -24,8 +24,22 @@ const HEADERS_TO_FORWARD = [
  */
 const REJECTED_MESSAGE = "URL cannot be proxied as media";
 
+/**
+ * Origin and path only. A media URL routinely carries a signature or a token in
+ * its query, and userinfo in its authority, none of which belongs in a log the
+ * caller can fill at will.
+ */
+function redactForLog(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "<unparseable>";
+  }
+}
+
 function rejectMedia(url: string, reason: string): Response {
-  appLogger.warn("proxy-media refused a URL", { url, reason });
+  appLogger.warn("proxy-media refused a URL", { url: redactForLog(url), reason });
   return badRequestResponse(REJECTED_MESSAGE);
 }
 
