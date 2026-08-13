@@ -20,7 +20,15 @@ export const ALL: ApiRouteHandler = async (context) => {
 
   const spaces = await listUserSpaces(caldavUser.id);
 
-  const calendarEntries = spaces
+  // A caller authenticated with an access token is confined to that token's
+  // space, so the calendar home must not advertise the user's other spaces —
+  // their names and ids are outside the token's scope just as their events are.
+  const tokenSpaceId = caldavUser.token?.spaceId;
+  const visibleSpaces = tokenSpaceId
+    ? spaces.filter((space) => space.id === tokenSpaceId)
+    : spaces;
+
+  const calendarEntries = visibleSpaces
     .map(
       (space) => `  <d:response>
     <d:href>/api/caldav/calendars/${caldavUser.id}/${space.id}/</d:href>
