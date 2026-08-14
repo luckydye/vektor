@@ -77,8 +77,8 @@ async function enforceUserRoleOnTarget(
  *    A user-less token (`userId === null`) is a system/background credential
  *    and remains fully trusted within its space;
  *  - a space access token (`Authorization: Bearer at_...`) — a long-lived
- *    credential whose authority is defined entirely by its ACL entries
- *    (`token:<id>`); or
+ *    credential that remains valid while its creator belongs to the space and
+ *    whose authority is defined by its ACL entries (`token:<id>`); or
  *  - a logged-in user session.
  *
  * For every credential that carries a user identity we MUST verify it actually

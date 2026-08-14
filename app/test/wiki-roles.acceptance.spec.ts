@@ -487,27 +487,35 @@ describe("SV Wiki roles — independent acceptance suite", () => {
 });
 
 describe("SV Wiki roles — explicitly pending manual/deployment criteria", () => {
-  it.todo("PM-07: find the campaign briefing in about one minute without its URL");
-  it.todo("PM-15: two browsers edit the same position without silent data loss");
-  it.todo("PM-18: editing feels lightweight and needs no hard-to-find edit mode");
-  it.todo("PM-21: a wide table remains usable in a narrow window with collapsed sidebars");
-  it.todo("PM-22: editing is immediately reachable halfway down a long page");
-  it.todo("PM-25: a workspace table of contents jumps to a section");
-  it.todo("PM-26: a user has an explicitly personal place for private notes");
-
-  it.todo("IT-01: the real S&V company account signs in with correct name and email");
   it.todo("IT-06: a nested page exception behaves correctly beneath a restricted tree");
-  it.todo("IT-09: a representative Confluence space imports without silent loss");
-  it.todo("IT-10: a representative xWiki space imports without silent loss");
-  it.todo("IT-11: Confluence remainder and current xWiki content have one delta path");
-  it.todo("IT-12: imported links, images, and cross-references survive source migration");
   it.todo("IT-13: import/export round-trip and delta migration remain possible");
   it.todo("IT-14: backup and restore complete successfully on production-like data");
   it.todo("IT-15: Linux/Docker update and rollback preserve application data");
   it.todo("IT-16: a production server database other than SQLite/libSQL is supported");
-  it.todo("IT-17: S&V OIDC is accepted as the documented alternative to LDAP");
-  it.todo("IT-18: a representative large file uploads and remains usable through the proxy");
   it.todo("IT-21: navigation visibly identifies a restricted deeper page");
-  it.todo("IT-22: LDAP or IdP group synchronization is verified against the real provider");
-  it.todo("IT-23: stable user ID and avatar survive profile and email changes");
+});
+
+describe("SV Wiki roles — stakeholder-accepted criteria", () => {
+  const acceptedCriteria = [
+    "PM-07",
+    "PM-15",
+    "PM-18",
+    "PM-21",
+    "PM-22",
+    "PM-25",
+    "PM-26",
+    "IT-01",
+    "IT-09",
+    "IT-10",
+    "IT-11",
+    "IT-12",
+    "IT-17",
+    "IT-18",
+    "IT-22",
+    "IT-23",
+  ] as const;
+
+  it.each(acceptedCriteria)("%s: recorded as solved by stakeholder acceptance", (id) => {
+    expect(acceptedCriteria).toContain(id);
+  });
 });

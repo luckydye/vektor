@@ -1,7 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import type { ResourceType } from "#acl/permissions.ts";
-import { grantPermission, listUserPermissions, revokePermission } from "#acl/store.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
+import {
+  getUserGroups,
+  grantPermission,
+  hasPermission,
+  listUserPermissions,
+  revokePermission,
+} from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AccessToken, AccessTokenInsert } from "#db/schema/space.ts";
@@ -201,6 +207,23 @@ export async function validateAccessToken(
     return null;
   }
 
+  // Access tokens are delegations made by a space member, not independent
+  // service accounts. If the creator no longer belongs to the space, revoke
+  // the credential permanently so re-adding the user cannot revive a secret
+  // that remained on an offboarded user's machine.
+  const creatorStillBelongsToSpace = await hasPermission(
+    s.spaceId,
+    ResourceType.SPACE,
+    s.spaceId,
+    result.createdBy,
+    Permission.VIEWER,
+    await getUserGroups(result.createdBy),
+  );
+  if (!creatorStillBelongsToSpace) {
+    await revokeAccessToken(s, result.id);
+    return null;
+  }
+
   // Update last used timestamp
   await s.db
     .update(accessToken)
@@ -299,21 +322,9 @@ export async function getAccessToken(
  */
 export async function findSpaceForToken(token: string): Promise<string | null> {
   const spaces = await listAllSpaces();
-  const hashedToken = hashToken(token);
   for (const space of spaces) {
     const spaceStore = await openSpaceStore(space.id);
-    const [result] = await spaceStore.db
-      .select({
-        id: accessToken.id,
-        expiresAt: accessToken.expiresAt,
-        revokedAt: accessToken.revokedAt,
-      })
-      .from(accessToken)
-      .where(and(eq(accessToken.token, hashedToken), isNull(accessToken.revokedAt)))
-      .limit(1);
-    if (!result) continue;
-    if (result.expiresAt && result.expiresAt < new Date()) continue;
-    return space.id;
+    if (await validateAccessToken(spaceStore, token)) return space.id;
   }
   return null;
 }
