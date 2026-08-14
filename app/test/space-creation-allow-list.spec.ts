@@ -26,11 +26,7 @@ describe("spaceCreationGroups", () => {
 
   it("parses a comma-separated list, trimming each entry", () => {
     setAllowList("space-admins, platform.team ,eng:leads");
-    expect(spaceCreationGroups()).toEqual([
-      "space-admins",
-      "platform.team",
-      "eng:leads",
-    ]);
+    expect(spaceCreationGroups()).toEqual(["space-admins", "platform.team", "eng:leads"]);
   });
 
   it("drops entries that are not well-formed group names", () => {

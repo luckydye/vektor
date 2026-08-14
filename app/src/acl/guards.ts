@@ -625,6 +625,9 @@ export async function verifyCategoryRole(
 /**
  * Verify user has access to a specific feature, throws 403 if not.
  *
+ * @param documentId Resolve against this document's role rather than the space
+ *   role, for a feature exercised on one document. See {@link hasFeature}.
+ *
  * @example
  * await verifyFeatureAccess(spaceId, Feature.COMMENT, userId);
  * await verifyFeatureAccess(spaceId, Feature.VIEW_HISTORY, userId);
@@ -633,9 +636,10 @@ export async function verifyFeatureAccess(
   spaceId: string,
   feature: Feature,
   userId: string,
+  documentId?: string,
 ): Promise<void> {
   const userGroups = await getUserGroups(userId);
-  const hasAccess = await hasFeature(spaceId, feature, userId, userGroups);
+  const hasAccess = await hasFeature(spaceId, feature, userId, userGroups, documentId);
   if (!hasAccess) {
     throw forbiddenResponse(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
