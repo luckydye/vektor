@@ -21,7 +21,7 @@ export function DocumentExtensionViews(props: Props) {
             ? undefined
             : {
                 width:
-                  "min(20rem, max(0px, calc((100vw - var(--inset-left) - var(--inset-right) - var(--document-width)) / 2 - 1.5rem)))",
+                  "min(20rem, max(0px, calc((100vw - var(--inset-left) - var(--inset-right) - var(--document-width)) / 2 - 1.5rem + 80px)))",
               }
         }
         class={`hidden min-w-0 space-y-4 ${

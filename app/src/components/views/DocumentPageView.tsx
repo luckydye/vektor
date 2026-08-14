@@ -526,7 +526,7 @@ export function DocumentPageView(props: Props) {
                   "relative flex h-full w-full min-w-0 max-w-full flex-col",
                   isFullHeightView() && "min-h-0 flex-1",
                   effectiveLayout() !== "full" &&
-                    "min-[1920px]:left-[-60px] print:left-0",
+                    "min-[1920px]:left-[-80px] print:left-0",
                 )}
               >
                 <Show when={doc()?.archived}>
