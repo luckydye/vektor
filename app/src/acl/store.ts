@@ -238,6 +238,7 @@ export async function grantPermission(
   permission: string,
   groupId?: string,
   actorUserId?: string,
+  store?: SpaceStore,
 ): Promise<AclEntry> {
   if (!userId && !groupId) {
     throw new Error("Either userId or groupId must be provided");
@@ -247,7 +248,7 @@ export async function grantPermission(
     throw new Error("Invalid group name");
   }
 
-  const db = await getSpaceDb(spaceId);
+  const db = store?.db ?? (await getSpaceDb(spaceId));
   const now = new Date();
 
   // Check if permission already exists
@@ -289,7 +290,7 @@ export async function grantPermission(
 
   // Re-granting the same permission is a no-op; only log real changes.
   if (existing?.permission !== permission) {
-    await logAclChange(await openSpaceStore(spaceId), spaceId, {
+    await logAclChange(store ?? (await openSpaceStore(spaceId)), spaceId, {
       event: "acl_grant",
       resourceType,
       resourceId,
@@ -319,8 +320,9 @@ export async function revokePermission(
   userId?: string,
   groupId?: string,
   actorUserId?: string,
+  store?: SpaceStore,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
+  const db = store?.db ?? (await getSpaceDb(spaceId));
 
   const conditions = [eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId)];
 
@@ -343,7 +345,7 @@ export async function revokePermission(
   await db.delete(acl).where(and(...conditions));
 
   for (const entry of removed) {
-    await logAclChange(await openSpaceStore(spaceId), spaceId, {
+    await logAclChange(store ?? (await openSpaceStore(spaceId)), spaceId, {
       event: "acl_revoke",
       resourceType,
       resourceId,
@@ -601,8 +603,9 @@ export async function listPermissions(
   spaceId: string,
   resourceType: ResourceType,
   resourceId: string,
+  store?: SpaceStore,
 ): Promise<AclEntry[]> {
-  const db = await getSpaceDb(spaceId);
+  const db = store?.db ?? (await getSpaceDb(spaceId));
 
   const results = await many(
     db

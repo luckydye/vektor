@@ -24,6 +24,7 @@ import {
 import {
   badRequestResponse,
   errorResponse,
+  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
@@ -33,6 +34,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
@@ -133,8 +135,9 @@ async function currentRoleOnResource(
   resourceType: ResourceType,
   resourceId: string,
   grantee: { userId?: string; groupId?: string },
+  store: SpaceStore,
 ): Promise<string | undefined> {
-  const entries = await listPermissions(spaceId, resourceType, resourceId);
+  const entries = await listPermissions(spaceId, resourceType, resourceId, store);
   return entries
     .filter(
       (entry) =>
@@ -161,6 +164,7 @@ async function requiredRoleForRoleWrite(
   resourceId: string,
   grantee: { userId?: string; groupId?: string },
   role: Permission | undefined,
+  store: SpaceStore,
 ): Promise<Permission> {
   // Handing out owner is an owner's act, at every scope and under every name.
   if (meetsPermissionLevel(role, Permission.OWNER)) {
@@ -176,6 +180,7 @@ async function requiredRoleForRoleWrite(
     resourceType,
     resourceId,
     grantee,
+    store,
   );
 
   // Taking owner away is as sensitive as handing it out.
@@ -193,6 +198,16 @@ async function requiredRoleForRoleWrite(
   }
 
   return Permission.EDITOR;
+}
+
+async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
+  try {
+    await verifySpaceRole(spaceId, userId, Permission.OWNER);
+    return true;
+  } catch (error) {
+    if (error instanceof Response && error.status === 403) return false;
+    throw error;
+  }
 }
 
 // POST /api/v1/spaces/:spaceId/permissions
@@ -255,6 +270,7 @@ export const POST: ApiRouteHandler = (context) =>
       user.id,
       type === "role" ? Permission.EDITOR : Permission.OWNER,
     );
+    const callerIsOwner = type === "role" && (await isSpaceOwner(spaceId, user.id));
 
     // Resolve an email address to a user id so owners can invite people by
     // email without knowing their internal id. Exact, case-insensitive match;
@@ -295,41 +311,45 @@ export const POST: ApiRouteHandler = (context) =>
       // than quietly writing a role nobody checked.
       const resultingRole = action === "grant" ? roleOrFeature : undefined;
 
-      // Authorize on the privilege this write moves, not on the action name.
-      await verifySpaceRole(
-        spaceId,
-        user.id,
-        await requiredRoleForRoleWrite(
+      const store = await openSpaceStore(spaceId);
+      return store.tx(async (transaction) => {
+        const requiredRole = await requiredRoleForRoleWrite(
           spaceId,
           targetResourceType,
           targetResourceId,
           grantee,
           resultingRole,
-        ),
-      );
+          transaction,
+        );
+        if (requiredRole === Permission.OWNER && !callerIsOwner) {
+          throw forbiddenResponse();
+        }
 
-      if (resultingRole) {
-        const entry = await grantPermission(
+        if (resultingRole) {
+          const entry = await grantPermission(
+            spaceId,
+            targetResourceType,
+            targetResourceId,
+            userId,
+            resultingRole,
+            groupId,
+            user.id,
+            transaction,
+          );
+          return jsonResponse({ permission: entry });
+        }
+
+        await revokePermission(
           spaceId,
           targetResourceType,
           targetResourceId,
           userId,
-          resultingRole,
           groupId,
           user.id,
+          transaction,
         );
-        return jsonResponse({ permission: entry });
-      }
-
-      await revokePermission(
-        spaceId,
-        targetResourceType,
-        targetResourceId,
-        userId,
-        groupId,
-        user.id,
-      );
-      return jsonResponse({ success: true });
+        return jsonResponse({ success: true });
+      });
     }
 
     // type === "feature"; owner already verified above
