@@ -5,10 +5,10 @@ import {
   tryAuthenticateRequest,
   verifyDocumentAccess,
   verifyDocumentRole,
+  verifyRevisionAccess,
   verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { type RevisionReader, verifyRevisionAccess } from "#acl/revisionAccess.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -234,8 +234,9 @@ export const GET: ApiRouteHandler = (context) =>
     // view only requires viewer.
     const requiredRole = draft || live ? Permission.EDITOR : Permission.VIEWER;
 
-    // Carried past the gate, for the revision guard below to re-authorize.
-    let reader: RevisionReader;
+    // Carried past the gate for the revision guard: `null` is the trusted
+    // system caller, `""` public. See verifyRevisionAccess.
+    let aclUserId: string | null;
 
     const jobToken = context.req.raw.headers.get("X-Job-Token");
     if (jobToken) {
@@ -248,9 +249,7 @@ export const GET: ApiRouteHandler = (context) =>
       if (parsed.userId) {
         await verifyDocumentRole(spaceId, id, parsed.userId, requiredRole);
       }
-      reader = parsed.userId
-        ? { type: "user", userId: parsed.userId }
-        : { type: "system" };
+      aclUserId = parsed.userId;
     } else {
       // Authenticate with either user session or access token
       const auth = await tryAuthenticateRequest(context, spaceId);
@@ -262,14 +261,14 @@ export const GET: ApiRouteHandler = (context) =>
           id,
           requiredRole,
         );
-        reader = { type: "token", token: auth.token };
+        aclUserId = getTokenUserId(auth.token.tokenId);
       } else if (auth?.type === "user") {
         await verifyDocumentRole(spaceId, id, auth.user.id, requiredRole);
-        reader = { type: "user", userId: auth.user.id };
+        aclUserId = auth.user.id;
       } else {
         // Unauthenticated — verifyDocumentRole handles public access
         await verifyDocumentRole(spaceId, id, null, requiredRole);
-        reader = { type: "user", userId: null };
+        aclUserId = "";
       }
     }
 
@@ -287,7 +286,7 @@ export const GET: ApiRouteHandler = (context) =>
 
       // History, which the viewer gate above does not cover. Authorized before
       // the load, so a refusal cannot distinguish a missing revision.
-      const access = await verifyRevisionAccess(spaceId, id, reader, [rev]);
+      const access = await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
 
       const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
       if (!metadata) {

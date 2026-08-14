@@ -64,6 +64,10 @@ let suggestionRev: number;
 /** A workflow run — a type this route refuses whole, by any parameter. */
 let workflowRunDocumentId: string;
 
+/** Access tokens, whose ACL identity is `token:<id>` rather than a user. */
+let viewerAccessToken: string;
+let editorAccessToken: string;
+
 /** Anonymous — no session cookie at all. */
 function anonRequest(path: string): Promise<Response> {
   return fetch(`${BASE_URL}${path}`);
@@ -125,6 +129,33 @@ async function createDocument(body: Record<string, unknown>): Promise<string> {
     );
   }
   return (await response.json()).document.id;
+}
+
+function tokenRequest(path: string, token: string): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+}
+
+async function createSpaceToken(
+  name: string,
+  permission: "viewer" | "editor",
+): Promise<string> {
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/access-tokens`,
+    ownerToken,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        permission,
+        resourceType: "space",
+        resourceId: spaceId,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to create token (${response.status})`);
+  }
+  return (await response.json()).token;
 }
 
 /** A refusal, plus the guarantee that the refusal did not carry the content anyway. */
@@ -225,6 +256,9 @@ beforeAll(async () => {
     roleOrFeature: "view_history",
     userId: historyViewer.userId,
   });
+
+  viewerAccessToken = await createSpaceToken("rev-viewer-token", "viewer");
+  editorAccessToken = await createSpaceToken("rev-editor-token", "editor");
 
   // Shared on the document only — no space role, which is the whole point.
   await grant({
@@ -497,6 +531,45 @@ describe("a caller shared the document directly", () => {
 
     expect(response.status).toBe(200);
     expect((await response.json()).revision.content).toBe(REV2_CONTENT);
+  });
+});
+
+/** A token's ACL identity is `token:<id>`, so it holds no role by inheritance. */
+describe("access token", () => {
+  it("reads the published revision on a viewer grant", async () => {
+    const response = await tokenRequest(
+      documentPath(`?rev=${publishedRev}`),
+      viewerAccessToken,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.content).toBe(REV2_CONTENT);
+  });
+
+  it("is refused history on a viewer grant", async () => {
+    await expectRefused(
+      await tokenRequest(documentPath(`?rev=${oldRev}`), viewerAccessToken),
+    );
+  });
+
+  it("reads the unpublished draft on an editor grant", async () => {
+    const response = await tokenRequest(
+      documentPath(`?rev=${draftRev}`),
+      editorAccessToken,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.content).toBe(REV3_CONTENT);
+  });
+
+  it("diffs the draft on an editor grant", async () => {
+    const response = await tokenRequest(
+      documentPath(`/diff?rev=${draftRev}&format=html`),
+      editorAccessToken,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("UNPUBLISHED-SECRET");
   });
 });
 

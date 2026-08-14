@@ -1,6 +1,9 @@
-import { verifyDocumentAccess, verifyDocumentRole } from "#acl/guards.ts";
+import {
+  verifyDocumentAccess,
+  verifyDocumentRole,
+  verifyRevisionAccess,
+} from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
-import { verifyRevisionAccess } from "#acl/revisionAccess.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -29,7 +32,7 @@ export const GET: ApiRouteHandler = (context) =>
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
     // No revision is named, so no snapshot exemption: VIEW_HISTORY is required.
-    await verifyRevisionAccess(spaceId, documentId, { type: "user", userId: user.id });
+    await verifyRevisionAccess(spaceId, documentId, user.id);
 
     const store = await openSpaceStore(spaceId);
     const revisions = await listRevisionMetadata(store, documentId);
