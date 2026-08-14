@@ -1,13 +1,10 @@
 /**
  * Who may read which revision of a document.
  *
- * The publish/draft boundary is the point: publishing a document exposes exactly
- * the published snapshot, so every other revision — the drafts saved after it
- * and the pre-publication history before it — must stay behind a gate.
- * `?rev=N` used to hand all of them to anyone who could read the published
- * document, the public group included (audit 043), and to bypass the
- * VIEW_HISTORY feature that `/revisions` enforces (audit 039). `/diff?rev=N`
- * had the same gap.
+ * Publishing exposes the published snapshot; every other revision is history,
+ * which `VIEW_HISTORY` gates as one privilege. `?rev=N` and `/diff` used to hand
+ * history to anyone who could read the published document, the public group
+ * included (audit 043), bypassing the feature `/revisions` enforces (audit 039).
  *
  * The fixture is the 043 repro: a private space, one document shared with the
  * `public` group as viewer, and three revisions —
@@ -383,25 +380,24 @@ describe("viewer with the view history feature", () => {
     expect(await response.text()).toContain("PRE-PUBLICATION-SECRET");
   });
 
-  it("is still refused the unpublished draft", async () => {
-    await expectRefused(
-      await apiRequest(documentPath(`?rev=${draftRev}`), historyViewerToken),
+  it("reads the unpublished draft, which is history like any other revision", async () => {
+    const response = await apiRequest(
+      documentPath(`?rev=${draftRev}`),
+      historyViewerToken,
     );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.content).toBe(REV3_CONTENT);
   });
 
-  it("is still refused the draft through the diff endpoint", async () => {
-    await expectRefused(
-      await apiRequest(documentPath(`/diff?rev=${draftRev}`), historyViewerToken),
+  it("diffs the draft", async () => {
+    const response = await apiRequest(
+      documentPath(`/diff?rev=${draftRev}&format=html`),
+      historyViewerToken,
     );
-  });
 
-  it("is still refused the draft as a diff base", async () => {
-    await expectRefused(
-      await apiRequest(
-        documentPath(`/diff?rev=${publishedRev}&base=${draftRev}`),
-        historyViewerToken,
-      ),
-    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("UNPUBLISHED-SECRET");
   });
 });
 
@@ -468,34 +464,25 @@ describe("revision metadata on the published snapshot", () => {
   });
 });
 
-/** A proposal any viewer may create, so position below the pointer decides nothing. */
+/** A suggestion is history too — the feature is what gates it, not its status. */
 describe("a suggestion left below the publish pointer", () => {
-  it("is refused to a viewer with the history feature", async () => {
-    await expectRefused(
-      await apiRequest(
-        pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
-        historyViewerToken,
-      ),
-    );
-  });
-
-  it("is refused through the diff endpoint too", async () => {
-    await expectRefused(
-      await apiRequest(
-        pathFor(suggestionDocumentId, `/diff?rev=${suggestionRev}`),
-        historyViewerToken,
-      ),
-    );
-  });
-
-  it("is still readable by an editor, who may act on it", async () => {
+  it("is readable with the history feature", async () => {
     const response = await apiRequest(
       pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
-      editorToken,
+      historyViewerToken,
     );
 
     expect(response.status).toBe(200);
     expect((await response.json()).revision.content).toBe(SUGGESTION_CONTENT);
+  });
+
+  it("is refused without it", async () => {
+    await expectRefused(
+      await apiRequest(
+        pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
+        viewerToken,
+      ),
+    );
   });
 });
 

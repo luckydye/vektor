@@ -37,7 +37,6 @@ import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
-import { getRevisionMetadata } from "#db/space/revisions.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
@@ -645,24 +644,6 @@ export async function verifyFeatureAccess(
 }
 
 /**
- * Whether `rev` is content the document never published, as far as position and
- * status can tell. A missing revision counts as never published, so a guess
- * cannot buy the snapshot exemption.
- */
-async function isNeverPublished(
-  spaceId: string,
-  documentId: string,
-  rev: number,
-  publishedRev: number | null,
-): Promise<boolean> {
-  if (publishedRev === null || rev > publishedRev) return true;
-
-  const store = await openSpaceStore(spaceId);
-  const metadata = await getRevisionMetadata(store, documentId, rev);
-  return metadata === null || metadata.status !== null;
-}
-
-/**
  * What a caller may read of a revision, once authorized. `metadata` is false for
  * a snapshot-exemption caller without `VIEW_HISTORY`: content, but not the
  * authorship, message, checksum or lineage `/revisions` gates.
@@ -672,19 +653,16 @@ export interface RevisionAccess {
 }
 
 /**
- * The one rule for reading a document's revision history, applied in order:
+ * The one rule for reading a document's revision history:
  *
  *  1. Exactly the published revision: plain read access, since the document GET
  *     serves the same content. Metadata is history, so the verdict says whether
  *     it may travel with it.
- *  2. Any other revision: `Feature.VIEW_HISTORY`, never implied by a role.
- *  3. Never published: also `Permission.EDITOR`.
+ *  2. Anything else: `Feature.VIEW_HISTORY`, never implied by a role.
  *
- * "Never published" is position plus status, so a suggestion stays behind the
- * boundary wherever the publish pointer later moves. An ordinary save below the
- * pointer is taken as published history, which the schema cannot distinguish
- * from an intermediate draft — narrowing it needs a per-revision published
- * marker, not a different rule here.
+ * Reading history is one privilege and does not subdivide — whether a revision
+ * was ever published decides nothing, since access to any revision is access to
+ * all of them.
  *
  * @param userId The {@link SpaceAccess.aclUserId} convention: `null` is a
  *   trusted system caller, `""` is public. An access token passes
@@ -730,14 +708,6 @@ export async function verifyRevisionAccess(
 
   if (!history) {
     throw forbiddenResponse("You don't have access to the view history feature");
-  }
-
-  // Never-published content stays behind the publish boundary.
-  const neverPublished = await Promise.all(
-    requested.map((rev) => isNeverPublished(spaceId, documentId, rev, publishedRev)),
-  );
-  if (neverPublished.some(Boolean)) {
-    await verifyDocumentRole(spaceId, documentId, userId, Permission.EDITOR);
   }
 
   return { metadata: true };
