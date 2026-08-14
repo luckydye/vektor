@@ -1,6 +1,5 @@
-import { APIError, betterAuth } from "better-auth";
+import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createAuthMiddleware } from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { NO_GROUPS, sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
@@ -79,26 +78,6 @@ function getOAuthConfig(appConfig: AppConfig): GenericOAuthConfig[] {
 }
 
 /**
- * Endpoints where the account holder describes themselves, and so must not be
- * able to describe their group membership. Sign-up has the value forced to "no
- * groups" — the field is simply not the caller's to fill in — while an update
- * that mentions it is refused outright, since overwriting it with the default
- * there would hand any user a way to wipe their own IdP-provisioned groups.
- */
-const rejectClientSuppliedGroups = createAuthMiddleware(async (ctx) => {
-  if (ctx.path !== "/sign-up/email" && ctx.path !== "/update-user") return;
-
-  const body: unknown = ctx.body;
-  if (!body || typeof body !== "object" || !("groups" in body)) return;
-
-  if (ctx.path === "/update-user") {
-    throw new APIError("BAD_REQUEST", { message: "groups is not allowed to be set" });
-  }
-
-  return { context: { body: { ...body, groups: NO_GROUPS } } };
-});
-
-/**
  * Config and database are arguments so a test can drive the real provider
  * configuration, group claim mapping included, against its own database.
  */
@@ -133,11 +112,6 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
           input: false,
         },
       },
-    },
-
-    // Defense in depth, so the guarantee does not rest on one library option.
-    hooks: {
-      before: rejectClientSuppliedGroups,
     },
 
     emailAndPassword: {
