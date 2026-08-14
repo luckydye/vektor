@@ -1,6 +1,7 @@
 import { inArray } from "drizzle-orm";
 import { verifyDocumentAccess, verifyFeatureAccess } from "#acl/guards.ts";
-import { Feature, ResourceType } from "#acl/permissions.ts";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
+import { getUserGroups, hasPermission } from "#acl/store.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -192,13 +193,34 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse("Comment IDs are required");
     }
 
-    // Only operate on comments that belong to this document
+    // Reject the whole request if any id is outside this document. PATCH is a
+    // bulk thread operation, so silently dropping ids would leave a partially
+    // archived or split thread.
     const store = await openSpaceStore(spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
-    const documentCommentIds = new Set(comments.map((c) => c.id));
-    const validIds = commentIds.filter((id) => documentCommentIds.has(id));
-    if (validIds.length === 0) {
-      throw notFoundResponse("Comment");
+    const commentsById = new Map(comments.map((comment) => [comment.id, comment]));
+    const validIds = [...new Set(commentIds)];
+    const requestedComments = validIds.map((id) => {
+      const comment = commentsById.get(id);
+      if (!comment) throw notFoundResponse("Comment");
+      return comment;
+    });
+
+    // Editors may maintain whole threads. Commenters may only modify their own
+    // comments, matching DELETE's authorship rule.
+    const canModerate = await hasPermission(
+      spaceId,
+      ResourceType.DOCUMENT,
+      documentId,
+      user.id,
+      Permission.EDITOR,
+      await getUserGroups(user.id),
+    );
+    if (
+      !canModerate &&
+      requestedComments.some((comment) => comment.createdBy !== user.id)
+    ) {
+      throw forbiddenResponse("You can only update your own comments");
     }
 
     if (archived === true) {
@@ -240,6 +262,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     // has to be read first, but nothing else does — an outsider is turned away
     // before the rest of the shape is validated.
     await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
 
     if (!commentId || typeof commentId !== "string") {
       throw badRequestResponse("Comment ID is required");
