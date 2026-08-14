@@ -1,5 +1,7 @@
 import { GROUP_NAME_PATTERN } from "#acl/permissions.ts";
 
+export const NO_GROUPS = "[]";
+
 /**
  * Group membership drives ACL access, so a compromised or loosely-configured IdP
  * must not be able to inject arbitrary or privileged group names.
@@ -11,7 +13,7 @@ import { GROUP_NAME_PATTERN } from "#acl/permissions.ts";
  */
 export function sanitizeOAuthGroups(raw: unknown): string | undefined {
   if (raw === undefined || raw === null) return undefined;
-  if (!Array.isArray(raw)) return "[]";
+  if (!Array.isArray(raw)) return NO_GROUPS;
   const groups = raw
     .filter((g): g is string => typeof g === "string" && GROUP_NAME_PATTERN.test(g))
     .slice(0, 100);

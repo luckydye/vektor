@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { genericOAuth } from "better-auth/plugins";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
-import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
+import { NO_GROUPS, sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import { config } from "./config.ts";
 import type { Database } from "./db/client/connection.ts";
 import { getAuthDb } from "./db/client/db.ts";
@@ -100,7 +100,8 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
         groups: {
           type: "string",
           required: false,
-          defaultValue: "[]",
+          defaultValue: NO_GROUPS,
+          input: false,
         },
       },
     },
