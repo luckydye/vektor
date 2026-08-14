@@ -28,6 +28,14 @@ case "$ARCH" in
 esac
 
 ASSET="${BIN_NAME}-${os}-${arch}"
+
+# Bun's default x64 runtime is built for Haswell and dies with SIGILL on a CPU
+# without AVX2, which is what a VM pinned to a generic model reports.
+if [ "$os" = "linux" ] && [ "$arch" = "x64" ] && ! grep -qw avx2 /proc/cpuinfo 2>/dev/null; then
+  echo "No AVX2 on this CPU, using the baseline build."
+  ASSET="${ASSET}-baseline"
+fi
+
 URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 
 echo "Downloading $ASSET..."

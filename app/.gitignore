@@ -33,6 +33,7 @@ pnpm-debug.log*
 .idea/
 
 /vektor
+/vektor-baseline
 
 generated
 

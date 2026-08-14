@@ -214,12 +214,24 @@ console.log(`[native-embedding] embedding ${embeddingAddonFilename}`);
 
 const libsqlNativeAddonPath = getLibsqlNativeAddonPath();
 
+// Bun's default x64 runtime is compiled for Haswell, so it dies with SIGILL on
+// a CPU without AVX2 (typically a VM pinned to a generic model); `--baseline`
+// swaps in Bun's SSE4.2 runtime for those hosts.
+const baseline = process.argv.includes("--baseline");
+if (baseline && (process.platform !== "linux" || process.arch !== "x64")) {
+  throw new Error(
+    `--baseline only applies to linux-x64, not ${process.platform}-${process.arch}`,
+  );
+}
+const compileOptions = baseline
+  ? { target: "bun-linux-x64-baseline", outfile: "./vektor-baseline" }
+  : { outfile: "./vektor" };
+
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
-  compile: true,
-  // @ts-expect-error — `outfile` is valid alongside `compile` at runtime (see
-  // Bun.build's own docs), but tsc's bundled bun-types doesn't reflect it.
-  outfile: "./vektor",
+  // @ts-expect-error — `compile` takes this object form at runtime (see
+  // Bun.build's own docs), but tsc's bundled bun-types types it as a boolean.
+  compile: compileOptions,
   // `import.meta.env.DEV` is just `process.env.DEV` under Bun, so it is always
   // falsy in the compiled binary — only `task dev` (which runs from source)
   // sets DEV=true. Pinning it to false here loses nothing at runtime but lets

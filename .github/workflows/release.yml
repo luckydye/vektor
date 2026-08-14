@@ -15,6 +15,8 @@ jobs:
           # the Ubuntu 24.04 runtime baseline.
           - runner: ubuntu-24.04
             artifact: vektor-linux-x64
+          - runner: ubuntu-24.04-arm
+            artifact: vektor-linux-arm64
           - runner: macos-latest
             artifact: vektor-darwin-arm64
     runs-on: ${{ matrix.runner }}
@@ -60,10 +62,26 @@ jobs:
           bun run ./build.ts
           mv ./vektor ./${{ matrix.artifact }}
 
+      # Bun's default x64 runtime requires AVX2, which a VM on a generic CPU
+      # model does not expose. Ship an SSE4.2 build for those hosts too.
+      - name: Compile baseline binary
+        if: matrix.artifact == 'vektor-linux-x64'
+        working-directory: app
+        run: |
+          bun run ./build.ts --baseline
+          mv ./vektor-baseline ./vektor-linux-x64-baseline
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: app/${{ matrix.artifact }}
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.artifact == 'vektor-linux-x64'
+        with:
+          name: vektor-linux-x64-baseline
+          path: app/vektor-linux-x64-baseline
           if-no-files-found: error
 
   release:
@@ -82,6 +100,8 @@ jobs:
         with:
           files: |
             artifacts/vektor-linux-x64
+            artifacts/vektor-linux-x64-baseline
+            artifacts/vektor-linux-arm64
             artifacts/vektor-darwin-arm64
 
   deploy:
@@ -94,13 +114,20 @@ jobs:
           name: vektor-linux-x64
           path: artifacts
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: vektor-linux-x64-baseline
+          path: artifacts
+
       - name: Upload release binary
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: artifacts/vektor-linux-x64
+          source: |
+            artifacts/vektor-linux-x64
+            artifacts/vektor-linux-x64-baseline
           target: /tmp
           strip_components: 1
           overwrite: true
@@ -113,8 +140,19 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -eu
-            sudo install -m 755 /tmp/vektor-linux-x64 /usr/local/bin/vektor.new
+            if grep -qw avx2 /proc/cpuinfo; then
+              binary=/tmp/vektor-linux-x64
+            else
+              binary=/tmp/vektor-linux-x64-baseline
+            fi
+            echo "installing $binary"
+            chmod +x "$binary"
+            # Startup smoke test, so a binary the CPU cannot run fails here
+            # instead of replacing a working install with one that SIGILLs.
+            "$binary" --version
+            sudo install -m 755 "$binary" /usr/local/bin/vektor.new
             sudo mv -f /usr/local/bin/vektor.new /usr/local/bin/vektor
+            rm -f /tmp/vektor-linux-x64 /tmp/vektor-linux-x64-baseline
             tmux send-keys -t 0:0.0 C-c
             sleep 1
             tmux send-keys -t 0:0.0 '/usr/local/bin/vektor serve --port 3000' Enter
