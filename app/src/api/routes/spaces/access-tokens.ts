@@ -1,10 +1,5 @@
 import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
-import {
-  Feature,
-  Permission,
-  ResourceType,
-  type ResourceType as ResourceTypeValue,
-} from "#acl/permissions.ts";
+import { Feature, isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import { grantFeature } from "#acl/store.ts";
 import {
   badRequestResponse,
@@ -93,11 +88,7 @@ export const POST: ApiRouteHandler = (context) =>
     const isExtensionsCapability = permission === "extensions";
 
     if (!isExtensionsCapability) {
-      if (
-        !resourceType ||
-        typeof resourceType !== "string" ||
-        !Object.values(ResourceType).includes(resourceType as ResourceType)
-      ) {
+      if (!resourceType || !isResourceType(resourceType)) {
         throw badRequestResponse(
           `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
         );
@@ -111,7 +102,7 @@ export const POST: ApiRouteHandler = (context) =>
       await verifyCanGrantTokenAccess(
         spaceId,
         user.id,
-        resourceType as ResourceTypeValue,
+        resourceType,
         resourceId,
         permission,
       );

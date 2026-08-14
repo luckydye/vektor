@@ -1,9 +1,5 @@
 import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
-import {
-  Permission,
-  ResourceType,
-  type ResourceType as ResourceTypeValue,
-} from "#acl/permissions.ts";
+import { isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -38,7 +34,7 @@ export const PUT: ApiRouteHandler = (context) =>
     // Granting token access is a privileged delegation; restrict to owners.
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    if (!Object.values(ResourceType).includes(resourceType as ResourceTypeValue)) {
+    if (!isResourceType(resourceType)) {
       throw badRequestResponse(
         `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
       );
@@ -55,7 +51,7 @@ export const PUT: ApiRouteHandler = (context) =>
     await verifyCanGrantTokenAccess(
       spaceId,
       user.id,
-      resourceType as ResourceTypeValue,
+      resourceType,
       resourceId,
       permission,
     );
@@ -63,7 +59,7 @@ export const PUT: ApiRouteHandler = (context) =>
     await grantTokenAccess({
       tokenId,
       spaceId,
-      resourceType: resourceType as ResourceTypeValue,
+      resourceType,
       resourceId,
       permission,
     });
@@ -87,7 +83,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    if (!Object.values(ResourceType).includes(resourceType as ResourceTypeValue)) {
+    if (!isResourceType(resourceType)) {
       throw badRequestResponse(
         `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
       );
@@ -96,7 +92,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     await revokeTokenAccess(
       await openSpaceStore(spaceId),
       tokenId,
-      resourceType as ResourceTypeValue,
+      resourceType,
       resourceId,
     );
 
