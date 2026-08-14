@@ -546,6 +546,45 @@ describe("API Tests - Documents", () => {
     expect(fetchedData.document.content).toBe(updatedContent);
   });
 
+  it.each([
+    [
+      {},
+      "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
+    ],
+    [
+      { archived: true },
+      "archived cannot be patched; use DELETE to archive a document",
+    ],
+    [{ foo: "bar" }, "Unknown document patch field: foo"],
+    [
+      { parentId: null, readonly: true },
+      "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
+    ],
+    [
+      { readonly: true, foo: "bar" },
+      "Unknown document patch field: foo",
+    ],
+  ])("rejects invalid document patch body %j", async (body, error) => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error });
+  });
+
+  it("does not archive a document when archived is sent to PATCH", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).document.archived).toBe(false);
+  });
+
   it("should create a child document", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",

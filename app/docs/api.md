@@ -757,7 +757,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
   claimed a new slug. The slug is fixed when the document is created and does not
   follow later renames — the one exception is a slug still derived from the
   placeholder title a document was created with ("Untitled Canvas", …), which the
-  first real title replaces.
+  first real title replaces. Empty bodies, multiple operations, and unknown fields
+  return `400`; archiving uses `DELETE`, not `PATCH`.
 
 ### `DELETE /spaces/:spaceId/documents/:documentId`
 

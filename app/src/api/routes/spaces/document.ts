@@ -86,6 +86,41 @@ type DocumentPatchBody = {
   readonly?: boolean;
 };
 
+const documentPatchFields = new Set<keyof DocumentPatchBody>([
+  "properties",
+  "parentId",
+  "publishedRev",
+  "readonly",
+]);
+
+function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw badRequestResponse("Document patch body must be an object");
+  }
+
+  const keys = Object.keys(value);
+  const unknownFields = keys.filter(
+    (key) => !documentPatchFields.has(key as keyof DocumentPatchBody),
+  );
+  if (unknownFields.includes("archived")) {
+    throw badRequestResponse(
+      "archived cannot be patched; use DELETE to archive a document",
+    );
+  }
+  if (unknownFields.length > 0) {
+    throw badRequestResponse(
+      `Unknown document patch field${unknownFields.length === 1 ? "" : "s"}: ${unknownFields.join(", ")}`,
+    );
+  }
+  if (keys.length !== 1) {
+    throw badRequestResponse(
+      "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
+    );
+  }
+
+  return value as DocumentPatchBody;
+}
+
 function withCors(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
@@ -554,22 +589,12 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw forbiddenResponse("Job token is missing user context");
       }
 
-      const body = await parseJsonBody<DocumentPatchBody>(context.req.raw);
+      const body = parseDocumentPatchBody(await parseJsonBody<unknown>(context.req.raw));
       const { properties, parentId, publishedRev, readonly } = body;
 
       await verifyDocumentRole(spaceId, id, userId, Permission.EDITOR);
 
       if (properties !== undefined) {
-        if (
-          parentId !== undefined ||
-          publishedRev !== undefined ||
-          readonly !== undefined
-        ) {
-          throw badRequestResponse(
-            "Properties patch cannot be combined with parentId, publishedRev, or readonly",
-          );
-        }
-
         if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
           throw badRequestResponse("Properties must be an object");
         }
