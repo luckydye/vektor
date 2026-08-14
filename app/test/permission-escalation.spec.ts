@@ -1,16 +1,3 @@
-/**
- * Editor → owner escalation, and the delegations an editor must keep.
- *
- * The permissions endpoint used to authorize role writes by matching
- * `(action, role)` string pairs, so `action:"deny"` with `roleOrFeature:"owner"`
- * missed every guarded branch, landed where editor was sufficient, and was then
- * written by `grantPermission` — an editor could make themselves owner and
- * delete the space. These specs pin the property that replaced those pairs: no
- * action, however spelled, lets an editor end up holding (or stripping)
- * owner-level privilege, and the viewer/editor delegations editors are supposed
- * to have still succeed.
- */
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createSessionApiRequest,
@@ -59,7 +46,6 @@ async function roleOf(token: string): Promise<string | null> {
   return (await response.json()).role;
 }
 
-/** Every role entry in the space, as only an owner may read them. */
 async function allRoleEntries(): Promise<
   Array<{ userId?: string; groupId?: string; permission: string; resourceType: string }>
 > {
@@ -74,11 +60,6 @@ async function allRoleEntries(): Promise<
   );
 }
 
-/**
- * The invariant behind every attempt below: it left no owner-level entry for the
- * editor anywhere in the space, and the editor still cannot do an owner-only
- * thing (rename the space).
- */
 async function expectEditorStillNotOwner(): Promise<void> {
   expect(await roleOf(editor.token)).toBe("editor");
 
@@ -154,7 +135,6 @@ beforeAll(async () => {
   );
   childDocumentId = (await childResponse.json()).document.id;
 
-  // The space owner sets up the roles the specs then attack from.
   for (const [userId, role] of [
     [editor.id, "editor"],
     [bystander.id, "viewer"],
@@ -175,10 +155,6 @@ afterAll(() => {
   serverProcess?.kill();
 });
 
-/**
- * `deny` is gone for roles and `elevate` never existed: both must be rejected
- * outright rather than falling through to whatever branch is left over.
- */
 const ROLE_WRITE_ACTIONS = ["grant", "revoke", "deny", "elevate"] as const;
 
 const SCOPES = [
@@ -191,14 +167,6 @@ const SCOPES = [
   },
 ] as const;
 
-/**
- * What each attempt is expected to return: 400 for an action that does not
- * exist, 403 for one that does but is not the editor's to make. The one case
- * that succeeds is a revoke scoped to a document or subtree — that is a
- * delegation editors are meant to have, the requested role is not even read by a
- * revoke, and the grantee holds no such entry, so it removes nothing. What
- * matters either way is the invariant asserted after it.
- */
 function expectedStatus(action: string, scope: string): number {
   if (action === "deny" || action === "elevate") return 400;
   if (action === "revoke" && scope !== "space") return 200;
@@ -232,7 +200,6 @@ describe("editor cannot obtain owner (issue #45)", () => {
   }
 
   it("keeps the space intact: the editor still cannot delete it", async () => {
-    // The original exploit, end to end.
     const escalate = await postPermission(editor.token, {
       type: "role",
       roleOrFeature: "owner",
@@ -437,7 +404,6 @@ describe("legitimate editor delegations still work", () => {
     });
     expect(response.status).toBe(200);
 
-    // No grant left anywhere in the space, so the space itself is out of reach.
     const summary = await apiRequest(
       `/api/v1/spaces/${spaceId}/permissions/me`,
       newcomer.token,

@@ -89,25 +89,9 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ permissions });
   }, "Failed to list permissions");
 
-/**
- * What each `type` may ask for.
- *
- * Roles have no `deny`. The role model is purely additive — `hasPermission`
- * takes the strongest grant that applies and no negative role entry exists — so
- * "deny a role" could only ever be written as a grant, which is exactly what it
- * used to do: `action:"deny"` with `roleOrFeature:"owner"` granted owner. Roles
- * are revoked, not denied. Features do have a real negative entry
- * (`denyFeature` stores `"denied"`, which `hasFeature` reads), so `deny` is only
- * meaningful there.
- */
 const ROLE_ACTIONS: readonly string[] = ["grant", "revoke"];
 const FEATURE_ACTIONS: readonly string[] = ["grant", "deny", "revoke"];
 
-/**
- * Scopes an editor may delegate access within: space membership and the content
- * itself. Every other scope — feature overrides, extensions, secrets — is
- * administration and stays with owners.
- */
 const EDITOR_DELEGABLE_SCOPES: readonly ResourceType[] = [
   ResourceType.SPACE,
   ResourceType.DOCUMENT,
@@ -115,22 +99,11 @@ const EDITOR_DELEGABLE_SCOPES: readonly ResourceType[] = [
   ResourceType.CATEGORY,
 ];
 
-/**
- * Scopes whose grants an editor may take away again: the page or subtree they
- * shared is theirs to unshare. Withdrawing space membership or category access
- * is an owner's call.
- */
 const EDITOR_WITHDRAWABLE_SCOPES: readonly ResourceType[] = [
   ResourceType.DOCUMENT,
   ResourceType.DOCUMENT_TREE,
 ];
 
-/**
- * The strongest role this grantee holds on exactly this resource — the entry the
- * write is about to overwrite or delete. Nothing inherited: only rows that
- * change, and the strongest of them, so authorization is measured against the
- * most privilege the write could displace.
- */
 async function currentRoleOnResource(
   spaceId: string,
   resourceType: ResourceType,
@@ -149,16 +122,6 @@ async function currentRoleOnResource(
     ?.permission;
 }
 
-/**
- * The space role required to write `role` for one grantee on one resource,
- * where `role` is undefined when the entry is being removed.
- *
- * Decided from the privilege the write moves — what it puts in place, and what
- * it displaces — never from the name of the action that asks for it. Any request
- * that can leave an owner-level entry, or that strips one, requires owner however
- * it is spelled, so an action added later cannot fall into a weaker branch. That
- * fall-through is what let `action:"deny"` hand an editor ownership of the space.
- */
 async function requiredRoleForRoleWrite(
   spaceId: string,
   resourceType: ResourceType,
@@ -167,7 +130,6 @@ async function requiredRoleForRoleWrite(
   role: Permission | undefined,
   store: SpaceStore,
 ): Promise<Permission> {
-  // Handing out owner is an owner's act, at every scope and under every name.
   if (meetsPermissionLevel(role, Permission.OWNER)) {
     return Permission.OWNER;
   }
@@ -184,13 +146,10 @@ async function requiredRoleForRoleWrite(
     store,
   );
 
-  // Taking owner away is as sensitive as handing it out.
   if (meetsPermissionLevel(displaced, Permission.OWNER)) {
     return Permission.OWNER;
   }
 
-  // Withdrawing access — removing the entry, or replacing it with a weaker role
-  // — counts the same whether it arrives as a revoke or as a downgrading grant.
   const withdraws =
     !role ||
     (displaced !== undefined && permissionLevel(role) < permissionLevel(displaced));
@@ -241,9 +200,6 @@ export const POST: ApiRouteHandler = (context) =>
       typeof body.resourceType === "string" ? body.resourceType : undefined;
     const resourceId = typeof body.resourceId === "string" ? body.resourceId : undefined;
 
-    // Everything an authorization decision reads is validated before that
-    // decision is made. An unknown type, action or scope is a 400 here and can
-    // never reach a gate below to pick up whichever branch is left over.
     if (type !== "role" && type !== "feature") {
       throw badRequestResponse("type must be 'role' or 'feature'");
     }
@@ -261,11 +217,6 @@ export const POST: ApiRouteHandler = (context) =>
 
     const targetResourceType = resourceType ?? ResourceType.SPACE;
 
-    // The floor, before the grantee is known: no role change is open to less
-    // than an editor, and every feature change is an owner's. Role writes that
-    // need owner are caught by `requiredRoleForRoleWrite` below — the floor is
-    // checked first so the email lookup that follows cannot be used by an
-    // outsider to probe which accounts exist.
     await verifySpaceRole(
       spaceId,
       user.id,
@@ -305,11 +256,6 @@ export const POST: ApiRouteHandler = (context) =>
       const targetResourceId = resourceId || spaceId;
       const grantee = { userId, groupId };
 
-      // The role the grantee ends up with: the requested one for a grant,
-      // nothing for a revoke. Authorization and the write below read this same
-      // value, so what was authorized is exactly what is written — an action
-      // added to `ROLE_ACTIONS` without a case here removes the entry rather
-      // than quietly writing a role nobody checked.
       const resultingRole = action === "grant" ? roleOrFeature : undefined;
 
       const store = await openSpaceStore(spaceId);

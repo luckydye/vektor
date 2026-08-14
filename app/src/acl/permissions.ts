@@ -125,12 +125,6 @@ export function isFeature(value: unknown): value is Feature {
   );
 }
 
-/**
- * Whether `value` is a scope an ACL entry can be written for — the gate on
- * `resourceType` input from a request. An unknown scope must be rejected rather
- * than defaulted: authorization decisions branch on the scope, so a string that
- * matches none of them would otherwise pick up whichever branch is left over.
- */
 export function isResourceType(value: unknown): value is ResourceType {
   return (
     typeof value === "string" && (Object.values(ResourceType) as string[]).includes(value)
