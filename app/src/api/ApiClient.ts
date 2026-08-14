@@ -117,9 +117,12 @@ export interface Revision {
   createdBy: string;
 }
 
-export interface RevisionWithContent extends Revision {
-  content: string;
-}
+/**
+ * A revision read back with its content. Everything describing the revision is
+ * withheld from a caller without VIEW_HISTORY, so only these three are certain.
+ */
+export type RevisionWithContent = Partial<Revision> &
+  Pick<Revision, "rev" | "status"> & { content: string };
 
 export interface RevisionMetadata {
   id: string;

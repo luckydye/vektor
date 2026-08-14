@@ -451,6 +451,8 @@ describe("revision metadata on the published snapshot", () => {
     expect(revision.message).toBeUndefined();
     expect(revision.checksum).toBeUndefined();
     expect(revision.parentRev).toBeUndefined();
+    // Stated, not withheld: clients read `!== null` as "is a suggestion".
+    expect(revision.status).toBeNull();
   });
 
   it("is served to a caller who holds it", async () => {

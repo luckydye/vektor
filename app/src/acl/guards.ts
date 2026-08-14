@@ -645,8 +645,9 @@ export async function verifyFeatureAccess(
 }
 
 /**
- * Whether `rev` is content the document never published. A missing revision
- * counts as never published, so a guess cannot buy the snapshot exemption.
+ * Whether `rev` is content the document never published, as far as position and
+ * status can tell. A missing revision counts as never published, so a guess
+ * cannot buy the snapshot exemption.
  */
 async function isNeverPublished(
   spaceId: string,
@@ -680,8 +681,10 @@ export interface RevisionAccess {
  *  3. Never published: also `Permission.EDITOR`.
  *
  * "Never published" is position plus status, so a suggestion stays behind the
- * boundary wherever the publish pointer later moves. This refines a route's read
- * gate rather than replacing it.
+ * boundary wherever the publish pointer later moves. An ordinary save below the
+ * pointer is taken as published history, which the schema cannot distinguish
+ * from an intermediate draft — narrowing it needs a per-revision published
+ * marker, not a different rule here.
  *
  * @param userId The {@link SpaceAccess.aclUserId} convention: `null` is a
  *   trusted system caller, `""` is public. An access token passes
@@ -941,30 +944,17 @@ export async function verifyTokenPermission(
 }
 
 /**
- * Whether a token holds a `feature` capability — the one place that is resolved.
- * A token carries no groups, so group grants reach it only through `public`.
- *
- * @param documentId Narrow the role fallback to one document. See
- *   {@link hasFeature}.
+ * Verify a token holds a space-wide `feature` capability, so a token granted one
+ * acts across the whole space. A plain viewer/editor token is rejected unless the
+ * role's defaults include the feature.
  */
-export async function tokenHasFeature(
-  tokenResult: ValidateTokenResult,
-  spaceId: string,
-  feature: Feature,
-  documentId?: string,
-): Promise<boolean> {
-  const tokenUserId = getTokenUserId(tokenResult.tokenId);
-  return hasFeature(spaceId, feature, tokenUserId, undefined, documentId);
-}
-
-/** {@link tokenHasFeature}, as a guard: throws 403 when the token lacks it. */
 export async function verifyTokenFeature(
   tokenResult: ValidateTokenResult,
   spaceId: string,
   feature: Feature,
-  documentId?: string,
 ): Promise<void> {
-  const hasIt = await tokenHasFeature(tokenResult, spaceId, feature, documentId);
+  const tokenUserId = getTokenUserId(tokenResult.tokenId);
+  const hasIt = await hasFeature(spaceId, feature, tokenUserId);
   if (!hasIt) {
     throw forbiddenResponse(
       `Token does not have the ${feature} capability for this space`,

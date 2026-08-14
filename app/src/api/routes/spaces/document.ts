@@ -301,9 +301,11 @@ export const GET: ApiRouteHandler = (context) =>
       return withCors(
         jsonResponse({
           // Without history access, the snapshot and nothing describing it.
+          // `status` is stated rather than withheld: a published revision is by
+          // definition not a suggestion, and clients branch on it.
           revision: access.metadata
             ? { ...metadata, content }
-            : { rev: metadata.rev, content },
+            : { rev: metadata.rev, content, status: null },
         }),
       );
     }
