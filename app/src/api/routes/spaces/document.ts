@@ -676,7 +676,9 @@ async function verifyRevisionWrite(
   mode: "revision" | "suggestion",
 ): Promise<void> {
   if (mode === "suggestion") {
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, userId);
+    // Scoped to the document, or a document-scoped editor would be refused the
+    // weaker action while the full save below succeeds.
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, userId, documentId);
     return;
   }
 
@@ -712,6 +714,12 @@ export const POST: ApiRouteHandler = (context) =>
           context.req.raw,
         )
       : { mode: "revision" as const };
+
+    // `null` and scalars parse as valid JSON, and reading `mode` off them throws
+    // a 500 on what is a malformed request.
+    if (typeof body !== "object" || body === null) {
+      throw badRequestResponse("JSON body must be an object");
+    }
 
     if (
       body.mode !== undefined &&
@@ -751,7 +759,8 @@ export const POST: ApiRouteHandler = (context) =>
         : await createRevision(store, documentId, html, user.id, { message });
 
     if (!revision) {
-      // Only createSuggestion answers null, and only for this reason.
+      // Only createSuggestion answers null: no revision to base one on, or the
+      // document went away since the check above.
       throw badRequestResponse(
         "Cannot suggest changes to a document with no saved revision",
       );

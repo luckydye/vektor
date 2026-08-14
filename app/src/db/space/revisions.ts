@@ -433,9 +433,9 @@ export async function listRevisionMetadata(
 }
 
 /**
- * A revision proposed rather than saved: `status: "open"`, based on the
- * published revision or else the latest ordinary one. Returns `null` when there
- * is no document or no revision to base it on, which the caller reports.
+ * A revision proposed rather than saved: `status: "open"`, based on the newest
+ * ordinary revision — what the suggester was looking at. Returns `null` when
+ * there is no document or no revision to base it on, which the caller reports.
  */
 export async function createSuggestion(
   s: SpaceStore,
@@ -466,8 +466,10 @@ export async function createSuggestion(
       .limit(1),
   );
 
-  const parentRev = doc.publishedRev ?? latestSaved?.rev ?? null;
-  if (parentRev === null) {
+  // Drafts saved after publication are what the suggester sees, so the newest
+  // wins. Revisions start at 1, so 0 means there is nothing to suggest against.
+  const parentRev = Math.max(doc.publishedRev ?? 0, latestSaved?.rev ?? 0);
+  if (parentRev === 0) {
     return null;
   }
 

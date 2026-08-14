@@ -42,6 +42,8 @@ let commentViewer: { userId: string; token: string };
 let featureOnlyOutsider: { userId: string; token: string };
 /** Space EDITOR. Holds `comment` by default via the role. */
 let editor: { userId: string; token: string };
+/** EDITOR on the document alone, which must imply `comment` on it too. */
+let docEditor: { userId: string; token: string };
 
 let spaceId: string;
 /** Published, shared with `public` as viewer. The main fixture. */
@@ -50,6 +52,9 @@ let documentId: string;
 let unpublishedDocumentId: string;
 /** Created and never saved — no revisions at all. */
 let revisionlessDocumentId: string;
+/** Published, then saved again: a draft sits above the publish pointer. */
+let draftedDocumentId: string;
+let draftedRev: number;
 /** `readonly: true`. */
 let readonlyDocumentId: string;
 let publishedRev: number;
@@ -150,6 +155,7 @@ beforeAll(async () => {
   commentViewer = await createTestUser(BASE_URL, "Comment Viewer", "write-commenter");
   featureOnlyOutsider = await createTestUser(BASE_URL, "Feature Only", "write-feature");
   editor = await createTestUser(BASE_URL, "Write Editor", "write-editor");
+  docEditor = await createTestUser(BASE_URL, "Doc Editor", "write-doc-editor");
 
   const spaceResponse = await apiRequest("/api/v1/spaces", ownerToken, {
     method: "POST",
@@ -175,6 +181,12 @@ beforeAll(async () => {
 
   // Saved but never published: the shape that answered 500.
   await ownerSave(unpublishedDocumentId, PUBLISHED_CONTENT);
+
+  draftedDocumentId = await createDocument("Drafted Document");
+  const draftedPublishedRev = await ownerSave(draftedDocumentId, PUBLISHED_CONTENT);
+  await publish(draftedDocumentId, draftedPublishedRev);
+  draftedRev = await ownerSave(draftedDocumentId, "<p>draft above the pointer</p>");
+  expect(draftedRev).toBeGreaterThan(draftedPublishedRev);
 
   await ownerSave(readonlyDocumentId, PUBLISHED_CONTENT);
   const readonlyResponse = await apiRequest(
@@ -210,6 +222,14 @@ beforeAll(async () => {
     type: "role",
     roleOrFeature: "viewer",
     userId: docViewer.userId,
+    resourceType: "document",
+    resourceId: documentId,
+  });
+
+  await grant({
+    type: "role",
+    roleOrFeature: "editor",
+    userId: docEditor.userId,
     resourceType: "document",
     resourceId: documentId,
   });
@@ -289,6 +309,15 @@ describe("full revision save requires editor", () => {
     expect(response.status).toBe(403);
   });
 
+  it("rejects a non-object JSON body as a bad request, not a crash", async () => {
+    const response = await apiRequest(documentPath(documentId), editor.token, {
+      method: "POST",
+      body: "null",
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it("wrote nothing to the history", async () => {
     const revisions = await ownerRevisions(documentId);
 
@@ -327,8 +356,8 @@ describe("suggestion mode is the low-privilege path", () => {
     const { revision } = await response.json();
     expect(revision.status).toBe("open");
     expect(revision.createdBy).toBe(commentViewer.userId);
-    // Based on the published revision the suggester was looking at.
-    expect(revision.parentRev).toBe(publishedRev);
+    // The editor's save above is what this suggester was looking at.
+    expect(revision.parentRev).toBe(publishedRev + 1);
   });
 
   it("did not change what readers get", async () => {
@@ -346,6 +375,28 @@ describe("suggestion mode is the low-privilege path", () => {
         mode: "suggestion",
       }),
     );
+  });
+
+  it("bases the suggestion on the newest draft, not the published revision", async () => {
+    const response = await save(draftedDocumentId, editor.token, {
+      html: "<p>suggestion against the draft</p>",
+      mode: "suggestion",
+    });
+
+    expect(response.status).toBe(200);
+    // Against the published revision instead, the diff would carry the drafts
+    // written since as part of this proposal.
+    expect((await response.json()).revision.parentRev).toBe(draftedRev);
+  });
+
+  it("lets a document-scoped editor suggest, holding no space role", async () => {
+    const response = await save(documentId, docEditor.token, {
+      html: "<p>document editor suggestion</p>",
+      mode: "suggestion",
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).revision.status).toBe("open");
   });
 
   it("refuses a public-group caller without the comment feature", async () => {
@@ -404,7 +455,10 @@ describe("suggestion mode is the low-privilege path", () => {
     const revisions = await ownerRevisions(documentId);
     const suggestions = revisions.filter((revision) => revision.status === "open");
 
-    expect(suggestions.length).toBe(2);
+    // Every caller admitted above, and nobody else.
+    expect(suggestions.map((revision) => revision.createdBy).sort()).toEqual(
+      [commentViewer.userId, docEditor.userId, editor.userId].sort(),
+    );
     // Nothing a suggester wrote became the published revision.
     const document = await apiRequest(documentPath(documentId), ownerToken);
     expect((await document.json()).document.publishedRev).toBe(publishedRev);

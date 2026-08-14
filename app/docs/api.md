@@ -759,11 +759,14 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `POST /spaces/:spaceId/documents/:documentId` (create revision)
 
-- **Auth**: session (`requireUser`) + `verifyDocumentAccess`.
+- **Auth**: session (`requireUser`) + `verifyDocumentAccess`, then per mode —
+  `verifyDocumentRole(editor)` for a full revision, `verifyFeatureAccess(comment)`
+  on this document for `mode: "suggestion"`.
 - **Body**: JSON — `html` (string, required), `message?` (string), `mode?`
   (`"revision"` | `"suggestion"`, default revision). Or raw body.
 - **Behavior**: readonly documents reject with `403`. `mode: "suggestion"` creates a
-  pending-status suggestion revision instead of a normal one.
+  pending-status suggestion revision instead of a normal one, based on the published
+  revision or else the latest saved one; a document with neither rejects with `400`.
 - **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, status,
   message, createdAt, createdBy } }`.
 
