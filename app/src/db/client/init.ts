@@ -80,7 +80,13 @@ async function backfillAIChatSessionRoles(spaceDb: Database) {
  * connection open, not just the first. New tables are created as defined; a
  * column added to an existing table is reconciled with `addColumnIfMissing`.
  */
-export async function initSpaceDbSchema(spaceDb: Database, options: { local: boolean }) {
+export async function initSpaceDbSchema(
+  spaceDb: Database,
+  options: { local: boolean },
+) {
+  await exec(spaceDb, sql.raw("PRAGMA foreign_keys = ON"));
+  // The integrity pragma above is needed for every SQLite connection; these
+  // remaining pragmas tune durable local files only.
   if (options.local) await applySpaceDbPragmas(spaceDb);
 
   const metadataSQL = generateCreateTableSQL(spaceSchema.spaceMetadata);

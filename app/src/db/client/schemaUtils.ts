@@ -14,8 +14,10 @@ interface ColumnInfo {
   hasDefault?: boolean;
   default?: unknown;
   isUnique?: boolean;
-  references?: () => { table: SQLiteTable; name: string };
-  onDelete?: string;
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
 export function generateCreateTableSQL(table: SQLiteTable): string {
@@ -48,23 +50,28 @@ export function generateCreateTableSQL(table: SQLiteTable): string {
     def += columnConstraints(col);
 
     columnDefs.push(def);
+  }
 
-    // Handle foreign keys from column references
-    if (col.references) {
-      const refFn = col.references;
-      const refCol = refFn();
-      const refTable = getTableConfig(refCol.table).name;
-      const refColName = refCol.name;
+  // Drizzle stores references on the table, not on the individual column.
+  // Reading the column shape silently omitted every FK from generated tables.
+  for (const foreignKey of config.foreignKeys) {
+    const reference = foreignKey.reference();
+    const localColumns = reference.columns.map((column) =>
+      quoteIdentifier(column.name),
+    );
+    const foreignColumns = reference.foreignColumns.map((column) =>
+      quoteIdentifier(column.name),
+    );
+    const foreignTable = quoteIdentifier(getTableConfig(reference.foreignTable).name);
 
-      let fkDef = `FOREIGN KEY (${col.name}) REFERENCES ${refTable}(${refColName})`;
-
-      // Check for onDelete in column config
-      if (col.onDelete) {
-        fkDef += ` ON DELETE ${col.onDelete.toUpperCase()}`;
-      }
-
-      foreignKeys.push(fkDef);
+    let definition = `FOREIGN KEY (${localColumns.join(", ")}) REFERENCES ${foreignTable}(${foreignColumns.join(", ")})`;
+    if (foreignKey.onDelete) {
+      definition += ` ON DELETE ${foreignKey.onDelete.toUpperCase()}`;
     }
+    if (foreignKey.onUpdate) {
+      definition += ` ON UPDATE ${foreignKey.onUpdate.toUpperCase()}`;
+    }
+    foreignKeys.push(definition);
   }
 
   const allDefs = [...columnDefs, ...foreignKeys, ...constraints];

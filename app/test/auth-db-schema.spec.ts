@@ -14,6 +14,7 @@ import { prepareAuthDb } from "#db/client/init.ts";
 import { one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
 import { account, spaceIndex, user } from "#db/schema/auth.ts";
+import { revision, workflowSchedule } from "#db/schema/space.ts";
 
 let authDb: ReturnType<typeof createDatabase>;
 
@@ -53,6 +54,15 @@ describe("auth database schema", () => {
       '"access_token_expires_at" INTEGER',
     );
     expect(generateCreateTableSQL(user)).toContain('"email_verified" INTEGER');
+  });
+
+  it("includes Drizzle foreign keys in generated table SQL", () => {
+    expect(generateCreateTableSQL(revision)).toContain(
+      'FOREIGN KEY ("document_id") REFERENCES "document"("id") ON DELETE CASCADE',
+    );
+    expect(generateCreateTableSQL(workflowSchedule)).toContain(
+      'FOREIGN KEY ("document_id") REFERENCES "document"("id") ON DELETE CASCADE',
+    );
   });
 });
 

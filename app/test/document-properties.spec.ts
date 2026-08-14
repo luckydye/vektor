@@ -422,9 +422,8 @@ describe("colliding property keys survive the space-wide listing", () => {
     );
     expect(deleted.status).toBe(200);
 
-    // The `property` row outlives the document — deletes do not cascade (audit
-    // 022) — so the listing has to exclude it by joining, or the orphan shows up
-    // as a property of the space that nothing can explain or remove.
+    // Permanent deletion purges the stored property rows; the listing must not
+    // expose any remnant of the deleted document.
     const listed = await listProperties();
     const valueOfEntry = listed.find((property) => property.name === "valueOf");
     expect(valueOfEntry?.values ?? []).not.toContain("only-on-the-doomed-document");

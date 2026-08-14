@@ -6,6 +6,7 @@ import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import {
   assertDocumentCanParent,
+  deleteDocument,
   type DocumentWithProperties,
   getDocument,
 } from "#db/space/documents.ts";
@@ -629,8 +630,14 @@ export async function clearRunStoreForTests(spaceId: string): Promise<void> {
   await flushRunStoreForTests();
   resetRunStoreMemoryForTests();
   try {
-    const db = await getSpaceDb(spaceId);
-    await db.delete(document).where(eq(document.type, workflowRunDocumentType));
+    const store = await openSpaceStore(spaceId);
+    const runs = await many(
+      store.db
+        .select({ id: document.id })
+        .from(document)
+        .where(eq(document.type, workflowRunDocumentType)),
+    );
+    for (const { id } of runs) await deleteDocument(store, id);
   } catch (error) {
     appLogger.warn("Failed to clear workflow run documents for tests", {
       spaceId,

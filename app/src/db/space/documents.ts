@@ -3,10 +3,15 @@ import { type AclViewer, Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
-import { openSpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { createId } from "#db/ids.ts";
-import { document, file as fileTable, property, revision } from "#db/schema/space.ts";
+import {
+  comment,
+  document,
+  file as fileTable,
+  property,
+  revision,
+} from "#db/schema/space.ts";
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   assertWritableDocumentPropertyKey,
@@ -511,21 +516,49 @@ export async function deleteDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  if (userId) {
-    await createAuditLog(s, {
-      spaceId: s.spaceId,
-      docId: id,
-      userId,
-      event: "delete",
-      details: { message: "Document deleted" },
-    });
-  }
+  const storedFiles = await s.tx(async (tx) => {
+    if (userId) {
+      await createAuditLog(tx, {
+        spaceId: tx.spaceId,
+        docId: id,
+        userId,
+        event: "delete",
+        details: { message: "Document deleted" },
+      });
+    }
 
-  await deleteDocumentEmailPreferences(await openSpaceStore(s.spaceId), id);
-  // `PRAGMA foreign_keys = 0` means dropping the row does not cascade: the grants
-  // would outlive it and be inherited by the next document to reuse the id.
-  await revokeDocumentGrants(s, id, userId);
-  await s.db.delete(document).where(eq(document.id, id));
+    const files = await many(
+      tx.db
+        .select({ path: fileTable.path })
+        .from(fileTable)
+        .where(eq(fileTable.documentId, id)),
+    );
+
+    // These relationships are encoded rather than relational, so an FK cannot
+    // clean them up. Relational child rows cascade from the document delete.
+    await deleteDocumentEmailPreferences(tx, id);
+    await revokeDocumentGrants(tx, id, userId);
+    await tx.db
+      .delete(comment)
+      .where(and(eq(comment.resourceType, "document"), eq(comment.resourceId, id)));
+    await tx.db.delete(document).where(eq(document.id, id));
+
+    return files;
+  });
+
+  const storage = getFileStorage();
+  for (const { path } of storedFiles) {
+    try {
+      await storage.delete(s.spaceId, path);
+    } catch (error) {
+      appLogger.warn("Failed to delete document file from storage", {
+        error,
+        spaceId: s.spaceId,
+        documentId: id,
+        path,
+      });
+    }
+  }
 
   return true;
 }

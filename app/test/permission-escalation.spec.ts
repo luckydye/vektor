@@ -411,3 +411,55 @@ describe("legitimate editor delegations still work", () => {
     expect(summary.status).toBe(403);
   });
 });
+
+describe("space ownership transfer (issue #105)", () => {
+  it("refuses to revoke or downgrade the sole owner", async () => {
+    const revoke = await postPermission(owner.token, {
+      type: "role",
+      roleOrFeature: "owner",
+      userId: owner.id,
+      action: "revoke",
+    });
+    expect(revoke.status).toBe(400);
+    expect(await revoke.json()).toEqual({
+      error: "A space must have at least one owner",
+    });
+
+    const downgrade = await postPermission(owner.token, {
+      type: "role",
+      roleOrFeature: "editor",
+      userId: owner.id,
+      action: "grant",
+    });
+    expect(downgrade.status).toBe(400);
+    expect(await roleOf(owner.token)).toBe("owner");
+  });
+
+  it("lets a new owner revoke the creator and removes all implicit access", async () => {
+    const grant = await postPermission(owner.token, {
+      type: "role",
+      roleOrFeature: "owner",
+      userId: newcomer.id,
+      action: "grant",
+    });
+    expect(grant.status).toBe(200);
+
+    const revoke = await postPermission(newcomer.token, {
+      type: "role",
+      roleOrFeature: "owner",
+      userId: owner.id,
+      action: "revoke",
+    });
+    expect(revoke.status).toBe(200);
+
+    const directAccess = await apiRequest(`/api/v1/spaces/${spaceId}`, owner.token);
+    expect(directAccess.status).toBe(403);
+
+    const spaces = (await (
+      await apiRequest("/api/v1/spaces", owner.token)
+    ).json()) as Array<{ id: string }>;
+    expect(spaces.some((space) => space.id === spaceId)).toBe(false);
+
+    expect(await roleOf(newcomer.token)).toBe("owner");
+  });
+});

@@ -273,7 +273,9 @@ export type AccessTokenInsert = typeof accessToken.$inferInsert;
 export const workflowSchedule = sqliteTable("workflow_schedule", {
   id: text("id").primaryKey(),
   /** Workflow document id this schedule runs on each tick */
-  documentId: text("document_id").notNull(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => document.id, { onDelete: "cascade" }),
   /** Standard 5-field cron expression, e.g. "0 6 * * 1" */
   cronExpression: text("cron_expression").notNull(),
   /** IANA timezone for evaluating the expression (defaults to server time) */
