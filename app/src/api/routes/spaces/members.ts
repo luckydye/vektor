@@ -17,6 +17,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { many } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
@@ -43,7 +44,8 @@ export const GET: ApiRouteHandler = (context) =>
           await getUserGroups(user.id),
         ));
 
-      const permissions = await listPermissions(spaceId, ResourceType.SPACE, spaceId);
+      const store = await openSpaceStore(spaceId);
+      const permissions = await listPermissions(store, ResourceType.SPACE, spaceId);
       const { directUserIds, groupMembers } = await getSpaceMembersWithGroups(spaceId);
 
       // Users who only hold a document/tree/category grant (no space-wide

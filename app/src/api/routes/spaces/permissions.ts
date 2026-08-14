@@ -1,10 +1,15 @@
 import { sql } from "drizzle-orm";
 import { verifySpaceRole } from "#acl/guards.ts";
 import {
+  allFeatures,
   allPermissions,
-  Feature,
+  highestPermission,
+  isFeature,
   isPermission,
+  isResourceType,
+  meetsPermissionLevel,
   Permission,
+  permissionLevel,
   ResourceType,
 } from "#acl/permissions.ts";
 import {
@@ -20,6 +25,7 @@ import {
 import {
   badRequestResponse,
   errorResponse,
+  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
@@ -29,6 +35,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
@@ -39,13 +46,13 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    const typeFilter = new URL(context.req.url).searchParams.get("type") || "all";
+    const searchParams = new URL(context.req.url).searchParams;
+    const typeFilter = searchParams.get("type") || "all";
     const resourceType =
-      (new URL(context.req.url).searchParams.get("resourceType") as ResourceType) ||
-      ResourceType.SPACE;
-    const resourceId = new URL(context.req.url).searchParams.get("resourceId") || spaceId;
-    const allResources =
-      new URL(context.req.url).searchParams.get("allResources") === "true";
+      (searchParams.get("resourceType") as ResourceType) || ResourceType.SPACE;
+    const resourceId = searchParams.get("resourceId") || spaceId;
+    const allResources = searchParams.get("allResources") === "true";
+    const store = await openSpaceStore(spaceId);
 
     await verifySpaceRole(
       spaceId,
@@ -58,8 +65,8 @@ export const GET: ApiRouteHandler = (context) =>
     // Get role permissions (space members)
     if (typeFilter === "all" || typeFilter === "role") {
       const rolePermissions = allResources
-        ? await listAllRolePermissions(spaceId)
-        : await listPermissions(spaceId, resourceType, resourceId);
+        ? await listAllRolePermissions(store)
+        : await listPermissions(store, resourceType, resourceId);
       permissions.push(
         ...rolePermissions.map((p) => ({
           type: "role" as const,
@@ -70,7 +77,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Get feature permissions
     if (typeFilter === "all" || typeFilter === "feature") {
-      const featurePermissions = await listFeaturePermissions(spaceId);
+      const featurePermissions = await listFeaturePermissions(store);
       permissions.push(
         ...featurePermissions.map((p) => ({
           type: "feature" as const,
@@ -82,14 +89,91 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ permissions });
   }, "Failed to list permissions");
 
+const ROLE_ACTIONS: readonly string[] = ["grant", "revoke"];
+const FEATURE_ACTIONS: readonly string[] = ["grant", "deny", "revoke"];
+
+const EDITOR_DELEGABLE_SCOPES: readonly ResourceType[] = [
+  ResourceType.SPACE,
+  ResourceType.DOCUMENT,
+  ResourceType.DOCUMENT_TREE,
+  ResourceType.CATEGORY,
+];
+
+const EDITOR_WITHDRAWABLE_SCOPES: readonly ResourceType[] = [
+  ResourceType.DOCUMENT,
+  ResourceType.DOCUMENT_TREE,
+];
+
+async function currentRoleOnResource(
+  resourceType: ResourceType,
+  resourceId: string,
+  grantee: { userId?: string; groupId?: string },
+  store: SpaceStore,
+): Promise<Permission | undefined> {
+  const entries = await listPermissions(store, resourceType, resourceId);
+  return highestPermission(
+    entries
+      .filter(
+        (entry) =>
+          (grantee.userId && entry.userId === grantee.userId && !entry.groupId) ||
+          (grantee.groupId && entry.groupId === grantee.groupId && !entry.userId),
+      )
+      .map((entry) => entry.permission),
+  );
+}
+
+async function requiredRoleForRoleWrite(
+  resourceType: ResourceType,
+  resourceId: string,
+  grantee: { userId?: string; groupId?: string },
+  role: Permission | undefined,
+  store: SpaceStore,
+): Promise<Permission> {
+  if (meetsPermissionLevel(role, Permission.OWNER)) {
+    return Permission.OWNER;
+  }
+
+  if (!EDITOR_DELEGABLE_SCOPES.includes(resourceType)) {
+    return Permission.OWNER;
+  }
+
+  const displaced = await currentRoleOnResource(resourceType, resourceId, grantee, store);
+
+  if (meetsPermissionLevel(displaced, Permission.OWNER)) {
+    return Permission.OWNER;
+  }
+
+  const withdraws =
+    !role ||
+    (displaced !== undefined && permissionLevel(role) < permissionLevel(displaced));
+  if (withdraws && !EDITOR_WITHDRAWABLE_SCOPES.includes(resourceType)) {
+    return Permission.OWNER;
+  }
+
+  return Permission.EDITOR;
+}
+
+async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
+  try {
+    await verifySpaceRole(spaceId, userId, Permission.OWNER);
+    return true;
+  } catch (error) {
+    if (error instanceof Response && error.status === 403) return false;
+    throw error;
+  }
+}
+
 // POST /api/v1/spaces/:spaceId/permissions
-// Grant, deny, or revoke permissions (roles or features)
+// Grant or revoke a role, or grant/deny/revoke a feature
 // Body: {
 //   type: "role" | "feature",
 //   roleOrFeature: "viewer" | "editor" | "owner" | "comment" | "view_history" | ...,
 //   userId?: string,
+//   email?: string,
 //   groupId?: string,
-//   action: "grant" | "deny" | "revoke"
+//   resourceType?: "space" | "document" | "document_tree" | "category" | ...,
+//   resourceId?: string,
+//   action: "grant" | "revoke" for roles, "grant" | "deny" | "revoke" for features
 // }
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -109,41 +193,29 @@ export const POST: ApiRouteHandler = (context) =>
       typeof body.resourceType === "string" ? body.resourceType : undefined;
     const resourceId = typeof body.resourceId === "string" ? body.resourceId : undefined;
 
-    const targetResourceType = (resourceType as ResourceType) || ResourceType.SPACE;
-
-    // Auth rules for role grants/revokes:
-    //   - Granting owner requires owner.
-    //   - Revoking any space-level role requires owner.
-    //   - Editors can grant viewer/editor at space, document, or document-tree level.
-    //   - Editors can revoke document-level and document-tree permissions.
-    // Feature operations always require owner.
-    if (type === "role") {
-      if (action === "grant" && roleOrFeature === Permission.OWNER) {
-        await verifySpaceRole(spaceId, user.id, Permission.OWNER);
-      } else if (
-        action === "revoke" &&
-        targetResourceType !== ResourceType.DOCUMENT &&
-        targetResourceType !== ResourceType.DOCUMENT_TREE
-      ) {
-        await verifySpaceRole(spaceId, user.id, Permission.OWNER);
-      } else {
-        await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
-      }
-    } else {
-      await verifySpaceRole(spaceId, user.id, Permission.OWNER);
-    }
-
-    if (!type || !["role", "feature"].includes(type)) {
+    if (type !== "role" && type !== "feature") {
       throw badRequestResponse("type must be 'role' or 'feature'");
     }
 
-    if (!roleOrFeature || typeof roleOrFeature !== "string") {
+    const allowedActions = type === "role" ? ROLE_ACTIONS : FEATURE_ACTIONS;
+    if (!action || !allowedActions.includes(action)) {
+      throw badRequestResponse(`action must be one of: ${allowedActions.join(", ")}`);
+    }
+
+    if (resourceType !== undefined && !isResourceType(resourceType)) {
       throw badRequestResponse(
-        type === "role"
-          ? `roleOrFeature must be one of: ${allPermissions().join(", ")}`
-          : `roleOrFeature must be one of: ${Object.values(Feature).join(", ")}`,
+        `resourceType must be one of: ${Object.values(ResourceType).join(", ")}`,
       );
     }
+
+    const targetResourceType = resourceType ?? ResourceType.SPACE;
+
+    await verifySpaceRole(
+      spaceId,
+      user.id,
+      type === "role" ? Permission.EDITOR : Permission.OWNER,
+    );
+    const callerIsOwner = type === "role" && (await isSpaceOwner(spaceId, user.id));
 
     // Resolve an email address to a user id so owners can invite people by
     // email without knowing their internal id. Exact, case-insensitive match;
@@ -167,11 +239,6 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("Either userId, email, or groupId is required");
     }
 
-    if (!action || !["grant", "deny", "revoke"].includes(action)) {
-      throw badRequestResponse("action must be one of: grant, deny, revoke");
-    }
-
-    // Validate role/feature
     if (type === "role") {
       if (!isPermission(roleOrFeature)) {
         throw badRequestResponse(
@@ -180,52 +247,66 @@ export const POST: ApiRouteHandler = (context) =>
       }
 
       const targetResourceId = resourceId || spaceId;
+      const grantee = { userId, groupId };
 
-      if (action === "grant" || action === "deny") {
-        const entry = await grantPermission(
-          spaceId,
+      const resultingRole = action === "grant" ? roleOrFeature : undefined;
+
+      const store = await openSpaceStore(spaceId);
+      return store.tx(async (transaction) => {
+        const requiredRole = await requiredRoleForRoleWrite(
+          targetResourceType,
+          targetResourceId,
+          grantee,
+          resultingRole,
+          transaction,
+        );
+        if (requiredRole === Permission.OWNER && !callerIsOwner) {
+          throw forbiddenResponse();
+        }
+
+        if (resultingRole) {
+          const entry = await grantPermission(
+            transaction,
+            targetResourceType,
+            targetResourceId,
+            userId,
+            resultingRole,
+            groupId,
+            user.id,
+          );
+          return jsonResponse({ permission: entry });
+        }
+
+        await revokePermission(
+          transaction,
           targetResourceType,
           targetResourceId,
           userId,
-          roleOrFeature,
           groupId,
           user.id,
         );
-        return jsonResponse({ permission: entry });
-      }
-
-      // action === "revoke"
-      await revokePermission(
-        spaceId,
-        targetResourceType,
-        targetResourceId,
-        userId,
-        groupId,
-        user.id,
-      );
-      return jsonResponse({ success: true });
+        return jsonResponse({ success: true });
+      });
     }
 
-    // type === "feature"
-    if (!Object.values(Feature).includes(roleOrFeature as Feature)) {
+    // type === "feature"; owner already verified above
+    if (!isFeature(roleOrFeature)) {
       throw badRequestResponse(
-        `roleOrFeature must be one of: ${Object.values(Feature).join(", ")}`,
+        `roleOrFeature must be one of: ${allFeatures().join(", ")}`,
       );
     }
-
-    const feature = roleOrFeature as Feature;
 
     if (action === "grant") {
-      const entry = await grantFeature(spaceId, feature, userId, groupId, user.id);
+      const entry = await grantFeature(spaceId, roleOrFeature, userId, groupId, user.id);
       return jsonResponse({ permission: entry });
     }
 
     if (action === "deny") {
-      const entry = await denyFeature(spaceId, feature, userId, groupId, user.id);
+      const entry = await denyFeature(spaceId, roleOrFeature, userId, groupId, user.id);
       return jsonResponse({ permission: entry });
     }
 
     // action === "revoke"
-    await revokeFeature(spaceId, feature, userId, groupId, user.id);
+    await revokeFeature(spaceId, roleOrFeature, userId, groupId, user.id);
     return jsonResponse({ success: true });
   }, "Failed to update permissions");

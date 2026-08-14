@@ -231,7 +231,7 @@ async function logAclChange(
 }
 
 export async function grantPermission(
-  spaceId: string,
+  store: SpaceStore,
   resourceType: ResourceType,
   resourceId: string,
   userId: string | undefined,
@@ -247,7 +247,7 @@ export async function grantPermission(
     throw new Error("Invalid group name");
   }
 
-  const db = await getSpaceDb(spaceId);
+  const { db, spaceId } = store;
   const now = new Date();
 
   // Check if permission already exists
@@ -289,7 +289,7 @@ export async function grantPermission(
 
   // Re-granting the same permission is a no-op; only log real changes.
   if (existing?.permission !== permission) {
-    await logAclChange(await openSpaceStore(spaceId), spaceId, {
+    await logAclChange(store, spaceId, {
       event: "acl_grant",
       resourceType,
       resourceId,
@@ -313,14 +313,14 @@ export async function grantPermission(
 }
 
 export async function revokePermission(
-  spaceId: string,
+  store: SpaceStore,
   resourceType: ResourceType,
   resourceId: string,
   userId?: string,
   groupId?: string,
   actorUserId?: string,
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
+  const { db, spaceId } = store;
 
   const conditions = [eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId)];
 
@@ -343,7 +343,7 @@ export async function revokePermission(
   await db.delete(acl).where(and(...conditions));
 
   for (const entry of removed) {
-    await logAclChange(await openSpaceStore(spaceId), spaceId, {
+    await logAclChange(store, spaceId, {
       event: "acl_revoke",
       resourceType,
       resourceId,
@@ -598,11 +598,11 @@ async function getDocumentIdsForCategoryRoots(
 }
 
 export async function listPermissions(
-  spaceId: string,
+  store: SpaceStore,
   resourceType: ResourceType,
   resourceId: string,
 ): Promise<AclEntry[]> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = store;
 
   const results = await many(
     db
@@ -789,8 +789,8 @@ async function getAclResourceLabels(
 }
 
 /** List every role grant in a space, including resource-scoped grants. */
-export async function listAllRolePermissions(spaceId: string): Promise<AclEntry[]> {
-  const db = await getSpaceDb(spaceId);
+export async function listAllRolePermissions(store: SpaceStore): Promise<AclEntry[]> {
+  const { db } = store;
   const results = await many(db.select().from(acl));
 
   return results
@@ -1095,8 +1095,9 @@ export async function grantFeature(
   groupId?: string,
   actorUserId?: string,
 ): Promise<AclEntry> {
+  const store = await openSpaceStore(spaceId);
   return grantPermission(
-    spaceId,
+    store,
     ResourceType.FEATURE,
     feature,
     userId,
@@ -1120,8 +1121,9 @@ export async function denyFeature(
   groupId?: string,
   actorUserId?: string,
 ): Promise<AclEntry> {
+  const store = await openSpaceStore(spaceId);
   return grantPermission(
-    spaceId,
+    store,
     ResourceType.FEATURE,
     feature,
     userId,
@@ -1144,8 +1146,9 @@ export async function revokeFeature(
   groupId?: string,
   actorUserId?: string,
 ): Promise<boolean> {
+  const store = await openSpaceStore(spaceId);
   return revokePermission(
-    spaceId,
+    store,
     ResourceType.FEATURE,
     feature,
     userId,
@@ -1157,8 +1160,8 @@ export async function revokeFeature(
 /**
  * List all feature permissions for a space.
  */
-export async function listFeaturePermissions(spaceId: string): Promise<AclEntry[]> {
-  const db = await getSpaceDb(spaceId);
+export async function listFeaturePermissions(store: SpaceStore): Promise<AclEntry[]> {
+  const { db } = store;
 
   const results = await many(
     db.select().from(acl).where(eq(acl.resourceType, ResourceType.FEATURE)),

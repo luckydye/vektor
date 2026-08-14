@@ -428,16 +428,9 @@ async function revokeDocumentGrants(
   id: string,
   actorUserId?: string,
 ): Promise<void> {
+  await revokePermission(s, ResourceType.DOCUMENT, id, undefined, undefined, actorUserId);
   await revokePermission(
-    s.spaceId,
-    ResourceType.DOCUMENT,
-    id,
-    undefined,
-    undefined,
-    actorUserId,
-  );
-  await revokePermission(
-    s.spaceId,
+    s,
     ResourceType.DOCUMENT_TREE,
     id,
     undefined,

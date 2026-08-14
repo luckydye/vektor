@@ -115,6 +115,12 @@ const ROUTE_BODY: Record<string, (fixture: Fixture) => unknown> = {
     documentId: f.documentId,
     body: "matrix probe",
   }),
+  "/api/v1/spaces/[spaceId]/permissions": () => ({
+    type: "role",
+    roleOrFeature: "viewer",
+    userId: "matrix-missing-user",
+    action: "grant",
+  }),
   "/api/v1/spaces/[spaceId]/integrations/[provider]/proxy": () => ({
     path: "/api/v4/user",
   }),

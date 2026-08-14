@@ -63,7 +63,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET/PATCH | `/spaces/:spaceId/notification-preference` | Read / set per-user notification mute, space-wide or (`documentId` scoped) per document |
 | GET/POST/PUT | `/spaces/:spaceId/categories` | List / create / reorder categories |
 | GET/PUT/DELETE | `/spaces/:spaceId/categories/:id` | Read / update / delete a category |
-| GET/POST | `/spaces/:spaceId/permissions` | List / grant-deny-revoke roles & features |
+| GET/POST | `/spaces/:spaceId/permissions` | List / grant-revoke roles, grant-deny-revoke features |
 | GET | `/spaces/:spaceId/permissions/me` | Caller's role + feature flags in this space |
 | GET | `/spaces/:spaceId/search` | Full-text/semantic document search |
 | POST | `/spaces/:spaceId/search/rebuild` | Rebuild the space's search embeddings |
@@ -279,17 +279,24 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `POST /spaces/:spaceId/permissions`
 
-- **Auth**: session. Role required varies by action:
-  - granting `owner` role → caller must be `owner`
-  - revoking any non-document/non-document_tree role → caller must be `owner`
+- **Auth**: session. A role write is authorized on the privilege it moves, not on the
+  action name — every rule below holds however the request is spelled:
+  - writing an `owner` entry, at any scope → caller must be `owner`
+  - overwriting or removing an existing `owner` entry → caller must be `owner`
+  - withdrawing access (a revoke, or a grant of a weaker role) outside
+    `document`/`document_tree` scope → caller must be `owner`
+  - any scope other than `space`/`document`/`document_tree`/`category` → caller must be
+    `owner`
   - all other role grants/revokes → caller must be `editor`
   - any `feature` operation → caller must be `owner`
 - **Body**: `type` (`"role"` | `"feature"`, required), `roleOrFeature` (string,
   required — role: `viewer`/`editor`/`owner`; feature: one of `Feature` enum values),
   `userId?` or `email?` (resolved to a userId via case-insensitive exact match, 404 if
   no account) or `groupId?` (one of the three identity fields required),
-  `action` (`"grant"` | `"deny"` | `"revoke"`, required), `resourceType?` (default
-  `space`), `resourceId?` (default `spaceId`).
+  `action` (required — roles: `"grant"` | `"revoke"`; features: `"grant"` | `"deny"` |
+  `"revoke"`), `resourceType?` (default `space`), `resourceId?` (default `spaceId`).
+  Roles have no `deny`: the role model is additive, so `deny` on a role is a 400 —
+  roles are revoked. Only features have a real negative entry.
 - **Returns**: `200 { permission }` (grant/deny) or `200 { success: true }` (revoke).
 
 ### `GET /spaces/:spaceId/permissions/me`

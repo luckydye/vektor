@@ -125,6 +125,12 @@ export function isFeature(value: unknown): value is Feature {
   );
 }
 
+export function isResourceType(value: unknown): value is ResourceType {
+  return (
+    typeof value === "string" && (Object.values(ResourceType) as string[]).includes(value)
+  );
+}
+
 /** The grantable roles, weakest first. For validation messages and pickers. */
 export function allPermissions(): Permission[] {
   return (Object.keys(PERMISSION_HIERARCHY) as PermissionName[])
