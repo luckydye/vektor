@@ -222,7 +222,7 @@ async function handleRealtimeWebSocket(
     if (event.spaceId !== spaceId) return;
     if (!event.events.some(({ topic }) => topic === realtimeTopics.acl)) return;
 
-    noteAclChange();
+    noteAclChange(spaceId);
     scheduleRevalidation();
   });
 

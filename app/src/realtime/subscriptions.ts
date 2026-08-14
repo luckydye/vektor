@@ -4,7 +4,7 @@
  */
 
 import type { WebSocket } from "ws";
-import { verifyDocumentRole, verifySpaceRole } from "#acl/guards.ts";
+import { isAccessDenied, verifyDocumentRole, verifySpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
@@ -31,6 +31,8 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.properties,
   realtimeTopics.workflowRuns,
 ]);
+
+type TopicAccess = "allowed" | "denied" | "unknown";
 
 /** Tracks the topic subscriptions belonging to one realtime connection. */
 export class TopicSubscriptions {
@@ -64,7 +66,9 @@ export class TopicSubscriptions {
     const hasSpaceRole = this.spaceRoleResolver();
     const authorized = new Set<string>();
     for (const topic of topics) {
-      if (await this.authorize(topic, hasSpaceRole)) authorized.add(topic);
+      if ((await this.authorize(topic, hasSpaceRole)) === "allowed") {
+        authorized.add(topic);
+      }
     }
 
     if (authorized.size !== topics.length) {
@@ -92,7 +96,7 @@ export class TopicSubscriptions {
   async revalidate(): Promise<void> {
     const hasSpaceRole = this.spaceRoleResolver();
     for (const topic of [...this.topics]) {
-      if (await this.authorize(topic, hasSpaceRole)) continue;
+      if ((await this.authorize(topic, hasSpaceRole)) !== "denied") continue;
       this.topics.delete(topic);
       appLogger.info("Dropped a realtime subscription that lost its access", {
         spaceId: this.spaceId,
@@ -123,8 +127,8 @@ export class TopicSubscriptions {
    */
   private async authorize(
     topic: string,
-    hasSpaceRole: () => Promise<boolean>,
-  ): Promise<boolean> {
+    hasSpaceRole: () => Promise<TopicAccess>,
+  ): Promise<TopicAccess> {
     if (realtimeSpaceTopics.has(topic)) {
       return await hasSpaceRole();
     }
@@ -137,12 +141,10 @@ export class TopicSubscriptions {
           this.userId,
           Permission.VIEWER,
         );
-      } catch {
-        // Missing document or insufficient access: treat as a forbidden topic
-        // so the caller reports it rather than tearing the whole frame down.
-        return false;
+      } catch (error) {
+        return isAccessDenied(error) ? "denied" : "unknown";
       }
-      return true;
+      return "allowed";
     }
 
     // Pure change signals — the run data is fetched via ACL-checked endpoints —
@@ -151,7 +153,7 @@ export class TopicSubscriptions {
       return await hasSpaceRole();
     }
 
-    return false;
+    return "denied";
   }
 
   /**
@@ -159,12 +161,12 @@ export class TopicSubscriptions {
    * naming several space topics costs a single lookup. Deliberately not cached
    * on the connection, so a revoked role stops authorizing subscriptions.
    */
-  private spaceRoleResolver(): () => Promise<boolean> {
-    let verdict: Promise<boolean> | undefined;
+  private spaceRoleResolver(): () => Promise<TopicAccess> {
+    let verdict: Promise<TopicAccess> | undefined;
     return () => {
       verdict ??= verifySpaceRole(this.spaceId, this.userId, Permission.VIEWER).then(
-        () => true,
-        () => false,
+        () => "allowed",
+        (error) => (isAccessDenied(error) ? "denied" : "unknown"),
       );
       return verdict;
     };

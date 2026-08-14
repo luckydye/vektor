@@ -38,6 +38,7 @@ type RoomAccess = "edit" | "view" | "none" | "unknown";
 interface JoinedRoom {
   canEdit: boolean;
   verifiedAt: number;
+  aclVersion: number;
 }
 
 /**
@@ -49,18 +50,18 @@ interface JoinedRoom {
 const ROOM_AUTH_TTL_MS = 5_000;
 
 /**
- * When the ACL last changed anywhere in this process. A verdict stamped at or
- * before it is stale no matter how recent it is, which closes the window
- * between a revocation arriving and the (asynchronous) re-authorization
- * finishing. Process-wide rather than per space: a change in one space only
- * costs unrelated connections a re-verification, so being conservative here
- * fails closed.
+ * ACL change versions, scoped to a space. A verdict is usable only when the
+ * version is unchanged throughout its authorization query.
  */
-let aclChangedAt = 0;
+const aclVersions = new Map<string, number>();
 
-/** Marks every cached room verdict stale; called when a `space:acl` event lands. */
-export function noteAclChange(): void {
-  aclChangedAt = Date.now();
+/** Marks cached room verdicts for `spaceId` stale; called when its ACL event lands. */
+export function noteAclChange(spaceId: string): void {
+  aclVersions.set(spaceId, (aclVersions.get(spaceId) ?? 0) + 1);
+}
+
+function aclVersion(spaceId: string): number {
+  return aclVersions.get(spaceId) ?? 0;
 }
 
 /** Tracks the Yjs rooms belonging to one realtime connection. */
@@ -114,10 +115,7 @@ export class YjsConnection {
   }
 
   private async join(documentId: string): Promise<void> {
-    // Stamped before the check, so a revocation announced while it was in
-    // flight still invalidates the verdict it produced.
-    const checkedAt = Date.now();
-    const access = await this.authorizeRoom(documentId);
+    const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
     if (access !== "edit" && access !== "view") {
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       return;
@@ -130,7 +128,11 @@ export class YjsConnection {
     }
 
     room.clients.add(this.websocket);
-    this.joinedRooms.set(roomKey, { canEdit: access === "edit", verifiedAt: checkedAt });
+    this.joinedRooms.set(roomKey, {
+      canEdit: access === "edit",
+      verifiedAt: checkedAt,
+      aclVersion: version,
+    });
 
     const stateUpdate = tracedSync("yjs.encodeState", () =>
       Y.encodeStateAsUpdate(room.doc as Y.Doc),
@@ -150,7 +152,7 @@ export class YjsConnection {
     // A verdict older than the last ACL change, or simply old, is re-checked
     // before it authorizes a write; everything else rides the cached one.
     if (
-      joined.verifiedAt <= aclChangedAt ||
+      joined.aclVersion !== aclVersion(this.spaceId) ||
       Date.now() - joined.verifiedAt >= ROOM_AUTH_TTL_MS
     ) {
       joined = await this.revalidateRoom(roomKey);
@@ -183,8 +185,7 @@ export class YjsConnection {
     if (!this.joinedRooms.has(roomKey)) return undefined;
 
     const documentId = roomKey.slice(this.spaceId.length + 1);
-    const checkedAt = Date.now();
-    const access = await this.authorizeRoom(documentId);
+    const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
 
     // Another pass may have evicted the room while this one was in flight, and
     // a verdict must never put the connection back into a room it has left.
@@ -214,7 +215,26 @@ export class YjsConnection {
 
     joined.canEdit = access === "edit";
     joined.verifiedAt = checkedAt;
+    joined.aclVersion = version;
     return joined;
+  }
+
+  /**
+   * Gets a room verdict that was checked entirely against one observed ACL
+   * version. If an ACL event lands during the query, repeat it rather than
+   * briefly authorizing the old result.
+   */
+  private async authorizeCurrentRoom(
+    documentId: string,
+  ): Promise<{ access: RoomAccess; checkedAt: number; version: number }> {
+    while (true) {
+      const version = aclVersion(this.spaceId);
+      const checkedAt = Date.now();
+      const access = await this.authorizeRoom(documentId);
+      if (version === aclVersion(this.spaceId)) {
+        return { access, checkedAt, version };
+      }
+    }
   }
 
   /** Drops this connection out of one room, persisting what the room holds. */
