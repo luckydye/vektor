@@ -87,12 +87,6 @@ export class TopicSubscriptions {
     this.off();
   }
 
-  /**
-   * Re-runs the subscribe-time authorization for every topic this connection
-   * holds and drops the ones it may no longer hear. A subscription is
-   * authorized once, so without this a revoked user keeps receiving the feed
-   * for as long as the socket stays up.
-   */
   async revalidate(): Promise<void> {
     const hasSpaceRole = this.spaceRoleResolver();
     for (const topic of [...this.topics]) {

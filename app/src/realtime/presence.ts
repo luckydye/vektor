@@ -25,20 +25,10 @@ function broadcastPresence(
   }
 }
 
-/**
- * Whether a connection may hold presence in a room. `unknown` is not a verdict:
- * the ACL could not be read, so a join fails closed while a room already joined
- * is kept rather than evicted on what may be a passing failure.
- */
 export type PresenceRoomAccess = "allowed" | "denied" | "unknown";
 
 interface PresenceConnectionHooks {
   authorizeRoom: (room: string) => Promise<PresenceRoomAccess>;
-  /**
-   * Whether the Yjs half of the same connection still holds the room. The
-   * socket's membership of `YRoom.clients` is shared between the two halves, so
-   * presence must not withdraw it from underneath a room the other half holds.
-   */
   holdsYjsRoom: (room: string) => boolean;
 }
 
@@ -78,19 +68,8 @@ export class PresenceConnection {
     }
   }
 
-  /**
-   * Re-runs the join-time authorization for every room this connection holds
-   * presence in and evicts it from the ones it may no longer see.
-   *
-   * Access is verified once in `join()` (see `update()` for why it is not
-   * re-checked per frame), so without this a user whose access was revoked keeps
-   * broadcasting a cursor into — and seeing every cursor in — a document they no
-   * longer hold. The realtime server calls it whenever the ACL changes.
-   */
   async revalidate(): Promise<void> {
     for (const roomKey of [...this.joinedRooms.keys()]) {
-      // Only a verdict evicts: an ACL that could not be read leaves the room
-      // alone for the next pass rather than dropping an authorized user.
       if ((await this.hooks.authorizeRoom(this.roomIdOf(roomKey))) !== "denied") {
         continue;
       }
@@ -102,7 +81,6 @@ export class PresenceConnection {
     return roomKey.slice(this.spaceId.length + 1);
   }
 
-  /** Drops every presence entry this connection registered in one room. */
   private leaveRoomEntirely(roomKey: string): void {
     const clientIds = this.joinedRooms.get(roomKey);
     this.joinedRooms.delete(roomKey);

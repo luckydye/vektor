@@ -562,11 +562,7 @@ const REALTIME_IDLE_GRACE_MS = 2_000;
 const REALTIME_PING_INTERVAL_MS = 25_000;
 const REALTIME_PONG_TIMEOUT_MS = 10_000;
 
-/**
- * How long a socket must stay open before the reconnect backoff is considered
- * recovered. Shorter than the shortest backoff delay would make the reset
- * meaningless; this is comfortably longer than any accept-then-refuse.
- */
+/** Prevent an accept-then-refuse socket from resetting reconnect backoff. */
 const RECONNECT_SETTLED_MS = 5_000;
 
 interface RealtimeSubscription {
@@ -2415,9 +2411,6 @@ export class ApiClient {
 
     socket.addEventListener("open", () => {
       if (connection.socket !== socket) return; // stale handler from a prior socket
-      // Only a connection that lasted counts as recovered. The server accepts
-      // the socket before it can refuse it, so resetting on `open` alone would
-      // hold a rejected client at the shortest backoff forever.
       setTimeout(() => {
         if (connection.socket === socket) connection.reconnectAttempts = 0;
       }, RECONNECT_SETTLED_MS);
@@ -2590,11 +2583,7 @@ export class ApiClient {
     this.stopRealtimeHeartbeat(connection);
     if (connection.closed) return;
 
-    // Access was withdrawn, so reconnecting would only be refused again — a
-    // later subscribe opens a fresh connection, which is the point at which
-    // access is worth asking about anew. An expired session is deliberately not
-    // treated this way: it resolves on its own, and the backoff below is what
-    // keeps waiting for it cheap.
+    // A later subscription creates a fresh connection and authorization attempt.
     if (code === WS_CLOSE_FORBIDDEN) {
       this.teardownRealtimeConnection(connection);
       return;

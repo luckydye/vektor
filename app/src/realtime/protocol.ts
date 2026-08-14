@@ -16,13 +16,7 @@ export const realtimeTopics = {
   workflowRun: (runId: string) => `workflow-run:${runId}`,
 } as const;
 
-/**
- * Close codes for a connection the server refused, either at the handshake or
- * once its access was withdrawn. Reconnecting on one of these only re-runs the
- * same refusal, so the client treats them as final; the socket is accepted
- * before it can be refused, which is why the close code has to say so — an
- * ordinary close is a dropped connection and must still be retried.
- */
+/** Application close codes for an authorization refusal. */
 export const WS_CLOSE_UNAUTHORIZED = 4401;
 export const WS_CLOSE_FORBIDDEN = 4403;
 

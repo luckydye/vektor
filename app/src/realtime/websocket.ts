@@ -37,15 +37,10 @@ import { noteAclChange, YjsConnection } from "./yjsConnection.ts";
  */
 interface FrameHandler {
   handle(type: WsMsgType, payload: Uint8Array): Promise<boolean>;
-  /** Re-runs the authorization this handler's state is standing on. */
   revalidate(): Promise<void>;
   close(): void;
 }
 
-/**
- * Re-authorization hooks for the live connections, so the periodic sweep can
- * reach them. Connections register on open and deregister on close.
- */
 const connectionRevalidators = new Set<() => void>();
 
 /**
@@ -104,8 +99,6 @@ async function authenticateConnection(
     // nothing: every topic, Yjs room and presence room is checked on its own.
     await verifyResourceAccess(spaceId, session.user.id);
   } catch (error) {
-    // Refused either way, but only a verdict is worth telling the client not to
-    // retry: an ACL that could not be read is a reason to come back later.
     websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
     if (isAccessDenied(error)) {
       websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
@@ -132,10 +125,7 @@ async function handleRealtimeWebSocket(
   const userId = await authenticateConnection(websocket, request, spaceId);
   if (userId === null) return;
 
-  // Each claims a disjoint set of frame types, so this order is only the order
-  // they are torn down in: stop the event fan-out before the rooms it may push
-  // into go away, and let the Yjs half release a room before presence decides
-  // whether it may still leave the socket in it.
+  // Teardown order matters because presence and Yjs share room membership.
   const yjs = new YjsConnection(spaceId, userId, websocket);
   const handlers: FrameHandler[] = [
     new TopicSubscriptions(spaceId, userId, websocket),
@@ -146,11 +136,8 @@ async function handleRealtimeWebSocket(
     }),
   ];
 
-  /** Refuse the connection for good, releasing what it holds right away. */
   const closeForbidden = (): void => {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-    // Ahead of the close handshake, which the peer has up to 30s to answer —
-    // long enough for a revoked user's cursor to sit in a room they have lost.
     for (const handler of handlers) handler.close();
     websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
     appLogger.info("Closed realtime connection whose space access was revoked", {
@@ -158,24 +145,13 @@ async function handleRealtimeWebSocket(
     });
   };
 
-  /**
-   * Re-runs every authorization this connection is standing on. Losing
-   * everything (removal from the space, or the last document grant of a
-   * document-level grantee) closes the connection; losing one resource only
-   * drops the room, topic or presence entry it covered.
-   */
   const revalidateConnection = async (): Promise<void> => {
     if (websocket.readyState !== 1) return;
 
     try {
-      // Exactly the gate the handshake applied. It must stay
-      // `verifyResourceAccess`: a space-role check here would disconnect every
-      // document-level grantee on the next unrelated ACL change in the space.
+      // Document-level grantees may have no space role.
       await verifyResourceAccess(spaceId, userId);
     } catch (error) {
-      // Only a verdict disconnects. The sweep runs this for every live
-      // connection, so reading an unreachable ACL as a revocation would empty
-      // the server on a single failed query.
       if (!isAccessDenied(error)) {
         appLogger.warn("Could not re-authorize a realtime connection; keeping it", {
           error,
@@ -187,8 +163,6 @@ async function handleRealtimeWebSocket(
       return;
     }
 
-    // Independently, so one half failing does not leave the others standing on
-    // an authorization nobody re-ran.
     for (const handler of handlers) {
       try {
         await handler.revalidate();
@@ -201,8 +175,7 @@ async function handleRealtimeWebSocket(
     }
   };
 
-  // Serialized: ACL events arrive in bursts, and two overlapping passes would
-  // race each other's eviction of the same room.
+  // Serialize passes so bursts cannot race room eviction.
   let pendingRevalidation: Promise<void> = Promise.resolve();
   const scheduleRevalidation = (): void => {
     pendingRevalidation = pendingRevalidation
@@ -213,11 +186,6 @@ async function handleRealtimeWebSocket(
   };
   connectionRevalidators.add(scheduleRevalidation);
 
-  // The ACL store announces every grant/revoke on this topic, so it is the
-  // signal that this connection's authorization may no longer hold. Noted even
-  // when the client is not subscribed to the topic (it needs a space role to
-  // be): the server-side re-authorization must not depend on what the client
-  // asked to hear about.
   const offAclEvents = subscribeToSyncEvents((event) => {
     if (event.spaceId !== spaceId) return;
     if (!event.events.some(({ topic }) => topic === realtimeTopics.acl)) return;
@@ -267,18 +235,7 @@ export interface RealtimeWebSocketServer {
 const CONNECTION_IDLE_TIMEOUT_MS = 90_000;
 const IDLE_SWEEP_INTERVAL_MS = 30_000;
 
-/**
- * Belt and braces around the event-driven re-authorization, for an ACL write
- * that publishes no sync event (the identity-provider group sync rewrites a
- * user's groups with no space and no audit row) or a listener that threw.
- *
- * It covers the read direction, which has no hot path to hang off — a passive
- * reader sends nothing, so only a sweep can evict it. Deliberately coarse (a
- * handful of indexed reads per connection per sweep) and matched to the 60s
- * identity-provider group refresh, the one ACL input that changes with no event
- * at all. The write direction is bounded more tightly by the per-room TTL in
- * `YjsConnection`.
- */
+/** Covers ACL changes that do not emit a sync event. */
 const ACL_REVALIDATE_INTERVAL_MS = 30_000;
 
 /** Attaches the realtime collaboration endpoint to the HTTP server. */

@@ -24,38 +24,19 @@ import {
   yRooms,
 } from "./yjsRooms.ts";
 
-/**
- * What a connection may do in a document room. `unknown` is not a verdict: the
- * ACL could not be read, so a join fails closed while a room already held keeps
- * the verdict it has until a real one arrives.
- */
 type RoomAccess = "edit" | "view" | "none" | "unknown";
 
-/**
- * A room this connection has joined: what it may do there, and when that was
- * last verified against the ACL.
- */
 interface JoinedRoom {
   canEdit: boolean;
   verifiedAt: number;
   aclVersion: number;
 }
 
-/**
- * How long a write may ride a cached verdict. `applyUpdate` is the hottest path
- * in the server (one frame per keystroke per client), so it re-verifies a stale
- * room instead of querying per update: one DB round trip per room per five
- * seconds rather than one per keystroke.
- */
+/** Avoid an ACL query for every Yjs update while bounding stale writes. */
 const ROOM_AUTH_TTL_MS = 5_000;
 
-/**
- * ACL change versions, scoped to a space. A verdict is usable only when the
- * version is unchanged throughout its authorization query.
- */
 const aclVersions = new Map<string, number>();
 
-/** Marks cached room verdicts for `spaceId` stale; called when its ACL event lands. */
 export function noteAclChange(spaceId: string): void {
   aclVersions.set(spaceId, (aclVersions.get(spaceId) ?? 0) + 1);
 }
@@ -96,20 +77,12 @@ export class YjsConnection {
     }
   }
 
-  /**
-   * Re-runs the join-time authorization for every joined room, keeping the room
-   * with `canEdit` cleared for an editor downgraded to viewer and evicting the
-   * connection from the ones it lost entirely. Joining authorizes a room once,
-   * so without this a revoked user keeps live read and write until they choose
-   * to disconnect.
-   */
   async revalidate(): Promise<void> {
     for (const roomKey of [...this.joinedRooms.keys()]) {
       await this.revalidateRoom(roomKey);
     }
   }
 
-  /** Whether the Yjs half of this connection still holds `documentId`'s room. */
   holdsRoom(documentId: string): boolean {
     return this.joinedRooms.has(`${this.spaceId}:${documentId}`);
   }
@@ -149,8 +122,6 @@ export class YjsConnection {
     let joined = this.joinedRooms.get(roomKey);
     if (!joined) return;
 
-    // A verdict older than the last ACL change, or simply old, is re-checked
-    // before it authorizes a write; everything else rides the cached one.
     if (
       joined.aclVersion !== aclVersion(this.spaceId) ||
       Date.now() - joined.verifiedAt >= ROOM_AUTH_TTL_MS
@@ -177,24 +148,17 @@ export class YjsConnection {
     });
   }
 
-  /**
-   * Re-authorizes one joined room. Returns the refreshed entry, or `undefined`
-   * when access is gone and the connection was evicted from the room.
-   */
   private async revalidateRoom(roomKey: string): Promise<JoinedRoom | undefined> {
     if (!this.joinedRooms.has(roomKey)) return undefined;
 
     const documentId = roomKey.slice(this.spaceId.length + 1);
     const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
 
-    // Another pass may have evicted the room while this one was in flight, and
-    // a verdict must never put the connection back into a room it has left.
+    // A concurrent pass may already have evicted the room.
     const joined = this.joinedRooms.get(roomKey);
     if (!joined) return undefined;
 
-    // Only a verdict withdraws a room. An ACL that could not be read leaves the
-    // verdict as it stands — stale, so the next update checks again — because
-    // evicting here would drop an authorized editor on a failed query.
+    // A failed ACL read is not a revocation.
     if (access === "unknown") {
       appLogger.warn("Could not re-authorize a realtime room; keeping the verdict", {
         spaceId: this.spaceId,
@@ -219,11 +183,7 @@ export class YjsConnection {
     return joined;
   }
 
-  /**
-   * Gets a room verdict that was checked entirely against one observed ACL
-   * version. If an ACL event lands during the query, repeat it rather than
-   * briefly authorizing the old result.
-   */
+  /** Retry when an ACL event lands during the authorization query. */
   private async authorizeCurrentRoom(
     documentId: string,
   ): Promise<{ access: RoomAccess; checkedAt: number; version: number }> {
@@ -237,7 +197,6 @@ export class YjsConnection {
     }
   }
 
-  /** Drops this connection out of one room, persisting what the room holds. */
   private leaveRoom(roomKey: string): void {
     if (!this.joinedRooms.delete(roomKey)) return;
 
@@ -251,12 +210,6 @@ export class YjsConnection {
     }
   }
 
-  /**
-   * What this connection may do in a document room. Editors get read+write;
-   * viewers may still join to receive state (the room is the single source of
-   * truth for rendering). Used at join time and on every re-authorization, so
-   * the two can never drift apart.
-   */
   private async authorizeRoom(documentId: string): Promise<RoomAccess> {
     const asEditor = await this.holdsRole(documentId, Permission.EDITOR);
     if (asEditor !== "denied") return asEditor === "held" ? "edit" : "unknown";
