@@ -163,6 +163,44 @@ async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
   }
 }
 
+async function refuseLastOwnerRemoval(
+  spaceId: string,
+  resourceType: ResourceType,
+  resourceId: string,
+  grantee: { userId?: string; groupId?: string },
+  resultingRole: Permission | undefined,
+  store: SpaceStore,
+): Promise<void> {
+  if (
+    resourceType !== ResourceType.SPACE ||
+    resourceId !== spaceId ||
+    resultingRole === Permission.OWNER
+  ) {
+    return;
+  }
+
+  const ownerEntries = (await listPermissions(store, ResourceType.SPACE, spaceId)).filter(
+    (entry) =>
+      entry.permission === Permission.OWNER && !entry.userId?.startsWith("token:"),
+  );
+  const targetsOwner = (entry: (typeof ownerEntries)[number]) => {
+    if (resultingRole === undefined) {
+      return (
+        (grantee.userId === undefined || entry.userId === grantee.userId) &&
+        (grantee.groupId === undefined || entry.groupId === grantee.groupId)
+      );
+    }
+    if (grantee.userId !== undefined) {
+      return entry.userId === grantee.userId && entry.groupId === undefined;
+    }
+    return entry.groupId === grantee.groupId && entry.userId === undefined;
+  };
+
+  if (ownerEntries.some(targetsOwner) && ownerEntries.every(targetsOwner)) {
+    throw badRequestResponse("A space must have at least one owner");
+  }
+}
+
 // POST /api/v1/spaces/:spaceId/permissions
 // Grant or revoke a role, or grant/deny/revoke a feature
 // Body: {
@@ -217,6 +255,14 @@ export const POST: ApiRouteHandler = (context) =>
     );
     const callerIsOwner = type === "role" && (await isSpaceOwner(spaceId, user.id));
 
+    const granteeIdentifierCount = [userId, email, groupId].filter(Boolean).length;
+    if (granteeIdentifierCount === 0) {
+      throw badRequestResponse("Either userId, email, or groupId is required");
+    }
+    if (granteeIdentifierCount > 1) {
+      throw badRequestResponse("Only one of userId, email, or groupId may be provided");
+    }
+
     // Resolve an email address to a user id so owners can invite people by
     // email without knowing their internal id. Exact, case-insensitive match;
     // returns 404 when no account exists for that email. Gated behind the
@@ -233,10 +279,6 @@ export const POST: ApiRouteHandler = (context) =>
         throw errorResponse(`No user found with email "${email}"`, 404);
       }
       userId = match.id;
-    }
-
-    if (!userId && !groupId) {
-      throw badRequestResponse("Either userId, email, or groupId is required");
     }
 
     if (type === "role") {
@@ -263,6 +305,15 @@ export const POST: ApiRouteHandler = (context) =>
         if (requiredRole === Permission.OWNER && !callerIsOwner) {
           throw forbiddenResponse();
         }
+
+        await refuseLastOwnerRemoval(
+          spaceId,
+          targetResourceType,
+          targetResourceId,
+          grantee,
+          resultingRole,
+          transaction,
+        );
 
         if (resultingRole) {
           const entry = await grantPermission(

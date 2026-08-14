@@ -349,29 +349,6 @@ export async function authenticateSpaceAccess(
   };
 }
 
-export async function verifySpaceOwnership(
-  spaceId: string,
-  userId: string,
-  getSpace: (id: string) => Promise<{ createdBy: string } | null>,
-) {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    const space = await getSpace(spaceId);
-    if (!space) {
-      throw notFoundResponse("Space");
-    }
-    return space;
-  }
-
-  const space = await getSpace(spaceId);
-  if (!space) {
-    throw notFoundResponse("Space");
-  }
-  if (space.createdBy !== userId) {
-    throw forbiddenResponse();
-  }
-  return space;
-}
-
 export async function verifySpaceAccess(spaceId: string, userId: string): Promise<void> {
   const space = await getSpace(spaceId);
   if (!space) {
@@ -379,10 +356,6 @@ export async function verifySpaceAccess(spaceId: string, userId: string): Promis
   }
 
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return;
-  }
-
-  if (space.createdBy === userId) {
     return;
   }
 
@@ -411,10 +384,6 @@ export async function verifySpaceRole(
   }
 
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return;
-  }
-
-  if (space.createdBy === userId) {
     return;
   }
 
@@ -734,11 +703,6 @@ export async function canAccessExtension(
   const space = await getSpace(spaceId);
   if (!space) {
     return false;
-  }
-
-  // Space owner has full access
-  if (space.createdBy === userId) {
-    return true;
   }
 
   const userGroups = await getUserGroups(userId);

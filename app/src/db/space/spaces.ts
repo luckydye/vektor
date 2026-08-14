@@ -271,7 +271,6 @@ export async function getUserSpaceRole(
   userId: string,
 ): Promise<Permission | undefined> {
   if (isNoAuthMode() && userId === LOCAL_USER_ID) return Permission.OWNER;
-  if (space.createdBy === userId) return Permission.OWNER;
 
   try {
     const userGroups = await getUserGroups(userId);
@@ -311,12 +310,6 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
   const userSpaces: Space[] = [];
 
   for (const space of allSpaces) {
-    // Include space if user created it
-    if (space.createdBy === userId) {
-      userSpaces.push({ ...space, userRole: Permission.OWNER });
-      continue;
-    }
-
     // Include space if user is a member
     try {
       const userGroups = await getUserGroups(userId);

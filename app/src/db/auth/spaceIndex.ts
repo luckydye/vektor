@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { grantPermission } from "#acl/store.ts";
+import { grantPermission, listPermissions } from "#acl/store.ts";
 import {
   closeDatabase,
   createDatabase,
@@ -273,15 +273,24 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
     }
 
     try {
-      await grantPermission(
-        await openSpaceStore(metadata.id),
-        ResourceType.SPACE,
-        metadata.id,
-        metadata.createdBy,
-        Permission.OWNER,
-        undefined,
-        metadata.createdBy,
+      const store = await openSpaceStore(metadata.id);
+      const hasOwner = (
+        await listPermissions(store, ResourceType.SPACE, metadata.id)
+      ).some(
+        (entry) =>
+          entry.permission === Permission.OWNER && !entry.userId?.startsWith("token:"),
       );
+      if (!hasOwner) {
+        await grantPermission(
+          store,
+          ResourceType.SPACE,
+          metadata.id,
+          metadata.createdBy,
+          Permission.OWNER,
+          undefined,
+          metadata.createdBy,
+        );
+      }
     } catch (error) {
       if (existing.status === "disabled") {
         await authDb

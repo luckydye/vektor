@@ -6,7 +6,6 @@ import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { spaceSecret } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
-import { getSpace } from "./spaces.ts";
 
 export type SpaceSecretMetadata = {
   name: string;
@@ -181,16 +180,7 @@ export async function userCanReadSpaceSecret(
     return false;
   }
 
-  const space = await getSpace(s.spaceId);
-  if (!space) {
-    return false;
-  }
-
   const groups = await getUserGroups(userId);
-  if (space.createdBy === userId) {
-    return true;
-  }
-
   return hasPermission(
     s.spaceId,
     ResourceType.SPACE,

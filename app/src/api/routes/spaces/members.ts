@@ -19,7 +19,6 @@ import { getAuthDb } from "#db/client/db.ts";
 import { many } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
-import { getSpace } from "#db/space/spaces.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 export const GET: ApiRouteHandler = (context) =>
@@ -32,17 +31,14 @@ export const GET: ApiRouteHandler = (context) =>
 
       // Member email addresses are PII: only expose them to editors/owners
       // (who need them e.g. for mentions); plain viewers get id/name/image.
-      const space = await getSpace(spaceId);
-      const canSeeEmails =
-        space?.createdBy === user.id ||
-        (await hasPermission(
-          spaceId,
-          ResourceType.SPACE,
-          spaceId,
-          user.id,
-          Permission.EDITOR,
-          await getUserGroups(user.id),
-        ));
+      const canSeeEmails = await hasPermission(
+        spaceId,
+        ResourceType.SPACE,
+        spaceId,
+        user.id,
+        Permission.EDITOR,
+        await getUserGroups(user.id),
+      );
 
       const store = await openSpaceStore(spaceId);
       const permissions = await listPermissions(store, ResourceType.SPACE, spaceId);
