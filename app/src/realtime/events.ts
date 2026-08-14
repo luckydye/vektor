@@ -45,12 +45,6 @@ function drainPendingEvents(): RealtimeEventEnvelope[] {
 
 export function publishSyncEvents(events: RealtimeEventEnvelope[]) {
   for (const event of events) {
-    if (
-      event.topics.includes(realtimeTopics.acl) ||
-      event.events.some(({ data }) => data?.kind === documentLockChangedKind)
-    ) {
-      publishAuthorizationChange({ spaceId: event.spaceId });
-    }
     for (const listener of listeners) {
       listener(event);
     }
@@ -80,10 +74,15 @@ export function sendSyncEvent(spaceId: string, ...events: RealtimeEventInput[]) 
 
   const pendingTopicEvents =
     pendingEvents.get(spaceId) ?? new Map<RealtimeTopic, RealtimeTopicEvent>();
+  let authorizationChanged = false;
   for (const event of events) {
     const normalizedEvent = toRealtimeTopicEvent(event);
+    authorizationChanged ||=
+      normalizedEvent.topic === realtimeTopics.acl ||
+      normalizedEvent.data?.kind === documentLockChangedKind;
     pendingTopicEvents.set(normalizedEvent.topic, normalizedEvent);
   }
+  if (authorizationChanged) publishAuthorizationChange({ spaceId });
   pendingEvents.set(spaceId, pendingTopicEvents);
 
   if (debounceTimer) {

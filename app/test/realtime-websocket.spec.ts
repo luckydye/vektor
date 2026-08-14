@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
+import { subscribeToAuthorizationChanges } from "#acl/events.ts";
+import { documentLockChangedKind } from "#realtime/changes.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
 import {
   type RealtimeAccessChangedMessage,
   realtimeTopics,
@@ -176,6 +179,27 @@ async function waitForClose(
 
 const FRAME_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = 60_000;
+
+describe("Realtime authorization invalidation", () => {
+  it("announces a document lock before topic events are coalesced", () => {
+    const changes: string[] = [];
+    const unsubscribe = subscribeToAuthorizationChanges((change) => {
+      if (change.spaceId) changes.push(change.spaceId);
+    });
+
+    try {
+      const topic = realtimeTopics.document("document-lock-event");
+      sendSyncEvent("lock-event-space", {
+        topic,
+        data: { kind: documentLockChangedKind },
+      });
+      sendSyncEvent("lock-event-space", topic);
+      expect(changes).toEqual(["lock-event-space"]);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
 
 async function joinRoom(connection: SocketFrames, documentId: string): Promise<Y.Doc> {
   connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
@@ -1264,7 +1288,6 @@ describe("Realtime WebSocket readonly documents", () => {
         expect(await readContent(documentId, true)).toContain("before the lock");
 
         await setReadonly(documentId, true);
-        await Bun.sleep(REVALIDATION_MS);
 
         writer.socket.send(
           wsEncodeYjsUpdate(documentId, appendParagraph(writerDoc, "after the lock")),
@@ -1274,6 +1297,7 @@ describe("Realtime WebSocket readonly documents", () => {
         // Neither applied to the room nor written back to the document.
         expect(await readContent(documentId, true)).not.toContain("after the lock");
         expect(await readContent(documentId, false)).not.toContain("after the lock");
+        expect(await readContent(documentId, false)).toContain("before the lock");
         // Reading is unaffected: only the write was withdrawn.
         expect(writer.socket.readyState).toBe(WebSocket.OPEN);
       } finally {

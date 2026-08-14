@@ -133,7 +133,7 @@ export class YjsConnection {
     if (!joined?.canEdit) return;
 
     const room = yRooms.get(roomKey);
-    if (!room?.doc) return;
+    if (!room?.doc || room.writeBlocked) return;
 
     tracedSync("yjs.applyUpdate", () =>
       Y.applyUpdate(room.doc as Y.Doc, update, this.websocket),
