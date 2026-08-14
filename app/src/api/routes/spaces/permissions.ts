@@ -105,7 +105,6 @@ const EDITOR_WITHDRAWABLE_SCOPES: readonly ResourceType[] = [
 ];
 
 async function currentRoleOnResource(
-  spaceId: string,
   resourceType: ResourceType,
   resourceId: string,
   grantee: { userId?: string; groupId?: string },
@@ -123,7 +122,6 @@ async function currentRoleOnResource(
 }
 
 async function requiredRoleForRoleWrite(
-  spaceId: string,
   resourceType: ResourceType,
   resourceId: string,
   grantee: { userId?: string; groupId?: string },
@@ -138,13 +136,7 @@ async function requiredRoleForRoleWrite(
     return Permission.OWNER;
   }
 
-  const displaced = await currentRoleOnResource(
-    spaceId,
-    resourceType,
-    resourceId,
-    grantee,
-    store,
-  );
+  const displaced = await currentRoleOnResource(resourceType, resourceId, grantee, store);
 
   if (meetsPermissionLevel(displaced, Permission.OWNER)) {
     return Permission.OWNER;
@@ -261,7 +253,6 @@ export const POST: ApiRouteHandler = (context) =>
       const store = await openSpaceStore(spaceId);
       return store.tx(async (transaction) => {
         const requiredRole = await requiredRoleForRoleWrite(
-          spaceId,
           targetResourceType,
           targetResourceId,
           grantee,
