@@ -38,38 +38,19 @@ export type RevisionReader =
   | { type: "user"; userId: string | null }
   | { type: "token"; token: ValidateTokenResult };
 
-/** `requiredRole` on the document, for whichever identity the reader carries. Throws 401/403/404. */
-async function verifyReaderRole(
-  spaceId: string,
-  documentId: string,
-  reader: RevisionReader,
-  requiredRole: Permission,
-): Promise<void> {
-  if (reader.type === "system") return;
-  if (reader.type === "token") {
-    await verifyTokenPermission(
-      reader.token,
-      spaceId,
-      ResourceType.DOCUMENT,
-      documentId,
-      requiredRole,
-    );
-    return;
-  }
-  // `null` resolves against the `public` group inside.
-  await verifyDocumentRole(spaceId, documentId, reader.userId, requiredRole);
-}
+/** Every reader but `system`, which is trusted before either check below runs. */
+type CheckedReader = Exclude<RevisionReader, { type: "system" }>;
 
 /**
- * Whether the reader holds `feature` on this document. Scoped to the document
+ * Whether the reader may see history on this document. Scoped to the document
  * because a document- or tree-level share carries no space role.
  */
-async function readerHasFeature(
+async function canViewHistory(
   spaceId: string,
   documentId: string,
-  reader: Exclude<RevisionReader, { type: "system" }>,
-  feature: Feature,
+  reader: CheckedReader,
 ): Promise<boolean> {
+  const feature = Feature.VIEW_HISTORY;
   if (reader.type === "token") {
     return tokenHasFeature(reader.token, spaceId, feature, documentId);
   }
@@ -77,27 +58,28 @@ async function readerHasFeature(
     // Unauthenticated: the `public` group is the only grantee it can be.
     return hasFeature(spaceId, feature, "", [PUBLIC_GROUP], documentId);
   }
-  return hasFeature(
-    spaceId,
-    feature,
-    reader.userId,
-    await getUserGroups(reader.userId),
-    documentId,
-  );
+  const groups = await getUserGroups(reader.userId);
+  return hasFeature(spaceId, feature, reader.userId, groups, documentId);
 }
 
-/** {@link readerHasFeature}, as a guard: throws 403 when the reader lacks it. */
-async function verifyReaderFeature(
+/** Editor on the document, whichever identity the reader carries. Throws 401/403/404. */
+async function requireEditor(
   spaceId: string,
   documentId: string,
-  reader: Exclude<RevisionReader, { type: "system" }>,
-  feature: Feature,
+  reader: CheckedReader,
 ): Promise<void> {
-  if (!(await readerHasFeature(spaceId, documentId, reader, feature))) {
-    throw forbiddenResponse(
-      `You don't have access to the ${feature.replace("_", " ")} feature`,
+  if (reader.type === "token") {
+    await verifyTokenPermission(
+      reader.token,
+      spaceId,
+      ResourceType.DOCUMENT,
+      documentId,
+      Permission.EDITOR,
     );
+    return;
   }
+  // `null` resolves against the `public` group inside.
+  await verifyDocumentRole(spaceId, documentId, reader.userId, Permission.EDITOR);
 }
 
 /**
@@ -112,11 +94,8 @@ async function isNeverPublished(
 ): Promise<boolean> {
   if (publishedRev === null || rev > publishedRev) return true;
 
-  const metadata = await getRevisionMetadata(
-    await openSpaceStore(spaceId),
-    documentId,
-    rev,
-  );
+  const store = await openSpaceStore(spaceId);
+  const metadata = await getRevisionMetadata(store, documentId, rev);
   return metadata === null || metadata.status !== null;
 }
 
@@ -161,28 +140,27 @@ export async function verifyRevisionAccess(
       throw notFoundResponse("Document");
     }
     publishedRev = document.publishedRev;
-
-    // Plain read access already buys the published snapshot's content.
-    if (publishedRev !== null && requested.every((rev) => rev === publishedRev)) {
-      return {
-        metadata: await readerHasFeature(
-          spaceId,
-          documentId,
-          reader,
-          Feature.VIEW_HISTORY,
-        ),
-      };
-    }
   }
 
-  await verifyReaderFeature(spaceId, documentId, reader, Feature.VIEW_HISTORY);
+  const history = await canViewHistory(spaceId, documentId, reader);
+
+  // Plain read access already buys the published snapshot's content.
+  const snapshotOnly =
+    requested.length > 0 && requested.every((rev) => rev === publishedRev);
+  if (snapshotOnly) {
+    return { metadata: history };
+  }
+
+  if (!history) {
+    throw forbiddenResponse("You don't have access to the view history feature");
+  }
 
   // Never-published content stays behind the publish boundary.
   const neverPublished = await Promise.all(
     requested.map((rev) => isNeverPublished(spaceId, documentId, rev, publishedRev)),
   );
   if (neverPublished.some(Boolean)) {
-    await verifyReaderRole(spaceId, documentId, reader, Permission.EDITOR);
+    await requireEditor(spaceId, documentId, reader);
   }
 
   return { metadata: true };
