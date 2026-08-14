@@ -134,6 +134,7 @@ async function handleRealtimeWebSocket(
   ];
 
   const closeForbidden = (): void => {
+    websocket.send(wsEncode(WsMsgType.AccessChanged, { scope: "space", access: "none" }));
     websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
     for (const handler of handlers) handler.close();
     websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
@@ -184,6 +185,9 @@ async function handleRealtimeWebSocket(
   const offAuthorizationChanges = subscribeToAuthorizationChanges((change) => {
     if (change.spaceId !== spaceId && change.userId !== userId) return;
 
+    websocket.send(
+      wsEncode(WsMsgType.AccessChanged, { scope: "space", access: "refresh" }),
+    );
     noteAclChange(spaceId);
     scheduleRevalidation();
   });
@@ -194,6 +198,7 @@ async function handleRealtimeWebSocket(
 
       if (type === WsMsgType.Ping) {
         websocket.send(wsEncode(WsMsgType.Pong, {}));
+        scheduleRevalidation();
         return;
       }
 

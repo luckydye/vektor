@@ -169,6 +169,13 @@ export class YjsConnection {
 
     if (access === "none") {
       this.leaveRoom(roomKey);
+      this.websocket.send(
+        wsEncode(WsMsgType.AccessChanged, {
+          scope: "document",
+          resourceId: documentId,
+          access: "none",
+        }),
+      );
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       appLogger.info("Evicted realtime connection from a room it lost access to", {
         spaceId: this.spaceId,
@@ -177,9 +184,19 @@ export class YjsConnection {
       return undefined;
     }
 
+    const editAccessChanged = joined.canEdit !== (access === "edit");
     joined.canEdit = access === "edit";
     joined.verifiedAt = checkedAt;
     joined.aclVersion = version;
+    if (editAccessChanged) {
+      this.websocket.send(
+        wsEncode(WsMsgType.AccessChanged, {
+          scope: "document",
+          resourceId: documentId,
+          access,
+        }),
+      );
+    }
     return joined;
   }
 

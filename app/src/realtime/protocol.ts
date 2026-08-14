@@ -43,6 +43,13 @@ export interface RealtimeEventMessage {
   resync?: true;
 }
 
+export interface RealtimeAccessChangedMessage {
+  type: "access-changed";
+  scope: "space" | "document";
+  access: "refresh" | "edit" | "view" | "none";
+  resourceId?: string;
+}
+
 export interface PresenceUser {
   // Deliberately no email: presence is broadcast to every room participant
   // (viewer role), so it must not carry PII. Avatars/colors seed by `id`.
@@ -168,6 +175,7 @@ export const WsMsgType = {
    */
   Ping: 10,
   Pong: 11,
+  AccessChanged: 12,
 } as const;
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];

@@ -9,6 +9,7 @@ import {
   type PresenceUpdateMessage,
   type PresenceUpdatePayload,
   type PresenceUser,
+  type RealtimeAccessChangedMessage,
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
@@ -600,6 +601,10 @@ interface RealtimeConnection {
   pongTimer: ReturnType<typeof setTimeout> | null;
 }
 
+export type RealtimeAccessChange = Omit<RealtimeAccessChangedMessage, "type"> & {
+  spaceId: string;
+};
+
 interface PresenceSubscription<TState = unknown> {
   room: string;
   callback: (event: PresenceMessage<TState>) => void;
@@ -627,6 +632,9 @@ export class ApiClient {
   accessToken?: string;
   socketHost?: string;
   realtimeConnections = new Map<string, RealtimeConnection>();
+  private readonly realtimeAccessListeners = new Set<
+    (change: RealtimeAccessChange) => void
+  >();
   private readonly replica = new ReplicaCache();
 
   constructor(options: {
@@ -2446,6 +2454,14 @@ export class ApiClient {
       return;
     }
 
+    if (type === WsMsgType.AccessChanged) {
+      const change = wsDecodeJson<Omit<RealtimeAccessChangedMessage, "type">>(payload);
+      for (const listener of this.realtimeAccessListeners) {
+        listener({ spaceId: connection.spaceId, ...change });
+      }
+      return;
+    }
+
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
       for (const subscription of connection.subscriptions) {
@@ -2788,6 +2804,13 @@ export class ApiClient {
 
       this.maybeCloseRealtimeConnection(connection);
     };
+  }
+
+  subscribeToRealtimeAccessChanges(
+    listener: (change: RealtimeAccessChange) => void,
+  ): () => void {
+    this.realtimeAccessListeners.add(listener);
+    return () => this.realtimeAccessListeners.delete(listener);
   }
 
   subscribeToDocument(

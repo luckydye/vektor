@@ -12,6 +12,7 @@ import {
 import { SsrUrlContext } from "#composeables/useRoute.ts";
 import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
@@ -101,7 +102,8 @@ export function SpaceApp(props: Props) {
     );
   }
 
-  const { currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
+  const { currentSpace, currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
+  const toast = useToast();
   const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
   const [hasMounted, setHasMounted] = createSignal(false);
   const [mobileSidebarOffset, setMobileSidebarOffset] = createSignal(0);
@@ -166,7 +168,41 @@ export function SpaceApp(props: Props) {
     const spaceId = activeSpaceId();
     if (spaceId) extensions.init(spaceId).catch(console.error);
 
-    onCleanup(() => window.removeEventListener("resize", resetMobileDrawerOnDesktop));
+    let redirectingAfterRevocation = false;
+    let accessRefresh = Promise.resolve();
+
+    const handleRevocation = () => {
+      if (redirectingAfterRevocation) return;
+      redirectingAfterRevocation = true;
+      toast.show("Your access to this space was revoked.", "error", 10_000);
+      setTimeout(() => window.location.assign("/spaces"), 1200);
+    };
+
+    const refreshAccess = () => {
+      accessRefresh = accessRefresh
+        .then(async () => {
+          const previousRole = currentSpace()?.userRole;
+          const spaces = await api.spaces.get();
+          const refreshedSpace = spaces.find((candidate) => candidate.id === spaceId);
+          if (!refreshedSpace) {
+            handleRevocation();
+          } else if (refreshedSpace.userRole !== previousRole) {
+            toast.show("Your permissions in this space changed.", "info");
+          }
+        })
+        .catch(console.error);
+    };
+
+    const unsubscribeAccessChanges = api.subscribeToRealtimeAccessChanges((change) => {
+      if (change.spaceId !== spaceId || change.scope !== "space") return;
+      if (change.access === "none") handleRevocation();
+      else if (change.access === "refresh") refreshAccess();
+    });
+
+    onCleanup(() => {
+      unsubscribeAccessChanges();
+      window.removeEventListener("resize", resetMobileDrawerOnDesktop);
+    });
   });
 
   const layoutStyle = createMemo(() => ({

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import {
+  type RealtimeAccessChangedMessage,
   realtimeTopics,
   WS_CLOSE_FORBIDDEN,
   WS_CLOSE_UNAUTHORIZED,
@@ -38,6 +39,24 @@ interface SocketFrames {
   socket: WebSocket;
   expectNoFrame(type: WsMsgType, timeoutMs?: number): Promise<void>;
   waitForFrame(type: WsMsgType, timeoutMs?: number): Promise<Uint8Array>;
+}
+
+async function waitForAccessChange(
+  connection: SocketFrames,
+  expected: Omit<RealtimeAccessChangedMessage, "type">,
+): Promise<void> {
+  while (true) {
+    const change = wsDecodeJson<Omit<RealtimeAccessChangedMessage, "type">>(
+      await connection.waitForFrame(WsMsgType.AccessChanged, FRAME_TIMEOUT_MS),
+    );
+    if (
+      change.scope === expected.scope &&
+      change.access === expected.access &&
+      change.resourceId === expected.resourceId
+    ) {
+      return;
+    }
+  }
 }
 
 let serverProcess: TestServerProcess;
@@ -961,7 +980,11 @@ describe("Realtime WebSocket access revocation", () => {
         Y.applyUpdate(ownerDoc, wsDecodeYjsUpdate(await accepted).update, "remote");
 
         await revokeRole(editor.userId, documentId);
-        await Bun.sleep(REVALIDATION_MS);
+        await waitForAccessChange(editorConnection, {
+          scope: "document",
+          resourceId: documentId,
+          access: "view",
+        });
 
         editorConnection.socket.send(
           wsEncodeYjsUpdate(documentId, appendParagraph(editorDoc, "after revocation")),
@@ -1003,7 +1026,11 @@ describe("Realtime WebSocket access revocation", () => {
         const ownerDoc = await joinRoom(ownerConnection, documentId);
 
         await setRole(downgraded.userId, "viewer");
-        await Bun.sleep(REVALIDATION_MS);
+        await waitForAccessChange(editorConnection, {
+          scope: "document",
+          resourceId: documentId,
+          access: "view",
+        });
 
         const broadcast = editorConnection.waitForFrame(
           WsMsgType.YjsUpdate,
@@ -1050,6 +1077,11 @@ describe("Realtime WebSocket access revocation", () => {
       await connection.expectNoFrame(WsMsgType.Error);
 
       await revokeRole(member.userId);
+
+      await waitForAccessChange(connection, {
+        scope: "space",
+        access: "none",
+      });
 
       expect(
         wsDecodeJson<{ message: string }>(
