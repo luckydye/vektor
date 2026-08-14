@@ -13,7 +13,9 @@ import type {
 } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatDate } from "#utils/datetime.ts";
 import { Button } from "./Button.tsx";
 import "./AvatarElement.ts";
@@ -191,6 +193,11 @@ export function SpaceMembers() {
       void fetchUsers();
     }),
   );
+
+  useSync(currentSpaceId, [realtimeTopics.acl], (topics) => {
+    if (!topics.includes(realtimeTopics.acl)) return;
+    void Promise.all([fetchPermissions(), fetchUsers()]);
+  });
 
   createEffect(
     on(
@@ -513,7 +520,7 @@ export function SpaceMembers() {
     );
   }
 
-  function canEditMember(userId: string | undefined, perm: PermissionEntry): boolean {
+  function canEditMember(userId: string | undefined): boolean {
     const me = user();
     if (!me || !currentSpace()) return false;
     if (me.id === userId) return false;
@@ -729,10 +736,7 @@ export function SpaceMembers() {
                                     </div>
                                     <div class="flex items-center gap-3">
                                       <Show
-                                        when={canEditMember(
-                                          grant.permission.userId,
-                                          grant,
-                                        )}
+                                        when={canEditMember(grant.permission.userId)}
                                         fallback={
                                           <span
                                             class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${getRoleBadgeClass(grant.permission.permission)}`}

@@ -16,6 +16,10 @@ export const realtimeTopics = {
   workflowRun: (runId: string) => `workflow-run:${runId}`,
 } as const;
 
+/** Application close codes for an authorization refusal. */
+export const WS_CLOSE_UNAUTHORIZED = 4401;
+export const WS_CLOSE_FORBIDDEN = 4403;
+
 export type RealtimeTopic = string;
 type RealtimeEventData = Record<string, unknown> | null;
 
@@ -37,6 +41,13 @@ export interface RealtimeEventMessage {
    * `data` must refetch on it regardless.
    */
   resync?: true;
+}
+
+export interface RealtimeAccessChangedMessage {
+  type: "access-changed";
+  scope: "space" | "document";
+  access: "refresh" | "edit" | "view" | "none";
+  resourceId?: string;
 }
 
 export interface PresenceUser {
@@ -164,6 +175,7 @@ export const WsMsgType = {
    */
   Ping: 10,
   Pong: 11,
+  AccessChanged: 12,
 } as const;
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];

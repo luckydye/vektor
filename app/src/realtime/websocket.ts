@@ -1,6 +1,8 @@
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
+import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import {
+  isAccessDenied,
   verifyDocumentRole,
   verifyExtensionAccess,
   verifyResourceAccess,
@@ -15,15 +17,17 @@ import {
   decrementWebSocketConnections,
   incrementWebSocketConnections,
 } from "#observability/metrics.ts";
-import { PresenceConnection } from "./presence.ts";
+import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
+  WS_CLOSE_FORBIDDEN,
+  WS_CLOSE_UNAUTHORIZED,
   WsMsgType,
   wsDecode,
   wsEncode,
 } from "./protocol.ts";
 import { TopicSubscriptions } from "./subscriptions.ts";
-import { YjsConnection } from "./yjsConnection.ts";
+import { noteAclChange, YjsConnection } from "./yjsConnection.ts";
 
 /**
  * One family of frames plus the per-connection state it owns. Handlers are
@@ -32,6 +36,7 @@ import { YjsConnection } from "./yjsConnection.ts";
  */
 interface FrameHandler {
   handle(type: WsMsgType, payload: Uint8Array): Promise<boolean>;
+  revalidate(): Promise<void>;
   close(): void;
 }
 
@@ -44,25 +49,26 @@ async function authorizePresenceRoom(
   spaceId: string,
   userId: string,
   room: string,
-): Promise<boolean> {
+): Promise<PresenceRoomAccess> {
   const extensionId = extensionIdFromPresenceRoom(room);
   if (extensionId !== null) {
-    if (!extensionId) return false;
-    if (!(await getExtension(await openSpaceStore(spaceId), extensionId))) return false;
-    if (isNoAuthMode()) return true;
+    if (!extensionId) return "denied";
     try {
+      const store = await openSpaceStore(spaceId);
+      if (!(await getExtension(store, extensionId))) return "denied";
+      if (isNoAuthMode()) return "allowed";
       await verifyExtensionAccess(spaceId, extensionId, userId);
-      return true;
-    } catch {
-      return false;
+      return "allowed";
+    } catch (error) {
+      return isAccessDenied(error) ? "denied" : "unknown";
     }
   }
 
   try {
     await verifyDocumentRole(spaceId, room, userId, Permission.VIEWER);
-    return true;
-  } catch {
-    return false;
+    return "allowed";
+  } catch (error) {
+    return isAccessDenied(error) ? "denied" : "unknown";
   }
 }
 
@@ -80,7 +86,7 @@ async function authenticateConnection(
 
   if (!session?.user?.id) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
-    websocket.close();
+    websocket.close(WS_CLOSE_UNAUTHORIZED, "Unauthorized");
     return null;
   }
 
@@ -89,9 +95,14 @@ async function authenticateConnection(
     // a document-level grantee is admitted as it is over HTTP. Authorizes
     // nothing: every topic, Yjs room and presence room is checked on its own.
     await verifyResourceAccess(spaceId, session.user.id);
-  } catch {
+  } catch (error) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-    websocket.close();
+    if (isAccessDenied(error)) {
+      websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
+    } else {
+      appLogger.warn("Could not authorize a realtime connection", { error, spaceId });
+      websocket.close();
+    }
     return null;
   }
 
@@ -111,16 +122,75 @@ async function handleRealtimeWebSocket(
   const userId = await authenticateConnection(websocket, request, spaceId);
   if (userId === null) return;
 
-  // Each claims a disjoint set of frame types, so this order is only the order
-  // they are torn down in: stop the event fan-out before the rooms it may push
-  // into go away.
+  // Teardown order matters because presence and Yjs share room membership.
+  const yjs = new YjsConnection(spaceId, userId, websocket);
   const handlers: FrameHandler[] = [
     new TopicSubscriptions(spaceId, userId, websocket),
-    new YjsConnection(spaceId, userId, websocket),
-    new PresenceConnection(spaceId, websocket, (room) =>
-      authorizePresenceRoom(spaceId, userId, room),
-    ),
+    yjs,
+    new PresenceConnection(spaceId, websocket, {
+      authorizeRoom: (room) => authorizePresenceRoom(spaceId, userId, room),
+      holdsYjsRoom: (room) => yjs.holdsRoom(room),
+    }),
   ];
+
+  const closeForbidden = (): void => {
+    websocket.send(wsEncode(WsMsgType.AccessChanged, { scope: "space", access: "none" }));
+    websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+    for (const handler of handlers) handler.close();
+    websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
+    appLogger.info("Closed realtime connection whose space access was revoked", {
+      spaceId,
+    });
+  };
+
+  const revalidateConnection = async (): Promise<void> => {
+    if (websocket.readyState !== 1) return;
+
+    try {
+      // Document-level grantees may have no space role.
+      await verifyResourceAccess(spaceId, userId);
+    } catch (error) {
+      if (!isAccessDenied(error)) {
+        appLogger.warn("Could not re-authorize a realtime connection; keeping it", {
+          error,
+          spaceId,
+        });
+        return;
+      }
+      closeForbidden();
+      return;
+    }
+
+    for (const handler of handlers) {
+      try {
+        await handler.revalidate();
+      } catch (error) {
+        appLogger.warn("Failed to re-authorize part of a realtime connection", {
+          error,
+          spaceId,
+        });
+      }
+    }
+  };
+
+  // Serialize passes so bursts cannot race room eviction.
+  let pendingRevalidation: Promise<void> = Promise.resolve();
+  const scheduleRevalidation = (): void => {
+    pendingRevalidation = pendingRevalidation
+      .then(revalidateConnection)
+      .catch((error) => {
+        appLogger.warn("Failed to re-authorize realtime connection", { error, spaceId });
+      });
+  };
+  const offAuthorizationChanges = subscribeToAuthorizationChanges((change) => {
+    if (change.spaceId !== spaceId && change.userId !== userId) return;
+
+    websocket.send(
+      wsEncode(WsMsgType.AccessChanged, { scope: "space", access: "refresh" }),
+    );
+    noteAclChange(spaceId);
+    scheduleRevalidation();
+  });
 
   websocket.on("message", async (rawMessage: Buffer | ArrayBuffer | Buffer[]) => {
     try {
@@ -128,6 +198,7 @@ async function handleRealtimeWebSocket(
 
       if (type === WsMsgType.Ping) {
         websocket.send(wsEncode(WsMsgType.Pong, {}));
+        scheduleRevalidation();
         return;
       }
 
@@ -143,6 +214,7 @@ async function handleRealtimeWebSocket(
   });
 
   websocket.on("close", () => {
+    offAuthorizationChanges();
     for (const handler of handlers) handler.close();
     appLogger.info("Realtime WebSocket connection closed", { spaceId });
   });

@@ -25,6 +25,13 @@ function broadcastPresence(
   }
 }
 
+export type PresenceRoomAccess = "allowed" | "denied" | "unknown";
+
+interface PresenceConnectionHooks {
+  authorizeRoom: (room: string) => Promise<PresenceRoomAccess>;
+  holdsYjsRoom: (room: string) => boolean;
+}
+
 /** Tracks presence registrations belonging to one realtime connection. */
 export class PresenceConnection {
   private readonly joinedRooms = new Map<string, Set<string>>();
@@ -32,7 +39,7 @@ export class PresenceConnection {
   constructor(
     private readonly spaceId: string,
     private readonly websocket: WebSocket,
-    private readonly authorizeRoom: (room: string) => Promise<boolean>,
+    private readonly hooks: PresenceConnectionHooks,
   ) {}
 
   /** Handles a presence frame and returns whether the frame was recognized. */
@@ -56,31 +63,52 @@ export class PresenceConnection {
   }
 
   close(): void {
-    for (const [roomKey, clientIds] of this.joinedRooms.entries()) {
-      const room = yRooms.get(roomKey);
-      if (!room) {
+    for (const roomKey of [...this.joinedRooms.keys()]) {
+      this.leaveRoomEntirely(roomKey);
+    }
+  }
+
+  async revalidate(): Promise<void> {
+    for (const roomKey of [...this.joinedRooms.keys()]) {
+      if ((await this.hooks.authorizeRoom(this.roomIdOf(roomKey))) !== "denied") {
         continue;
       }
+      this.leaveRoomEntirely(roomKey);
+    }
+  }
 
-      const roomId = roomKey.slice(this.spaceId.length + 1);
-      for (const clientId of clientIds) {
-        room.presences.delete(clientId);
-        broadcastPresence(room, this.websocket, WsMsgType.PresenceLeave, {
-          room: roomId,
-          clientId,
-          timestamp: new Date().toISOString(),
-        });
-      }
+  private roomIdOf(roomKey: string): string {
+    return roomKey.slice(this.spaceId.length + 1);
+  }
 
+  private leaveRoomEntirely(roomKey: string): void {
+    const clientIds = this.joinedRooms.get(roomKey);
+    this.joinedRooms.delete(roomKey);
+    const room = yRooms.get(roomKey);
+    if (!room || !clientIds) {
+      return;
+    }
+
+    const roomId = this.roomIdOf(roomKey);
+    for (const clientId of clientIds) {
+      room.presences.delete(clientId);
+      broadcastPresence(room, this.websocket, WsMsgType.PresenceLeave, {
+        room: roomId,
+        clientId,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (!this.hooks.holdsYjsRoom(roomId)) {
       room.clients.delete(this.websocket);
-      if (room.clients.size === 0 && room.presences.size === 0) {
-        yRooms.delete(roomKey);
-      }
+    }
+    if (room.clients.size === 0 && room.presences.size === 0) {
+      yRooms.delete(roomKey);
     }
   }
 
   private async join(join: PresenceJoinPayload): Promise<void> {
-    if (!(await this.authorizeRoom(join.room))) {
+    if ((await this.hooks.authorizeRoom(join.room)) !== "allowed") {
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       return;
     }

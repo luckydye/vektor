@@ -9,9 +9,11 @@ import {
   type PresenceUpdateMessage,
   type PresenceUpdatePayload,
   type PresenceUser,
+  type RealtimeAccessChangedMessage,
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
+  WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
   wsDecodeJson,
@@ -561,6 +563,9 @@ const REALTIME_IDLE_GRACE_MS = 2_000;
 const REALTIME_PING_INTERVAL_MS = 25_000;
 const REALTIME_PONG_TIMEOUT_MS = 10_000;
 
+/** Prevent an accept-then-refuse socket from resetting reconnect backoff. */
+const RECONNECT_SETTLED_MS = 5_000;
+
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
   callback: (event: RealtimeEventMessage) => void;
@@ -596,6 +601,10 @@ interface RealtimeConnection {
   pongTimer: ReturnType<typeof setTimeout> | null;
 }
 
+export type RealtimeAccessChange = Omit<RealtimeAccessChangedMessage, "type"> & {
+  spaceId: string;
+};
+
 interface PresenceSubscription<TState = unknown> {
   room: string;
   callback: (event: PresenceMessage<TState>) => void;
@@ -623,6 +632,9 @@ export class ApiClient {
   accessToken?: string;
   socketHost?: string;
   realtimeConnections = new Map<string, RealtimeConnection>();
+  private readonly realtimeAccessListeners = new Set<
+    (change: RealtimeAccessChange) => void
+  >();
   private readonly replica = new ReplicaCache();
 
   constructor(options: {
@@ -2407,7 +2419,9 @@ export class ApiClient {
 
     socket.addEventListener("open", () => {
       if (connection.socket !== socket) return; // stale handler from a prior socket
-      connection.reconnectAttempts = 0;
+      setTimeout(() => {
+        if (connection.socket === socket) connection.reconnectAttempts = 0;
+      }, RECONNECT_SETTLED_MS);
       const isReconnect = connection.hasConnected;
       connection.hasConnected = true;
       this.resyncRealtimeConnection(connection);
@@ -2420,9 +2434,9 @@ export class ApiClient {
       this.handleRealtimeMessage(connection, event);
     });
 
-    const onClose = () => {
+    const onClose = (event: Event) => {
       if (connection.socket !== socket) return; // a newer socket already took over
-      this.handleRealtimeClose(connection);
+      this.handleRealtimeClose(connection, (event as CloseEvent).code);
     };
     socket.addEventListener("close", onClose);
     socket.addEventListener("error", onClose);
@@ -2437,6 +2451,14 @@ export class ApiClient {
 
     if (type === WsMsgType.Pong) {
       this.clearRealtimePongTimeout(connection);
+      return;
+    }
+
+    if (type === WsMsgType.AccessChanged) {
+      const change = wsDecodeJson<Omit<RealtimeAccessChangedMessage, "type">>(payload);
+      for (const listener of this.realtimeAccessListeners) {
+        listener({ spaceId: connection.spaceId, ...change });
+      }
       return;
     }
 
@@ -2573,9 +2595,15 @@ export class ApiClient {
     }
   }
 
-  private handleRealtimeClose(connection: RealtimeConnection): void {
+  private handleRealtimeClose(connection: RealtimeConnection, code?: number): void {
     this.stopRealtimeHeartbeat(connection);
     if (connection.closed) return;
+
+    // A later subscription creates a fresh connection and authorization attempt.
+    if (code === WS_CLOSE_FORBIDDEN) {
+      this.teardownRealtimeConnection(connection);
+      return;
+    }
 
     // No active interest left — let it stay closed rather than reconnecting.
     if (
@@ -2776,6 +2804,13 @@ export class ApiClient {
 
       this.maybeCloseRealtimeConnection(connection);
     };
+  }
+
+  subscribeToRealtimeAccessChanges(
+    listener: (change: RealtimeAccessChange) => void,
+  ): () => void {
+    this.realtimeAccessListeners.add(listener);
+    return () => this.realtimeAccessListeners.delete(listener);
   }
 
   subscribeToDocument(

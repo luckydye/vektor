@@ -5,6 +5,7 @@ import {
   createSignal,
   type JSX,
   Match,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -119,6 +120,15 @@ export function DocumentPageView(props: Props) {
   });
 
   const doc = createMemo(() => docQuery.data());
+  const [realtimeAccess, setRealtimeAccess] = createSignal<"edit" | "view" | "none">();
+
+  createEffect(
+    on(
+      () => doc()?.id,
+      () => setRealtimeAccess(undefined),
+      { defer: true },
+    ),
+  );
 
   const breadcrumbsQuery = useQuery({
     queryKey: createMemo(() => ["document_breadcrumbs", currentSpace()?.id, doc()?.id]),
@@ -234,7 +244,12 @@ export function DocumentPageView(props: Props) {
     },
   );
 
-  const userCanEdit = createMemo(() => canEdit(currentSpace()?.userRole));
+  const userCanEdit = createMemo(() => {
+    const access = realtimeAccess();
+    return (
+      access === "edit" || (access === undefined && canEdit(currentSpace()?.userRole))
+    );
+  });
 
   const isReadonly = createMemo(() =>
     isDraft()
@@ -315,6 +330,35 @@ export function DocumentPageView(props: Props) {
   onMount(() => {
     setHasMounted(true);
     setNow(Date.now());
+
+    const unsubscribeAccessChanges = api.subscribeToRealtimeAccessChanges((change) => {
+      const currentDocument = doc();
+      if (
+        change.spaceId !== currentSpace()?.id ||
+        change.scope !== "document" ||
+        change.resourceId !== currentDocument?.id ||
+        change.access === "refresh"
+      ) {
+        return;
+      }
+
+      setRealtimeAccess(change.access);
+      if (change.access === "edit") {
+        toast.show("You can edit this document again.", "info");
+        return;
+      }
+
+      resetEditingState();
+      if (change.access === "view") {
+        toast.show("Your access to this document changed to view only.", "info");
+        return;
+      }
+
+      toast.show("Your access to this document was revoked.", "error", 10_000);
+      navigate("/", { replace: true });
+    });
+
+    onCleanup(unsubscribeAccessChanges);
   });
 
   createEffect(() => {

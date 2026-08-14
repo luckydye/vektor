@@ -11,6 +11,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
+import { publishAuthorizationChange } from "#acl/events.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import type { auth } from "#auth";
 import { config } from "#config";
@@ -117,6 +118,7 @@ export function createIdpGroupSync({ auth, authDb, appConfig }: IdpSyncDeps) {
         .set({ ...changes, updatedAt: new Date() })
         .where(eq(user.id, userId));
       if (changes.groups) {
+        publishAuthorizationChange({ userId });
         appLogger.info("Refreshed OAuth groups from IdP", {
           userId,
           groups: changes.groups,

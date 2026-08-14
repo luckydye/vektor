@@ -41,6 +41,11 @@ import { getSpace } from "#db/space/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 
+/** Distinguishes an access verdict from a failure to read the ACL. */
+export function isAccessDenied(error: unknown): boolean {
+  return error instanceof Response;
+}
+
 /**
  * Verify `userId` actually holds `requiredRole` on `target`, using the same
  * resolution as an interactive session would: document targets fall back to
