@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import type { AIChatSessionListEntry } from "#api/client.ts";
-import { formatAbsoluteDate } from "#utils/datetime.ts";
+import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Icon } from "./Icon.tsx";
 
 interface Props {

@@ -19,6 +19,9 @@ import {
   listAccessTokens,
   listTokenResources,
 } from "#db/space/accessTokens.ts";
+import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
+
+const MAX_ACCESS_TOKEN_EXPIRY_DAYS = 3650;
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens
@@ -110,10 +113,12 @@ export const POST: ApiRouteHandler = (context) =>
 
     let expiresAt: Date | undefined;
     if (expiresInDays !== undefined) {
-      if (typeof expiresInDays !== "number" || expiresInDays <= 0) {
-        throw badRequestResponse("expiresInDays must be a positive number");
+      if (!isValidPositiveDayDuration(expiresInDays, MAX_ACCESS_TOKEN_EXPIRY_DAYS)) {
+        throw badRequestResponse(
+          `expiresInDays must be greater than 0 and at most ${MAX_ACCESS_TOKEN_EXPIRY_DAYS}`,
+        );
       }
-      expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      expiresAt = addPositiveDays(new Date(), expiresInDays);
     }
 
     // Create the token

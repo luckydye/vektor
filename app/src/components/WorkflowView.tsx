@@ -17,7 +17,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { formatDateTime } from "#utils/datetime.ts";
+import { formatDateTime } from "#utils/dateFormat.ts";
 import { isSafeUrlValue, sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";

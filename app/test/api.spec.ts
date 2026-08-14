@@ -163,6 +163,27 @@ describe("API Tests - Spaces", () => {
   });
 });
 
+describe("API Tests - Access Tokens", () => {
+  it.each([3651, 1e308])("rejects an excessive expiry of %s days", async (days) => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/access-tokens`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Invalid expiry",
+          permission: "extensions",
+          expiresInDays: days,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "expiresInDays must be greater than 0 and at most 3650",
+    });
+  });
+});
+
 describe("API Tests - Extensions", () => {
   function createExtensionPackage(id: string): Buffer {
     return createZipBuffer([
@@ -281,6 +302,66 @@ describe("API Tests - Documents", () => {
     expect(data.document.properties.title).toBe("Test Document");
 
     testDocumentId = data.document.id;
+  });
+
+  it("preserves valid importer timestamps from a job token", async () => {
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const createdAt = "2001-02-03T04:05:06.000Z";
+    const updatedAt = "2002-03-04T05:06:07.000Z";
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Job-Token": jobToken,
+      },
+      body: JSON.stringify({
+        content: "<p>Imported document</p>",
+        createdAt,
+        updatedAt,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const { document } = await response.json();
+    expect(document.createdAt).toBe(createdAt);
+    expect(document.updatedAt).toBe(updatedAt);
+  });
+
+  it.each([
+    ["createdAt", "not-a-date"],
+    ["updatedAt", "999999-01-01T00:00:00Z"],
+    ["createdAt", 123],
+  ])("rejects invalid importer %s values", async (field, value) => {
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Job-Token": jobToken,
+      },
+      body: JSON.stringify({ content: "<p>Invalid timestamp</p>", [field]: value }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: `${field} must be a valid date string`,
+    });
+  });
+
+  it("rejects custom timestamps from a browser session", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Spoofed timestamp</p>",
+        createdAt: "2001-02-03T04:05:06.000Z",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error:
+        "Custom document timestamps require access-token or job-token authentication",
+    });
   });
 
   it("should derive slug from wrapped title property", async () => {

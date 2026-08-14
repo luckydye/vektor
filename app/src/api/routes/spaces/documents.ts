@@ -34,6 +34,7 @@ import {
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
 import { contentIsHtml } from "#documents/types.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
@@ -50,6 +51,19 @@ function propertyInitToSlugText(value: PropertyInit | undefined): string | undef
 
   if (value === null) return undefined;
   return String(value);
+}
+
+function parseDocumentTimestamp(value: unknown, field: string): Date | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "") {
+    throw badRequestResponse(`${field} must be a valid date string`);
+  }
+
+  try {
+    return normalizeTimestamp(value);
+  } catch {
+    throw badRequestResponse(`${field} must be a valid date string`);
+  }
 }
 
 export const GET: ApiRouteHandler = (context) =>
@@ -208,10 +222,13 @@ export const POST: ApiRouteHandler = (context) =>
       parentId = typeof jsonParentId === "string" ? jsonParentId : undefined;
       type = typeof jsonType === "string" ? jsonType : undefined;
       if (jsonSlug && typeof jsonSlug === "string") slugHint = jsonSlug;
-      if (jsonCreatedAt && typeof jsonCreatedAt === "string")
-        createdAt = new Date(jsonCreatedAt);
-      if (jsonUpdatedAt && typeof jsonUpdatedAt === "string")
-        updatedAt = new Date(jsonUpdatedAt);
+      createdAt = parseDocumentTimestamp(jsonCreatedAt, "createdAt");
+      updatedAt = parseDocumentTimestamp(jsonUpdatedAt, "updatedAt");
+      if ((createdAt || updatedAt) && auth.type !== "job") {
+        throw badRequestResponse(
+          "Custom document timestamps require access-token or job-token authentication",
+        );
+      }
       content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType, type);
     } else {
       const rawContent = await context.req.raw.text();

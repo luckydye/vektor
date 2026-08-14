@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, on, onMount, Show } from "solid-js";
 import { api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { formatAbsoluteDate } from "#utils/datetime.ts";
+import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 
 export function SpaceSecretsSettings() {

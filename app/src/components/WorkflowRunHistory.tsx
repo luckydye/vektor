@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { formatDateTime } from "#utils/datetime.ts";
+import { formatDateTime } from "#utils/dateFormat.ts";
 import { Icon } from "./Icon.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 

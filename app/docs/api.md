@@ -342,7 +342,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
   `viewer`/`editor`/`owner`, or the special value `"extensions"` for a space-wide
   `manage_extensions` capability grant with no resource), `resourceType`/`resourceId`
   (required unless `permission === "extensions"`; validated against
-  `ResourceType`), `expiresInDays?` (positive number).
+  `ResourceType`), `expiresInDays?` (number greater than 0 and at most 3650).
 - **Behavior**: `verifyCanGrantTokenAccess` ensures the caller cannot delegate more
   authority than they hold.
 - **Returns**: `201 { id, token, resources, message }` — the raw token string is only
@@ -694,7 +694,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Auth**: session or access token; `editor` role.
 - **Body**: JSON (`Content-Type: application/json`) — `content` (string, required),
   `properties?` (object of property inits, e.g. `{ title, slug, ... }`),
-  `parentId?`, `type?`, `slug?`, `createdAt?`/`updatedAt?` (ISO strings),
+  `parentId?`, `type?`, `slug?`, `createdAt?`/`updatedAt?` (valid date strings;
+  accepted only with access-token or job-token authentication for imports),
   `contentType?` (source content type, e.g. `text/markdown`, converted to HTML).
   Or raw body (any other `Content-Type`) with `X-Document-Type`,
   `X-Document-Title`, `X-Document-Slug` headers.

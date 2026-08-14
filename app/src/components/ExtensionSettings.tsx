@@ -1,7 +1,7 @@
 import { createMemo, For, Show } from "solid-js";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { config } from "#config";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate } from "#utils/dateFormat.ts";
 import { FileDrop } from "./FileDrop.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 

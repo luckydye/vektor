@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import "#editor/css/mentions.css";

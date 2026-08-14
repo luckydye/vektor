@@ -7,7 +7,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { history } from "#utils/history.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon, type IconName } from "./Icon.tsx";

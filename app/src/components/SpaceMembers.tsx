@@ -16,7 +16,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";

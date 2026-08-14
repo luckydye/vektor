@@ -45,7 +45,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
 
