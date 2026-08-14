@@ -5,6 +5,7 @@ import {
   tryAuthenticateRequest,
   verifyDocumentAccess,
   verifyDocumentRole,
+  verifyRevisionAccess,
   verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
@@ -233,6 +234,10 @@ export const GET: ApiRouteHandler = (context) =>
     // view only requires viewer.
     const requiredRole = draft || live ? Permission.EDITOR : Permission.VIEWER;
 
+    // Carried past the gate for the revision guard: `null` is the trusted
+    // system caller, `""` public. See verifyRevisionAccess.
+    let aclUserId: string | null;
+
     const jobToken = context.req.raw.headers.get("X-Job-Token");
     if (jobToken) {
       const parsed = parseJobToken(jobToken, spaceId);
@@ -244,6 +249,7 @@ export const GET: ApiRouteHandler = (context) =>
       if (parsed.userId) {
         await verifyDocumentRole(spaceId, id, parsed.userId, requiredRole);
       }
+      aclUserId = parsed.userId;
     } else {
       // Authenticate with either user session or access token
       const auth = await tryAuthenticateRequest(context, spaceId);
@@ -255,16 +261,32 @@ export const GET: ApiRouteHandler = (context) =>
           id,
           requiredRole,
         );
+        aclUserId = getTokenUserId(auth.token.tokenId);
       } else if (auth?.type === "user") {
         await verifyDocumentRole(spaceId, id, auth.user.id, requiredRole);
+        aclUserId = auth.user.id;
       } else {
         // Unauthenticated — verifyDocumentRole handles public access
         await verifyDocumentRole(spaceId, id, null, requiredRole);
+        aclUserId = "";
       }
+    }
+
+    const meta = await getDocument(await openSpaceStore(spaceId), id);
+    if (!meta) {
+      throw notFoundResponse("Document");
+    }
+    // Hidden by any parameter, or `?rev=N` serves the body this refuses.
+    if (meta.type === workflowRunDocumentType) {
+      throw notFoundResponse("Document");
     }
 
     if (revParam) {
       const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
+
+      // History, which the viewer gate above does not cover. Authorized before
+      // the load, so a refusal cannot distinguish a missing revision.
+      const access = await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
 
       const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
       if (!metadata) {
@@ -278,20 +300,14 @@ export const GET: ApiRouteHandler = (context) =>
 
       return withCors(
         jsonResponse({
-          revision: {
-            ...metadata,
-            content,
-          },
+          // Without history access, the snapshot and nothing describing it.
+          // `status` is stated rather than withheld: a published revision is by
+          // definition not a suggestion, and clients branch on it.
+          revision: access.metadata
+            ? { ...metadata, content }
+            : { rev: metadata.rev, content, status: null },
         }),
       );
-    }
-
-    const meta = await getDocument(await openSpaceStore(spaceId), id);
-    if (!meta) {
-      throw notFoundResponse("Document");
-    }
-    if (meta.type === workflowRunDocumentType) {
-      throw notFoundResponse("Document");
     }
 
     // getDocument is metadata-only; this route returns the body, so load it

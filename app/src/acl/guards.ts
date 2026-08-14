@@ -11,7 +11,7 @@
 import {
   type AclViewer,
   allPermissions,
-  type Feature,
+  Feature,
   isPermission,
   meetsPermissionLevel,
   Permission,
@@ -36,7 +36,7 @@ import type { ApiContext } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
-import { getDocumentAuthState } from "#db/space/documents.ts";
+import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
@@ -644,6 +644,76 @@ export async function verifyFeatureAccess(
 }
 
 /**
+ * What a caller may read of a revision, once authorized. `metadata` is false for
+ * a snapshot-exemption caller without `VIEW_HISTORY`: content, but not the
+ * authorship, message, checksum or lineage `/revisions` gates.
+ */
+export interface RevisionAccess {
+  metadata: boolean;
+}
+
+/**
+ * The one rule for reading a document's revision history:
+ *
+ *  1. Exactly the published revision: plain read access, since the document GET
+ *     serves the same content. Metadata is history, so the verdict says whether
+ *     it may travel with it.
+ *  2. Anything else: `Feature.VIEW_HISTORY`, never implied by a role.
+ *
+ * Reading history is one privilege and does not subdivide — whether a revision
+ * was ever published decides nothing, since access to any revision is access to
+ * all of them.
+ *
+ * @param userId The {@link SpaceAccess.aclUserId} convention: `null` is a
+ *   trusted system caller, `""` is public. An access token passes
+ *   `getTokenUserId(tokenId)`, which is its ACL identity.
+ * @param revs The revisions whose **content** is about to be served. Omit for a
+ *   listing of the whole history, which gets no snapshot exemption.
+ */
+export async function verifyRevisionAccess(
+  spaceId: string,
+  documentId: string,
+  userId: string | null,
+  revs?: readonly number[],
+): Promise<RevisionAccess> {
+  // A user-less system token is the space's own background work.
+  if (userId === null) return { metadata: true };
+
+  const requested = revs ?? [];
+
+  let publishedRev: number | null = null;
+  if (requested.length > 0) {
+    const document = await getDocument(await openSpaceStore(spaceId), documentId);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
+    publishedRev = document.publishedRev;
+  }
+
+  const userGroups = userId === "" ? [PUBLIC_GROUP] : await getUserGroups(userId);
+  const history = await hasFeature(
+    spaceId,
+    Feature.VIEW_HISTORY,
+    userId,
+    userGroups,
+    documentId,
+  );
+
+  // Plain read access already buys the published snapshot's content.
+  const snapshotOnly =
+    requested.length > 0 && requested.every((rev) => rev === publishedRev);
+  if (snapshotOnly) {
+    return { metadata: history };
+  }
+
+  if (!history) {
+    throw forbiddenResponse("You don't have access to the view history feature");
+  }
+
+  return { metadata: true };
+}
+
+/**
  * Check if user can access an extension.
  * Returns true if user is an editor on the space OR has explicit ACL entry for the extension.
  */
@@ -844,13 +914,9 @@ export async function verifyTokenPermission(
 }
 
 /**
- * Verify a token holds a space-wide `feature` capability.
- *
- * Features are space-scoped (no resource id), so a feature-granted token can
- * act across the whole space — e.g. a token with `manage_extensions` can
- * install NEW extensions, not just ones that already exist. The check does not
- * fall back to a space role unless the role's defaults include the feature, so
- * a plain viewer/editor token (which lacks the feature by default) is rejected.
+ * Verify a token holds a space-wide `feature` capability, so a token granted one
+ * acts across the whole space. A plain viewer/editor token is rejected unless the
+ * role's defaults include the feature.
  */
 export async function verifyTokenFeature(
   tokenResult: ValidateTokenResult,

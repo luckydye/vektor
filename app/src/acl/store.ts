@@ -889,6 +889,59 @@ export async function hasAnyResourceScopedAccess(
   return !!row;
 }
 
+/**
+ * The role a user effectively holds on one document: the best of its direct,
+ * tree, category and space grants. Grants add up so a narrow one cannot demote
+ * someone — sharing a document as viewer would otherwise lock out its owner.
+ */
+export async function getDocumentPermission(
+  spaceId: string,
+  documentId: string,
+  userId: string,
+  userGroups?: string[],
+): Promise<AclEntry | null> {
+  const directPermission = await getPermission(
+    spaceId,
+    ResourceType.DOCUMENT,
+    documentId,
+    userId,
+    userGroups,
+  );
+
+  const treeResourceIds = [
+    documentId,
+    ...(await getDocumentAncestorIds(spaceId, documentId)),
+  ];
+  const treePermission = await getBestPermissionForResourceIds(
+    spaceId,
+    ResourceType.DOCUMENT_TREE,
+    treeResourceIds,
+    userId,
+    userGroups,
+  );
+  const categoryPermission = await getBestPermissionForResourceIds(
+    spaceId,
+    ResourceType.CATEGORY,
+    await getDocumentCategoryResourceIds(spaceId, documentId),
+    userId,
+    userGroups,
+  );
+
+  const spacePermission = await getPermission(
+    spaceId,
+    ResourceType.SPACE,
+    spaceId,
+    userId,
+    userGroups,
+  );
+
+  return bestAclEntry(
+    [directPermission, treePermission, categoryPermission, spacePermission].filter(
+      (entry): entry is AclEntry => !!entry,
+    ),
+  );
+}
+
 export async function hasPermission(
   spaceId: string,
   resourceType: ResourceType,
@@ -902,48 +955,11 @@ export async function hasPermission(
   }
 
   if (resourceType === ResourceType.DOCUMENT) {
-    const directPermission = await getPermission(
+    const documentPermission = await getDocumentPermission(
       spaceId,
-      ResourceType.DOCUMENT,
       resourceId,
       userId,
       userGroups,
-    );
-
-    const treeResourceIds = [
-      resourceId,
-      ...(await getDocumentAncestorIds(spaceId, resourceId)),
-    ];
-    const treePermission = await getBestPermissionForResourceIds(
-      spaceId,
-      ResourceType.DOCUMENT_TREE,
-      treeResourceIds,
-      userId,
-      userGroups,
-    );
-    const categoryPermission = await getBestPermissionForResourceIds(
-      spaceId,
-      ResourceType.CATEGORY,
-      await getDocumentCategoryResourceIds(spaceId, resourceId),
-      userId,
-      userGroups,
-    );
-
-    const spacePermission = await getPermission(
-      spaceId,
-      ResourceType.SPACE,
-      spaceId,
-      userId,
-      userGroups,
-    );
-
-    // Grants add up, they never subtract: there is no deny entry in this model,
-    // so a narrow grant must not drop someone below the role they already hold
-    // on the space — sharing a document as viewer would lock out its owner.
-    const documentPermission = bestAclEntry(
-      [directPermission, treePermission, categoryPermission, spacePermission].filter(
-        (entry): entry is AclEntry => !!entry,
-      ),
     );
 
     return !!(
@@ -991,6 +1007,10 @@ export async function hasPermission(
  * Features can be explicitly granted/denied via ACL entries with resourceType "feature".
  * If no explicit entry exists, falls back to defaults based on the user's space permission level.
  *
+ * @param documentId Resolve the fallback against this document's role instead of
+ *   the space role, since a document- or tree-level share carries no space role.
+ *   The answer is then only meaningful for that document.
+ *
  * @example
  * // Check if user can comment
  * const canComment = await hasFeature(spaceId, Feature.COMMENT, userId, userGroups);
@@ -1003,6 +1023,7 @@ export async function hasFeature(
   feature: Feature,
   userId: string,
   userGroups?: string[],
+  documentId?: string,
 ): Promise<boolean> {
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
     return true;
@@ -1050,15 +1071,11 @@ export async function hasFeature(
     return groupEntry.permission !== "denied";
   }
 
-  // Fall back to defaults based on space permission level
-  const spacePerm = await getPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    userId,
-    userGroups,
-  );
-  return resolveFeature(spacePerm?.permission, feature);
+  // Fall back to defaults based on permission level
+  const role = documentId
+    ? await getDocumentPermission(spaceId, documentId, userId, userGroups)
+    : await getPermission(spaceId, ResourceType.SPACE, spaceId, userId, userGroups);
+  return resolveFeature(role?.permission, feature);
 }
 
 /**

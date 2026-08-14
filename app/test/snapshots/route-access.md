@@ -64,7 +64,7 @@
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/children` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/contributors` | GET | 401 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/documents/[documentId]/diff` | GET | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/documents/[documentId]/diff` | GET | 401 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/edit` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | PATCH | 401 | 403 | 403 | 400 | 400 |  |

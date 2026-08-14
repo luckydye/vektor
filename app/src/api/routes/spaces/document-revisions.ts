@@ -1,9 +1,9 @@
 import {
   verifyDocumentAccess,
   verifyDocumentRole,
-  verifyFeatureAccess,
+  verifyRevisionAccess,
 } from "#acl/guards.ts";
-import { Feature, Permission } from "#acl/permissions.ts";
+import { Permission } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -31,8 +31,8 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
-    // Verify user has history viewing feature access
-    await verifyFeatureAccess(spaceId, Feature.VIEW_HISTORY, user.id);
+    // No revision is named, so no snapshot exemption: VIEW_HISTORY is required.
+    await verifyRevisionAccess(spaceId, documentId, user.id);
 
     const store = await openSpaceStore(spaceId);
     const revisions = await listRevisionMetadata(store, documentId);
