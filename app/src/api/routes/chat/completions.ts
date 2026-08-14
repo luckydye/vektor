@@ -85,10 +85,31 @@ export const POST: ApiRouteHandler = (context) =>
             502,
           );
         }
-        return errorResponse("Proxy request failed", 500);
+        return errorResponse(
+          `Proxy request failed: ${chatCompletionProxyErrorDetail(error)}`,
+          500,
+        );
       },
     },
   );
+
+/**
+ * Fetch implementations commonly wrap the useful DNS/socket failure in
+ * `cause`, leaving only "fetch failed" as the outer message. Include that
+ * nested detail in the authorized API response without exposing stacks or
+ * serialized request options (which may contain provider credentials).
+ */
+function chatCompletionProxyErrorDetail(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  if (error.cause instanceof Error && error.cause.message !== error.message) {
+    return `${error.message}: ${error.cause.message}`;
+  }
+
+  return error.message;
+}
 
 async function logChatCompletionUpstreamFailure(
   provider: string,
