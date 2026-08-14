@@ -4,10 +4,12 @@
  * `TopicSubscriptions` subscribes to push them to the client.
  */
 
+import { publishAuthorizationChange } from "#acl/authorizationChanges.ts";
 import {
   type RealtimeEventInput,
   type RealtimeTopic,
   type RealtimeTopicEvent,
+  realtimeTopics,
   toRealtimeTopicEvent,
 } from "./protocol.ts";
 
@@ -42,6 +44,9 @@ function drainPendingEvents(): RealtimeEventEnvelope[] {
 
 export function publishSyncEvents(events: RealtimeEventEnvelope[]) {
   for (const event of events) {
+    if (event.topics.includes(realtimeTopics.acl)) {
+      publishAuthorizationChange({ spaceId: event.spaceId });
+    }
     for (const listener of listeners) {
       listener(event);
     }

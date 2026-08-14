@@ -6,6 +6,7 @@
 
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { subscribeToAuthorizationChanges } from "#acl/authorizationChanges.ts";
 import { createIdpGroupSync } from "#acl/idpSync.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import { createAuth } from "#auth";
@@ -327,6 +328,22 @@ describe("mid-session group sync", () => {
     await syncer().ensureFresh(userId);
 
     expect(await storedGroups(SYNC_EMAIL)).toEqual([]);
+  });
+
+  it("announces group changes to active authorization consumers", async () => {
+    profile = idpProfile(["engineering"]);
+    const changedUsers: string[] = [];
+    const unsubscribe = subscribeToAuthorizationChanges((change) => {
+      if (change.userId) changedUsers.push(change.userId);
+    });
+
+    try {
+      await syncer().ensureFresh(userId);
+    } finally {
+      unsubscribe();
+    }
+
+    expect(changedUsers).toEqual([userId]);
   });
 
   it("follows a changed profile picture", async () => {

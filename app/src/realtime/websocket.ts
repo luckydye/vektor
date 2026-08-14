@@ -1,5 +1,6 @@
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
+import { subscribeToAuthorizationChanges } from "#acl/authorizationChanges.ts";
 import {
   isAccessDenied,
   verifyDocumentRole,
@@ -16,11 +17,9 @@ import {
   decrementWebSocketConnections,
   incrementWebSocketConnections,
 } from "#observability/metrics.ts";
-import { subscribeToSyncEvents } from "./events.ts";
 import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
-  realtimeTopics,
   WS_CLOSE_FORBIDDEN,
   WS_CLOSE_UNAUTHORIZED,
   WsMsgType,
@@ -40,8 +39,6 @@ interface FrameHandler {
   revalidate(): Promise<void>;
   close(): void;
 }
-
-const connectionRevalidators = new Set<() => void>();
 
 /**
  * Whether `userId` may join a presence room. Extension rooms are gated on the
@@ -184,11 +181,8 @@ async function handleRealtimeWebSocket(
         appLogger.warn("Failed to re-authorize realtime connection", { error, spaceId });
       });
   };
-  connectionRevalidators.add(scheduleRevalidation);
-
-  const offAclEvents = subscribeToSyncEvents((event) => {
-    if (event.spaceId !== spaceId) return;
-    if (!event.events.some(({ topic }) => topic === realtimeTopics.acl)) return;
+  const offAuthorizationChanges = subscribeToAuthorizationChanges((change) => {
+    if (change.spaceId !== spaceId && change.userId !== userId) return;
 
     noteAclChange(spaceId);
     scheduleRevalidation();
@@ -215,8 +209,7 @@ async function handleRealtimeWebSocket(
   });
 
   websocket.on("close", () => {
-    offAclEvents();
-    connectionRevalidators.delete(scheduleRevalidation);
+    offAuthorizationChanges();
     for (const handler of handlers) handler.close();
     appLogger.info("Realtime WebSocket connection closed", { spaceId });
   });
@@ -235,9 +228,6 @@ export interface RealtimeWebSocketServer {
 const CONNECTION_IDLE_TIMEOUT_MS = 90_000;
 const IDLE_SWEEP_INTERVAL_MS = 30_000;
 
-/** Covers ACL changes that do not emit a sync event. */
-const ACL_REVALIDATE_INTERVAL_MS = 30_000;
-
 /** Attaches the realtime collaboration endpoint to the HTTP server. */
 export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocketServer {
   const websocketServer = new WebSocketServer({ noServer: true });
@@ -251,11 +241,6 @@ export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocket
     }
   }, IDLE_SWEEP_INTERVAL_MS);
   idleSweep.unref?.();
-
-  const authSweep = setInterval(() => {
-    for (const revalidate of connectionRevalidators) revalidate();
-  }, ACL_REVALIDATE_INTERVAL_MS);
-  authSweep.unref?.();
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -277,7 +262,6 @@ export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocket
   return {
     close(): void {
       clearInterval(idleSweep);
-      clearInterval(authSweep);
       websocketServer.close();
       for (const client of websocketServer.clients) {
         try {
