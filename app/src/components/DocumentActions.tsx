@@ -35,6 +35,8 @@ import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
 interface Props {
   title?: string;
   headerImage?: string | null;
+  tableOfContentsVisible?: boolean;
+  onToggleTableOfContents?: () => void;
 }
 
 export function DocumentActions(props: Props) {
@@ -86,6 +88,13 @@ export function DocumentActions(props: Props) {
   function openWorkflowEditorFromMenu(e: Event) {
     openWorkflowEditor();
     (e.target as Element | null)?.dispatchEvent(
+      new CustomEvent("exit", { bubbles: true }),
+    );
+  }
+
+  function toggleTableOfContentsFromMenu(event: Event) {
+    props.onToggleTableOfContents?.();
+    (event.target as Element | null)?.dispatchEvent(
       new CustomEvent("exit", { bubbles: true }),
     );
   }
@@ -611,6 +620,19 @@ export function DocumentActions(props: Props) {
           )}
         </Show>
         <ContextMenu>
+          <Show when={documentType() === "document" && props.onToggleTableOfContents}>
+            <ContextMenuItem onClick={toggleTableOfContentsFromMenu}>
+              <div class="aspect-sqaure w-[1rem] flex-none">
+                <Icon name="list" class="align-middle" />
+              </div>
+              <span class="mr-2 block w-full text-left">
+                {props.tableOfContentsVisible
+                  ? t("Hide table of contents")
+                  : t("Show table of contents")}
+              </span>
+            </ContextMenuItem>
+          </Show>
+
           <Show when={documentType() === "workflow" && documentId() && userCanEdit()}>
             <ContextMenuItem onClick={openWorkflowEditorFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
