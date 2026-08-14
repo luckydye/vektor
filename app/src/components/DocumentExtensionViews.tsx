@@ -27,7 +27,7 @@ export function DocumentExtensionViews(props: Props) {
         class={`hidden min-w-0 space-y-4 ${
           props.fullWidth
             ? "xl:sticky xl:top-20 xl:block xl:pr-m"
-            : "min-[1920px]:absolute min-[1920px]:top-0 min-[1920px]:left-[calc(100%+1.5rem)] min-[1920px]:block min-[1920px]:h-full min-[1920px]:pr-m"
+            : "min-[1920px]:absolute min-[1920px]:top-0 min-[1920px]:left-[calc(100%+1.5rem-80px)] min-[1920px]:block min-[1920px]:h-full min-[1920px]:pr-m"
         }`}
       >
         <div class={props.fullWidth ? undefined : "sticky top-20 space-y-4"}>
