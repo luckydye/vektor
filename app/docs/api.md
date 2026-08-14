@@ -747,7 +747,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
   - `properties: Record<string, PropertyPatchValue>` — each value is `null` (delete
     property), a scalar/array, or `{ value, type? }`.
   - `parentId: string | null` — move the document (verifies access to the new
-    parent); broadcasts a `document_parent_changed` realtime event.
+    parent and rejects self-parenting or ancestry cycles with `400`); broadcasts
+    a `document_parent_changed` realtime event.
   - `publishedRev: number | null` — publish a specific revision (or unpublish with
     `null`); triggers "document published" email notifications; audit-logged.
   - `readonly: boolean` — lock/unlock the document (CSV-type docs must stay

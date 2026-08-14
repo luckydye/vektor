@@ -1133,30 +1133,56 @@ export async function setDocumentParent(
   previousParentId: string | null;
   parentId: string | null;
 }> {
-  const now = new Date();
-  const existing = await one(
-    s.db
-      .select({ parentId: document.parentId, type: document.type })
-      .from(document)
-      .where(eq(document.id, documentId)),
-  );
+  return s.tx(async (tx) => {
+    const existing = await one(
+      tx.db
+        .select({ parentId: document.parentId, type: document.type })
+        .from(document)
+        .where(eq(document.id, documentId)),
+    );
 
-  if (parentId === documentId) {
-    throw new Error("Cannot set parent: a child cant be a parent");
-  }
-  if (!existing) throw new InvalidDocumentParentError("Child document not found");
-  if (parentId) await assertDocumentCanParent(s, parentId, existing.type);
+    if (!existing) throw new InvalidDocumentParentError("Child document not found");
+    if (parentId === documentId) {
+      throw new InvalidDocumentParentError(
+        "Cannot set parent: document cannot be its own parent",
+      );
+    }
 
-  await s.db
-    .update(document)
-    .set({ parentId, updatedAt: now })
-    .where(eq(document.id, documentId));
+    if (parentId) {
+      await assertDocumentCanParent(tx, parentId, existing.type);
 
-  return {
-    documentId,
-    previousParentId: existing?.parentId ?? null,
-    parentId,
-  };
+      let ancestorId: string | null = parentId;
+      const visited = new Set<string>();
+      while (ancestorId) {
+        if (ancestorId === documentId || visited.has(ancestorId)) {
+          throw new InvalidDocumentParentError(
+            "Cannot set parent: this would create a document cycle",
+          );
+        }
+        visited.add(ancestorId);
+
+        const ancestor = await one(
+          tx.db
+            .select({ parentId: document.parentId })
+            .from(document)
+            .where(eq(document.id, ancestorId)),
+        );
+        if (!ancestor) break;
+        ancestorId = ancestor.parentId;
+      }
+    }
+
+    await tx.db
+      .update(document)
+      .set({ parentId, updatedAt: new Date() })
+      .where(eq(document.id, documentId));
+
+    return {
+      documentId,
+      previousParentId: existing.parentId ?? null,
+      parentId,
+    };
+  });
 }
 
 export async function getDocumentChildren(

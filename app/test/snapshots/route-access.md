@@ -49,7 +49,7 @@
 | `/api/v1/spaces/[spaceId]/categories/[id]` | DELETE | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories/[id]` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/categories/[id]` | PUT | 401 | 403 | 403 | 400 | 400 |  |
-| `/api/v1/spaces/[spaceId]/comments` | DELETE | 401 | 403 | 400 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/comments` | DELETE | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/comments` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/comments` | PATCH | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/comments` | POST | 401 | 403 | 403 | 400 | 400 |  |

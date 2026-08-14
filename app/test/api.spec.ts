@@ -598,6 +598,105 @@ describe("API Tests - Documents", () => {
     expect(data.document.parentId).toBe(null);
   });
 
+  it("rejects making a document its own parent", async () => {
+    const createResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<p>Self parent target</p>",
+          properties: { title: "Self Parent Target" },
+        }),
+      },
+    );
+    expect(createResponse.status).toBe(201);
+    const documentId = (await createResponse.json()).document.id;
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ parentId: documentId }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Cannot set parent: document cannot be its own parent",
+    });
+  });
+
+  it("rejects a parent change that would create a multi-document cycle", async () => {
+    const createDocument = async (title: string, parentId?: string) => {
+      const response = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            content: `<p>${title}</p>`,
+            properties: { title },
+            parentId,
+          }),
+        },
+      );
+      expect(response.status).toBe(201);
+      return (await response.json()).document.id as string;
+    };
+
+    const rootId = await createDocument("Cycle Root");
+    const childId = await createDocument("Cycle Child", rootId);
+    const grandchildId = await createDocument("Cycle Grandchild", childId);
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${rootId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ parentId: grandchildId }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Cannot set parent: this would create a document cycle",
+    });
+
+    const rootResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${rootId}`,
+    );
+    expect((await rootResponse.json()).document.parentId).toBe(null);
+  });
+
+  it("allows children under a custom prototype-key document type", async () => {
+    const parentResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "__proto__",
+          content: "<p>Custom parent</p>",
+          properties: { title: "Prototype Key Parent" },
+        }),
+      },
+    );
+    expect(parentResponse.status).toBe(201);
+    const parentId = (await parentResponse.json()).document.id;
+
+    const childResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<p>Child of custom type</p>",
+          parentId,
+          properties: { title: "Prototype Key Child" },
+        }),
+      },
+    );
+
+    expect(childResponse.status).toBe(201);
+    expect((await childResponse.json()).document.parentId).toBe(parentId);
+  });
+
   it("should archive a document (soft delete)", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${childDocumentId}`,

@@ -36,17 +36,20 @@ export function contentIsHtml(type: string | null | undefined): boolean {
  * Optional child-type policies for document types. Types omitted from this map
  * may parent any document type; a present empty list forbids all children.
  */
-export const allowedChildDocumentTypes: Readonly<Record<string, readonly string[]>> = {
-  workflow: [workflowRunDocumentType],
-  database: ["record"],
-  [workflowRunDocumentType]: [],
-};
+export const allowedChildDocumentTypes: ReadonlyMap<string, readonly string[]> = new Map<
+  string,
+  readonly string[]
+>([
+  ["workflow", [workflowRunDocumentType]],
+  ["database", ["record"]],
+  [workflowRunDocumentType, []],
+]);
 
 export function allowsChildDocumentType(
   parentType: string | null | undefined,
   childType: string | null | undefined,
 ): boolean {
-  const allowedTypes = allowedChildDocumentTypes[parentType ?? "document"];
+  const allowedTypes = allowedChildDocumentTypes.get(parentType ?? "document");
   return allowedTypes === undefined || allowedTypes.includes(childType ?? "document");
 }
 

@@ -26,6 +26,15 @@ beforeAll(async () => {
 describe("auth database schema", () => {
   it("round-trips a millisecond timestamp as a usable date", async () => {
     const expiresAt = new Date(Date.now() + 3_600_000);
+    const now = new Date();
+    await authDb.insert(user).values({
+      id: "user-timestamp",
+      name: "Timestamp Test User",
+      email: "timestamp-test@example.com",
+      emailVerified: true,
+      createdAt: now,
+      updatedAt: now,
+    });
     await authDb.insert(account).values({
       id: "account-timestamp",
       accountId: "subject",
@@ -33,8 +42,8 @@ describe("auth database schema", () => {
       userId: "user-timestamp",
       accessToken: "token",
       accessTokenExpiresAt: expiresAt,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     });
 
     const row = await one(
