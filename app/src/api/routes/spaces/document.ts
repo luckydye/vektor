@@ -71,7 +71,10 @@ import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import {
   getLiveDocumentContent,
+  persistYRoomDraft,
   replaceLiveDocumentContent,
+  roomKey,
+  setYRoomWriteBlocked,
 } from "#realtime/yjsRooms.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
@@ -189,21 +192,38 @@ async function handleReadonlyPatch(
     throw badRequestResponse("Readonly must be a boolean");
   }
 
-  const db = await getSpaceDb(spaceId);
-  await db
-    .update(documentTable)
-    .set({ readonly: readonly })
-    .where(eq(documentTable.id, documentId));
+  const previousWriteBlock = readonly
+    ? setYRoomWriteBlocked(spaceId, documentId, true)
+    : false;
 
-  await createAuditLog(await openSpaceStore(spaceId), {
-    spaceId,
-    docId: documentId,
-    userId,
-    event: readonly ? "lock" : "unlock",
-    details: {
-      message: readonly ? "Document set to readonly" : "Document readonly removed",
-    },
-  });
+  try {
+    if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
+
+    const store = await openSpaceStore(spaceId);
+    await store.tx(async (tx) => {
+      await tx.db
+        .update(documentTable)
+        .set({ readonly })
+        .where(eq(documentTable.id, documentId));
+
+      await createAuditLog(tx, {
+        spaceId,
+        docId: documentId,
+        userId,
+        event: readonly ? "lock" : "unlock",
+        details: {
+          message: readonly ? "Document set to readonly" : "Document readonly removed",
+        },
+      });
+    });
+
+    if (!readonly) setYRoomWriteBlocked(spaceId, documentId, false);
+  } catch (error) {
+    if (readonly) {
+      setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+    }
+    throw error;
+  }
 }
 
 export const GET: ApiRouteHandler = (context) =>

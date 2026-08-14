@@ -19,7 +19,7 @@ import {
   deserializeDocContent,
   serializeDocContent,
 } from "#documents/serializationPool.ts";
-import { contentIsHtml } from "#documents/types.ts";
+import { contentIsHtml, documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
@@ -35,6 +35,7 @@ export interface YRoom {
   doc?: Y.Doc;
   clients: Set<WebSocket>;
   presences: Map<string, PresenceEnvelope>;
+  writeBlocked?: boolean;
   /** Timestamp (ms) of the last persist attempt, used to throttle serialize frequency. */
   lastPersistAt?: number;
   /** User who made the most recently received collaborative update. */
@@ -77,6 +78,18 @@ export function getRoom(spaceId: string, documentId: string): YRoom {
     yRooms.set(key, room);
   }
   return room;
+}
+
+export function setYRoomWriteBlocked(
+  spaceId: string,
+  documentId: string,
+  blocked: boolean,
+): boolean {
+  const room = yRooms.get(roomKey(spaceId, documentId));
+  if (!room) return false;
+  const previous = room.writeBlocked ?? false;
+  room.writeBlocked = blocked;
+  return previous;
 }
 
 /**
@@ -273,6 +286,14 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   // just write; no dedup read/hash needed.
   const meta = await getDocument(await openSpaceStore(ids.spaceId), ids.documentId);
   if (!meta) return;
+
+  if (documentIsReadonly(meta)) {
+    appLogger.info("Skipped persisting a readonly document from its live room", {
+      spaceId: ids.spaceId,
+      documentId: ids.documentId,
+    });
+    return;
+  }
 
   const doc = room.doc;
   const serialized = await traced("persist.serialize", () =>
@@ -631,6 +652,10 @@ export async function transformDocumentContent(
     return null;
   }
 
+  if (documentIsReadonly(dbDoc)) {
+    throw new Error("Cannot edit readonly document");
+  }
+
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
     const persisted =
@@ -646,6 +671,10 @@ export async function transformDocumentContent(
       asBlockSpliceInsert(operations) !== null;
     const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
     return { content: transform(base), live: false };
+  }
+
+  if (room.writeBlocked) {
+    throw new Error("Cannot edit readonly document");
   }
 
   const doc = room.doc;

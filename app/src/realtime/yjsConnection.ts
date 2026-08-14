@@ -7,6 +7,8 @@ import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { isAccessDenied, verifyDocumentRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { documentIsReadonlyById } from "#db/space/documents.ts";
 import { appLogger } from "#observability/logger.ts";
 import { tracedSync } from "#observability/trace.ts";
 import {
@@ -131,7 +133,7 @@ export class YjsConnection {
     if (!joined?.canEdit) return;
 
     const room = yRooms.get(roomKey);
-    if (!room?.doc) return;
+    if (!room?.doc || room.writeBlocked) return;
 
     tracedSync("yjs.applyUpdate", () =>
       Y.applyUpdate(room.doc as Y.Doc, update, this.websocket),
@@ -229,7 +231,19 @@ export class YjsConnection {
 
   private async authorizeRoom(documentId: string): Promise<RoomAccess> {
     const asEditor = await this.holdsRole(documentId, Permission.EDITOR);
-    if (asEditor !== "denied") return asEditor === "held" ? "edit" : "unknown";
+    if (asEditor === "unknown") return "unknown";
+    if (asEditor === "held") {
+      try {
+        return (await documentIsReadonlyById(
+          await openSpaceStore(this.spaceId),
+          documentId,
+        ))
+          ? "view"
+          : "edit";
+      } catch {
+        return "unknown";
+      }
+    }
 
     const asViewer = await this.holdsRole(documentId, Permission.VIEWER);
     if (asViewer === "unknown") return "unknown";
