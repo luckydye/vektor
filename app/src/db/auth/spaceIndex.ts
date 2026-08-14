@@ -15,6 +15,7 @@ import {
   withoutDatabaseCredentials,
 } from "#db/client/connection.ts";
 import { many, one } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
@@ -273,7 +274,7 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
 
     try {
       await grantPermission(
-        metadata.id,
+        await openSpaceStore(metadata.id),
         ResourceType.SPACE,
         metadata.id,
         metadata.createdBy,

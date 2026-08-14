@@ -152,7 +152,7 @@ export async function createSpace(
 
   // Grant owner permission to creator (after closing initial connection)
   await grantPermission(
-    id,
+    await openSpaceStore(id),
     ResourceType.SPACE,
     id,
     createdBy,

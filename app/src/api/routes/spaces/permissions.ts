@@ -52,6 +52,7 @@ export const GET: ApiRouteHandler = (context) =>
     const resourceId = new URL(context.req.url).searchParams.get("resourceId") || spaceId;
     const allResources =
       new URL(context.req.url).searchParams.get("allResources") === "true";
+    const store = await openSpaceStore(spaceId);
 
     await verifySpaceRole(
       spaceId,
@@ -64,8 +65,8 @@ export const GET: ApiRouteHandler = (context) =>
     // Get role permissions (space members)
     if (typeFilter === "all" || typeFilter === "role") {
       const rolePermissions = allResources
-        ? await listAllRolePermissions(spaceId)
-        : await listPermissions(spaceId, resourceType, resourceId);
+        ? await listAllRolePermissions(store)
+        : await listPermissions(store, resourceType, resourceId);
       permissions.push(
         ...rolePermissions.map((p) => ({
           type: "role" as const,
@@ -76,7 +77,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Get feature permissions
     if (typeFilter === "all" || typeFilter === "feature") {
-      const featurePermissions = await listFeaturePermissions(spaceId);
+      const featurePermissions = await listFeaturePermissions(store);
       permissions.push(
         ...featurePermissions.map((p) => ({
           type: "feature" as const,
@@ -137,7 +138,7 @@ async function currentRoleOnResource(
   grantee: { userId?: string; groupId?: string },
   store: SpaceStore,
 ): Promise<string | undefined> {
-  const entries = await listPermissions(spaceId, resourceType, resourceId, store);
+  const entries = await listPermissions(store, resourceType, resourceId);
   return entries
     .filter(
       (entry) =>
@@ -327,26 +328,24 @@ export const POST: ApiRouteHandler = (context) =>
 
         if (resultingRole) {
           const entry = await grantPermission(
-            spaceId,
+            transaction,
             targetResourceType,
             targetResourceId,
             userId,
             resultingRole,
             groupId,
             user.id,
-            transaction,
           );
           return jsonResponse({ permission: entry });
         }
 
         await revokePermission(
-          spaceId,
+          transaction,
           targetResourceType,
           targetResourceId,
           userId,
           groupId,
           user.id,
-          transaction,
         );
         return jsonResponse({ success: true });
       });

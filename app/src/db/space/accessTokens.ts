@@ -115,9 +115,10 @@ export async function createAccessToken(
  */
 export async function grantTokenAccess(options: GrantTokenAccessOptions): Promise<void> {
   const tokenUserId = getTokenUserId(options.tokenId);
+  const store = await openSpaceStore(options.spaceId);
 
   await grantPermission(
-    options.spaceId,
+    store,
     options.resourceType,
     options.resourceId,
     tokenUserId,
@@ -146,7 +147,7 @@ export async function revokeTokenAccess(
 ): Promise<void> {
   const tokenUserId = getTokenUserId(tokenId);
 
-  await revokePermission(s.spaceId, resourceType, resourceId, tokenUserId);
+  await revokePermission(s, resourceType, resourceId, tokenUserId);
 }
 
 /**
