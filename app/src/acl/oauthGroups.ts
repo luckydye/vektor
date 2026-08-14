@@ -1,9 +1,5 @@
 import { GROUP_NAME_PATTERN } from "#acl/permissions.ts";
 
-/**
- * Stored value for "this account belongs to no group". Group membership grants
- * ACL access, so this is the only value a self-service path may ever write.
- */
 export const NO_GROUPS = "[]";
 
 /**

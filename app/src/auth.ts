@@ -101,14 +101,6 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
           type: "string",
           required: false,
           defaultValue: NO_GROUPS,
-          // Group membership is what the ACL matches group grants against, so a
-          // client that could set it would grant itself every space, document
-          // and secret shared with a group it merely named. `input: false` keeps
-          // it out of the client-facing schemas: better-auth then substitutes
-          // the default at `/sign-up/email` and rejects `/update-user` outright.
-          // The only writers left are the IdP mapping below and the periodic
-          // re-read in `#acl/idpSync.ts`, which both go through the adapter
-          // rather than a request body.
           input: false,
         },
       },

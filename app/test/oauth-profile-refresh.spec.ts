@@ -465,11 +465,6 @@ describe("mid-session group sync", () => {
   });
 });
 
-/**
- * The IdP mapping is the only writer of `groups`; everything a client can reach
- * has to leave it alone. Driven through `auth.handler` because the hole was in
- * how better-auth binds a request body to the user row, not in our own code.
- */
 describe("client-supplied groups", () => {
   const PASSWORD = "correct-horse-battery-staple";
   let emailAuth: ReturnType<typeof createAuth>;
@@ -494,7 +489,6 @@ describe("client-supplied groups", () => {
     const response = await signUp(email, { groups: '["eng-team","admins"]' });
     expect(response.status).toBe(200);
 
-    // The account exists, it just holds nothing the ACL will match a grant to.
     expect(await storedGroups(email)).toEqual([]);
     const returned = (await response.json()) as { user?: { groups?: unknown } };
     expect(returned.user?.groups).toBe("[]");
@@ -550,7 +544,6 @@ describe("client-supplied groups", () => {
     );
 
     expect(response.status).toBe(400);
-    // A refusal must not double as a way to drop your own groups.
     expect(await storedGroups(email)).toEqual(["engineering"]);
   });
 });
