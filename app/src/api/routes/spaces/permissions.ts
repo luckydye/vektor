@@ -3,6 +3,7 @@ import { verifySpaceRole } from "#acl/guards.ts";
 import {
   allFeatures,
   allPermissions,
+  highestPermission,
   isFeature,
   isPermission,
   isResourceType,
@@ -45,13 +46,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    const typeFilter = new URL(context.req.url).searchParams.get("type") || "all";
+    const searchParams = new URL(context.req.url).searchParams;
+    const typeFilter = searchParams.get("type") || "all";
     const resourceType =
-      (new URL(context.req.url).searchParams.get("resourceType") as ResourceType) ||
-      ResourceType.SPACE;
-    const resourceId = new URL(context.req.url).searchParams.get("resourceId") || spaceId;
-    const allResources =
-      new URL(context.req.url).searchParams.get("allResources") === "true";
+      (searchParams.get("resourceType") as ResourceType) || ResourceType.SPACE;
+    const resourceId = searchParams.get("resourceId") || spaceId;
+    const allResources = searchParams.get("allResources") === "true";
     const store = await openSpaceStore(spaceId);
 
     await verifySpaceRole(
@@ -109,16 +109,17 @@ async function currentRoleOnResource(
   resourceId: string,
   grantee: { userId?: string; groupId?: string },
   store: SpaceStore,
-): Promise<string | undefined> {
+): Promise<Permission | undefined> {
   const entries = await listPermissions(store, resourceType, resourceId);
-  return entries
-    .filter(
-      (entry) =>
-        (grantee.userId && entry.userId === grantee.userId && !entry.groupId) ||
-        (grantee.groupId && entry.groupId === grantee.groupId && !entry.userId),
-    )
-    .sort((a, b) => permissionLevel(b.permission) - permissionLevel(a.permission))[0]
-    ?.permission;
+  return highestPermission(
+    entries
+      .filter(
+        (entry) =>
+          (grantee.userId && entry.userId === grantee.userId && !entry.groupId) ||
+          (grantee.groupId && entry.groupId === grantee.groupId && !entry.userId),
+      )
+      .map((entry) => entry.permission),
+  );
 }
 
 async function requiredRoleForRoleWrite(
