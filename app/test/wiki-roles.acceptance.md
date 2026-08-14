@@ -15,7 +15,9 @@ In-Memory-Server, legt eigene Benutzer, Rollen, Seiten, Revisionen und Uploads
 an und instanziiert für die Editor-Fälle einen eigenen Tiptap-Editor.
 
 Ergebnis des letzten Laufs: **21/21 automatisierte Tests bestanden**
-(15 Server/API, 6 Editor).
+(15 Server/API, 6 Editor); **22 weitere Kriterien sind als `todo` ausdrücklich
+im Testlauf erfasst**, weil sie manuelle Bedienung, externe Systeme oder noch
+fehlende Produktfähigkeiten benötigen.
 
 Bewertung:
 
@@ -24,9 +26,23 @@ Bewertung:
   oder ein Teil der Erwartung ist offen.
 - **nein**: Die geforderte Fähigkeit fehlt oder die Erwartung wird nicht erfüllt.
 
+## Referenzierbare Kriterien-IDs
+
+Die IDs sind dauerhaft und dürfen bei späteren Änderungen nicht neu nummeriert
+oder wiederverwendet werden:
+
+- `PM-01` bis `PM-28`: fachliche und alltägliche Nutzungskriterien
+- `IT-01` bis `IT-25`: technische und betriebliche Kriterien
+- `PM-A01` bis `PM-A04`: abschließende PM-Bewertungen
+- `IT-A01` bis `IT-A05`: abschließende IT-/Betriebsbewertungen
+- `AT-01` bis `AT-21`: automatisierte Nachweise aus dieser Suite
+
+Referenzformat in Tickets und Entscheidungen: `Wiki-Rollen/<Kriterien-ID>`, zum
+Beispiel `Wiki-Rollen/PM-17` oder `Wiki-Rollen/IT-14`.
+
 ## PM (1/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | PM-01 | Externer sieht nur Briefing, Zugangsdaten bleiben beim Kernteam | ja | AT-01: Dokumentfreigabe erlaubt das Briefing und verweigert die Seite „Zugangsdaten“ samt Geheimnis. |
 | PM-02 | Briefing per Link mit Ablauf; Gast liest, editiert nicht, sieht keine anderen Seiten | teilweise | AT-02 bestätigt ablaufenden, schreibgeschützten und dokumentbegrenzten Bearer-Token. Eine klare Browser-Gastlink-Oberfläche ist nicht vorhanden. |
@@ -39,7 +55,7 @@ Bewertung:
 
 ## PM (2/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | PM-09 | Text samt kleiner Tabelle aus Word/Docs einfügen | teilweise | AT-05/AT-18 bestätigen das Ergebnisformat und dessen Round-trip. Ein echter Word-/Google-Docs-Clipboard-Lauf bleibt manuell. |
 | PM-10 | To-do-Liste anlegen und Punkt abhaken | ja | AT-05/AT-18 bestätigen Task-Listen und den gespeicherten Checked-Zustand. |
@@ -52,7 +68,7 @@ Bewertung:
 
 ## PM (3/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | PM-17 | Bild skalieren, PDF/Bild anhängen und in der Seite sehen | teilweise | AT-08 bestätigt Upload/Download, AT-19 Bildbreite und PDF-Anhang. Dokumentfreigaben reichen jedoch nicht automatisch für Upload-URLs, die auf Space-Ebene autorisiert werden. |
 | PM-18 | Seite ohne schweren Edit-Modus bearbeiten | teilweise | Der Editor arbeitet inline, aber „fühlt sich leicht an“ braucht einen manuellen Bedienungstest. |
@@ -65,7 +81,7 @@ Bewertung:
 
 ## PM (4/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | PM-25 | Auf langer Seite per Inhaltsverzeichnis zum Abschnitt springen | nein | Für normale Wiki-Dokumente ist kein Inhaltsverzeichnis-/Outline-Element vorhanden. Die Docs-Website besitzt eine Outline, nicht der Workspace-Editor. |
 | PM-26 | Eigene Notizen persönlich ablegen | teilweise | Ein privater Space ist als Workaround möglich; einen ausdrücklich persönlichen Notizbereich gibt es nicht. |
@@ -74,22 +90,22 @@ Bewertung:
 
 ## Abschluss — PM
 
-- **Alltag täglich nutzen?** Ja, mit Einschränkungen. Kernabläufe wie Baum,
+- **PM-A01 — Alltag täglich nutzen?** Ja, mit Einschränkungen. Kernabläufe wie Baum,
   Rich-Text, Tabellen, Aufgaben, Suche, Revisionen, Kollaboration und stabile
   Links sind vorhanden. Offene UX-Punkte sind vor allem Gastlinks,
   Erwähnungsbenachrichtigungen, Inhaltsverzeichnis und persönliche Notizen.
-- **Persönliche Empfehlung:** Für ein Kernteam ist ein Pilot sinnvoll. Vor einer
+- **PM-A02 — Persönliche Empfehlung:** Für ein Kernteam ist ein Pilot sinnvoll. Vor einer
   breiten externen Nutzung sollte die Kombination aus dokumentbezogener Freigabe
   und Anhangszugriff geschlossen sowie der Gastlink-Ablauf produktisiert werden.
-- **Welches System ist besser?** Nicht beantwortbar: Die Unterlage enthält keine
+- **PM-A03 — Welches System ist besser?** Nicht beantwortbar: Die Unterlage enthält keine
   Ergebnisse eines zweiten Systems, daher wäre ein Vergleich erfunden.
-- **Blocker/Dealbreaker:** Anhänge einer dokumentbezogen freigegebenen Seite sind
+- **PM-A04 — Blocker/Dealbreaker:** Anhänge einer dokumentbezogen freigegebenen Seite sind
   nicht mit derselben Dokumentberechtigung geschützt/erreichbar; kein fertiger
   Gastlink-Flow; keine Mention-Benachrichtigung; kein Wiki-Inhaltsverzeichnis.
 
 ## IT / Technik (1/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | IT-01 | S&V-Mitarbeiter meldet sich über Firmenkonto an; Name/E-Mail stimmen | teilweise | OAuth2 und Profilübernahme sind vorgesehen. Ein echter S&V-IdP war in dieser Umgebung nicht konfiguriert und wurde nicht gegen Produktionsclaims getestet. |
 | IT-02 | Person ohne Erlaubnis versucht sich anzumelden; Anmeldung wird abgewiesen | nein | AT-12 bestätigt verweigerten Inhaltszugriff, nicht verweigerte Anmeldung. Mit aktivierter E-Mail-Anmeldung kann ein Konto erstellt werden; es erhält lediglich keinen Space-Zugriff. |
@@ -102,7 +118,7 @@ Bewertung:
 
 ## IT / Technik (2/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | IT-09 | Confluence-Bereich/Export übernehmen | nein | Es gibt einen generischen, dateibasierten One-shot-Importer, aber keinen Confluence-Adapter oder geprüften Confluence-Exportlauf. |
 | IT-10 | xWiki-Bereich übernehmen | nein | Kein nativer xWiki-Adapter und kein geprüfter xWiki-Exportlauf vorhanden. |
@@ -115,7 +131,7 @@ Bewertung:
 
 ## IT / Technik (3/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | IT-17 | LDAP prüfen oder OIDC/Firmenkonto als ausreichend dokumentieren | teilweise | Generisches OAuth2 ist implementiert; LDAP fehlt und der konkrete S&V-OIDC-Vertrag wurde nicht abgenommen. |
 | IT-18 | Große praxisnahe Datei hochladen | teilweise | Der Uploadpfad akzeptiert Dateien bis 1,25 GB; AT-08 bestätigt einen echten Upload, aber keinen praxisnahen Großdatei-/Timeout-/Proxy-Test. |
@@ -128,25 +144,25 @@ Bewertung:
 
 ## IT / Technik (4/4)
 
-| ID | Testfall | Ergebnis | Befund |
+| Kriterien-ID | Testfall | Ergebnis | Befund |
 |---|---|---:|---|
 | IT-25 | Audit-Logs als Textdatei oder Export finden | teilweise | AT-15 bestätigt auswertbares JSON als Textantwort. Eine dedizierte Download-/Exportfunktion fehlt. |
 
 ## Abschluss — IT / Technik
 
-- **Produktionstauglich On-Premises?** Noch nein für den beschriebenen
+- **IT-A01 — Produktionstauglich On-Premises?** Noch nein für den beschriebenen
   Unternehmenseinsatz. Der Docker-/Single-Binary-Betrieb und die zentralen ACLs
   sind eine gute Basis, aber belastbarer Backup/Restore, reale S&V-SSO-Abnahme,
   Migrationspfade und dokumentbezogener Anhangszugriff fehlen als Nachweise bzw.
   Fähigkeiten.
-- **Persönliche Empfehlung:** Als kontrollierten On-Prem-Pilot betreiben, nicht
+- **IT-A02 — Persönliche Empfehlung:** Als kontrollierten On-Prem-Pilot betreiben, nicht
   sofort als alleinige produktive Wissensquelle. Vor Go-live die vier Blocker
   unten mit realen Daten und IdP testen.
-- **Welches System ist besser?** Ohne Vergleichssystem und dessen Testergebnisse
+- **IT-A03 — Welches System ist besser?** Ohne Vergleichssystem und dessen Testergebnisse
   nicht seriös entscheidbar.
-- **Blocker/Dealbreaker:** kein bestandener Backup/Restore; kein Confluence-/xWiki-
+- **IT-A04 — Blocker/Dealbreaker:** kein bestandener Backup/Restore; kein Confluence-/xWiki-
   Migrationslauf; kein PostgreSQL/Nicht-SQLite-Backend; keine produktive S&V-SSO-
   Abnahme; Scope-Mismatch zwischen Dokumentfreigabe und Upload-Zugriff.
-- **Offene Ops-Punkte:** Update/Rollback, Restore-Zeit, Uploadgrenzen durch Reverse
+- **IT-A05 — Offene Ops-Punkte:** Update/Rollback, Restore-Zeit, Uploadgrenzen durch Reverse
   Proxy, IdP-Claim-Mapping, Gruppenänderungen im laufenden Betrieb, Audit-Retention,
   Monitoring und Kapazitätsplanung für libSQL/Uploads.
