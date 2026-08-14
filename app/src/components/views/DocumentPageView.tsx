@@ -461,6 +461,17 @@ export function DocumentPageView(props: Props) {
     />
   );
 
+  const documentAside = (): JSX.Element => (
+    <DocumentExtensionViews
+      views={documentRightViews()}
+      documentId={doc()?.id ?? null}
+      fullWidth={effectiveLayout() === "full"}
+      onHideTableOfContents={() => setTableOfContentsVisible(false)}
+      spaceId={currentSpace()?.id as string}
+      tableOfContents={hasMounted() && isRegularDocument() && tableOfContentsVisible()}
+    />
+  );
+
   return (
     <>
       <Show
@@ -504,10 +515,6 @@ export function DocumentPageView(props: Props) {
                 isCsv() || isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
-                hasDocumentAside() && effectiveLayout() === "full"
-                  ? "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-6"
-                  : hasDocumentAside() &&
-                      "min-[1850px]:grid min-[1850px]:max-w-[calc(var(--document-width)+21.5rem)] min-[1850px]:grid-cols-[var(--document-width)_20rem] min-[1850px]:items-start min-[1850px]:gap-6",
               )}
             >
               <div
@@ -518,6 +525,8 @@ export function DocumentPageView(props: Props) {
                 class={twMerge(
                   "relative flex h-full w-full min-w-0 max-w-full flex-col",
                   isFullHeightView() && "min-h-0 flex-1",
+                  effectiveLayout() !== "full" &&
+                    "min-[1920px]:left-[-60px] print:left-0",
                 )}
               >
                 <Show when={doc()?.archived}>
@@ -620,7 +629,12 @@ export function DocumentPageView(props: Props) {
                 </Show>
 
                 <div
-                  class={twMerge(isFullHeightView() && "flex min-h-0 flex-1 flex-col")}
+                  class={twMerge(
+                    isFullHeightView() && "flex min-h-0 flex-1 flex-col",
+                    hasDocumentAside() &&
+                      effectiveLayout() === "full" &&
+                      "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-6",
+                  )}
                 >
                   <div
                     class={twMerge(
@@ -726,18 +740,10 @@ export function DocumentPageView(props: Props) {
                       </inset-view>
                     </Show>
                   </div>
+                  <Show when={effectiveLayout() === "full"}>{documentAside()}</Show>
                 </div>
               </div>
-              <DocumentExtensionViews
-                views={documentRightViews()}
-                documentId={doc()?.id ?? null}
-                fullWidth={effectiveLayout() === "full"}
-                onHideTableOfContents={() => setTableOfContentsVisible(false)}
-                spaceId={currentSpace()?.id as string}
-                tableOfContents={
-                  hasMounted() && isRegularDocument() && tableOfContentsVisible()
-                }
-              />
+              <Show when={effectiveLayout() !== "full"}>{documentAside()}</Show>
             </div>
           </inset-view>
         </div>
