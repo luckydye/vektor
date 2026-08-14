@@ -1,6 +1,7 @@
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
 import {
+  isAccessDenied,
   verifyDocumentRole,
   verifyExtensionAccess,
   verifyResourceAccess,
@@ -16,10 +17,12 @@ import {
   incrementWebSocketConnections,
 } from "#observability/metrics.ts";
 import { subscribeToSyncEvents } from "./events.ts";
-import { PresenceConnection } from "./presence.ts";
+import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
   realtimeTopics,
+  WS_CLOSE_FORBIDDEN,
+  WS_CLOSE_UNAUTHORIZED,
   WsMsgType,
   wsDecode,
   wsEncode,
@@ -54,25 +57,26 @@ async function authorizePresenceRoom(
   spaceId: string,
   userId: string,
   room: string,
-): Promise<boolean> {
+): Promise<PresenceRoomAccess> {
   const extensionId = extensionIdFromPresenceRoom(room);
   if (extensionId !== null) {
-    if (!extensionId) return false;
-    if (!(await getExtension(await openSpaceStore(spaceId), extensionId))) return false;
-    if (isNoAuthMode()) return true;
+    if (!extensionId) return "denied";
     try {
+      const store = await openSpaceStore(spaceId);
+      if (!(await getExtension(store, extensionId))) return "denied";
+      if (isNoAuthMode()) return "allowed";
       await verifyExtensionAccess(spaceId, extensionId, userId);
-      return true;
-    } catch {
-      return false;
+      return "allowed";
+    } catch (error) {
+      return isAccessDenied(error) ? "denied" : "unknown";
     }
   }
 
   try {
     await verifyDocumentRole(spaceId, room, userId, Permission.VIEWER);
-    return true;
-  } catch {
-    return false;
+    return "allowed";
+  } catch (error) {
+    return isAccessDenied(error) ? "denied" : "unknown";
   }
 }
 
@@ -90,7 +94,7 @@ async function authenticateConnection(
 
   if (!session?.user?.id) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
-    websocket.close();
+    websocket.close(WS_CLOSE_UNAUTHORIZED, "Unauthorized");
     return null;
   }
 
@@ -99,9 +103,16 @@ async function authenticateConnection(
     // a document-level grantee is admitted as it is over HTTP. Authorizes
     // nothing: every topic, Yjs room and presence room is checked on its own.
     await verifyResourceAccess(spaceId, session.user.id);
-  } catch {
+  } catch (error) {
+    // Refused either way, but only a verdict is worth telling the client not to
+    // retry: an ACL that could not be read is a reason to come back later.
     websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-    websocket.close();
+    if (isAccessDenied(error)) {
+      websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
+    } else {
+      appLogger.warn("Could not authorize a realtime connection", { error, spaceId });
+      websocket.close();
+    }
     return null;
   }
 
@@ -123,14 +134,29 @@ async function handleRealtimeWebSocket(
 
   // Each claims a disjoint set of frame types, so this order is only the order
   // they are torn down in: stop the event fan-out before the rooms it may push
-  // into go away.
+  // into go away, and let the Yjs half release a room before presence decides
+  // whether it may still leave the socket in it.
+  const yjs = new YjsConnection(spaceId, userId, websocket);
   const handlers: FrameHandler[] = [
     new TopicSubscriptions(spaceId, userId, websocket),
-    new YjsConnection(spaceId, userId, websocket),
-    new PresenceConnection(spaceId, websocket, (room) =>
-      authorizePresenceRoom(spaceId, userId, room),
-    ),
+    yjs,
+    new PresenceConnection(spaceId, websocket, {
+      authorizeRoom: (room) => authorizePresenceRoom(spaceId, userId, room),
+      holdsYjsRoom: (room) => yjs.holdsRoom(room),
+    }),
   ];
+
+  /** Refuse the connection for good, releasing what it holds right away. */
+  const closeForbidden = (): void => {
+    websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+    // Ahead of the close handshake, which the peer has up to 30s to answer —
+    // long enough for a revoked user's cursor to sit in a room they have lost.
+    for (const handler of handlers) handler.close();
+    websocket.close(WS_CLOSE_FORBIDDEN, "Forbidden");
+    appLogger.info("Closed realtime connection whose space access was revoked", {
+      spaceId,
+    });
+  };
 
   /**
    * Re-runs every authorization this connection is standing on. Losing
@@ -146,16 +172,33 @@ async function handleRealtimeWebSocket(
       // `verifyResourceAccess`: a space-role check here would disconnect every
       // document-level grantee on the next unrelated ACL change in the space.
       await verifyResourceAccess(spaceId, userId);
-    } catch {
-      websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-      websocket.close();
-      appLogger.info("Closed realtime connection whose space access was revoked", {
-        spaceId,
-      });
+    } catch (error) {
+      // Only a verdict disconnects. The sweep runs this for every live
+      // connection, so reading an unreachable ACL as a revocation would empty
+      // the server on a single failed query.
+      if (!isAccessDenied(error)) {
+        appLogger.warn("Could not re-authorize a realtime connection; keeping it", {
+          error,
+          spaceId,
+        });
+        return;
+      }
+      closeForbidden();
       return;
     }
 
-    for (const handler of handlers) await handler.revalidate();
+    // Independently, so one half failing does not leave the others standing on
+    // an authorization nobody re-ran.
+    for (const handler of handlers) {
+      try {
+        await handler.revalidate();
+      } catch (error) {
+        appLogger.warn("Failed to re-authorize part of a realtime connection", {
+          error,
+          spaceId,
+        });
+      }
+    }
   };
 
   // Serialized: ACL events arrive in bursts, and two overlapping passes would

@@ -12,6 +12,7 @@ import {
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
+  WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
   wsDecodeJson,
@@ -560,6 +561,13 @@ const REALTIME_IDLE_GRACE_MS = 2_000;
  */
 const REALTIME_PING_INTERVAL_MS = 25_000;
 const REALTIME_PONG_TIMEOUT_MS = 10_000;
+
+/**
+ * How long a socket must stay open before the reconnect backoff is considered
+ * recovered. Shorter than the shortest backoff delay would make the reset
+ * meaningless; this is comfortably longer than any accept-then-refuse.
+ */
+const RECONNECT_SETTLED_MS = 5_000;
 
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
@@ -2407,7 +2415,12 @@ export class ApiClient {
 
     socket.addEventListener("open", () => {
       if (connection.socket !== socket) return; // stale handler from a prior socket
-      connection.reconnectAttempts = 0;
+      // Only a connection that lasted counts as recovered. The server accepts
+      // the socket before it can refuse it, so resetting on `open` alone would
+      // hold a rejected client at the shortest backoff forever.
+      setTimeout(() => {
+        if (connection.socket === socket) connection.reconnectAttempts = 0;
+      }, RECONNECT_SETTLED_MS);
       const isReconnect = connection.hasConnected;
       connection.hasConnected = true;
       this.resyncRealtimeConnection(connection);
@@ -2420,9 +2433,9 @@ export class ApiClient {
       this.handleRealtimeMessage(connection, event);
     });
 
-    const onClose = () => {
+    const onClose = (event: Event) => {
       if (connection.socket !== socket) return; // a newer socket already took over
-      this.handleRealtimeClose(connection);
+      this.handleRealtimeClose(connection, (event as CloseEvent).code);
     };
     socket.addEventListener("close", onClose);
     socket.addEventListener("error", onClose);
@@ -2573,9 +2586,19 @@ export class ApiClient {
     }
   }
 
-  private handleRealtimeClose(connection: RealtimeConnection): void {
+  private handleRealtimeClose(connection: RealtimeConnection, code?: number): void {
     this.stopRealtimeHeartbeat(connection);
     if (connection.closed) return;
+
+    // Access was withdrawn, so reconnecting would only be refused again — a
+    // later subscribe opens a fresh connection, which is the point at which
+    // access is worth asking about anew. An expired session is deliberately not
+    // treated this way: it resolves on its own, and the backoff below is what
+    // keeps waiting for it cheap.
+    if (code === WS_CLOSE_FORBIDDEN) {
+      this.teardownRealtimeConnection(connection);
+      return;
+    }
 
     // No active interest left — let it stay closed rather than reconnecting.
     if (

@@ -25,6 +25,23 @@ function broadcastPresence(
   }
 }
 
+/**
+ * Whether a connection may hold presence in a room. `unknown` is not a verdict:
+ * the ACL could not be read, so a join fails closed while a room already joined
+ * is kept rather than evicted on what may be a passing failure.
+ */
+export type PresenceRoomAccess = "allowed" | "denied" | "unknown";
+
+interface PresenceConnectionHooks {
+  authorizeRoom: (room: string) => Promise<PresenceRoomAccess>;
+  /**
+   * Whether the Yjs half of the same connection still holds the room. The
+   * socket's membership of `YRoom.clients` is shared between the two halves, so
+   * presence must not withdraw it from underneath a room the other half holds.
+   */
+  holdsYjsRoom: (room: string) => boolean;
+}
+
 /** Tracks presence registrations belonging to one realtime connection. */
 export class PresenceConnection {
   private readonly joinedRooms = new Map<string, Set<string>>();
@@ -32,7 +49,7 @@ export class PresenceConnection {
   constructor(
     private readonly spaceId: string,
     private readonly websocket: WebSocket,
-    private readonly authorizeRoom: (room: string) => Promise<boolean>,
+    private readonly hooks: PresenceConnectionHooks,
   ) {}
 
   /** Handles a presence frame and returns whether the frame was recognized. */
@@ -72,7 +89,9 @@ export class PresenceConnection {
    */
   async revalidate(): Promise<void> {
     for (const roomKey of [...this.joinedRooms.keys()]) {
-      if (await this.authorizeRoom(this.roomIdOf(roomKey))) {
+      // Only a verdict evicts: an ACL that could not be read leaves the room
+      // alone for the next pass rather than dropping an authorized user.
+      if ((await this.hooks.authorizeRoom(this.roomIdOf(roomKey))) !== "denied") {
         continue;
       }
       this.leaveRoomEntirely(roomKey);
@@ -102,14 +121,16 @@ export class PresenceConnection {
       });
     }
 
-    room.clients.delete(this.websocket);
+    if (!this.hooks.holdsYjsRoom(roomId)) {
+      room.clients.delete(this.websocket);
+    }
     if (room.clients.size === 0 && room.presences.size === 0) {
       yRooms.delete(roomKey);
     }
   }
 
   private async join(join: PresenceJoinPayload): Promise<void> {
-    if (!(await this.authorizeRoom(join.room))) {
+    if ((await this.hooks.authorizeRoom(join.room)) !== "allowed") {
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       return;
     }

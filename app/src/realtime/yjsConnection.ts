@@ -5,7 +5,7 @@
 
 import type { WebSocket } from "ws";
 import * as Y from "yjs";
-import { verifyDocumentRole } from "#acl/guards.ts";
+import { isAccessDenied, verifyDocumentRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { tracedSync } from "#observability/trace.ts";
@@ -24,8 +24,12 @@ import {
   yRooms,
 } from "./yjsRooms.ts";
 
-/** What a connection may do in a document room, or `null` for no access at all. */
-type RoomAccess = "edit" | "view" | null;
+/**
+ * What a connection may do in a document room. `unknown` is not a verdict: the
+ * ACL could not be read, so a join fails closed while a room already held keeps
+ * the verdict it has until a real one arrives.
+ */
+type RoomAccess = "edit" | "view" | "none" | "unknown";
 
 /**
  * A room this connection has joined: what it may do there, and when that was
@@ -104,9 +108,17 @@ export class YjsConnection {
     }
   }
 
+  /** Whether the Yjs half of this connection still holds `documentId`'s room. */
+  holdsRoom(documentId: string): boolean {
+    return this.joinedRooms.has(`${this.spaceId}:${documentId}`);
+  }
+
   private async join(documentId: string): Promise<void> {
+    // Stamped before the check, so a revocation announced while it was in
+    // flight still invalidates the verdict it produced.
+    const checkedAt = Date.now();
     const access = await this.authorizeRoom(documentId);
-    if (access === null) {
+    if (access !== "edit" && access !== "view") {
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       return;
     }
@@ -118,10 +130,7 @@ export class YjsConnection {
     }
 
     room.clients.add(this.websocket);
-    this.joinedRooms.set(roomKey, {
-      canEdit: access === "edit",
-      verifiedAt: Date.now(),
-    });
+    this.joinedRooms.set(roomKey, { canEdit: access === "edit", verifiedAt: checkedAt });
 
     const stateUpdate = tracedSync("yjs.encodeState", () =>
       Y.encodeStateAsUpdate(room.doc as Y.Doc),
@@ -171,12 +180,29 @@ export class YjsConnection {
    * when access is gone and the connection was evicted from the room.
    */
   private async revalidateRoom(roomKey: string): Promise<JoinedRoom | undefined> {
+    if (!this.joinedRooms.has(roomKey)) return undefined;
+
+    const documentId = roomKey.slice(this.spaceId.length + 1);
+    const checkedAt = Date.now();
+    const access = await this.authorizeRoom(documentId);
+
+    // Another pass may have evicted the room while this one was in flight, and
+    // a verdict must never put the connection back into a room it has left.
     const joined = this.joinedRooms.get(roomKey);
     if (!joined) return undefined;
 
-    const documentId = roomKey.slice(this.spaceId.length + 1);
-    const access = await this.authorizeRoom(documentId);
-    if (access === null) {
+    // Only a verdict withdraws a room. An ACL that could not be read leaves the
+    // verdict as it stands — stale, so the next update checks again — because
+    // evicting here would drop an authorized editor on a failed query.
+    if (access === "unknown") {
+      appLogger.warn("Could not re-authorize a realtime room; keeping the verdict", {
+        spaceId: this.spaceId,
+        documentId,
+      });
+      return joined;
+    }
+
+    if (access === "none") {
       this.leaveRoom(roomKey);
       this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       appLogger.info("Evicted realtime connection from a room it lost access to", {
@@ -187,7 +213,7 @@ export class YjsConnection {
     }
 
     joined.canEdit = access === "edit";
-    joined.verifiedAt = Date.now();
+    joined.verifiedAt = checkedAt;
     return joined;
   }
 
@@ -212,17 +238,23 @@ export class YjsConnection {
    * the two can never drift apart.
    */
   private async authorizeRoom(documentId: string): Promise<RoomAccess> {
-    if (await this.holdsRole(documentId, Permission.EDITOR)) return "edit";
-    if (await this.holdsRole(documentId, Permission.VIEWER)) return "view";
-    return null;
+    const asEditor = await this.holdsRole(documentId, Permission.EDITOR);
+    if (asEditor !== "denied") return asEditor === "held" ? "edit" : "unknown";
+
+    const asViewer = await this.holdsRole(documentId, Permission.VIEWER);
+    if (asViewer === "unknown") return "unknown";
+    return asViewer === "held" ? "view" : "none";
   }
 
-  private async holdsRole(documentId: string, role: Permission): Promise<boolean> {
+  private async holdsRole(
+    documentId: string,
+    role: Permission,
+  ): Promise<"held" | "denied" | "unknown"> {
     try {
       await verifyDocumentRole(this.spaceId, documentId, this.userId, role);
-      return true;
-    } catch {
-      return false;
+      return "held";
+    } catch (error) {
+      return isAccessDenied(error) ? "denied" : "unknown";
     }
   }
 }

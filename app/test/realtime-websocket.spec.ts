@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import {
   realtimeTopics,
+  WS_CLOSE_FORBIDDEN,
+  WS_CLOSE_UNAUTHORIZED,
   WsMsgType,
   wsDecode,
   wsDecodeJson,
@@ -61,6 +63,8 @@ function connectWebSocket(
       })
     : new WebSocket(url);
   socket.binaryType = "arraybuffer";
+
+  socket.addEventListener("close", (event) => closeCodes.set(socket, event.code));
 
   const frames: ReceivedFrame[] = [];
   const listeners = new Set<(frame: ReceivedFrame) => boolean>();
@@ -129,19 +133,29 @@ function connectWebSocket(
   });
 }
 
-async function waitForClose(socket: WebSocket, timeoutMs = 5_000): Promise<void> {
+/**
+ * Close codes seen by `connectWebSocket`, so a socket the server refused before
+ * the assertion ran can still be checked.
+ */
+const closeCodes = new WeakMap<WebSocket, number>();
+
+/** Resolves with the close code, or `null` if it was closed without one. */
+async function waitForClose(
+  socket: WebSocket,
+  timeoutMs = 5_000,
+): Promise<number | null> {
   if (socket.readyState === WebSocket.CLOSED) {
-    return;
+    return closeCodes.get(socket) ?? null;
   }
 
-  await new Promise<void>((resolve, reject) => {
+  return await new Promise<number>((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error("timed out waiting for WebSocket close")),
       timeoutMs,
     );
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       clearTimeout(timeout);
-      resolve();
+      resolve(event.code);
     });
   });
 }
@@ -524,7 +538,7 @@ describe("Realtime WebSocket", () => {
       await connection.waitForFrame(WsMsgType.Error),
     );
     expect(error.message).toBe("Unauthorized");
-    await waitForClose(connection.socket);
+    expect(await waitForClose(connection.socket)).toBe(WS_CLOSE_UNAUTHORIZED);
   });
 });
 
@@ -1075,7 +1089,8 @@ describe("Realtime WebSocket access revocation", () => {
           await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
         ).message,
       ).toBe("Forbidden");
-      await waitForClose(connection.socket);
+      // The code is what stops the client reconnecting into the same refusal.
+      expect(await waitForClose(connection.socket)).toBe(WS_CLOSE_FORBIDDEN);
     },
     TEST_TIMEOUT_MS,
   );

@@ -42,6 +42,19 @@ import { parseJobToken } from "#jobs/jobToken.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 
 /**
+ * Whether a rejection from a guard is a verdict on the access itself — no grant
+ * (403), or nothing left to grant access to (404) — rather than a failure to
+ * reach the ACL at all, which surfaces as an ordinary Error.
+ *
+ * A caller that only refuses one request can treat the two alike. A caller that
+ * withdraws access already granted must not: an unreachable database would
+ * otherwise read as a revocation.
+ */
+export function isAccessDenied(error: unknown): boolean {
+  return error instanceof Response;
+}
+
+/**
  * Verify `userId` actually holds `requiredRole` on `target`, using the same
  * resolution as an interactive session would: document targets fall back to
  * the space role (see `hasPermission`), everything else is gated on the space
