@@ -17,6 +17,26 @@ export type SpaceSecretMetadata = {
   lastUsedAt: Date | null;
 };
 
+const SPACE_SECRET_NAMESPACE_SEPARATOR = ":";
+
+export const spaceSecretNamespaces = {
+  secrets: "secrets",
+} as const;
+
+/** A key owned by application code rather than the user-facing secret store. */
+export function spaceSecretKey(namespace: string, name: string): string {
+  return `${namespace}${SPACE_SECRET_NAMESPACE_SEPARATOR}${name}`;
+}
+
+/**
+ * Namespaced secrets are application-owned and must never be addressable through
+ * the generic secrets API. Double-underscore names were the old internal-secret
+ * convention and remain reserved so existing rows cannot become visible again.
+ */
+function isUserManagedSecretName(name: string): boolean {
+  return !name.includes(SPACE_SECRET_NAMESPACE_SEPARATOR) && !name.startsWith("__");
+}
+
 export function sanitizeSecretName(value: string): string {
   const name = value.trim();
   if (!name) {
@@ -27,6 +47,9 @@ export function sanitizeSecretName(value: string): string {
   }
   if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
     throw new Error("Secret name may only contain letters, numbers, '.', '_' and '-'");
+  }
+  if (!isUserManagedSecretName(name)) {
+    throw new Error("Secret name is reserved for internal use");
   }
   return name;
 }
@@ -43,7 +66,9 @@ export async function listSpaceSecrets(s: SpaceStore): Promise<SpaceSecretMetada
     })
     .from(spaceSecret);
 
-  return rows.sort((a, b) => a.name.localeCompare(b.name));
+  return rows
+    .filter((row) => isUserManagedSecretName(row.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function upsertSpaceSecret(
@@ -53,6 +78,10 @@ export async function upsertSpaceSecret(
   createdBy: string,
   description?: string | null,
 ): Promise<SpaceSecretMetadata> {
+  if (!isUserManagedSecretName(name)) {
+    throw new Error("Secret name is reserved for internal use");
+  }
+
   const existing = await one(
     s.db.select().from(spaceSecret).where(eq(spaceSecret.name, name)).limit(1),
   );
@@ -132,6 +161,10 @@ export async function getSpaceSecretValue(
 }
 
 export async function deleteSpaceSecret(s: SpaceStore, name: string): Promise<boolean> {
+  if (!isUserManagedSecretName(name)) {
+    return false;
+  }
+
   const result = await s.db
     .delete(spaceSecret)
     .where(eq(spaceSecret.name, name))
@@ -144,6 +177,10 @@ export async function userCanReadSpaceSecret(
   name: string,
   userId: string,
 ): Promise<boolean> {
+  if (!isUserManagedSecretName(name)) {
+    return false;
+  }
+
   const space = await getSpace(s.spaceId);
   if (!space) {
     return false;
@@ -154,24 +191,12 @@ export async function userCanReadSpaceSecret(
     return true;
   }
 
-  const isSpaceEditor = await hasPermission(
+  return hasPermission(
     s.spaceId,
     ResourceType.SPACE,
     s.spaceId,
     userId,
-    Permission.EDITOR,
-    groups,
-  );
-  if (isSpaceEditor) {
-    return true;
-  }
-
-  return hasPermission(
-    s.spaceId,
-    ResourceType.SECRET,
-    name,
-    userId,
-    Permission.VIEWER,
+    Permission.OWNER,
     groups,
   );
 }
@@ -190,6 +215,10 @@ export async function getSpaceSecretValueForUser(
 }
 
 export async function hasSpaceSecret(s: SpaceStore, name: string): Promise<boolean> {
+  if (!isUserManagedSecretName(name)) {
+    return false;
+  }
+
   const row = await one(
     s.db
       .select({ name: spaceSecret.name })
@@ -205,6 +234,10 @@ export async function getSpaceSecretMetadata(
   s: SpaceStore,
   name: string,
 ): Promise<SpaceSecretMetadata | null> {
+  if (!isUserManagedSecretName(name)) {
+    return null;
+  }
+
   const row = await one(
     s.db
       .select({

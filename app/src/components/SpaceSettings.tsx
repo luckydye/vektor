@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { Permission } from "#acl/permissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { AgentSettings } from "./AgentSettings.tsx";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
@@ -65,7 +66,9 @@ export function SpaceSettings() {
               </p>
               <ExtensionSettings />
 
-              <SpaceSecretsSettings />
+              <Show when={currentSpace()?.userRole === Permission.OWNER}>
+                <SpaceSecretsSettings />
+              </Show>
             </section>
 
             <SpaceAccessTokensSettings />

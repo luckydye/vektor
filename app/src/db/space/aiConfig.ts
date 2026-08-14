@@ -5,6 +5,7 @@ import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceSecret } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
+import { spaceSecretKey, spaceSecretNamespaces } from "./spaceSecrets.ts";
 
 /**
  * Space preference keys holding the AI provider config. The provider config is
@@ -19,7 +20,10 @@ const AI_BASE_URL_KEY = "ai:baseUrl";
 
 const AI_PREF_KEYS = [AI_PROVIDER_KEY, AI_MODEL_KEY, AI_BASE_URL_KEY];
 
-const AI_API_KEY_SECRET = "__ai_api_key";
+const AI_API_KEY_SECRET = spaceSecretKey(
+  spaceSecretNamespaces.secrets,
+  "ai_api_key",
+);
 
 export async function getAIProvider(s: SpaceStore): Promise<AIProvider> {
   const prefs = await many(

@@ -21,7 +21,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
     const store = await openSpaceStore(spaceId);
     const secrets = await listSpaceSecrets(store);

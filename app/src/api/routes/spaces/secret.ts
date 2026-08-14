@@ -29,7 +29,7 @@ export const GET: ApiRouteHandler = (context) =>
     const auth = await authenticateJobTokenOrSpaceRole(
       context,
       spaceId,
-      Permission.VIEWER,
+      Permission.OWNER,
     );
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
 
@@ -111,7 +111,7 @@ export const HEAD: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
     const store = await openSpaceStore(spaceId);
     const secret = await getSpaceSecretMetadata(store, name);

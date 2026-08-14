@@ -1,12 +1,8 @@
-import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
-import { Permission } from "#acl/permissions.ts";
+import { createEffect, createSignal, For, on, onMount, Show } from "solid-js";
 import { api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
 import { Button } from "./Button.tsx";
-
-type SecretPermission = { userId?: string; groupId?: string; permission: string };
-type AssignableUser = { id: string; name: string; email: string };
 
 export function SpaceSecretsSettings() {
   const { currentSpace, currentSpaceId } = useSpace();
@@ -22,67 +18,6 @@ export function SpaceSecretsSettings() {
   const [selectedSecretName, setSelectedSecretName] = createSignal<string | null>(null);
   const [selectedSecretValue, setSelectedSecretValue] = createSignal<string | null>(null);
   const [isLoadingSecretValue, setIsLoadingSecretValue] = createSignal(false);
-  const [selectedGrantUserId, setSelectedGrantUserId] = createSignal("");
-  const [isGrantingSecretAccess, setIsGrantingSecretAccess] = createSignal(false);
-  const [secretPermissions, setSecretPermissions] = createSignal<SecretPermission[]>([]);
-  const [isLoadingSecretPermissions, setIsLoadingSecretPermissions] = createSignal(false);
-  const [secretAssignableUsers, setSecretAssignableUsers] = createSignal<
-    AssignableUser[]
-  >([]);
-  const [isLoadingSecretUsers, setIsLoadingSecretUsers] = createSignal(false);
-
-  const availableSecretGrantUsers = createMemo(() => {
-    const grantedUserIds = new Set(
-      secretPermissions()
-        .map((p) => p.userId)
-        .filter((id): id is string => !!id),
-    );
-    return secretAssignableUsers().filter((u) => !grantedUserIds.has(u.id));
-  });
-
-  const secretUsersById = createMemo(() => {
-    const byId = new Map<string, AssignableUser>();
-    for (const u of secretAssignableUsers()) byId.set(u.id, u);
-    return byId;
-  });
-
-  function formatSecretPermissionTarget(perm: SecretPermission): string {
-    if (perm.userId) {
-      const user = secretUsersById().get(perm.userId);
-      if (user) return `${user.name} (${user.email})`;
-      return perm.userId;
-    }
-    return perm.groupId ? `Group: ${perm.groupId}` : "Unknown";
-  }
-
-  async function loadSecretAssignableUsers() {
-    const spaceId = currentSpace()?.id;
-    if (!spaceId) return;
-    setIsLoadingSecretUsers(true);
-    try {
-      const members = await api.spaceMembers.get(spaceId);
-      const users = new Map<string, AssignableUser>();
-
-      for (const member of members) {
-        if (member.userId && member.user) {
-          users.set(member.userId, {
-            id: member.user.id,
-            name: member.user.name || member.user.email,
-            email: member.user.email,
-          });
-        }
-      }
-
-      setSecretAssignableUsers(
-        [...users.values()].sort((a, b) => a.name.localeCompare(b.name)),
-      );
-    } catch (error) {
-      console.error("Failed to load secret assignable users", error);
-      setSecretAssignableUsers([]);
-    } finally {
-      setIsLoadingSecretUsers(false);
-    }
-  }
 
   async function loadSecrets() {
     const spaceId = currentSpace()?.id;
@@ -134,33 +69,16 @@ export function SpaceSecretsSettings() {
     if (!spaceId) return;
     setSelectedSecretName(name);
     setSelectedSecretValue(null);
-    setSecretPermissions([]);
-    setSelectedGrantUserId("");
     setIsLoadingSecretValue(true);
-    setIsLoadingSecretPermissions(true);
     setSecretsError(null);
 
     try {
-      const [secret, perms] = await Promise.all([
-        api.secrets.getByName(spaceId, name),
-        api.permissions.list(spaceId, "role", {
-          resourceType: "secret",
-          resourceId: name,
-        }),
-      ]);
+      const secret = await api.secrets.getByName(spaceId, name);
       setSelectedSecretValue(secret.value);
-      setSecretPermissions(
-        (perms.permissions || [])
-          .filter((p) => p.type === "role")
-          .map((p) => p.permission)
-          .filter((p) => p.userId || p.groupId),
-      );
-      setSelectedGrantUserId(availableSecretGrantUsers()[0]?.id || "");
     } catch (err) {
       setSecretsError(err instanceof Error ? err.message : "Failed to load secret");
     } finally {
       setIsLoadingSecretValue(false);
-      setIsLoadingSecretPermissions(false);
     }
   }
 
@@ -193,58 +111,10 @@ export function SpaceSecretsSettings() {
       if (selectedSecretName() === name) {
         setSelectedSecretName(null);
         setSelectedSecretValue(null);
-        setSecretPermissions([]);
       }
       await loadSecrets();
     } catch (err) {
       setSecretsError(err instanceof Error ? err.message : "Failed to delete secret");
-    }
-  }
-
-  async function handleGrantSecretAccess() {
-    const spaceId = currentSpace()?.id;
-    const secretName = selectedSecretName();
-    if (!spaceId || !secretName || !selectedGrantUserId()) return;
-    setIsGrantingSecretAccess(true);
-    setSecretsError(null);
-
-    try {
-      await api.permissions.grant(spaceId, {
-        type: "role",
-        roleOrFeature: Permission.VIEWER,
-        userId: selectedGrantUserId(),
-        resourceType: "secret",
-        resourceId: secretName,
-      });
-      setSelectedGrantUserId("");
-      await handleRevealSecret(secretName);
-    } catch (err) {
-      setSecretsError(
-        err instanceof Error ? err.message : "Failed to grant secret access",
-      );
-    } finally {
-      setIsGrantingSecretAccess(false);
-    }
-  }
-
-  async function handleRevokeSecretAccess(userId: string) {
-    const spaceId = currentSpace()?.id;
-    const secretName = selectedSecretName();
-    if (!spaceId || !secretName) return;
-
-    try {
-      await api.permissions.revoke(spaceId, {
-        type: "role",
-        roleOrFeature: Permission.VIEWER,
-        userId,
-        resourceType: "secret",
-        resourceId: secretName,
-      });
-      await handleRevealSecret(secretName);
-    } catch (err) {
-      setSecretsError(
-        err instanceof Error ? err.message : "Failed to revoke secret access",
-      );
     }
   }
 
@@ -256,7 +126,6 @@ export function SpaceSecretsSettings() {
 
   function reload() {
     void loadSecrets();
-    void loadSecretAssignableUsers();
   }
 
   onMount(reload);
@@ -482,67 +351,6 @@ export function SpaceSecretsSettings() {
               </button>
             </div>
 
-            <div class="border-neutral-200 border-t pt-3">
-              <p class="mb-2 font-medium text-neutral-700 text-size-small">
-                Grant Access
-              </p>
-              <div class="flex flex-wrap items-center justify-end gap-2">
-                <select
-                  value={selectedGrantUserId()}
-                  onChange={(e) => setSelectedGrantUserId(e.currentTarget.value)}
-                  class="focus-ring min-w-[200px] flex-1 rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
-                >
-                  <option value="" disabled>
-                    {isLoadingSecretUsers()
-                      ? "Loading users..."
-                      : availableSecretGrantUsers().length > 0
-                        ? "Select user"
-                        : "No available users"}
-                  </option>
-                  <For each={availableSecretGrantUsers()}>
-                    {(u) => (
-                      <option value={u.id}>
-                        {u.name} ({u.email})
-                      </option>
-                    )}
-                  </For>
-                </select>
-                <Button
-                  class="text-size-small"
-                  disabled={!selectedGrantUserId() || isGrantingSecretAccess()}
-                  text={isGrantingSecretAccess() ? "Granting..." : "Grant Viewer"}
-                  onClick={() => void handleGrantSecretAccess()}
-                />
-              </div>
-
-              <Show when={isLoadingSecretPermissions()}>
-                <div class="mt-2 text-neutral-500 text-size-small">Loading grants...</div>
-              </Show>
-              <Show
-                when={!isLoadingSecretPermissions() && secretPermissions().length > 0}
-              >
-                <div class="mt-2 flex flex-wrap gap-1">
-                  <For each={secretPermissions()}>
-                    {(perm) => (
-                      <span class="inline-flex items-center gap-1 rounded-sm bg-blue-50 px-2 py-1 text-blue-700 text-size-small">
-                        {formatSecretPermissionTarget(perm)} ({perm.permission})
-                        <Show when={perm.userId}>
-                          {(userId) => (
-                            <button
-                              type="button"
-                              onClick={() => void handleRevokeSecretAccess(userId())}
-                              class="text-blue-500 hover:text-blue-700"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </Show>
-                      </span>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
           </div>
         )}
       </Show>

@@ -354,7 +354,6 @@ export type PermissionResourceType =
   | "document_tree"
   | "category"
   | "extension"
-  | "secret"
   | "feature";
 
 export interface SpaceSecret {

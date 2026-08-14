@@ -94,11 +94,11 @@
 | `/api/v1/spaces/[spaceId]/properties` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/search` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/search/rebuild` | POST | 401 | 403 | 403 | 403 | 200 |  |
-| `/api/v1/spaces/[spaceId]/secrets` | GET | 401 | 403 | 403 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/secrets` | GET | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/secrets` | POST | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/secrets/[name]` | DELETE | 401 | 403 | 403 | 403 | 404 |  |
-| `/api/v1/spaces/[spaceId]/secrets/[name]` | GET | 401 | 403 | 404 | 404 | 404 |  |
-| `/api/v1/spaces/[spaceId]/secrets/[name]` | HEAD | 401 | 403 | 403 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/secrets/[name]` | GET | 401 | 403 | 403 | 403 | 404 |  |
+| `/api/v1/spaces/[spaceId]/secrets/[name]` | HEAD | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/secrets/[name]` | PUT | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/settings/ai-provider` | DELETE | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/settings/ai-provider` | GET | 401 | 403 | 403 | 200 | 200 |  |
