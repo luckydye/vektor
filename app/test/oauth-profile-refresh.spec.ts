@@ -6,7 +6,7 @@
 
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { subscribeToAuthorizationChanges } from "#acl/authorizationChanges.ts";
+import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { createIdpGroupSync } from "#acl/idpSync.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import { createAuth } from "#auth";

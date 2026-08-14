@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
-import { subscribeToAuthorizationChanges } from "#acl/authorizationChanges.ts";
+import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import {
   isAccessDenied,
   verifyDocumentRole,

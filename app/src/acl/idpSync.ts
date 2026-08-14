@@ -11,7 +11,7 @@
  */
 
 import { and, eq } from "drizzle-orm";
-import { publishAuthorizationChange } from "#acl/authorizationChanges.ts";
+import { publishAuthorizationChange } from "#acl/events.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import type { auth } from "#auth";
 import { config } from "#config";

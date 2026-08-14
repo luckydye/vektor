@@ -4,7 +4,7 @@
  * `TopicSubscriptions` subscribes to push them to the client.
  */
 
-import { publishAuthorizationChange } from "#acl/authorizationChanges.ts";
+import { publishAuthorizationChange } from "#acl/events.ts";
 import {
   type RealtimeEventInput,
   type RealtimeTopic,
