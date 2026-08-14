@@ -1059,6 +1059,48 @@ describe("Realtime WebSocket access revocation", () => {
   );
 
   it(
+    "evicts a revoked document while keeping access to another document",
+    async () => {
+      const grantee = await createTestUser(
+        AUTH_BASE_URL,
+        "Revoked Document Grantee",
+        "realtime-revoked-document-grantee",
+      );
+      const revokedDocumentId = await createDocument(
+        "Revoked document",
+        "<p>revoked document</p>",
+      );
+      const retainedDocumentId = await createDocument(
+        "Retained document",
+        "<p>retained document</p>",
+      );
+      await setRole(grantee.userId, "editor", revokedDocumentId);
+      await setRole(grantee.userId, "viewer", retainedDocumentId);
+
+      const connection = await connectWebSocket(AUTH_BASE_URL, spaceId, grantee.token);
+      try {
+        await joinRoom(connection, revokedDocumentId);
+        await revokeRole(grantee.userId, revokedDocumentId);
+
+        await waitForAccessChange(connection, {
+          scope: "document",
+          resourceId: revokedDocumentId,
+          access: "none",
+        });
+        expect(
+          wsDecodeJson<{ message: string }>(
+            await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+          ).message,
+        ).toBe("Forbidden");
+        expect(connection.socket.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        connection.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     "closes the connection of a user removed from the space",
     async () => {
       const member = await createTestUser(
