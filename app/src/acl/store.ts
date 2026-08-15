@@ -1487,6 +1487,13 @@ async function resolveReadableResources(
   resourceIds: string[],
   viewer: AclViewer,
   minPermission: Permission = Permission.VIEWER,
+  /**
+   * Whether a resource with no ACL row of its own falls back to the viewer's
+   * space role. True for a caller who has already been verified to hold
+   * `minPermission` on the space — which is every caller but the token pass
+   * below, where the issuer is resolved here rather than at the route.
+   */
+  spaceFallback = true,
 ): Promise<Set<string>> {
   const { userId, userGroups } = viewer;
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
@@ -1625,7 +1632,7 @@ async function resolveReadableResources(
       level = categoryLevel;
     }
 
-    if (level === undefined || level >= permissionLevel(minPermission)) {
+    if (level === undefined ? spaceFallback : level >= permissionLevel(minPermission)) {
       readable.add(id);
     }
   }
@@ -1651,6 +1658,17 @@ export async function filterReadableResources(
   const issuer = await tokenIssuer(spaceId, viewer.userId);
   if (!issuer) return own;
 
+  // Nothing verified the issuer's space role before this, so the fallback only
+  // applies where it would have held: a resource with no row of its own is
+  // theirs to read exactly when their space role already meets the bar.
+  const issuerSpaceRole = await getPermission(
+    spaceId,
+    ResourceType.SPACE,
+    spaceId,
+    issuer.id,
+    issuer.groups,
+  );
+
   // Re-filtering `own` rather than intersecting keeps the result a subset.
   return resolveReadableResources(
     spaceId,
@@ -1658,6 +1676,7 @@ export async function filterReadableResources(
     [...own],
     { userId: issuer.id, userGroups: issuer.groups },
     minPermission,
+    meetsPermissionLevel(issuerSpaceRole?.permission, minPermission),
   );
 }
 
@@ -1689,8 +1708,10 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
 
   for (const entry of results) {
     // A token holds a grant but is not a member — it is a credential one of
-    // them issued, and counting it would inflate the space's membership.
-    if (entry.userId && !entry.token) {
+    // them issued, and counting it would inflate the space's membership. Keyed
+    // on the id rather than the secret, so a row left behind by a token that
+    // predates this table does not read as a person either.
+    if (entry.userId && !tokenIdFromPrincipal(entry.userId)) {
       memberIds.add(entry.userId);
     }
     if (entry.groupId) {

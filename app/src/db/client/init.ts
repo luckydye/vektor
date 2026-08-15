@@ -148,13 +148,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     sql.raw("CREATE UNIQUE INDEX IF NOT EXISTS acl_token_unique ON acl (token)"),
   );
   await exec(spaceDb, sql.raw("DROP TABLE IF EXISTS access_token"));
-  // Tokens are not migrated, so the grants they used to point at go with them.
-  // Left behind they would be grantees with no credential: unusable, but
-  // counted as members and listed as access nobody can account for.
-  await exec(
-    spaceDb,
-    sql.raw("DELETE FROM acl WHERE user_id LIKE 'token:%' AND token IS NULL"),
-  );
 
   const auditLogSQL = generateCreateTableSQL(spaceSchema.auditLog);
   await exec(spaceDb, sql.raw(auditLogSQL));
