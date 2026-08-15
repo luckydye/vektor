@@ -111,7 +111,8 @@ export async function enqueueCommentCreatedEmails(params: {
   spaceId: string;
   documentId: string;
   commentId: string;
-  commentContent: string;
+  /** Null for a comment that is not text at all, such as a reaction. */
+  commentContent: string | null;
   commentReference: string | null;
   commentParentId: string | null;
   actorId: string;
@@ -127,7 +128,9 @@ export async function enqueueCommentCreatedEmails(params: {
     ),
     // A comment is stored as markdown; a mention is only a `<user-mention>`
     // once rendered, which is also how the thread displays it.
-    mentionedUserIds(renderMessageMarkdown(params.commentContent)),
+    mentionedUserIds(
+      params.commentContent ? renderMessageMarkdown(params.commentContent) : null,
+    ),
   ]);
 
   const announced = new Set(mentioned);
