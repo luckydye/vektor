@@ -21,6 +21,9 @@ Most endpoints accept one or more of:
 - **Public/unauthenticated** — permitted only where the space (or document/category)
   grants the `public` group a role.
 
+The model behind these — roles, features, scopes, groups, and who may grant what — is
+documented in [Permissions](/docs/permissions) (`docs/permissions.md`).
+
 Role hierarchy (space/document/category level): `viewer` < `editor` < `owner`. Some
 actions additionally gate on a **feature** flag independent of role: `comment`,
 `view_history`, `view_audit`, `manage_extensions` (see `Feature` enum in
