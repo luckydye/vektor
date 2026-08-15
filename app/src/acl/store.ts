@@ -364,16 +364,19 @@ export async function revokePermission(
  * would otherwise linger as entries nobody can reach. Group grants are left
  * alone: they belong to the group, not to the member.
  *
+ * The grantee is whatever `acl.userId` holds — a user id, or a token's
+ * `token:<id>` identity.
+ *
  * Returns the number of grants removed.
  */
-export async function revokeAllUserPermissions(
+export async function revokeAllGranteePermissions(
   store: SpaceStore,
-  userId: string,
+  granteeUserId: string,
   actorUserId?: string,
 ): Promise<number> {
   const { db, spaceId } = store;
 
-  const conditions = [eq(acl.userId, userId), isNull(acl.groupId)];
+  const conditions = [eq(acl.userId, granteeUserId), isNull(acl.groupId)];
 
   // Read first so each removal can be audited individually, the same way a
   // single-resource revoke is.

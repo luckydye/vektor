@@ -7,7 +7,7 @@ import {
   hasFeature,
   hasPermission,
   listUserPermissions,
-  revokeAllUserPermissions,
+  revokeAllGranteePermissions,
   revokePermission,
 } from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -422,7 +422,7 @@ export async function deleteAccessToken(
 
     // The token principal no longer exists, so its grants would otherwise stay
     // behind and make access listings report a grantee that can never be used.
-    await revokeAllUserPermissions(tx, getTokenUserId(tokenId), actorUserId);
+    await revokeAllGranteePermissions(tx, getTokenUserId(tokenId), actorUserId);
 
     return true;
   });
