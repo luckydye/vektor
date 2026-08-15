@@ -254,10 +254,15 @@ font-family: var(--font-sans, system-ui, sans-serif);
 | Group | Tokens |
 |-------|--------|
 | Text / UI colour | `--color-neutral-10` … `--color-neutral-950` (10 is white in light mode, inverted in dark) |
-| Brand | `--color-primary-10` … `--color-primary-950`; primary action is `--color-primary-600` |
+| Brand | `--color-primary`, `--color-primary-10` … `--color-primary-950`; primary action is `--color-primary-600` |
 | Surfaces | `--color-background`, `--color-neutral-50` (sunken), `--color-neutral-100` (borders) |
 | Type | `--font-sans`, `--text-size-small` (12px) … `--text-size-hero`, with matching `--line-height-*` |
 | Space, radius | `--spacing-6xs` (2px) … `--spacing-5xl` (160px), `--radius-sm` (6px) … `--radius-2xl`, `--radius-full` |
+
+The neutrals are the shell's own; the primary scale is generated per space from
+the brand colour in its general settings. Take accents from `--color-primary-*`
+and text, borders and surfaces from `--color-neutral-*`, and the view re-skins
+itself per space and per theme for free.
 
 Colours the app does not define — pass, warn, fail — are declared once as local
 custom properties on your root element and reused. Check both themes with
