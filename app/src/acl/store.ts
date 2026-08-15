@@ -1708,9 +1708,7 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
 
   for (const entry of results) {
     // A token holds a grant but is not a member — it is a credential one of
-    // them issued, and counting it would inflate the space's membership. Keyed
-    // on the id rather than the secret, so a row left behind by a token that
-    // predates this table does not read as a person either.
+    // them issued, and counting it would inflate the space's membership.
     if (entry.userId && !tokenIdFromPrincipal(entry.userId)) {
       memberIds.add(entry.userId);
     }
