@@ -327,7 +327,7 @@ describe("editor cannot obtain owner (issue #45)", () => {
       },
     );
     expect(created.status).toBe(201);
-    const tokenId = (await created.json()).token.id;
+    const tokenId = (await created.json()).id;
 
     const grantOwner = await apiRequest(
       `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,

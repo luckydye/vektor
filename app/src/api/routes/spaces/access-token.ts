@@ -71,11 +71,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    const success = await deleteAccessToken(
-      await openSpaceStore(spaceId),
-      tokenId,
-      user.id,
-    );
+    const success = await deleteAccessToken(await openSpaceStore(spaceId), tokenId);
     if (!success) {
       throw notFoundResponse("Access token");
     }

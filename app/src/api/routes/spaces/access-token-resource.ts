@@ -3,6 +3,7 @@ import { isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
+  notFoundResponse,
   parseJsonBody,
   requireParam,
   requireUser,
@@ -14,12 +15,13 @@ import { openSpaceStore } from "#db/client/store.ts";
 import {
   grantTokenAccess,
   listTokenResources,
-  revokeTokenAccess,
+  revokeAccessToken,
 } from "#db/space/accessTokens.ts";
 
 /**
  * PUT /api/v1/spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId
- * Grant token access to a resource in this space.
+ * Re-scope a token, or change what it grants. A token holds one grant, so this
+ * replaces it rather than adding to it.
  * Body:
  *   - permission: "viewer" | "editor"
  */
@@ -47,24 +49,28 @@ export const PUT: ApiRouteHandler = (context) =>
       throw badRequestResponse("Permission is required");
     }
 
-    validateTokenGrant(resourceType, permission);
-
-    await grantTokenAccess({
+    const store = await openSpaceStore(spaceId);
+    const granted = await grantTokenAccess(
+      store,
       tokenId,
-      spaceId,
       resourceType,
       resourceId,
-      permission,
-    });
+      validateTokenGrant(resourceType, permission),
+    );
+    if (!granted) {
+      throw notFoundResponse("Access token");
+    }
 
-    const resources = await listTokenResources(await openSpaceStore(spaceId), tokenId);
+    const resources = await listTokenResources(store, tokenId);
 
     return jsonResponse({ resources, message: "Access granted successfully" });
   }, "Failed to grant access token resource");
 
 /**
  * DELETE /api/v1/spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId
- * Revoke token access to a specific resource in this space.
+ * Revoke the token's grant. The grant is the token, so this revokes the
+ * credential with it — the secret stops authenticating rather than surviving
+ * with nothing behind it.
  */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -72,7 +78,6 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const tokenId = requireParam(context.var.params, "tokenId");
     const resourceType = requireParam(context.var.params, "resourceType");
-    const resourceId = requireParam(context.var.params, "resourceId");
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
@@ -82,12 +87,7 @@ export const DELETE: ApiRouteHandler = (context) =>
       );
     }
 
-    await revokeTokenAccess(
-      await openSpaceStore(spaceId),
-      tokenId,
-      resourceType,
-      resourceId,
-    );
+    await revokeAccessToken(await openSpaceStore(spaceId), tokenId);
 
     return successResponse({ message: "Resource access revoked successfully" });
   }, "Failed to revoke access token resource");

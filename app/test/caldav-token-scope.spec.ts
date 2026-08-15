@@ -280,11 +280,11 @@ describe("CalDAV token scope", () => {
     );
     expect(revoke.ok).toBe(true);
 
-    // Still a valid credential, but it now grants nothing: 403, not 401.
+    // The grant is the token, so revoking it revokes the credential: 401.
     expect(
       (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedGrantToken.token))
         .status,
-    ).toBe(403);
+    ).toBe(401);
     expect(
       (
         await calDav(
@@ -293,7 +293,7 @@ describe("CalDAV token scope", () => {
           revokedGrantToken.token,
         )
       ).status,
-    ).toBe(403);
+    ).toBe(401);
   });
 
   it("loses CalDAV access when the token itself is revoked", async () => {

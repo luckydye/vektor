@@ -120,6 +120,17 @@ export const category = sqliteTable("category", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
+/**
+ * Every permission grant in the space — and every access token, because a token
+ * *is* a grant that carries a credential.
+ *
+ * Folding the two together means a token cannot outlive its grant or leave one
+ * behind: the row is both. It also puts the issuer (`createdBy`) on the row
+ * being resolved, which is what caps a token at what its issuer still holds. A
+ * token is scoped to exactly one resource; two scopes means two tokens.
+ *
+ * The trailing columns are null on an ordinary grant.
+ */
 export const acl = sqliteTable(
   "acl",
   {
@@ -130,6 +141,21 @@ export const acl = sqliteTable(
     permission: text("permission").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+
+    /** Human label for a token, shown in space settings. */
+    name: text("name"),
+    /**
+     * SHA-256 of the `at_…` secret. Its presence is what makes a row a token.
+     * Uniqueness is the `acl_token_unique` index, not a column constraint —
+     * SQLite cannot ADD COLUMN with UNIQUE, and this one arrives that way.
+     */
+    token: text("token"),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+    /** The user a token delegates. Its grant never outranks what they hold. */
+    createdBy: text("created_by"),
+    /** Soft revoke: the row keeps its grant but stops authenticating. */
+    revokedAt: integer("revoked_at", { mode: "timestamp" }),
   },
   (table) => ({
     pk: primaryKey({
@@ -140,6 +166,9 @@ export const acl = sqliteTable(
 
 export type AclEntry = typeof acl.$inferSelect;
 export type AclInsert = typeof acl.$inferInsert;
+
+/** An `acl` row that carries a credential. */
+export type AccessToken = AclEntry & { token: string; createdBy: string };
 
 export const spaceSecret = sqliteTable(
   "space_secret",
@@ -255,20 +284,6 @@ export const emailNotificationOutbox = sqliteTable(
 );
 
 export type EmailNotificationOutbox = typeof emailNotificationOutbox.$inferSelect;
-
-export const accessToken = sqliteTable("access_token", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  token: text("token").notNull().unique(),
-  expiresAt: integer("expires_at", { mode: "timestamp" }),
-  lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-  revokedAt: integer("revoked_at", { mode: "timestamp" }),
-});
-
-export type AccessToken = typeof accessToken.$inferSelect;
-export type AccessTokenInsert = typeof accessToken.$inferInsert;
 
 export const workflowSchedule = sqliteTable("workflow_schedule", {
   id: text("id").primaryKey(),

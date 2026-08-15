@@ -1,11 +1,10 @@
-import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, like, or } from "drizzle-orm";
 import { ensureFreshGroups } from "#acl/idpSync.ts";
 import {
   type AclViewer,
   type Feature,
   GROUP_NAME_PATTERN,
   isPermission,
-  isResourceType,
   meetsPermissionLevel,
   Permission,
   PUBLIC_GROUP,
@@ -17,11 +16,11 @@ import {
   tokenIdFromPrincipal,
   weakerPermission,
 } from "#acl/permissions.ts";
-import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { getAuthDb } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
-import { accessToken, acl, category, document, property } from "#db/schema/space.ts";
+import { acl, category, document, property } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
@@ -45,6 +44,8 @@ type AclRow = {
   permission: string;
   createdAt: Date;
   updatedAt: Date;
+  /** Set only on a token row: the issuer whose access bounds this grant. */
+  createdBy?: string | null;
 };
 
 export async function getUserGroups(userId: string): Promise<string[]> {
@@ -362,65 +363,35 @@ export async function revokePermission(
 }
 
 /**
- * Remove every grant held directly by one grantee, on any resource, for when the
- * principal itself goes away. Group grants belong to the group, so they stay.
- * Returns the number removed.
+ * A revoked credential keeps its row so the revocation is reversible, but it
+ * must stop authorizing. Every read of `acl` carries this.
  */
-export async function revokeAllGranteePermissions(
-  store: SpaceStore,
-  granteeUserId: string,
-  actorUserId?: string,
-): Promise<number> {
-  const { db, spaceId } = store;
-
-  const conditions = [eq(acl.userId, granteeUserId), isNull(acl.groupId)];
-
-  // Read first so each removal can be audited.
-  const removed = await many(
-    db
-      .select()
-      .from(acl)
-      .where(and(...conditions)),
-  );
-
-  if (removed.length === 0) return 0;
-
-  await db.delete(acl).where(and(...conditions));
-
-  for (const entry of removed) {
-    if (!isResourceType(entry.resourceType)) continue;
-    await logAclChange(store, spaceId, {
-      event: "acl_revoke",
-      resourceType: entry.resourceType,
-      resourceId: entry.resourceId,
-      userId: entry.userId ?? undefined,
-      previousPermission: entry.permission,
-      actorUserId,
-    });
-  }
-
-  return removed.length;
-}
+const live = isNull(acl.revokedAt);
 
 interface TokenIssuer {
   id: string;
   groups: string[];
 }
 
-/** The user a token acts for. Null when the token row is gone. */
+/**
+ * The user a token principal acts for, or null for a plain user id. Reads the
+ * `createdBy` of the row that carries the credential.
+ */
 async function tokenIssuer(
   spaceId: string,
-  tokenId: string,
+  principalId: string,
 ): Promise<TokenIssuer | null> {
+  if (!tokenIdFromPrincipal(principalId)) return null;
+
   const { db } = await openSpaceStore(spaceId);
   const row = await one(
     db
-      .select({ createdBy: accessToken.createdBy })
-      .from(accessToken)
-      .where(eq(accessToken.id, tokenId)),
+      .select({ createdBy: acl.createdBy })
+      .from(acl)
+      .where(and(eq(acl.userId, principalId), isNotNull(acl.token))),
   );
 
-  if (!row) return null;
+  if (!row?.createdBy) return null;
   return { id: row.createdBy, groups: await getUserGroups(row.createdBy) };
 }
 
@@ -449,32 +420,25 @@ async function issuerRole(
 }
 
 /**
- * Cap a token's own rows at what its issuer holds today, so a demotion takes the
- * tokens that issuer minted down with it. Rows reached through a group (`public`
- * included) are left alone: those are not delegated, everyone has them.
+ * Cap a token row at what its issuer holds today, so a demotion takes the tokens
+ * that issuer minted down with it. `createdBy` is what marks a row as delegated;
+ * an ordinary grant, including one reached through a group, passes untouched.
  */
 async function capRowsToIssuer<T extends AclRow>(
   spaceId: string,
-  principalId: string,
   resourceType: ResourceType,
   rows: T[],
 ): Promise<T[]> {
-  const tokenId = tokenIdFromPrincipal(principalId);
-  if (!tokenId) return rows;
-
-  const own = (row: AclRow) => row.userId === principalId;
-  if (!rows.some(own)) return rows;
-
-  const issuer = await tokenIssuer(spaceId, tokenId);
-  if (!issuer) return rows.filter((row) => !own(row));
+  if (!rows.some((row) => row.createdBy)) return rows;
 
   const capped: T[] = [];
   for (const row of rows) {
-    if (!own(row) || !isPermission(row.permission)) {
+    if (!row.createdBy || !isPermission(row.permission)) {
       capped.push(row);
       continue;
     }
 
+    const issuer = { id: row.createdBy, groups: await getUserGroups(row.createdBy) };
     const cap = await issuerRole(spaceId, issuer, resourceType, row.resourceId);
     // The issuer holds nothing here, so the grant delegates nothing.
     if (!isPermission(cap)) continue;
@@ -500,7 +464,7 @@ export async function getPermission(
   userId: string,
   userGroups?: string[],
 ): Promise<AclEntry | null> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
 
   const allPermissions: AclRow[] = [];
 
@@ -515,6 +479,7 @@ export async function getPermission(
           eq(acl.resourceId, resourceId),
           eq(acl.userId, userId),
           isNull(acl.groupId),
+          live,
         ),
       ),
   );
@@ -538,14 +503,13 @@ export async function getPermission(
           eq(acl.resourceId, resourceId),
           isNull(acl.userId),
           inArray(acl.groupId, effectiveGroups),
+          live,
         ),
       ),
   );
 
   allPermissions.push(...groupResults);
-  return bestAclEntry(
-    await capRowsToIssuer(spaceId, userId, resourceType, allPermissions),
-  );
+  return bestAclEntry(await capRowsToIssuer(spaceId, resourceType, allPermissions));
 }
 
 /** The strongest of these ACL rows, as an entry. Null when there are none. */
@@ -573,7 +537,7 @@ async function getBestPermissionForResourceIds(
 ): Promise<AclEntry | null> {
   if (resourceIds.length === 0) return null;
 
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const allPermissions: AclRow[] = [];
 
   const userResults = await many(
@@ -586,6 +550,7 @@ async function getBestPermissionForResourceIds(
           inArray(acl.resourceId, resourceIds),
           eq(acl.userId, userId),
           isNull(acl.groupId),
+          live,
         ),
       ),
   );
@@ -604,21 +569,20 @@ async function getBestPermissionForResourceIds(
           inArray(acl.resourceId, resourceIds),
           isNull(acl.userId),
           inArray(acl.groupId, effectiveGroups),
+          live,
         ),
       ),
   );
 
   allPermissions.push(...groupResults);
-  return bestAclEntry(
-    await capRowsToIssuer(spaceId, userId, resourceType, allPermissions),
-  );
+  return bestAclEntry(await capRowsToIssuer(spaceId, resourceType, allPermissions));
 }
 
 async function getDocumentAncestorIds(
   spaceId: string,
   documentId: string,
 ): Promise<string[]> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const rows = await many(
     db.select({ id: document.id, parentId: document.parentId }).from(document),
   );
@@ -641,7 +605,7 @@ async function getDocumentDescendantIds(
   spaceId: string,
   rootIds: string[],
 ): Promise<Set<string>> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const roots = new Set(rootIds);
   const descendants = new Set(rootIds);
   if (rootIds.length === 0) return descendants;
@@ -675,7 +639,7 @@ async function getDocumentCategoryResourceIds(
   spaceId: string,
   documentId: string,
 ): Promise<string[]> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const documentIds = [
     documentId,
     ...(await getDocumentAncestorIds(spaceId, documentId)),
@@ -706,7 +670,7 @@ async function getDocumentIdsForCategoryRoots(
   spaceId: string,
   categoryIds: string[],
 ): Promise<Set<string>> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const ids = new Set<string>();
   if (categoryIds.length === 0) return ids;
 
@@ -796,7 +760,7 @@ export async function listDocumentAccess(
   spaceId: string,
   documentId: string,
 ): Promise<DocumentAccessEntry[]> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
 
   const treeIds = [documentId, ...(await getDocumentAncestorIds(spaceId, documentId))];
   const categoryIds = await getDocumentCategoryResourceIds(spaceId, documentId);
@@ -864,7 +828,7 @@ async function getAclResourceLabels(
   spaceId: string,
   rows: Array<{ resourceType: string; resourceId: string }>,
 ): Promise<Map<string, string>> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const labels = new Map<string, string>();
 
   const documentIds = [
@@ -952,7 +916,7 @@ export async function listUserPermissions(
   userGroups?: string[],
   resourceType?: ResourceType,
 ): Promise<AclEntry[]> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
 
   const conditions = [eq(acl.userId, userId)];
   if (resourceType) {
@@ -1005,7 +969,7 @@ export async function hasAnyResourceScopedAccess(
   userId: string,
   userGroups?: string[],
 ): Promise<boolean> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
 
   const resourceTypeCondition = inArray(acl.resourceType, [
     ResourceType.DOCUMENT,
@@ -1022,7 +986,7 @@ export async function hasAnyResourceScopedAccess(
     db
       .select({ resourceId: acl.resourceId })
       .from(acl)
-      .where(and(resourceTypeCondition, or(...granteeConditions)))
+      .where(and(resourceTypeCondition, live, or(...granteeConditions)))
       .limit(1),
   );
 
@@ -1170,16 +1134,15 @@ export async function hasFeature(
   }
 
   // A token holds a feature only for as long as its issuer does.
-  const tokenId = tokenIdFromPrincipal(userId);
-  if (tokenId) {
-    const issuer = await tokenIssuer(spaceId, tokenId);
-    if (!issuer) return false;
-    if (!(await hasFeature(spaceId, feature, issuer.id, issuer.groups, documentId))) {
-      return false;
-    }
+  const issuer = await tokenIssuer(spaceId, userId);
+  if (
+    issuer &&
+    !(await hasFeature(spaceId, feature, issuer.id, issuer.groups, documentId))
+  ) {
+    return false;
   }
 
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
 
   // Check for explicit feature ACL entry (user-specific)
   const userEntry = await one(
@@ -1192,6 +1155,7 @@ export async function hasFeature(
           eq(acl.resourceId, feature),
           eq(acl.userId, userId),
           isNull(acl.groupId),
+          live,
         ),
       ),
   );
@@ -1213,6 +1177,7 @@ export async function hasFeature(
           eq(acl.resourceId, feature),
           isNull(acl.userId),
           inArray(acl.groupId, effectiveGroups),
+          live,
         ),
       ),
   );
@@ -1342,7 +1307,7 @@ async function resolveAccessibleResources(
     return null;
   }
 
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : await getUserGroups(userId);
   const validPermissions = minPermission ? permissionsAtLeast(minPermission) : null;
@@ -1361,7 +1326,7 @@ async function resolveAccessibleResources(
     return null;
   }
 
-  const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType)];
+  const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType), live];
 
   if (validPermissions) {
     conditions.push(inArray(acl.permission, validPermissions));
@@ -1380,6 +1345,7 @@ async function resolveAccessibleResources(
       isNull(acl.userId),
       inArray(acl.groupId, effectiveGroups),
       eq(acl.resourceType, resourceType),
+      live,
     ];
 
     if (validPermissions) {
@@ -1403,6 +1369,7 @@ async function resolveAccessibleResources(
         and(eq(acl.userId, userId), isNull(acl.groupId)),
         and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
       ),
+      live,
     ];
 
     if (validPermissions) {
@@ -1431,6 +1398,7 @@ async function resolveAccessibleResources(
         and(eq(acl.userId, userId), isNull(acl.groupId)),
         and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
       ),
+      live,
     ];
 
     if (validPermissions) {
@@ -1477,11 +1445,8 @@ export async function listAccessibleResources(
     minPermission,
   );
 
-  const tokenId = tokenIdFromPrincipal(userId);
-  if (!tokenId) return own;
-
-  const issuer = await tokenIssuer(spaceId, tokenId);
-  if (!issuer) return [];
+  const issuer = await tokenIssuer(spaceId, userId);
+  if (!issuer) return own;
 
   return intersectScopes(
     own,
@@ -1525,7 +1490,7 @@ async function resolveReadableResources(
       ? new Set(viewer.documentScope)
       : null;
 
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const effectiveGroups =
     userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
 
@@ -1540,6 +1505,7 @@ async function resolveReadableResources(
             and(eq(acl.userId, userId), isNull(acl.groupId)),
             and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
           ),
+          live,
         ),
       ),
   );
@@ -1569,6 +1535,7 @@ async function resolveReadableResources(
               and(eq(acl.userId, userId), isNull(acl.groupId)),
               and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
             ),
+            live,
           ),
         ),
     );
@@ -1598,6 +1565,7 @@ async function resolveReadableResources(
               and(eq(acl.userId, userId), isNull(acl.groupId)),
               and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
             ),
+            live,
           ),
         ),
     );
@@ -1672,11 +1640,8 @@ export async function filterReadableResources(
     minPermission,
   );
 
-  const tokenId = tokenIdFromPrincipal(viewer.userId);
-  if (!tokenId) return own;
-
-  const issuer = await tokenIssuer(spaceId, tokenId);
-  if (!issuer) return new Set();
+  const issuer = await tokenIssuer(spaceId, viewer.userId);
+  if (!issuer) return own;
 
   // Re-filtering `own` rather than intersecting keeps the result a subset.
   return resolveReadableResources(
@@ -1701,7 +1666,7 @@ export async function countSpaceMembers(spaceId: string): Promise<number> {
  * @returns Set of user IDs with access to the space
  */
 export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const authDb = getAuthDb();
 
   const results = await many(
@@ -1755,7 +1720,7 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
   groupMembers: Map<string, string[]>; // userId -> groupIds
   groupsToCheck: string[];
 }> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const authDb = getAuthDb();
 
   const results = await many(
@@ -1818,7 +1783,7 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
 export async function getResourceScopedGranteeUserIds(
   spaceId: string,
 ): Promise<Set<string>> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
 
   const rows = await many(
     db
