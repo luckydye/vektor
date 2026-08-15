@@ -27,6 +27,11 @@ caller's role *meets* the level the action requires.
 exception: rename and slug, delete, membership, access tokens, secrets, uploads, the AI
 provider, integrations, feature grants, and a search rebuild.
 
+Owner is only grantable on the space. It names authority over the space itself — its
+configuration, its members, its existence — so on a single document or category it would
+name nothing; asking for it there is a `400`, whoever asks. Below space scope the roles
+are `viewer` and `editor`.
+
 One identity can hold several grants on one resource — their own, plus one per group
 they belong to. The strongest wins; a weaker grant never subtracts. So a viewer grant on
 a document cannot hold back an editor grant inherited from the space.
@@ -96,6 +101,9 @@ Owner is required for:
 
 Editor is enough for the rest: sharing a `document`, `document_tree` or `category` with
 an individual user, and taking a document or tree share back.
+
+Granting `owner` anywhere but space scope is refused as malformed (`400`) before
+authorization is considered, on this endpoint and on access-token resource grants alike.
 
 Two invariants sit underneath all of it. A space always keeps at least one owner — the
 write that would remove the last one is a `400`, whether it is a revoke or a demotion.

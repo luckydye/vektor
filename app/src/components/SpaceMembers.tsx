@@ -93,6 +93,12 @@ function isScopedGrant(grant: PermissionEntry): boolean {
   return ["document", "document_tree"].includes(grant.permission.resourceType ?? "");
 }
 
+/** Owner is only grantable on the space, so only a space grant may offer it. */
+function isSpaceGrant(grant: PermissionEntry): boolean {
+  const { resourceType } = grant.permission;
+  return !resourceType || resourceType === "space";
+}
+
 export function SpaceMembers() {
   const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
@@ -777,7 +783,11 @@ export function SpaceMembers() {
                                           <option value={Permission.EDITOR}>
                                             Editor
                                           </option>
-                                          <option value={Permission.OWNER}>Owner</option>
+                                          <Show when={isSpaceGrant(grant)}>
+                                            <option value={Permission.OWNER}>
+                                              Owner
+                                            </option>
+                                          </Show>
                                         </select>
                                       </Show>
                                       <Show when={canRemoveMember(grant)}>
@@ -998,7 +1008,16 @@ export function SpaceMembers() {
                 <select
                   id="member-scope"
                   value={newMemberScope()}
-                  onChange={(e) => setNewMemberScope(e.currentTarget.value)}
+                  onChange={(e) => {
+                    setNewMemberScope(e.currentTarget.value);
+                    // Owner is a space role; leaving it selected under a
+                    // narrower scope would submit a request the API refuses.
+                    if (e.currentTarget.value !== "space") {
+                      setNewMemberRole((role) =>
+                        role === Permission.OWNER ? Permission.VIEWER : role,
+                      );
+                    }
+                  }}
                   class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
                 >
                   <Show when={userIsOwner()}>
@@ -1048,7 +1067,9 @@ export function SpaceMembers() {
                   <option value={Permission.EDITOR}>
                     Editor - Create and edit content
                   </option>
-                  <option value={Permission.OWNER}>Owner - Full control</option>
+                  <Show when={newMemberScope() === "space"}>
+                    <option value={Permission.OWNER}>Owner - Full control</option>
+                  </Show>
                 </select>
               </div>
 

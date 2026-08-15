@@ -285,7 +285,9 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 - **Auth**: session. A role write is authorized on the privilege it moves, not on the
   action name — every rule below holds however the request is spelled:
-  - writing an `owner` entry, at any scope → caller must be `owner`
+  - granting `owner` anywhere but `space` scope → `400`, whoever asks: owner is
+    authority over the space, and below that scope it names nothing
+  - writing an `owner` entry at `space` scope → caller must be `owner`
   - overwriting or removing an existing `owner` entry → caller must be `owner`
   - withdrawing access (a revoke, or a grant of a weaker role) outside
     `document`/`document_tree` scope → caller must be `owner`
@@ -373,7 +375,8 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 - **Auth**: session; `verifySpaceRole(owner)`.
 - **Body**: `{ permission: string }`. `resourceType` validated against enum;
-  `verifyCanGrantTokenAccess` re-checked.
+  `verifyCanGrantTokenAccess` re-checked. `owner` is only accepted at `space` scope —
+  `400` anywhere narrower.
 - **Returns**: `200 { resources, message }`.
 
 ### `DELETE /spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId`

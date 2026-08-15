@@ -89,7 +89,7 @@
 | `/api/v1/spaces/[spaceId]/notification-preference` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/notification-preference` | PATCH | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/permissions` | GET | 401 | 403 | 403 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/permissions` | POST | 401 | 403 | 403 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/permissions` | POST | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/permissions/me` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/properties` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/search` | GET | 401 | 403 | 200 | 200 | 200 |  |

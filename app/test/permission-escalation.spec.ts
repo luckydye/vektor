@@ -170,6 +170,9 @@ const SCOPES = [
 function expectedStatus(action: string, scope: string): number {
   if (action === "deny" || action === "elevate") return 400;
   if (action === "revoke" && scope !== "space") return 200;
+  // Owner names authority over the space, so asking for it anywhere narrower is
+  // a malformed request rather than a refused one.
+  if (action === "grant" && scope !== "space") return 400;
   return 403;
 }
 
@@ -284,6 +287,61 @@ describe("editor cannot obtain owner (issue #45)", () => {
       resourceId: spaceId,
     });
     expect(response.status).toBe(400);
+  });
+
+  it("rejects owner below space scope, even for an owner", async () => {
+    for (const [resourceType, resourceId] of [
+      ["document", documentId],
+      ["document_tree", childDocumentId],
+      ["category", "any-category"],
+    ] as const) {
+      const response = await postPermission(owner.token, {
+        type: "role",
+        roleOrFeature: "owner",
+        userId: bystander.id,
+        action: "grant",
+        resourceType,
+        resourceId,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "owner can only be granted on the space itself",
+      });
+    }
+
+    expect(await roleOf(bystander.token)).toBe("viewer");
+  });
+
+  it("rejects owner below space scope on an access token too", async () => {
+    const created = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens`,
+      owner.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "escalation-token",
+          resourceType: "space",
+          resourceId: spaceId,
+          permission: "viewer",
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const tokenId = (await created.json()).token.id;
+
+    const grantOwner = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,
+      owner.token,
+      { method: "PUT", body: JSON.stringify({ permission: "owner" }) },
+    );
+    expect(grantOwner.status).toBe(400);
+
+    const grantEditor = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,
+      owner.token,
+      { method: "PUT", body: JSON.stringify({ permission: "editor" }) },
+    );
+    expect(grantEditor.status).toBe(200);
   });
 
   it('rejects action "deny" on a role even for an owner', async () => {

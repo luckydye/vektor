@@ -300,6 +300,16 @@ export const POST: ApiRouteHandler = (context) =>
 
       const resultingRole = action === "grant" ? roleOrFeature : undefined;
 
+      // Owner is authority over the space — the configuration, the members, the
+      // existence of the thing. On one document it would name nothing, so it is
+      // refused rather than stored as a role that outranks editor by accident.
+      if (
+        resultingRole === Permission.OWNER &&
+        targetResourceType !== ResourceType.SPACE
+      ) {
+        throw badRequestResponse("owner can only be granted on the space itself");
+      }
+
       const store = await openSpaceStore(spaceId);
       return store.tx(async (transaction) => {
         const requiredRole = await requiredRoleForRoleWrite(

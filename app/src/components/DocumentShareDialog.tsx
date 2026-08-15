@@ -75,18 +75,12 @@ export function DocumentShareDialog(props: Props) {
   // one, the list from its own.
   const categoryPanelError = createMemo(() => loadError() ?? categoryError());
 
-  const roleOptions = createMemo(() =>
-    userIsOwner()
-      ? [
-          { value: Permission.VIEWER, label: "Viewer" },
-          { value: Permission.EDITOR, label: "Editor" },
-          { value: Permission.OWNER, label: "Owner" },
-        ]
-      : [
-          { value: Permission.VIEWER, label: "Viewer" },
-          { value: Permission.EDITOR, label: "Editor" },
-        ],
-  );
+  // No owner: this dialog shares a document or a category, and owner is only
+  // grantable on the space itself.
+  const roleOptions = [
+    { value: Permission.VIEWER, label: "Viewer" },
+    { value: Permission.EDITOR, label: "Editor" },
+  ];
 
   function onTabSelected(e: Event) {
     const { index } = (e as CustomEvent<{ index: number }>).detail;
@@ -376,7 +370,7 @@ export function DocumentShareDialog(props: Props) {
         onChange={(e) => setNewMemberRole(e.currentTarget.value)}
         class="rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
       >
-        <For each={roleOptions()}>
+        <For each={roleOptions}>
           {(opt) => <option value={opt.value}>{opt.label}</option>}
         </For>
       </select>
