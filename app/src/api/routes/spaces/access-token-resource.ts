@@ -88,7 +88,14 @@ export const DELETE: ApiRouteHandler = (context) =>
       );
     }
 
-    await revokeAccessToken(await openSpaceStore(spaceId), tokenId, user.id);
+    const revoked = await revokeAccessToken(
+      await openSpaceStore(spaceId),
+      tokenId,
+      user.id,
+    );
+    if (!revoked) {
+      throw notFoundResponse("Access token");
+    }
 
     return successResponse({ message: "Resource access revoked successfully" });
   }, "Failed to revoke access token resource");

@@ -36,7 +36,7 @@
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]` | DELETE | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]` | GET | 401 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]` | PATCH | 401 | 403 | 403 | 403 | 404 |  |
-| `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId]` | DELETE | 401 | 403 | 403 | 403 | 200 |  |
+| `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId]` | DELETE | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId]` | PUT | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]` | DELETE | 401 | 403 | 404 | 404 | 404 |  |
