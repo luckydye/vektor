@@ -176,8 +176,13 @@ export function activate({ views }: ExtensionContext): void {
   views.register("dashboard", (container) => {
     // Render your view into the container element
     container.innerHTML = `
-      <div class="p-4">
-        <h1 class="text-2xl font-bold">My Dashboard</h1>
+      <style>
+        .dash { height: 100%; overflow-y: auto; padding: 24px;
+                font-family: var(--font-sans, system-ui, sans-serif); }
+        .dash h1 { font-size: var(--text-size-large, 17px); margin: 0 0 8px; }
+      </style>
+      <div class="dash">
+        <h1>My Dashboard</h1>
         <p>G'day! This is a custom extension view.</p>
       </div>
     `;
@@ -231,7 +236,58 @@ export function activate({ views }: ExtensionContext): void {
 
 ### Styling
 
-Extension ui is isolated from the host application using a shadowDOM. Every view is responsible for its own styling.
+Views render inside a shadow root, so no app stylesheet reaches them: Tailwind
+classes and app component CSS do not apply, and every view ships its own
+`<style>` block inside the container.
+
+CSS custom properties do inherit across that boundary, so use the app's design
+tokens instead of hardcoded values — they are remapped for dark mode, and a
+literal `#fff` background is a light-mode-only extension:
+
+```css
+color: var(--color-neutral-500, #6e6e6e);
+background: var(--color-background, #fff);
+border-radius: var(--radius-md, 8px);
+font-family: var(--font-sans, system-ui, sans-serif);
+```
+
+| Group | Tokens |
+|-------|--------|
+| Text / UI colour | `--color-neutral-10` … `--color-neutral-950` (10 is white in light mode, inverted in dark) |
+| Brand | `--color-primary-10` … `--color-primary-950`; primary action is `--color-primary-600` |
+| Surfaces | `--color-background`, `--color-neutral-50` (sunken), `--color-neutral-100` (borders) |
+| Type | `--font-sans`, `--text-size-small` (12px) … `--text-size-hero`, with matching `--line-height-*` |
+| Space, radius | `--spacing-6xs` (2px) … `--spacing-5xl` (160px), `--radius-sm` (6px) … `--radius-2xl`, `--radius-full` |
+
+Colours the app does not define — pass, warn, fail — are declared once as local
+custom properties on your root element and reused. Check both themes with
+`document.documentElement.dataset.theme = "dark"`.
+
+#### The view scrolls itself
+
+A standalone or database view is mounted into a 100%-height box inside an
+`overflow: hidden` ancestor. The app never scrolls for you, so content past the
+fold is clipped and the page looks frozen unless your root element is the scroll
+container:
+
+```css
+.root {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* don't chain to the app behind it */
+  padding: 24px 24px 64px;
+}
+
+/* Max width on an inner wrapper, not on the scroll container, or the scrollbar
+   ends up in the middle of a wide screen instead of at its edge. */
+.root__page {
+  max-width: 1480px;
+  margin: 0 auto;
+}
+```
+
+`height: 100%` degrades to `auto` where no ancestor constrains the height, so the
+same rule is safe in the document column too.
 
 ## API Client
 
@@ -479,12 +535,25 @@ export function activate({ views, api, spaceId }: ExtensionContext): void {
     const { documents } = await api.documents.get(spaceId);
     
     container.innerHTML = `
-      <div class="p-6">
-        <h1 class="text-3xl font-bold mb-4">Analytics</h1>
-        <div class="grid grid-cols-3 gap-4">
-          <div class="bg-background p-4 rounded-lg shadow">
-            <p class="text-sm text-gray-600">Total Documents</p>
-            <p class="text-2xl font-bold">${documents.length}</p>
+      <style>
+        .an { height: 100%; overflow-y: auto; padding: 24px;
+              font-family: var(--font-sans, system-ui, sans-serif);
+              color: var(--color-neutral-900, #141414); }
+        .an__grid { display: grid; gap: 16px;
+                    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+        .an__card { padding: 16px;
+                    background: var(--color-background, #fff);
+                    border: 1px solid var(--color-neutral-100, #e6e6e6);
+                    border-radius: var(--radius-md, 8px); }
+        .an__label { font-size: var(--text-size-small, 12px);
+                     color: var(--color-neutral-500, #6e6e6e); }
+      </style>
+      <div class="an">
+        <h1>Analytics</h1>
+        <div class="an__grid">
+          <div class="an__card">
+            <p class="an__label">Total Documents</p>
+            <p>${documents.length}</p>
           </div>
         </div>
       </div>
@@ -497,31 +566,98 @@ export function deactivate({ views }: ExtensionContext): void {
 }
 ```
 
-## Building Extensions
+## Conventions
 
-Extensions should be bundled to JS files. Example `package.json`:
+None of this is enforced by the API. It is what makes an extension read as part
+of the app rather than as an embedded foreign tool.
+
+**Lifecycle.** Every `register` has a matching `unregister` in `deactivate`, and
+the render function returns its teardown. Anything attached outside the container
+— `window`/`document` listeners, observers, timers, intervals, object URLs,
+subscriptions — is removed there; DOM inside the container is thrown away for you.
+For live updates use `api.subscribeToTopics(...)` with a debounced refresh rather
+than polling.
+
+**Dependencies.** Default to none. The platform covers more than people expect:
+`DecompressionStream`, `DOMParser`, `ResizeObserver`, `IntersectionObserver`,
+`structuredClone`, `Intl`, `crypto.randomUUID`. Add a dependency only when the
+alternative is hundreds of lines of error-prone code — a PDF parser, a spreadsheet
+reader — and keep it in the extension's own `package.json`.
+
+**Rendering.** Build the static shell once as a template string, assign it with
+`container.innerHTML`, then keep references to the parts that change and repaint
+those in place; a full re-render on every state change loses scroll position,
+focus and iframe state. Never interpolate data into an HTML string — file names,
+document titles and error messages go in via `textContent`.
+
+**Robustness.** One bad input must not take down the view: process items in a loop
+with `try`/`catch` per item and render the failure as its own card with the reason
+in it. Wrap `localStorage` access in `try`/`catch`, since private mode throws.
+Never fail silently — if something was skipped, say so in the status line. Empty,
+loading and error states are part of the design; every view needs all three.
+
+**Untrusted content.** Render uploaded files and third-party HTML in an iframe
+with `srcdoc` and `sandbox="allow-scripts allow-modals allow-pointer-lock"`. Never
+add `allow-same-origin` to a sandbox that also has `allow-scripts` — together they
+hand the content the app's origin. The frame inherits the app's CSP, which breaks
+two assumptions people bring from a local test page: `connect-src` has no `data:`,
+so a `fetch` rewritten to a `data:` URI is blocked, and `script-src` has no
+`'unsafe-eval'`, so `eval` and `new Function` throw. Both are silent failures
+outside the app, so test embedded content behind the same headers.
+
+**Persisted state.** Small preferences go to `localStorage` under
+`"<extension-id>:<key>"`. Anything a colleague should also see belongs in the
+space: a database document, or a `_`-prefixed JSON property on a document (keys
+starting with `_` are hidden in the UI).
+
+## Building and Packaging
+
+The CLI scaffolds, builds and uploads. All three take the extension id, and
+`package` and `upload` default to the current folder when you leave it out:
+
+```bash
+vektor extension create  <extension-id>   # scaffolds the folder
+vektor extension package <extension-id>   # runs the build, bumps the version, zips
+vektor extension upload  <extension-id>   # uploads the zip to a space
+```
+
+`upload` reads its target from the environment — `VEKTOR_HOST` (defaults to
+localhost), `VEKTOR_ACCESS_TOKEN` (required), and `VEKTOR_SPACE_ID` (optional;
+otherwise the first space you can see). A zip can also be uploaded through the
+extensions management UI.
+
+The build is one line in `package.json` and needs no bundler config:
 
 ```json
 {
   "name": "my-extension",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --format=esm --outfile=dist/main.js && esbuild src/view.ts --bundle --format=esm --outfile=dist/view.js"
-  },
-  "devDependencies": {
-    "esbuild": "^0.20.0"
+    "build": "bun build src/view.ts --outdir dist --format esm --target browser"
   }
 }
 ```
 
-If you only have actions (no views), you only need `entries.frontend`. If you only have views (no actions), you only need `entries.view`.
+`bun build` follows imports, so splitting a view into modules costs nothing — do
+it once `view.ts` passes a few hundred lines. Add `src/main.ts` to the command
+only when the extension has a frontend entry: if you only have actions you need
+`entries.frontend`, if you only have views you need `entries.view`.
 
-## Packaging
+`create` writes to `extensions/<extension-id>` relative to the current directory.
+`package` bumps the patch version in the manifest, runs the build script, and
+zips `manifest.json`, everything under `dist/`, and the files sitting beside them
+— other subdirectories are not included, so referenced assets belong in `dist/`.
 
-Create a ZIP file containing:
-- `manifest.json`
-- `dist/main.js` (or whatever path specified in manifest entries)
+### Before you package
 
-Upload via the Vektor extensions management UI.
+- `tsc` clean under strict and `noUncheckedIndexedAccess`, Biome check clean
+- `activate` registers, `deactivate` unregisters, render returns a teardown, and
+  no listener, observer or timer survives it
+- No hardcoded colours; light and dark both checked
+- The view scrolls inside itself — check with more content than fits a screen
+- Empty, loading, error and "one item failed" states all render
+- User-supplied strings go in via `textContent`; untrusted markup is sandboxed
+- Keyboard reachable, `aria-live` on the status line, truncated text has `title`
+- Tried against real input, not only a happy-path fixture
 
 ## Jobs
 
