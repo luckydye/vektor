@@ -103,7 +103,7 @@ export function Contributors(props: Props) {
                   class="relative block"
                   classList={{ "z-10": collaborator.isPresent }}
                   style={{
-                    "margin-left": index() > 0 ? "-18px" : "0",
+                    "margin-left": index() > 0 ? "-8px" : "0",
                     "z-index": String(visibleAvatars().length - index()),
                     "view-transition-name": viewTransitionName(
                       "vt-collab",
@@ -135,7 +135,7 @@ export function Contributors(props: Props) {
               style={{
                 width: "32px",
                 height: "32px",
-                "margin-left": "-18px",
+                "margin-left": "-8px",
                 "z-index": "0",
               }}
             >
