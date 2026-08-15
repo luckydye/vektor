@@ -1705,18 +1705,6 @@ export class ApiClient {
       );
     },
 
-    revokeResource: async (
-      spaceId: string,
-      tokenId: string,
-      resourceType: string,
-      resourceId: string,
-    ) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
-      );
-    },
-
     revoke: async (spaceId: string, tokenId: string) => {
       return await this.apiPatch<{ message: string }>(
         this.baseUrl,
