@@ -114,7 +114,9 @@ describe("reservedSpaceSlugs", () => {
   });
 
   it("covers every asset in public", () => {
-    for (const entry of readdirSync(PUBLIC_DIR)) {
+    // Dot-prefixed entries are skipped: no space slug can carry a dot, and the
+    // working copy picks up untracked OS junk like `.DS_Store`.
+    for (const entry of readdirSync(PUBLIC_DIR).filter((name) => !name.startsWith("."))) {
       expect(isReservedSpaceSlug(entry), `public/${entry} is not reserved`).toBe(true);
     }
   });
