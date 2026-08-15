@@ -511,7 +511,7 @@ export function DocumentPageView(props: Props) {
             <div
               class={twMerge(
                 "relative mx-auto h-full w-full",
-                isFullHeightView() && "min-h-0 flex-1",
+                isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                 isCsv() || isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
