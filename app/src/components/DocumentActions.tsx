@@ -425,7 +425,7 @@ export function DocumentActions(props: Props) {
     registerScopedAction("document:share", {
       title: t("Share"),
       icon: () => "users-group",
-      description: t("Invite people to this document or space"),
+      description: t("Invite people to this document or category"),
       group: "document",
       order: 10,
       run: async () => {
