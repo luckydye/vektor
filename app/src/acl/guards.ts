@@ -755,15 +755,10 @@ const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
 ];
 
 /**
- * Validate a token grant and return the role it names.
- *
- * This does not bound authority: a token's grant is a ceiling that resolution
- * caps again at what its issuer can do when the token is used, and both callers
- * already require the space owner role. What is left is keeping values that name
- * nothing out of the ACL, where they would sit as a grant that silently does
- * nothing — the old "extensions" pseudo-permission, or a typo'd role.
- *
- * Throws a 400 Response on violation.
+ * Validate a token grant and return the role it names. Shape only — authority is
+ * bounded at use. Keeps values that name nothing (a typo'd role, the old
+ * "extensions" pseudo-permission) out of the ACL, where they would sit as a
+ * grant that silently does nothing. Throws a 400 Response.
  */
 export function validateTokenGrant(
   resourceType: ResourceType,

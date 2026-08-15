@@ -47,8 +47,6 @@ export const PUT: ApiRouteHandler = (context) =>
       throw badRequestResponse("Permission is required");
     }
 
-    // The token is capped at the issuer's access when used; this only rejects a
-    // grant that names nothing.
     validateTokenGrant(resourceType, permission);
 
     await grantTokenAccess({

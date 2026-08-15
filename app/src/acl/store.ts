@@ -362,11 +362,9 @@ export async function revokePermission(
 }
 
 /**
- * Remove every grant held directly by one grantee (a user id, or a token's
- * `token:<id>` identity), on any resource. For when the principal itself goes
- * away. Group grants belong to the group, not the member, so they stay.
- *
- * Returns the number of grants removed.
+ * Remove every grant held directly by one grantee, on any resource, for when the
+ * principal itself goes away. Group grants belong to the group, so they stay.
+ * Returns the number removed.
  */
 export async function revokeAllGranteePermissions(
   store: SpaceStore,
@@ -377,7 +375,7 @@ export async function revokeAllGranteePermissions(
 
   const conditions = [eq(acl.userId, granteeUserId), isNull(acl.groupId)];
 
-  // Read first so each removal can be audited, as a single-resource revoke is.
+  // Read first so each removal can be audited.
   const removed = await many(
     db
       .select()
@@ -409,10 +407,7 @@ interface TokenIssuer {
   groups: string[];
 }
 
-/**
- * The user an access token acts for. Null when the token row is gone, leaving
- * grants that delegate nothing.
- */
+/** The user a token acts for. Null when the token row is gone. */
 async function tokenIssuer(
   spaceId: string,
   tokenId: string,
@@ -430,9 +425,8 @@ async function tokenIssuer(
 }
 
 /**
- * What the issuer may currently do where a token grant on this resource sits: a
- * document grant is bounded by their access to that document, every other grant
- * by their space role — the level that lets them manage those resources.
+ * What the issuer may currently do where a token grant on this resource sits:
+ * documents by their access to that document, the rest by their space role.
  */
 async function issuerRole(
   spaceId: string,
@@ -469,8 +463,6 @@ async function capRowsToIssuer<T extends AclRow>(
   if (!tokenId) return rows;
 
   const own = (row: AclRow) => row.userId === principalId;
-  // Nothing delegated here, so nothing to cap — keeps the issuer lookup off the
-  // resolutions a scoped token makes against resources it was never granted.
   if (!rows.some(own)) return rows;
 
   const issuer = await tokenIssuer(spaceId, tokenId);
@@ -1336,10 +1328,7 @@ export async function listFeaturePermissions(store: SpaceStore): Promise<AclEntr
   }));
 }
 
-/**
- * Resources this identity reaches, as its own rows describe it. Null means
- * unrestricted. A token's ceiling is applied by the caller below.
- */
+/** As below, before a token's issuer is applied. */
 async function resolveAccessibleResources(
   spaceId: string,
   userId: string,
@@ -1471,9 +1460,7 @@ async function resolveAccessibleResources(
 
 /**
  * Resources this identity can reach at `minPermission`. Null means unrestricted.
- *
- * A token reaches the intersection of its own scope and its issuer's: the rows
- * say which resources were delegated, the issuer says what is still behind them.
+ * A token reaches the intersection of its own scope and its issuer's.
  */
 export async function listAccessibleResources(
   spaceId: string,
@@ -1669,10 +1656,7 @@ async function resolveReadableResources(
   return readable;
 }
 
-/**
- * As above, and for a token also passed through its issuer: what it may read is
- * what was delegated to it and what the issuer can still read today.
- */
+/** As above, and for a token also passed through its issuer. */
 export async function filterReadableResources(
   spaceId: string,
   resourceType: ResourceType,

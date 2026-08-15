@@ -51,11 +51,7 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/**
- * A token's identity in the ACL system. What it holds there is a ceiling on its
- * issuer's access, not authority of its own — resolution caps it at what the
- * issuer can do today.
- */
+/** A token's identity in the ACL system. What it holds there is a ceiling. */
 export function getTokenUserId(tokenId: string): string {
   return `${TOKEN_PRINCIPAL_PREFIX}${tokenId}`;
 }
@@ -160,8 +156,7 @@ export async function revokeTokenAccess(
 
 /**
  * The resources a token is scoped to, at the level it was granted. That level is
- * a ceiling: what the token can actually do is capped at its issuer's current
- * access, so this can read higher than the token's effective authority.
+ * a ceiling, so this can read higher than the token's effective authority.
  *
  * @example
  * ```ts

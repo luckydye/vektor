@@ -63,12 +63,7 @@ export type FeatureOverrides = Partial<Record<FeatureName, boolean>>;
  */
 export const PUBLIC_GROUP = "public";
 
-/**
- * How an access token appears in the `acl.user_id` column. A token is a
- * delegation of its issuer, so its grants are read as a ceiling on what that
- * issuer can currently do rather than as authority of their own — which is why
- * resolving a permission has to be able to tell the two kinds of id apart.
- */
+/** How an access token appears in the `acl.user_id` column. */
 export const TOKEN_PRINCIPAL_PREFIX = "token:";
 
 /** The token id behind an ACL identity, or null when it is a plain user id. */
@@ -183,7 +178,7 @@ export function strongestGrant<T>(
   return best;
 }
 
-/** The weaker of two roles — how a delegated ceiling meets its issuer's own role. */
+/** The weaker of two roles. */
 export function weakerPermission<T extends string | undefined>(a: T, b: T): T {
   return permissionLevel(a) <= permissionLevel(b) ? a : b;
 }
