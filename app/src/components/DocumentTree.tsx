@@ -15,6 +15,7 @@ import { propertyValueIncludes, propertyValueToText } from "#documents/propertie
 import { documentTitle } from "#documents/title.ts";
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
+import { slugify } from "#utils/slug.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
@@ -248,11 +249,12 @@ export function DocumentTree(props: Props) {
     setFormError(null);
 
     const form = formData();
+    const name = form.name.trim();
     try {
       if (editingId()) {
         await updateCategory(
           editingId() as string,
-          form.name.trim(),
+          name,
           form.slug.trim(),
           form.description?.trim() || undefined,
           form.color || undefined,
@@ -260,8 +262,8 @@ export function DocumentTree(props: Props) {
         );
       } else {
         await createCategory(
-          form.name.trim(),
-          form.slug.trim(),
+          name,
+          slugify(name),
           form.description?.trim() || undefined,
           form.color || undefined,
           form.icon?.trim() || undefined,
@@ -850,28 +852,6 @@ export function DocumentTree(props: Props) {
                 class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
                 placeholder={t("Category name")}
               />
-            </div>
-
-            <div>
-              <label
-                for="category-slug"
-                class="mb-1 block font-medium text-neutral-900 text-size-small"
-              >
-                {t("Slug")}
-              </label>
-              <input
-                id="category-slug"
-                value={formData().slug}
-                onInput={(e) => patchForm({ slug: e.currentTarget.value })}
-                type="text"
-                required
-                pattern="[a-z0-9-]+"
-                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                placeholder="slug-name"
-              />
-              <p class="mt-1 text-neutral text-size-small">
-                {t("Lowercase, numbers, hyphens only")}
-              </p>
             </div>
 
             <div>

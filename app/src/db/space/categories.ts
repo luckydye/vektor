@@ -24,6 +24,12 @@ export interface CategoryInput {
   icon?: string;
 }
 
+export class CategorySlugTakenError extends Error {
+  constructor(slug: string) {
+    super(`Category with slug "${slug}" already exists`);
+  }
+}
+
 function rowToCategory(result: typeof category.$inferSelect): Category {
   return {
     id: result.id,
@@ -42,30 +48,36 @@ export async function createCategory(
   s: SpaceStore,
   input: CategoryInput,
 ): Promise<Category> {
-  const id = createId("category");
-  const now = new Date();
-  const existing = await many(s.db.select().from(category));
-  const order = existing.length;
+  return s.tx(async (tx) => {
+    const existing = await many(tx.db.select().from(category));
+    if (existing.some((candidate) => candidate.slug === input.slug)) {
+      throw new CategorySlugTakenError(input.slug);
+    }
 
-  await s.db.insert(category).values({
-    id,
-    name: input.name,
-    slug: input.slug,
-    description: input.description || null,
-    color: input.color || null,
-    icon: input.icon || null,
-    order,
-    createdAt: now,
-    updatedAt: now,
+    const id = createId("category");
+    const now = new Date();
+    const order = existing.length;
+
+    await tx.db.insert(category).values({
+      id,
+      name: input.name,
+      slug: input.slug,
+      description: input.description || null,
+      color: input.color || null,
+      icon: input.icon || null,
+      order,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    tx.emit({
+      kind: "category",
+      action: "created",
+      data: { categoryId: id, name: input.name, slug: input.slug, order },
+    });
+
+    return { id, ...input, order, createdAt: now, updatedAt: now };
   });
-
-  s.emit({
-    kind: "category",
-    action: "created",
-    data: { categoryId: id, name: input.name, slug: input.slug, order },
-  });
-
-  return { id, ...input, order, createdAt: now, updatedAt: now };
 }
 
 export async function getCategory(s: SpaceStore, id: string): Promise<Category | null> {
@@ -94,6 +106,10 @@ export async function updateCategory(
   return s.tx(async (tx) => {
     const existing = await getCategory(tx, id);
     if (!existing) return null;
+    if (input.slug !== existing.slug) {
+      const slugOwner = await getCategoryBySlug(tx, input.slug);
+      if (slugOwner) throw new CategorySlugTakenError(input.slug);
+    }
 
     const now = new Date();
     await tx.db

@@ -1139,6 +1139,7 @@ describe("API Tests - Document Properties", () => {
 
 describe("API Tests - Categories", () => {
   let testCategoryId: string;
+  let advancedCategoryId: string;
 
   it("should create a category", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/categories`, {
@@ -1224,6 +1225,61 @@ describe("API Tests - Categories", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.category.name).toBe("Advanced Topics");
+    advancedCategoryId = data.category.id;
+  });
+
+  it("should reject creating a category with a duplicate slug", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/categories`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Duplicate Advanced Topics",
+        slug: "advanced-topics",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Category with slug "advanced-topics" already exists',
+    });
+  });
+
+  it("should reject updating a category to a duplicate slug", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${advancedCategoryId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: "Advanced Topics",
+          slug: "beginners-guide",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Category with slug "beginners-guide" already exists',
+    });
+
+    const unchanged = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${advancedCategoryId}`,
+    );
+    expect((await unchanged.json()).category.slug).toBe("advanced-topics");
+  });
+
+  it("should allow updating a category without changing its slug", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${advancedCategoryId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: "Advanced Topics Updated",
+          slug: "advanced-topics",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).category.slug).toBe("advanced-topics");
   });
 
   it("should delete a category", async () => {

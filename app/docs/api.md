@@ -240,7 +240,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 - **Auth**: session or access token; `editor` role.
 - **Body**: `name` (string, required), `slug` (string, required), `description?`,
   `color?`, `icon?` (strings).
-- **Returns**: `201 { category }`.
+- **Returns**: `201 { category }`; `400` if another category already uses the slug.
 
 ### `PUT /spaces/:spaceId/categories` (reorder)
 
@@ -259,7 +259,8 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 - **Auth**: session or access token; `editor` role on this category.
 - **Body**: same fields as create (`name`, `slug` required; `description`, `color`,
   `icon` optional).
-- **Returns**: `200 { category }`. `404` if not found.
+- **Returns**: `200 { category }`; `400` if another category already uses the
+  requested slug. `404` if not found.
 
 ### `DELETE /spaces/:spaceId/categories/:id`
 
