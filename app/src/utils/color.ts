@@ -22,7 +22,13 @@ export function hslToHex(h: number, s: number, l: number): string {
   return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
 }
 
-function generateColorPalette(baseColor: string): Record<string, string> {
+/**
+ * The light-mode brand ramp a base color produces, keyed by Tailwind-style
+ * stop. `generatePaletteCss` turns this into the app's custom properties;
+ * anything rendering outside the stylesheet — notification email — reads the
+ * stops directly so it lands on the same colors the space's UI uses.
+ */
+export function generateColorPalette(baseColor: string): Record<string, string> {
   const [h, s] = hexToHsl(baseColor);
 
   const palette: Record<string, string> = {};

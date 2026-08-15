@@ -137,6 +137,7 @@ async function deliver(
     previousPublishedContent,
     publishedContent,
     recipientEmail: recipient.email,
+    brandColor: space.preferences?.brandColor,
   });
   await sendEmail({ to: recipient.email, ...rendered });
   await markEmailNotificationSent(store, notification.id);

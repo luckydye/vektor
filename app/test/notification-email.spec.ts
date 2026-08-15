@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
 import { renderNotificationEmail } from "#notifications/render.ts";
-import { htmlToPlainText } from "#utils/html.ts";
+import { generateColorPalette } from "#utils/color.ts";
+import { type HtmlNode, htmlToPlainText, parseHtml, SyntaxKind } from "#utils/html.ts";
 
 function publishNotification(): EmailNotificationOutbox {
   const now = new Date(0);
@@ -67,6 +68,111 @@ describe("htmlToPlainText", () => {
       "<b> and &lt;b&gt;",
     );
     expect(htmlToPlainText("<p>&#x2014;&#8212;</p>")).toBe("——");
+  });
+});
+
+function attributeNames(html: string): string[] {
+  const names: string[] = [];
+  const visit = (nodes: HtmlNode[]) => {
+    for (const node of nodes) {
+      if (node.type !== SyntaxKind.Tag) continue;
+      for (const attribute of node.attributes ?? []) names.push(attribute.name.value);
+      if (node.body) visit(node.body);
+    }
+  };
+  visit(parseHtml(html));
+  return names;
+}
+
+function anchors(html: string): Array<{ href: string; text: string }> {
+  const found: Array<{ href: string; text: string }> = [];
+  const visit = (nodes: HtmlNode[]) => {
+    for (const node of nodes) {
+      if (node.type !== SyntaxKind.Tag) continue;
+      if (node.name === "a") {
+        const href = node.attributes?.find((a) => a.name.value === "href")?.value?.value;
+        found.push({
+          href: href ?? "",
+          text: htmlToPlainText(html.slice(node.start, node.end)),
+        });
+      }
+      if (node.body) visit(node.body);
+    }
+  };
+  visit(parseHtml(html));
+  return found;
+}
+
+describe("renderNotificationEmail: space identity", () => {
+  it("heads the mail with the space, not the product", () => {
+    const rendered = publishedEmail(null, "<p>Brand new page.</p>");
+
+    expect(rendered.html).toContain(">Engineering</td>");
+    expect(rendered.html).not.toContain(">vektor<");
+  });
+
+  it("wears the space's accent instead of a fixed purple", () => {
+    const palette = generateColorPalette("#2563eb");
+    const rendered = renderNotificationEmail({
+      notification: publishNotification(),
+      actorName: "Ada Lovelace",
+      documentTitle: "Locale handling",
+      spaceName: "Engineering",
+      documentUrl: "https://vektor.test/engineering/doc/locale-handling",
+      publishedContent: "<p>Brand new page.</p>",
+      brandColor: "#2563eb",
+    });
+
+    expect(rendered.html).toContain(palette["700"]);
+    expect(rendered.html).toContain(palette["50"]);
+    expect(rendered.html).not.toContain("#78378f");
+  });
+
+  it("falls back rather than letting a bad colour reach the markup", () => {
+    const rendered = renderNotificationEmail({
+      notification: publishNotification(),
+      actorName: "Ada Lovelace",
+      documentTitle: "Locale handling",
+      spaceName: "Engineering",
+      documentUrl: "https://vektor.test/engineering/doc/locale-handling",
+      publishedContent: "<p>Brand new page.</p>",
+      brandColor: 'red;"><script>alert(1)</script>',
+    });
+
+    expect(rendered.html).not.toContain("<script>");
+    expect(rendered.html).toContain(generateColorPalette("#1e293b")["700"] as string);
+  });
+});
+
+describe("renderNotificationEmail: markup", () => {
+  it("makes the document card a link to the document", () => {
+    const rendered = publishedEmail(null, "<p>Brand new page.</p>");
+
+    expect(anchors(rendered.html).find((a) => a.text === "Locale handling")?.href).toBe(
+      "https://vektor.test/engineering/doc/locale-handling",
+    );
+  });
+
+  it("keeps every inline style inside its attribute", () => {
+    // A `"` in the font stack ends `style="` early, so the declarations after
+    // it — `text-decoration:none` on the button, `text-transform` on the
+    // eyebrow — parse as stray attributes and never reach the renderer. The
+    // raw string still reads correctly, which is why this parses instead.
+    const rendered = renderNotificationEmail({
+      notification: { ...publishNotification(), kind: "document_mention" },
+      actorName: "Ada Lovelace",
+      documentTitle: "Locale handling",
+      spaceName: "Engineering",
+      documentUrl: "https://vektor.test/engineering/doc/locale-handling",
+      publishedContent: `<p>Owner: <user-mention email="grace@example.com">@Grace</user-mention></p>`,
+      recipientEmail: "grace@example.com",
+    });
+
+    const stray = attributeNames(rendered.html).filter(
+      (name) => !/^[a-z][a-z0-9-]*$/i.test(name),
+    );
+
+    expect(stray).toEqual([]);
   });
 });
 
