@@ -313,35 +313,19 @@ describe("editor cannot obtain owner (issue #45)", () => {
   });
 
   it("rejects owner below space scope on an access token too", async () => {
-    const created = await apiRequest(
-      `/api/v1/spaces/${spaceId}/access-tokens`,
-      owner.token,
-      {
+    const mint = (name: string, permission: string) =>
+      apiRequest(`/api/v1/spaces/${spaceId}/access-tokens`, owner.token, {
         method: "POST",
         body: JSON.stringify({
-          name: "escalation-token",
-          resourceType: "space",
-          resourceId: spaceId,
-          permission: "viewer",
+          name,
+          resourceType: "document",
+          resourceId: documentId,
+          permission,
         }),
-      },
-    );
-    expect(created.status).toBe(201);
-    const tokenId = (await created.json()).id;
+      });
 
-    const grantOwner = await apiRequest(
-      `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,
-      owner.token,
-      { method: "PUT", body: JSON.stringify({ permission: "owner" }) },
-    );
-    expect(grantOwner.status).toBe(400);
-
-    const grantEditor = await apiRequest(
-      `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,
-      owner.token,
-      { method: "PUT", body: JSON.stringify({ permission: "editor" }) },
-    );
-    expect(grantEditor.status).toBe(200);
+    expect((await mint("escalation-token-owner", "owner")).status).toBe(400);
+    expect((await mint("escalation-token-editor", "editor")).status).toBe(201);
   });
 
   it('rejects action "deny" on a role even for an owner', async () => {

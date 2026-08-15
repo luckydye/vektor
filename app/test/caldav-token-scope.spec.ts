@@ -39,7 +39,6 @@ let docB: string;
 /** Space-level grants in space A, created fresh so no spec depends on another. */
 let viewerToken: string;
 let editorToken: string;
-let narrowedToken: { id: string; token: string };
 let revokedToken: { id: string; token: string };
 
 function basicAuth(token: string): string {
@@ -152,7 +151,6 @@ beforeAll(async () => {
 
   viewerToken = (await createSpaceToken(spaceA, "scope-viewer", "viewer")).token;
   editorToken = (await createSpaceToken(spaceA, "scope-editor", "editor")).token;
-  narrowedToken = await createSpaceToken(spaceA, "scope-narrowed", "editor");
   revokedToken = await createSpaceToken(spaceA, "scope-revoked", "viewer");
 }, 60_000);
 
@@ -228,41 +226,6 @@ describe("CalDAV token scope", () => {
 
     const ical = await (await calDav(eventPath(spaceA, docA), "GET", editorToken)).text();
     expect(ical).toContain("Editor Wrote");
-  });
-
-  it("loses write access when the token's grant is narrowed to viewer", async () => {
-    expect(
-      (
-        await calDav(
-          eventPath(spaceA, docA),
-          "PUT",
-          narrowedToken.token,
-          icalEvent("Before Narrowing"),
-        )
-      ).status,
-    ).toBe(204);
-
-    const narrow = await apiRequest(
-      `/api/v1/spaces/${spaceA}/access-tokens/${narrowedToken.id}/resources/space/${spaceA}`,
-      owner.token,
-      { method: "PUT", body: JSON.stringify({ permission: "viewer" }) },
-    );
-    expect(narrow.ok).toBe(true);
-
-    expect(
-      (
-        await calDav(
-          eventPath(spaceA, docA),
-          "PUT",
-          narrowedToken.token,
-          icalEvent("After Narrowing"),
-        )
-      ).status,
-    ).toBe(403);
-    // Reads survive — only the role was reduced, not the grant.
-    expect(
-      (await calDav(`${calendarPath(spaceA)}/`, "REPORT", narrowedToken.token)).status,
-    ).toBe(207);
   });
 
   it("loses CalDAV access when the token itself is revoked", async () => {

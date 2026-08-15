@@ -1691,20 +1691,6 @@ export class ApiClient {
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/access-tokens`, body);
     },
 
-    grantResource: async (
-      spaceId: string,
-      tokenId: string,
-      resourceType: string,
-      resourceId: string,
-      body: { permission: string },
-    ) => {
-      return await this.apiPut<{ resources: unknown[]; message: string }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
-        body,
-      );
-    },
-
     revoke: async (spaceId: string, tokenId: string) => {
       return await this.apiPatch<{ message: string }>(
         this.baseUrl,
