@@ -273,6 +273,17 @@ export function SpaceMembers() {
     return perm.permission.userId ? "User" : "Group";
   }
 
+  // Space-wide membership and group grants are owner-only on the API, so a
+  // non-owner is offered neither.
+  const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
+
+  function openAddMember() {
+    setNewMemberType("user");
+    setNewMemberRole(Permission.VIEWER);
+    setNewMemberScope(userIsOwner() ? "space" : "category");
+    setShowAddMember(true);
+  }
+
   const memberAccess = createMemo<MemberAccess[]>(() => {
     const accessByMember = new Map<
       string,
@@ -363,7 +374,7 @@ export function SpaceMembers() {
       setNewMemberEmail("");
       setNewMemberType("user");
       setNewMemberRole(Permission.VIEWER);
-      setNewMemberScope("space");
+      setNewMemberScope(userIsOwner() ? "space" : "category");
       setNewMemberCategoryId("");
       await Promise.all([fetchPermissions(), fetchUsers()]);
     } catch (err) {
@@ -591,7 +602,7 @@ export function SpaceMembers() {
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-large">Members</h2>
-          <Button text="Invite People" onClick={() => setShowAddMember(true)} />
+          <Button text="Invite People" onClick={openAddMember} />
         </div>
 
         <Show when={isLoading() || loadingUsers()}>
@@ -869,23 +880,25 @@ export function SpaceMembers() {
               Invite People
             </h3>
             <form onSubmit={(event) => void handleAddMember(event)} class="space-y-4">
-              <div>
-                <label
-                  for="member-type"
-                  class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                >
-                  Type
-                </label>
-                <select
-                  id="member-type"
-                  value={newMemberType()}
-                  onChange={(e) => setNewMemberType(e.currentTarget.value)}
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                >
-                  <option value="user">User</option>
-                  <option value="group">OAuth Group</option>
-                </select>
-              </div>
+              <Show when={userIsOwner()}>
+                <div>
+                  <label
+                    for="member-type"
+                    class="mb-1 block font-medium text-neutral-900 text-size-medium"
+                  >
+                    Type
+                  </label>
+                  <select
+                    id="member-type"
+                    value={newMemberType()}
+                    onChange={(e) => setNewMemberType(e.currentTarget.value)}
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
+                  >
+                    <option value="user">User</option>
+                    <option value="group">OAuth Group</option>
+                  </select>
+                </div>
+              </Show>
 
               <div>
                 <label
@@ -988,7 +1001,9 @@ export function SpaceMembers() {
                   onChange={(e) => setNewMemberScope(e.currentTarget.value)}
                   class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
                 >
-                  <option value="space">Entire space</option>
+                  <Show when={userIsOwner()}>
+                    <option value="space">Entire space</option>
+                  </Show>
                   <option value="category">Category</option>
                 </select>
               </div>

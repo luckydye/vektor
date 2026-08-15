@@ -92,8 +92,9 @@ export const GET: ApiRouteHandler = (context) =>
 const ROLE_ACTIONS: readonly string[] = ["grant", "revoke"];
 const FEATURE_ACTIONS: readonly string[] = ["grant", "deny", "revoke"];
 
+// Space scope is absent on purpose: who the space admits is space-wide
+// configuration, next to renaming and deletion, so it stays owner-only.
 const EDITOR_DELEGABLE_SCOPES: readonly ResourceType[] = [
-  ResourceType.SPACE,
   ResourceType.DOCUMENT,
   ResourceType.DOCUMENT_TREE,
   ResourceType.CATEGORY,
@@ -134,6 +135,12 @@ async function requiredRoleForRoleWrite(
   }
 
   if (!EDITOR_DELEGABLE_SCOPES.includes(resourceType)) {
+    return Permission.OWNER;
+  }
+
+  // A group is a class of people the space admits, not a per-resource share —
+  // the synthetic `public` group most of all. Owners decide who is in reach.
+  if (grantee.groupId) {
     return Permission.OWNER;
   }
 

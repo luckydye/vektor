@@ -538,7 +538,8 @@ export function DocumentShareDialog(props: Props) {
                               <Show
                                 when={
                                   directGrants(entry).length > 0 &&
-                                  entry.userId !== user()?.id
+                                  entry.userId !== user()?.id &&
+                                  (userIsOwner() || !entry.groupId)
                                 }
                               >
                                 <button
@@ -622,7 +623,12 @@ export function DocumentShareDialog(props: Props) {
                           trailing={
                             <>
                               <RoleBadge role={perm.permission.permission} />
-                              <Show when={!isSelf(perm)}>
+                              <Show
+                                when={
+                                  !isSelf(perm) &&
+                                  (userIsOwner() || !perm.permission.groupId)
+                                }
+                              >
                                 <button
                                   type="button"
                                   class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
@@ -645,19 +651,28 @@ export function DocumentShareDialog(props: Props) {
 
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
-            <form onSubmit={(e) => void handleInvite(e)}>
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <EmailAndRoleFields />
-                <button
-                  type="submit"
-                  disabled={addingMember() || !newMemberEmail().trim()}
-                  class="button-primary col-span-2 justify-self-end px-3xs sm:col-span-1"
-                >
-                  {addingMember() ? "…" : "Invite"}
-                </button>
-              </div>
-              <InviteError />
-            </form>
+            <Show
+              when={userIsOwner()}
+              fallback={
+                <p class="text-neutral-400 text-size-small">
+                  Only space owners can give someone access to the entire space.
+                </p>
+              }
+            >
+              <form onSubmit={(e) => void handleInvite(e)}>
+                <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                  <EmailAndRoleFields />
+                  <button
+                    type="submit"
+                    disabled={addingMember() || !newMemberEmail().trim()}
+                    class="button-primary col-span-2 justify-self-end px-3xs sm:col-span-1"
+                  >
+                    {addingMember() ? "…" : "Invite"}
+                  </button>
+                </div>
+                <InviteError />
+              </form>
+            </Show>
 
             <Show when={!isLoading()} fallback={<Spinner />}>
               <Show
