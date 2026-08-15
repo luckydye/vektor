@@ -17,8 +17,11 @@ let serverProcess: TestServerProcess;
 let owner: TestUserSession;
 let editor: TestUserSession;
 let commenter: TestUserSession;
+/** Holds a document-scoped grant only — no role on the space. */
+let scopedEditor: TestUserSession;
 let spaceId: string;
 let documentId: string;
+let scopedDocumentId: string;
 
 async function setRole(userId: string, role: "viewer" | "editor"): Promise<void> {
   const response = await apiRequest(
@@ -54,19 +57,59 @@ async function setCommentFeature(action: "grant" | "revoke"): Promise<void> {
   expect(response.status).toBe(200);
 }
 
+/** Grant `userId` a role on one document tree, without any space-wide role. */
+async function grantDocumentTreeRole(
+  userId: string,
+  docId: string,
+  role: "viewer" | "editor",
+): Promise<void> {
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/permissions`,
+    owner.token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: role,
+        action: "grant",
+        userId,
+        resourceType: "document_tree",
+        resourceId: docId,
+      }),
+    },
+  );
+  expect(response.status).toBe(200);
+}
+
+async function postComment(
+  sessionToken: string,
+  docId: string,
+  content: string,
+  reference: string,
+): Promise<Response> {
+  return apiRequest(`/api/v1/spaces/${spaceId}/comments`, sessionToken, {
+    method: "POST",
+    body: JSON.stringify({ documentId: docId, content, reference }),
+  });
+}
+
+async function deleteComment(
+  sessionToken: string,
+  docId: string,
+  commentId: string,
+): Promise<Response> {
+  return apiRequest(`/api/v1/spaces/${spaceId}/comments`, sessionToken, {
+    method: "DELETE",
+    body: JSON.stringify({ documentId: docId, commentId }),
+  });
+}
+
 async function createComment(
   sessionToken: string,
   content: string,
   reference: string,
 ): Promise<string> {
-  const response = await apiRequest(
-    `/api/v1/spaces/${spaceId}/comments`,
-    sessionToken,
-    {
-      method: "POST",
-      body: JSON.stringify({ documentId, content, reference }),
-    },
-  );
+  const response = await postComment(sessionToken, documentId, content, reference);
   expect(response.status).toBe(200);
   return (await response.json()).comment.id;
 }
@@ -82,9 +125,11 @@ async function patchComments(
   });
 }
 
-async function comments(): Promise<Array<{ id: string; reference: string }>> {
+async function comments(
+  docId: string = documentId,
+): Promise<Array<{ id: string; reference: string }>> {
   const response = await apiRequest(
-    `/api/v1/spaces/${spaceId}/comments?documentId=${documentId}`,
+    `/api/v1/spaces/${spaceId}/comments?documentId=${docId}`,
     owner.token,
   );
   expect(response.status).toBe(200);
@@ -104,6 +149,11 @@ beforeAll(async () => {
   commenter = await createTestUser(
     BASE_URL,
     "Comment Viewer",
+    "test-comment-auth",
+  );
+  scopedEditor = await createTestUser(
+    BASE_URL,
+    "Comment Scoped Editor",
     "test-comment-auth",
   );
 
@@ -134,6 +184,21 @@ beforeAll(async () => {
   );
   expect(documentResponse.status).toBe(201);
   documentId = (await documentResponse.json()).document.id;
+
+  const scopedDocumentResponse = await apiRequest(
+    `/api/v1/spaces/${spaceId}/documents`,
+    owner.token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content: "# Shared with an external collaborator",
+        properties: { title: "Scoped document" },
+      }),
+    },
+  );
+  expect(scopedDocumentResponse.status).toBe(201);
+  scopedDocumentId = (await scopedDocumentResponse.json()).document.id;
+  await grantDocumentTreeRole(scopedEditor.userId, scopedDocumentId, "editor");
 }, 60_000);
 
 afterAll(() => {
@@ -183,5 +248,62 @@ describe("comment write authorization", () => {
     expect((await comments()).some((comment) => comment.id === commenterCommentId)).toBe(
       true,
     );
+  });
+});
+
+describe("document-scoped editor (issue #151)", () => {
+  it("may comment on and moderate a document granted below space level", async () => {
+    const created = await postComment(
+      scopedEditor.token,
+      scopedDocumentId,
+      "Scoped editor comment",
+      "500",
+    );
+    expect(created.status).toBe(200);
+    const commentId = (await created.json()).comment.id;
+
+    const patched = await apiRequest(
+      `/api/v1/spaces/${spaceId}/comments`,
+      scopedEditor.token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          documentId: scopedDocumentId,
+          commentIds: [commentId],
+          reference: "600",
+        }),
+      },
+    );
+    expect(patched.status).toBe(200);
+    expect(await comments(scopedDocumentId)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: commentId, reference: "600" })]),
+    );
+
+    const deleted = await deleteComment(scopedEditor.token, scopedDocumentId, commentId);
+    expect(deleted.status).toBe(200);
+    expect(
+      (await comments(scopedDocumentId)).some((comment) => comment.id === commentId),
+    ).toBe(false);
+  });
+});
+
+describe("comment/document binding (issue #139)", () => {
+  it("refuses to delete a comment through an unrelated document", async () => {
+    const created = await postComment(
+      owner.token,
+      scopedDocumentId,
+      "Owner comment on the scoped document",
+      "700",
+    );
+    expect(created.status).toBe(200);
+    const commentId = (await created.json()).comment.id;
+
+    // `documentId` is a document the caller may comment on, but not the one the
+    // comment hangs off — the authorized resource and the acted-on one differ.
+    const deleted = await deleteComment(owner.token, documentId, commentId);
+    expect(deleted.status).toBe(404);
+    expect(
+      (await comments(scopedDocumentId)).some((comment) => comment.id === commentId),
+    ).toBe(true);
   });
 });

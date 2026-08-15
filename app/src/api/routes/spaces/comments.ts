@@ -94,8 +94,10 @@ export const POST: ApiRouteHandler = (context) =>
     // Ensure user has access to document
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
-    // Verify user has commenting feature access
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
+    // Verify user has commenting feature access. Scoped to the document, or a
+    // document/tree/category-scoped editor would be refused on a document they
+    // may edit outright — same reasoning as the suggestion gate in document.ts.
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
 
     if (!content || typeof content !== "string") {
       throw badRequestResponse("Content is required");
@@ -184,7 +186,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     }
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
 
     if (
       !Array.isArray(commentIds) ||
@@ -263,15 +265,21 @@ export const DELETE: ApiRouteHandler = (context) =>
     // has to be read first, but nothing else does — an outsider is turned away
     // before the rest of the shape is validated.
     await verifyDocumentAccess(spaceId, documentId, user.id);
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
 
     if (!commentId || typeof commentId !== "string") {
       throw badRequestResponse("Comment ID is required");
     }
 
-    // Get the comment and verify user is the creator
+    // Get the comment and verify user is the creator. Scoped to the document
+    // the gates above authorized: a bare id lookup would archive a comment on
+    // some other document (or another resource type entirely), so the caller
+    // could pass any document they may comment on to reach a comment anywhere.
     const store = await openSpaceStore(spaceId);
-    const comment = await getComment(store, commentId);
+    const comment = await getComment(store, commentId, {
+      type: ResourceType.DOCUMENT,
+      id: documentId,
+    });
     if (!comment) {
       throw notFoundResponse("Comment");
     }

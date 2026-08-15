@@ -61,14 +61,29 @@ export async function listComments(
     .orderBy(asc(comment.createdAt));
 }
 
+/**
+ * @param resource Confine the lookup to one resource. A comment id alone says
+ *   nothing about which document the comment hangs off, so a caller that
+ *   authorized against a document must scope the read to it — otherwise the
+ *   authorized resource and the acted-on one are free to differ.
+ */
 export async function getComment(
   s: SpaceStore,
   commentId: string,
+  resource?: { type: string; id: string },
 ): Promise<Comment | undefined> {
   const [foundComment] = await s.db
     .select()
     .from(comment)
-    .where(eq(comment.id, commentId));
+    .where(
+      resource
+        ? and(
+            eq(comment.id, commentId),
+            eq(comment.resourceType, resource.type),
+            eq(comment.resourceId, resource.id),
+          )
+        : eq(comment.id, commentId),
+    );
 
   return foundComment;
 }
