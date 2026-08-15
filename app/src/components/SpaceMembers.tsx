@@ -426,6 +426,30 @@ export function SpaceMembers() {
     return perm.permission.userId ? "User" : "Group";
   }
 
+  /** The role a user holds today, for comparing a token against its issuer. */
+  function roleOfUser(userId: string): string | undefined {
+    return memberAccess().find((member) => member.key === `user:${userId}`)?.highestRole;
+  }
+
+  /**
+   * Who delegated this token — and, when their role has since dropped below what
+   * the token was granted, what it is actually limited to now.
+   */
+  function tokenIssuerLabel(token: AccessToken): string {
+    const issuerId = token.createdBy;
+    if (!issuerId) return "Issuer unknown";
+
+    const issuer = usersMap().get(issuerId);
+    const name = issuer?.name || issuer?.email || issuerId;
+    const issuerRole = roleOfUser(issuerId);
+    const ceiling = tokenRole(token);
+
+    if (issuerRole && permissionLevel(issuerRole) < permissionLevel(ceiling)) {
+      return `Issued by ${name} · limited to ${issuerRole}`;
+    }
+    return `Issued by ${name}`;
+  }
+
   // Space-wide membership and group grants are owner-only on the API, so a
   // non-owner is offered neither.
   const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
@@ -1240,7 +1264,7 @@ export function SpaceMembers() {
                           </Show>
                         </div>
                         <div class="text-neutral-500 text-size-small">
-                          Capped at its issuer's access
+                          {tokenIssuerLabel(token)}
                         </div>
                       </td>
                       <td class="whitespace-nowrap px-4 py-2.5">

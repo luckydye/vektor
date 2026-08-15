@@ -1680,7 +1680,9 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
   const groupsToCheck: string[] = [];
 
   for (const entry of results) {
-    if (entry.userId) {
+    // A token holds a grant but is not a member — it is a credential one of
+    // them issued, and counting it would inflate the space's membership.
+    if (entry.userId && !entry.token) {
       memberIds.add(entry.userId);
     }
     if (entry.groupId) {
