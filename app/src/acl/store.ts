@@ -440,6 +440,13 @@ async function capRowsToIssuer<T extends AclRow>(
 ): Promise<T[]> {
   if (!rows.some((row) => row.createdBy)) return rows;
 
+  // Resolving an issuer is expensive — group lookup plus, for a document, a full
+  // permission resolution over its ancestors. Rows commonly share an issuer, and
+  // outside DOCUMENT the answer does not depend on the resource at all, so hold
+  // both for the length of the call.
+  const groupsByIssuer = new Map<string, string[]>();
+  const roleByKey = new Map<string, string | undefined>();
+
   const capped: T[] = [];
   for (const row of rows) {
     if (!row.createdBy || !isPermission(row.permission)) {
@@ -447,8 +454,29 @@ async function capRowsToIssuer<T extends AclRow>(
       continue;
     }
 
-    const issuer = { id: row.createdBy, groups: await getUserGroups(row.createdBy) };
-    const cap = await issuerRole(spaceId, issuer, resourceType, row.resourceId);
+    let groups = groupsByIssuer.get(row.createdBy);
+    if (!groups) {
+      groups = await getUserGroups(row.createdBy);
+      groupsByIssuer.set(row.createdBy, groups);
+    }
+
+    const key =
+      resourceType === ResourceType.DOCUMENT
+        ? `${row.createdBy} ${row.resourceId}`
+        : row.createdBy;
+    let cap: string | undefined;
+    if (roleByKey.has(key)) {
+      cap = roleByKey.get(key);
+    } else {
+      cap = await issuerRole(
+        spaceId,
+        { id: row.createdBy, groups },
+        resourceType,
+        row.resourceId,
+      );
+      roleByKey.set(key, cap);
+    }
+
     // The issuer holds nothing here, so the grant delegates nothing.
     if (!isPermission(cap)) continue;
 
@@ -993,7 +1021,7 @@ export async function hasAnyResourceScopedAccess(
 
   const row = await one(
     db
-      .select({ resourceId: acl.resourceId })
+      .select({ resourceType: acl.resourceType, resourceId: acl.resourceId })
       .from(acl)
       .where(and(resourceTypeCondition, live, or(...granteeConditions)))
       .limit(1),
@@ -1001,10 +1029,20 @@ export async function hasAnyResourceScopedAccess(
 
   if (!row) return false;
 
-  // A token reaches a space only as far as its issuer still does.
+  // A token reaches a space only as far as its issuer still does. The question
+  // is whether the issuer can still reach the resource this token was granted
+  // on — not whether the issuer happens to hold a resource-scoped grant of
+  // their own. An owner holds a space row and no document row, and still
+  // plainly outranks a document-scoped token they minted.
   const issuer = await tokenIssuer(spaceId, userId);
   if (issuer) {
-    return hasAnyResourceScopedAccess(spaceId, issuer.id, issuer.groups);
+    const cap = await issuerRole(
+      spaceId,
+      issuer,
+      row.resourceType as ResourceType,
+      row.resourceId,
+    );
+    return isPermission(cap);
   }
 
   return true;
@@ -1332,6 +1370,11 @@ async function resolveAccessibleResources(
   // Space-level permission implies access to all resources in the space that
   // have no per-resource ACL restrictions (same fallback as hasPermission()).
   // Return null to signal "all accessible" — callers treat null like a job token.
+  //
+  // Only when that role actually reaches `minPermission`, though: a viewer asked
+  // for what they can edit reaches no resource space-wide, and answering
+  // "unrestricted" would both over-report them and, for a token, erase the
+  // issuer intersection that caps it in listAccessibleResources().
   const spacePerm = await getPermission(
     spaceId,
     ResourceType.SPACE,
@@ -1339,7 +1382,10 @@ async function resolveAccessibleResources(
     userId,
     effectiveGroups,
   );
-  if (spacePerm) {
+  if (
+    spacePerm &&
+    (!minPermission || meetsPermissionLevel(spacePerm.permission, minPermission))
+  ) {
     return null;
   }
 
@@ -1446,6 +1492,12 @@ async function resolveAccessibleResources(
 /**
  * Resources this identity can reach at `minPermission`. Null means unrestricted.
  * A token reaches the intersection of its own scope and its issuer's.
+ *
+ * The intersection carries the level cap as well as the scope: a token's stored
+ * permission is a ceiling, and its effective one is the weaker of that and the
+ * issuer's. Since both passes filter at `minPermission`, a resource survives
+ * only when token and issuer each reach it at that level — which is exactly
+ * when the weaker of the two does.
  */
 export async function listAccessibleResources(
   spaceId: string,
