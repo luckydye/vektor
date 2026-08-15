@@ -990,7 +990,15 @@ export async function hasAnyResourceScopedAccess(
       .limit(1),
   );
 
-  return !!row;
+  if (!row) return false;
+
+  // A token reaches a space only as far as its issuer still does.
+  const issuer = await tokenIssuer(spaceId, userId);
+  if (issuer) {
+    return hasAnyResourceScopedAccess(spaceId, issuer.id, issuer.groups);
+  }
+
+  return true;
 }
 
 /**
