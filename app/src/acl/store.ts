@@ -446,11 +446,9 @@ async function resolveDelegation(
 }
 
 /**
- * What the issuer may currently do where a token grant on this resource sits.
- *
- * Mirrors `verifyCanGrantTokenAccess`, which bounds the grant when it is made:
- * a document grant against the issuer's access to that document, every other
- * grant against their space role.
+ * What the issuer may currently do where a token grant on this resource sits: a
+ * document grant is bounded by their access to that document, every other grant
+ * by their space role — the level that lets them manage those resources.
  */
 async function issuerRole(
   spaceId: string,

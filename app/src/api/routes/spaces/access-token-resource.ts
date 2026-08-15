@@ -1,4 +1,4 @@
-import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
+import { validateTokenGrant, verifySpaceRole } from "#acl/guards.ts";
 import { isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -47,14 +47,9 @@ export const PUT: ApiRouteHandler = (context) =>
       throw badRequestResponse("Permission is required");
     }
 
-    // Validate the grant and ensure the caller cannot delegate more than they hold.
-    await verifyCanGrantTokenAccess(
-      spaceId,
-      user.id,
-      resourceType,
-      resourceId,
-      permission,
-    );
+    // The token is capped at the issuer's access when used; this only rejects a
+    // grant that names nothing.
+    validateTokenGrant(resourceType, permission);
 
     await grantTokenAccess({
       tokenId,

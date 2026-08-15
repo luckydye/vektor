@@ -13,7 +13,6 @@
  * Returns: { token: string, spaceId: string, permission: string, expiresAt: string }
  */
 
-import { verifyCanGrantTokenAccess } from "#acl/guards.ts";
 import { isPermission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -66,15 +65,6 @@ export const POST: ApiRouteHandler = (context) =>
     if (!isPermission(permission)) {
       throw forbiddenResponse("You do not hold a role on this space");
     }
-
-    // The rule the access-token endpoint enforces, so the two cannot drift.
-    await verifyCanGrantTokenAccess(
-      spaceId,
-      userId,
-      ResourceType.SPACE,
-      spaceId,
-      permission,
-    );
 
     const expiresAt = new Date(Date.now() + CLI_TOKEN_TTL_DAYS * DAY_MS);
 

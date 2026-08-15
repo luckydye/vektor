@@ -755,27 +755,20 @@ const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
 ];
 
 /**
- * Authorize a request to grant an access token `permission` on a resource.
+ * Validate a token grant and return the role it names.
  *
- * Enforces two invariants that were previously missing (privilege escalation):
- *  1. `permission` / `resourceType` are valid values (rejects bogus inputs like
- *     the old "extensions" pseudo-permission that resolved to level 0).
- *  2. The caller may not grant a token MORE authority than the caller holds on
- *     that resource — a token is a delegation of the issuer's own access.
+ * This does not bound authority: a token's grant is a ceiling that resolution
+ * caps again at what its issuer can do when the token is used, and both callers
+ * already require the space owner role. What is left is keeping values that name
+ * nothing out of the ACL, where they would sit as a grant that silently does
+ * nothing — the old "extensions" pseudo-permission, or a typo'd role.
  *
- * The grant is a ceiling, not authority: resolution caps it again at what the
- * issuer holds when the token is used, so this check is the early, legible
- * failure rather than the thing standing between a demotion and a live token.
- *
- * Throws a 400/403 Response on violation.
+ * Throws a 400 Response on violation.
  */
-export async function verifyCanGrantTokenAccess(
-  spaceId: string,
-  callerUserId: string,
+export function validateTokenGrant(
   resourceType: ResourceType,
-  resourceId: string,
   permission: string,
-): Promise<void> {
+): Permission {
   if (!isPermission(permission)) {
     throw badRequestResponse(`Permission must be one of: ${allPermissions().join(", ")}`);
   }
@@ -790,13 +783,7 @@ export async function verifyCanGrantTokenAccess(
     throw badRequestResponse("owner can only be granted on the space itself");
   }
 
-  if (resourceType === ResourceType.DOCUMENT) {
-    await verifyDocumentRole(spaceId, resourceId, callerUserId, permission);
-  } else {
-    // Space, category, and extension grants are gated on the caller's
-    // space-level role (the level that lets them manage those resources).
-    await verifySpaceRole(spaceId, callerUserId, permission);
-  }
+  return permission;
 }
 
 /**
