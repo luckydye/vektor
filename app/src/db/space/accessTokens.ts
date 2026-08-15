@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { Permission, ResourceType } from "#acl/permissions.ts";
+import { isFeature, isPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   getUserGroups,
   grantPermission,
+  hasFeature,
   hasPermission,
   listUserPermissions,
   revokeAllUserPermissions,
@@ -176,8 +177,69 @@ export async function listTokenResources(
 }
 
 /**
+ * Whether the token's issuer still holds everything the token was granted.
+ *
+ * `verifyCanGrantTokenAccess` bounds a token to its issuer's own access at
+ * creation time, but nothing re-applied that bound afterwards: an issuer who was
+ * demoted kept using a credential minted while they still held the higher role.
+ * Re-checking the same rule per request closes that for every way a role can
+ * change — a direct grant, group membership, an IdP sync — rather than only the
+ * paths that remember to revoke.
+ *
+ * The verdict is a denial, not a revocation. An issuer who is demoted is still a
+ * member, so the token starts working again if they are promoted back. Contrast
+ * the offboarding rule in `validateAccessToken`, which revokes permanently
+ * because the secret may sit on a machine the space no longer controls.
+ */
+async function issuerStillCoversToken(
+  s: SpaceStore,
+  tokenId: string,
+  createdBy: string,
+): Promise<boolean> {
+  const grants = await listUserPermissions(s.spaceId, getTokenUserId(tokenId));
+  if (grants.length === 0) return true;
+
+  const issuerGroups = await getUserGroups(createdBy);
+
+  for (const grant of grants) {
+    if (grant.resourceType === ResourceType.FEATURE) {
+      // A denial delegates nothing, so it cannot exceed the issuer.
+      if (grant.permission === "denied") continue;
+      if (!isFeature(grant.resourceId)) return false;
+      if (!(await hasFeature(s.spaceId, grant.resourceId, createdBy, issuerGroups))) {
+        return false;
+      }
+      continue;
+    }
+
+    // A role that is not in the vocabulary cannot be compared, so it is not honored.
+    if (!isPermission(grant.permission)) return false;
+
+    // Mirrors verifyCanGrantTokenAccess: a document grant is bounded by the
+    // issuer's access to that document, every other grant by their space role.
+    const bound =
+      grant.resourceType === ResourceType.DOCUMENT
+        ? { type: ResourceType.DOCUMENT, id: grant.resourceId }
+        : { type: ResourceType.SPACE, id: s.spaceId };
+
+    const covered = await hasPermission(
+      s.spaceId,
+      bound.type,
+      bound.id,
+      createdBy,
+      grant.permission,
+      issuerGroups,
+    );
+    if (!covered) return false;
+  }
+
+  return true;
+}
+
+/**
  * Validate an access token and return its details
- * Returns null if token is invalid, revoked, or expired
+ * Returns null if token is invalid, revoked, expired, or no longer covered by
+ * its issuer's current access
  *
  * @example
  * ```ts
@@ -222,6 +284,12 @@ export async function validateAccessToken(
   );
   if (!creatorStillBelongsToSpace) {
     await revokeAccessToken(s, result.id);
+    return null;
+  }
+
+  // Membership is the floor, not the bound: a token may not outrank what its
+  // issuer can still do today.
+  if (!(await issuerStillCoversToken(s, result.id, result.createdBy))) {
     return null;
   }
 
