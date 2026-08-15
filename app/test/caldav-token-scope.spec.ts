@@ -40,7 +40,6 @@ let docB: string;
 let viewerToken: string;
 let editorToken: string;
 let narrowedToken: { id: string; token: string };
-let revokedGrantToken: { id: string; token: string };
 let revokedToken: { id: string; token: string };
 
 function basicAuth(token: string): string {
@@ -154,7 +153,6 @@ beforeAll(async () => {
   viewerToken = (await createSpaceToken(spaceA, "scope-viewer", "viewer")).token;
   editorToken = (await createSpaceToken(spaceA, "scope-editor", "editor")).token;
   narrowedToken = await createSpaceToken(spaceA, "scope-narrowed", "editor");
-  revokedGrantToken = await createSpaceToken(spaceA, "scope-revoked-grant", "viewer");
   revokedToken = await createSpaceToken(spaceA, "scope-revoked", "viewer");
 }, 60_000);
 
@@ -267,35 +265,6 @@ describe("CalDAV token scope", () => {
     ).toBe(207);
   });
 
-  it("loses CalDAV access when the token's resource grant is revoked", async () => {
-    expect(
-      (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedGrantToken.token))
-        .status,
-    ).toBe(207);
-
-    const revoke = await apiRequest(
-      `/api/v1/spaces/${spaceA}/access-tokens/${revokedGrantToken.id}/resources/space/${spaceA}`,
-      owner.token,
-      { method: "DELETE" },
-    );
-    expect(revoke.ok).toBe(true);
-
-    // The grant is the token, so revoking it revokes the credential: 401.
-    expect(
-      (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedGrantToken.token))
-        .status,
-    ).toBe(401);
-    expect(
-      (
-        await calDav(
-          `/api/caldav/calendars/${owner.userId}/`,
-          "PROPFIND",
-          revokedGrantToken.token,
-        )
-      ).status,
-    ).toBe(401);
-  });
-
   it("loses CalDAV access when the token itself is revoked", async () => {
     expect(
       (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedToken.token)).status,
@@ -308,9 +277,19 @@ describe("CalDAV token scope", () => {
     );
     expect(revoke.ok).toBe(true);
 
-    // The credential no longer authenticates at all.
+    // The credential no longer authenticates at all — neither the calendar it
+    // was scoped to nor the calendar home.
     expect(
       (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedToken.token)).status,
+    ).toBe(401);
+    expect(
+      (
+        await calDav(
+          `/api/caldav/calendars/${owner.userId}/`,
+          "PROPFIND",
+          revokedToken.token,
+        )
+      ).status,
     ).toBe(401);
   });
 

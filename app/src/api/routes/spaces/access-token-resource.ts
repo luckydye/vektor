@@ -7,16 +7,11 @@ import {
   parseJsonBody,
   requireParam,
   requireUser,
-  successResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import {
-  grantTokenAccess,
-  listTokenResources,
-  revokeAccessToken,
-} from "#db/space/accessTokens.ts";
+import { grantTokenAccess, listTokenResources } from "#db/space/accessTokens.ts";
 
 /**
  * PUT /api/v1/spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId
@@ -67,35 +62,10 @@ export const PUT: ApiRouteHandler = (context) =>
     return jsonResponse({ resources, message: "Access granted successfully" });
   }, "Failed to grant access token resource");
 
-/**
- * DELETE /api/v1/spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId
- * Revoke the token's grant. The grant is the token, so this revokes the
- * credential with it — the secret stops authenticating rather than surviving
- * with nothing behind it.
+/*
+ * There is deliberately no DELETE here. A token holds exactly one grant, so
+ * removing the grant named in the path could only ever mean revoking the
+ * credential — which PATCH /api/v1/spaces/:spaceId/access-tokens/:tokenId
+ * already does, without a resource in the url implying a granularity that does
+ * not exist.
  */
-export const DELETE: ApiRouteHandler = (context) =>
-  withApiErrorHandling(async () => {
-    const user = requireUser(context);
-    const spaceId = requireParam(context.var.params, "spaceId");
-    const tokenId = requireParam(context.var.params, "tokenId");
-    const resourceType = requireParam(context.var.params, "resourceType");
-
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
-
-    if (!isResourceType(resourceType)) {
-      throw badRequestResponse(
-        `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
-      );
-    }
-
-    const revoked = await revokeAccessToken(
-      await openSpaceStore(spaceId),
-      tokenId,
-      user.id,
-    );
-    if (!revoked) {
-      throw notFoundResponse("Access token");
-    }
-
-    return successResponse({ message: "Resource access revoked successfully" });
-  }, "Failed to revoke access token resource");
