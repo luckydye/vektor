@@ -93,14 +93,14 @@ Owner is required for:
 
 - writing an `owner` entry, at any scope;
 - overwriting or removing an existing `owner` entry;
-- any grant naming a `groupId`, at any scope, `public` included — admitting a class of
-  people is space configuration, not a per-resource share;
+- any role write naming a `groupId` — grant or revoke, at any scope, `public` included —
+  since admitting a class of people is space configuration, not a per-resource share;
 - any grant at `space` scope, so membership sits beside renaming and deletion;
 - withdrawing access anywhere other than `document` and `document_tree` scope;
 - every `feature` grant, deny and revoke.
 
 Editor is enough for the rest: sharing a `document`, `document_tree` or `category` with
-an individual user, and taking a document or tree share back.
+an individual user, and taking such a share back on a document or tree.
 
 Granting `owner` anywhere but space scope is refused as malformed (`400`) before
 authorization is considered, on this endpoint and on access-token resource grants alike.

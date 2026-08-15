@@ -12,3 +12,8 @@ declare module "#docs/extensions.md" {
   // biome-ignore lint/style/noDefaultExport: matches the runtime module shape
   export default content;
 }
+declare module "#docs/permissions.md" {
+  const content: string;
+  // biome-ignore lint/style/noDefaultExport: matches the runtime module shape
+  export default content;
+}

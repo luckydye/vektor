@@ -293,8 +293,9 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
     `document`/`document_tree` scope → caller must be `owner`
   - any scope other than `document`/`document_tree`/`category` — `space` included, so
     space membership sits beside renaming and deletion → caller must be `owner`
-  - any grant to a `groupId`, at any scope, including the synthetic `public` group that
-    exposes the resource to unauthenticated callers → caller must be `owner`
+  - any role write naming a `groupId` — grant or revoke, at any scope, including the
+    synthetic `public` group that exposes the resource to unauthenticated callers →
+    caller must be `owner`
   - all other role grants/revokes → caller must be `editor`
   - any `feature` operation → caller must be `owner`
 - **Body**: `type` (`"role"` | `"feature"`, required), `roleOrFeature` (string,
