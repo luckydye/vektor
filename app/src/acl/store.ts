@@ -412,7 +412,7 @@ async function tokenIssuer(
   spaceId: string,
   tokenId: string,
 ): Promise<TokenIssuer | null> {
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   const row = await one(
     db
       .select({ createdBy: accessToken.createdBy })
