@@ -404,26 +404,19 @@ export async function revokeAllGranteePermissions(
   return removed.length;
 }
 
-/**
- * Who an access token acts for. `issuerId` is null when the token row itself is
- * gone, leaving grants that delegate nothing.
- */
-interface TokenDelegation {
-  issuerId: string | null;
-  issuerGroups: string[];
+interface TokenIssuer {
+  id: string;
+  groups: string[];
 }
 
 /**
- * The issuer behind an ACL identity, or null for a plain user — the common path,
- * and the only extra query a token request pays for.
+ * The user an access token acts for. Null when the token row is gone, leaving
+ * grants that delegate nothing.
  */
-async function tokenDelegation(
+async function tokenIssuer(
   spaceId: string,
-  principalId: string,
-): Promise<TokenDelegation | null> {
-  const tokenId = tokenIdFromPrincipal(principalId);
-  if (!tokenId) return null;
-
+  tokenId: string,
+): Promise<TokenIssuer | null> {
   const db = await getSpaceDb(spaceId);
   const row = await one(
     db
@@ -432,17 +425,8 @@ async function tokenDelegation(
       .where(eq(accessToken.id, tokenId)),
   );
 
-  return { issuerId: row?.createdBy ?? null, issuerGroups: [] };
-}
-
-/** As above, with the issuer's groups resolved. Split so the miss stays cheap. */
-async function resolveDelegation(
-  spaceId: string,
-  principalId: string,
-): Promise<TokenDelegation | null> {
-  const delegation = await tokenDelegation(spaceId, principalId);
-  if (!delegation?.issuerId) return delegation;
-  return { ...delegation, issuerGroups: await getUserGroups(delegation.issuerId) };
+  if (!row) return null;
+  return { id: row.createdBy, groups: await getUserGroups(row.createdBy) };
 }
 
 /**
@@ -452,26 +436,19 @@ async function resolveDelegation(
  */
 async function issuerRole(
   spaceId: string,
-  delegation: TokenDelegation,
+  issuer: TokenIssuer,
   resourceType: ResourceType,
   resourceId: string,
 ): Promise<string | undefined> {
-  if (!delegation.issuerId) return undefined;
-
   const entry =
     resourceType === ResourceType.DOCUMENT
-      ? await getDocumentPermission(
-          spaceId,
-          resourceId,
-          delegation.issuerId,
-          delegation.issuerGroups,
-        )
+      ? await getDocumentPermission(spaceId, resourceId, issuer.id, issuer.groups)
       : await getPermission(
           spaceId,
           ResourceType.SPACE,
           spaceId,
-          delegation.issuerId,
-          delegation.issuerGroups,
+          issuer.id,
+          issuer.groups,
         );
 
   return entry?.permission;
@@ -488,29 +465,25 @@ async function capRowsToIssuer<T extends AclRow>(
   resourceType: ResourceType,
   rows: T[],
 ): Promise<T[]> {
-  // Nothing here was delegated, so nothing needs capping — the usual case, and
-  // it keeps the issuer lookup off every resolution that has no token in it.
-  if (!rows.some((row) => row.userId === principalId)) return rows;
+  const tokenId = tokenIdFromPrincipal(principalId);
+  if (!tokenId) return rows;
 
-  const delegation = await resolveDelegation(spaceId, principalId);
-  if (!delegation) return rows;
+  const own = (row: AclRow) => row.userId === principalId;
+  // Nothing delegated here, so nothing to cap — keeps the issuer lookup off the
+  // resolutions a scoped token makes against resources it was never granted.
+  if (!rows.some(own)) return rows;
+
+  const issuer = await tokenIssuer(spaceId, tokenId);
+  if (!issuer) return rows.filter((row) => !own(row));
 
   const capped: T[] = [];
-  // Only a document grant is bounded per resource; the rest share the space role.
-  const cache = new Map<string, string | undefined>();
-
   for (const row of rows) {
-    if (row.userId !== principalId || !isPermission(row.permission)) {
+    if (!own(row) || !isPermission(row.permission)) {
       capped.push(row);
       continue;
     }
 
-    const key = resourceType === ResourceType.DOCUMENT ? row.resourceId : "";
-    if (!cache.has(key)) {
-      cache.set(key, await issuerRole(spaceId, delegation, resourceType, row.resourceId));
-    }
-
-    const cap = cache.get(key);
+    const cap = await issuerRole(spaceId, issuer, resourceType, row.resourceId);
     // The issuer holds nothing here, so the grant delegates nothing.
     if (!isPermission(cap)) continue;
 
@@ -1205,17 +1178,13 @@ export async function hasFeature(
   }
 
   // A token holds a feature only for as long as its issuer does.
-  const delegation = await resolveDelegation(spaceId, userId);
-  if (delegation) {
-    if (!delegation.issuerId) return false;
-    const issuerHasIt = await hasFeature(
-      spaceId,
-      feature,
-      delegation.issuerId,
-      delegation.issuerGroups,
-      documentId,
-    );
-    if (!issuerHasIt) return false;
+  const tokenId = tokenIdFromPrincipal(userId);
+  if (tokenId) {
+    const issuer = await tokenIssuer(spaceId, tokenId);
+    if (!issuer) return false;
+    if (!(await hasFeature(spaceId, feature, issuer.id, issuer.groups, documentId))) {
+      return false;
+    }
   }
 
   const db = await getSpaceDb(spaceId);
@@ -1521,17 +1490,19 @@ export async function listAccessibleResources(
     minPermission,
   );
 
-  const delegation = await resolveDelegation(spaceId, userId);
-  if (!delegation) return own;
-  if (!delegation.issuerId) return [];
+  const tokenId = tokenIdFromPrincipal(userId);
+  if (!tokenId) return own;
+
+  const issuer = await tokenIssuer(spaceId, tokenId);
+  if (!issuer) return [];
 
   return intersectScopes(
     own,
     await resolveAccessibleResources(
       spaceId,
-      delegation.issuerId,
+      issuer.id,
       resourceType,
-      delegation.issuerGroups,
+      issuer.groups,
       minPermission,
     ),
   );
@@ -1717,16 +1688,18 @@ export async function filterReadableResources(
     minPermission,
   );
 
-  const delegation = await resolveDelegation(spaceId, viewer.userId);
-  if (!delegation) return own;
-  if (!delegation.issuerId) return new Set();
+  const tokenId = tokenIdFromPrincipal(viewer.userId);
+  if (!tokenId) return own;
+
+  const issuer = await tokenIssuer(spaceId, tokenId);
+  if (!issuer) return new Set();
 
   // Re-filtering `own` rather than intersecting keeps the result a subset.
   return resolveReadableResources(
     spaceId,
     resourceType,
     [...own],
-    { userId: delegation.issuerId, userGroups: delegation.issuerGroups },
+    { userId: issuer.id, userGroups: issuer.groups },
     minPermission,
   );
 }
