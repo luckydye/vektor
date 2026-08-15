@@ -4,6 +4,7 @@ import {
   type AclViewer,
   type Feature,
   GROUP_NAME_PATTERN,
+  isResourceType,
   meetsPermissionLevel,
   Permission,
   PUBLIC_GROUP,
@@ -355,6 +356,51 @@ export async function revokePermission(
   }
 
   return true;
+}
+
+/**
+ * Remove every grant held directly by one grantee in this space, whatever
+ * resource it is on. Used when the principal itself goes away and its grants
+ * would otherwise linger as entries nobody can reach. Group grants are left
+ * alone: they belong to the group, not to the member.
+ *
+ * Returns the number of grants removed.
+ */
+export async function revokeAllUserPermissions(
+  store: SpaceStore,
+  userId: string,
+  actorUserId?: string,
+): Promise<number> {
+  const { db, spaceId } = store;
+
+  const conditions = [eq(acl.userId, userId), isNull(acl.groupId)];
+
+  // Read first so each removal can be audited individually, the same way a
+  // single-resource revoke is.
+  const removed = await many(
+    db
+      .select()
+      .from(acl)
+      .where(and(...conditions)),
+  );
+
+  if (removed.length === 0) return 0;
+
+  await db.delete(acl).where(and(...conditions));
+
+  for (const entry of removed) {
+    if (!isResourceType(entry.resourceType)) continue;
+    await logAclChange(store, spaceId, {
+      event: "acl_revoke",
+      resourceType: entry.resourceType,
+      resourceId: entry.resourceId,
+      userId: entry.userId ?? undefined,
+      previousPermission: entry.permission,
+      actorUserId,
+    });
+  }
+
+  return removed.length;
 }
 
 export async function getPermission(

@@ -6,6 +6,7 @@ import {
   grantPermission,
   hasPermission,
   listUserPermissions,
+  revokeAllUserPermissions,
   revokePermission,
 } from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -335,17 +336,26 @@ export async function findSpaceForToken(token: string): Promise<string | null> {
  *
  * @example
  * ```ts
- * await deleteAccessToken("space123", "token_abc123");
+ * await deleteAccessToken(store, "token_abc123");
  * ```
  */
 export async function deleteAccessToken(
   s: SpaceStore,
   tokenId: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  const result = await s.db
-    .delete(accessToken)
-    .where(eq(accessToken.id, tokenId))
-    .returning();
+  return s.tx(async (tx) => {
+    const result = await tx.db
+      .delete(accessToken)
+      .where(eq(accessToken.id, tokenId))
+      .returning();
 
-  return result.length > 0;
+    if (result.length === 0) return false;
+
+    // The token principal no longer exists, so its grants would otherwise stay
+    // behind and make access listings report a grantee that can never be used.
+    await revokeAllUserPermissions(tx, getTokenUserId(tokenId), actorUserId);
+
+    return true;
+  });
 }
