@@ -352,6 +352,19 @@ export function SpaceMembers() {
     void Promise.all([fetchPermissions(), fetchUsers()]);
   });
 
+  // The form opens pre-filled with the space id. Switching to another resource
+  // type has to clear it, or that id rides along as the document/extension id
+  // and mints a grant that matches nothing.
+  createEffect(
+    on(
+      newTokenResourceType,
+      (type) => {
+        setNewTokenResourceId(type === "space" ? (currentSpace()?.id ?? "") : "");
+      },
+      { defer: true },
+    ),
+  );
+
   createEffect(
     on(
       showAddMember,
