@@ -115,6 +115,19 @@ async function granteeIds(): Promise<string[]> {
   );
 }
 
+async function spaceAuditLogs() {
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/audit-logs?limit=200`,
+    owner.token,
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()).auditLogs as Array<{
+    event: string;
+    userId?: string | null;
+    details?: Record<string, unknown> | null;
+  }>;
+}
+
 async function expectRevoked(token: { id: string; token: string }): Promise<void> {
   expect((await readDocumentWithToken(token.token)).status).toBe(401);
 
@@ -215,5 +228,84 @@ describe("access-token creator lifecycle", () => {
 
     expect(await granteeIds()).not.toContain(`token:${token.id}`);
     expect((await readDocumentWithToken(token.token)).status).toBe(401);
+  });
+});
+
+describe("access-token audit trail", () => {
+  it("logs minting a token as a grant, attributed to its creator", async () => {
+    await grantDelegateOwnership();
+    const token = await createDelegateToken("audited mint");
+
+    const entry = (await spaceAuditLogs()).find(
+      (log) =>
+        log.event === "acl_grant" && log.details?.targetUserId === `token:${token.id}`,
+    );
+
+    expect(entry).toBeDefined();
+    expect(entry?.userId).toBe(delegate.userId);
+    expect(entry?.details?.resourceType).toBe("space");
+    expect(entry?.details?.permission).toBe("editor");
+  });
+
+  it("logs revoking a token, once, with the permission it held", async () => {
+    await grantDelegateOwnership();
+    const token = await createDelegateToken("audited revoke");
+
+    for (const attempt of [1, 2]) {
+      const response = await apiRequest(
+        `/api/v1/spaces/${spaceId}/access-tokens/${token.id}`,
+        owner.token,
+        { method: "PATCH" },
+      );
+      expect(response.status, `revoke attempt ${attempt}`).toBe(200);
+    }
+
+    // Re-revoking is a success for the caller but changes nothing, so it must
+    // not write a second entry.
+    const entries = (await spaceAuditLogs()).filter(
+      (log) =>
+        log.event === "acl_revoke" && log.details?.targetUserId === `token:${token.id}`,
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.userId).toBe(owner.userId);
+    expect(entries[0]?.details?.previousValue).toBe("editor");
+  });
+
+  it("logs deleting a live token, and not one already revoked", async () => {
+    await grantDelegateOwnership();
+    const live = await createDelegateToken("audited delete");
+    const alreadyRevoked = await createDelegateToken("audited delete after revoke");
+
+    expect(
+      (
+        await apiRequest(
+          `/api/v1/spaces/${spaceId}/access-tokens/${alreadyRevoked.id}`,
+          owner.token,
+          { method: "PATCH" },
+        )
+      ).status,
+    ).toBe(200);
+
+    for (const token of [live, alreadyRevoked]) {
+      const response = await apiRequest(
+        `/api/v1/spaces/${spaceId}/access-tokens/${token.id}`,
+        owner.token,
+        { method: "DELETE" },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const revokes = await spaceAuditLogs();
+    const entriesFor = (id: string) =>
+      revokes.filter(
+        (log) =>
+          log.event === "acl_revoke" && log.details?.targetUserId === `token:${id}`,
+      );
+
+    expect(entriesFor(live.id)).toHaveLength(1);
+    // The revoke was logged when it happened; deleting the row afterwards takes
+    // away a grant that was already gone.
+    expect(entriesFor(alreadyRevoked.id)).toHaveLength(1);
   });
 });
