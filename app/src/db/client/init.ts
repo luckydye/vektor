@@ -80,10 +80,7 @@ async function backfillAIChatSessionRoles(spaceDb: Database) {
  * connection open, not just the first. New tables are created as defined; a
  * column added to an existing table is reconciled with `addColumnIfMissing`.
  */
-export async function initSpaceDbSchema(
-  spaceDb: Database,
-  options: { local: boolean },
-) {
+export async function initSpaceDbSchema(spaceDb: Database, options: { local: boolean }) {
   await exec(spaceDb, sql.raw("PRAGMA foreign_keys = ON"));
   // The integrity pragma above is needed for every SQLite connection; these
   // remaining pragmas tune durable local files only.
@@ -135,6 +132,22 @@ export async function initSpaceDbSchema(
 
   const aclSQL = generateCreateTableSQL(spaceSchema.acl);
   await exec(spaceDb, sql.raw(aclSQL));
+  // Access tokens moved into `acl`: a token is a grant that carries a credential.
+  for (const column of [
+    spaceSchema.acl.name,
+    spaceSchema.acl.token,
+    spaceSchema.acl.expiresAt,
+    spaceSchema.acl.lastUsedAt,
+    spaceSchema.acl.createdBy,
+    spaceSchema.acl.revokedAt,
+  ]) {
+    await addColumnIfMissing(spaceDb, column);
+  }
+  await exec(
+    spaceDb,
+    sql.raw("CREATE UNIQUE INDEX IF NOT EXISTS acl_token_unique ON acl (token)"),
+  );
+  await exec(spaceDb, sql.raw("DROP TABLE IF EXISTS access_token"));
 
   const auditLogSQL = generateCreateTableSQL(spaceSchema.auditLog);
   await exec(spaceDb, sql.raw(auditLogSQL));
@@ -167,9 +180,6 @@ export async function initSpaceDbSchema(
       "CREATE INDEX IF NOT EXISTS email_notification_outbox_due_idx ON email_notification_outbox (status, available_at)",
     ),
   );
-
-  const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
-  await exec(spaceDb, sql.raw(accessTokenSQL));
 
   const aiChatSessionSQL = generateCreateTableSQL(spaceSchema.aiChatSession);
   await exec(spaceDb, sql.raw(aiChatSessionSQL));

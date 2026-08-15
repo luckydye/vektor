@@ -1,32 +1,51 @@
+/**
+ * Access tokens. A token is an `acl` row that carries a credential: same table,
+ * same resolution, plus the columns needed to authenticate it. So a token is
+ * scoped to exactly one resource — two scopes means two tokens — and deleting it
+ * takes its grant with it rather than leaving one behind.
+ *
+ * What the row grants is a ceiling, not authority: resolution caps it at what
+ * `createdBy` can still do (see `capRowsToIssuer`).
+ */
+
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
-import { Permission, ResourceType } from "#acl/permissions.ts";
-import {
-  getUserGroups,
-  grantPermission,
-  hasPermission,
-  listUserPermissions,
-  revokePermission,
-} from "#acl/store.ts";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { Permission, ResourceType, TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
+import { getUserGroups, hasPermission, logAclChange } from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
-import type { AccessToken, AccessTokenInsert } from "#db/schema/space.ts";
-import { accessToken } from "#db/schema/space.ts";
+import type { AccessToken, AclEntry } from "#db/schema/space.ts";
+import { acl } from "#db/schema/space.ts";
 import { listAllSpaces } from "./spaces.ts";
 
 export interface CreateAccessTokenOptions {
-  spaceId: string;
   name: string;
+  resourceType: ResourceType;
+  resourceId: string;
+  permission: string;
   expiresAt?: Date;
   createdBy: string;
 }
 
-export interface GrantTokenAccessOptions {
-  tokenId: string;
-  spaceId: string;
-  resourceType: ResourceType;
+/** What a token is scoped to, as the API reports it. */
+export interface TokenResource {
+  resourceType: string;
   resourceId: string;
+  userId: string | null;
   permission: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Token metadata as the API reports it, without the secret. */
+export interface AccessTokenSummary {
+  id: string;
+  name: string | null;
+  expiresAt: Date | null;
+  lastUsedAt: Date | null;
+  createdAt: Date;
+  createdBy: string | null;
+  revokedAt: Date | null;
 }
 
 export interface ValidateTokenResult {
@@ -50,34 +69,40 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/**
- * Get token user ID for ACL system
- * Tokens are represented in ACL as "token:<token-id>"
- */
+/** A token's identity in the ACL system. What it holds there is a ceiling. */
 export function getTokenUserId(tokenId: string): string {
-  return `token:${tokenId}`;
+  return `${TOKEN_PRINCIPAL_PREFIX}${tokenId}`;
+}
+
+/** Matches the one row that is this token. */
+function tokenRow(tokenId: string) {
+  return and(eq(acl.userId, getTokenUserId(tokenId)), isNotNull(acl.token));
+}
+
+function toSummary(row: AclEntry): AccessTokenSummary {
+  return {
+    id: row.userId?.slice(TOKEN_PRINCIPAL_PREFIX.length) ?? "",
+    name: row.name,
+    expiresAt: row.expiresAt,
+    lastUsedAt: row.lastUsedAt,
+    createdAt: row.createdAt,
+    createdBy: row.createdBy,
+    revokedAt: row.revokedAt,
+  };
 }
 
 /**
- * Create a new access token scoped to a space
- * After creation, use grantTokenAccess() to assign it to resources
+ * Mint a token scoped to one resource. The secret is returned once and only its
+ * hash is stored.
  *
  * @example
  * ```ts
- * const { token, id } = await createAccessToken({
- *   spaceId: "space123",
+ * const { token, id } = await createAccessToken(store, {
  *   name: "CI/CD Pipeline",
- *   expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
- *   createdBy: "user789"
- * });
- *
- * // Grant access to a document
- * await grantTokenAccess({
- *   tokenId: id,
- *   spaceId: "space123",
- *   resourceType: "document",
+ *   resourceType: ResourceType.DOCUMENT,
  *   resourceId: "doc456",
- *   permission: "editor"
+ *   permission: "editor",
+ *   createdBy: "user789",
  * });
  * ```
  */
@@ -86,92 +111,117 @@ export async function createAccessToken(
   options: CreateAccessTokenOptions,
 ): Promise<{ id: string; token: string }> {
   const token = generateToken();
-  const hashedToken = hashToken(token);
   const id = createId("accessToken");
+  const now = new Date();
 
-  const tokenData: AccessTokenInsert = {
-    id,
+  await s.db.insert(acl).values({
+    resourceType: options.resourceType,
+    resourceId: options.resourceId,
+    userId: getTokenUserId(id),
+    groupId: null,
+    permission: options.permission,
+    createdAt: now,
+    updatedAt: now,
     name: options.name,
-    token: hashedToken,
+    token: hashToken(token),
     expiresAt: options.expiresAt,
     lastUsedAt: null,
-    createdAt: new Date(),
     createdBy: options.createdBy,
     revokedAt: null,
-  };
+  });
 
-  await s.db.insert(accessToken).values(tokenData);
+  await logAclChange(s, s.spaceId, {
+    event: "acl_grant",
+    resourceType: options.resourceType,
+    resourceId: options.resourceId,
+    userId: getTokenUserId(id),
+    permission: options.permission,
+    actorUserId: options.createdBy,
+  });
 
   return { id, token };
 }
 
 /**
- * Grant a token access to a resource via ACL
+ * Re-scope a token, or change what it grants.
  *
  * @example
  * ```ts
- * await grantTokenAccess({
- *   tokenId: "token_abc123",
- *   spaceId: "space123",
- *   resourceType: "document",
- *   resourceId: "doc456",
- *   permission: "editor"
- * });
+ * await grantTokenAccess(store, "token_abc123", ResourceType.DOCUMENT, "doc456", "editor");
  * ```
  */
-export async function grantTokenAccess(options: GrantTokenAccessOptions): Promise<void> {
-  const tokenUserId = getTokenUserId(options.tokenId);
-  const store = await openSpaceStore(options.spaceId);
-
-  await grantPermission(
-    store,
-    options.resourceType,
-    options.resourceId,
-    tokenUserId,
-    options.permission,
-  );
-}
-
-/**
- * Revoke token access to a resource
- *
- * @example
- * ```ts
- * await revokeTokenAccess({
- *   tokenId: "token_abc123",
- *   spaceId: "space123",
- *   resourceType: "document",
- *   resourceId: "doc456"
- * });
- * ```
- */
-export async function revokeTokenAccess(
+export async function grantTokenAccess(
   s: SpaceStore,
   tokenId: string,
   resourceType: ResourceType,
   resourceId: string,
-): Promise<void> {
-  const tokenUserId = getTokenUserId(tokenId);
+  permission: string,
+  actorUserId?: string,
+): Promise<boolean> {
+  // Read first so the audit entry can say what the grant moved away from.
+  const [previous] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
+  if (!previous) return false;
 
-  await revokePermission(s, resourceType, resourceId, tokenUserId);
+  await s.db
+    .update(acl)
+    .set({ resourceType, resourceId, permission, updatedAt: new Date() })
+    .where(tokenRow(tokenId));
+
+  const rescoped =
+    previous.resourceType !== resourceType || previous.resourceId !== resourceId;
+
+  // A re-scope takes access away from the old resource, so log it there too —
+  // otherwise the document that lost the token shows no trace of it.
+  if (rescoped) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_revoke",
+      resourceType: previous.resourceType as ResourceType,
+      resourceId: previous.resourceId,
+      userId: getTokenUserId(tokenId),
+      previousPermission: previous.permission,
+      actorUserId,
+    });
+  }
+
+  if (rescoped || previous.permission !== permission) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_grant",
+      resourceType,
+      resourceId,
+      userId: getTokenUserId(tokenId),
+      permission,
+      previousPermission: rescoped ? undefined : previous.permission,
+      actorUserId,
+    });
+  }
+
+  return true;
 }
 
 /**
- * List all resources a token has access to in a space
- *
- * @example
- * ```ts
- * const resources = await listTokenResources("token_abc123", "space123");
- * // Returns ACL entries showing what the token can access
- * ```
+ * The resource a token is scoped to, at the level it was granted. That level is
+ * a ceiling, so this can read higher than the token's effective authority.
  */
 export async function listTokenResources(
   s: SpaceStore,
   tokenId: string,
   resourceType?: ResourceType,
-) {
-  const tokenUserId = getTokenUserId(tokenId);
-  return listUserPermissions(s.spaceId, tokenUserId, undefined, resourceType);
+): Promise<TokenResource[]> {
+  // Selected column by column: the row also carries the secret's hash, which
+  // must not travel with the grant it is attached to.
+  const rows = await s.db
+    .select({
+      resourceType: acl.resourceType,
+      resourceId: acl.resourceId,
+      userId: acl.userId,
+      permission: acl.permission,
+      createdAt: acl.createdAt,
+      updatedAt: acl.updatedAt,
+    })
+    .from(acl)
+    .where(tokenRow(tokenId));
+
+  return rows.filter((row) => !resourceType || row.resourceType === resourceType);
 }
 
 /**
@@ -180,25 +230,20 @@ export async function listTokenResources(
  *
  * @example
  * ```ts
- * const result = await validateAccessToken("at_abc123...", "space123");
- * if (result) {
- *   console.log("Token valid:", result.tokenId);
- * }
+ * const result = await validateAccessToken(store, "at_abc123...");
  * ```
  */
 export async function validateAccessToken(
   s: SpaceStore,
   token: string,
 ): Promise<ValidateTokenResult | null> {
-  const hashedToken = hashToken(token);
-
   const [result] = await s.db
     .select()
-    .from(accessToken)
-    .where(and(eq(accessToken.token, hashedToken), isNull(accessToken.revokedAt)))
+    .from(acl)
+    .where(and(eq(acl.token, hashToken(token)), isNull(acl.revokedAt)))
     .limit(1);
 
-  if (!result) {
+  if (!result?.token || !result.createdBy || !result.userId) {
     return null;
   }
 
@@ -206,6 +251,8 @@ export async function validateAccessToken(
   if (result.expiresAt && result.expiresAt < new Date()) {
     return null;
   }
+
+  const tokenId = result.userId.slice(TOKEN_PRINCIPAL_PREFIX.length);
 
   // Access tokens are delegations made by a space member, not independent
   // service accounts. If the creator no longer belongs to the space, revoke
@@ -220,100 +267,76 @@ export async function validateAccessToken(
     await getUserGroups(result.createdBy),
   );
   if (!creatorStillBelongsToSpace) {
-    await revokeAccessToken(s, result.id);
+    await revokeAccessToken(s, tokenId);
     return null;
   }
 
-  // Update last used timestamp
-  await s.db
-    .update(accessToken)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(accessToken.id, result.id));
+  await s.db.update(acl).set({ lastUsedAt: new Date() }).where(tokenRow(tokenId));
 
   return {
-    token: result,
-    tokenId: result.id,
+    token: { ...result, token: result.token, createdBy: result.createdBy },
+    tokenId,
   };
 }
 
 /**
  * Revoke an access token (soft delete)
- * This marks the token as revoked but keeps it in the database
- * ACL entries remain but the token can't be used
+ * The row and its grant stay; the secret stops authenticating.
  *
  * @example
  * ```ts
- * await revokeAccessToken("space123", "token_abc123");
+ * await revokeAccessToken(store, "token_abc123");
  * ```
  */
 export async function revokeAccessToken(
   s: SpaceStore,
   tokenId: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  const result = await s.db
-    .update(accessToken)
-    .set({ revokedAt: new Date() })
-    .where(eq(accessToken.id, tokenId))
-    .returning();
+  // Read first: `returning()` hands back the row after the update, which cannot
+  // tell an already-revoked token from a freshly revoked one. Re-revoking stays
+  // a success for the caller, but must not write a second audit entry.
+  const [previous] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
+  if (!previous) return false;
 
-  return result.length > 0;
+  await s.db
+    .update(acl)
+    .set({ revokedAt: new Date(), updatedAt: new Date() })
+    .where(tokenRow(tokenId));
+
+  if (!previous.revokedAt) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_revoke",
+      resourceType: previous.resourceType as ResourceType,
+      resourceId: previous.resourceId,
+      userId: getTokenUserId(tokenId),
+      previousPermission: previous.permission,
+      actorUserId,
+    });
+  }
+
+  return true;
 }
 
 /**
  * List all access tokens for a space
  * Returns tokens without the actual token value (only metadata)
- *
- * @example
- * ```ts
- * const tokens = await listAccessTokens("space123");
- * ```
  */
-export async function listAccessTokens(
-  s: SpaceStore,
-): Promise<Omit<AccessToken, "token">[]> {
-  const tokens = await s.db
-    .select({
-      id: accessToken.id,
-      name: accessToken.name,
-      expiresAt: accessToken.expiresAt,
-      lastUsedAt: accessToken.lastUsedAt,
-      createdAt: accessToken.createdAt,
-      createdBy: accessToken.createdBy,
-      revokedAt: accessToken.revokedAt,
-    })
-    .from(accessToken);
-
-  return tokens as Omit<AccessToken, "token">[];
+export async function listAccessTokens(s: SpaceStore): Promise<AccessTokenSummary[]> {
+  const rows = await s.db.select().from(acl).where(isNotNull(acl.token));
+  return rows.map(toSummary);
 }
 
 /**
  * Get a single access token by ID
  * Returns token metadata without the actual token value
- *
- * @example
- * ```ts
- * const token = await getAccessToken("space123", "token_abc123");
- * ```
  */
 export async function getAccessToken(
   s: SpaceStore,
   tokenId: string,
-): Promise<Omit<AccessToken, "token"> | null> {
-  const result = await s.db
-    .select({
-      id: accessToken.id,
-      name: accessToken.name,
-      expiresAt: accessToken.expiresAt,
-      lastUsedAt: accessToken.lastUsedAt,
-      createdAt: accessToken.createdAt,
-      createdBy: accessToken.createdBy,
-      revokedAt: accessToken.revokedAt,
-    })
-    .from(accessToken)
-    .where(eq(accessToken.id, tokenId))
-    .limit(1);
-
-  return result[0] || null;
+): Promise<AccessTokenSummary | null> {
+  const [row] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
+  return row ? toSummary(row) : null;
 }
 
 /**
@@ -330,22 +353,34 @@ export async function findSpaceForToken(token: string): Promise<string | null> {
 }
 
 /**
- * Delete an access token permanently
- * This also removes all ACL entries for the token in the space
+ * Delete an access token permanently. The row is the token, so its grant goes
+ * with it — there is nothing left to reference it.
  *
  * @example
  * ```ts
- * await deleteAccessToken("space123", "token_abc123");
+ * await deleteAccessToken(store, "token_abc123");
  * ```
  */
 export async function deleteAccessToken(
   s: SpaceStore,
   tokenId: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  const result = await s.db
-    .delete(accessToken)
-    .where(eq(accessToken.id, tokenId))
-    .returning();
+  const [deleted] = await s.db.delete(acl).where(tokenRow(tokenId)).returning();
+  if (!deleted) return false;
 
-  return result.length > 0;
+  // Already-revoked tokens logged their revoke when it happened; deleting one
+  // removes the grant that is no longer there to remove.
+  if (!deleted.revokedAt) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_revoke",
+      resourceType: deleted.resourceType as ResourceType,
+      resourceId: deleted.resourceId,
+      userId: getTokenUserId(tokenId),
+      previousPermission: deleted.permission,
+      actorUserId,
+    });
+  }
+
+  return true;
 }

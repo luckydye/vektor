@@ -51,7 +51,11 @@ export const PATCH: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    const success = await revokeAccessToken(await openSpaceStore(spaceId), tokenId);
+    const success = await revokeAccessToken(
+      await openSpaceStore(spaceId),
+      tokenId,
+      user.id,
+    );
     if (!success) {
       throw notFoundResponse("Access token");
     }
@@ -71,7 +75,11 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, Permission.OWNER);
 
-    const success = await deleteAccessToken(await openSpaceStore(spaceId), tokenId);
+    const success = await deleteAccessToken(
+      await openSpaceStore(spaceId),
+      tokenId,
+      user.id,
+    );
     if (!success) {
       throw notFoundResponse("Access token");
     }

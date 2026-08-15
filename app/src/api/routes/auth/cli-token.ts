@@ -13,7 +13,6 @@
  * Returns: { token: string, spaceId: string, permission: string, expiresAt: string }
  */
 
-import { verifyCanGrantTokenAccess } from "#acl/guards.ts";
 import { isPermission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -24,7 +23,7 @@ import {
 import { pendingCliCodes } from "#api/routes/auth/cli.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { createAccessToken, grantTokenAccess } from "#db/space/accessTokens.ts";
+import { createAccessToken } from "#db/space/accessTokens.ts";
 import { getSpace, getUserSpaceRole } from "#db/space/spaces.ts";
 
 /** Bounded so a role revoked later cannot leave standing access forever. */
@@ -67,30 +66,15 @@ export const POST: ApiRouteHandler = (context) =>
       throw forbiddenResponse("You do not hold a role on this space");
     }
 
-    // The rule the access-token endpoint enforces, so the two cannot drift.
-    await verifyCanGrantTokenAccess(
-      spaceId,
-      userId,
-      ResourceType.SPACE,
-      spaceId,
-      permission,
-    );
-
     const expiresAt = new Date(Date.now() + CLI_TOKEN_TTL_DAYS * DAY_MS);
 
     const result = await createAccessToken(await openSpaceStore(spaceId), {
-      spaceId,
       name: `CLI (${new Date().toISOString().slice(0, 10)})`,
-      createdBy: userId,
-      expiresAt,
-    });
-
-    await grantTokenAccess({
-      tokenId: result.id,
-      spaceId,
       resourceType: ResourceType.SPACE,
       resourceId: spaceId,
       permission,
+      createdBy: userId,
+      expiresAt,
     });
 
     return Response.json({

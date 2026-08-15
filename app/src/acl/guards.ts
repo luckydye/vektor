@@ -755,23 +755,15 @@ const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
 ];
 
 /**
- * Authorize a request to grant an access token `permission` on a resource.
- *
- * Enforces two invariants that were previously missing (privilege escalation):
- *  1. `permission` / `resourceType` are valid values (rejects bogus inputs like
- *     the old "extensions" pseudo-permission that resolved to level 0).
- *  2. The caller may not grant a token MORE authority than the caller holds on
- *     that resource — a token is a delegation of the issuer's own access.
- *
- * Throws a 400/403 Response on violation.
+ * Validate a token grant and return the role it names. Shape only — authority is
+ * bounded at use. Keeps values that name nothing (a typo'd role, the old
+ * "extensions" pseudo-permission) out of the ACL, where they would sit as a
+ * grant that silently does nothing. Throws a 400 Response.
  */
-export async function verifyCanGrantTokenAccess(
-  spaceId: string,
-  callerUserId: string,
+export function validateTokenGrant(
   resourceType: ResourceType,
-  resourceId: string,
   permission: string,
-): Promise<void> {
+): Permission {
   if (!isPermission(permission)) {
     throw badRequestResponse(`Permission must be one of: ${allPermissions().join(", ")}`);
   }
@@ -786,13 +778,7 @@ export async function verifyCanGrantTokenAccess(
     throw badRequestResponse("owner can only be granted on the space itself");
   }
 
-  if (resourceType === ResourceType.DOCUMENT) {
-    await verifyDocumentRole(spaceId, resourceId, callerUserId, permission);
-  } else {
-    // Space, category, and extension grants are gated on the caller's
-    // space-level role (the level that lets them manage those resources).
-    await verifySpaceRole(spaceId, callerUserId, permission);
-  }
+  return permission;
 }
 
 /**

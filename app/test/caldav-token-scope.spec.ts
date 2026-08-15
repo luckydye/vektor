@@ -39,8 +39,6 @@ let docB: string;
 /** Space-level grants in space A, created fresh so no spec depends on another. */
 let viewerToken: string;
 let editorToken: string;
-let narrowedToken: { id: string; token: string };
-let revokedGrantToken: { id: string; token: string };
 let revokedToken: { id: string; token: string };
 
 function basicAuth(token: string): string {
@@ -153,8 +151,6 @@ beforeAll(async () => {
 
   viewerToken = (await createSpaceToken(spaceA, "scope-viewer", "viewer")).token;
   editorToken = (await createSpaceToken(spaceA, "scope-editor", "editor")).token;
-  narrowedToken = await createSpaceToken(spaceA, "scope-narrowed", "editor");
-  revokedGrantToken = await createSpaceToken(spaceA, "scope-revoked-grant", "viewer");
   revokedToken = await createSpaceToken(spaceA, "scope-revoked", "viewer");
 }, 60_000);
 
@@ -232,70 +228,6 @@ describe("CalDAV token scope", () => {
     expect(ical).toContain("Editor Wrote");
   });
 
-  it("loses write access when the token's grant is narrowed to viewer", async () => {
-    expect(
-      (
-        await calDav(
-          eventPath(spaceA, docA),
-          "PUT",
-          narrowedToken.token,
-          icalEvent("Before Narrowing"),
-        )
-      ).status,
-    ).toBe(204);
-
-    const narrow = await apiRequest(
-      `/api/v1/spaces/${spaceA}/access-tokens/${narrowedToken.id}/resources/space/${spaceA}`,
-      owner.token,
-      { method: "PUT", body: JSON.stringify({ permission: "viewer" }) },
-    );
-    expect(narrow.ok).toBe(true);
-
-    expect(
-      (
-        await calDav(
-          eventPath(spaceA, docA),
-          "PUT",
-          narrowedToken.token,
-          icalEvent("After Narrowing"),
-        )
-      ).status,
-    ).toBe(403);
-    // Reads survive — only the role was reduced, not the grant.
-    expect(
-      (await calDav(`${calendarPath(spaceA)}/`, "REPORT", narrowedToken.token)).status,
-    ).toBe(207);
-  });
-
-  it("loses CalDAV access when the token's resource grant is revoked", async () => {
-    expect(
-      (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedGrantToken.token))
-        .status,
-    ).toBe(207);
-
-    const revoke = await apiRequest(
-      `/api/v1/spaces/${spaceA}/access-tokens/${revokedGrantToken.id}/resources/space/${spaceA}`,
-      owner.token,
-      { method: "DELETE" },
-    );
-    expect(revoke.ok).toBe(true);
-
-    // Still a valid credential, but it now grants nothing: 403, not 401.
-    expect(
-      (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedGrantToken.token))
-        .status,
-    ).toBe(403);
-    expect(
-      (
-        await calDav(
-          `/api/caldav/calendars/${owner.userId}/`,
-          "PROPFIND",
-          revokedGrantToken.token,
-        )
-      ).status,
-    ).toBe(403);
-  });
-
   it("loses CalDAV access when the token itself is revoked", async () => {
     expect(
       (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedToken.token)).status,
@@ -308,9 +240,19 @@ describe("CalDAV token scope", () => {
     );
     expect(revoke.ok).toBe(true);
 
-    // The credential no longer authenticates at all.
+    // The credential no longer authenticates at all — neither the calendar it
+    // was scoped to nor the calendar home.
     expect(
       (await calDav(`${calendarPath(spaceA)}/`, "REPORT", revokedToken.token)).status,
+    ).toBe(401);
+    expect(
+      (
+        await calDav(
+          `/api/caldav/calendars/${owner.userId}/`,
+          "PROPFIND",
+          revokedToken.token,
+        )
+      ).status,
     ).toBe(401);
   });
 
