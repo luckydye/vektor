@@ -170,6 +170,9 @@ const SCOPES = [
 function expectedStatus(action: string, scope: string): number {
   if (action === "deny" || action === "elevate") return 400;
   if (action === "revoke" && scope !== "space") return 200;
+  // Owner names authority over the space, so asking for it anywhere narrower is
+  // a malformed request rather than a refused one.
+  if (action === "grant" && scope !== "space") return 400;
   return 403;
 }
 
@@ -286,6 +289,61 @@ describe("editor cannot obtain owner (issue #45)", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects owner below space scope, even for an owner", async () => {
+    for (const [resourceType, resourceId] of [
+      ["document", documentId],
+      ["document_tree", childDocumentId],
+      ["category", "any-category"],
+    ] as const) {
+      const response = await postPermission(owner.token, {
+        type: "role",
+        roleOrFeature: "owner",
+        userId: bystander.id,
+        action: "grant",
+        resourceType,
+        resourceId,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "owner can only be granted on the space itself",
+      });
+    }
+
+    expect(await roleOf(bystander.token)).toBe("viewer");
+  });
+
+  it("rejects owner below space scope on an access token too", async () => {
+    const created = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens`,
+      owner.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "escalation-token",
+          resourceType: "space",
+          resourceId: spaceId,
+          permission: "viewer",
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const tokenId = (await created.json()).token.id;
+
+    const grantOwner = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,
+      owner.token,
+      { method: "PUT", body: JSON.stringify({ permission: "owner" }) },
+    );
+    expect(grantOwner.status).toBe(400);
+
+    const grantEditor = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/document/${documentId}`,
+      owner.token,
+      { method: "PUT", body: JSON.stringify({ permission: "editor" }) },
+    );
+    expect(grantEditor.status).toBe(200);
+  });
+
   it('rejects action "deny" on a role even for an owner', async () => {
     const response = await postPermission(owner.token, {
       type: "role",
@@ -299,8 +357,8 @@ describe("editor cannot obtain owner (issue #45)", () => {
 });
 
 describe("legitimate editor delegations still work", () => {
-  it("lets an editor grant viewer at space level", async () => {
-    const response = await postPermission(editor.token, {
+  it("lets an owner add a member at space level", async () => {
+    const response = await postPermission(owner.token, {
       type: "role",
       roleOrFeature: "viewer",
       userId: newcomer.id,
@@ -308,17 +366,6 @@ describe("legitimate editor delegations still work", () => {
     });
     expect(response.status).toBe(200);
     expect(await roleOf(newcomer.token)).toBe("viewer");
-  });
-
-  it("lets an editor raise a member from viewer to editor at space level", async () => {
-    const response = await postPermission(editor.token, {
-      type: "role",
-      roleOrFeature: "editor",
-      userId: newcomer.id,
-      action: "grant",
-    });
-    expect(response.status).toBe(200);
-    expect(await roleOf(newcomer.token)).toBe("editor");
   });
 
   it("lets an editor grant and revoke document-level access", async () => {
@@ -409,6 +456,121 @@ describe("legitimate editor delegations still work", () => {
       newcomer.token,
     );
     expect(summary.status).toBe(403);
+  });
+});
+
+describe("editor cannot hand out space-level access (issue #120)", () => {
+  const anonymousRead = () =>
+    fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/documents/${documentId}`);
+
+  it("refuses an editor admitting a fresh user to the space", async () => {
+    const response = await postPermission(editor.token, {
+      type: "role",
+      roleOrFeature: "viewer",
+      userId: newcomer.id,
+      action: "grant",
+    });
+    expect(response.status).toBe(403);
+
+    const summary = await apiRequest(
+      `/api/v1/spaces/${spaceId}/permissions/me`,
+      newcomer.token,
+    );
+    expect(summary.status).toBe(403);
+  });
+
+  it("refuses an editor raising a member from viewer to editor", async () => {
+    const response = await postPermission(editor.token, {
+      type: "role",
+      roleOrFeature: "editor",
+      userId: bystander.id,
+      action: "grant",
+    });
+    expect(response.status).toBe(403);
+    expect(await roleOf(bystander.token)).toBe("viewer");
+  });
+
+  it("refuses an editor granting the public group at space level", async () => {
+    const response = await postPermission(editor.token, {
+      type: "role",
+      roleOrFeature: "viewer",
+      groupId: "public",
+      action: "grant",
+    });
+    expect(response.status).toBe(403);
+
+    expect((await anonymousRead()).status).toBe(401);
+  });
+
+  it("refuses an editor granting any other group at space level", async () => {
+    const response = await postPermission(editor.token, {
+      type: "role",
+      roleOrFeature: "editor",
+      groupId: "escalation-group",
+      action: "grant",
+    });
+    expect(response.status).toBe(403);
+
+    const spaceGroupGrants = (await allRoleEntries()).filter(
+      (entry) => entry.resourceType === "space" && entry.groupId,
+    );
+    expect(spaceGroupGrants).toEqual([]);
+  });
+
+  it("refuses an editor sharing even a single document with a group", async () => {
+    for (const resourceType of ["document", "document_tree"]) {
+      const response = await postPermission(editor.token, {
+        type: "role",
+        roleOrFeature: "viewer",
+        groupId: "escalation-group",
+        action: "grant",
+        resourceType,
+        resourceId: documentId,
+      });
+      expect(response.status).toBe(403);
+    }
+  });
+
+  it("still lets an editor share a single document with a user", async () => {
+    const grant = await postPermission(editor.token, {
+      type: "role",
+      roleOrFeature: "viewer",
+      userId: newcomer.id,
+      action: "grant",
+      resourceType: "document",
+      resourceId: documentId,
+    });
+    expect(grant.status).toBe(200);
+
+    const revoke = await postPermission(editor.token, {
+      type: "role",
+      roleOrFeature: "viewer",
+      userId: newcomer.id,
+      action: "revoke",
+      resourceType: "document",
+      resourceId: documentId,
+    });
+    expect(revoke.status).toBe(200);
+  });
+
+  it("lets an owner publish the space and take it back", async () => {
+    const grant = await postPermission(owner.token, {
+      type: "role",
+      roleOrFeature: "viewer",
+      groupId: "public",
+      action: "grant",
+    });
+    expect(grant.status).toBe(200);
+    expect((await anonymousRead()).status).toBe(200);
+
+    const revoke = await postPermission(owner.token, {
+      type: "role",
+      roleOrFeature: "viewer",
+      groupId: "public",
+      action: "revoke",
+    });
+    expect(revoke.status).toBe(200);
+    expect((await anonymousRead()).status).toBe(401);
   });
 });
 

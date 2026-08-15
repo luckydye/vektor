@@ -1963,7 +1963,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     expect(data.document.id).toBeDefined();
   });
 
-  it("should allow editor to add new members with non-owner roles", async () => {
+  it("should not allow editor to add new members at space level", async () => {
     const newUserData = await createAclTestUser("New Member User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
@@ -1978,7 +1978,7 @@ describe("ACL API Tests - Permission Level Access", () => {
         }),
       },
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
   });
 
   it("should allow editor to see space in their spaces list", async () => {
@@ -2022,7 +2022,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("should allow editor to add members with non-owner roles", async () => {
+  it("should not allow editor to add members at space level", async () => {
     const newUserData = await createAclTestUser("Editor Attempt User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
@@ -2037,7 +2037,7 @@ describe("ACL API Tests - Permission Level Access", () => {
         }),
       },
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
   });
 });
 

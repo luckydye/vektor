@@ -32,7 +32,7 @@ type ATabsEl = HTMLElement & {
   selectTabByIndex: (index: number, focus?: boolean) => void;
 };
 
-type Scope = "document" | "category" | "space";
+type Scope = "document" | "category";
 type DocumentPermissionResource = "document" | "document_tree";
 
 function roleBadgeClass(role: string) {
@@ -57,7 +57,6 @@ export function DocumentShareDialog(props: Props) {
   const [categoryPermissions, setCategoryPermissions] = createSignal<PermissionEntry[]>(
     [],
   );
-  const [spacePermissions, setSpacePermissions] = createSignal<PermissionEntry[]>([]);
   const [categories, setCategories] = createSignal<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = createSignal("");
   const [usersMap, setUsersMap] = createSignal(new Map<string, User>());
@@ -76,22 +75,16 @@ export function DocumentShareDialog(props: Props) {
   // one, the list from its own.
   const categoryPanelError = createMemo(() => loadError() ?? categoryError());
 
-  const roleOptions = createMemo(() =>
-    userIsOwner()
-      ? [
-          { value: Permission.VIEWER, label: "Viewer" },
-          { value: Permission.EDITOR, label: "Editor" },
-          { value: Permission.OWNER, label: "Owner" },
-        ]
-      : [
-          { value: Permission.VIEWER, label: "Viewer" },
-          { value: Permission.EDITOR, label: "Editor" },
-        ],
-  );
+  // No owner: this dialog shares a document or a category, and owner is only
+  // grantable on the space itself.
+  const roleOptions = [
+    { value: Permission.VIEWER, label: "Viewer" },
+    { value: Permission.EDITOR, label: "Editor" },
+  ];
 
   function onTabSelected(e: Event) {
     const { index } = (e as CustomEvent<{ index: number }>).detail;
-    setScope(index === 0 ? "document" : index === 1 ? "category" : "space");
+    setScope(index === 0 ? "document" : "category");
     setNewMemberEmail("");
     setAddMemberError(null);
   }
@@ -128,9 +121,8 @@ export function DocumentShareDialog(props: Props) {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [access, spacePerms, members, categoryList] = await Promise.all([
+      const [access, members, categoryList] = await Promise.all([
         api.documentAccess.get(spaceId, props.documentId),
-        api.permissions.list(spaceId, "role"),
         api.spaceMembers.get(spaceId),
         api.categories.get(spaceId),
       ]);
@@ -142,9 +134,6 @@ export function DocumentShareDialog(props: Props) {
       }
 
       setDocumentAccess(access);
-      setSpacePermissions(
-        (spacePerms.permissions || []).filter((p) => p.type === "role"),
-      );
 
       const map = new Map<string, User>();
       for (const member of members || []) {
@@ -157,7 +146,6 @@ export function DocumentShareDialog(props: Props) {
       // failed load must not fall through to the empty state — "no one has
       // access" is the opposite of "we could not find out".
       setDocumentAccess([]);
-      setSpacePermissions([]);
       setCategoryPermissions([]);
       setLoadError(err instanceof Error ? err.message : "Failed to load sharing data");
     } finally {
@@ -206,9 +194,7 @@ export function DocumentShareDialog(props: Props) {
                 : "document") as DocumentPermissionResource,
               resourceId: props.documentId,
             }
-          : scope() === "category"
-            ? { resourceType: "category" as const, resourceId: selectedCategoryId() }
-            : {}),
+          : { resourceType: "category" as const, resourceId: selectedCategoryId() }),
       });
       setNewMemberEmail("");
       await load();
@@ -265,40 +251,6 @@ export function DocumentShareDialog(props: Props) {
     }
   }
 
-  async function removeSpacePerm(perm: PermissionEntry) {
-    const spaceId = currentSpaceId();
-    if (!spaceId || !confirm("Remove this member from the space?")) return;
-    try {
-      const isGroup = !!perm.permission.groupId;
-      const memberId = perm.permission.userId || perm.permission.groupId;
-      await api.permissions.revoke(spaceId, {
-        type: "role",
-        roleOrFeature: perm.permission.permission,
-        ...(isGroup ? { groupId: memberId } : { userId: memberId }),
-      });
-      await load();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove");
-    }
-  }
-
-  async function changeSpaceRole(perm: PermissionEntry, newRole: string) {
-    const spaceId = currentSpaceId();
-    if (!spaceId) return;
-    try {
-      const isGroup = !!perm.permission.groupId;
-      const memberId = perm.permission.userId || perm.permission.groupId;
-      await api.permissions.grant(spaceId, {
-        type: "role",
-        roleOrFeature: newRole,
-        ...(isGroup ? { groupId: memberId } : { userId: memberId }),
-      });
-      await load();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update role");
-    }
-  }
-
   function getMemberName(userId?: string, groupId?: string): string {
     if (!userId) return groupId ?? "";
     const member = usersMap().get(userId);
@@ -344,18 +296,6 @@ export function DocumentShareDialog(props: Props) {
 
   function isSelf(perm: PermissionEntry): boolean {
     return perm.permission.userId === user()?.id;
-  }
-
-  function canRemoveSpaceMember(perm: PermissionEntry): boolean {
-    if (!userIsOwner()) return false;
-    if (isSelf(perm)) return false;
-    if (
-      isOwner(perm.permission.permission) &&
-      currentSpace()?.createdBy === perm.permission.userId
-    ) {
-      return false;
-    }
-    return true;
   }
 
   const PermissionRow = (rowProps: {
@@ -430,7 +370,7 @@ export function DocumentShareDialog(props: Props) {
         onChange={(e) => setNewMemberRole(e.currentTarget.value)}
         class="rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
       >
-        <For each={roleOptions()}>
+        <For each={roleOptions}>
           {(opt) => <option value={opt.value}>{opt.label}</option>}
         </For>
       </select>
@@ -471,11 +411,6 @@ export function DocumentShareDialog(props: Props) {
           <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
             <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
               Category
-            </span>
-          </a-tabs-tab>
-          <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-            <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-              Entire space
             </span>
           </a-tabs-tab>
         </a-tabs-list>
@@ -538,7 +473,8 @@ export function DocumentShareDialog(props: Props) {
                               <Show
                                 when={
                                   directGrants(entry).length > 0 &&
-                                  entry.userId !== user()?.id
+                                  entry.userId !== user()?.id &&
+                                  (userIsOwner() || !entry.groupId)
                                 }
                               >
                                 <button
@@ -622,85 +558,16 @@ export function DocumentShareDialog(props: Props) {
                           trailing={
                             <>
                               <RoleBadge role={perm.permission.permission} />
-                              <Show when={!isSelf(perm)}>
+                              <Show
+                                when={
+                                  !isSelf(perm) &&
+                                  (userIsOwner() || !perm.permission.groupId)
+                                }
+                              >
                                 <button
                                   type="button"
                                   class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
                                   onClick={() => void removeCategoryPerm(perm)}
-                                >
-                                  Remove
-                                </button>
-                              </Show>
-                            </>
-                          }
-                        />
-                      )}
-                    </For>
-                  </div>
-                </Show>
-              </Show>
-            </Show>
-          </div>
-        </a-tabs-panel>
-
-        <a-tabs-panel class="block">
-          <div class="space-y-3 px-5 py-3">
-            <form onSubmit={(e) => void handleInvite(e)}>
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <EmailAndRoleFields />
-                <button
-                  type="submit"
-                  disabled={addingMember() || !newMemberEmail().trim()}
-                  class="button-primary col-span-2 justify-self-end px-3xs sm:col-span-1"
-                >
-                  {addingMember() ? "…" : "Invite"}
-                </button>
-              </div>
-              <InviteError />
-            </form>
-
-            <Show when={!isLoading()} fallback={<Spinner />}>
-              <Show
-                when={!loadError()}
-                fallback={
-                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
-                }
-              >
-                <Show
-                  when={spacePermissions().length > 0}
-                  fallback={
-                    <p class="text-neutral-400 text-size-small">No space members yet.</p>
-                  }
-                >
-                  <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                    <For each={spacePermissions()}>
-                      {(perm) => (
-                        <PermissionRow
-                          userId={perm.permission.userId}
-                          groupId={perm.permission.groupId}
-                          trailing={
-                            <>
-                              <Show
-                                when={userIsOwner() && !isSelf(perm)}
-                                fallback={<RoleBadge role={perm.permission.permission} />}
-                              >
-                                <select
-                                  value={perm.permission.permission}
-                                  onChange={(e) =>
-                                    void changeSpaceRole(perm, e.currentTarget.value)
-                                  }
-                                  class="rounded-md border border-neutral-200 bg-background px-2 py-0.5 text-neutral-700 text-size-small focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                                >
-                                  <option value={Permission.VIEWER}>Viewer</option>
-                                  <option value={Permission.EDITOR}>Editor</option>
-                                  <option value={Permission.OWNER}>Owner</option>
-                                </select>
-                              </Show>
-                              <Show when={canRemoveSpaceMember(perm)}>
-                                <button
-                                  type="button"
-                                  class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                  onClick={() => void removeSpacePerm(perm)}
                                 >
                                   Remove
                                 </button>

@@ -21,6 +21,9 @@ Most endpoints accept one or more of:
 - **Public/unauthenticated** — permitted only where the space (or document/category)
   grants the `public` group a role.
 
+The model behind these — roles, features, scopes, groups, and who may grant what — is
+documented in [Permissions](/docs/permissions) (`docs/permissions.md`).
+
 Role hierarchy (space/document/category level): `viewer` < `editor` < `owner`. Some
 actions additionally gate on a **feature** flag independent of role: `comment`,
 `view_history`, `view_audit`, `manage_extensions` (see `Feature` enum in
@@ -282,12 +285,17 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 - **Auth**: session. A role write is authorized on the privilege it moves, not on the
   action name — every rule below holds however the request is spelled:
-  - writing an `owner` entry, at any scope → caller must be `owner`
+  - granting `owner` anywhere but `space` scope → `400`, whoever asks: owner is
+    authority over the space, and below that scope it names nothing
+  - writing an `owner` entry at `space` scope → caller must be `owner`
   - overwriting or removing an existing `owner` entry → caller must be `owner`
   - withdrawing access (a revoke, or a grant of a weaker role) outside
     `document`/`document_tree` scope → caller must be `owner`
-  - any scope other than `space`/`document`/`document_tree`/`category` → caller must be
-    `owner`
+  - any scope other than `document`/`document_tree`/`category` — `space` included, so
+    space membership sits beside renaming and deletion → caller must be `owner`
+  - any role write naming a `groupId` — grant or revoke, at any scope, including the
+    synthetic `public` group that exposes the resource to unauthenticated callers →
+    caller must be `owner`
   - all other role grants/revokes → caller must be `editor`
   - any `feature` operation → caller must be `owner`
 - **Body**: `type` (`"role"` | `"feature"`, required), `roleOrFeature` (string,
@@ -368,7 +376,8 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 - **Auth**: session; `verifySpaceRole(owner)`.
 - **Body**: `{ permission: string }`. `resourceType` validated against enum;
-  `verifyCanGrantTokenAccess` re-checked.
+  `verifyCanGrantTokenAccess` re-checked. `owner` is only accepted at `space` scope —
+  `400` anywhere narrower.
 - **Returns**: `200 { resources, message }`.
 
 ### `DELETE /spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId`

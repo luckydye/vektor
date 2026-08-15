@@ -780,6 +780,11 @@ export async function verifyCanGrantTokenAccess(
       `Token access cannot be granted for resource type: ${resourceType}`,
     );
   }
+  // Owner is authority over the space; below that scope it names nothing, so a
+  // token cannot be handed it there either.
+  if (permission === Permission.OWNER && resourceType !== ResourceType.SPACE) {
+    throw badRequestResponse("owner can only be granted on the space itself");
+  }
 
   if (resourceType === ResourceType.DOCUMENT) {
     await verifyDocumentRole(spaceId, resourceId, callerUserId, permission);

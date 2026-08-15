@@ -93,6 +93,12 @@ function isScopedGrant(grant: PermissionEntry): boolean {
   return ["document", "document_tree"].includes(grant.permission.resourceType ?? "");
 }
 
+/** Owner is only grantable on the space, so only a space grant may offer it. */
+function isSpaceGrant(grant: PermissionEntry): boolean {
+  const { resourceType } = grant.permission;
+  return !resourceType || resourceType === "space";
+}
+
 export function SpaceMembers() {
   const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
@@ -273,6 +279,17 @@ export function SpaceMembers() {
     return perm.permission.userId ? "User" : "Group";
   }
 
+  // Space-wide membership and group grants are owner-only on the API, so a
+  // non-owner is offered neither.
+  const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
+
+  function openAddMember() {
+    setNewMemberType("user");
+    setNewMemberRole(Permission.VIEWER);
+    setNewMemberScope(userIsOwner() ? "space" : "category");
+    setShowAddMember(true);
+  }
+
   const memberAccess = createMemo<MemberAccess[]>(() => {
     const accessByMember = new Map<
       string,
@@ -363,7 +380,7 @@ export function SpaceMembers() {
       setNewMemberEmail("");
       setNewMemberType("user");
       setNewMemberRole(Permission.VIEWER);
-      setNewMemberScope("space");
+      setNewMemberScope(userIsOwner() ? "space" : "category");
       setNewMemberCategoryId("");
       await Promise.all([fetchPermissions(), fetchUsers()]);
     } catch (err) {
@@ -591,7 +608,7 @@ export function SpaceMembers() {
       <div class="space-y-6">
         <div class="flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-large">Members</h2>
-          <Button text="Invite People" onClick={() => setShowAddMember(true)} />
+          <Button text="Invite People" onClick={openAddMember} />
         </div>
 
         <Show when={isLoading() || loadingUsers()}>
@@ -766,7 +783,11 @@ export function SpaceMembers() {
                                           <option value={Permission.EDITOR}>
                                             Editor
                                           </option>
-                                          <option value={Permission.OWNER}>Owner</option>
+                                          <Show when={isSpaceGrant(grant)}>
+                                            <option value={Permission.OWNER}>
+                                              Owner
+                                            </option>
+                                          </Show>
                                         </select>
                                       </Show>
                                       <Show when={canRemoveMember(grant)}>
@@ -869,23 +890,25 @@ export function SpaceMembers() {
               Invite People
             </h3>
             <form onSubmit={(event) => void handleAddMember(event)} class="space-y-4">
-              <div>
-                <label
-                  for="member-type"
-                  class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                >
-                  Type
-                </label>
-                <select
-                  id="member-type"
-                  value={newMemberType()}
-                  onChange={(e) => setNewMemberType(e.currentTarget.value)}
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                >
-                  <option value="user">User</option>
-                  <option value="group">OAuth Group</option>
-                </select>
-              </div>
+              <Show when={userIsOwner()}>
+                <div>
+                  <label
+                    for="member-type"
+                    class="mb-1 block font-medium text-neutral-900 text-size-medium"
+                  >
+                    Type
+                  </label>
+                  <select
+                    id="member-type"
+                    value={newMemberType()}
+                    onChange={(e) => setNewMemberType(e.currentTarget.value)}
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
+                  >
+                    <option value="user">User</option>
+                    <option value="group">OAuth Group</option>
+                  </select>
+                </div>
+              </Show>
 
               <div>
                 <label
@@ -985,10 +1008,21 @@ export function SpaceMembers() {
                 <select
                   id="member-scope"
                   value={newMemberScope()}
-                  onChange={(e) => setNewMemberScope(e.currentTarget.value)}
+                  onChange={(e) => {
+                    setNewMemberScope(e.currentTarget.value);
+                    // Owner is a space role; leaving it selected under a
+                    // narrower scope would submit a request the API refuses.
+                    if (e.currentTarget.value !== "space") {
+                      setNewMemberRole((role) =>
+                        role === Permission.OWNER ? Permission.VIEWER : role,
+                      );
+                    }
+                  }}
                   class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
                 >
-                  <option value="space">Entire space</option>
+                  <Show when={userIsOwner()}>
+                    <option value="space">Entire space</option>
+                  </Show>
                   <option value="category">Category</option>
                 </select>
               </div>
@@ -1033,7 +1067,9 @@ export function SpaceMembers() {
                   <option value={Permission.EDITOR}>
                     Editor - Create and edit content
                   </option>
-                  <option value={Permission.OWNER}>Owner - Full control</option>
+                  <Show when={newMemberScope() === "space"}>
+                    <option value={Permission.OWNER}>Owner - Full control</option>
+                  </Show>
                 </select>
               </div>
 

@@ -1,10 +1,12 @@
 import type { APIRoute } from "astro";
 import apiMd from "#docs/api.md" with { type: "text" };
 import extensionsMd from "#docs/extensions.md" with { type: "text" };
+import permissionsMd from "#docs/permissions.md" with { type: "text" };
 
 const SECTION_CONTENT: Record<string, string> = {
   api: apiMd,
   extensions: extensionsMd,
+  permissions: permissionsMd,
 };
 
 /** Raw markdown source for a /docs page, for agent/tool consumption. */
