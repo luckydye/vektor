@@ -763,6 +763,10 @@ const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
  *  2. The caller may not grant a token MORE authority than the caller holds on
  *     that resource — a token is a delegation of the issuer's own access.
  *
+ * The grant is a ceiling, not authority: resolution caps it again at what the
+ * issuer holds when the token is used, so this check is the early, legible
+ * failure rather than the thing standing between a demotion and a live token.
+ *
  * Throws a 400/403 Response on violation.
  */
 export async function verifyCanGrantTokenAccess(

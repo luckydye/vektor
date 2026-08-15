@@ -1,10 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import { isFeature, isPermission, Permission, ResourceType } from "#acl/permissions.ts";
+import { Permission, ResourceType, TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
 import {
   getUserGroups,
   grantPermission,
-  hasFeature,
   hasPermission,
   listUserPermissions,
   revokeAllGranteePermissions,
@@ -53,11 +52,12 @@ function hashToken(token: string): string {
 }
 
 /**
- * Get token user ID for ACL system
- * Tokens are represented in ACL as "token:<token-id>"
+ * A token's identity in the ACL system. What it holds there is a ceiling on its
+ * issuer's access, not authority of its own — resolution caps it at what the
+ * issuer can do today.
  */
 export function getTokenUserId(tokenId: string): string {
-  return `token:${tokenId}`;
+  return `${TOKEN_PRINCIPAL_PREFIX}${tokenId}`;
 }
 
 /**
@@ -159,12 +159,13 @@ export async function revokeTokenAccess(
 }
 
 /**
- * List all resources a token has access to in a space
+ * The resources a token is scoped to, at the level it was granted. That level is
+ * a ceiling: what the token can actually do is capped at its issuer's current
+ * access, so this can read higher than the token's effective authority.
  *
  * @example
  * ```ts
- * const resources = await listTokenResources("token_abc123", "space123");
- * // Returns ACL entries showing what the token can access
+ * const resources = await listTokenResources(store, "token_abc123");
  * ```
  */
 export async function listTokenResources(
@@ -177,62 +178,8 @@ export async function listTokenResources(
 }
 
 /**
- * Whether the token's issuer still holds everything the token was granted.
- *
- * `verifyCanGrantTokenAccess` applies this bound when the grant is made; re-applying
- * it per request catches every way a role can later change, not just the paths that
- * remember to revoke. Denies rather than revokes: a demoted issuer is still a member,
- * so promoting them back restores the token.
- */
-async function issuerStillCoversToken(
-  s: SpaceStore,
-  tokenId: string,
-  createdBy: string,
-): Promise<boolean> {
-  const grants = await listUserPermissions(s.spaceId, getTokenUserId(tokenId));
-  if (grants.length === 0) return true;
-
-  const issuerGroups = await getUserGroups(createdBy);
-
-  for (const grant of grants) {
-    if (grant.resourceType === ResourceType.FEATURE) {
-      // A denial delegates nothing, so it cannot exceed the issuer.
-      if (grant.permission === "denied") continue;
-      if (!isFeature(grant.resourceId)) return false;
-      if (!(await hasFeature(s.spaceId, grant.resourceId, createdBy, issuerGroups))) {
-        return false;
-      }
-      continue;
-    }
-
-    // An unknown role cannot be compared, so it is not honored.
-    if (!isPermission(grant.permission)) return false;
-
-    // As at creation: document grants bound by the issuer's access to that
-    // document, everything else by their space role.
-    const bound =
-      grant.resourceType === ResourceType.DOCUMENT
-        ? { type: ResourceType.DOCUMENT, id: grant.resourceId }
-        : { type: ResourceType.SPACE, id: s.spaceId };
-
-    const covered = await hasPermission(
-      s.spaceId,
-      bound.type,
-      bound.id,
-      createdBy,
-      grant.permission,
-      issuerGroups,
-    );
-    if (!covered) return false;
-  }
-
-  return true;
-}
-
-/**
  * Validate an access token and return its details
- * Returns null if token is invalid, revoked, expired, or no longer covered by
- * its issuer's current access
+ * Returns null if token is invalid, revoked, or expired
  *
  * @example
  * ```ts
@@ -277,11 +224,6 @@ export async function validateAccessToken(
   );
   if (!creatorStillBelongsToSpace) {
     await revokeAccessToken(s, result.id);
-    return null;
-  }
-
-  // Membership is the floor, not the bound.
-  if (!(await issuerStillCoversToken(s, result.id, result.createdBy))) {
     return null;
   }
 

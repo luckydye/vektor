@@ -64,6 +64,20 @@ export type FeatureOverrides = Partial<Record<FeatureName, boolean>>;
 export const PUBLIC_GROUP = "public";
 
 /**
+ * How an access token appears in the `acl.user_id` column. A token is a
+ * delegation of its issuer, so its grants are read as a ceiling on what that
+ * issuer can currently do rather than as authority of their own — which is why
+ * resolving a permission has to be able to tell the two kinds of id apart.
+ */
+export const TOKEN_PRINCIPAL_PREFIX = "token:";
+
+/** The token id behind an ACL identity, or null when it is a plain user id. */
+export function tokenIdFromPrincipal(userId: string | undefined): string | null {
+  if (!userId?.startsWith(TOKEN_PRINCIPAL_PREFIX)) return null;
+  return userId.slice(TOKEN_PRINCIPAL_PREFIX.length) || null;
+}
+
+/**
  * Canonical shape of a group name. Group membership drives ACL access, so
  * every write AND read path must enforce this: it keeps LIKE wildcards
  * (`%`/`_`) and JSON-breaking characters out of stored group ids, and drops
@@ -167,6 +181,11 @@ export function strongestGrant<T>(
     }
   }
   return best;
+}
+
+/** The weaker of two roles — how a delegated ceiling meets its issuer's own role. */
+export function weakerPermission<T extends string | undefined>(a: T, b: T): T {
+  return permissionLevel(a) <= permissionLevel(b) ? a : b;
 }
 
 /** As above, for role names: a feature grant or a typo never wins. */

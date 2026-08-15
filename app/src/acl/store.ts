@@ -4,6 +4,7 @@ import {
   type AclViewer,
   type Feature,
   GROUP_NAME_PATTERN,
+  isPermission,
   isResourceType,
   meetsPermissionLevel,
   Permission,
@@ -13,12 +14,14 @@ import {
   ResourceType,
   resolveFeature,
   strongestGrant,
+  tokenIdFromPrincipal,
+  weakerPermission,
 } from "#acl/permissions.ts";
 import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
-import { acl, category, document, property } from "#db/schema/space.ts";
+import { accessToken, acl, category, document, property } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
@@ -401,6 +404,132 @@ export async function revokeAllGranteePermissions(
   return removed.length;
 }
 
+/**
+ * Who an access token acts for. `issuerId` is null when the token row itself is
+ * gone, leaving grants that delegate nothing.
+ */
+interface TokenDelegation {
+  issuerId: string | null;
+  issuerGroups: string[];
+}
+
+/**
+ * The issuer behind an ACL identity, or null for a plain user — the common path,
+ * and the only extra query a token request pays for.
+ */
+async function tokenDelegation(
+  spaceId: string,
+  principalId: string,
+): Promise<TokenDelegation | null> {
+  const tokenId = tokenIdFromPrincipal(principalId);
+  if (!tokenId) return null;
+
+  const db = await getSpaceDb(spaceId);
+  const row = await one(
+    db
+      .select({ createdBy: accessToken.createdBy })
+      .from(accessToken)
+      .where(eq(accessToken.id, tokenId)),
+  );
+
+  return { issuerId: row?.createdBy ?? null, issuerGroups: [] };
+}
+
+/** As above, with the issuer's groups resolved. Split so the miss stays cheap. */
+async function resolveDelegation(
+  spaceId: string,
+  principalId: string,
+): Promise<TokenDelegation | null> {
+  const delegation = await tokenDelegation(spaceId, principalId);
+  if (!delegation?.issuerId) return delegation;
+  return { ...delegation, issuerGroups: await getUserGroups(delegation.issuerId) };
+}
+
+/**
+ * What the issuer may currently do where a token grant on this resource sits.
+ *
+ * Mirrors `verifyCanGrantTokenAccess`, which bounds the grant when it is made:
+ * a document grant against the issuer's access to that document, every other
+ * grant against their space role.
+ */
+async function issuerRole(
+  spaceId: string,
+  delegation: TokenDelegation,
+  resourceType: ResourceType,
+  resourceId: string,
+): Promise<string | undefined> {
+  if (!delegation.issuerId) return undefined;
+
+  const entry =
+    resourceType === ResourceType.DOCUMENT
+      ? await getDocumentPermission(
+          spaceId,
+          resourceId,
+          delegation.issuerId,
+          delegation.issuerGroups,
+        )
+      : await getPermission(
+          spaceId,
+          ResourceType.SPACE,
+          spaceId,
+          delegation.issuerId,
+          delegation.issuerGroups,
+        );
+
+  return entry?.permission;
+}
+
+/**
+ * Cap a token's own rows at what its issuer holds today, so a demotion takes the
+ * tokens that issuer minted down with it. Rows reached through a group (`public`
+ * included) are left alone: those are not delegated, everyone has them.
+ */
+async function capRowsToIssuer<T extends AclRow>(
+  spaceId: string,
+  principalId: string,
+  resourceType: ResourceType,
+  rows: T[],
+): Promise<T[]> {
+  // Nothing here was delegated, so nothing needs capping — the usual case, and
+  // it keeps the issuer lookup off every resolution that has no token in it.
+  if (!rows.some((row) => row.userId === principalId)) return rows;
+
+  const delegation = await resolveDelegation(spaceId, principalId);
+  if (!delegation) return rows;
+
+  const capped: T[] = [];
+  // Only a document grant is bounded per resource; the rest share the space role.
+  const cache = new Map<string, string | undefined>();
+
+  for (const row of rows) {
+    if (row.userId !== principalId || !isPermission(row.permission)) {
+      capped.push(row);
+      continue;
+    }
+
+    const key = resourceType === ResourceType.DOCUMENT ? row.resourceId : "";
+    if (!cache.has(key)) {
+      cache.set(key, await issuerRole(spaceId, delegation, resourceType, row.resourceId));
+    }
+
+    const cap = cache.get(key);
+    // The issuer holds nothing here, so the grant delegates nothing.
+    if (!isPermission(cap)) continue;
+
+    capped.push({ ...row, permission: weakerPermission(row.permission, cap) });
+  }
+
+  return capped;
+}
+
+/** Intersect two resource scopes, where null means "unrestricted". */
+function intersectScopes(a: string[] | null, b: string[] | null): string[] | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  const allowed = new Set(b);
+  return a.filter((id) => allowed.has(id));
+}
+
 export async function getPermission(
   spaceId: string,
   resourceType: ResourceType,
@@ -451,7 +580,9 @@ export async function getPermission(
   );
 
   allPermissions.push(...groupResults);
-  return bestAclEntry(allPermissions);
+  return bestAclEntry(
+    await capRowsToIssuer(spaceId, userId, resourceType, allPermissions),
+  );
 }
 
 /** The strongest of these ACL rows, as an entry. Null when there are none. */
@@ -515,7 +646,9 @@ async function getBestPermissionForResourceIds(
   );
 
   allPermissions.push(...groupResults);
-  return bestAclEntry(allPermissions);
+  return bestAclEntry(
+    await capRowsToIssuer(spaceId, userId, resourceType, allPermissions),
+  );
 }
 
 async function getDocumentAncestorIds(
@@ -1073,6 +1206,20 @@ export async function hasFeature(
     return true;
   }
 
+  // A token holds a feature only for as long as its issuer does.
+  const delegation = await resolveDelegation(spaceId, userId);
+  if (delegation) {
+    if (!delegation.issuerId) return false;
+    const issuerHasIt = await hasFeature(
+      spaceId,
+      feature,
+      delegation.issuerId,
+      delegation.issuerGroups,
+      documentId,
+    );
+    if (!issuerHasIt) return false;
+  }
+
   const db = await getSpaceDb(spaceId);
 
   // Check for explicit feature ACL entry (user-specific)
@@ -1222,7 +1369,11 @@ export async function listFeaturePermissions(store: SpaceStore): Promise<AclEntr
   }));
 }
 
-export async function listAccessibleResources(
+/**
+ * Resources this identity reaches, as its own rows describe it. Null means
+ * unrestricted. A token's ceiling is applied by the caller below.
+ */
+async function resolveAccessibleResources(
   spaceId: string,
   userId: string,
   resourceType: ResourceType,
@@ -1352,6 +1503,43 @@ export async function listAccessibleResources(
 }
 
 /**
+ * Resources this identity can reach at `minPermission`. Null means unrestricted.
+ *
+ * A token reaches the intersection of its own scope and its issuer's: the rows
+ * say which resources were delegated, the issuer says what is still behind them.
+ */
+export async function listAccessibleResources(
+  spaceId: string,
+  userId: string,
+  resourceType: ResourceType,
+  userGroups?: string[],
+  minPermission?: Permission,
+): Promise<string[] | null> {
+  const own = await resolveAccessibleResources(
+    spaceId,
+    userId,
+    resourceType,
+    userGroups,
+    minPermission,
+  );
+
+  const delegation = await resolveDelegation(spaceId, userId);
+  if (!delegation) return own;
+  if (!delegation.issuerId) return [];
+
+  return intersectScopes(
+    own,
+    await resolveAccessibleResources(
+      spaceId,
+      delegation.issuerId,
+      resourceType,
+      delegation.issuerGroups,
+      minPermission,
+    ),
+  );
+}
+
+/**
  * Filter `resourceIds` down to those the user can read, mirroring
  * `hasPermission` semantics in bulk (one query instead of N):
  *  - a resource with NO ACL row applicable to the user falls back to the
@@ -1364,7 +1552,7 @@ export async function listAccessibleResources(
  *    fallback would grant them everything: the scope is an allowlist and
  *    nothing outside it is readable.
  */
-export async function filterReadableResources(
+async function resolveReadableResources(
   spaceId: string,
   resourceType: ResourceType,
   resourceIds: string[],
@@ -1510,6 +1698,39 @@ export async function filterReadableResources(
     }
   }
   return readable;
+}
+
+/**
+ * As above, and for a token also passed through its issuer: what it may read is
+ * what was delegated to it and what the issuer can still read today.
+ */
+export async function filterReadableResources(
+  spaceId: string,
+  resourceType: ResourceType,
+  resourceIds: string[],
+  viewer: AclViewer,
+  minPermission: Permission = Permission.VIEWER,
+): Promise<Set<string>> {
+  const own = await resolveReadableResources(
+    spaceId,
+    resourceType,
+    resourceIds,
+    viewer,
+    minPermission,
+  );
+
+  const delegation = await resolveDelegation(spaceId, viewer.userId);
+  if (!delegation) return own;
+  if (!delegation.issuerId) return new Set();
+
+  // Re-filtering `own` rather than intersecting keeps the result a subset.
+  return resolveReadableResources(
+    spaceId,
+    resourceType,
+    [...own],
+    { userId: delegation.issuerId, userGroups: delegation.issuerGroups },
+    minPermission,
+  );
 }
 
 export async function countSpaceMembers(spaceId: string): Promise<number> {
