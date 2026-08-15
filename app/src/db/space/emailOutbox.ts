@@ -4,7 +4,11 @@ import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { emailNotificationOutbox } from "#db/schema/space.ts";
 
-export type EmailNotificationKind = "document_published" | "comment_created";
+export type EmailNotificationKind =
+  | "document_published"
+  | "document_mention"
+  | "comment_created"
+  | "comment_mention";
 
 export interface EmailNotificationInit {
   kind: EmailNotificationKind;

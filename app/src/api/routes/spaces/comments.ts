@@ -143,6 +143,7 @@ export const POST: ApiRouteHandler = (context) =>
         spaceId,
         documentId,
         commentId: comment.id,
+        commentContent: comment.content,
         commentReference: comment.reference,
         commentParentId: comment.parentId,
         actorId: user.id,

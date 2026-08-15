@@ -1,8 +1,14 @@
 import { type Change, diffWordsWithSpace } from "diff";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
+import { getMentionContexts } from "#documents/mentions.ts";
 import { escapeHtml, htmlToPlainText } from "#utils/html.ts";
+import { renderMessageMarkdown } from "#utils/markdown.ts";
 
 const PREVIEW_MAX_LENGTH = 700;
+/** A recipient mentioned all over a document gets the first few spots, not all. */
+const MENTION_QUOTE_LIMIT = 3;
+const ACCESS_FOOTER = "You received this because you have access to this document.";
+const MENTION_FOOTER = "You received this because you were mentioned.";
 const EMAIL_FONT = 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
 /** Marks where unchanged text was dropped between two pieces of one delta. */
 const GAP = " … ";
@@ -108,6 +114,36 @@ function previewHtml(preview: ChangePreview | null): string {
     </tr>`;
 }
 
+/** The passages that mention this recipient, in document order. */
+function mentionQuotes(
+  html: string | null | undefined,
+  recipientEmail: string | null | undefined,
+): string[] {
+  if (!html || !recipientEmail) return [];
+  const contexts =
+    getMentionContexts(html).get(recipientEmail.trim().toLowerCase()) ?? [];
+  return contexts.slice(0, MENTION_QUOTE_LIMIT).map((context) => excerpt(context));
+}
+
+function mentionQuotesHtml(quotes: string[]): string {
+  if (quotes.length === 0) return "";
+
+  const blocks = quotes
+    .map(
+      (quote) =>
+        `<div style="margin:0 0 8px;padding:12px 14px;border-left:3px solid #c099cf;border-radius:0 6px 6px 0;background:#f9f9f9;color:#3d3d3d;font:14px/22px ${EMAIL_FONT};white-space:pre-wrap;">${escapeHtml(quote)}</div>`,
+    )
+    .join("");
+
+  return `
+    <tr>
+      <td style="padding:0 32px 24px;">
+        <p style="margin:0 0 8px;color:#6e6e6e;font:600 12px/18px ${EMAIL_FONT};letter-spacing:.04em;text-transform:uppercase;">Where you were mentioned</p>
+        ${blocks}
+      </td>
+    </tr>`;
+}
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -146,9 +182,18 @@ function emailHtml(params: {
   spaceName: string;
   documentUrl: string;
   content: string;
+  footer: string;
 }): string {
-  const { eyebrow, heading, message, documentTitle, spaceName, documentUrl, content } =
-    params;
+  const {
+    eyebrow,
+    heading,
+    message,
+    documentTitle,
+    spaceName,
+    documentUrl,
+    content,
+    footer,
+  } = params;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -184,7 +229,7 @@ function emailHtml(params: {
               <td style="padding:0 32px 32px;"><a href="${escapeHtml(documentUrl)}" style="display:inline-block;padding:9px 14px;border:1px solid #b686c8;border-radius:6px;background:#c099cf;color:#ffffff;font:600 14px/20px ${EMAIL_FONT};text-decoration:none;">Open document</a></td>
             </tr>
           </table>
-          <p style="margin:16px 0 0;color:#909090;font:12px/18px ${EMAIL_FONT};">You received this because you have access to this document.</p>
+          <p style="margin:16px 0 0;color:#909090;font:12px/18px ${EMAIL_FONT};">${escapeHtml(footer)}</p>
         </td>
       </tr>
     </table>
@@ -202,29 +247,71 @@ export function renderNotificationEmail(params: {
   actorImage?: string | null;
   previousPublishedContent?: string | null;
   publishedContent?: string | null;
+  /** Which mentions to quote — the recipient's own, not everybody else's. */
+  recipientEmail?: string | null;
 }): { subject: string; text: string; html: string } {
   const { notification, actorName, documentTitle, spaceName, documentUrl } = params;
 
-  if (notification.kind === "comment_created") {
-    const comment = excerpt(htmlToPlainText(params.commentContent ?? ""));
-    const subject = headerText(`${actorName} commented on ${documentTitle}`);
+  if (
+    notification.kind === "comment_created" ||
+    notification.kind === "comment_mention"
+  ) {
+    const mention = notification.kind === "comment_mention";
+    // Comments are stored as markdown: rendering it first is what turns a
+    // mention into the “@Name” the recipient wrote, not its link syntax.
+    const comment = excerpt(
+      htmlToPlainText(renderMessageMarkdown(params.commentContent ?? "")),
+    );
+    const subject = headerText(
+      mention
+        ? `${actorName} mentioned you in a comment on ${documentTitle}`
+        : `${actorName} commented on ${documentTitle}`,
+    );
     return {
       subject,
       text: [
-        `${actorName} commented on “${documentTitle}” in ${spaceName}.`,
+        mention
+          ? `${actorName} mentioned you in a comment on “${documentTitle}” in ${spaceName}.`
+          : `${actorName} commented on “${documentTitle}” in ${spaceName}.`,
         comment ? `\n${comment}` : "",
         `\nOpen document: ${documentUrl}`,
       ].join("\n"),
       html: emailHtml({
-        eyebrow: "New comment",
-        heading: `${actorName} commented`,
-        message: `A new comment was added to this document.`,
+        eyebrow: mention ? "Mention" : "New comment",
+        heading: mention ? `${actorName} mentioned you` : `${actorName} commented`,
+        message: mention
+          ? `You were mentioned in a comment on this document.`
+          : `A new comment was added to this document.`,
         documentTitle,
         spaceName,
         documentUrl,
         content: comment
           ? commentHtml({ actorName, actorImage: params.actorImage, comment })
           : "",
+        footer: mention ? MENTION_FOOTER : ACCESS_FOOTER,
+      }),
+    };
+  }
+
+  if (notification.kind === "document_mention") {
+    const quotes = mentionQuotes(params.publishedContent, params.recipientEmail);
+    const subject = headerText(`${actorName} mentioned you in ${documentTitle}`);
+    return {
+      subject,
+      text: [
+        `${actorName} mentioned you in “${documentTitle}” in ${spaceName}.`,
+        ...quotes.map((quote) => `\n${quote}`),
+        `\nOpen document: ${documentUrl}`,
+      ].join("\n"),
+      html: emailHtml({
+        eyebrow: "Mention",
+        heading: `${actorName} mentioned you`,
+        message: `You were mentioned in a published version of this document.`,
+        documentTitle,
+        spaceName,
+        documentUrl,
+        content: mentionQuotesHtml(quotes),
+        footer: MENTION_FOOTER,
       }),
     };
   }
@@ -248,6 +335,7 @@ export function renderNotificationEmail(params: {
       spaceName,
       documentUrl,
       content: previewHtml(preview),
+      footer: ACCESS_FOOTER,
     }),
   };
 }

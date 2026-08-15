@@ -99,28 +99,29 @@ async function deliver(
 
   const titleValue = doc.properties.title;
   const title = titleValue ? propertyValueToText(titleValue).trim() : doc.slug;
+  // A comment email quotes the comment; a publication email quotes the revision
+  // it announced — and diffs it against its predecessor unless it is a mention,
+  // which quotes the passage the recipient's name is in instead.
+  const aboutComment =
+    notification.kind === "comment_created" || notification.kind === "comment_mention";
+  const aboutPublication =
+    notification.kind === "document_published" ||
+    notification.kind === "document_mention";
   const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
-    notification.kind === "comment_created"
-      ? getComment(store, notification.sourceId)
-      : undefined,
-    notification.kind === "document_published" &&
-    typeof notification.publishedRevision === "number"
-      ? getRevisionContent(
-          await openSpaceStore(spaceId),
-          notification.documentId,
-          notification.publishedRevision,
-        )
+    aboutComment ? getComment(store, notification.sourceId) : undefined,
+    aboutPublication && typeof notification.publishedRevision === "number"
+      ? getRevisionContent(store, notification.documentId, notification.publishedRevision)
       : undefined,
     notification.kind === "document_published" &&
     typeof notification.previousPublishedRevision === "number"
       ? getRevisionContent(
-          await openSpaceStore(spaceId),
+          store,
           notification.documentId,
           notification.previousPublishedRevision,
         )
       : undefined,
   ]);
-  if (notification.kind === "comment_created" && !commentRecord) {
+  if (aboutComment && !commentRecord) {
     await markEmailNotificationSkipped(store, notification.id, "Comment unavailable");
     return;
   }
@@ -135,6 +136,7 @@ async function deliver(
     commentContent: commentRecord?.content,
     previousPublishedContent,
     publishedContent,
+    recipientEmail: recipient.email,
   });
   await sendEmail({ to: recipient.email, ...rendered });
   await markEmailNotificationSent(store, notification.id);

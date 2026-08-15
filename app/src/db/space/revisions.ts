@@ -319,21 +319,6 @@ export async function resolvePublishedDocumentContent<
   return content === null ? document : { ...document, content };
 }
 
-export async function getPublishedContent(
-  s: SpaceStore,
-  documentId: string,
-): Promise<string | null> {
-  const storedDocument = await one(
-    s.db
-      .select({ publishedRev: document.publishedRev })
-      .from(document)
-      .where(eq(document.id, documentId)),
-  );
-
-  if (!storedDocument || storedDocument.publishedRev === null) return null;
-  return getRevisionContent(s, documentId, storedDocument.publishedRev);
-}
-
 export async function restoreRevision(
   s: SpaceStore,
   documentId: string,

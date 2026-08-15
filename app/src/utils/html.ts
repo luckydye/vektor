@@ -72,7 +72,8 @@ export const VOID_TAGS = new Set([
   "wbr",
 ]);
 
-const BLOCK_TAGS = new Set([
+/** Elements that break the text flow — the unit a quoted excerpt is cut at. */
+export const BLOCK_TAGS = new Set([
   "article",
   "aside",
   "blockquote",

@@ -760,7 +760,9 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
     parent and rejects self-parenting or ancestry cycles with `400`); broadcasts
     a `document_parent_changed` realtime event.
   - `publishedRev: number | null` — publish a specific revision (or unpublish with
-    `null`); triggers "document published" email notifications; audit-logged.
+    `null`); triggers "document published" email notifications, and a "mentioned
+    you" one for each user newly mentioned by the published revision;
+    audit-logged.
   - `readonly: boolean` — lock/unlock the document (CSV-type docs must stay
     readonly). Audit-logged.
 - **Returns**: `200 { success: true }`, or `200 { slug }` when a `title` patch also
@@ -884,8 +886,9 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Body**: `documentId` (string, required), `content` (string, required),
   `parentId?` (string), `type?` (string), `reference?` (string — required for
   top-level/non-reply comments).
-- **Behavior**: audit-logged; enqueues "comment created" email notifications;
-  broadcasts a `comment_created` realtime event.
+- **Behavior**: audit-logged; enqueues "comment created" email notifications, and
+  a "mentioned you" one for each user the comment mentions; broadcasts a
+  `comment_created` realtime event.
 - **Returns**: `200 { comment }`.
 
 ### `PATCH /spaces/:spaceId/comments`

@@ -149,11 +149,72 @@ describe("renderNotificationEmail: comments", () => {
       documentTitle: "Locale handling",
       spaceName: "Engineering",
       documentUrl: "https://vektor.test/engineering/doc/locale-handling",
-      commentContent: '<p>Try <code>inject()</code> — see <a href="#x">this</a>.</p>',
+      commentContent: "Try `inject()` — see [this](https://vektor.test/x).",
     });
 
     expect(rendered.text).toContain("Try inject() — see this.");
     expect(rendered.html).toContain("Try inject() — see this.");
     expect(rendered.html).toContain(">AL<");
+  });
+});
+
+describe("renderNotificationEmail: mentions", () => {
+  const mentionComment = "Can you look at this, [@Grace](mention:grace%40example.com)?";
+
+  it("names the mention in a comment instead of announcing a comment", () => {
+    const rendered = renderNotificationEmail({
+      notification: { ...publishNotification(), kind: "comment_mention" },
+      actorName: "Ada Lovelace",
+      documentTitle: "Locale handling",
+      spaceName: "Engineering",
+      documentUrl: "https://vektor.test/engineering/doc/locale-handling",
+      commentContent: mentionComment,
+      recipientEmail: "grace@example.com",
+    });
+
+    expect(rendered.subject).toBe(
+      "Ada Lovelace mentioned you in a comment on Locale handling",
+    );
+    // The mention reads as it was written, not as its markdown link syntax.
+    expect(rendered.text).toContain("Can you look at this, @Grace?");
+    expect(rendered.html).toContain("Can you look at this, @Grace?");
+    expect(rendered.html).toContain("You received this because you were mentioned.");
+  });
+
+  it("quotes the passage of the document the recipient was mentioned in", () => {
+    const rendered = renderNotificationEmail({
+      notification: { ...publishNotification(), kind: "document_mention" },
+      actorName: "Ada Lovelace",
+      documentTitle: "Locale handling",
+      spaceName: "Engineering",
+      documentUrl: "https://vektor.test/engineering/doc/locale-handling",
+      publishedContent:
+        "<p>The locale is request-scoped.</p>" +
+        '<p>Owner: <user-mention email="grace@example.com">@Grace Hopper</user-mention> ' +
+        "signs off on the rollout.</p>",
+      recipientEmail: "grace@example.com",
+    });
+
+    expect(rendered.subject).toBe("Ada Lovelace mentioned you in Locale handling");
+    expect(rendered.text).toContain("Owner: @Grace Hopper signs off on the rollout.");
+    expect(rendered.html).toContain("Where you were mentioned");
+    expect(rendered.html).toContain("Owner: @Grace Hopper signs off on the rollout.");
+    // Only the recipient's own mention is quoted back to them.
+    expect(rendered.text).not.toContain("The locale is request-scoped.");
+  });
+
+  it("still sends when the mention has since moved out of the revision", () => {
+    const rendered = renderNotificationEmail({
+      notification: { ...publishNotification(), kind: "document_mention" },
+      actorName: "Ada Lovelace",
+      documentTitle: "Locale handling",
+      spaceName: "Engineering",
+      documentUrl: "https://vektor.test/engineering/doc/locale-handling",
+      publishedContent: "<p>Nobody is mentioned here.</p>",
+      recipientEmail: "grace@example.com",
+    });
+
+    expect(rendered.subject).toBe("Ada Lovelace mentioned you in Locale handling");
+    expect(rendered.html).not.toContain("Where you were mentioned");
   });
 });
