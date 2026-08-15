@@ -359,13 +359,9 @@ export async function revokePermission(
 }
 
 /**
- * Remove every grant held directly by one grantee in this space, whatever
- * resource it is on. Used when the principal itself goes away and its grants
- * would otherwise linger as entries nobody can reach. Group grants are left
- * alone: they belong to the group, not to the member.
- *
- * The grantee is whatever `acl.userId` holds — a user id, or a token's
- * `token:<id>` identity.
+ * Remove every grant held directly by one grantee (a user id, or a token's
+ * `token:<id>` identity), on any resource. For when the principal itself goes
+ * away. Group grants belong to the group, not the member, so they stay.
  *
  * Returns the number of grants removed.
  */
@@ -378,8 +374,7 @@ export async function revokeAllGranteePermissions(
 
   const conditions = [eq(acl.userId, granteeUserId), isNull(acl.groupId)];
 
-  // Read first so each removal can be audited individually, the same way a
-  // single-resource revoke is.
+  // Read first so each removal can be audited, as a single-resource revoke is.
   const removed = await many(
     db
       .select()

@@ -179,17 +179,10 @@ export async function listTokenResources(
 /**
  * Whether the token's issuer still holds everything the token was granted.
  *
- * `verifyCanGrantTokenAccess` bounds a token to its issuer's own access at
- * creation time, but nothing re-applied that bound afterwards: an issuer who was
- * demoted kept using a credential minted while they still held the higher role.
- * Re-checking the same rule per request closes that for every way a role can
- * change — a direct grant, group membership, an IdP sync — rather than only the
- * paths that remember to revoke.
- *
- * The verdict is a denial, not a revocation. An issuer who is demoted is still a
- * member, so the token starts working again if they are promoted back. Contrast
- * the offboarding rule in `validateAccessToken`, which revokes permanently
- * because the secret may sit on a machine the space no longer controls.
+ * `verifyCanGrantTokenAccess` applies this bound when the grant is made; re-applying
+ * it per request catches every way a role can later change, not just the paths that
+ * remember to revoke. Denies rather than revokes: a demoted issuer is still a member,
+ * so promoting them back restores the token.
  */
 async function issuerStillCoversToken(
   s: SpaceStore,
@@ -212,11 +205,11 @@ async function issuerStillCoversToken(
       continue;
     }
 
-    // A role that is not in the vocabulary cannot be compared, so it is not honored.
+    // An unknown role cannot be compared, so it is not honored.
     if (!isPermission(grant.permission)) return false;
 
-    // Mirrors verifyCanGrantTokenAccess: a document grant is bounded by the
-    // issuer's access to that document, every other grant by their space role.
+    // As at creation: document grants bound by the issuer's access to that
+    // document, everything else by their space role.
     const bound =
       grant.resourceType === ResourceType.DOCUMENT
         ? { type: ResourceType.DOCUMENT, id: grant.resourceId }
@@ -287,8 +280,7 @@ export async function validateAccessToken(
     return null;
   }
 
-  // Membership is the floor, not the bound: a token may not outrank what its
-  // issuer can still do today.
+  // Membership is the floor, not the bound.
   if (!(await issuerStillCoversToken(s, result.id, result.createdBy))) {
     return null;
   }
@@ -420,8 +412,7 @@ export async function deleteAccessToken(
 
     if (result.length === 0) return false;
 
-    // The token principal no longer exists, so its grants would otherwise stay
-    // behind and make access listings report a grantee that can never be used.
+    // Otherwise access listings keep reporting a grantee that no longer exists.
     await revokeAllGranteePermissions(tx, getTokenUserId(tokenId), actorUserId);
 
     return true;
