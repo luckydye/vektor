@@ -11,7 +11,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { Permission, ResourceType, TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission } from "#acl/store.ts";
+import { getUserGroups, hasPermission, logAclChange } from "#acl/store.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AccessToken, AclEntry } from "#db/schema/space.ts";
@@ -130,6 +130,15 @@ export async function createAccessToken(
     revokedAt: null,
   });
 
+  await logAclChange(s, s.spaceId, {
+    event: "acl_grant",
+    resourceType: options.resourceType,
+    resourceId: options.resourceId,
+    userId: getTokenUserId(id),
+    permission: options.permission,
+    actorUserId: options.createdBy,
+  });
+
   return { id, token };
 }
 
@@ -147,14 +156,46 @@ export async function grantTokenAccess(
   resourceType: ResourceType,
   resourceId: string,
   permission: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  const result = await s.db
+  // Read first so the audit entry can say what the grant moved away from.
+  const [previous] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
+  if (!previous) return false;
+
+  await s.db
     .update(acl)
     .set({ resourceType, resourceId, permission, updatedAt: new Date() })
-    .where(tokenRow(tokenId))
-    .returning();
+    .where(tokenRow(tokenId));
 
-  return result.length > 0;
+  const rescoped =
+    previous.resourceType !== resourceType || previous.resourceId !== resourceId;
+
+  // A re-scope takes access away from the old resource, so log it there too —
+  // otherwise the document that lost the token shows no trace of it.
+  if (rescoped) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_revoke",
+      resourceType: previous.resourceType as ResourceType,
+      resourceId: previous.resourceId,
+      userId: getTokenUserId(tokenId),
+      previousPermission: previous.permission,
+      actorUserId,
+    });
+  }
+
+  if (rescoped || previous.permission !== permission) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_grant",
+      resourceType,
+      resourceId,
+      userId: getTokenUserId(tokenId),
+      permission,
+      previousPermission: rescoped ? undefined : previous.permission,
+      actorUserId,
+    });
+  }
+
+  return true;
 }
 
 /**
@@ -250,14 +291,31 @@ export async function validateAccessToken(
 export async function revokeAccessToken(
   s: SpaceStore,
   tokenId: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  const result = await s.db
+  // Read first: `returning()` hands back the row after the update, which cannot
+  // tell an already-revoked token from a freshly revoked one. Re-revoking stays
+  // a success for the caller, but must not write a second audit entry.
+  const [previous] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
+  if (!previous) return false;
+
+  await s.db
     .update(acl)
     .set({ revokedAt: new Date(), updatedAt: new Date() })
-    .where(tokenRow(tokenId))
-    .returning();
+    .where(tokenRow(tokenId));
 
-  return result.length > 0;
+  if (!previous.revokedAt) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_revoke",
+      resourceType: previous.resourceType as ResourceType,
+      resourceId: previous.resourceId,
+      userId: getTokenUserId(tokenId),
+      previousPermission: previous.permission,
+      actorUserId,
+    });
+  }
+
+  return true;
 }
 
 /**
@@ -306,7 +364,23 @@ export async function findSpaceForToken(token: string): Promise<string | null> {
 export async function deleteAccessToken(
   s: SpaceStore,
   tokenId: string,
+  actorUserId?: string,
 ): Promise<boolean> {
-  const result = await s.db.delete(acl).where(tokenRow(tokenId)).returning();
-  return result.length > 0;
+  const [deleted] = await s.db.delete(acl).where(tokenRow(tokenId)).returning();
+  if (!deleted) return false;
+
+  // Already-revoked tokens logged their revoke when it happened; deleting one
+  // removes the grant that is no longer there to remove.
+  if (!deleted.revokedAt) {
+    await logAclChange(s, s.spaceId, {
+      event: "acl_revoke",
+      resourceType: deleted.resourceType as ResourceType,
+      resourceId: deleted.resourceId,
+      userId: getTokenUserId(tokenId),
+      previousPermission: deleted.permission,
+      actorUserId,
+    });
+  }
+
+  return true;
 }

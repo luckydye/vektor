@@ -187,8 +187,12 @@ async function resolveGranteeName(userId?: string): Promise<string | undefined> 
  * Document-scoped changes are logged against the document so they show up in
  * that document's activity; everything else (space membership, categories,
  * feature overrides) is logged against the space.
+ *
+ * Exported because access tokens write their own `acl` rows (they carry
+ * credential columns `grantPermission` knows nothing about) and still have to
+ * land in the same audit trail as every other grant.
  */
-async function logAclChange(
+export async function logAclChange(
   store: SpaceStore,
   spaceId: string,
   params: {
@@ -205,10 +209,15 @@ async function logAclChange(
   const isDocumentScoped =
     params.resourceType === ResourceType.DOCUMENT ||
     params.resourceType === ResourceType.DOCUMENT_TREE;
-  const targetName = await resolveGranteeName(params.userId);
-  const target = params.userId
-    ? `user ${targetName ?? params.userId}`
-    : `group ${params.groupId}`;
+  // A token principal has no row in the user table, so don't look one up — and
+  // don't call it a user in the log either.
+  const tokenId = tokenIdFromPrincipal(params.userId);
+  const targetName = tokenId ? undefined : await resolveGranteeName(params.userId);
+  const target = tokenId
+    ? `token ${tokenId}`
+    : params.userId
+      ? `user ${targetName ?? params.userId}`
+      : `group ${params.groupId}`;
   const scope =
     params.resourceType === ResourceType.SPACE
       ? "the space"
