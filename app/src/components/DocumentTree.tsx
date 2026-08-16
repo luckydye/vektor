@@ -22,11 +22,11 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
-import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { slugify } from "#utils/slug.ts";
 import { spacePath } from "#utils/utils.ts";
+import { CategoryBadge } from "./CategoryBadge.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 import { Icon } from "./Icon.tsx";
@@ -558,17 +558,7 @@ export function DocumentTree(props: Props) {
                           class="flex flex-1 items-center gap-2 px-1 py-1 text-left"
                           aria-expanded={isCategoryOpen(category())}
                         >
-                          <div
-                            class="relative flex h-6 w-6 flex-none items-center justify-center rounded-sm font-semibold text-size-extra-small"
-                            style={{
-                              "background-color": category().color || "#E5E7EB",
-                              color: getTextColor(category().color),
-                            }}
-                          >
-                            <span class="block transition-opacity group-hover/category:opacity-0">
-                              {category().icon || category().name.charAt(0).toUpperCase()}
-                            </span>
-
+                          <CategoryBadge category={category()} class="h-6 w-6">
                             <Icon
                               class={twMerge(
                                 "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100",
@@ -576,7 +566,7 @@ export function DocumentTree(props: Props) {
                               )}
                               name="chevron-right-thin"
                             />
-                          </div>
+                          </CategoryBadge>
 
                           <span class="font-medium">{category().name}</span>
                         </button>

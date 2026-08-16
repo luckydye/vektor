@@ -10,9 +10,9 @@ import {
   propertyValueToScalar,
 } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
-import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import type { IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
@@ -104,17 +104,15 @@ export function DocumentProperties(props: Props) {
       ? props.initialCategory
       : null);
 
-  const getCategoryIcon = (categorySlug: string | undefined) => {
-    if (!categorySlug) return null;
+  const getCategoryBadge = (
+    categorySlug: string | undefined,
+  ): CategoryBadgeData | undefined => {
+    if (!categorySlug) return undefined;
 
     const category = findCategory(categorySlug);
-    if (!category) return null;
+    if (!category) return undefined;
 
-    const bgColor = category.color || "#E5E7EB";
-    const textColor = getTextColor(bgColor);
-    const iconText = category.icon || category.name.charAt(0).toUpperCase();
-
-    return `<div class="w-[18px] h-[18px] rounded-sm flex items-center justify-center text-size-small font-semibold" style="background-color: ${bgColor}; color: ${textColor};">${iconText}</div>`;
+    return { name: category.name, color: category.color, icon: category.icon };
   };
 
   const getPropertyLabel = (property: Property): string => {
@@ -174,9 +172,9 @@ export function DocumentProperties(props: Props) {
     return property.value.map((value) => getPropertyLabel({ ...property, value }));
   };
 
-  const getPropertyIconSvg = (property: Property) =>
+  const getPropertyBadge = (property: Property) =>
     property.id?.toLowerCase() === "category"
-      ? (getCategoryIcon(propertyValueToScalar(property.value)) ?? undefined)
+      ? getCategoryBadge(propertyValueToScalar(property.value))
       : undefined;
 
   const getPropertyIcon = (property: Property): IconName | undefined => {
@@ -225,10 +223,11 @@ export function DocumentProperties(props: Props) {
 
   const getPropertyValues = async (property: Property): Promise<SelectMenuItem[]> => {
     if (property.name?.toLowerCase() === "category") {
-      return categories().map((cat) => {
-        const badge = getCategoryIcon(cat.slug);
-        return { id: cat.slug, label: cat.name, iconSvg: badge || undefined };
-      });
+      return categories().map((cat) => ({
+        id: cat.slug,
+        label: cat.name,
+        badge: { name: cat.name, color: cat.color, icon: cat.icon },
+      }));
     }
 
     if (property.name?.toLowerCase() === "layout") {
@@ -368,7 +367,7 @@ export function DocumentProperties(props: Props) {
                 nameLabel={getPropertyName(property)}
                 valueLabels={getPropertyValueLabels(property)}
                 icon={getPropertyIcon(property)}
-                iconSvg={getPropertyIconSvg(property)}
+                badge={getPropertyBadge(property)}
                 variant={getPropertyVariant(property)}
                 readonly={readonly()}
                 property={property}

@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { twMerge } from "tailwind-merge";
 import type { Property } from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
+import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
@@ -13,6 +14,7 @@ interface Props {
   valueLabels?: string[];
   icon?: IconName;
   iconSvg?: string;
+  badge?: CategoryBadgeData;
   variant?: "default" | "special";
   readonly?: boolean;
   property?: Property | null;
@@ -200,15 +202,22 @@ export function PropertyChip(props: Props) {
             onClick={() => void handleClick()}
           >
             <Show
-              when={props.icon}
+              when={props.badge}
               fallback={
-                <div class="flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-primary-500" />
+                <Show
+                  when={props.icon}
+                  fallback={
+                    <div class="flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-primary-500" />
+                  }
+                >
+                  <Icon
+                    class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
+                    name={props.icon}
+                  />
+                </Show>
               }
             >
-              <Icon
-                class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
-                name={props.icon}
-              />
+              {(badge) => <CategoryBadge category={badge()} />}
             </Show>
             <Show
               when={valueLabels().length > 0}
@@ -246,7 +255,10 @@ export function PropertyChip(props: Props) {
             class="absolute -top-4xs -left-4xs z-50 flex flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
           >
             <div class="flex w-full items-center gap-4xs px-3xs">
-              <Show when={props.icon}>
+              <Show when={props.badge}>
+                {(badge) => <CategoryBadge category={badge()} />}
+              </Show>
+              <Show when={!props.badge && props.icon}>
                 <Icon
                   class="h-[18px] w-[18px] text-neutral-950"
                   name={props.icon}
