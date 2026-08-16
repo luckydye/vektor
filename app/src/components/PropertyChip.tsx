@@ -112,13 +112,18 @@ export function PropertyChip(props: Props) {
       return;
     }
 
-    setSelectedValue(itemValue);
-    props.onUpdate?.({
-      ...property,
-      name: propertyName(),
-      value: itemValue,
-      search: searchInput(),
-    });
+    // Picking the value the property already has is a no-op, not an edit: it
+    // would patch the document and bump its revision for nothing.
+    if (itemValue !== selectedValue()) {
+      setSelectedValue(itemValue);
+      props.onUpdate?.({
+        ...property,
+        name: propertyName(),
+        value: itemValue,
+        search: searchInput(),
+      });
+    }
+
     handleExit();
   };
 
