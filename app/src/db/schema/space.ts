@@ -355,6 +355,8 @@ export const file = sqliteTable("file", {
   /** Original filename as uploaded (not the randomised on-disk name) */
   originalName: text("original_name"),
   mimeType: text("mime_type"),
+  /** Size of the stored bytes, for listings that label a file without reading it */
+  size: integer("size"),
   /** Relative URL to access the file, e.g. /api/v1/spaces/{spaceId}/uploads/{key} */
   url: text("url"),
   updatedAt: integer("updated_at", { mode: "timestamp" }),

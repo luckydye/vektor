@@ -61,6 +61,8 @@ export interface DocumentWithProperties {
   mentionCount?: number;
   /** Set for file-table entries — use this URL instead of the doc route */
   fileUrl?: string;
+  /** Set for file-table entries: the stored size in bytes, where it is known */
+  fileSize?: number;
 }
 
 export type SearchResult = DocumentWithProperties & {
@@ -107,6 +109,7 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
     readonly: true,
     archived: false,
     fileUrl: f.url ?? undefined,
+    fileSize: f.size ?? undefined,
   };
 }
 

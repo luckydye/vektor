@@ -213,4 +213,5 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
 
   const fileSQL = generateCreateTableSQL(spaceSchema.file);
   await exec(spaceDb, sql.raw(fileSQL));
+  await addColumnIfMissing(spaceDb, spaceSchema.file.size);
 }

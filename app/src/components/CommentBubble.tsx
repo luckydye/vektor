@@ -42,7 +42,8 @@ interface Props {
 const EDGE_THRESHOLD_PX = 60;
 const COMMENT_BUBBLE_PROXIMITY_PX = 20;
 const THREAD_GAP_PX = 8;
-const ADD_BUBBLE_GAP_PX = 4;
+// Clears the image resize handle, which overhangs the document edge by 20px.
+const ADD_BUBBLE_GAP_PX = 28;
 const ADD_BUBBLE_SIZE_PX = 32;
 const VIEWPORT_MARGIN_PX = 8;
 const ADD_BUBBLE_REACH_PX = 12;
@@ -252,8 +253,11 @@ export function CommentBubble(props: Props) {
   }
 
   function isNearAddBubble(x: number, y: number) {
+    // Reach back to the document edge so the gap the cursor crosses stays live.
+    const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
+    const docRight = docView?.getBoundingClientRect().right ?? Number.POSITIVE_INFINITY;
     return (
-      x >= bubbleX() - ADD_BUBBLE_REACH_PX &&
+      x >= Math.min(docRight, bubbleX() - ADD_BUBBLE_REACH_PX) &&
       x <= bubbleX() + ADD_BUBBLE_SIZE_PX + ADD_BUBBLE_REACH_PX &&
       y >= bubbleY() - ADD_BUBBLE_SIZE_PX / 2 - ADD_BUBBLE_REACH_PX &&
       y <= bubbleY() + ADD_BUBBLE_SIZE_PX / 2 + ADD_BUBBLE_REACH_PX

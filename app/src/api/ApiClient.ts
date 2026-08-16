@@ -82,6 +82,8 @@ export interface Document {
   createdBy: string;
   updatedBy: string;
   fileUrl?: string;
+  /** Set for file-table entries: the stored size in bytes, where it is known */
+  fileSize?: number;
 }
 
 export interface DocumentWithProperties extends Document {
@@ -476,6 +478,8 @@ export interface SearchResult {
   snippet: string;
   /** Set for file-table entries — use this URL instead of the doc route */
   fileUrl?: string;
+  /** Set for file-table entries: the stored size in bytes, where it is known */
+  fileSize?: number;
 }
 
 export interface Comment {

@@ -3,6 +3,16 @@ const UPLOAD_PATH_PREFIX = "/api/v1/spaces/";
 export const TRANSFORMABLE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
 /**
+ * Whether a URL points at an image the server will both serve inline and
+ * resize. Narrower than `IMAGE_EXTENSIONS`: an SVG is served as a download, so
+ * it cannot be shown as a thumbnail.
+ */
+export function isTransformableImageUrl(url: string | undefined): boolean {
+  const ext = (url ?? "").split(/[?#]/)[0].split(".").pop()?.toLowerCase() ?? "";
+  return TRANSFORMABLE_EXTENSIONS.has(ext);
+}
+
+/**
  * Append transform query params to an internal upload URL.
  * Returns the URL unchanged if it is external, an SVG, or already has a query
  * string (to avoid double-processing).

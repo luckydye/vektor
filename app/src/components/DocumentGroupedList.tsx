@@ -14,10 +14,12 @@ import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
+import { isTransformableImageUrl } from "#files/transformUrl.ts";
 import { formatDate } from "#utils/dateFormat.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
+import { type FilePreviewItem, FilePreviews } from "./FilePreviews.tsx";
 import { Icon } from "./Icon.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
 
@@ -61,6 +63,11 @@ function getTimeGroup(date: Date | string | number): TimeGroup {
   if (d >= weekStart) return "earlier-this-week";
   if (d >= monthStart) return "earlier-this-month";
   return "older";
+}
+
+/** An upload that gets a thumbnail card instead of a row. */
+function isImageUpload(doc: DocumentListItem): boolean {
+  return doc.type === "file" && isTransformableImageUrl(doc.fileUrl);
 }
 
 export function DocumentGroupedList(props: Props) {
@@ -142,24 +149,30 @@ export function DocumentGroupedList(props: Props) {
       if (!map.has(g)) map.set(g, []);
       map.get(g)?.push(doc);
     }
-    return GROUP_ORDER.filter((g) => map.has(g)).map((g) => ({
-      id: g,
-      label: {
-        today: t("Today"),
-        yesterday: t("Yesterday"),
-        "earlier-this-week": t("Earlier this week"),
-        "earlier-this-month": t("Earlier this month"),
-        older: t("Older"),
-      }[g],
-      docs: map.get(g) ?? [],
-    }));
+    return GROUP_ORDER.filter((g) => map.has(g)).map((g) => {
+      const docs = map.get(g) ?? [];
+      return {
+        id: g,
+        label: {
+          today: t("Today"),
+          yesterday: t("Yesterday"),
+          "earlier-this-week": t("Earlier this week"),
+          "earlier-this-month": t("Earlier this month"),
+          older: t("Older"),
+        }[g],
+        count: docs.length,
+        previews: docs.filter(isImageUpload).map(toPreviewItem),
+        docs: docs.filter((doc) => !isImageUpload(doc)),
+      };
+    });
   });
 
   const [selectedIds, setSelectedIds] = createSignal(new Set<string>());
   const allIds = createMemo(() => filtered().map((d) => d.id));
   let lastClickedId: string | null = null;
 
-  function toggleSelect(id: string, event: MouseEvent) {
+  // Takes the event structurally: a tile selects from a keydown, a row from a click.
+  function toggleSelect(id: string, event: { shiftKey: boolean }) {
     const next = new Set(selectedIds());
 
     if (event.shiftKey && lastClickedId && lastClickedId !== id) {
@@ -198,6 +211,10 @@ export function DocumentGroupedList(props: Props) {
     ),
   );
 
+  // Held here rather than in the tile grid: `groups()` hands `For` new objects on
+  // every refetch, which re-creates the grid and would drop its own state.
+  const [expandedPreviews, setExpandedPreviews] = createSignal(new Set<TimeGroup>());
+
   const [collapsed, setCollapsed] = createSignal(new Set<TimeGroup>());
   function toggleCollapse(groupId: TimeGroup) {
     const next = new Set(collapsed());
@@ -209,6 +226,16 @@ export function DocumentGroupedList(props: Props) {
   function docTitle(doc: DocumentListItem) {
     const title = doc.properties?.title ?? doc.properties?.name;
     return title ? propertyValueToText(title) : t("Untitled");
+  }
+
+  function toPreviewItem(doc: DocumentListItem): FilePreviewItem {
+    return {
+      id: doc.id,
+      title: docTitle(doc),
+      url: doc.fileUrl ?? "",
+      size: doc.fileSize,
+      documentUrl: spacePath(currentSpace()?.slug, `/doc/${doc.slug}`),
+    };
   }
 
   function docCategoryName(doc: DocumentListItem): string | null {
@@ -329,7 +356,7 @@ export function DocumentGroupedList(props: Props) {
                     {group.label}
                   </span>
                   <span class="rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500 text-size-extra-small tabular-nums">
-                    {group.docs.length}
+                    {group.count}
                   </span>
                   <div class="flex-1" />
                   <Icon
@@ -344,92 +371,130 @@ export function DocumentGroupedList(props: Props) {
                 <a-expandable
                   attr:opened={collapsed().has(group.id) ? undefined : ""}
                   inert={collapsed().has(group.id)}
-                  class="overflow-hidden rounded-lg border border-neutral-100"
+                  class="overflow-hidden"
                 >
-                  <For each={group.docs}>
-                    {(doc, idx) => (
-                      <page-target
-                        attr:data-document-id={doc.id}
-                        attr:data-document-type={doc.type ?? undefined}
-                        attr:data-space-id={currentSpace()?.id}
-                        attr:data-document-url={spacePath(
-                          currentSpace()?.slug,
-                          `/doc/${doc.slug}`,
-                        )}
-                        class="group/row relative flex items-center hover:bg-neutral-50 [&[data-dragging]]:opacity-50"
-                        classList={{
-                          "border-neutral-100 border-t": idx() !== 0,
-                          "bg-primary-50 hover:bg-primary-50": selectedIds().has(doc.id),
-                        }}
-                      >
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the checkbox is the control. */}
-                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
-                        <div
-                          class="flex shrink-0 items-center self-stretch pl-3"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedIds().has(doc.id)}
-                            onClick={(event) => toggleSelect(doc.id, event)}
-                            class="h-3.5 w-3.5 cursor-pointer accent-primary-500 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
-                            classList={{ "!opacity-100": selectedIds().has(doc.id) }}
-                          />
-                        </div>
+                  <Show when={group.previews.length > 0}>
+                    {/* The inset lines the tiles up with the row icons below: pl-3 + checkbox + px-3. */}
+                    <FilePreviews
+                      class="mb-4 rounded-lg border border-neutral-100 px-[2.375rem] py-4"
+                      items={group.previews}
+                      selectedIds={selectedIds()}
+                      onToggleSelect={toggleSelect}
+                      expanded={expandedPreviews().has(group.id)}
+                      onExpand={() =>
+                        setExpandedPreviews(new Set(expandedPreviews()).add(group.id))
+                      }
+                    />
+                  </Show>
 
-                        <a
-                          href={
-                            doc.fileUrl ??
-                            spacePath(currentSpace()?.slug, `/doc/${doc.slug}`)
-                          }
-                          target={doc.fileUrl ? "_blank" : undefined}
-                          rel={doc.fileUrl ? "noopener noreferrer" : undefined}
-                          class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
-                        >
-                          <Icon
-                            class="h-4 w-4 shrink-0 text-neutral-300"
-                            name="document"
-                          />
+                  <Show when={group.docs.length > 0}>
+                    <div class="overflow-hidden rounded-lg border border-neutral-100">
+                      <For each={group.docs}>
+                        {(doc, idx) => (
+                          <page-target
+                            attr:data-document-id={doc.id}
+                            attr:data-document-type={doc.type ?? undefined}
+                            attr:data-space-id={currentSpace()?.id}
+                            attr:data-document-url={spacePath(
+                              currentSpace()?.slug,
+                              `/doc/${doc.slug}`,
+                            )}
+                            class="group/row relative flex items-center hover:bg-neutral-50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-primary-500 has-[a:focus-visible]:ring-inset [&[data-dragging]]:opacity-50"
+                            classList={{
+                              "border-neutral-100 border-t": idx() !== 0,
+                              "bg-primary-50 hover:bg-primary-50": selectedIds().has(
+                                doc.id,
+                              ),
+                            }}
+                          >
+                            {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the checkbox is the control. */}
+                            {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
+                            <div
+                              class="flex shrink-0 items-center self-stretch pl-3"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIds().has(doc.id)}
+                                onClick={(event) => toggleSelect(doc.id, event)}
+                                tabindex={-1}
+                                class="h-3.5 w-3.5 cursor-pointer accent-primary-500 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
+                                classList={{ "!opacity-100": selectedIds().has(doc.id) }}
+                              />
+                            </div>
 
-                          <div class="min-w-0 flex-1">
-                            <p class="truncate font-medium text-neutral-800 text-size-medium">
-                              {docTitle(doc)}
-                            </p>
-                            <p class="truncate text-neutral-400 text-size-extra-small">
+                            <a
+                              href={
+                                doc.fileUrl ??
+                                spacePath(currentSpace()?.slug, `/doc/${doc.slug}`)
+                              }
+                              target={doc.fileUrl ? "_blank" : undefined}
+                              rel={doc.fileUrl ? "noopener noreferrer" : undefined}
+                              // The ring is on the row, so that it takes in the
+                              // checkbox the tab stop stands in for.
+                              class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 focus-visible:outline-none"
+                              onKeyDown={(event) => {
+                                // The row's one focus stop answers both keys: Enter
+                                // for the checkbox it no longer reaches by tab, Space
+                                // for the link, in place of scrolling the page.
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  toggleSelect(doc.id, event);
+                                  return;
+                                }
+                                if (event.key !== " ") return;
+                                event.preventDefault();
+                                window.open(
+                                  event.currentTarget.href,
+                                  "_blank",
+                                  "noopener",
+                                );
+                              }}
+                            >
+                              <Icon
+                                class="h-4 w-4 shrink-0 text-neutral-300"
+                                name="document"
+                              />
+
+                              <div class="min-w-0 flex-1">
+                                <p class="truncate font-medium text-neutral-800 text-size-medium">
+                                  {docTitle(doc)}
+                                </p>
+                                {/* The category is the chip on the right; repeating it here read as two different values. */}
+                                <p class="truncate text-neutral-400 text-size-extra-small capitalize">
+                                  {doc.type || t("Document")}
+                                </p>
+                                <Show when={doc.snippet}>
+                                  {(snippet) => (
+                                    <SearchSnippet html={snippet()} class="mt-1" />
+                                  )}
+                                </Show>
+                              </div>
+
                               <Show when={docCategoryName(doc)}>
-                                <span>{docCategoryName(doc)} • </span>
+                                <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 text-size-extra-small">
+                                  {docCategoryName(doc)}
+                                </span>
                               </Show>
-                              <span class="capitalize">{doc.type || t("Document")}</span>
-                            </p>
-                            <Show when={doc.snippet}>
-                              {(snippet) => (
-                                <SearchSnippet html={snippet()} class="mt-1" />
-                              )}
-                            </Show>
-                          </div>
 
-                          <Show when={docCategoryName(doc)}>
-                            <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 text-size-extra-small">
-                              {docCategoryName(doc)}
-                            </span>
-                          </Show>
+                              <span class="w-20 shrink-0 text-right text-neutral-400 text-size-extra-small tabular-nums">
+                                {formatDate(doc.updatedAt)}
+                              </span>
+                            </a>
 
-                          <span class="w-20 shrink-0 text-right text-neutral-400 text-size-extra-small tabular-nums">
-                            {formatDate(doc.updatedAt)}
-                          </span>
-                        </a>
-
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the actions are the controls. */}
-                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
-                        <div
-                          class="flex shrink-0 items-center gap-1 pr-3 opacity-0 transition-opacity group-hover/row:opacity-100"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {props.rowActions?.(doc)}
-                        </div>
-                      </page-target>
-                    )}
-                  </For>
+                            {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the actions are the controls. */}
+                            {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
+                            <div
+                              class="flex shrink-0 items-center gap-1 pr-3 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {props.rowActions?.(doc)}
+                            </div>
+                          </page-target>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
                 </a-expandable>
               </div>
             )}

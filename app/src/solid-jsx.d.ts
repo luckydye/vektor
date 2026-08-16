@@ -104,6 +104,7 @@ declare module "solid-js" {
       "a-list": CustomElementAttributes;
       "a-calendar": CustomElementAttributes;
       "a-expandable": CustomElementAttributes;
+      "a-lightbox": CustomElementAttributes;
       "a-track": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
       "a-popover-trigger": CustomElementAttributes;

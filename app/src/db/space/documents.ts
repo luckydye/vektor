@@ -563,15 +563,24 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
   const diskFiles = await storage.list(s.spaceId);
   if (diskFiles.length === 0) return;
 
-  const indexed = new Set(
-    (await many(s.db.select({ path: fileTable.path }).from(fileTable))).map(
-      (r) => r.path,
-    ),
+  const indexed = new Map(
+    (
+      await many(
+        s.db.select({ path: fileTable.path, size: fileTable.size }).from(fileTable),
+      )
+    ).map((r) => [r.path, r.size] as const),
   );
 
   const toIndex = diskFiles.filter((f) => !indexed.has(f.key)).slice(0, 200);
 
-  for (const { key, updatedAt } of toIndex) {
+  // Rows indexed before the column existed, filled from the listing just read.
+  // Capped like the insert below, so a large space converges over a few calls.
+  const toSize = diskFiles.filter((f) => indexed.get(f.key) === null).slice(0, 200);
+  for (const { key, size } of toSize) {
+    await s.db.update(fileTable).set({ size }).where(eq(fileTable.path, key));
+  }
+
+  for (const { key, size, updatedAt } of toIndex) {
     const buf = await storage.read(s.spaceId, key);
     if (!buf) continue;
     const name = key.split("/").pop() ?? key;
@@ -584,6 +593,7 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
         documentId: null,
         originalName: name,
         mimeType: null,
+        size,
         url,
         updatedAt,
         extractedText: extracted,
