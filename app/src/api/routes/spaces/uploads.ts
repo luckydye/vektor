@@ -1,19 +1,23 @@
 import { createHash } from "node:crypto";
-import { authenticateJobTokenOrSpaceRole, verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import {
+  authenticateJobTokenOrSpaceRole,
+  authenticateSpaceAccess,
+  spaceAccessToViewer,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   errorResponse,
   jsonResponse,
   parseFormBody,
   requireParam,
-  requireUser,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
+import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
@@ -26,14 +30,34 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const user = requireUser(context);
-      await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+      // Attachments belong to their documents, so a caller reaching this space
+      // only through a document/tree/category grant lists the ones they were
+      // granted rather than nothing at all. Every row is filtered against that
+      // scope below.
+      const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
+        allowResourceGrants: true,
+      });
 
       const storage = getFileStorage();
       const files = await storage.list(spaceId);
 
+      const parentIds = await getFileDocumentIds(
+        await openSpaceStore(spaceId),
+        files.map((f) => f.key),
+      );
+      const visible = await filterAccessibleFiles(
+        spaceId,
+        files.map((f) => ({ ...f, documentId: parentIds.get(f.key) ?? null })),
+        spaceAccessToViewer(access),
+      );
+
       return jsonResponse(
-        { files: files.map((f) => ({ ...f, url: storage.url(spaceId, f.key) })) },
+        {
+          files: visible.map(({ documentId, ...f }) => ({
+            ...f,
+            url: storage.url(spaceId, f.key),
+          })),
+        },
         200,
       );
     },
@@ -50,12 +74,14 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const auth = await authenticateJobTokenOrSpaceRole(
-        context,
-        spaceId,
-        Permission.EDITOR,
-      );
-      const isJobAuth = auth.type === "job";
+
+      // Two passes. The document an upload attaches to is in the body, so the
+      // real gate can only run once that is parsed; this first one keeps a
+      // caller with no editor reach into the space at all from streaming a
+      // gigabyte into the parser.
+      await authenticateSpaceAccess(context, spaceId, Permission.EDITOR, {
+        allowResourceGrants: true,
+      });
 
       // Parse the form data
       const formData = await parseFormBody(context.req.raw);
@@ -73,6 +99,19 @@ export const POST: ApiRouteHandler = (context) =>
       if (documentId !== null && !isSafeUploadIdPart(documentId)) {
         return badRequestResponse("Invalid documentId");
       }
+
+      // Editor on the document the file is being attached to — a
+      // document/tree/category grantee may attach to what they were granted,
+      // and only a space-wide editor may add an upload that belongs to no
+      // document. A space role still resolves through the document, so this
+      // does not narrow anyone's reach.
+      const auth = await authenticateJobTokenOrSpaceRole(
+        context,
+        spaceId,
+        Permission.EDITOR,
+        documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,
+      );
+      const isJobAuth = auth.type === "job";
 
       // Validate file size (user uploads only; job uploads are trusted)
       if (!isJobAuth && file.size > MAX_FILE_SIZE) {

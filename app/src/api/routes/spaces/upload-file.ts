@@ -3,12 +3,18 @@ import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
-import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import {
+  authenticateDocumentAccess,
+  authenticateJobTokenOrSpaceRole,
+  authenticateSpaceAccess,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
+import { getFileDocumentId } from "#db/space/files.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
@@ -48,17 +54,40 @@ const MIME_TYPES: Record<string, string> = {
   obj: "model/obj",
 };
 
+/**
+ * The document an upload key hangs off, which is what authorizes it.
+ *
+ * The parent is what makes an attachment reachable: a document shared publicly
+ * has to serve its images to anonymous readers, a document/tree/category
+ * grantee has to reach the attachments of what they were granted, and an
+ * archived document's attachments have to go out of reach with it — all three
+ * of which a bare space role gets wrong. `null` (a standalone upload, or a key
+ * the index does not know — a workflow artifact, say) keeps the space check.
+ */
+async function uploadKeyDocumentId(
+  spaceId: string,
+  path: string,
+): Promise<string | null> {
+  return await getFileDocumentId(await openSpaceStore(spaceId), path);
+}
+
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const path = requireParam(context.var.params, "path");
 
-      await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
-
-      // Security: Validate path to prevent traversal and malformed paths
+      // Security: Validate path to prevent traversal and malformed paths.
+      // Ahead of the ACL lookup, which takes the key as a literal.
       if (!isSafeUploadPath(path)) {
         return new Response("Invalid path", { status: 400 });
+      }
+
+      const documentId = await uploadKeyDocumentId(spaceId, path);
+      if (documentId) {
+        await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
+      } else {
+        await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
       }
 
       // Get file extension from the path
@@ -179,11 +208,19 @@ export const DELETE: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
       const path = requireParam(context.var.params, "path");
 
-      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
-
       if (!isSafeUploadPath(path)) {
         return new Response("Invalid path", { status: 400 });
       }
+
+      // Editor on the attachment's document, so the editor of a shared document
+      // can clean up its files without a space-wide role.
+      const documentId = await uploadKeyDocumentId(spaceId, path);
+      await authenticateJobTokenOrSpaceRole(
+        context,
+        spaceId,
+        Permission.EDITOR,
+        documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,
+      );
 
       // Remove from storage (idempotent) and drop the ephemeral index row
       await getFileStorage().delete(spaceId, path);

@@ -130,6 +130,61 @@ export async function authenticateJobTokenOrSpaceRole(
 }
 
 /**
+ * Authorize a request against one document, whichever credential it carries —
+ * the document-scoped sibling of {@link authenticateJobTokenOrSpaceRole},
+ * extended with the unauthenticated case.
+ *
+ * Use it wherever the resource being gated belongs to a document rather than to
+ * the space: an attachment is part of the document it was uploaded to, so a
+ * document shared with the `public` group has to serve its images to anonymous
+ * readers, and a document/tree/category grantee holding no space role has to
+ * reach the attachments of the documents they were granted. A space-wide role
+ * still resolves through the document (see `getDocumentPermission`), so this is
+ * a superset of the space check it replaces, not a different audience.
+ *
+ * Returns the caller's ACL identity in the {@link SpaceAccess.aclUserId}
+ * convention: `null` is a trusted system caller, `""` is public.
+ */
+export async function authenticateDocumentAccess(
+  context: ApiContext,
+  spaceId: string,
+  documentId: string,
+  requiredRole: Permission,
+): Promise<{ aclUserId: string | null }> {
+  const jobToken = context.req.raw.headers.get("X-Job-Token");
+  if (jobToken) {
+    const parsed = parseJobToken(jobToken, spaceId);
+    if (!parsed) throw forbiddenResponse("Invalid job token");
+    // A token carrying a user id only grants that user's real access; only
+    // user-less system tokens read without a per-document check.
+    if (parsed.userId) {
+      await verifyDocumentRole(spaceId, documentId, parsed.userId, requiredRole);
+    }
+    return { aclUserId: parsed.userId };
+  }
+
+  const auth = await tryAuthenticateRequest(context, spaceId);
+  if (auth?.type === "token") {
+    await verifyTokenPermission(
+      auth.token,
+      spaceId,
+      ResourceType.DOCUMENT,
+      documentId,
+      requiredRole,
+    );
+    return { aclUserId: getTokenUserId(auth.token.tokenId) };
+  }
+  if (auth?.type === "user") {
+    await verifyDocumentRole(spaceId, documentId, auth.user.id, requiredRole);
+    return { aclUserId: auth.user.id };
+  }
+
+  // Unauthenticated — verifyDocumentRole handles the `public` group.
+  await verifyDocumentRole(spaceId, documentId, null, requiredRole);
+  return { aclUserId: "" };
+}
+
+/**
  * Result of {@link authenticateSpaceAccess}.
  */
 export interface SpaceAccess {
@@ -176,9 +231,11 @@ export interface SpaceAccessOptions {
    * Admit a caller who holds no space-wide role but does hold a
    * document/tree/category grant in the space, confining them to the documents
    * those grants reach (`documentScope` on the result). Only for endpoints that
-   * list documents — a scoped grantee has to be able to browse to the documents
-   * they were shared. Endpoints exposing space-wide collections (members,
-   * uploads, integrations) must leave it off.
+   * list documents, or things owned by documents, and then filter every row
+   * against that scope — a scoped grantee has to be able to browse to the
+   * documents they were shared, and to their attachments. Endpoints exposing
+   * space-wide collections that cannot be filtered per document (members,
+   * integrations) must leave it off.
    */
   allowResourceGrants?: boolean;
 }
@@ -407,7 +464,7 @@ export async function verifySpaceRole(
  * somewhere in the space — they need to be able to reach the space
  * container their resource lives in. Only use this for endpoints that
  * expose bare space metadata; endpoints that list space-wide collections
- * (members, uploads, integrations, etc.) must keep using `verifySpaceRole`
+ * (members, integrations, etc.) must keep using `verifySpaceRole`
  * directly so resource-scoped grantees aren't handed unrelated data.
  */
 export async function verifyResourceAccess(
