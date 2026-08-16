@@ -132,15 +132,8 @@ export async function authenticateJobTokenOrSpaceRole(
 /**
  * Authorize a request against one document, whichever credential it carries —
  * the document-scoped sibling of {@link authenticateJobTokenOrSpaceRole},
- * extended with the unauthenticated case.
- *
- * Use it wherever the resource being gated belongs to a document rather than to
- * the space: an attachment is part of the document it was uploaded to, so a
- * document shared with the `public` group has to serve its images to anonymous
- * readers, and a document/tree/category grantee holding no space role has to
- * reach the attachments of the documents they were granted. A space-wide role
- * still resolves through the document (see `getDocumentPermission`), so this is
- * a superset of the space check it replaces, not a different audience.
+ * extended with the unauthenticated case. For a resource that belongs to a
+ * document rather than to the space, an attachment above all.
  *
  * Returns the caller's ACL identity in the {@link SpaceAccess.aclUserId}
  * convention: `null` is a trusted system caller, `""` is public.
@@ -155,8 +148,7 @@ export async function authenticateDocumentAccess(
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");
-    // A token carrying a user id only grants that user's real access; only
-    // user-less system tokens read without a per-document check.
+    // Only user-less system tokens read without a per-document check.
     if (parsed.userId) {
       await verifyDocumentRole(spaceId, documentId, parsed.userId, requiredRole);
     }
@@ -232,10 +224,8 @@ export interface SpaceAccessOptions {
    * document/tree/category grant in the space, confining them to the documents
    * those grants reach (`documentScope` on the result). Only for endpoints that
    * list documents, or things owned by documents, and then filter every row
-   * against that scope — a scoped grantee has to be able to browse to the
-   * documents they were shared, and to their attachments. Endpoints exposing
-   * space-wide collections that cannot be filtered per document (members,
-   * integrations) must leave it off.
+   * against that scope. Endpoints exposing space-wide collections that cannot
+   * be filtered per document (members, integrations) must leave it off.
    */
   allowResourceGrants?: boolean;
 }

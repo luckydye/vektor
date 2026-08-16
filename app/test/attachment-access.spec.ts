@@ -1,10 +1,8 @@
 /**
  * An attachment is part of the document it was uploaded to, so the document —
- * not a space-wide role — decides who may read it. Two audiences that a bare
- * space check gets wrong: an anonymous reader of a publicly shared document
- * (whose images would otherwise render broken), and a document/tree/category
- * grantee holding no space role (who would otherwise be locked out of the
- * attachments of what they were shared).
+ * not a space-wide role — decides who may read it. The two audiences a bare
+ * space check gets wrong: an anonymous reader of a publicly shared document,
+ * and a document/tree/category grantee holding no space role.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -42,7 +40,6 @@ async function createDocument(title: string): Promise<string> {
   return (await response.json()).document.id;
 }
 
-/** Upload `body` as an attachment, optionally scoped to a document. */
 async function upload(
   token: string | null,
   content: string,
@@ -56,14 +53,13 @@ async function upload(
 
   return fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
     method: "POST",
-    // FormData sets its own multipart Content-Type, so this bypasses the JSON
-    // request helpers.
+    // FormData sets its own multipart Content-Type, so this bypasses the JSON helpers.
     headers: token ? { Cookie: `vektor.session_token=${token}` } : {},
     body: form,
   });
 }
 
-/** Upload as the owner and return the served URL of the stored file. */
+/** Upload as the owner and return the stored file's URL. */
 async function ownerUpload(content: string, documentId?: string): Promise<string> {
   const response = await upload(ownerToken, content, "note.txt", documentId);
   if (!response.ok) {
@@ -192,9 +188,7 @@ describe("attachments of a publicly shared document", () => {
     );
     expect(archived.status).toBe(200);
 
-    // Archive raises the bar to `editor`, for the attachment as for the
-    // document itself — a viewer-level share stops resolving without being
-    // revoked.
+    // Archive raises the bar to `editor` for the attachment as for the document.
     expect((await fetch(`${BASE_URL}${url}`)).status).toBe(401);
     const asSpaceViewer = await apiRequest(url, spaceViewerToken);
     expect(asSpaceViewer.status).toBe(403);
@@ -251,8 +245,7 @@ describe("attachments for a document-scoped grantee", () => {
     expect([401, 403]).toContain(served.status);
     expect(await served.text()).not.toContain("OUTSIDER DENIED");
 
-    // A caller with nothing of their own still reaches whatever the space
-    // shared with `public` — and nothing else, this file included.
+    // Whatever was shared with `public`, and nothing else — this file included.
     expect(await listUploads(outsiderToken)).not.toContain(url);
 
     const posted = await upload(outsiderToken, "OUTSIDER UPLOAD", "nope.txt", documentId);
@@ -269,8 +262,7 @@ describe("space-wide uploads", () => {
     expect(await asViewer.text()).toBe("LOOSE UPLOAD");
 
     expect(await listUploads(spaceViewerToken)).toContain(url);
-    // A grantee reaches the space through one document, which this file is not
-    // part of.
+    // A grantee reaches the space through one document, not this file.
     expect(await listUploads(scopedToken)).not.toContain(url);
   });
 });

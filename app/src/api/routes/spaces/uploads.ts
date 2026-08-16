@@ -30,10 +30,8 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      // Attachments belong to their documents, so a caller reaching this space
-      // only through a document/tree/category grant lists the ones they were
-      // granted rather than nothing at all. Every row is filtered against that
-      // scope below.
+      // Admitted on a resource grant alone, since every row is then filtered
+      // against the documents it reaches.
       const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
         allowResourceGrants: true,
       });
@@ -75,10 +73,9 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      // Two passes. The document an upload attaches to is in the body, so the
-      // real gate can only run once that is parsed; this first one keeps a
-      // caller with no editor reach into the space at all from streaming a
-      // gigabyte into the parser.
+      // The real gate is below, on the document the body names. This one runs
+      // first so a caller with no editor reach into the space at all cannot
+      // stream a gigabyte into the parser.
       await authenticateSpaceAccess(context, spaceId, Permission.EDITOR, {
         allowResourceGrants: true,
       });
@@ -100,11 +97,8 @@ export const POST: ApiRouteHandler = (context) =>
         return badRequestResponse("Invalid documentId");
       }
 
-      // Editor on the document the file is being attached to — a
-      // document/tree/category grantee may attach to what they were granted,
-      // and only a space-wide editor may add an upload that belongs to no
-      // document. A space role still resolves through the document, so this
-      // does not narrow anyone's reach.
+      // Editor on the document being attached to, or on the space itself for
+      // an upload that belongs to no document.
       const auth = await authenticateJobTokenOrSpaceRole(
         context,
         spaceId,

@@ -2,8 +2,7 @@
  * The upload index: which document each stored file belongs to.
  *
  * An attachment is not a resource of its own — it is part of the document it
- * was uploaded to, and that document decides who may read it. Every gate on an
- * upload key therefore starts by resolving its parent here.
+ * was uploaded to, and that document decides who may read it.
  */
 
 import { eq, inArray } from "drizzle-orm";
@@ -17,11 +16,9 @@ import { file as fileTable } from "#db/schema/space.ts";
 const ID_CHUNK = 500;
 
 /**
- * The document an upload is attached to, or `null` for a standalone upload.
- *
- * A key with no index row resolves to `null` as well, which is the same answer
- * as far as access goes: it belongs to no document, so only a space-wide role
- * reaches it.
+ * The document an upload is attached to. A standalone upload and a key with no
+ * index row both answer `null`, which is the same thing as far as access goes:
+ * it belongs to no document, so only a space-wide role reaches it.
  */
 export async function getFileDocumentId(
   s: SpaceStore,
@@ -36,10 +33,7 @@ export async function getFileDocumentId(
   return row?.documentId ?? null;
 }
 
-/**
- * The parent document of each of `paths`, in one pass. Keys the index does not
- * know about are absent from the map; read them as `null` (see above).
- */
+/** As above for many keys at once. Keys the index does not know are absent. */
 export async function getFileDocumentIds(
   s: SpaceStore,
   paths: string[],
@@ -61,8 +55,7 @@ export async function getFileDocumentIds(
 
 /**
  * Keep only the files `viewer` may read, each authorized through the document
- * it is attached to. A `null` viewer is a trusted system caller and sees all of
- * them.
+ * it is attached to. A `null` viewer is a trusted system caller.
  */
 export async function filterAccessibleFiles<T extends { documentId: string | null }>(
   spaceId: string,

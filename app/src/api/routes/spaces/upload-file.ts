@@ -55,14 +55,10 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
- * The document an upload key hangs off, which is what authorizes it.
- *
- * The parent is what makes an attachment reachable: a document shared publicly
- * has to serve its images to anonymous readers, a document/tree/category
- * grantee has to reach the attachments of what they were granted, and an
- * archived document's attachments have to go out of reach with it — all three
- * of which a bare space role gets wrong. `null` (a standalone upload, or a key
- * the index does not know — a workflow artifact, say) keeps the space check.
+ * The document an upload hangs off, which is what authorizes it: a public
+ * share, a resource grant and an archive all reach the file through its
+ * document and not through a space role. `null` — a standalone upload, or a
+ * key the index does not know, like a workflow artifact — keeps the space check.
  */
 async function uploadKeyDocumentId(
   spaceId: string,
@@ -77,8 +73,7 @@ export const GET: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
       const path = requireParam(context.var.params, "path");
 
-      // Security: Validate path to prevent traversal and malformed paths.
-      // Ahead of the ACL lookup, which takes the key as a literal.
+      // Security: Validate path to prevent traversal and malformed paths
       if (!isSafeUploadPath(path)) {
         return new Response("Invalid path", { status: 400 });
       }
@@ -212,8 +207,6 @@ export const DELETE: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      // Editor on the attachment's document, so the editor of a shared document
-      // can clean up its files without a space-wide role.
       const documentId = await uploadKeyDocumentId(spaceId, path);
       await authenticateJobTokenOrSpaceRole(
         context,
