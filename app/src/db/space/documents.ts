@@ -36,6 +36,7 @@ import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
+import { filterAccessibleFiles } from "./files.ts";
 import { decompressHtml } from "./revisions.ts";
 import {
   type DocumentWithProperties,
@@ -765,32 +766,11 @@ export async function listDocuments(
   if (type === "file" || (includeFiles && !type)) {
     await syncFileIndex(s).catch(() => {});
 
-    let visibleFiles = await many(
-      s.db.select().from(fileTable).orderBy(desc(fileTable.updatedAt)),
+    const visibleFiles = await filterAccessibleFiles(
+      s.spaceId,
+      await many(s.db.select().from(fileTable).orderBy(desc(fileTable.updatedAt))),
+      viewer,
     );
-
-    if (viewer) {
-      const parentDocumentIds = [
-        ...new Set(
-          visibleFiles
-            .map((file) => file.documentId)
-            .filter((documentId): documentId is string => documentId !== null),
-        ),
-      ];
-      const readableParentIds = await filterReadableResources(
-        s.spaceId,
-        ResourceType.DOCUMENT,
-        parentDocumentIds,
-        viewer,
-      );
-      visibleFiles = visibleFiles.filter((file) =>
-        file.documentId === null
-          ? // A file attached to no document is a space-wide upload, readable
-            // by anyone in the space but not reachable through any one grant.
-            !viewer.documentScope
-          : readableParentIds.has(file.documentId),
-      );
-    }
 
     const fileResults = visibleFiles.map(fileRowToDocument);
 

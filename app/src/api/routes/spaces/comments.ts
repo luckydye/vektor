@@ -1,5 +1,9 @@
 import { inArray } from "drizzle-orm";
-import { verifyDocumentAccess, verifyFeatureAccess } from "#acl/guards.ts";
+import {
+  authenticateDocumentAccess,
+  verifyDocumentAccess,
+  verifyFeatureAccess,
+} from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, hasPermission } from "#acl/store.ts";
 import {
@@ -33,7 +37,6 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = context.var.user;
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = new URL(context.req.url).searchParams.get("documentId");
 
@@ -41,8 +44,9 @@ export const GET: ApiRouteHandler = (context) =>
       throw badRequestResponse("documentId is required");
     }
 
-    // Allow viewing comments if user has access to document (including public docs)
-    await verifyDocumentAccess(spaceId, documentId, user?.id || null);
+    // Whoever may read the document may read its comments — a public reader
+    // and a job or access token included.
+    await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
 
     const store = await openSpaceStore(spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);
