@@ -32,6 +32,7 @@ import {
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
@@ -40,16 +41,9 @@ import {
   type DocumentWithProperties,
   fileRowToDocument,
   nonArchivedDocumentCondition,
-  scheduleDocumentSearchRefresh,
 } from "./search.ts";
 
-export type {
-  DocumentWithProperties,
-  FileRow,
-  PropertyFilter,
-  SearchResult,
-} from "./search.ts";
-export { rebuildSearchIndex, searchDocuments } from "./search.ts";
+export type { DocumentWithProperties } from "./search.ts";
 
 const archivedDocumentCondition = sql`
   (

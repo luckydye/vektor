@@ -1,6 +1,10 @@
+/**
+ * The database side of search: the rows, the index columns behind them, and
+ * filtering and paging the results. What matches and how it ranks is decided in
+ * `#search/ranking.ts`, what goes into the index in `#search/indexing.ts`.
+ */
+
 import { eq, inArray, sql } from "drizzle-orm";
-import { ResourceType } from "#acl/permissions.ts";
-import { listAccessibleResources } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
@@ -11,27 +15,14 @@ import {
   readDocumentProperty,
   toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
-import { appLogger } from "#observability/logger.ts";
-import {
-  buildDocumentSearchText,
-  embedText,
-  parseEmbedding,
-  serializeEmbedding,
-} from "#search/embedding.ts";
-import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
-import {
-  buildSearchSnippet,
-  cosineSimilarity,
-  MIN_SEMANTIC_SIMILARITY,
-  SEMANTIC_RANKING_WEIGHT,
-  scoreKeywordOverlap,
-  scoreToRank,
-} from "#search/ranking.ts";
+import { embedSearchQuery } from "#search/embedding.ts";
+import { rankKeywordMatch, rankSearchCandidates } from "#search/ranking.ts";
 
 // ---------------------------------------------------------------------------
 // SQL helpers shared with documents.ts
 // ---------------------------------------------------------------------------
 
+/** `archived` is loosely typed in stored data: `0`, `'0'`, `'0.0'`, NULL, FALSE. */
 export const nonArchivedDocumentCondition = sql`
   (
     ${document.archived} = 0
@@ -42,6 +33,7 @@ export const nonArchivedDocumentCondition = sql`
   )
 `;
 
+/** The same, for a raw `sql` selection with no column object. */
 export function nonArchivedColumnCondition(column: string) {
   return sql.raw(
     `(${column} = 0 OR ${column} = '0' OR ${column} = '0.0' OR ${column} IS NULL OR ${column} = FALSE)`,
@@ -119,100 +111,114 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
 }
 
 // ---------------------------------------------------------------------------
-// Document embedding
+// Search index rows
 // ---------------------------------------------------------------------------
 
-export async function updateDocumentEmbedding(
+export interface DocumentIndexSource {
+  content: string;
+  properties: (typeof property.$inferSelect)[];
+  files: FileRow[];
+}
+
+export interface DocumentIndex {
+  searchText: string;
+  searchEmbedding: string;
+  searchEmbeddingModel: string;
+  searchUpdatedAt: Date;
+}
+
+/**
+ * The type on its own, so a canvas — never indexed, content up to tens of
+ * megabytes — is skipped before `readDocumentIndexSource` loads that column.
+ */
+export async function readDocumentType(
   s: SpaceStore,
   documentId: string,
-): Promise<void> {
-  // Check the type without loading `content` — canvases (which can be tens of
-  // MB) are never embedded, so pulling the content column here just to bail out
-  // wasted memory on every canvas save.
-  const meta = await one(
-    s.db
-      .select({ type: document.type })
-      .from(document)
-      .where(eq(document.id, documentId)),
+): Promise<{ type: string | null } | null> {
+  return (
+    (await one(
+      s.db
+        .select({ type: document.type })
+        .from(document)
+        .where(eq(document.id, documentId)),
+    )) ?? null
   );
+}
 
-  if (!meta) {
-    return;
-  }
-
-  if (meta.type === "canvas") {
-    await s.db
-      .update(document)
-      .set({
-        searchText: null,
-        searchEmbedding: null,
-        searchEmbeddingModel: null,
-        searchUpdatedAt: null,
-      })
-      .where(eq(document.id, documentId));
-    return;
-  }
-
+/** Everything a document is indexed from: its content, properties and files. */
+export async function readDocumentIndexSource(
+  s: SpaceStore,
+  documentId: string,
+): Promise<DocumentIndexSource | null> {
   const doc = await one(s.db.select().from(document).where(eq(document.id, documentId)));
 
   if (!doc) {
-    return;
+    return null;
   }
 
-  const props = await many(
-    s.db.select().from(property).where(eq(property.documentId, documentId)),
-  );
+  return {
+    content: doc.content,
+    properties: await many(
+      s.db.select().from(property).where(eq(property.documentId, documentId)),
+    ),
+    files: await many(
+      s.db.select().from(fileTable).where(eq(fileTable.documentId, documentId)),
+    ),
+  };
+}
 
-  const attachedFiles = await many(
-    s.db.select().from(fileTable).where(eq(fileTable.documentId, documentId)),
-  );
-  const fileTexts = attachedFiles.map((f) =>
-    f.extractedText
-      ? `[${f.originalName ?? f.path}]\n${f.extractedText}`
-      : `[${f.originalName ?? f.path}]`,
-  );
+export async function writeDocumentIndex(
+  s: SpaceStore,
+  documentId: string,
+  index: DocumentIndex,
+): Promise<void> {
+  await s.db.update(document).set(index).where(eq(document.id, documentId));
+}
 
-  const properties = Object.fromEntries(props.map((item) => [item.key, item.value]));
-  const fileText = fileTexts.join("\n\n");
-  const searchText = buildDocumentSearchText(
-    doc.content,
-    properties,
-    fileText || undefined,
-  );
-  const searchEmbedding = serializeEmbedding(await embedText(searchText));
-  const searchEmbeddingModel = getEmbeddingModel();
-
+export async function clearDocumentIndex(
+  s: SpaceStore,
+  documentId: string,
+): Promise<void> {
   await s.db
     .update(document)
     .set({
-      searchText,
-      searchEmbedding,
-      searchEmbeddingModel,
-      searchUpdatedAt: new Date(),
+      searchText: null,
+      searchEmbedding: null,
+      searchEmbeddingModel: null,
+      searchUpdatedAt: null,
     })
     .where(eq(document.id, documentId));
 }
 
-/** Start a search refresh without delaying or failing the document write. */
-export function scheduleDocumentSearchRefresh(s: SpaceStore, documentId: string): void {
-  void updateDocumentEmbedding(s, documentId).catch((error) => {
-    appLogger.warn("Failed to refresh document search", {
-      error,
-      spaceId: s.spaceId,
-      documentId,
-    });
-  });
+/** Documents that can carry an index — everything except canvases. */
+export async function readIndexableDocumentIds(s: SpaceStore): Promise<string[]> {
+  const rows = await many(
+    s.db
+      .select({ id: document.id })
+      .from(document)
+      .where(sql`(${document.type} IS NULL OR ${document.type} != 'canvas')`),
+  );
+
+  return rows.map((row) => row.id);
 }
 
-export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
-  const docs = await many(s.db.select().from(document));
+/** Documents whose index is missing, from another model, or out of date. */
+export async function readStaleIndexDocumentIds(
+  s: SpaceStore,
+  embeddingModel: string,
+): Promise<string[]> {
+  const rows = await many(
+    s.db
+      .select({ id: document.id })
+      .from(document)
+      .where(
+        sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)
+        AND (type IS NULL OR type != 'canvas')
+        AND ${nonArchivedDocumentCondition}`,
+      ),
+  );
 
-  for (const doc of docs) {
-    if (doc.type === "canvas") {
-      continue;
-    }
-    await updateDocumentEmbedding(s, doc.id);
-  }
+  return rows.map((row) => row.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -284,9 +290,14 @@ async function readDocuments(
   return byId;
 }
 
+/**
+ * Documents matching `query` and `filters`, ranked and paged. `docIds` is the
+ * caller's readable set, or null for an unrestricted view. Reads the index as
+ * it stands; callers refresh it first through `#search/indexing.ts`.
+ */
 export async function searchDocuments(
   s: SpaceStore,
-  userId: string | null,
+  docIds: string[] | null,
   query: string,
   limit = 20,
   cursor?: string,
@@ -295,38 +306,8 @@ export async function searchDocuments(
   const hasQuery = query.trim().length > 0;
   const hasFilters = filters.length > 0;
 
-  if (!hasQuery && !hasFilters) {
+  if ((!hasQuery && !hasFilters) || docIds?.length === 0) {
     return { results: [], nextCursor: null };
-  }
-
-  let docIds: string[] | null = null;
-  if (userId !== null) {
-    docIds = await listAccessibleResources(s.spaceId, userId, ResourceType.DOCUMENT);
-    if (docIds !== null && docIds.length === 0) {
-      return { results: [], nextCursor: null };
-    }
-  }
-
-  if (hasQuery) {
-    const embeddingModel = getEmbeddingModel();
-    try {
-      const missingEmbeddings = await many(
-        s.db
-          .select({ id: document.id })
-          .from(document)
-          .where(
-            sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)
-            AND (type IS NULL OR type != 'canvas')
-            AND ${nonArchivedDocumentCondition}`,
-          ),
-      );
-
-      for (const row of missingEmbeddings) {
-        await updateDocumentEmbedding(s, row.id);
-      }
-    } catch {
-      // Embedding service unavailable — skip catch-up indexing, fall back to keyword search
-    }
   }
 
   const typeFilters = filters.filter((f) => f.key === "type");
@@ -385,32 +366,26 @@ export async function searchDocuments(
   }[];
 
   if (hasQuery) {
-    const embeddingModel = getEmbeddingModel();
-    let queryEmbedding: number[] | null = null;
-    try {
-      queryEmbedding = await embedText(query.trim());
-    } catch {
-      // Embedding service unavailable — fall back to keyword-only search
-    }
-
-    const candidates = await s.db.all<{
-      id: string;
-      slug: string;
-      type: string | null;
-      content: string;
-      title: string | null;
-      searchText: string | null;
-      searchEmbedding: string | null;
-      searchEmbeddingModel: string | null;
-      userId: string;
-      parentId: string | null;
-      currentRev: number;
-      publishedRev: number | null;
-      readonly: boolean;
-      archived: boolean;
-      createdAt: string | number;
-      updatedAt: string | number;
-    }>(sql`
+    // The vector and the rows are independent; embedding is native compute.
+    const [candidates, queryEmbedding] = await Promise.all([
+      s.db.all<{
+        id: string;
+        slug: string;
+        type: string | null;
+        content: string;
+        title: string | null;
+        searchText: string | null;
+        searchEmbedding: string | null;
+        searchEmbeddingModel: string | null;
+        userId: string;
+        parentId: string | null;
+        currentRev: number;
+        publishedRev: number | null;
+        readonly: boolean;
+        archived: boolean;
+        createdAt: string | number;
+        updatedAt: string | number;
+      }>(sql`
       SELECT
         d.id,
         d.slug,
@@ -431,64 +406,32 @@ export async function searchDocuments(
       FROM document d
       LEFT JOIN property title ON title.document_id = d.id AND title.key = 'title'
       WHERE ${nonArchivedColumnCondition("d.archived")}
-    `);
+    `),
+      embedSearchQuery(query),
+    ]);
 
-    const ranked = candidates
-      .map((candidate) => {
-        // Read the title directly as well as from the cached search text. The
-        // latter is updated asynchronously after a title edit and may also be
-        // unavailable when the embedding runtime cannot index a document.
-        const title = candidate.title
+    const ranked = rankSearchCandidates(
+      query,
+      queryEmbedding,
+      candidates.map((candidate) => ({
+        ...candidate,
+        title: candidate.title
           ? propertyValueToText(parseStoredPropertyValue(candidate.title))
-          : "";
-        const textForScoring = [title, candidate.searchText ?? candidate.content]
-          .filter(Boolean)
-          .join("\n\n");
-        const keywordScore = scoreKeywordOverlap(query, textForScoring);
+          : "",
+      })),
+    );
 
-        let semanticScore: number | null = null;
-        if (
-          queryEmbedding !== null &&
-          candidate.searchEmbeddingModel === embeddingModel
-        ) {
-          const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
-          if (documentEmbedding) {
-            semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);
-          }
-        }
-
-        // BGE similarities have a relatively high baseline even for unrelated
-        // text. Only admit semantic-only results when the model expresses a
-        // meaningful match; lexical matches remain available regardless.
-        if (
-          keywordScore === 0 &&
-          (semanticScore === null || semanticScore < MIN_SEMANTIC_SIMILARITY)
-        ) {
-          return null;
-        }
-
-        // Exact and prefix matches should outrank broader semantic similarity.
-        // Keep the raw score monotonic and convert it to rank reciprocally so
-        // strong lexical matches do not collapse into identical rank-zero ties.
-        const combinedScore =
-          keywordScore + (semanticScore ?? 0) * SEMANTIC_RANKING_WEIGHT;
-
-        return {
-          id: candidate.id,
-          type: candidate.type,
-          content: candidate.content,
-          userId: candidate.userId,
-          parentId: candidate.parentId,
-          createdAt: storedSecondsToDate(candidate.createdAt),
-          updatedAt: storedSecondsToDate(candidate.updatedAt),
-          rank: scoreToRank(combinedScore),
-          snippet: buildSearchSnippet(query, textForScoring),
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((left, right) => left.rank - right.rank);
-
-    allRawResults = ranked;
+    allRawResults = ranked.map(({ candidate, rank, snippet }) => ({
+      id: candidate.id,
+      type: candidate.type,
+      content: candidate.content,
+      userId: candidate.userId,
+      parentId: candidate.parentId,
+      createdAt: storedSecondsToDate(candidate.createdAt),
+      updatedAt: storedSecondsToDate(candidate.updatedAt),
+      rank,
+      snippet,
+    }));
   } else {
     const rows = await s.db.all<{
       id: string;
@@ -531,13 +474,13 @@ export async function searchDocuments(
       let rank = 0;
       let snippet = "";
       if (hasQuery) {
-        const fileSearchText = [f.originalName, f.extractedText]
-          .filter(Boolean)
-          .join("\n");
-        const keywordScore = scoreKeywordOverlap(query, fileSearchText);
-        if (keywordScore === 0) continue;
-        rank = scoreToRank(keywordScore);
-        snippet = buildSearchSnippet(query, fileSearchText);
+        const match = rankKeywordMatch(
+          query,
+          [f.originalName, f.extractedText].filter(Boolean).join("\n"),
+        );
+        if (!match) continue;
+        rank = match.rank;
+        snippet = match.snippet;
       }
       allRawResults.push({
         id: f.path,

@@ -15,10 +15,11 @@ import {
   serializePropertyValue,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
+import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { generateUniqueSlug } from "./documents.ts";
-import { nonArchivedDocumentCondition, scheduleDocumentSearchRefresh } from "./search.ts";
+import { nonArchivedDocumentCondition } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
