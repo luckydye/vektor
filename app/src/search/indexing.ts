@@ -2,7 +2,7 @@
  * Keeping the stored search index in step with the documents: the flattened
  * text a document is searched by, and the embedding built from it.
  *
- * The rows themselves are read and written by `#db/space/searchIndex.ts`; what
+ * The rows themselves are read and written by `#db/space/search.ts`; what
  * belongs in them is decided here.
  */
 
@@ -14,7 +14,7 @@ import {
   readIndexableDocumentIds,
   readStaleIndexDocumentIds,
   writeDocumentIndex,
-} from "#db/space/searchIndex.ts";
+} from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
 import {
   buildDocumentSearchText,

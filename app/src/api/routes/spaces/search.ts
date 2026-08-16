@@ -11,6 +11,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { type PropertyFilter, searchDocuments } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
+import { refreshStaleDocumentIndexes } from "#search/indexing.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
@@ -64,6 +65,13 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const store = await openSpaceStore(spaceId);
+
+      // Documents written since they were last indexed — or indexed by an
+      // earlier model — are caught up before the query reads the index.
+      if (query.trim()) {
+        await refreshStaleDocumentIndexes(store);
+      }
+
       const { results, nextCursor } = await searchDocuments(
         store,
         userId,
