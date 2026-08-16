@@ -9,7 +9,7 @@ import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import { normalizeText, stripMarkup } from "#search/text.ts";
 import { escapeHtml } from "#utils/html.ts";
 
-export function cosineSimilarity(left: number[], right: number[]): number {
+function cosineSimilarity(left: number[], right: number[]): number {
   if (left.length === 0 || right.length === 0 || left.length !== right.length) {
     return 0;
   }
@@ -21,7 +21,7 @@ export function cosineSimilarity(left: number[], right: number[]): number {
   return total;
 }
 
-export function extractQueryTerms(query: string): string[] {
+function extractQueryTerms(query: string): string[] {
   const phrases = [...query.matchAll(/"([^"]+)"/g)].map((match) =>
     normalizeText(match[1]).trim(),
   );
@@ -72,8 +72,8 @@ export function scoreKeywordOverlap(query: string, text: string): number {
 /** Below this cosine similarity a semantic match is treated as noise. */
 export const MIN_SEMANTIC_SIMILARITY = 0.6;
 /** How far a similarity must sit above the corpus baseline to count as a match. */
-export const MIN_SEMANTIC_MARGIN = 0.1;
-export const SEMANTIC_RANKING_WEIGHT = 0.4;
+const MIN_SEMANTIC_MARGIN = 0.1;
+const SEMANTIC_RANKING_WEIGHT = 0.4;
 
 /**
  * The similarity a document must reach before similarity alone makes it a
@@ -99,11 +99,11 @@ export function semanticRelevance(similarity: number | null, threshold: number):
   return similarity === null ? 0 : Math.max(0, similarity - threshold);
 }
 
-export function scoreToRank(score: number): number {
+function scoreToRank(score: number): number {
   return 1 / (1 + Math.max(0, score));
 }
 
-export function buildSearchSnippet(query: string, text: string): string {
+function buildSearchSnippet(query: string, text: string): string {
   const normalizedText = stripMarkup(text);
   if (!normalizedText) {
     return "";

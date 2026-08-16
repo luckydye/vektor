@@ -5,8 +5,6 @@
  */
 
 import { eq, inArray, sql } from "drizzle-orm";
-import { ResourceType } from "#acl/permissions.ts";
-import { listAccessibleResources } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
@@ -293,12 +291,13 @@ async function readDocuments(
 }
 
 /**
- * Documents matching `query` and `filters`, ranked and paged. Reads the index
- * as it stands; callers refresh it first through `#search/indexing.ts`.
+ * Documents matching `query` and `filters`, ranked and paged. `docIds` is the
+ * caller's readable set, or null for an unrestricted view. Reads the index as
+ * it stands; callers refresh it first through `#search/indexing.ts`.
  */
 export async function searchDocuments(
   s: SpaceStore,
-  userId: string | null,
+  docIds: string[] | null,
   query: string,
   limit = 20,
   cursor?: string,
@@ -307,16 +306,8 @@ export async function searchDocuments(
   const hasQuery = query.trim().length > 0;
   const hasFilters = filters.length > 0;
 
-  if (!hasQuery && !hasFilters) {
+  if ((!hasQuery && !hasFilters) || docIds?.length === 0) {
     return { results: [], nextCursor: null };
-  }
-
-  let docIds: string[] | null = null;
-  if (userId !== null) {
-    docIds = await listAccessibleResources(s.spaceId, userId, ResourceType.DOCUMENT);
-    if (docIds !== null && docIds.length === 0) {
-      return { results: [], nextCursor: null };
-    }
   }
 
   const typeFilters = filters.filter((f) => f.key === "type");
@@ -375,24 +366,26 @@ export async function searchDocuments(
   }[];
 
   if (hasQuery) {
-    const candidates = await s.db.all<{
-      id: string;
-      slug: string;
-      type: string | null;
-      content: string;
-      title: string | null;
-      searchText: string | null;
-      searchEmbedding: string | null;
-      searchEmbeddingModel: string | null;
-      userId: string;
-      parentId: string | null;
-      currentRev: number;
-      publishedRev: number | null;
-      readonly: boolean;
-      archived: boolean;
-      createdAt: string | number;
-      updatedAt: string | number;
-    }>(sql`
+    // The vector and the rows are independent; embedding is native compute.
+    const [candidates, queryEmbedding] = await Promise.all([
+      s.db.all<{
+        id: string;
+        slug: string;
+        type: string | null;
+        content: string;
+        title: string | null;
+        searchText: string | null;
+        searchEmbedding: string | null;
+        searchEmbeddingModel: string | null;
+        userId: string;
+        parentId: string | null;
+        currentRev: number;
+        publishedRev: number | null;
+        readonly: boolean;
+        archived: boolean;
+        createdAt: string | number;
+        updatedAt: string | number;
+      }>(sql`
       SELECT
         d.id,
         d.slug,
@@ -413,11 +406,13 @@ export async function searchDocuments(
       FROM document d
       LEFT JOIN property title ON title.document_id = d.id AND title.key = 'title'
       WHERE ${nonArchivedColumnCondition("d.archived")}
-    `);
+    `),
+      embedSearchQuery(query),
+    ]);
 
     const ranked = rankSearchCandidates(
       query,
-      await embedSearchQuery(query),
+      queryEmbedding,
       candidates.map((candidate) => ({
         ...candidate,
         title: candidate.title
