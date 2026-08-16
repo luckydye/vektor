@@ -87,6 +87,44 @@ describe("API rate limiting", () => {
     expect(allowed.status).not.toBe(429);
   });
 
+  it("admits exactly the budget under a concurrent burst, never more", async () => {
+    // A fresh token is a fresh key, so the arithmetic is exact rather than
+    // whatever the earlier specs left of a shared bucket.
+    const token = "at_burst_probe";
+    const burst = MAX * 3;
+
+    const responses = await Promise.all(
+      Array.from({ length: burst }, () => withToken(token)),
+    );
+    const statuses = responses.map((response) => response.status);
+    const admitted = statuses.filter((status) => status !== 429);
+
+    // The point of the test: parallel arrivals must not over-admit. A counter
+    // read and written across an await would let more than MAX through here.
+    expect(admitted).toHaveLength(MAX);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(burst - MAX);
+
+    // Each admitted request consumed exactly one slot: the remaining counts are
+    // MAX-1 … 0 with no repeats, which a lost update would not produce.
+    const remaining = responses
+      .filter((response) => response.status !== 429)
+      .map((response) => Number(response.headers.get("X-Limit-Remaining")))
+      .sort((a, b) => a - b);
+    expect(remaining).toEqual(Array.from({ length: MAX }, (_, i) => i));
+  });
+
+  it("keeps concurrent callers on separate budgets", async () => {
+    const [first, second] = await Promise.all([
+      Promise.all(Array.from({ length: MAX }, () => withToken("at_burst_a"))),
+      Promise.all(Array.from({ length: MAX }, () => withToken("at_burst_b"))),
+    ]);
+
+    // Interleaved in one event loop, but counted apart: neither caller's burst
+    // may spend the other's budget.
+    expect(first.filter((r) => r.status === 429)).toHaveLength(0);
+    expect(second.filter((r) => r.status === 429)).toHaveLength(0);
+  });
+
   it("answers 429 with Retry-After once the window is spent", async () => {
     let limited: Response | undefined;
 
