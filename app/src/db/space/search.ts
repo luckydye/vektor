@@ -22,10 +22,11 @@ import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import {
   buildSearchSnippet,
   cosineSimilarity,
-  MIN_SEMANTIC_SIMILARITY,
   SEMANTIC_RANKING_WEIGHT,
   scoreKeywordOverlap,
   scoreToRank,
+  semanticMatchThreshold,
+  semanticRelevance,
 } from "#search/ranking.ts";
 
 // ---------------------------------------------------------------------------
@@ -433,45 +434,58 @@ export async function searchDocuments(
       WHERE ${nonArchivedColumnCondition("d.archived")}
     `);
 
-    const ranked = candidates
-      .map((candidate) => {
-        // Read the title directly as well as from the cached search text. The
-        // latter is updated asynchronously after a title edit and may also be
-        // unavailable when the embedding runtime cannot index a document.
-        const title = candidate.title
-          ? propertyValueToText(parseStoredPropertyValue(candidate.title))
-          : "";
-        const textForScoring = [title, candidate.searchText ?? candidate.content]
-          .filter(Boolean)
-          .join("\n\n");
-        const keywordScore = scoreKeywordOverlap(query, textForScoring);
+    const scored = candidates.map((candidate) => {
+      // Read the title directly as well as from the cached search text. The
+      // latter is updated asynchronously after a title edit and may also be
+      // unavailable when the embedding runtime cannot index a document.
+      const title = candidate.title
+        ? propertyValueToText(parseStoredPropertyValue(candidate.title))
+        : "";
+      const textForScoring = [title, candidate.searchText ?? candidate.content]
+        .filter(Boolean)
+        .join("\n\n");
 
-        let semanticScore: number | null = null;
-        if (
-          queryEmbedding !== null &&
-          candidate.searchEmbeddingModel === embeddingModel
-        ) {
-          const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
-          if (documentEmbedding) {
-            semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);
-          }
+      let semanticScore: number | null = null;
+      if (queryEmbedding !== null && candidate.searchEmbeddingModel === embeddingModel) {
+        const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
+        if (documentEmbedding) {
+          semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);
         }
+      }
 
-        // BGE similarities have a relatively high baseline even for unrelated
-        // text. Only admit semantic-only results when the model expresses a
-        // meaningful match; lexical matches remain available regardless.
-        if (
-          keywordScore === 0 &&
-          (semanticScore === null || semanticScore < MIN_SEMANTIC_SIMILARITY)
-        ) {
+      return {
+        candidate,
+        textForScoring,
+        keywordScore: scoreKeywordOverlap(query, textForScoring),
+        semanticScore,
+      };
+    });
+
+    // Where the corpus sits for this query — see `semanticMatchThreshold`. It
+    // has to be measured over every candidate, so it cannot be folded into the
+    // pass above.
+    const semanticThreshold = semanticMatchThreshold(
+      scored
+        .map((item) => item.semanticScore)
+        .filter((score): score is number => score !== null),
+    );
+
+    const ranked = scored
+      .map(({ candidate, textForScoring, keywordScore, semanticScore }) => {
+        // A similarity at or below the threshold carries no information about
+        // this query, so it neither admits a document nor moves its rank; only
+        // the part above the baseline does. Lexical matches are admitted
+        // regardless of what the model says.
+        const semanticBoost = semanticRelevance(semanticScore, semanticThreshold);
+
+        if (keywordScore === 0 && semanticBoost === 0) {
           return null;
         }
 
         // Exact and prefix matches should outrank broader semantic similarity.
         // Keep the raw score monotonic and convert it to rank reciprocally so
         // strong lexical matches do not collapse into identical rank-zero ties.
-        const combinedScore =
-          keywordScore + (semanticScore ?? 0) * SEMANTIC_RANKING_WEIGHT;
+        const combinedScore = keywordScore + semanticBoost * SEMANTIC_RANKING_WEIGHT;
 
         return {
           id: candidate.id,
