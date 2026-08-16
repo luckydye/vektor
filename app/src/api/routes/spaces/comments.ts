@@ -273,13 +273,10 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     // Get the comment and verify user is the creator. Scoped to the document
     // the gates above authorized: a bare id lookup would archive a comment on
-    // some other document (or another resource type entirely), so the caller
-    // could pass any document they may comment on to reach a comment anywhere.
+    // some other document, so the caller could name whichever document they may
+    // comment on and reach a comment anywhere in the space.
     const store = await openSpaceStore(spaceId);
-    const comment = await getComment(store, commentId, {
-      type: ResourceType.DOCUMENT,
-      id: documentId,
-    });
+    const comment = await getComment(store, commentId, documentId);
     if (!comment) {
       throw notFoundResponse("Comment");
     }
