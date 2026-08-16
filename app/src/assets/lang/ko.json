@@ -111,8 +111,6 @@
   "Print current document": "현재 문서 인쇄",
   "Export": "내보내기",
   "Export current document to markdown": "현재 문서를 마크다운으로 내보내기",
-  "Copy API Command": "API 명령 복사",
-  "Creates API token to access this document": "이 문서에 접근할 API 토큰 생성",
   "Unpin from Home": "홈에서 고정 해제",
   "Remove this document from the space home page": "스페이스 홈 페이지에서 이 문서 제거",
   "Pin to Home": "홈에 고정",

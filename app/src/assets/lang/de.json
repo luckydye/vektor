@@ -111,8 +111,6 @@
   "Print current document": "Aktuelles Dokument drucken",
   "Export": "Exportieren",
   "Export current document to markdown": "Aktuelles Dokument als Markdown exportieren",
-  "Copy API Command": "API-Befehl kopieren",
-  "Creates API token to access this document": "Erstellt ein API-Token für den Zugriff auf dieses Dokument",
   "Unpin from Home": "Von Startseite lösen",
   "Remove this document from the space home page": "Dieses Dokument von der Space-Startseite entfernen",
   "Pin to Home": "An Startseite anheften",

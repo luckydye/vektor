@@ -1,6 +1,15 @@
 import "@atrium-ui/elements/expandable";
 import "@atrium-ui/elements/popover";
-import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { canEdit } from "#acl/permissions.ts";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
@@ -15,6 +24,7 @@ import { propertyValueIncludes, propertyValueToText } from "#documents/propertie
 import { documentTitle } from "#documents/title.ts";
 import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
+import { registerScopedAction } from "#utils/scopedAction.ts";
 import { slugify } from "#utils/slug.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Dialog } from "./Dialog.tsx";
@@ -387,6 +397,15 @@ export function DocumentTree(props: Props) {
       properties: { category: { value: targetCategory.slug } },
     });
   }
+
+  createEffect(() => {
+    if (!canManageCategories()) return;
+    registerScopedAction("category:create", {
+      title: t("Create Category"),
+      description: t("Group documents into a new category"),
+      run: async () => startCreating(),
+    });
+  });
 
   onMount(() => {
     setIsMounted(true);

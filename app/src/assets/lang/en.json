@@ -111,8 +111,6 @@
   "Print current document": "Print current document",
   "Export": "Export",
   "Export current document to markdown": "Export current document to markdown",
-  "Copy API Command": "Copy API Command",
-  "Creates API token to access this document": "Creates API token to access this document",
   "Unpin from Home": "Unpin from Home",
   "Remove this document from the space home page": "Remove this document from the space home page",
   "Pin to Home": "Pin to Home",

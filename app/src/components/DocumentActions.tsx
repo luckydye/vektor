@@ -9,7 +9,7 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/popover";
-import { canEdit, Permission } from "#acl/permissions.ts";
+import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
@@ -61,7 +61,6 @@ export function DocumentActions(props: Props) {
   const documentId = createMemo(() => documentContext().documentId);
   const documentType = createMemo(() => documentContext().documentType);
 
-  const [isCreatingToken, setIsCreatingToken] = createSignal(false);
   const [isDuplicating, setIsDuplicating] = createSignal(false);
   const [showShareDialog, setShowShareDialog] = createSignal(false);
   const [emailMuted, setEmailMuted] = createSignal(false);
@@ -107,54 +106,6 @@ export function DocumentActions(props: Props) {
     order: 40,
     run: async () => {
       window.print();
-    },
-  });
-
-  registerScopedAction("document:accesstoken", {
-    title: t("Copy API Command"),
-    icon: () => "source-code",
-    description: t("Creates API token to access this document"),
-    group: "document:dev",
-    order: 10,
-    run: async () => {
-      if (isCreatingToken()) return;
-
-      try {
-        setIsCreatingToken(true);
-
-        const spaceId = currentSpaceId();
-        if (!spaceId) throw new Error("No space selected");
-
-        const docId = documentId();
-        if (!docId) return;
-
-        const documentName = props.title || docId;
-        const tokenResult = await api.accessTokens.create(spaceId, {
-          name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
-          resourceType: "document",
-          resourceId: docId,
-          permission: Permission.EDITOR,
-          expiresInDays: 30,
-        });
-
-        const command = `curl -X PUT ${location.origin}/api/v1/spaces/${spaceId}/documents/${docId} \\
-    -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer ${tokenResult.token}" \\
-    -d '{"content": "<html>Your content here</html>"}'`;
-
-        await navigator.clipboard.writeText(command);
-
-        alert(
-          `✓ API command copied to clipboard!\n\nA 30-day access token has been created and included.\nToken ID: ${tokenResult.id}`,
-        );
-      } catch (error) {
-        console.error("Failed to create token:", error);
-        alert(
-          "❌ Failed to create access token. Please check your permissions and try again.",
-        );
-      } finally {
-        setIsCreatingToken(false);
-      }
     },
   });
 
