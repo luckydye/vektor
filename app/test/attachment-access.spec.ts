@@ -297,6 +297,27 @@ describe("attachments for a document-scoped grantee", () => {
   });
 });
 
+describe("the upload listing", () => {
+  it("shows an anonymous caller the shared documents' files and nothing else", async () => {
+    const shared = await createDocument("Listed Publicly");
+    const sharedUrl = await ownerUpload("LISTED PUBLIC", shared);
+    await grantOnDocument(shared, "viewer", { groupId: "public" });
+
+    const hidden = await createDocument("Not Listed");
+    const hiddenUrl = await ownerUpload("LISTED PRIVATE", hidden);
+    const loose = await ownerUpload("LISTED LOOSE");
+
+    // A document-level public grant reaches the space, so the listing answers
+    // rather than 401 — confined to what that grant covers. A space with no
+    // public grant at all still refuses; the route access matrix pins that.
+    const listed = await listUploads();
+    expect(listed).toContain(sharedUrl);
+    expect(listed).not.toContain(hiddenUrl);
+    // Belongs to the space rather than to any document, so no grant reaches it.
+    expect(listed).not.toContain(loose);
+  });
+});
+
 describe("space-wide uploads", () => {
   it("keeps serving a file that belongs to no document to space members", async () => {
     const url = await ownerUpload("LOOSE UPLOAD");

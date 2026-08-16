@@ -144,6 +144,13 @@ export async function authenticateDocumentAccess(
   documentId: string,
   requiredRole: Permission,
 ): Promise<{ aclUserId: string | null }> {
+  // `verifyDocumentRole` reads the document before the role, so a space that
+  // does not exist would surface as the error opening its database rather than
+  // as a verdict. Same guard `verifySpaceRole` and `verifyDocumentAccess` open with.
+  if (!(await getSpace(spaceId))) {
+    throw notFoundResponse("Space");
+  }
+
   const jobToken = context.req.raw.headers.get("X-Job-Token");
   if (jobToken) {
     // A token that does not parse is a bad credential, not an insufficient

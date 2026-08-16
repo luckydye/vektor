@@ -3,7 +3,6 @@ import {
   authenticateDocumentAccess,
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
-  tryAuthenticateRequest,
   verifyDocumentAccess,
   verifyDocumentRole,
   verifyFeatureAccess,
