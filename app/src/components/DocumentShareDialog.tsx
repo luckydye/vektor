@@ -44,6 +44,16 @@ function roleBadgeClass(role: string) {
   return map[role] ?? map.viewer;
 }
 
+/** Phrased as what the person may do, not as a role name. */
+function roleLabel(role: string) {
+  const map: Record<string, string> = {
+    owner: "Owner",
+    editor: "Can edit",
+    viewer: "Can view",
+  };
+  return map[role] ?? role;
+}
+
 export function DocumentShareDialog(props: Props) {
   const { currentSpaceId, currentSpace } = useSpace();
   const user = useUserProfile();
@@ -78,8 +88,8 @@ export function DocumentShareDialog(props: Props) {
   // No owner: this dialog shares a document or a category, and owner is only
   // grantable on the space itself.
   const roleOptions = [
-    { value: Permission.VIEWER, label: "Viewer" },
-    { value: Permission.EDITOR, label: "Editor" },
+    { value: Permission.VIEWER, label: roleLabel("viewer") },
+    { value: Permission.EDITOR, label: roleLabel("editor") },
   ];
 
   function onTabSelected(e: Event) {
@@ -331,7 +341,7 @@ export function DocumentShareDialog(props: Props) {
     <span
       class={`flex-shrink-0 rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(badgeProps.role)}`}
     >
-      {badgeProps.role}
+      {roleLabel(badgeProps.role)}
     </span>
   );
 
