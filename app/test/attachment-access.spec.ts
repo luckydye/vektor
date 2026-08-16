@@ -6,6 +6,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createJobToken } from "#jobs/jobToken.ts";
 import {
   createApiRequest,
   createSessionApiRequest,
@@ -15,6 +16,9 @@ import {
   testBaseUrl,
   waitForServer,
 } from "./helpers/server.ts";
+
+// Shared with the spawned server below, so a token minted here verifies there.
+process.env.AUTH_SECRET ??= "attachment-test-secret-do-not-use-in-production";
 
 const PORT = 7523;
 const BASE_URL = testBaseUrl(PORT);
@@ -111,8 +115,7 @@ beforeAll(async () => {
   serverProcess = startTestServer(PORT, {
     VEKTOR_IN_MEMORY_DB: "1",
     VEKTOR_EMAIL_AUTH: "1",
-    AUTH_SECRET:
-      process.env.AUTH_SECRET ?? "attachment-test-secret-do-not-use-in-production",
+    AUTH_SECRET: process.env.AUTH_SECRET,
   });
   await waitForServer(BASE_URL);
 
@@ -219,6 +222,28 @@ describe("attachments for a document-scoped grantee", () => {
     const served = await apiRequest(url, scopedToken);
     expect(served.status).toBe(200);
     expect(await served.text()).toBe("CAROL UPLOAD");
+  });
+
+  it("accepts that upload through a job token too", async () => {
+    const documentId = await createDocument("Carol's Agent Uploads Here");
+    await grantOnDocument(documentId, "editor", { userId: scopedUserId });
+
+    const form = new FormData();
+    form.set("file", new File(["AGENT UPLOAD"], "agent.txt", { type: "text/plain" }));
+    form.set("filename", "agent.txt");
+    form.set("documentId", documentId);
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
+      method: "POST",
+      headers: {
+        "X-Job-Token": createJobToken(spaceId, String(Date.now()), scopedUserId),
+      },
+      body: form,
+    });
+    expect(response.status).toBe(200);
+
+    const url = (await response.json()).url as string;
+    const served = await apiRequest(url, scopedToken);
+    expect(await served.text()).toBe("AGENT UPLOAD");
   });
 
   it("refuses an upload with no document, which belongs to the space", async () => {

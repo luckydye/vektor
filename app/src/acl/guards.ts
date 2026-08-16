@@ -302,12 +302,25 @@ export async function authenticateSpaceAccess(
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");
-    if (parsed.userId) {
-      await verifySpaceRole(spaceId, parsed.userId, requiredRole);
+    const { userId } = parsed;
+    if (userId) {
+      // A job token is the user's own access, resource grants included: work
+      // they can start from the browser must not be refused because it went
+      // through an agent or a workflow.
+      const aclGroups = await getUserGroups(userId);
+      const documentScope = await spaceRoleOrDocumentScope(
+        spaceId,
+        userId,
+        requiredRole,
+        aclGroups,
+        options,
+        () => verifySpaceRole(spaceId, userId, requiredRole),
+      );
       return {
-        aclUserId: parsed.userId,
-        aclGroups: await getUserGroups(parsed.userId),
+        aclUserId: userId,
+        aclGroups,
         isPublic: false,
+        documentScope,
       };
     }
     // User-less system token — fully trusted within the space.

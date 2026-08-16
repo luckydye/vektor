@@ -40,7 +40,7 @@ export const GET: ApiRouteHandler = (context) =>
       const files = await storage.list(spaceId);
 
       const parentIds = await getFileDocumentIds(
-        await openSpaceStore(spaceId),
+        spaceId,
         files.map((f) => f.key),
       );
       const visible = await filterAccessibleFiles(

@@ -12,10 +12,8 @@ import { Permission, ResourceType } from "#acl/permissions.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
-import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileDocumentId } from "#db/space/files.ts";
-import { getSpace } from "#db/space/spaces.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
@@ -55,22 +53,6 @@ const MIME_TYPES: Record<string, string> = {
   obj: "model/obj",
 };
 
-/**
- * The document an upload hangs off, which is what authorizes it: a public
- * share, a resource grant and an archive all reach the file through its
- * document and not through a space role. `null` — a standalone upload, or a
- * key the index does not know, like a workflow artifact — keeps the space check.
- */
-async function uploadKeyDocumentId(
-  spaceId: string,
-  path: string,
-): Promise<string | null> {
-  // This runs before the guard, so a space that does not exist has to fall
-  // through to it rather than blow up on opening a database that isn't there.
-  if (!(await getSpace(spaceId))) return null;
-  return await getFileDocumentId(await openSpaceStore(spaceId), path);
-}
-
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -82,7 +64,11 @@ export const GET: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      const documentId = await uploadKeyDocumentId(spaceId, path);
+      // The document an upload hangs off is what authorizes it: a public share,
+      // a resource grant and an archive all reach the file through its document
+      // and not through a space role. A file that belongs to none — a workflow
+      // artifact, say — keeps the space check.
+      const documentId = await getFileDocumentId(spaceId, path);
       if (documentId) {
         await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
       } else {
@@ -211,7 +197,7 @@ export const DELETE: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      const documentId = await uploadKeyDocumentId(spaceId, path);
+      const documentId = await getFileDocumentId(spaceId, path);
       await authenticateJobTokenOrSpaceRole(
         context,
         spaceId,
