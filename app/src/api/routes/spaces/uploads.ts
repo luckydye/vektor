@@ -14,11 +14,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { updateDocumentEmbedding } from "#db/space/search.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
+import { updateDocumentEmbedding } from "#search/indexing.ts";
 
 const MAX_FILE_SIZE = 1280 * 1024 * 1024; // 1.25GB
 

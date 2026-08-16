@@ -32,33 +32,15 @@ import {
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
+import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { archivedDocumentCondition, nonArchivedDocumentCondition } from "./conditions.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { decompressHtml } from "./revisions.ts";
-import {
-  type DocumentWithProperties,
-  fileRowToDocument,
-  nonArchivedDocumentCondition,
-  scheduleDocumentSearchRefresh,
-} from "./search.ts";
+import { type DocumentWithProperties, fileRowToDocument } from "./search.ts";
 
-export type {
-  DocumentWithProperties,
-  FileRow,
-  PropertyFilter,
-  SearchResult,
-} from "./search.ts";
-export { rebuildSearchIndex, searchDocuments } from "./search.ts";
-
-const archivedDocumentCondition = sql`
-  (
-    ${document.archived} = 1
-    OR ${document.archived} = '1'
-    OR ${document.archived} = '1.0'
-    OR ${document.archived} = TRUE
-  )
-`;
+export type { DocumentWithProperties } from "./search.ts";
 
 export async function generateUniqueSlug(
   s: SpaceStore,

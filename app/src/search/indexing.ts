@@ -1,0 +1,103 @@
+/**
+ * Keeping the stored search index in step with the documents: the flattened
+ * text a document is searched by, and the embedding built from it.
+ *
+ * The rows themselves are read and written by `#db/space/searchIndex.ts`; what
+ * belongs in them is decided here.
+ */
+
+import type { SpaceStore } from "#db/client/store.ts";
+import {
+  clearDocumentIndex,
+  readDocumentIndexSource,
+  readDocumentType,
+  readIndexableDocumentIds,
+  readStaleIndexDocumentIds,
+  writeDocumentIndex,
+} from "#db/space/searchIndex.ts";
+import { appLogger } from "#observability/logger.ts";
+import {
+  buildDocumentSearchText,
+  embedText,
+  serializeEmbedding,
+} from "#search/embedding.ts";
+import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
+
+export async function updateDocumentEmbedding(
+  s: SpaceStore,
+  documentId: string,
+): Promise<void> {
+  const meta = await readDocumentType(s, documentId);
+
+  if (!meta) {
+    return;
+  }
+
+  if (meta.type === "canvas") {
+    await clearDocumentIndex(s, documentId);
+    return;
+  }
+
+  const source = await readDocumentIndexSource(s, documentId);
+
+  if (!source) {
+    return;
+  }
+
+  const fileText = source.files
+    .map((f) =>
+      f.extractedText
+        ? `[${f.originalName ?? f.path}]\n${f.extractedText}`
+        : `[${f.originalName ?? f.path}]`,
+    )
+    .join("\n\n");
+
+  const properties = Object.fromEntries(
+    source.properties.map((item) => [item.key, item.value]),
+  );
+  const searchText = buildDocumentSearchText(
+    source.content,
+    properties,
+    fileText || undefined,
+  );
+
+  await writeDocumentIndex(s, documentId, {
+    searchText,
+    searchEmbedding: serializeEmbedding(await embedText(searchText)),
+    searchEmbeddingModel: getEmbeddingModel(),
+    searchUpdatedAt: new Date(),
+  });
+}
+
+/** Start a search refresh without delaying or failing the document write. */
+export function scheduleDocumentSearchRefresh(s: SpaceStore, documentId: string): void {
+  void updateDocumentEmbedding(s, documentId).catch((error) => {
+    appLogger.warn("Failed to refresh document search", {
+      error,
+      spaceId: s.spaceId,
+      documentId,
+    });
+  });
+}
+
+export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
+  for (const documentId of await readIndexableDocumentIds(s)) {
+    await updateDocumentEmbedding(s, documentId);
+  }
+}
+
+/**
+ * Catch up documents that were never indexed, or were indexed by an older
+ * model, before a search reads the index. Silent when the embedding runtime is
+ * unavailable — search then falls back to keyword matching.
+ */
+export async function refreshStaleDocumentIndexes(s: SpaceStore): Promise<void> {
+  try {
+    const staleIds = await readStaleIndexDocumentIds(s, getEmbeddingModel());
+    for (const documentId of staleIds) {
+      await updateDocumentEmbedding(s, documentId);
+    }
+  } catch {
+    // Embedding runtime unavailable — skip catch-up indexing.
+  }
+}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import {
   MIN_SEMANTIC_SIMILARITY,
+  rankSearchCandidates,
   scoreKeywordOverlap,
   semanticMatchThreshold,
   semanticRelevance,
@@ -56,6 +58,85 @@ describe("semantic match threshold", () => {
 
   it("reports no relevance without an embedding", () => {
     expect(semanticRelevance(null, MIN_SEMANTIC_SIMILARITY)).toBe(0);
+  });
+});
+
+/**
+ * The rule as a whole, over the stored shape of a document. Embeddings are unit
+ * vectors and similarity is their dot product, so a two-dimensional vector can
+ * be aimed at an exact similarity against the query.
+ */
+describe("ranking search candidates", () => {
+  const queryEmbedding = [1, 0];
+
+  const embeddingFor = (similarity: number) =>
+    JSON.stringify([similarity, Math.sqrt(1 - similarity ** 2)]);
+
+  const candidate = (
+    id: string,
+    title: string,
+    content: string,
+    similarity: number,
+    searchEmbeddingModel: string = getEmbeddingModel(),
+  ) => ({
+    id,
+    title,
+    content,
+    searchText: `${title}\n\n${content}`,
+    searchEmbedding: embeddingFor(similarity),
+    searchEmbeddingModel,
+  });
+
+  const ids = (candidates: Parameters<typeof rankSearchCandidates>[2], query: string) =>
+    rankSearchCandidates(query, queryEmbedding, candidates).map(
+      (result) => (result.candidate as { id: string }).id,
+    );
+
+  // The repro from #128: a query no document contains, against a corpus whose
+  // similarities all sit in the model's usual band.
+  const fruits = [
+    candidate("apple", "Apple", "red fruit orchard", 0.63),
+    candidate("banana", "Banana", "yellow tropical", 0.62),
+    candidate("cherry", "Cherry", "small stone pit", 0.6),
+  ];
+
+  it("returns nothing when the query matches no document", () => {
+    expect(ids(fruits, "qwertyuiop")).toEqual([]);
+  });
+
+  it("returns only the document the query names", () => {
+    const standout = [
+      candidate("apple", "Apple", "red fruit orchard", 0.66),
+      candidate("banana", "Banana", "yellow tropical", 0.63),
+      candidate("cherry", "Cherry", "small stone pit", 0.85),
+    ];
+
+    expect(ids(standout, "cherry")).toEqual(["cherry"]);
+  });
+
+  it("keeps lexical matches when the embedding runtime is unavailable", () => {
+    const ranked = rankSearchCandidates("tropical", null, fruits);
+
+    expect(ranked.map((result) => result.candidate.id)).toEqual(["banana"]);
+    expect(ranked[0].snippet).toContain("<mark>tropical</mark>");
+  });
+
+  it("ignores embeddings written by a different model", () => {
+    const stale = [
+      candidate("apple", "Apple", "red fruit orchard", 0.99, "some-older-model"),
+      ...fruits.slice(1),
+    ];
+
+    expect(ids(stale, "qwertyuiop")).toEqual([]);
+  });
+
+  it("ranks a lexical match above a semantic-only one", () => {
+    const mixed = [
+      candidate("apple", "Apple", "red fruit orchard", 0.92),
+      candidate("cherry", "Cherry", "small stone pit", 0.6),
+    ];
+
+    expect(ids(mixed, "cherry")).toEqual(["cherry", "apple"]);
   });
 });
 

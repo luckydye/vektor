@@ -8,7 +8,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { rebuildSearchIndex } from "#db/space/search.ts";
+import { rebuildSearchIndex } from "#search/indexing.ts";
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(

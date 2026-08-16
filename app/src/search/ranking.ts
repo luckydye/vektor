@@ -1,8 +1,14 @@
 /**
  * Scoring and presenting search hits: keyword overlap, semantic similarity,
- * and the snippet shown under each result. Pure functions over text.
+ * and the snippet shown under each result.
+ *
+ * Everything here works on text and stored embeddings that a caller has already
+ * read — no database access, so which documents a query matches is decided in
+ * one place and can be reasoned about (and tested) on its own.
  */
 
+import { parseEmbedding } from "#search/embedding.ts";
+import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import { normalizeText, stripMarkup } from "#search/text.ts";
 import { escapeHtml } from "#utils/html.ts";
 
@@ -146,4 +152,113 @@ export function buildSearchSnippet(query: string, text: string): string {
   }
 
   return highlighted;
+}
+
+/** What a document contributes to its own ranking, as stored. */
+export interface SearchCandidate {
+  /** Title text, already decoded from its stored property value. */
+  title: string;
+  /** Indexed text, absent until the document has been indexed. */
+  searchText: string | null;
+  content: string;
+  searchEmbedding: string | null;
+  searchEmbeddingModel: string | null;
+}
+
+export interface RankedCandidate<T> {
+  candidate: T;
+  rank: number;
+  snippet: string;
+}
+
+/** Read the title directly as well as through the indexed text: the latter is
+ * written asynchronously after a title edit, and is missing entirely while the
+ * embedding runtime cannot index a document. */
+function textForScoring(candidate: SearchCandidate): string {
+  return [candidate.title, candidate.searchText ?? candidate.content]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * The documents a query matches, best first.
+ *
+ * A document is a result when the query matches it lexically, or when its
+ * similarity stands above what this query scores against the corpus at large
+ * (see `semanticMatchThreshold`) — a document that merely sits at the model's
+ * baseline is not a match, however high that baseline is. `queryEmbedding` is
+ * null when the embedding runtime is unavailable, which leaves keyword matching
+ * on its own.
+ */
+export function rankSearchCandidates<T extends SearchCandidate>(
+  query: string,
+  queryEmbedding: number[] | null,
+  candidates: T[],
+): RankedCandidate<T>[] {
+  const embeddingModel = getEmbeddingModel();
+
+  const scored = candidates.map((candidate) => {
+    let similarity: number | null = null;
+    if (queryEmbedding !== null && candidate.searchEmbeddingModel === embeddingModel) {
+      const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
+      if (documentEmbedding) {
+        similarity = cosineSimilarity(queryEmbedding, documentEmbedding);
+      }
+    }
+
+    const text = textForScoring(candidate);
+    return {
+      candidate,
+      text,
+      keywordScore: scoreKeywordOverlap(query, text),
+      similarity,
+    };
+  });
+
+  // The baseline is a property of the corpus, not of any one document, so it
+  // can only be taken once every candidate has been scored.
+  const threshold = semanticMatchThreshold(
+    scored
+      .map((item) => item.similarity)
+      .filter((similarity): similarity is number => similarity !== null),
+  );
+
+  const ranked: RankedCandidate<T>[] = [];
+
+  for (const { candidate, text, keywordScore, similarity } of scored) {
+    // Only the part of a similarity above the baseline carries information
+    // about the query, so that is the part that ranks. Lexical matches are
+    // results regardless of what the model says.
+    const semanticBoost = semanticRelevance(similarity, threshold);
+    if (keywordScore === 0 && semanticBoost === 0) {
+      continue;
+    }
+
+    // Exact and prefix matches should outrank broader semantic similarity. Keep
+    // the raw score monotonic and convert it to rank reciprocally so strong
+    // lexical matches do not collapse into identical rank-zero ties.
+    ranked.push({
+      candidate,
+      rank: scoreToRank(keywordScore + semanticBoost * SEMANTIC_RANKING_WEIGHT),
+      snippet: buildSearchSnippet(query, text),
+    });
+  }
+
+  return ranked.sort((left, right) => left.rank - right.rank);
+}
+
+/**
+ * Rank for text that has no embedding of its own — an attached file, matched by
+ * its name and extracted text. Null when the query does not match it at all.
+ */
+export function rankKeywordMatch(
+  query: string,
+  text: string,
+): { rank: number; snippet: string } | null {
+  const keywordScore = scoreKeywordOverlap(query, text);
+  if (keywordScore === 0) {
+    return null;
+  }
+
+  return { rank: scoreToRank(keywordScore), snippet: buildSearchSnippet(query, text) };
 }

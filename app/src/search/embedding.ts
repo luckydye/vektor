@@ -31,6 +31,19 @@ export async function embedText(text: string): Promise<number[]> {
   return embedding;
 }
 
+/**
+ * The vector a search query is compared against documents by, or null when the
+ * embedding runtime is unavailable — search then falls back to keyword matching
+ * rather than failing.
+ */
+export async function embedSearchQuery(query: string): Promise<number[] | null> {
+  try {
+    return await embedText(query.trim());
+  } catch {
+    return null;
+  }
+}
+
 export function parseEmbedding(value: string | null | undefined): number[] | null {
   if (!value) {
     return null;
