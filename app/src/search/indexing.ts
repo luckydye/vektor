@@ -1,9 +1,6 @@
 /**
- * Keeping the stored search index in step with the documents: the flattened
- * text a document is searched by, and the embedding built from it.
- *
- * The rows themselves are read and written by `#db/space/search.ts`; what
- * belongs in them is decided here.
+ * What goes into a document's search index — the flattened text and its
+ * embedding. The rows are read and written by `#db/space/search.ts`.
  */
 
 import type { SpaceStore } from "#db/client/store.ts";
@@ -87,9 +84,8 @@ export async function rebuildSearchIndex(s: SpaceStore): Promise<void> {
 }
 
 /**
- * Catch up documents that were never indexed, or were indexed by an older
- * model, before a search reads the index. Silent when the embedding runtime is
- * unavailable — search then falls back to keyword matching.
+ * Catch up documents that are unindexed or indexed by an older model. Silent
+ * when the embedding runtime is unavailable: search falls back to keywords.
  */
 export async function refreshStaleDocumentIndexes(s: SpaceStore): Promise<void> {
   try {

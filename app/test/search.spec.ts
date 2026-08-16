@@ -332,12 +332,7 @@ describe("Search API Tests", () => {
   });
 });
 
-/**
- * The repro from #128, in its own space so the corpus is exactly these three
- * documents: search used to admit documents on the model's baseline similarity
- * alone, so a query returned documents that contain the term nowhere — and
- * strings that are not words at all still returned results.
- */
+// The #128 repro, in its own space so the corpus is exactly these three docs.
 describe("Search Precision", () => {
   let precisionSpaceId: string;
 

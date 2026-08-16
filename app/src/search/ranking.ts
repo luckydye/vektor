@@ -1,10 +1,7 @@
 /**
  * Scoring and presenting search hits: keyword overlap, semantic similarity,
- * and the snippet shown under each result.
- *
- * Everything here works on text and stored embeddings that a caller has already
- * read — no database access, so which documents a query matches is decided in
- * one place and can be reasoned about (and tested) on its own.
+ * and the snippet shown under each result. Pure functions over text and stored
+ * embeddings the caller has already read.
  */
 
 import { parseEmbedding } from "#search/embedding.ts";
@@ -74,26 +71,15 @@ export function scoreKeywordOverlap(query: string, text: string): number {
 
 /** Below this cosine similarity a semantic match is treated as noise. */
 export const MIN_SEMANTIC_SIMILARITY = 0.6;
-/**
- * How far above the corpus baseline a similarity has to sit before it counts as
- * a match rather than as the model's usual background noise.
- */
+/** How far a similarity must sit above the corpus baseline to count as a match. */
 export const MIN_SEMANTIC_MARGIN = 0.1;
 export const SEMANTIC_RANKING_WEIGHT = 0.4;
 
 /**
- * The similarity a document must reach, for this query, before similarity alone
- * makes it a result.
- *
- * bge similarities sit on a high and query-dependent baseline: two unrelated
- * short English texts routinely score between 0.6 and 0.8, and a query that is
- * not a word at all still embeds into that same band. A fixed floor therefore
- * admits documents that have nothing to do with the query, and does so
- * erratically — one nonsense term clears it for two documents, the next for
- * none. The median similarity across the corpus measures what "unrelated" looks
- * like for this particular query; a genuine match has to beat that by a margin.
- * That is what separates `cherry` (one document stands out from its neighbours)
- * from `qwertyuiop` (every document sits at the baseline together).
+ * The similarity a document must reach before similarity alone makes it a
+ * result. bge scores unrelated short texts at 0.6-0.8, and a nonsense query
+ * embeds into that same band, so a fixed floor admits anything. The median
+ * measures that baseline per query; a match has to beat it by a margin.
  */
 export function semanticMatchThreshold(similarities: number[]): number {
   if (similarities.length === 0) {
@@ -108,11 +94,7 @@ export function semanticMatchThreshold(similarities: number[]): number {
   return Math.max(MIN_SEMANTIC_SIMILARITY, median + MIN_SEMANTIC_MARGIN);
 }
 
-/**
- * The part of a similarity that says something about the query rather than
- * about the model's baseline. Zero means "no semantic match": it neither makes
- * a document a result on its own nor moves its rank.
- */
+/** The part of a similarity above the baseline. Zero means "no semantic match". */
 export function semanticRelevance(similarity: number | null, threshold: number): number {
   return similarity === null ? 0 : Math.max(0, similarity - threshold);
 }
@@ -154,11 +136,9 @@ export function buildSearchSnippet(query: string, text: string): string {
   return highlighted;
 }
 
-/** What a document contributes to its own ranking, as stored. */
 export interface SearchCandidate {
   /** Title text, already decoded from its stored property value. */
   title: string;
-  /** Indexed text, absent until the document has been indexed. */
   searchText: string | null;
   content: string;
   searchEmbedding: string | null;
@@ -171,9 +151,8 @@ export interface RankedCandidate<T> {
   snippet: string;
 }
 
-/** Read the title directly as well as through the indexed text: the latter is
- * written asynchronously after a title edit, and is missing entirely while the
- * embedding runtime cannot index a document. */
+/** The title is scored separately: `searchText` lags a title edit, and is
+ * missing entirely while the embedding runtime cannot index a document. */
 function textForScoring(candidate: SearchCandidate): string {
   return [candidate.title, candidate.searchText ?? candidate.content]
     .filter(Boolean)
@@ -181,14 +160,9 @@ function textForScoring(candidate: SearchCandidate): string {
 }
 
 /**
- * The documents a query matches, best first.
- *
- * A document is a result when the query matches it lexically, or when its
- * similarity stands above what this query scores against the corpus at large
- * (see `semanticMatchThreshold`) — a document that merely sits at the model's
- * baseline is not a match, however high that baseline is. `queryEmbedding` is
- * null when the embedding runtime is unavailable, which leaves keyword matching
- * on its own.
+ * The documents a query matches, best first: a lexical match, or a similarity
+ * above the corpus baseline. `queryEmbedding` is null when the embedding
+ * runtime is unavailable, leaving keyword matching on its own.
  */
 export function rankSearchCandidates<T extends SearchCandidate>(
   query: string,
@@ -215,8 +189,7 @@ export function rankSearchCandidates<T extends SearchCandidate>(
     };
   });
 
-  // The baseline is a property of the corpus, not of any one document, so it
-  // can only be taken once every candidate has been scored.
+  // A property of the corpus, so it needs every candidate scored first.
   const threshold = semanticMatchThreshold(
     scored
       .map((item) => item.similarity)
@@ -226,17 +199,13 @@ export function rankSearchCandidates<T extends SearchCandidate>(
   const ranked: RankedCandidate<T>[] = [];
 
   for (const { candidate, text, keywordScore, similarity } of scored) {
-    // Only the part of a similarity above the baseline carries information
-    // about the query, so that is the part that ranks. Lexical matches are
-    // results regardless of what the model says.
     const semanticBoost = semanticRelevance(similarity, threshold);
     if (keywordScore === 0 && semanticBoost === 0) {
       continue;
     }
 
-    // Exact and prefix matches should outrank broader semantic similarity. Keep
-    // the raw score monotonic and convert it to rank reciprocally so strong
-    // lexical matches do not collapse into identical rank-zero ties.
+    // Reciprocal rank keeps exact and prefix matches ahead of broad similarity
+    // without collapsing strong lexical matches into rank-zero ties.
     ranked.push({
       candidate,
       rank: scoreToRank(keywordScore + semanticBoost * SEMANTIC_RANKING_WEIGHT),
@@ -247,10 +216,7 @@ export function rankSearchCandidates<T extends SearchCandidate>(
   return ranked.sort((left, right) => left.rank - right.rank);
 }
 
-/**
- * Rank for text that has no embedding of its own — an attached file, matched by
- * its name and extracted text. Null when the query does not match it at all.
- */
+/** Rank for text with no embedding — files. Null when the query does not match. */
 export function rankKeywordMatch(
   query: string,
   text: string,

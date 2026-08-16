@@ -1,11 +1,7 @@
 /**
- * The database side of search: the rows a query runs against and the index
- * columns behind them, then filtering by access, properties and date, and
- * paging what is left.
- *
- * Which documents a query actually matches, and how they rank, is decided in
- * `#search/ranking.ts`; what goes into the index columns is decided in
- * `#search/indexing.ts`.
+ * The database side of search: the rows, the index columns behind them, and
+ * filtering and paging the results. What matches and how it ranks is decided in
+ * `#search/ranking.ts`, what goes into the index in `#search/indexing.ts`.
  */
 
 import { eq, inArray, sql } from "drizzle-orm";
@@ -28,11 +24,7 @@ import { rankKeywordMatch, rankSearchCandidates } from "#search/ranking.ts";
 // SQL helpers shared with documents.ts
 // ---------------------------------------------------------------------------
 
-/**
- * `document.archived` is loosely typed in stored data — the same column holds
- * `0`, `'0'`, `'0.0'`, `NULL` or `FALSE` depending on how the row was written —
- * so reads that care about it go through these rather than comparing directly.
- */
+/** `archived` is loosely typed in stored data: `0`, `'0'`, `'0.0'`, NULL, FALSE. */
 export const nonArchivedDocumentCondition = sql`
   (
     ${document.archived} = 0
@@ -43,7 +35,7 @@ export const nonArchivedDocumentCondition = sql`
   )
 `;
 
-/** The same predicate for a raw `sql` selection, which has no column object. */
+/** The same, for a raw `sql` selection with no column object. */
 export function nonArchivedColumnCondition(column: string) {
   return sql.raw(
     `(${column} = 0 OR ${column} = '0' OR ${column} = '0.0' OR ${column} IS NULL OR ${column} = FALSE)`,
@@ -122,9 +114,6 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
 
 // ---------------------------------------------------------------------------
 // Search index rows
-//
-// Moving the index columns in and out of the database. What belongs in them is
-// decided in `#search/indexing.ts`.
 // ---------------------------------------------------------------------------
 
 export interface DocumentIndexSource {
@@ -141,9 +130,8 @@ export interface DocumentIndex {
 }
 
 /**
- * The document's type on its own. Canvases are never indexed and their content
- * can be tens of megabytes, so the decision to skip one is made before
- * `readDocumentIndexSource` pulls that column into memory.
+ * The type on its own, so a canvas — never indexed, content up to tens of
+ * megabytes — is skipped before `readDocumentIndexSource` loads that column.
  */
 export async function readDocumentType(
   s: SpaceStore,
@@ -216,10 +204,7 @@ export async function readIndexableDocumentIds(s: SpaceStore): Promise<string[]>
   return rows.map((row) => row.id);
 }
 
-/**
- * Documents whose index is missing, written by a different embedding model, or
- * older than the document itself.
- */
+/** Documents whose index is missing, from another model, or out of date. */
 export async function readStaleIndexDocumentIds(
   s: SpaceStore,
   embeddingModel: string,
@@ -309,8 +294,7 @@ async function readDocuments(
 
 /**
  * Documents matching `query` and `filters`, ranked and paged. Reads the index
- * as it stands — callers that want it current first refresh it through
- * `#search/indexing.ts`.
+ * as it stands; callers refresh it first through `#search/indexing.ts`.
  */
 export async function searchDocuments(
   s: SpaceStore,
@@ -436,7 +420,6 @@ export async function searchDocuments(
       await embedSearchQuery(query),
       candidates.map((candidate) => ({
         ...candidate,
-        // The title arrives as the stored property value; ranking works on text.
         title: candidate.title
           ? propertyValueToText(parseStoredPropertyValue(candidate.title))
           : "",

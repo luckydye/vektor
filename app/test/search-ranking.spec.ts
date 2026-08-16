@@ -8,13 +8,8 @@ import {
   semanticRelevance,
 } from "#search/ranking.ts";
 
-/**
- * These guard the rule that decides whether a document the query does not match
- * lexically is still a result. bge similarities never approach zero for
- * unrelated text, so the numbers below are the shapes that actually come out of
- * the model: a tight band when nothing matches, one clear outlier when
- * something does.
- */
+// The similarity distributions bge actually produces: a tight band when nothing
+// matches, one outlier when something does.
 describe("semantic match threshold", () => {
   it("keeps the absolute floor when there is nothing to measure", () => {
     expect(semanticMatchThreshold([])).toBe(MIN_SEMANTIC_SIMILARITY);
@@ -61,11 +56,8 @@ describe("semantic match threshold", () => {
   });
 });
 
-/**
- * The rule as a whole, over the stored shape of a document. Embeddings are unit
- * vectors and similarity is their dot product, so a two-dimensional vector can
- * be aimed at an exact similarity against the query.
- */
+// Embeddings are unit vectors and similarity is their dot product, so a 2D
+// vector can be aimed at an exact similarity against the query.
 describe("ranking search candidates", () => {
   const queryEmbedding = [1, 0];
 
@@ -92,8 +84,7 @@ describe("ranking search candidates", () => {
       (result) => (result.candidate as { id: string }).id,
     );
 
-  // The repro from #128: a query no document contains, against a corpus whose
-  // similarities all sit in the model's usual band.
+  // The #128 corpus, similarities all in the model's usual band.
   const fruits = [
     candidate("apple", "Apple", "red fruit orchard", 0.63),
     candidate("banana", "Banana", "yellow tropical", 0.62),

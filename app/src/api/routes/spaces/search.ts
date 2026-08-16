@@ -66,8 +66,7 @@ export const GET: ApiRouteHandler = (context) =>
 
       const store = await openSpaceStore(spaceId);
 
-      // Documents written since they were last indexed — or indexed by an
-      // earlier model — are caught up before the query reads the index.
+      // Catch up stale indexes before the query reads them.
       if (query.trim()) {
         await refreshStaleDocumentIndexes(store);
       }
