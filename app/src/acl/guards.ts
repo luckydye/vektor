@@ -146,8 +146,10 @@ export async function authenticateDocumentAccess(
 ): Promise<{ aclUserId: string | null }> {
   const jobToken = context.req.raw.headers.get("X-Job-Token");
   if (jobToken) {
+    // A token that does not parse is a bad credential, not an insufficient
+    // one — 401, as the document routes have always answered a forged one.
     const parsed = parseJobToken(jobToken, spaceId);
-    if (!parsed) throw forbiddenResponse("Invalid job token");
+    if (!parsed) throw unauthorizedResponse();
     // Only user-less system tokens read without a per-document check.
     if (parsed.userId) {
       await verifyDocumentRole(spaceId, documentId, parsed.userId, requiredRole);

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
+  authenticateDocumentAccess,
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
   tryAuthenticateRequest,
@@ -290,43 +291,14 @@ export const GET: ApiRouteHandler = (context) =>
     // view only requires viewer.
     const requiredRole = draft || live ? Permission.EDITOR : Permission.VIEWER;
 
-    // Carried past the gate for the revision guard: `null` is the trusted
-    // system caller, `""` public. See verifyRevisionAccess.
-    let aclUserId: string | null;
-
-    const jobToken = context.req.raw.headers.get("X-Job-Token");
-    if (jobToken) {
-      const parsed = parseJobToken(jobToken, spaceId);
-      if (!parsed) {
-        throw unauthorizedResponse();
-      }
-      // Scope the token to the user who initiated it; only user-less system
-      // tokens read without a per-document check.
-      if (parsed.userId) {
-        await verifyDocumentRole(spaceId, id, parsed.userId, requiredRole);
-      }
-      aclUserId = parsed.userId;
-    } else {
-      // Authenticate with either user session or access token
-      const auth = await tryAuthenticateRequest(context, spaceId);
-      if (auth?.type === "token") {
-        await verifyTokenPermission(
-          auth.token,
-          spaceId,
-          ResourceType.DOCUMENT,
-          id,
-          requiredRole,
-        );
-        aclUserId = getTokenUserId(auth.token.tokenId);
-      } else if (auth?.type === "user") {
-        await verifyDocumentRole(spaceId, id, auth.user.id, requiredRole);
-        aclUserId = auth.user.id;
-      } else {
-        // Unauthenticated — verifyDocumentRole handles public access
-        await verifyDocumentRole(spaceId, id, null, requiredRole);
-        aclUserId = "";
-      }
-    }
+    // `aclUserId` is carried past the gate for the revision guard: `null` is
+    // the trusted system caller, `""` public. See verifyRevisionAccess.
+    const { aclUserId } = await authenticateDocumentAccess(
+      context,
+      spaceId,
+      id,
+      requiredRole,
+    );
 
     const meta = await getDocument(await openSpaceStore(spaceId), id);
     if (!meta) {

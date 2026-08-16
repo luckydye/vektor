@@ -1,11 +1,6 @@
 import { createPatch } from "diff";
-import {
-  authenticateRequest,
-  verifyDocumentRole,
-  verifyRevisionAccess,
-  verifyTokenPermission,
-} from "#acl/guards.ts";
-import { Permission, ResourceType } from "#acl/permissions.ts";
+import { authenticateDocumentAccess, verifyRevisionAccess } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   notFoundResponse,
@@ -58,25 +53,12 @@ export const GET: ApiRouteHandler = (context) =>
         ? null
         : parseQueryInt(searchParams, "base", { min: 1 });
 
-    // Authenticate with either user session or access token
-    const auth = await authenticateRequest(context, spaceId);
-
-    let aclUserId: string;
-    // Handle token-based authentication
-    if (auth.type === "token") {
-      await verifyTokenPermission(
-        auth.token,
-        spaceId,
-        ResourceType.DOCUMENT,
-        id,
-        Permission.VIEWER,
-      );
-      aclUserId = getTokenUserId(auth.token.tokenId);
-    } else {
-      // Handle user-based authentication
-      await verifyDocumentRole(spaceId, id, auth.user.id, Permission.VIEWER);
-      aclUserId = auth.user.id;
-    }
+    const { aclUserId } = await authenticateDocumentAccess(
+      context,
+      spaceId,
+      id,
+      Permission.VIEWER,
+    );
 
     // Both sides are content, so both are held to the `?rev=N` rule.
     await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
