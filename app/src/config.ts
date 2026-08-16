@@ -59,6 +59,19 @@ export function config() {
       TRUST_PROXY: process.env.VEKTOR_TRUST_PROXY,
       /** Hard cap (bytes) for buffered API request bodies. */
       MAX_REQUEST_BYTES: process.env.VEKTOR_MAX_REQUEST_BYTES,
+
+      /** Set to "0"/"false" to turn API rate limiting off entirely. */
+      RATE_LIMIT: process.env.VEKTOR_RATE_LIMIT,
+      /** Requests per window allowed on routes without a tighter rule. */
+      RATE_LIMIT_MAX: process.env.VEKTOR_RATE_LIMIT_MAX,
+      /** Rate limit window, in seconds. */
+      RATE_LIMIT_WINDOW: process.env.VEKTOR_RATE_LIMIT_WINDOW,
+      /**
+       * Comma-separated rate limit keys to refuse outright, as they appear in
+       * the 429 log line (`ip:<addr>`, `token:<hash>`). The killswitch for an
+       * integration that is hammering the instance right now.
+       */
+      RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */

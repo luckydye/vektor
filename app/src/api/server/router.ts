@@ -1,4 +1,5 @@
 import type { Next } from "hono";
+import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { auth, authTrustedOrigins } from "#auth";
 import { getPublicEnv, isTrustProxyEnabled } from "#config";
@@ -101,6 +102,37 @@ function jsonError(status: number, message: string): Response {
 }
 
 /**
+ * Tell a well-behaved client how much room it has left. Advisory, so a Response
+ * whose headers are immutable — better-auth proxies one straight from `fetch` —
+ * loses the hint rather than paying to reconstruct the body around it.
+ */
+function withRateLimitHeaders(response: Response, limit: RateLimitCheck): Response {
+  try {
+    response.headers.set("X-Limit-Remaining", String(limit.remaining));
+  } catch {
+    // Immutable headers; the hint is not worth a copy.
+  }
+  return response;
+}
+
+function rateLimitedResponse(limit: RateLimitCheck): Response {
+  return Response.json(
+    {
+      error: limit.blocked
+        ? "API access temporarily disabled for this client"
+        : "Too many requests",
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(limit.retryAfterSeconds),
+        "X-Limit-Remaining": "0",
+      },
+    },
+  );
+}
+
+/**
  * Hono middleware that serves the migrated API routes. Non-API paths fall
  * through to the next handler (e.g. the Astro frontend handler, when mounted).
  */
@@ -125,6 +157,29 @@ export async function apiRouter(
     return jsonError(403, "Cross-origin request rejected");
   }
 
+  // Ahead of `hydrateRequestContext`, so a caller over the limit is turned away
+  // before the session lookup runs rather than after paying for it — which is
+  // why the key comes from headers alone and never from the resolved user. Also
+  // ahead of the 405, so a flood of unsupported methods is counted rather than
+  // being the one shape of request that routes freely.
+  const limit = checkRateLimit({
+    pattern: match.pattern,
+    method,
+    authorization: c.req.header("authorization"),
+    ip: clientIp(c),
+  });
+  if (limit && !limit.allowed) {
+    // The key is in the line so an operator can name it in
+    // VEKTOR_RATE_LIMIT_BLOCK; it is an IP or a token hash, never a credential.
+    appLogger.warn("API rate limit exceeded", {
+      path: pathname,
+      method,
+      key: limit.key,
+      blocked: limit.blocked,
+    });
+    return rateLimitedResponse(limit);
+  }
+
   const handler = resolveHandler(match.module, method);
   if (!handler) {
     const allowed = Object.keys(match.module)
@@ -145,7 +200,7 @@ export async function apiRouter(
       return jsonError(500, "Internal server error");
     }
 
-    return result;
+    return limit ? withRateLimitHeaders(result, limit) : result;
   } catch (error) {
     appLogger.error("Unhandled API route error", {
       path: pathname,
