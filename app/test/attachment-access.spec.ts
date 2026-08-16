@@ -178,6 +178,25 @@ describe("attachments of a publicly shared document", () => {
     expect(await response.text()).not.toContain("PRIVATE ATTACHMENT");
   });
 
+  it("keeps serving it after the same bytes are uploaded elsewhere", async () => {
+    const shared = await createDocument("Shared Logo");
+    const url = await ownerUpload("IDENTICAL BYTES", shared);
+    await grantOnDocument(shared, "viewer", { groupId: "public" });
+    expect((await fetch(`${BASE_URL}${url}`)).status).toBe(200);
+
+    // Content-addressable keys: attaching the same file to a private document
+    // lands on the same row, and must not move the image out from under the
+    // document that is already showing it.
+    const private_ = await createDocument("Private Reuse");
+    const reupload = await upload(ownerToken, "IDENTICAL BYTES", "note.txt", private_);
+    expect(reupload.status).toBe(200);
+    expect((await reupload.json()).url).toBe(url);
+
+    const anonymous = await fetch(`${BASE_URL}${url}`);
+    expect(anonymous.status).toBe(200);
+    expect(await anonymous.text()).toBe("IDENTICAL BYTES");
+  });
+
   it("withdraws the attachment when the shared document is archived", async () => {
     const documentId = await createDocument("Archived Media");
     const url = await ownerUpload("ARCHIVED ATTACHMENT", documentId);

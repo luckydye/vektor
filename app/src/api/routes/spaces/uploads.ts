@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { sql } from "drizzle-orm";
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
@@ -147,7 +148,12 @@ export const POST: ApiRouteHandler = (context) =>
         .onConflictDoUpdate({
           target: fileTable.path,
           set: {
-            documentId: documentId ?? null,
+            // Keys are content hashes, so uploading the same bytes again lands
+            // on someone else's row. The first document to claim it keeps it:
+            // that document's ACL is what serves the file, and a later upload
+            // must not be able to move an image out from under the document
+            // already showing it. Only an unclaimed row takes the new parent.
+            documentId: sql`COALESCE(${fileTable.documentId}, ${documentId ?? null})`,
             originalName,
             mimeType: file.type || null,
             url,
