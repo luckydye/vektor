@@ -462,7 +462,7 @@ async function capRowsToIssuer<T extends AclRow>(
 
     const key =
       resourceType === ResourceType.DOCUMENT
-        ? `${row.createdBy} ${row.resourceId}`
+        ? `${row.createdBy}\0${row.resourceId}`
         : row.createdBy;
     let cap: string | undefined;
     if (roleByKey.has(key)) {
@@ -1136,8 +1136,15 @@ export async function hasPermission(
   );
 
   if (!userPermission) {
-    // Extensions fall back to space-level permission.
-    if (resourceType === ResourceType.EXTENSION) {
+    // Extensions and categories fall back to space-level permission, as
+    // documents do through `getDocumentPermission`: a grant on the space
+    // reaches what the space contains. Every principal, so a space-scoped
+    // token and the `public` group reach a category at their own level —
+    // never above it, since the space grant is still level-checked below.
+    if (
+      resourceType === ResourceType.EXTENSION ||
+      resourceType === ResourceType.CATEGORY
+    ) {
       const spacePermission = await getPermission(
         spaceId,
         ResourceType.SPACE,

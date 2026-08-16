@@ -1,16 +1,16 @@
 import { eq } from "drizzle-orm";
-import {
-  verifySpaceAccess,
-  verifySpaceRole,
-  verifyTokenPermission,
-} from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
-import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
+import {
+  getTokenUserId,
+  type ValidateTokenResult,
+  validateAccessToken,
+} from "#db/space/accessTokens.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -363,7 +363,7 @@ export function calDavForbidden(): Response {
 /**
  * Authorize a Basic-auth CalDAV caller against the *token's* grants.
  *
- * This is the CalDAV counterpart of the API path's `verifyTokenPermission` and
+ * This is the CalDAV counterpart of the API path's token check and
  * deliberately never consults the user's own ACL: an access token exists to
  * delegate limited access, so a token scoped "viewer on space A" must not reach
  * space B and must not write anywhere, no matter what its creator may do.
@@ -386,11 +386,10 @@ async function authorizeCalDAVToken(
 
   const targetSpaceId = spaceId ?? token.spaceId;
   try {
-    await verifyTokenPermission(
-      token.result,
+    await verifyAccess(
       targetSpaceId,
-      ResourceType.SPACE,
-      targetSpaceId,
+      { type: ResourceType.SPACE, id: targetSpaceId },
+      getTokenUserId(token.result.tokenId),
       requiredRole,
     );
   } catch {
@@ -431,11 +430,12 @@ export async function requireCalDAVUserAndAccess(
 
   if (options.spaceId) {
     try {
-      if (requiredRole !== Permission.VIEWER) {
-        await verifySpaceRole(options.spaceId, caldavUser.id, requiredRole);
-      } else {
-        await verifySpaceAccess(options.spaceId, caldavUser.id);
-      }
+      await verifyAccess(
+        options.spaceId,
+        { type: ResourceType.SPACE, id: options.spaceId },
+        caldavUser.id,
+        requiredRole,
+      );
     } catch {
       return calDavForbidden();
     }

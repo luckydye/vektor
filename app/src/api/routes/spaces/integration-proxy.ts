@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -42,12 +42,22 @@ async function resolveUserId(context: ApiContext, spaceId: string): Promise<stri
     if (!parsed?.userId) {
       throw unauthorizedResponse();
     }
-    await verifySpaceRole(spaceId, parsed.userId, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      parsed.userId,
+      Permission.VIEWER,
+    );
     return parsed.userId;
   }
 
   const user = requireUser(context);
-  await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+  await verifyAccess(
+    spaceId,
+    { type: ResourceType.SPACE, id: spaceId },
+    user.id,
+    Permission.VIEWER,
+  );
   return user.id;
 }
 

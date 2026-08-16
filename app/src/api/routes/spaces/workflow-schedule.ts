@@ -6,8 +6,8 @@
  * DELETE: remove the schedule (editor); run history is preserved
  */
 
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -33,7 +33,12 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const store = await openSpaceStore(spaceId);
     const schedule = await getWorkflowSchedule(store, scheduleId);
@@ -51,7 +56,12 @@ export const PATCH: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const store = await openSpaceStore(spaceId);
     const existing = await getWorkflowSchedule(store, scheduleId);
@@ -109,7 +119,12 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const store = await openSpaceStore(spaceId);
     const schedule = await getWorkflowSchedule(store, scheduleId);

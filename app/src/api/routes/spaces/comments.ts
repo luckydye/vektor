@@ -1,11 +1,11 @@
 import { inArray } from "drizzle-orm";
 import {
   authenticateDocumentAccess,
-  verifyDocumentAccess,
+  canAccess,
+  verifyAccess,
   verifyFeatureAccess,
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission } from "#acl/store.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -17,7 +17,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { getAuthDb } from "#db/client/db.ts";
 import { many } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
@@ -96,7 +96,12 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     // Ensure user has access to document
-    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     // Verify user has commenting feature access. Scoped to the document, or a
     // document/tree/category-scoped editor would be refused on a document they
@@ -189,7 +194,12 @@ export const PATCH: ApiRouteHandler = (context) =>
       throw badRequestResponse("documentId is required");
     }
 
-    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.VIEWER,
+    );
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
 
     if (
@@ -215,13 +225,11 @@ export const PATCH: ApiRouteHandler = (context) =>
 
     // Editors may maintain whole threads. Commenters may only modify their own
     // comments, matching DELETE's authorship rule.
-    const canModerate = await hasPermission(
+    const canModerate = await canAccess(
       spaceId,
-      ResourceType.DOCUMENT,
-      documentId,
+      { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
       Permission.EDITOR,
-      await getUserGroups(user.id),
     );
     if (
       !canModerate &&
@@ -268,7 +276,12 @@ export const DELETE: ApiRouteHandler = (context) =>
     // As early as the body allows: `documentId` is the subject of the check, so it
     // has to be read first, but nothing else does — an outsider is turned away
     // before the rest of the shape is validated.
-    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.VIEWER,
+    );
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
 
     if (!commentId || typeof commentId !== "string") {

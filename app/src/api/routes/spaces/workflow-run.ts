@@ -1,4 +1,4 @@
-import { authenticateJobTokenOrSpaceRole, verifySpaceRole } from "#acl/guards.ts";
+import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, getUserGroups } from "#acl/store.ts";
 import {
@@ -82,7 +82,12 @@ function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
       const runId = requireParam(context.var.params, "runId");
-      await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.EDITOR,
+      );
       await ensureSpaceRecovered(spaceId);
       const run = await getRunForRead(spaceId, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");

@@ -1,5 +1,5 @@
+import { canAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission } from "#acl/store.ts";
 import { config } from "#config";
 import { getSpaceBySlug, listUserSpaces } from "#db/space/spaces.ts";
 
@@ -18,15 +18,13 @@ export async function resolveActiveSpaceSlug(
   const defaultSpace = defaultSlug ? await getSpaceBySlug(defaultSlug) : null;
 
   if (defaultSpace) {
-    const canAccess = await hasPermission(
+    const reachable = await canAccess(
       defaultSpace.id,
-      ResourceType.SPACE,
-      defaultSpace.id,
-      userId ?? "",
+      { type: ResourceType.SPACE, id: defaultSpace.id },
+      userId ?? null,
       Permission.VIEWER,
-      await getUserGroups(userId ?? ""),
     );
-    if (canAccess) return defaultSpace.slug;
+    if (reachable) return defaultSpace.slug;
   }
 
   const userSpaces = await listUserSpaces(userId ?? "");

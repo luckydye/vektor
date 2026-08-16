@@ -4,8 +4,8 @@
  */
 
 import type { WebSocket } from "ws";
-import { isAccessDenied, verifyDocumentRole, verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
 import {
@@ -129,9 +129,9 @@ export class TopicSubscriptions {
 
     if (isDocumentRealtimeTopic(topic)) {
       try {
-        await verifyDocumentRole(
+        await verifyAccess(
           this.spaceId,
-          topic.slice("document:".length),
+          { type: ResourceType.DOCUMENT, id: topic.slice("document:".length) },
           this.userId,
           Permission.VIEWER,
         );
@@ -158,7 +158,12 @@ export class TopicSubscriptions {
   private spaceRoleResolver(): () => Promise<TopicAccess> {
     let verdict: Promise<TopicAccess> | undefined;
     return () => {
-      verdict ??= verifySpaceRole(this.spaceId, this.userId, Permission.VIEWER).then(
+      verdict ??= verifyAccess(
+        this.spaceId,
+        { type: ResourceType.SPACE, id: this.spaceId },
+        this.userId,
+        Permission.VIEWER,
+      ).then(
         () => "allowed",
         (error) => (isAccessDenied(error) ? "denied" : "unknown"),
       );

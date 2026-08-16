@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { verifyDocumentRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { getAuthDb } from "#db/client/db.ts";
@@ -59,9 +59,9 @@ async function deliver(
   }
 
   try {
-    await verifyDocumentRole(
+    await verifyAccess(
       spaceId,
-      notification.documentId,
+      { type: ResourceType.DOCUMENT, id: notification.documentId },
       notification.recipientUserId,
       Permission.VIEWER,
     );

@@ -1521,17 +1521,13 @@ describe("API Tests - Revisions", () => {
     }
   });
 
-  it("should return empty array for history of non-existent document", async () => {
+  it("should return 404 for history of non-existent document", async () => {
     const fakeDocId = crypto.randomUUID();
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${fakeDocId}/revisions`,
     );
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.revisions).toBeDefined();
-    expect(Array.isArray(data.revisions)).toBe(true);
-    expect(data.revisions.length).toBe(0);
+    expect(response.status).toBe(404);
   });
 
   it("should return empty history for a newly created document", async () => {

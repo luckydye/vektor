@@ -2,8 +2,7 @@ import {
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
   tryAuthenticateRequest,
-  verifyCategoryRole,
-  verifyTokenPermission,
+  verifyAccess,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
@@ -17,6 +16,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { getTokenUserId } from "#db/space/accessTokens.ts";
 import {
   CategorySlugTakenError,
   deleteCategory,
@@ -37,21 +37,30 @@ async function verifyCategoryRead(
 
   const auth = await tryAuthenticateRequest(context, spaceId);
   if (auth?.type === "user") {
-    await verifyCategoryRole(spaceId, id, auth.user.id, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.CATEGORY, id: id },
+      auth.user.id,
+      Permission.VIEWER,
+    );
     return;
   }
   if (auth?.type === "token") {
-    await verifyTokenPermission(
-      auth.token,
+    await verifyAccess(
       spaceId,
-      ResourceType.CATEGORY,
-      id,
+      { type: ResourceType.CATEGORY, id: id },
+      getTokenUserId(auth.token.tokenId),
       Permission.VIEWER,
     );
     return;
   }
 
-  await verifyCategoryRole(spaceId, id, null, Permission.VIEWER);
+  await verifyAccess(
+    spaceId,
+    { type: ResourceType.CATEGORY, id: id },
+    null,
+    Permission.VIEWER,
+  );
 }
 
 export const GET: ApiRouteHandler = (context) =>

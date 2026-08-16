@@ -1,11 +1,11 @@
 import {
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
-  canAccessExtension,
+  canAccess,
   verifyFeatureAccess,
   verifyTokenFeature,
 } from "#acl/guards.ts";
-import { Feature, Permission } from "#acl/permissions.ts";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups, hasFeature } from "#acl/store.ts";
 import {
   badRequestResponse,
@@ -54,7 +54,12 @@ export const GET: ApiRouteHandler = (context) =>
         : (
             await Promise.all(
               allExtensions.map(async (ext) => {
-                const hasAccess = await canAccessExtension(spaceId, ext.id, auth.user.id);
+                const hasAccess = await canAccess(
+                  spaceId,
+                  { type: ResourceType.EXTENSION, id: ext.id },
+                  auth.user.id,
+                  Permission.VIEWER,
+                );
                 return hasAccess ? ext : null;
               }),
             )

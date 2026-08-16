@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   requireParam,
   requireUser,
@@ -16,7 +16,12 @@ export const POST: ApiRouteHandler = (context) =>
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.OWNER,
+      );
 
       const store = await openSpaceStore(spaceId);
       await rebuildSearchIndex(store);

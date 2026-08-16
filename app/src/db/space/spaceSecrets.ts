@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
+import { canAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission } from "#acl/store.ts";
 import { one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -180,14 +180,11 @@ export async function userCanReadSpaceSecret(
     return false;
   }
 
-  const groups = await getUserGroups(userId);
-  return hasPermission(
+  return canAccess(
     s.spaceId,
-    ResourceType.SPACE,
-    s.spaceId,
+    { type: ResourceType.SPACE, id: s.spaceId },
     userId,
     Permission.OWNER,
-    groups,
   );
 }
 

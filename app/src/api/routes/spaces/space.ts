@@ -1,5 +1,5 @@
-import { verifyResourceAccess, verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -30,7 +30,12 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    await verifyResourceAccess(spaceId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
+      user.id,
+      Permission.VIEWER,
+    );
     const space = await getSpace(spaceId);
     if (!space) return jsonResponse(space);
     return jsonResponse({
@@ -79,8 +84,9 @@ export const PATCH: ApiRouteHandler = (context) =>
         validated.preferences ?? {},
       );
 
-      await verifySpaceRole(
+      await verifyAccess(
         spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
         user.id,
         updatesMetadata
           ? Permission.OWNER
@@ -141,7 +147,12 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
     await deleteSpace(spaceId);
     return successResponse();
   }, "Failed to delete space");

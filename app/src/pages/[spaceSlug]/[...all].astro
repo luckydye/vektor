@@ -1,10 +1,6 @@
 ---
-import {
-  verifyDocumentRole,
-  verifyResourceAccess,
-  verifySpaceRole,
-} from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { SpaceApp } from "#components/SpaceApp.tsx";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentBySlug } from "#db/space/documents.ts";
@@ -39,7 +35,12 @@ if (settingsPath) {
   }
 
   try {
-    await verifySpaceRole(space.id, Astro.locals.user?.id ?? "", Permission.OWNER);
+    await verifyAccess(
+      space.id,
+      { type: ResourceType.SPACE, id: space.id },
+      Astro.locals.user?.id ?? "",
+      Permission.OWNER,
+    );
   } catch (error) {
     if (error instanceof Response) return error;
     throw error;
@@ -51,14 +52,14 @@ const storedDocumentRecord = docSlugMatch
   : null;
 
 /**
- * Viewer verdict for one document, swallowing the Response `verifyDocumentRole`
+ * Viewer verdict for one document, swallowing the Response `verifyAccess`
  * throws: answering with it would leak the guard's 403/404 distinction.
  */
 async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   try {
-    await verifyDocumentRole(
+    await verifyAccess(
       space.id,
-      documentId,
+      { type: ResourceType.DOCUMENT, id: documentId },
       Astro.locals.user?.id ?? null,
       Permission.VIEWER,
     );
@@ -85,7 +86,12 @@ if (!readableDocumentRecord) {
   // Also the only place an anonymous caller is sent to /login: redirecting on
   // the document verdict would tell a refused slug from an unresolved one.
   try {
-    await verifyResourceAccess(space.id, Astro.locals.user?.id ?? "");
+    await verifyAccess(
+      space.id,
+      { type: ResourceType.SPACE, id: space.id, anyGrantInSpace: true },
+      Astro.locals.user?.id ?? null,
+      Permission.VIEWER,
+    );
   } catch (error) {
     if (!(error instanceof Response)) throw error;
     if (!Astro.locals.session) {

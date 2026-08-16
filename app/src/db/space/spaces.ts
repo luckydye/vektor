@@ -1,18 +1,13 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
-import {
-  highestPermission,
-  Permission,
-  PUBLIC_GROUP,
-  ResourceType,
-} from "#acl/permissions.ts";
+import { canAccess } from "#acl/guards.ts";
+import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   countSpaceMembers,
   getUserGroups,
   grantPermission,
   hasAnyResourceScopedAccess,
-  hasPermission,
   listUserPermissions,
 } from "#acl/store.ts";
 import {
@@ -336,13 +331,11 @@ export async function listPublicSpaces(): Promise<Space[]> {
 
   for (const space of allSpaces) {
     try {
-      const canView = await hasPermission(
+      const canView = await canAccess(
         space.id,
-        ResourceType.SPACE,
-        space.id,
-        "",
+        { type: ResourceType.SPACE, id: space.id },
+        null,
         Permission.VIEWER,
-        [PUBLIC_GROUP],
       );
       if (canView) {
         publicSpaces.push({ ...space, userRole: "viewer" });

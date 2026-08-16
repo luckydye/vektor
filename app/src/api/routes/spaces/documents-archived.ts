@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/store.ts";
 import {
   jsonResponse,
@@ -17,7 +17,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     // Reading an archived document takes `editor`, so listing them does too.
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
     const { limit, cursor } = parsePaginationParams(
       new URL(context.req.url).searchParams,
       {

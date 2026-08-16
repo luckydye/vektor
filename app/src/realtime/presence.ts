@@ -141,7 +141,7 @@ export class PresenceConnection {
   private async update(update: PresenceUpdatePayload): Promise<void> {
     const roomKey = `${this.spaceId}:${update.room}`;
     // Presence access is verified once in join(); a connection may only update
-    // the presence entries it created. Re-running verifyDocumentRole here would
+    // the presence entries it created. Re-running the document check here would
     // issue several DB queries per presence frame (pointer-move rate), which is
     // the dominant server cost under active collaboration. Gating on the joined
     // set keeps it authorized without the per-frame lookup.

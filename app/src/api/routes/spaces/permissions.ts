@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { verifySpaceRole } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
 import {
   allFeatures,
   allPermissions,
@@ -54,8 +54,9 @@ export const GET: ApiRouteHandler = (context) =>
     const allResources = searchParams.get("allResources") === "true";
     const store = await openSpaceStore(spaceId);
 
-    await verifySpaceRole(
+    await verifyAccess(
       spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
       user.id,
       allResources ? Permission.OWNER : Permission.EDITOR,
     );
@@ -162,7 +163,12 @@ async function requiredRoleForRoleWrite(
 
 async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
   try {
-    await verifySpaceRole(spaceId, userId, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      userId,
+      Permission.OWNER,
+    );
     return true;
   } catch (error) {
     if (error instanceof Response && error.status === 403) return false;
@@ -255,8 +261,9 @@ export const POST: ApiRouteHandler = (context) =>
 
     const targetResourceType = resourceType ?? ResourceType.SPACE;
 
-    await verifySpaceRole(
+    await verifyAccess(
       spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
       user.id,
       type === "role" ? Permission.EDITOR : Permission.OWNER,
     );

@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -79,7 +79,12 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const sessionId = requireParam(context.var.params, "sessionId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const session = await getAIChatSession(store, sessionId, user.id);
@@ -96,7 +101,12 @@ export const PUT: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const sessionId = requireParam(context.var.params, "sessionId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const body = await parseJsonBody(context.req.raw);
     const session = parseSessionInput(spaceId, sessionId, body);
@@ -112,7 +122,12 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const sessionId = requireParam(context.var.params, "sessionId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const session = await getAIChatSession(store, sessionId, user.id);

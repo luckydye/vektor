@@ -5,8 +5,8 @@
 
 import type { WebSocket } from "ws";
 import * as Y from "yjs";
-import { isAccessDenied, verifyDocumentRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { documentIsReadonlyById } from "#db/space/documents.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -255,7 +255,12 @@ export class YjsConnection {
     role: Permission,
   ): Promise<"held" | "denied" | "unknown"> {
     try {
-      await verifyDocumentRole(this.spaceId, documentId, this.userId, role);
+      await verifyAccess(
+        this.spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        this.userId,
+        role,
+      );
       return "held";
     } catch (error) {
       return isAccessDenied(error) ? "denied" : "unknown";

@@ -1547,6 +1547,62 @@ describe("ACL API Tests - Categories Access Control", () => {
     expect(response.status).toBe(403);
   });
 
+  // A token scoped to the space holds no `category:<id>` grant, so it reaches a
+  // category only through hasPermission's category->space fallback. The viewer
+  // token proves that fallback carries the token's own level rather than
+  // admitting it outright.
+  it("should let a space-scoped token reach a category at its own level", async () => {
+    const tokenFor = async (permission: string) => {
+      const response = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/access-tokens`,
+        session1Token,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: `category-fallback-${permission}`,
+            resourceType: "space",
+            resourceId: testSpaceId,
+            permission,
+          }),
+        },
+      );
+      expect(response.status).toBe(201);
+      return (await response.json()).token;
+    };
+    const categoryUrl = `${BASE_URL}/api/v1/spaces/${testSpaceId}/categories/${testCategoryId}`;
+    const rename = (name: string) => ({
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, slug: "test-category" }),
+    });
+
+    const viewerToken = await tokenFor("viewer");
+    const editorToken = await tokenFor("editor");
+
+    const viewerRead = await fetch(categoryUrl, {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+    });
+    expect(viewerRead.status).toBe(200);
+
+    const viewerWrite = await fetch(categoryUrl, {
+      ...rename("Renamed By Viewer Token"),
+      headers: {
+        ...rename("").headers,
+        Authorization: `Bearer ${viewerToken}`,
+      },
+    });
+    expect(viewerWrite.status).toBe(403);
+
+    const editorWrite = await fetch(categoryUrl, {
+      ...rename("Renamed By Editor Token"),
+      headers: {
+        ...rename("").headers,
+        Authorization: `Bearer ${editorToken}`,
+      },
+    });
+    expect(editorWrite.status).toBe(200);
+  });
+
   it("should allow editor to delete category", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/categories/${testCategoryId}`,
@@ -2277,6 +2333,29 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(Array.isArray(data.categories)).toBe(true);
+  });
+
+  // The `public` group holds viewer on the space and nothing on the category
+  // itself, so this passes only through hasPermission's category->space
+  // fallback. Listing categories cannot prove it: that route checks the space
+  // role directly.
+  it("should allow unauthenticated users to read one category in a public space", async () => {
+    const created = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/categories`,
+      ownerUser.token,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Public Category", slug: "public-category" }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const { category } = await created.json();
+
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/categories/${category.id}`,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).category.id).toBe(category.id);
   });
 
   it("should allow unauthenticated users to list properties in a public space", async () => {
@@ -3196,14 +3275,12 @@ describe("ACL API Tests - Contributors", () => {
     expect(contributors.filter((c: any) => c.userId === testUser1.id).length).toBe(1);
   });
 
-  it("should return empty array for non-existent document", async () => {
+  it("should return 404 for non-existent document", async () => {
     const resp = await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/documents/non-existent-doc/contributors`,
       session1Token,
     );
-    expect(resp.status).toBe(200);
-    const { contributors } = await resp.json();
-    expect(contributors).toEqual([]);
+    expect(resp.status).toBe(404);
   });
 });
 

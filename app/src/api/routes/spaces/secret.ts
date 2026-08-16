@@ -1,5 +1,5 @@
-import { authenticateJobTokenOrSpaceRole, verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -54,7 +54,12 @@ export const PUT: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
     const body = await parseJsonBody<{
       value?: string;
@@ -95,7 +100,12 @@ export const DELETE: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const deleted = await deleteSpaceSecret(store, name);
@@ -111,7 +121,12 @@ export const HEAD: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const name = requireParam(context.var.params, "name");
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const secret = await getSpaceSecretMetadata(store, name);

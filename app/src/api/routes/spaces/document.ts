@@ -3,11 +3,9 @@ import {
   authenticateDocumentAccess,
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
-  verifyDocumentAccess,
-  verifyDocumentRole,
+  verifyAccess,
   verifyFeatureAccess,
   verifyRevisionAccess,
-  verifyTokenPermission,
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import {
@@ -412,23 +410,32 @@ export const PUT: ApiRouteHandler = (context) =>
       // Scope the token to the initiating user; user-less system tokens stay
       // trusted. Either way carry the id forward for authorship/restore.
       if (parsed.userId) {
-        await verifyDocumentRole(spaceId, id, parsed.userId, Permission.EDITOR);
+        await verifyAccess(
+          spaceId,
+          { type: ResourceType.DOCUMENT, id: id },
+          parsed.userId,
+          Permission.EDITOR,
+        );
       }
       userId = parsed.userId ?? undefined;
     } else {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
       if (auth.type === "token") {
-        await verifyTokenPermission(
-          auth.token,
+        await verifyAccess(
           spaceId,
-          ResourceType.DOCUMENT,
-          id,
+          { type: ResourceType.DOCUMENT, id: id },
+          getTokenUserId(auth.token.tokenId),
           Permission.EDITOR,
         );
         userId = getTokenUserId(auth.token.tokenId);
       } else {
-        await verifyDocumentRole(spaceId, id, auth.user.id, Permission.EDITOR);
+        await verifyAccess(
+          spaceId,
+          { type: ResourceType.DOCUMENT, id: id },
+          auth.user.id,
+          Permission.EDITOR,
+        );
         userId = auth.user.id;
       }
     }
@@ -563,7 +570,12 @@ export const PATCH: ApiRouteHandler = (context) =>
       const body = parseDocumentPatchBody(await parseJsonBody<unknown>(context.req.raw));
       const { properties, parentId, publishedRev, readonly } = body;
 
-      await verifyDocumentRole(spaceId, id, userId, Permission.EDITOR);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        userId,
+        Permission.EDITOR,
+      );
 
       if (properties !== undefined) {
         if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
@@ -582,7 +594,12 @@ export const PATCH: ApiRouteHandler = (context) =>
         if (parentId) {
           // EDITOR on the parent, not read access: document ACLs inherit down
           // the tree, so this splices the document into grants it did not have.
-          await verifyDocumentRole(spaceId, parentId, userId, Permission.EDITOR);
+          await verifyAccess(
+            spaceId,
+            { type: ResourceType.DOCUMENT, id: parentId },
+            userId,
+            Permission.EDITOR,
+          );
         }
 
         const parentChange = await setDocumentParent(store, id, parentId).catch(
@@ -670,10 +687,20 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     const store = await openSpaceStore(spaceId);
     if (permanent) {
-      await verifyDocumentRole(spaceId, id, userId, Permission.OWNER);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        userId,
+        Permission.OWNER,
+      );
       await deleteDocument(store, id, userId);
     } else {
-      await verifyDocumentRole(spaceId, id, userId, Permission.EDITOR);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        userId,
+        Permission.EDITOR,
+      );
       await archiveDocument(store, id, userId);
     }
 
@@ -698,7 +725,12 @@ async function verifyRevisionWrite(
     return;
   }
 
-  await verifyDocumentRole(spaceId, documentId, userId, Permission.EDITOR);
+  await verifyAccess(
+    spaceId,
+    { type: ResourceType.DOCUMENT, id: documentId },
+    userId,
+    Permission.EDITOR,
+  );
 }
 
 export const POST: ApiRouteHandler = (context) =>
@@ -709,7 +741,12 @@ export const POST: ApiRouteHandler = (context) =>
 
     // Not redundant with the suggestion gate below: COMMENT is granted per
     // space, so this is what confines a suggester to documents they can read.
-    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const document = await getDocument(store, documentId);

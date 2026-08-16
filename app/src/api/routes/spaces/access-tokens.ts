@@ -1,4 +1,4 @@
-import { validateTokenGrant, verifySpaceRole } from "#acl/guards.ts";
+import { validateTokenGrant, verifyAccess } from "#acl/guards.ts";
 import { Feature, isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -29,7 +29,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     // Get all tokens for this space
     const tokens = await listAccessTokens(await openSpaceStore(spaceId));
@@ -67,7 +72,12 @@ export const POST: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     // Token creation is a privileged delegation; restrict to space owners.
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
     const body = await parseJsonBody(context.req.raw);
     const { name, resourceType, resourceId, permission, expiresInDays } = body;

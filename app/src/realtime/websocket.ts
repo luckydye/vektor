@@ -1,13 +1,8 @@
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
 import { subscribeToAuthorizationChanges } from "#acl/events.ts";
-import {
-  isAccessDenied,
-  verifyDocumentRole,
-  verifyExtensionAccess,
-  verifyResourceAccess,
-} from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { auth } from "#auth";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
@@ -57,7 +52,12 @@ async function authorizePresenceRoom(
       const store = await openSpaceStore(spaceId);
       if (!(await getExtension(store, extensionId))) return "denied";
       if (isNoAuthMode()) return "allowed";
-      await verifyExtensionAccess(spaceId, extensionId, userId);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.EXTENSION, id: extensionId },
+        userId,
+        Permission.VIEWER,
+      );
       return "allowed";
     } catch (error) {
       return isAccessDenied(error) ? "denied" : "unknown";
@@ -65,7 +65,12 @@ async function authorizePresenceRoom(
   }
 
   try {
-    await verifyDocumentRole(spaceId, room, userId, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: room },
+      userId,
+      Permission.VIEWER,
+    );
     return "allowed";
   } catch (error) {
     return isAccessDenied(error) ? "denied" : "unknown";
@@ -94,7 +99,12 @@ async function authenticateConnection(
     // Reachability only — a space role OR any document/tree/category grant, so
     // a document-level grantee is admitted as it is over HTTP. Authorizes
     // nothing: every topic, Yjs room and presence room is checked on its own.
-    await verifyResourceAccess(spaceId, session.user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
+      session.user.id,
+      Permission.VIEWER,
+    );
   } catch (error) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
     if (isAccessDenied(error)) {
@@ -148,7 +158,12 @@ async function handleRealtimeWebSocket(
 
     try {
       // Document-level grantees may have no space role.
-      await verifyResourceAccess(spaceId, userId);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
+        userId,
+        Permission.VIEWER,
+      );
     } catch (error) {
       if (!isAccessDenied(error)) {
         appLogger.warn("Could not re-authorize a realtime connection; keeping it", {

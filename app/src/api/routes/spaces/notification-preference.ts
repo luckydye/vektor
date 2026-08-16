@@ -1,4 +1,5 @@
-import { verifyDocumentAccess, verifySpaceAccess } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -19,9 +20,19 @@ export const GET: ApiRouteHandler = (context) =>
       new URL(context.req.url).searchParams.get("documentId") || undefined;
 
     if (documentId) {
-      await verifyDocumentAccess(spaceId, documentId, user.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        user.id,
+        Permission.VIEWER,
+      );
     } else {
-      await verifySpaceAccess(spaceId, user.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.VIEWER,
+      );
     }
 
     const store = await openSpaceStore(spaceId);
@@ -39,9 +50,19 @@ export const PATCH: ApiRouteHandler = (context) =>
     const documentId = typeof body.documentId === "string" ? body.documentId : undefined;
 
     if (documentId) {
-      await verifyDocumentAccess(spaceId, documentId, user.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        user.id,
+        Permission.VIEWER,
+      );
     } else {
-      await verifySpaceAccess(spaceId, user.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.VIEWER,
+      );
     }
 
     if (typeof body.muted !== "boolean") {

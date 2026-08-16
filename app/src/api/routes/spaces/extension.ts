@@ -1,9 +1,9 @@
 import {
   authenticateJobTokenOrSpaceRole,
-  verifyExtensionAccess,
+  verifyAccess,
   verifyFeatureAccess,
 } from "#acl/guards.ts";
-import { Feature, Permission } from "#acl/permissions.ts";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -37,7 +37,12 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     if (auth.type === "user") {
-      await verifyExtensionAccess(spaceId, extensionId, auth.user.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.EXTENSION, id: extensionId },
+        auth.user.id,
+        Permission.VIEWER,
+      );
     }
 
     const store = await openSpaceStore(spaceId);

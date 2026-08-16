@@ -1,11 +1,9 @@
 import { inArray } from "drizzle-orm";
-import { verifySpaceRole } from "#acl/guards.ts";
+import { canAccess, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType, tokenIdFromPrincipal } from "#acl/permissions.ts";
 import {
   getResourceScopedGranteeUserIds,
   getSpaceMembersWithGroups,
-  getUserGroups,
-  hasPermission,
   listPermissions,
 } from "#acl/store.ts";
 import {
@@ -27,17 +25,20 @@ export const GET: ApiRouteHandler = (context) =>
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.VIEWER,
+      );
 
       // Member email addresses are PII: only expose them to editors/owners
       // (who need them e.g. for mentions); plain viewers get id/name/image.
-      const canSeeEmails = await hasPermission(
+      const canSeeEmails = await canAccess(
         spaceId,
-        ResourceType.SPACE,
-        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
         user.id,
         Permission.EDITOR,
-        await getUserGroups(user.id),
       );
 
       const store = await openSpaceStore(spaceId);

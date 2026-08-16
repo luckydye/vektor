@@ -1,4 +1,4 @@
-import { authenticateJobTokenOrSpaceRole, verifyDocumentRole } from "#acl/guards.ts";
+import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -46,7 +46,12 @@ export const POST: ApiRouteHandler = (context) =>
     // Parity with PATCH/DELETE on the sibling route: a user session must also
     // hold editor on the document itself, not just on the space.
     if (auth.type === "user") {
-      await verifyDocumentRole(spaceId, id, auth.user.id, Permission.EDITOR);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        auth.user.id,
+        Permission.EDITOR,
+      );
     }
 
     if (documentIsReadonly(existingDoc)) {

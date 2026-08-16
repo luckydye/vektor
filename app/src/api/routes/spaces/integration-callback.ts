@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   requireParam,
@@ -53,7 +53,12 @@ export const GET: ApiRouteHandler = (context) =>
     // redirect, and that redirect's path is derived from the space slug, which
     // an unauthorized caller must not learn.
     const user = requireUser(context);
-    await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const fallbackPath = await resolveFallbackPath(spaceId);
 

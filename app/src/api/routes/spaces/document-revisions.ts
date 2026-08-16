@@ -1,9 +1,5 @@
-import {
-  verifyDocumentAccess,
-  verifyDocumentRole,
-  verifyRevisionAccess,
-} from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess, verifyRevisionAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -29,7 +25,12 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = requireParam(context.var.params, "documentId");
 
-    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     // No revision is named, so no snapshot exemption: VIEW_HISTORY is required.
     await verifyRevisionAccess(spaceId, documentId, user.id);
@@ -47,7 +48,12 @@ export const POST: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
-    await verifyDocumentRole(spaceId, documentId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const revParam = new URL(context.req.url).searchParams.get("rev");
     if (!revParam) {
@@ -86,7 +92,12 @@ export const PATCH: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
-    await verifyDocumentRole(spaceId, documentId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const revParam = new URL(context.req.url).searchParams.get("rev");
     if (!revParam) {

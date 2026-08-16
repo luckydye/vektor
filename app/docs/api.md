@@ -153,7 +153,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 - **Query**: exactly one of `id` (single user) or `spaceId` (space members). Neither
   → `400`. A bare listing of all users is intentionally not supported.
 - **Behavior (`id`)**: returns `{ id, name, image }` for that user, `404` if none.
-- **Behavior (`spaceId`)**: `verifySpaceAccess` (viewer), returns array of
+- **Behavior (`spaceId`)**: `verifySpaceRole(viewer)`, returns array of
   `{ id, name, image }` for all space members (ACL member ids + creator).
 - Email is never included (PII).
 
@@ -219,8 +219,10 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `GET /spaces/:spaceId/audit-logs`
 
-- **Auth**: session; `verifySpaceAccess` (or, when `documentId` is given,
-  `verifyDocumentAccess`) + `verifyFeatureAccess(view_audit)`.
+- **Auth**: session; `verifySpaceRole(viewer)` (or, when `documentId` is given,
+  `verifyDocumentRole(viewer)`) + `verifyFeatureAccess(view_audit)`. A trail
+  outlives its document, so a `documentId` that no longer exists falls back to
+  the space role rather than 404ing.
 - **Query**: `documentId?` (scopes the log to a single document instead of the
   whole space), `limit`, `cursor?` (via `parsePaginationParams`, default
   50/max 500).
@@ -310,7 +312,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `GET /spaces/:spaceId/permissions/me`
 
-- **Auth**: session; `verifySpaceAccess`.
+- **Auth**: session; `verifySpaceRole(viewer)`.
 - **Returns**: `200 { role, features: Record<Feature, boolean>, groups }` — caller's
   effective space role, computed feature flags, and ACL groups.
 
@@ -714,7 +716,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/documents/archived`
 
-- **Auth**: session; `verifySpaceAccess`.
+- **Auth**: session; `verifySpaceRole(viewer)`.
 - **Query**: `limit`/`cursor?` (default 50/max 500).
 - **Returns**: `200 { documents, limit, nextCursor }`.
 
@@ -781,7 +783,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `POST /spaces/:spaceId/documents/:documentId` (create revision)
 
-- **Auth**: session (`requireUser`) + `verifyDocumentAccess`, then per mode —
+- **Auth**: session (`requireUser`) + `verifyDocumentRole(viewer)`, then per mode —
   `verifyDocumentRole(editor)` for a full revision, `verifyFeatureAccess(comment)`
   on this document for `mode: "suggestion"`.
 - **Body**: JSON — `html` (string, required), `message?` (string), `mode?`
@@ -809,7 +811,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/documents/:documentId/children`
 
-- **Auth**: session; `verifyDocumentAccess`.
+- **Auth**: session; `verifyDocumentRole(viewer)`.
 - **Returns**: `200 { children }` (ACL-filtered).
 
 ### `GET /spaces/:spaceId/documents/:documentId/breadcrumbs`
@@ -820,7 +822,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/documents/:documentId/contributors`
 
-- **Auth**: session; `verifyDocumentAccess`.
+- **Auth**: session; `verifyDocumentRole(viewer)`.
 - **Behavior**: derived from audit log events matching
   `DOCUMENT_CONTRIBUTION_AUDIT_EVENTS`, deduplicated by user.
 - **Returns**: `200 { contributors: Array<{ id, name, email, image }> }`.
@@ -850,7 +852,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/documents/:documentId/revisions`
 
-- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(view_history)`.
+- **Auth**: session; `verifyDocumentRole(viewer)` + `verifyFeatureAccess(view_history)`.
 - **Returns**: `200 { revisions }` (metadata list, no content bodies).
 
 ### `POST /spaces/:spaceId/documents/:documentId/revisions` (restore)
@@ -875,14 +877,14 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/comments?documentId=:documentId`
 
-- **Auth**: `verifyDocumentAccess` (allows public docs; `user` optional).
+- **Auth**: `verifyDocumentRole(viewer)` (allows public docs; `user` optional).
 - **Query**: `documentId` (required).
 - **Returns**: `200 { comments }` — each enriched with `createdByUser: {id, name,
   email, image} | null`.
 
 ### `POST /spaces/:spaceId/comments`
 
-- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(comment)`.
+- **Auth**: session; `verifyDocumentRole(viewer)` + `verifyFeatureAccess(comment)`.
 - **Body**: `documentId` (string, required), `content` (string, required),
   `parentId?` (string), `type?` (string), `reference?` (string — required for
   top-level/non-reply comments).
@@ -893,7 +895,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `PATCH /spaces/:spaceId/comments`
 
-- **Auth**: session; `verifyDocumentAccess` + `verifyFeatureAccess(comment)`.
+- **Auth**: session; `verifyDocumentRole(viewer)` + `verifyFeatureAccess(comment)`.
 - **Body**: `documentId` (string, required), `commentIds: string[]` (required,
   non-empty, filtered to ones on this document), and either `archived: true`
   (archive them; broadcasts `comment_deleted`) or `reference: string` (re-point
@@ -902,7 +904,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `DELETE /spaces/:spaceId/comments`
 
-- **Auth**: session; `verifyDocumentAccess`. Caller must be the comment's creator
+- **Auth**: session; `verifyDocumentRole(viewer)`. Caller must be the comment's creator
   (else `403`).
 - **Body**: `{ commentId: string, documentId: string }`.
 - **Behavior**: broadcasts `comment_deleted`.
@@ -914,8 +916,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/notification-preference`
 
-- **Auth**: session; `verifyDocumentAccess` when `documentId` is given, else
-  `verifySpaceAccess`.
+- **Auth**: session; `verifyDocumentRole(viewer)` when `documentId` is given, else
+  `verifySpaceRole(viewer)`.
 - **Query**: `documentId?` — read the per-document override instead of the
   space-wide default.
 - **Behavior**: a per-document mute overrides the space-wide default; if neither
@@ -924,8 +926,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `PATCH /spaces/:spaceId/notification-preference`
 
-- **Auth**: session; `verifyDocumentAccess` when `documentId` is given, else
-  `verifySpaceAccess`.
+- **Auth**: session; `verifyDocumentRole(viewer)` when `documentId` is given, else
+  `verifySpaceRole(viewer)`.
 - **Body**: `{ muted: boolean, documentId?: string }` — sets the per-document
   override when `documentId` is given, otherwise the space-wide default.
 - **Returns**: `200 { muted }`.

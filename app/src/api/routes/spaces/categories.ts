@@ -1,23 +1,15 @@
-import {
-  authenticateJobTokenOrSpaceRole,
-  authenticateSpaceAccess,
-  tryAuthenticateRequest,
-} from "#acl/guards.ts";
-import { Permission, PUBLIC_GROUP, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission, listAccessibleResources } from "#acl/store.ts";
+import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   createdResponse,
-  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
-  unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import {
   CategorySlugTakenError,
   createCategory,
@@ -27,80 +19,19 @@ import {
 import { getSpace } from "#db/space/spaces.ts";
 import { isHexColor } from "#utils/color.ts";
 
+/**
+ * The categories the caller may see: `null` when a space-wide role carries all
+ * of them, otherwise the ids their category grants reach.
+ */
 async function visibleCategoryIds(
   context: Parameters<ApiRouteHandler>[0],
   spaceId: string,
 ) {
-  if (context.req.raw.headers.get("X-Job-Token")) {
-    await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
-    return null;
-  }
-
-  const auth = await tryAuthenticateRequest(context, spaceId);
-  if (auth?.type === "user") {
-    const groups = await getUserGroups(auth.user.id);
-    const hasSpaceAccess = await hasPermission(
-      spaceId,
-      ResourceType.SPACE,
-      spaceId,
-      auth.user.id,
-      Permission.VIEWER,
-      groups,
-    );
-    if (hasSpaceAccess) return null;
-
-    const ids = await listAccessibleResources(
-      spaceId,
-      auth.user.id,
-      ResourceType.CATEGORY,
-      groups,
-      Permission.VIEWER,
-    );
-    if (!ids || ids.length === 0) throw forbiddenResponse();
-    return new Set(ids);
-  }
-
-  if (auth?.type === "token") {
-    const tokenUserId = getTokenUserId(auth.token.tokenId);
-    const hasSpaceAccess = await hasPermission(
-      spaceId,
-      ResourceType.SPACE,
-      spaceId,
-      tokenUserId,
-      Permission.VIEWER,
-    );
-    if (hasSpaceAccess) return null;
-
-    const ids = await listAccessibleResources(
-      spaceId,
-      tokenUserId,
-      ResourceType.CATEGORY,
-      undefined,
-      Permission.VIEWER,
-    );
-    if (!ids || ids.length === 0) throw forbiddenResponse();
-    return new Set(ids);
-  }
-
-  const hasPublicSpaceAccess = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    "",
-    Permission.VIEWER,
-    [PUBLIC_GROUP],
-  );
-  if (hasPublicSpaceAccess) return null;
-
-  const ids = await listAccessibleResources(
-    spaceId,
-    "",
-    ResourceType.CATEGORY,
-    [PUBLIC_GROUP],
-    Permission.VIEWER,
-  );
-  if (!ids || ids.length === 0) throw unauthorizedResponse();
-  return new Set(ids);
+  const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
+    allowResourceGrants: true,
+    scopeType: ResourceType.CATEGORY,
+  });
+  return access.resourceScope ? new Set(access.resourceScope) : null;
 }
 
 export const GET: ApiRouteHandler = (context) =>
