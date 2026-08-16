@@ -15,6 +15,7 @@ import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileDocumentId } from "#db/space/files.ts";
+import { getSpace } from "#db/space/spaces.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
@@ -64,6 +65,9 @@ async function uploadKeyDocumentId(
   spaceId: string,
   path: string,
 ): Promise<string | null> {
+  // This runs before the guard, so a space that does not exist has to fall
+  // through to it rather than blow up on opening a database that isn't there.
+  if (!(await getSpace(spaceId))) return null;
   return await getFileDocumentId(await openSpaceStore(spaceId), path);
 }
 

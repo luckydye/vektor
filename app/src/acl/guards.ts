@@ -358,7 +358,12 @@ export async function authenticateSpaceAccess(
     };
   }
 
-  // 3. Unauthenticated — check public group access
+  // 3. Unauthenticated — check public group access. A space that does not
+  // exist is a 401 like any other refusal, not the error reading its ACL would
+  // raise.
+  if (!(await getSpace(spaceId))) {
+    throw unauthorizedResponse();
+  }
   const hasPublicAccess = await hasPermission(
     spaceId,
     ResourceType.SPACE,
