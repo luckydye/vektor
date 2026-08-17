@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
+import { canonicalPropertyKey } from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
@@ -88,16 +89,21 @@ export function SearchFilters(props: Props) {
     queryKey: createMemo(() => ["properties", props.spaceId]),
     queryFn: async () => {
       const properties = await api.properties.get(props.spaceId);
-      return properties.filter((p) => p.name !== "title" && !p.name.startsWith("_"));
+      return properties.filter(
+        (p) => canonicalPropertyKey(p.name) !== "title" && !p.name.startsWith("_"),
+      );
     },
   });
 
   const typeValues = createMemo(
-    () => availableProperties()?.find((p) => p.name === "type")?.values ?? [],
+    () =>
+      availableProperties()?.find((p) => canonicalPropertyKey(p.name) === "type")
+        ?.values ?? [],
   );
 
   const nonTypeProperties = createMemo(
-    () => availableProperties()?.filter((p) => p.name !== "type") ?? [],
+    () =>
+      availableProperties()?.filter((p) => canonicalPropertyKey(p.name) !== "type") ?? [],
   );
 
   const activePropertyFilters = createMemo(() =>

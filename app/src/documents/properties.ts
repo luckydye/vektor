@@ -24,6 +24,10 @@ export type DocumentPropertyPatchOperation =
       type: string | null | undefined;
     };
 
+export function canonicalPropertyKey(key: string): string {
+  return key.trim().toLowerCase();
+}
+
 export const HIDDEN_DOCUMENT_PROPERTY_KEYS = [
   "title",
   "category",
@@ -120,7 +124,7 @@ export function serializePropertyValue(value: unknown): string {
 export function normalizeDocumentPropertyPatch(
   patch: DocumentPropertyPatch,
 ): DocumentPropertyPatchOperation[] {
-  return Object.entries(patch).map<DocumentPropertyPatchOperation>(
+  const operations = Object.entries(patch).map<DocumentPropertyPatchOperation>(
     ([key, patchValue]) => {
       if (!key) {
         throw new InvalidDocumentPropertyPatchError(
@@ -158,6 +162,12 @@ export function normalizeDocumentPropertyPatch(
       return { kind: "update", key, value, type };
     },
   );
+
+  const byCanonicalKey = new Map<string, DocumentPropertyPatchOperation>();
+  for (const operation of operations) {
+    byCanonicalKey.set(canonicalPropertyKey(operation.key), operation);
+  }
+  return Array.from(byCanonicalKey.values());
 }
 
 /**
@@ -176,7 +186,13 @@ export function readDocumentProperty(
   properties: DocumentProperties,
   key: string,
 ): DocumentPropertyValue | undefined {
-  return Object.hasOwn(properties, key) ? properties[key] : undefined;
+  if (Object.hasOwn(properties, key)) return properties[key];
+
+  const canonical = canonicalPropertyKey(key);
+  const match = Object.keys(properties).find(
+    (ownKey) => canonicalPropertyKey(ownKey) === canonical,
+  );
+  return match === undefined ? undefined : properties[match];
 }
 
 /**
@@ -290,14 +306,20 @@ export interface StoredPropertyRow {
  * the space.
  */
 export function aggregateStoredProperties(rows: StoredPropertyRow[]): SpaceProperty[] {
-  const byKey = new Map<string, { type: string | null; values: Set<string> }>();
+  const byKey = new Map<
+    string,
+    { spellings: Map<string, number>; type: string | null; values: Set<string> }
+  >();
 
   for (const row of rows) {
-    let entry = byKey.get(row.key);
+    const canonical = canonicalPropertyKey(row.key);
+    let entry = byKey.get(canonical);
     if (!entry) {
-      entry = { type: row.type || null, values: new Set<string>() };
-      byKey.set(row.key, entry);
+      entry = { spellings: new Map(), type: row.type || null, values: new Set<string>() };
+      byKey.set(canonical, entry);
     }
+
+    entry.spellings.set(row.key, (entry.spellings.get(row.key) ?? 0) + 1);
 
     const parsed = parseStoredPropertyValue(row.value);
     for (const value of Array.isArray(parsed) ? parsed : [parsed]) {
@@ -308,9 +330,15 @@ export function aggregateStoredProperties(rows: StoredPropertyRow[]): SpacePrope
     if (row.type && !entry.type) entry.type = row.type;
   }
 
-  return Array.from(byKey, ([name, data]) => ({
-    name,
+  return Array.from(byKey, ([, data]) => ({
+    name: prevailingSpelling(data.spellings),
     type: data.type,
     values: Array.from(data.values).sort(),
   }));
+}
+
+function prevailingSpelling(spellings: Map<string, number>): string {
+  return Array.from(spellings).sort(
+    ([aName, aCount], [bName, bCount]) => bCount - aCount || aName.localeCompare(bName),
+  )[0][0];
 }

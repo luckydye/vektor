@@ -15,6 +15,7 @@ import {
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   assertWritableDocumentPropertyKey,
+  canonicalPropertyKey,
   type DocumentProperties,
   type DocumentPropertyValue,
   parseStoredPropertyValue,
@@ -184,7 +185,11 @@ export async function createDocument(
   // literal is the shape of the bug this whole file just stopped repeating.
   const storedProperties = new Map<string, DocumentPropertyValue>();
 
-  for (const [key, raw] of Object.entries(properties)) {
+  const initialEntries = new Map(
+    Object.entries(properties).map((entry) => [canonicalPropertyKey(entry[0]), entry]),
+  );
+
+  for (const [key, raw] of initialEntries.values()) {
     const isWrappedValue =
       typeof raw === "object" && raw !== null && !Array.isArray(raw) && "value" in raw;
     const propValue = isWrappedValue ? raw.value : raw;

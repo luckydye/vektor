@@ -6,6 +6,7 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useProperties } from "#composeables/useProperties.ts";
 import type { Property } from "#documents/properties.ts";
 import {
+  canonicalPropertyKey,
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
 } from "#documents/properties.ts";
@@ -258,7 +259,9 @@ export function DocumentProperties(props: Props) {
 
     return (
       spaceProperties()
-        ?.find((sp) => sp.name === property.name)
+        ?.find(
+          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(property.name),
+        )
         ?.values?.map((value) => ({
           id: value,
           label: value,
@@ -310,7 +313,9 @@ export function DocumentProperties(props: Props) {
     const otherProps = Object.entries(documentProperties())
       .map(([key, value]): Property | null => {
         if (isHiddenDocumentPropertyKey(key)) return null;
-        const spaceProperty = spaceProperties()?.find((sp) => sp.name === key);
+        const spaceProperty = spaceProperties()?.find(
+          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(key),
+        );
         const propertyType = (spaceProperty?.type as Property["type"]) || "select";
 
         return {

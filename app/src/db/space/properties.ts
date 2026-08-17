@@ -1,10 +1,11 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import {
   aggregateStoredProperties,
+  canonicalPropertyKey,
   type DocumentPropertyPatch,
   type DocumentPropertyPatchOperation,
   type DocumentPropertyValue,
@@ -41,7 +42,7 @@ async function resolveRenamedSlug(
   const titleUpdate = operations.find(
     (operation) =>
       operation.kind === "update" &&
-      operation.key === "title" &&
+      canonicalPropertyKey(operation.key) === "title" &&
       typeof operation.value === "string" &&
       operation.value.length > 0,
   );
@@ -82,36 +83,42 @@ export async function patchDocumentProperties(
 
   const result = await s.tx(async (txStore) => {
     const now = new Date();
-    const keys = operations.map((operation) => operation.key);
     const existingRows = await many(
-      txStore.db
-        .select()
-        .from(property)
-        .where(and(eq(property.documentId, documentId), inArray(property.key, keys))),
+      txStore.db.select().from(property).where(eq(property.documentId, documentId)),
     );
-    const existingByKey = new Map(existingRows.map((row) => [row.key, row]));
+    const existingByKey = new Map<string, typeof existingRows>();
+    for (const row of existingRows) {
+      const canonical = canonicalPropertyKey(row.key);
+      const group = existingByKey.get(canonical);
+      if (group) group.push(row);
+      else existingByKey.set(canonical, [row]);
+    }
+    for (const group of existingByKey.values()) {
+      group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    }
     const changes: DocumentPropertyChange[] = [];
 
     for (const operation of operations) {
-      const existing = existingByKey.get(operation.key);
+      const group = existingByKey.get(canonicalPropertyKey(operation.key)) ?? [];
+      const [existing, ...superseded] = group;
+      for (const row of superseded) {
+        await txStore.db.delete(property).where(eq(property.id, row.id));
+      }
       const previousValue = existing
         ? parseStoredPropertyValue(existing.value)
         : undefined;
+      const storedKey = existing?.key ?? operation.key;
 
       if (operation.kind === "delete") {
-        await txStore.db
-          .delete(property)
-          .where(
-            and(eq(property.documentId, documentId), eq(property.key, operation.key)),
-          );
-
         if (existing) {
+          await txStore.db.delete(property).where(eq(property.id, existing.id));
+
           await createAuditLog(txStore, {
             docId: documentId,
             userId,
             event: "property_delete",
             details: {
-              propertyKey: operation.key,
+              propertyKey: storedKey,
               propertyType: existing.type || undefined,
               previousValue: propertyValueToText(previousValue ?? ""),
             },
@@ -120,7 +127,7 @@ export async function patchDocumentProperties(
 
         changes.push({
           kind: "document_property_deleted",
-          propertyKey: operation.key,
+          propertyKey: storedKey,
           propertyType: existing?.type ?? null,
           previousValue: previousValue ?? null,
         });
@@ -145,7 +152,7 @@ export async function patchDocumentProperties(
         await txStore.db.insert(property).values({
           id: createId("property"),
           documentId,
-          key: operation.key,
+          key: storedKey,
           value: storedValue,
           type: operation.type || null,
           createdAt: now,
@@ -158,7 +165,7 @@ export async function patchDocumentProperties(
         userId,
         event: "property_update",
         details: {
-          propertyKey: operation.key,
+          propertyKey: storedKey,
           propertyType: nextType || undefined,
           previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
           newValue: propertyValueToText(operation.value),
@@ -167,7 +174,7 @@ export async function patchDocumentProperties(
 
       changes.push({
         kind: "document_property_changed",
-        propertyKey: operation.key,
+        propertyKey: storedKey,
         propertyType: nextType,
         previousValue: previousValue ?? null,
         value: operation.value,
@@ -184,7 +191,7 @@ export async function patchDocumentProperties(
       kind: "documentProperties",
       documentId,
       affectsTree: operations.some((operation) =>
-        ["title", "category", "collection"].includes(operation.key),
+        ["title", "category", "collection"].includes(canonicalPropertyKey(operation.key)),
       ),
       data: {
         kind: "document_properties_changed",

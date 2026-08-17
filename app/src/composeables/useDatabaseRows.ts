@@ -1,6 +1,7 @@
 import { type Accessor, createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
+import { canonicalPropertyKey } from "#documents/properties.ts";
 import { placeholderDocumentTitle } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
@@ -72,13 +73,19 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
 
   const derivedColumns = createMemo<DatabaseColumn[]>(() => {
     if (schema().columns.length > 0) return schema().columns;
-    const keySet = new Set<string>();
+    const columnKeys = new Map<string, string>();
     for (const row of rows()) {
       for (const key of Object.keys(row.properties)) {
-        if (key !== "title") keySet.add(key);
+        const canonical = canonicalPropertyKey(key);
+        if (canonical === "title" || columnKeys.has(canonical)) continue;
+        columnKeys.set(canonical, key);
       }
     }
-    return Array.from(keySet).map((k) => ({ name: k, type: "text" as const, label: k }));
+    return Array.from(columnKeys.values()).map((k) => ({
+      name: k,
+      type: "text" as const,
+      label: k,
+    }));
   });
 
   const addRowMutation = useMutation({
