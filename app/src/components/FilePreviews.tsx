@@ -1,5 +1,13 @@
 import "@atrium-ui/elements/lightbox";
-import { createMemo, createSignal, For, type JSX, Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { useSpace } from "#composeables/useSpace.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
@@ -25,12 +33,27 @@ interface Props {
   onExpand: () => void;
 }
 
+type GroupLightbox = HTMLElement & {
+  opened: boolean;
+  lastActiveElement: HTMLElement | null;
+  show: () => Promise<void>;
+  hide: () => Promise<void>;
+};
+
 /**
  * Tiles shown before the group is expanded. A space's whole upload history can
  * land in one group, and a wall of thumbnails would push its documents off the
  * screen.
  */
 const COLLAPSED_TILES = 11;
+
+function thumbnailUrl(item: FilePreviewItem) {
+  return withTransformParams(item.url, { w: 320, format: "webp" });
+}
+
+function viewUrl(item: FilePreviewItem) {
+  return withTransformParams(item.url, { w: 1280, format: "webp" });
+}
 
 /**
  * Trade the lightbox's zoom for the page staying painted: `startViewTransition`
@@ -62,12 +85,13 @@ interface TileProps {
   item: FilePreviewItem;
   selected: boolean;
   onToggleSelect: (id: string, event: { shiftKey: boolean }) => void;
+  onTrigger: (element: HTMLButtonElement) => void;
+  onOpen: () => void;
 }
 
 function FilePreviewTile(props: TileProps) {
   const { currentSpace } = useSpace();
   const [broken, setBroken] = createSignal(false);
-  let lightbox: (HTMLElement & { hide: () => void }) | undefined;
 
   return (
     <page-target
@@ -85,72 +109,31 @@ function FilePreviewTile(props: TileProps) {
           </ThumbnailFrame>
         }
       >
-        <a-lightbox
-          ref={(el) => {
-            lightbox = el as HTMLElement & { hide: () => void };
-            openWithoutViewTransition(el);
+        <button
+          ref={props.onTrigger}
+          type="button"
+          aria-haspopup="dialog"
+          class="block w-full cursor-zoom-in rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          title={props.item.title}
+          onClick={() => props.onOpen()}
+          onKeyDown={(event) => {
+            // Space falls through to the button's own activation, which is what
+            // opens the lightbox; Enter is claimed here for selection instead.
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            props.onToggleSelect(props.item.id, event);
           }}
-          class="block"
         >
-          <button
-            slot="trigger"
-            type="button"
-            class="block w-full cursor-zoom-in rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-            title={props.item.title}
-            onKeyDown={(event) => {
-              // Space falls through to the button's own activation, which is what
-              // opens the lightbox; Enter is claimed here for selection instead.
-              if (event.key !== "Enter") return;
-              event.preventDefault();
-              props.onToggleSelect(props.item.id, event);
-            }}
-          >
-            <ThumbnailFrame selected={props.selected}>
-              <img
-                src={withTransformParams(props.item.url, { w: 320, format: "webp" })}
-                onError={() => setBroken(true)}
-                loading="lazy"
-                class="h-full w-full object-cover"
-                alt={props.item.title}
-              />
-            </ThumbnailFrame>
-          </button>
-
-          {/* Lazy: the slot is unrendered until the lightbox opens, so the variant
-              is only fetched for the image actually being viewed. The zoom waits
-              on that fetch and decode, which is what a larger preset costs. */}
-          <img
-            slot="content"
-            src={withTransformParams(props.item.url, { w: 1280, format: "webp" })}
-            loading="lazy"
-            class="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-            alt={props.item.title}
-          />
-
-          {/* One `content` element rather than a `close` slot, which would
-              dismiss the lightbox on any click inside it — the download link
-              included. Closing is the element's own `hide()` instead. */}
-          <div slot="content" class="fixed top-4 right-4 flex items-center gap-4xs">
-            {/* The original, not the variant on screen. */}
-            <a href={props.item.url} download={props.item.title} class="button-primary">
-              <Icon name="download" />
-              <span>{t("Download")}</span>
-            </a>
-
-            {/* `on:click` rather than Solid's delegated `onClick`: the element's
-                stage handler stops the click before it reaches the document,
-                where a delegated listener would be waiting for it. */}
-            <button
-              type="button"
-              class="button-primary"
-              on:click={() => lightbox?.hide()}
-              aria-label={t("Close")}
-              title={t("Close")}
-            >
-              <Icon name="cancel" />
-            </button>
-          </div>
-        </a-lightbox>
+          <ThumbnailFrame selected={props.selected}>
+            <img
+              src={thumbnailUrl(props.item)}
+              onError={() => setBroken(true)}
+              loading="lazy"
+              class="h-full w-full object-cover"
+              alt={props.item.title}
+            />
+          </ThumbnailFrame>
+        </button>
       </Show>
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the tile's click from reaching the lightbox trigger; the checkbox is the control. */}
@@ -198,33 +181,219 @@ export function FilePreviews(props: Props) {
   );
   const hiddenCount = createMemo(() => props.items.length - visible().length);
 
-  return (
-    <div
-      class={twMerge(
-        "grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-3",
-        props.class,
-      )}
-    >
-      <For each={visible()}>
-        {(item) => (
-          <FilePreviewTile
-            item={item}
-            selected={props.selectedIds.has(item.id)}
-            onToggleSelect={props.onToggleSelect}
-          />
-        )}
-      </For>
+  const [viewedIndex, setViewedIndex] = createSignal(0);
+  const viewed = createMemo(() => visible()[viewedIndex()]);
+  const triggers: HTMLButtonElement[] = [];
+  let lightbox: GroupLightbox | undefined;
+  let content: HTMLImageElement | undefined;
+  let animation: Animation | undefined;
+  /** Where stepping has got to, which runs ahead of the image being shown. */
+  const [cursor, setCursor] = createSignal(0);
+  /** Guards a step that a later one has overtaken mid-animation. */
+  let generation = 0;
 
-      <Show when={hiddenCount() > 0}>
-        <button
-          type="button"
-          onClick={() => props.onExpand()}
-          class="flex aspect-[4/3] items-center justify-center rounded-md border border-neutral-100 border-dashed font-medium text-neutral-500 text-size-small transition-colors hover:border-neutral-300 hover:text-neutral-700"
-          title={t("Show all images")}
-        >
-          +{hiddenCount()}
-        </button>
+  /** Resolves once the image is ready to be shown without a blank frame. */
+  function preload(index: number) {
+    const item = visible()[index];
+    if (!item) return Promise.resolve();
+
+    const image = new Image();
+    image.src = viewUrl(item);
+    return image.decode?.().catch(() => {}) ?? Promise.resolve();
+  }
+
+  function open(index: number) {
+    setCursor(index);
+    setViewedIndex(index);
+    void preload(index - 1);
+    void preload(index + 1);
+    void lightbox?.show();
+  }
+
+  /**
+   * Slides the outgoing image out in the direction of travel and the incoming
+   * one in behind it, once it has decoded — the swap itself is instant.
+   */
+  async function swap(index: number, offset: number) {
+    const image = content;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!image || reduced) {
+      await preload(index);
+      setViewedIndex(index);
+      return;
+    }
+
+    const token = ++generation;
+    animation?.cancel();
+    animation = image.animate(
+      [{ opacity: 0, transform: `translateX(${offset * -24}px)` }],
+      { duration: 90, easing: "ease-in", fill: "forwards" },
+    );
+
+    await Promise.all([animation.finished.catch(() => {}), preload(index)]);
+    if (token !== generation) return;
+
+    setViewedIndex(index);
+    animation.cancel();
+    animation = image.animate(
+      [
+        { opacity: 0, transform: `translateX(${offset * 24}px)` },
+        { opacity: 1, transform: "none" },
+      ],
+      { duration: 140, easing: "ease-out" },
+    );
+  }
+
+  /** The ends of the group are walls: stepping off them is not a wrap-around. */
+  function step(offset: number) {
+    const next = cursor() + offset;
+    if (next < 0 || next >= visible().length) return;
+
+    setCursor(next);
+    void preload(next + offset);
+    void swap(next, offset);
+
+    // Closing hands focus back to the tile being viewed rather than the one the
+    // overlay was opened from.
+    const trigger = triggers[next];
+    if (lightbox && trigger) lightbox.lastActiveElement = trigger;
+  }
+
+  onMount(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!lightbox?.opened) return;
+
+      const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (offset === 0) return;
+
+      event.preventDefault();
+      step(offset);
+    };
+
+    // On the window, where the element listens for Escape too: the overlay is
+    // rendered in a portal, so its keys never reach this component's tree.
+    window.addEventListener("keydown", onKeyDown);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
+
+  return (
+    <>
+      <div
+        class={twMerge(
+          "grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-3",
+          props.class,
+        )}
+      >
+        <For each={visible()}>
+          {(item, index) => (
+            <FilePreviewTile
+              item={item}
+              selected={props.selectedIds.has(item.id)}
+              onToggleSelect={props.onToggleSelect}
+              onTrigger={(element) => {
+                triggers[index()] = element;
+              }}
+              onOpen={() => open(index())}
+            />
+          )}
+        </For>
+
+        <Show when={hiddenCount() > 0}>
+          <button
+            type="button"
+            onClick={() => props.onExpand()}
+            class="flex aspect-[4/3] items-center justify-center rounded-md border border-neutral-100 border-dashed font-medium text-neutral-500 text-size-small transition-colors hover:border-neutral-300 hover:text-neutral-700"
+            title={t("Show all images")}
+          >
+            +{hiddenCount()}
+          </button>
+        </Show>
+      </div>
+
+      {/* One overlay for the whole group, so the arrow keys can step it through
+          the tiles. It is taken out of the flow because nothing in it is meant
+          to be seen here — the content moves into a portal when it opens. */}
+      <Show when={viewed()}>
+        {(item) => (
+          <a-lightbox
+            ref={(el) => {
+              lightbox = el as GroupLightbox;
+              openWithoutViewTransition(el);
+            }}
+            class="pointer-events-none fixed h-0 w-0 overflow-hidden opacity-0"
+          >
+            {/* The element pairs one trigger with one content image and measures
+                its (here disabled) zoom between them. The tiles open the overlay
+                themselves, so this stands in for the one that was clicked. */}
+            <img slot="trigger" src={thumbnailUrl(item())} alt="" aria-hidden="true" />
+
+            {/* Lazy: an unassigned slot is not rendered, so the variant is only
+                fetched for a group whose overlay is actually opened. */}
+            <img
+              ref={(el) => {
+                content = el;
+              }}
+              slot="content"
+              src={viewUrl(item())}
+              loading="lazy"
+              class="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+              alt={item().title}
+            />
+
+            {/* One `content` element rather than a `close` slot, which would
+                dismiss the lightbox on any click inside it — the download link
+                included. Closing is the element's own `hide()` instead. */}
+            <div slot="content" class="fixed top-4 right-4 flex items-center gap-4xs">
+              {/* The original, not the variant on screen. */}
+              <a href={item().url} download={item().title} class="button-primary">
+                <Icon name="download" />
+                <span>{t("Download")}</span>
+              </a>
+
+              {/* `on:click` rather than Solid's delegated `onClick`: the element's
+                  stage handler stops the click before it reaches the document,
+                  where a delegated listener would be waiting for it. */}
+              <button
+                type="button"
+                class="button-primary"
+                on:click={() => void lightbox?.hide()}
+                aria-label={t("Close")}
+                title={t("Close")}
+              >
+                <Icon name="cancel" />
+              </button>
+            </div>
+
+            {/* Transparent to the pointer so that clicking beside the image
+                still closes the overlay; only the buttons take clicks. */}
+            <div slot="content" class="pointer-events-none fixed inset-0">
+              <Show when={cursor() > 0}>
+                <button
+                  type="button"
+                  class="button-primary pointer-events-auto absolute top-1/2 left-4 -translate-y-1/2"
+                  on:click={() => step(-1)}
+                  aria-label={t("Previous image")}
+                  title={t("Previous image")}
+                >
+                  <Icon name="chevron-left-thin" />
+                </button>
+              </Show>
+
+              <Show when={cursor() < visible().length - 1}>
+                <button
+                  type="button"
+                  class="button-primary pointer-events-auto absolute top-1/2 right-4 -translate-y-1/2"
+                  on:click={() => step(1)}
+                  aria-label={t("Next image")}
+                  title={t("Next image")}
+                >
+                  <Icon name="chevron-right-thin" />
+                </button>
+              </Show>
+            </div>
+          </a-lightbox>
+        )}
       </Show>
-    </div>
+    </>
   );
 }

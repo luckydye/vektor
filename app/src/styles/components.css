@@ -351,3 +351,19 @@ details[open] .details-chevron {
 :root[data-theme="dark"] .tool-error-bg {
   background-color: rgba(33, 33, 33, 0.4);
 }
+
+/* ── FilePreviews lightbox ──────────────────────────────────────────── */
+
+/*
+ * The backdrop lives in a portal on `body` with its own shadow root, so this is
+ * the only reachable surface: the host covers the viewport, and blurring its
+ * backdrop is what frosts the page behind the image.
+ */
+a-lightbox-blur {
+  backdrop-filter: blur(0);
+  transition: backdrop-filter 180ms ease;
+}
+
+a-lightbox-blur[enabled] {
+  backdrop-filter: blur(2px);
+}
