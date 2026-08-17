@@ -293,6 +293,19 @@ async function readDocuments(
   return byId;
 }
 
+export interface SearchDocumentsOptions {
+  limit?: number;
+  cursor?: string;
+  filters?: PropertyFilter[];
+  /** Passed to `#search/ranking.ts`: the bar a match has to clear. */
+  strict?: boolean;
+  /**
+   * The query vector, for a caller searching several spaces off one embedding.
+   * Undefined embeds the query here; null searches by keyword alone.
+   */
+  queryEmbedding?: number[] | null;
+}
+
 /**
  * Documents matching `query` and `filters`, ranked and paged. `docIds` is the
  * caller's readable set, or null for an unrestricted view. Reads the index as
@@ -302,10 +315,9 @@ export async function searchDocuments(
   s: SpaceStore,
   docIds: string[] | null,
   query: string,
-  limit = 20,
-  cursor?: string,
-  filters: PropertyFilter[] = [],
+  options: SearchDocumentsOptions = {},
 ): Promise<{ results: SearchResult[]; nextCursor: string | null }> {
+  const { limit = 20, cursor, filters = [], strict = false } = options;
   const hasQuery = query.trim().length > 0;
   const hasFilters = filters.length > 0;
 
@@ -410,7 +422,9 @@ export async function searchDocuments(
       LEFT JOIN property title ON title.document_id = d.id AND title.key = 'title'
       WHERE ${nonArchivedColumnCondition("d.archived")}
     `),
-      embedSearchQuery(query),
+      options.queryEmbedding === undefined
+        ? embedSearchQuery(query)
+        : options.queryEmbedding,
     ]);
 
     const ranked = rankSearchCandidates(
@@ -422,6 +436,7 @@ export async function searchDocuments(
           ? propertyValueToText(parseStoredPropertyValue(candidate.title))
           : "",
       })),
+      { strict },
     );
 
     allRawResults = ranked.map(({ candidate, rank, snippet }) => ({
@@ -480,6 +495,7 @@ export async function searchDocuments(
         const match = rankKeywordMatch(
           query,
           [f.originalName, f.extractedText].filter(Boolean).join("\n"),
+          { strict },
         );
         if (!match) continue;
         rank = match.rank;

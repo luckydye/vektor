@@ -177,6 +177,16 @@ tasks:
     cmds:
       - bun ./test/e2e/run.ts {{.CLI_ARGS}}
 
+  record:onboarding:
+    desc: >
+      Re-film the onboarding tour's clips into public/onboarding. Builds the
+      client, boots a disposable in-memory server, seeds a space and drives the
+      real sidebar. Run it after the document tree changes appearance. Needs
+      ffmpeg.
+    dir: ./app
+    cmds:
+      - bun ./scripts/record-onboarding.ts {{.CLI_ARGS}}
+
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.
     deps: [compile]

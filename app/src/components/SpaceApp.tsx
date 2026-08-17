@@ -1,6 +1,14 @@
 import { Route, Router, useParams, useSearchParams } from "@solidjs/router";
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { isServer } from "solid-js/web";
+import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
@@ -18,11 +26,13 @@ import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
 import { setClientLang } from "#utils/lang.ts";
+import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
 import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
+import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
 import { DocumentOverlay } from "./DocumentOverlay.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
@@ -108,6 +118,22 @@ export function SpaceApp(props: Props) {
   const [hasMounted, setHasMounted] = createSignal(false);
   const [mobileSidebarOffset, setMobileSidebarOffset] = createSignal(0);
   const [isMobileSidebarDragging, setIsMobileSidebarDragging] = createSignal(false);
+
+  const [showOrganizationTour, setShowOrganizationTour] = createSignal(false);
+
+  /**
+   * Offers the organizing tour the first time this browser can actually organize.
+   *
+   * An effect rather than a line in `onMount` because the role is not always known
+   * at mount: without the SSR prop, or on a mid-session promotion, it arrives later.
+   */
+  let offeredOrganizationTour = false;
+  createEffect(() => {
+    if (offeredOrganizationTour || !hasMounted()) return;
+    if (!canEdit(currentSpace()?.userRole) || hasSeenOrganizationTour()) return;
+    offeredOrganizationTour = true;
+    setShowOrganizationTour(true);
+  });
 
   const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
 
@@ -274,6 +300,14 @@ export function SpaceApp(props: Props) {
       </button>
 
       <Show when={hasMounted()}>
+        <DocumentOrganizationTour
+          show={showOrganizationTour()}
+          onUpdateShow={(value) => {
+            // Dismissal is the only way out, so this is where "seen" is recorded.
+            if (!value) markOrganizationTourSeen();
+            setShowOrganizationTour(value);
+          }}
+        />
         <CalDAVSetupDialog />
         <ToastContainer />
         <DocumentOverlay />

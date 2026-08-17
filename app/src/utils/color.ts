@@ -177,3 +177,16 @@ export function getTextColor(bgColor: string | undefined) {
 export function isHexColor(value: string | null): value is string {
   return /^#[0-9a-f]{6}$/i.test(value ?? "");
 }
+
+/**
+ * A brand color as ink on a light surface: its own hue and saturation at the
+ * lightness `generateColorPalette` gives the `600` stop, so another space's name
+ * reads the way `text-primary-600` reads for the space you are in. Taking the hex
+ * as given would leave a pastel brand illegible and a near-black one flat.
+ */
+export function brandTextColor(color: string | undefined): string | undefined {
+  if (!color || !isHexColor(color)) return undefined;
+
+  const [hue, saturation] = hexToHsl(color);
+  return hslToHex(hue, saturation, 0.35);
+}

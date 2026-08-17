@@ -76,12 +76,38 @@ const MIN_SEMANTIC_MARGIN = 0.1;
 const SEMANTIC_RANKING_WEIGHT = 0.4;
 
 /**
+ * The same margin under {@link RankingOptions.strict}. bge puts an unrelated
+ * document at 0.6-0.66 and a real match at 0.85-0.92, so the wider margin keeps
+ * the latter and drops everything that only leans towards the query.
+ */
+const STRICT_SEMANTIC_MARGIN = 0.2;
+/**
+ * The keyword score {@link RankingOptions.strict} demands. `scoreKeywordOverlap`
+ * averages one point per exactly-matched term, so 1 means every term of the
+ * query is present verbatim — a prefix-only match scores 0.8 and does not pass.
+ */
+const STRICT_MIN_KEYWORD_SCORE = 1;
+
+export interface RankingOptions {
+  /**
+   * Rank as a space the searcher is not in: a hit has to earn its place there,
+   * matching every query term exactly or standing well clear of that corpus's
+   * semantic baseline. Results from several spaces are shown together, so a
+   * weak match reads as an unrelated one.
+   */
+  strict?: boolean;
+}
+
+/**
  * The similarity a document must reach before similarity alone makes it a
  * result. bge scores unrelated short texts at 0.6-0.8, and a nonsense query
  * embeds into that same band, so a fixed floor admits anything. The median
  * measures that baseline per query; a match has to beat it by a margin.
  */
-export function semanticMatchThreshold(similarities: number[]): number {
+export function semanticMatchThreshold(
+  similarities: number[],
+  margin = MIN_SEMANTIC_MARGIN,
+): number {
   if (similarities.length === 0) {
     return MIN_SEMANTIC_SIMILARITY;
   }
@@ -91,7 +117,7 @@ export function semanticMatchThreshold(similarities: number[]): number {
   const median =
     sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 
-  return Math.max(MIN_SEMANTIC_SIMILARITY, median + MIN_SEMANTIC_MARGIN);
+  return Math.max(MIN_SEMANTIC_SIMILARITY, median + margin);
 }
 
 /** The part of a similarity above the baseline. Zero means "no semantic match". */
@@ -168,6 +194,7 @@ export function rankSearchCandidates<T extends SearchCandidate>(
   query: string,
   queryEmbedding: number[] | null,
   candidates: T[],
+  options: RankingOptions = {},
 ): RankedCandidate<T>[] {
   const embeddingModel = getEmbeddingModel();
 
@@ -194,13 +221,16 @@ export function rankSearchCandidates<T extends SearchCandidate>(
     scored
       .map((item) => item.similarity)
       .filter((similarity): similarity is number => similarity !== null),
+    options.strict ? STRICT_SEMANTIC_MARGIN : MIN_SEMANTIC_MARGIN,
   );
+  const minKeywordScore = options.strict ? STRICT_MIN_KEYWORD_SCORE : 0;
 
   const ranked: RankedCandidate<T>[] = [];
 
   for (const { candidate, text, keywordScore, similarity } of scored) {
     const semanticBoost = semanticRelevance(similarity, threshold);
-    if (keywordScore === 0 && semanticBoost === 0) {
+    const hasKeywordMatch = keywordScore > 0 && keywordScore >= minKeywordScore;
+    if (!hasKeywordMatch && semanticBoost === 0) {
       continue;
     }
 
@@ -220,9 +250,10 @@ export function rankSearchCandidates<T extends SearchCandidate>(
 export function rankKeywordMatch(
   query: string,
   text: string,
+  options: RankingOptions = {},
 ): { rank: number; snippet: string } | null {
   const keywordScore = scoreKeywordOverlap(query, text);
-  if (keywordScore === 0) {
+  if (keywordScore === 0 || (options.strict && keywordScore < STRICT_MIN_KEYWORD_SCORE)) {
     return null;
   }
 

@@ -9,6 +9,7 @@ import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Button } from "./Button.tsx";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
 import { Icon } from "./Icon.tsx";
@@ -187,16 +188,20 @@ export function Navigation() {
           <div class="@max-xs:hidden px-5xs pt-4xs pb-s">
             <div class="mx-4xs border-neutral-400/25 border-b"></div>
 
+            {/* The hint gives the lone Done button something to belong to, and says
+                what the mode is for — nothing else on screen does. */}
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
               <Show when={documentTree()?.isEditMode}>
-                <button
-                  type="button"
+                <span class="truncate text-neutral-500 text-size-extra-small">
+                  {t("Drag to reorder")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  text={t("Done")}
+                  ariaLabel={t("Done rearranging")}
                   onClick={() => documentTree()?.toggleEditMode()}
-                  class="rounded-sm px-1 py-0.5 font-medium text-blue-600 text-size-extra-small transition-colors hover:text-blue-700"
-                  title={t("Done rearranging")}
-                >
-                  {t("Done")}
-                </button>
+                />
               </Show>
             </div>
 

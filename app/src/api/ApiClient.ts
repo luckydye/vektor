@@ -482,6 +482,16 @@ export interface SearchResult {
   fileSize?: number;
 }
 
+/**
+ * A result from a space other than the one being searched. Carries no branding:
+ * the space's logo and color come from the cached space listing.
+ */
+export type CrossSpaceSearchResult = SearchResult & {
+  spaceId: string;
+  spaceName: string;
+  spaceSlug: string;
+};
+
 export interface Comment {
   id: string;
   documentId: string;
@@ -1540,6 +1550,22 @@ export class ApiClient {
         filters?: PropertyFilter[];
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/search`, query);
       return response;
+    },
+
+    /**
+     * The strongest matches in the user's other spaces. `q` is required here —
+     * filters alone give a foreign document nothing to be ranked by.
+     */
+    otherSpaces: async (query: {
+      q: string;
+      excludeSpaceId?: string;
+      filters?: string;
+    }) => {
+      const response = await this.apiGet<{
+        results: CrossSpaceSearchResult[];
+        query: string;
+      }>(this.baseUrl, "/api/v1/search", query);
+      return response.results;
     },
 
     rebuild: async (spaceId: string) => {

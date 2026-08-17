@@ -1,4 +1,5 @@
 import type { ApiContext } from "#api/server/types.ts";
+import type { PropertyFilter } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
@@ -147,6 +148,31 @@ export function parsePaginationParams(
   });
   const cursor = searchParams.get("cursor") ?? undefined;
   return { limit, cursor };
+}
+
+/** The `filters` search parameter: a JSON-encoded `PropertyFilter[]`, or none. */
+export function parseSearchFilters(raw: string | null): PropertyFilter[] {
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error("Filters must be an array");
+    }
+    for (const filter of parsed) {
+      if (typeof filter.key !== "string" || !filter.key.trim()) {
+        throw new Error("Each filter must have a non-empty 'key' string");
+      }
+      if (filter.value !== null && typeof filter.value !== "string") {
+        throw new Error("Filter 'value' must be a string or null");
+      }
+    }
+    return parsed;
+  } catch (error) {
+    throw badRequestResponse(
+      `Invalid filters parameter: ${error instanceof Error ? error.message : "Parse error"}`,
+    );
+  }
 }
 
 export async function parseJsonBody<T = Record<string, unknown>>(

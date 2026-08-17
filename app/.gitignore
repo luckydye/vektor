@@ -39,3 +39,6 @@ generated
 data/**/*
 
 .results
+
+# frames kept by `record-onboarding.ts --keep-frames`
+scripts/.onboarding-frames/

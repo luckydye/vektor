@@ -8,6 +8,7 @@ import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
 import * as proxyMedia from "./routes/proxy-media.ts";
+import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
 import * as accessTokens from "./routes/spaces/access-tokens.ts";
 import * as aiChatSession from "./routes/spaces/ai-chat-session.ts";
@@ -203,6 +204,7 @@ export const apiRoutes: ApiRoute[] = [
   },
 
   { pattern: "/api/v1/proxy-media", module: proxyMedia },
+  { pattern: "/api/v1/search", module: crossSpaceSearch },
   { pattern: "/api/v1/url-metadata", module: urlMetadata },
   { pattern: "/api/v1/users", module: users },
   { pattern: "/api/v1/users/me", module: usersMe },

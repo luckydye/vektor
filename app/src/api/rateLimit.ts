@@ -63,6 +63,8 @@ const ROUTE_RULES: readonly RouteRule[] = [
     max: 30,
     windowMs: MINUTE,
   },
+  // Scans the documents of every space the caller can read.
+  { pattern: "/api/v1/search", max: 60, windowMs: MINUTE },
   // One outbound fetch per call.
   { pattern: "/api/v1/url-metadata", max: 120, windowMs: MINUTE },
   { pattern: "/api/v1/proxy-media", max: 120, windowMs: MINUTE },
