@@ -420,6 +420,7 @@
   "Search failed": "검색에 실패했습니다",
   "Archive / delete selected": "선택 항목 보관 / 삭제",
   "Processing…": "처리 중…",
+  "Processing {done} of {total}…": "{total}개 중 {done}개 처리 중…",
   "{count} document": "문서 {count}개",
   "{count} documents": "문서 {count}개",
   "{count} file": "파일 {count}개",

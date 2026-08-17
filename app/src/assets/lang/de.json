@@ -416,6 +416,7 @@
   "Search failed": "Suche fehlgeschlagen",
   "Archive / delete selected": "Auswahl archivieren / löschen",
   "Processing…": "Wird verarbeitet…",
+  "Processing {done} of {total}…": "{done} von {total} werden verarbeitet…",
   "{count} document": "{count} Dokument",
   "{count} documents": "{count} Dokumente",
   "{count} file": "{count} Datei",

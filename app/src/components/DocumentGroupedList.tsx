@@ -19,6 +19,7 @@ import { formatDate } from "#utils/dateFormat.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
+import { BottomBanner } from "./BottomBanner.tsx";
 import { type FilePreviewItem, FilePreviews } from "./FilePreviews.tsx";
 import { Icon } from "./Icon.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
@@ -204,7 +205,7 @@ export function DocumentGroupedList(props: Props) {
   /** The groups above and below {@link Props.splitContent}; one section without it. */
   const sections = createMemo(() => {
     const docs = filtered();
-    const splitAfter = props.splitAfter;
+    const splitAfter = props.splitAfter; // solid-reactivity-ok: memo body, re-reads per recompute
     if (splitAfter === undefined || docs.length <= splitAfter) return [buildGroups(docs)];
 
     const above = buildGroups(docs.slice(0, splitAfter));
@@ -294,25 +295,34 @@ export function DocumentGroupedList(props: Props) {
     return categoryBySlug().get(slug)?.name ?? slug;
   }
 
+  // Count, then what can be done, then the way out — dismissal last, at the far
+  // end, the way the canvas toolbar keeps its own trailing controls.
   const selectionBar = () => (
     <Show when={selectedIds().size > 0}>
-      <span class="text-neutral-500 text-size-small">
+      <span class="px-2 text-neutral-500 text-size-small tabular-nums">
         {selectedIds().size} {t("selected")}
       </span>
+      {props.batchActions?.(selectedIds(), deselectAll)}
+      <span class="mx-0.5 h-6 w-px bg-neutral-200" />
       <button
         type="button"
         onClick={deselectAll}
-        class="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+        class="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
         title={t("Deselect all")}
       >
-        <Icon class="h-3.5 w-3.5" name="cancel" />
+        <Icon class="h-4 w-4" name="cancel" />
       </button>
-      {props.batchActions?.(selectedIds(), deselectAll)}
     </Show>
   );
 
+  const floatingSelection = createMemo(
+    () =>
+      props.showToolbar === false && props.selectable !== false && selectedIds().size > 0,
+  );
+
   return (
-    <div>
+    // Room for the floating bar, so the last rows stay reachable under it.
+    <div classList={{ "pb-16": floatingSelection() }}>
       <Show when={props.showToolbar !== false}>
         <div class="mb-4 flex items-center gap-2">
           <a-popover-trigger>
@@ -375,10 +385,17 @@ export function DocumentGroupedList(props: Props) {
         </div>
       </Show>
 
-      <Show when={props.showToolbar === false && props.selectable !== false}>
-        <div class="mb-4 flex min-h-[32px] items-center justify-end gap-2">
-          {selectionBar()}
-        </div>
+      {/* Over the list rather than above it: without a toolbar to share, the row
+          this used to sit in was blank on every view that never selects anything.
+          It rides the content column, as `BottomBanner` measures it. */}
+      <Show when={floatingSelection()}>
+        <BottomBanner>
+          {/* The canvas toolbar's shell: same radius, padding, translucency and
+              lift, so the two floating bars read as the same kind of thing. */}
+          <div class="pointer-events-auto flex items-center gap-1 whitespace-nowrap rounded-lg border border-neutral-200 bg-background/95 p-1.5 shadow-[0_10px_28px_rgba(15,23,42,0.14)] backdrop-blur-sm">
+            {selectionBar()}
+          </div>
+        </BottomBanner>
       </Show>
 
       <Show
@@ -568,7 +585,16 @@ export function DocumentGroupedList(props: Props) {
                   </For>
                 </div>
 
-                <Show when={sectionIndex() === 0 && props.splitContent}>
+                {/* `splitAfter` too: with no split asked for there is one section,
+                    and this would append the content to any list that merely
+                    passed a `splitContent` — a later page of results, say. */}
+                <Show
+                  when={
+                    sectionIndex() === 0 &&
+                    props.splitAfter !== undefined &&
+                    props.splitContent
+                  }
+                >
                   {props.splitContent?.()}
                 </Show>
               </>

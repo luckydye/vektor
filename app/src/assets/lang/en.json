@@ -420,6 +420,7 @@
   "Search failed": "Search failed",
   "Archive / delete selected": "Archive / delete selected",
   "Processing…": "Processing…",
+  "Processing {done} of {total}…": "Processing {done} of {total}…",
   "{count} document": "{count} document",
   "{count} documents": "{count} documents",
   "{count} file": "{count} file",

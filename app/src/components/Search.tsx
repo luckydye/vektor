@@ -4,6 +4,7 @@ import {
   createMemo,
   createSignal,
   For,
+  Index,
   on,
   onCleanup,
   onMount,
@@ -27,9 +28,57 @@ interface Props {
   spaceId: string;
 }
 
+/** How much of this space's list sits above the other-spaces panel. */
+const OTHER_SPACES_SPLIT = 5;
+
 /** The catalogue carries no plural rules, so each form is its own key. */
 function countLabel(count: number, one: string, many: string): string {
   return t(count === 1 ? one : many).replace("{count}", String(count));
+}
+
+/**
+ * Stand-in rows in the real list's frame, so results land where the placeholder
+ * sat instead of after a blank stretch of page.
+ */
+function ListSkeleton(props: { rows: number }) {
+  const widths = ["w-3/5", "w-4/5", "w-2/5", "w-3/4", "w-1/2"];
+
+  return (
+    <div
+      role="status"
+      aria-label={t("Loading…")}
+      class="animate-pulse overflow-hidden rounded-lg border border-neutral-100 bg-background"
+    >
+      <Index each={Array.from({ length: props.rows })}>
+        {(_, index) => (
+          <div
+            class="flex items-center gap-3 py-2.5 pr-3 pl-[2.375rem]"
+            classList={{ "border-neutral-100 border-t": index !== 0 }}
+          >
+            <div class="h-4 w-4 shrink-0 rounded bg-neutral-100" />
+            <div class={`h-4 rounded bg-neutral-100 ${widths[index % widths.length]}`} />
+          </div>
+        )}
+      </Index>
+    </div>
+  );
+}
+
+/** Two groups' worth: the shape of the answer, before it names the spaces. */
+function OtherSpacesSkeleton() {
+  return (
+    <Index each={[0, 1]}>
+      {() => (
+        <div>
+          <div class="mb-2 flex animate-pulse items-center gap-2">
+            <div class="h-5 w-5 shrink-0 rounded-sm bg-neutral-200" />
+            <div class="h-3.5 w-28 rounded bg-neutral-200" />
+          </div>
+          <ListSkeleton rows={2} />
+        </div>
+      )}
+    </Index>
+  );
 }
 
 export function Search(props: Props) {
@@ -47,7 +96,6 @@ export function Search(props: Props) {
 
   const {
     items: results,
-    isLoading: isSearching,
     isFetching: isFetchingSearch,
     error: searchError,
     hasPrevPage: hasPrevSearchPage,
@@ -85,7 +133,7 @@ export function Search(props: Props) {
 
   // A second query rather than part of the paged one: what other spaces hold
   // does not change as the user pages through this space's results.
-  const { data: otherSpaceResults } = useQuery({
+  const { data: otherSpaceResults, isLoading: isLoadingOtherSpaces } = useQuery({
     queryKey: createMemo(() => [
       "search-other-spaces",
       props.spaceId,
@@ -143,69 +191,90 @@ export function Search(props: Props) {
     return [...groups.values()];
   });
 
+  const otherSpacesPending = createMemo(
+    () => isLoadingOtherSpaces() && committedQuery().trim().length > 0,
+  );
+
   // Only alongside the first page: below that the user is deep in this space's
-  // results, and a hint they have already scrolled past is noise.
+  // results, and a hint they have already scrolled past is noise. Held open
+  // while pending too, so the panel is announced rather than dropped in once
+  // the reader has settled on the results above it.
   const showOtherSpaces = createMemo(
-    () => otherSpaceGroups().length > 0 && !hasPrevSearchPage(),
+    () => (otherSpaceGroups().length > 0 || otherSpacesPending()) && !hasPrevSearchPage(),
+  );
+
+  // The panel's slot is claimed but not yet filled, so the rows that belong below
+  // it wait rather than filling the gap and being shoved down when it lands.
+  const holdBackResults = createMemo(() => showOtherSpaces() && otherSpacesPending());
+
+  const visibleResults = createMemo(() =>
+    holdBackResults() ? sortedResults().slice(0, OTHER_SPACES_SPLIT) : sortedResults(),
   );
 
   // The tinted panel carries what no single row can: everything inside it comes
-  // from somewhere other than the space being searched.
+  // from somewhere other than the space being searched. It answers for its own
+  // emptiness rather than trusting where it is rendered: a caption over nothing
+  // claims results that do not exist.
   const otherSpacesSection = () => (
-    <div class="my-5 rounded-xl bg-neutral-50 px-4 py-3.5">
-      {/* A quiet caption, so the space names below it are the labels that carry
-          this block: caption, then space, then document title. */}
-      <div class="mb-4 flex items-center gap-2">
-        <Icon class="h-3 w-3 text-neutral-400" name="folder" />
-        <span class="font-medium text-neutral-500 text-size-extra-small">
-          {t("Results in other Spaces you have access to")}
-        </span>
-        <div class="h-px flex-1 bg-neutral-200" />
-      </div>
+    <Show when={otherSpacesPending() || otherSpaceGroups().length > 0}>
+      <div class="my-5 rounded-xl bg-neutral-50 px-4 py-3.5">
+        {/* A quiet caption, so the space names below it are the labels that carry
+            this block: caption, then space, then document title. */}
+        <div class="mb-4 flex items-center gap-2">
+          <Icon class="h-3 w-3 text-neutral-400" name="folder" />
+          <span class="font-medium text-neutral-500 text-size-extra-small">
+            {t("Results in other Spaces you have access to")}
+          </span>
+          <div class="h-px flex-1 bg-neutral-200" />
+        </div>
 
-      {/* Each heading sits close to its own list and well clear of the next
-          space's, so the grouping is read from the spacing alone. */}
-      <div class="space-y-5">
-        <For each={otherSpaceGroups()}>
-          {(group) => (
-            <div>
-              <div class="mb-2 flex items-center gap-2">
-                {/* The space's own mark, as the switcher shows it: the logo on its
-                    brand colour. The name repeats it in words, for a space with no
-                    mark of its own and for anyone who cannot tell them apart. */}
-                <div
-                  class="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-primary-500"
-                  style={{ "background-color": group.color }}
-                >
-                  <SpaceLogo
-                    logoSvg={group.logoSvg}
-                    class="block h-full w-full object-contain"
-                    fallbackClass="text-white [&>svg]:h-3 [&>svg]:w-3 [&>svg]:object-contain"
+        {/* Each heading sits close to its own list and well clear of the next
+            space's, so the grouping is read from the spacing alone. */}
+        <div class="space-y-5" aria-busy={otherSpacesPending()}>
+          <Show when={!otherSpacesPending()} fallback={<OtherSpacesSkeleton />}>
+            <For each={otherSpaceGroups()}>
+              {(group) => (
+                <div>
+                  <div class="mb-2 flex items-center gap-2">
+                    {/* The space's own mark, as the switcher shows it: the logo
+                        on its brand colour. The name repeats it in words, for a
+                        space with no mark of its own and for anyone who cannot
+                        tell them apart. */}
+                    <div
+                      class="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-primary-500"
+                      style={{ "background-color": group.color }}
+                    >
+                      <SpaceLogo
+                        logoSvg={group.logoSvg}
+                        class="block h-full w-full object-contain"
+                        fallbackClass="text-white [&>svg]:h-3 [&>svg]:w-3 [&>svg]:object-contain"
+                      />
+                    </div>
+                    <span
+                      class="truncate font-semibold text-primary-600 text-size-small"
+                      style={{ color: brandTextColor(group.color) }}
+                    >
+                      {group.name}
+                    </span>
+                    <span class="rounded-full bg-neutral-200 px-1.5 py-0.5 font-medium text-neutral-600 text-size-extra-small tabular-nums">
+                      {group.items.length}
+                    </span>
+                  </div>
+
+                  <DocumentGroupedList
+                    items={group.items}
+                    flat
+                    selectable={false}
+                    showToolbar={false}
+                    preserveOrder
                   />
                 </div>
-                <span
-                  class="truncate font-semibold text-primary-600 text-size-small"
-                  style={{ color: brandTextColor(group.color) }}
-                >
-                  {group.name}
-                </span>
-                <span class="rounded-full bg-neutral-200 px-1.5 py-0.5 font-medium text-neutral-600 text-size-extra-small tabular-nums">
-                  {group.items.length}
-                </span>
-              </div>
-
-              <DocumentGroupedList
-                items={group.items}
-                flat
-                selectable={false}
-                showToolbar={false}
-                preserveOrder
-              />
-            </div>
-          )}
-        </For>
+              )}
+            </For>
+          </Show>
+        </div>
       </div>
-    </div>
+    </Show>
   );
 
   const updateUrlParams = () => {
@@ -324,14 +393,41 @@ export function Search(props: Props) {
     () => searchQuery().trim().length > 0 || activeFilters().length > 0,
   );
 
+  // `isFetching`, not the pager's `isLoading`: that one covers the first search
+  // only, because the pager keeps the previous page on screen while the next
+  // loads, so every later search has data and reports itself as merely fetching.
+  const isSearchBusy = createMemo(() => hasSearched() && isFetchingSearch());
+
+  // Nothing to keep on screen, so the rows are drawn empty rather than leaving
+  // the page blank between the click and the answer.
+  const showResultsSkeleton = createMemo(
+    () => isSearchBusy() && sortedResults().length === 0,
+  );
+
+  // What is on screen belongs to the previous query. Dimmed rather than dropped:
+  // the reader keeps their place, and the rows stop inviting a click they would
+  // lose.
+  const resultsAreStale = createMemo(() => isSearchBusy() && sortedResults().length > 0);
+
   // Split around the placeholder rather than interpolated, so the query keeps
   // its emphasis wherever a translation puts it in the sentence.
   const noMatchText = createMemo(() =>
     t('No documents match "{query}"').split("{query}"),
   );
 
-  const [isBatchArchiving, setIsBatchArchiving] = createSignal(false);
+  // Both counts, because the items are processed one request at a time: a plain
+  // "Processing…" over a selection of fifty is indistinguishable from a hang.
+  const [batchProgress, setBatchProgress] = createSignal<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const isBatchArchiving = createMemo(() => batchProgress() !== null);
   const [batchError, setBatchError] = createSignal<string | null>(null);
+
+  const batchProgressLabel = (progress: { done: number; total: number }) =>
+    t("Processing {done} of {total}…")
+      .replace("{done}", String(progress.done))
+      .replace("{total}", String(progress.total));
 
   const isFileId = (id: string) => {
     const item = [...sortedResults(), ...allDocuments()].find((d) => d.id === id);
@@ -364,7 +460,11 @@ export function Search(props: Props) {
 
     if (!confirm(confirmation)) return;
 
-    setIsBatchArchiving(true);
+    setBatchProgress({ done: 0, total: ids.length });
+    const advance = () =>
+      setBatchProgress((progress) =>
+        progress ? { ...progress, done: progress.done + 1 } : progress,
+      );
     const failed: string[] = [];
 
     for (const id of documentIds) {
@@ -374,6 +474,7 @@ export function Search(props: Props) {
         console.error("Failed to archive document", id, error);
         failed.push(id);
       }
+      advance();
     }
 
     for (const id of fileIds) {
@@ -383,9 +484,10 @@ export function Search(props: Props) {
         console.error("Failed to delete file", id, error);
         failed.push(id);
       }
+      advance();
     }
 
-    setIsBatchArchiving(false);
+    setBatchProgress(null);
 
     if (failed.length > 0) {
       setBatchError(
@@ -408,9 +510,16 @@ export function Search(props: Props) {
           deselectAll();
         }}
         disabled={isBatchArchiving()}
-        class="rounded-md border border-neutral-200 px-3 py-1.5 font-medium text-neutral-700 text-size-small transition-colors hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+        class="flex h-8 items-center gap-2 rounded-md border border-neutral-200 px-3 font-medium text-neutral-700 text-size-small transition-colors hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isBatchArchiving() ? t("Processing…") : t("Archive / delete selected")}
+        <Show when={isBatchArchiving()}>
+          <Icon class="h-3.5 w-3.5 animate-spin" name="spinner" />
+        </Show>
+        <Show when={batchProgress()} fallback={t("Archive / delete selected")}>
+          {(progress) => (
+            <span class="tabular-nums">{batchProgressLabel(progress())}</span>
+          )}
+        </Show>
       </button>
     </Show>
   );
@@ -418,8 +527,15 @@ export function Search(props: Props) {
   return (
     <div>
       {/* Negative margins cancel the view's gutter so the bar covers the results
-          edge to edge as they scroll under it. */}
+          edge to edge as they scroll under it. Sticky already positions it, so the
+          progress bar inside anchors here without a `relative` to fight it. */}
       <div class="sticky top-0 z-10 -mx-xs mb-6 border-neutral-50 border-b bg-background px-xs pt-xs pb-3 lg:-mx-m lg:px-m">
+        {/* On the bar's own border: the one indicator that stays in view once the
+            reader has scrolled past the results being replaced. */}
+        <Show when={isSearchBusy()}>
+          <div class="absolute bottom-0 left-0 h-0.5 w-full animate-pulse bg-primary-400" />
+        </Show>
+
         <div class="mb-3 flex gap-3">
           <div class="relative flex-1">
             <Icon
@@ -431,18 +547,19 @@ export function Search(props: Props) {
               onInput={(e) => setSearchQuery(e.currentTarget.value)}
               type="text"
               placeholder={t("Find anything…")}
-              class="w-full rounded-lg border border-neutral-100 bg-background py-3 pr-12 pl-12 text-base focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-neutral-100"
+              class="w-full rounded-lg border border-neutral-100 bg-background py-3 pr-12 pl-12 text-base focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
               onKeyDown={(event) => {
                 if (event.key === "Enter") handleSearch();
               }}
-              disabled={isSearching()}
             />
+            {/* Neither control locks while a search runs: a query in flight is no
+                reason to stop the reader typing the next one or clearing this
+                one. */}
             <Show when={searchQuery()}>
               <button
                 type="button"
                 onClick={clear}
-                class="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-neutral hover:bg-neutral-100 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isSearching()}
+                class="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-neutral hover:bg-neutral-100 hover:text-neutral-800"
                 title={t("Clear search")}
               >
                 <Icon class="h-4 w-4" name="cancel" />
@@ -453,16 +570,16 @@ export function Search(props: Props) {
           <button
             type="button"
             onClick={handleSearch}
-            disabled={isSearching() || !canSearch()}
+            disabled={isSearchBusy() || !canSearch()}
             class="flex items-center gap-2 whitespace-nowrap rounded-lg bg-primary-500 px-5 py-3 font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Show
-              when={!isSearching()}
+              when={!isSearchBusy()}
               fallback={<Icon class="h-4 w-4 animate-spin" name="spinner" />}
             >
               <Icon class="h-4 w-4" name="search" />
             </Show>
-            {isSearching() ? t("Searching…") : t("Search")}
+            {isSearchBusy() ? t("Searching…") : t("Search")}
           </button>
         </div>
 
@@ -479,6 +596,21 @@ export function Search(props: Props) {
           <Icon class="h-5 w-5 shrink-0" name="alert-circle" />
           {searchError()?.message ?? t("Search failed")}
         </div>
+      </Show>
+
+      {/* The run drops the selection as it starts, which takes the toolbar and its
+          button off screen, so the progress is reported here instead. */}
+      <Show when={batchProgress()}>
+        {(progress) => (
+          <div
+            role="status"
+            aria-live="polite"
+            class="mb-6 flex items-center gap-3 rounded-lg border border-neutral-100 bg-neutral-50 p-4 text-neutral-700 text-size-medium"
+          >
+            <Icon class="h-5 w-5 shrink-0 animate-spin" name="spinner" />
+            <span class="tabular-nums">{batchProgressLabel(progress())}</span>
+          </div>
+        )}
       </Show>
 
       <Show when={batchError()}>
@@ -515,13 +647,7 @@ export function Search(props: Props) {
         </Show>
 
         <Show when={allDocuments().length === 0 && isLoadingDocuments()}>
-          <div class="py-12 text-center">
-            <Icon
-              class="mx-auto mb-4 h-10 w-10 animate-spin text-neutral-300"
-              name="spinner"
-            />
-            <p class="text-neutral-500 text-size-medium">{t("Loading documents…")}</p>
-          </div>
+          <ListSkeleton rows={8} />
         </Show>
 
         <Show when={allDocuments().length === 0 && !isLoadingDocuments()}>
@@ -537,30 +663,51 @@ export function Search(props: Props) {
         </Show>
       </Show>
 
-      <Show when={hasSearched() && sortedResults().length > 0}>
-        <DocumentGroupedList
-          items={sortedResults() as unknown as DocumentWithProperties[]}
-          showToolbar={false}
-          batchActions={batchActions}
-          splitAfter={showOtherSpaces() ? 5 : undefined}
-          splitContent={otherSpacesSection}
-        />
-
-        <PagerCursor
-          class="mt-6 pt-5"
-          hasPrevPage={hasPrevSearchPage()}
-          hasNextPage={hasNextSearchPage()}
-          disabled={isFetchingSearch()}
-          onPrev={prevSearchPage}
-          onNext={nextSearchPage}
-        />
+      <Show when={showResultsSkeleton() && !searchError()}>
+        <ListSkeleton rows={5} />
       </Show>
 
+      <Show when={hasSearched() && sortedResults().length > 0}>
+        <div
+          aria-busy={resultsAreStale()}
+          class="transition-opacity duration-150"
+          classList={{ "pointer-events-none opacity-40": resultsAreStale() }}
+        >
+          <DocumentGroupedList
+            items={visibleResults() as unknown as DocumentWithProperties[]}
+            showToolbar={false}
+            batchActions={batchActions}
+            splitAfter={
+              showOtherSpaces() && !holdBackResults() ? OTHER_SPACES_SPLIT : undefined
+            }
+            splitContent={otherSpacesSection}
+          />
+
+          {/* While the panel is pending there is nothing below it to split around,
+              so it follows the rows that are shown — the same place it will take
+              once the rest of them arrive with it. */}
+          <Show when={holdBackResults()}>{otherSpacesSection()}</Show>
+
+          {/* Paging an incomplete page would commit the reader to a set of results
+              that is still being assembled. */}
+          <PagerCursor
+            class="mt-6 pt-5"
+            hasPrevPage={hasPrevSearchPage()}
+            hasNextPage={hasNextSearchPage()}
+            disabled={isSearchBusy() || holdBackResults()}
+            onPrev={prevSearchPage}
+            onNext={nextSearchPage}
+          />
+        </div>
+      </Show>
+
+      {/* Off while a search is in flight: an empty page one and an empty result
+          set look identical from here, and only one of them is an answer. */}
       <Show
         when={
           hasSearched() &&
           sortedResults().length === 0 &&
-          !isSearching() &&
+          !isSearchBusy() &&
           !searchError()
         }
       >
@@ -586,7 +733,14 @@ export function Search(props: Props) {
 
       {/* Nothing here, but something elsewhere — the one case where the other
           spaces are the whole answer rather than an aside. */}
-      <Show when={hasSearched() && sortedResults().length === 0 && showOtherSpaces()}>
+      <Show
+        when={
+          hasSearched() &&
+          sortedResults().length === 0 &&
+          !isSearchBusy() &&
+          showOtherSpaces()
+        }
+      >
         {otherSpacesSection()}
       </Show>
     </div>
