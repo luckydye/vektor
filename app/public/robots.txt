@@ -1,0 +1,3 @@
+# Self-hosted instances are private; nothing here is meant to be crawled.
+User-agent: *
+Disallow: /
