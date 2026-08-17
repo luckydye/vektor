@@ -42,10 +42,39 @@ Errors are always `{ "error": "message" }` with a matching HTTP status. Common c
 - `403` — forbidden (authenticated but lacks role/feature)
 - `404` — not found
 - `405` — method not allowed (`Allow` header lists supported methods)
+- `429` — rate limited (`Retry-After` header gives the seconds to wait)
 - `500` — internal server error
 
 Success bodies vary by endpoint; many wrap the payload in a named key (`{ document }`,
 `{ space }`, `{ categories }`, etc.) — see per-endpoint sections below.
+
+## Rate limiting
+
+Every response carries `X-Limit-Remaining`: the requests left in the caller's current
+window. Exceeding it returns `429` with `Retry-After` (seconds). Clients should back off
+for that long rather than retry immediately.
+
+Callers are counted **per access token** when one is presented, and **per IP** otherwise —
+so one integration's budget is its own, and a browser session shares the instance's
+per-IP budget. The token is hashed to form the key; it is never stored or logged.
+
+Ordinary routes share one generous bucket (600 requests/minute by default,
+`VEKTOR_RATE_LIMIT_MAX` / `VEKTOR_RATE_LIMIT_WINDOW`). Routes that do a large amount of
+work per call carry tighter limits that those settings do not raise:
+
+| Route | Limit |
+|---|---|
+| `POST /spaces/:spaceId/search/rebuild` | 5/hour |
+| `POST /chat/completions`, `POST /chat/acp` | 30/min |
+| `POST /spaces/:spaceId/jobs/run` | 30/min |
+| `POST /spaces/:spaceId/workflows/runs` | 30/min |
+| `GET /url-metadata`, `GET /proxy-media` | 120/min |
+| `GET /spaces/:spaceId/uploads/*path` | 300/min |
+
+Limits are enforced in-memory per process, so a restart forgives outstanding windows —
+this is load-shedding, not quota accounting. Set `VEKTOR_RATE_LIMIT=0` to disable
+entirely. `VEKTOR_RATE_LIMIT_BLOCK` refuses named keys outright (the killswitch); the
+keys are the ones printed in the `API rate limit exceeded` log line.
 
 ---
 

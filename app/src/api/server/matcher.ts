@@ -69,6 +69,8 @@ export function sortRoutes(routes: CompiledRoute[]): CompiledRoute[] {
 export interface RouteMatch {
   module: ApiRouteModule;
   params: Record<string, string | undefined>;
+  /** The pattern that matched, for callers keyed by route rather than by URL. */
+  pattern: string;
 }
 
 /**
@@ -113,7 +115,7 @@ export function matchRoute(routes: CompiledRoute[], pathname: string): RouteMatc
     });
     if (!valid) return null;
 
-    return { module: route.module, params };
+    return { module: route.module, params, pattern: route.pattern };
   }
 
   return null;
