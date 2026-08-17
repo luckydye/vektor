@@ -417,53 +417,55 @@ export function Search(props: Props) {
 
   return (
     <div>
-      <div class="mb-3 flex gap-3">
-        <div class="relative flex-1">
-          <Icon
-            class="pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-neutral-400"
-            name="search"
-          />
-          <input
-            value={searchQuery()}
-            onInput={(e) => setSearchQuery(e.currentTarget.value)}
-            type="text"
-            placeholder={t("Find anything…")}
-            class="w-full rounded-lg border border-neutral-100 bg-background py-3 pr-12 pl-12 text-base focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-neutral-100"
-            onKeyDown={(event) => {
-              if (event.key === "Enter") handleSearch();
-            }}
-            disabled={isSearching()}
-          />
-          <Show when={searchQuery()}>
-            <button
-              type="button"
-              onClick={clear}
-              class="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-neutral hover:bg-neutral-100 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+      {/* Negative margins cancel the view's gutter so the bar covers the results
+          edge to edge as they scroll under it. */}
+      <div class="sticky top-0 z-10 -mx-xs mb-6 border-neutral-50 border-b bg-background px-xs pt-xs pb-3 lg:-mx-m lg:px-m">
+        <div class="mb-3 flex gap-3">
+          <div class="relative flex-1">
+            <Icon
+              class="pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-neutral-400"
+              name="search"
+            />
+            <input
+              value={searchQuery()}
+              onInput={(e) => setSearchQuery(e.currentTarget.value)}
+              type="text"
+              placeholder={t("Find anything…")}
+              class="w-full rounded-lg border border-neutral-100 bg-background py-3 pr-12 pl-12 text-base focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-neutral-100"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleSearch();
+              }}
               disabled={isSearching()}
-              title={t("Clear search")}
+            />
+            <Show when={searchQuery()}>
+              <button
+                type="button"
+                onClick={clear}
+                class="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-neutral hover:bg-neutral-100 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isSearching()}
+                title={t("Clear search")}
+              >
+                <Icon class="h-4 w-4" name="cancel" />
+              </button>
+            </Show>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSearch}
+            disabled={isSearching() || !canSearch()}
+            class="flex items-center gap-2 whitespace-nowrap rounded-lg bg-primary-500 px-5 py-3 font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Show
+              when={!isSearching()}
+              fallback={<Icon class="h-4 w-4 animate-spin" name="spinner" />}
             >
-              <Icon class="h-4 w-4" name="cancel" />
-            </button>
-          </Show>
+              <Icon class="h-4 w-4" name="search" />
+            </Show>
+            {isSearching() ? t("Searching…") : t("Search")}
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSearch}
-          disabled={isSearching() || !canSearch()}
-          class="flex items-center gap-2 whitespace-nowrap rounded-lg bg-primary-500 px-5 py-3 font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Show
-            when={!isSearching()}
-            fallback={<Icon class="h-4 w-4 animate-spin" name="spinner" />}
-          >
-            <Icon class="h-4 w-4" name="search" />
-          </Show>
-          {isSearching() ? t("Searching…") : t("Search")}
-        </button>
-      </div>
-
-      <div class="mb-6">
         <SearchFilters
           spaceId={props.spaceId}
           value={activeFilters()}

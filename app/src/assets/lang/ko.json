@@ -448,5 +448,12 @@
   "Put the categories in order": "카테고리 순서 정리하기",
   "Open a category's menu, choose Rearrange, then drag it into place.": "카테고리 메뉴에서 ‘카테고리 순서 변경’을 선택한 뒤 원하는 위치로 끌어다 놓으세요.",
   "Next": "다음",
-  "Got it": "확인"
+  "Got it": "확인",
+  "Modified": "수정일",
+  "Filter": "필터",
+  "Clear all": "모두 지우기",
+  "Remove filter": "필터 제거",
+  "Properties": "속성",
+  "any value": "모든 값",
+  "+{count} more": "외 {count}개"
 }

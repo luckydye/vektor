@@ -448,5 +448,12 @@
   "Put the categories in order": "Put the categories in order",
   "Open a category's menu, choose Rearrange, then drag it into place.": "Open a category's menu, choose Rearrange, then drag it into place.",
   "Next": "Next",
-  "Got it": "Got it"
+  "Got it": "Got it",
+  "Modified": "Modified",
+  "Filter": "Filter",
+  "Clear all": "Clear all",
+  "Remove filter": "Remove filter",
+  "Properties": "Properties",
+  "any value": "any value",
+  "+{count} more": "+{count} more"
 }

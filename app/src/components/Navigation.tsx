@@ -143,12 +143,12 @@ export function Navigation() {
           <div class="flex flex-none flex-col gap-0.5 px-3xs pt-5xs">
             <button
               type="button"
-              class="button-with-icon mb-4xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
+              class="button-with-icon mb-4xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
               title={t("Quick Search")}
               onClick={() => Actions.run("ui:toggle:palatte")}
             >
               <Icon name="search" />
-              <span class="@max-xs:hidden flex-1 truncate text-size-normal">
+              <span class="@max-xs:hidden flex-1 truncate">
                 {t("Quick Search")}
               </span>
               <a-shortcut class="@max-xs:hidden! flex-none" data-shortcut="mod-k" />

@@ -444,5 +444,12 @@
   "Put the categories in order": "Kategorien in die richtige Reihenfolge bringen",
   "Open a category's menu, choose Rearrange, then drag it into place.": "Öffne das Menü einer Kategorie, wähle „Kategorien neu anordnen“ und zieh sie an ihren Platz.",
   "Next": "Weiter",
-  "Got it": "Verstanden"
+  "Got it": "Verstanden",
+  "Modified": "Geändert",
+  "Filter": "Filter",
+  "Clear all": "Alle entfernen",
+  "Remove filter": "Filter entfernen",
+  "Properties": "Eigenschaften",
+  "any value": "beliebiger Wert",
+  "+{count} more": "+{count} weitere"
 }

@@ -20,7 +20,9 @@ export function MenuLink(props: Props) {
       href={props.href}
       class={twMerge(
         props.class,
-        "button-with-icon inline-flex cursor-pointer items-center rounded-md px-4xs font-normal text-neutral-800 transition-colors hover:transition-none",
+        // The left padding matches the quick search button's px-3xs plus its 1px
+        // border, so every nav icon lines up on the same edge.
+        "button-with-icon inline-flex cursor-pointer items-center rounded-md pr-4xs pl-[calc(var(--spacing-3xs)+1px)] font-normal text-neutral-800 transition-colors hover:transition-none",
         "@max-xs:justify-center",
         props.isActive
           ? "bg-primary-100 text-primary-700"

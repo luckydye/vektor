@@ -8,10 +8,11 @@ export function SpaceSearchView() {
 
   usePageTitle("Search");
 
+  // No `pt-*` on the view: the sticky search bar carries the top gutter itself.
   return (
     <Show when={currentSpace()}>
       {(space) => (
-        <inset-view class="block h-full px-xs pt-xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:px-m lg:pb-8 print:px-0">
+        <inset-view class="block h-full px-xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:px-m lg:pb-8 print:px-0">
           <Search spaceId={space().id} />
         </inset-view>
       )}
