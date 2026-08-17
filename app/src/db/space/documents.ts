@@ -22,6 +22,7 @@ import {
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
+  storedPropertyKey,
   toDocumentProperties,
   toDocumentPropertiesByDocument,
 } from "#documents/properties.ts";
@@ -153,7 +154,7 @@ export async function createDocument(
   // below are not in one transaction with it, so rejecting halfway would leave a
   // document behind that the caller was told was never created.
   for (const key of Object.keys(initialProperties ?? {})) {
-    assertWritableDocumentPropertyKey(key);
+    assertWritableDocumentPropertyKey(storedPropertyKey(key));
   }
   const id = createId("document");
   const now = new Date();
@@ -186,7 +187,10 @@ export async function createDocument(
   const storedProperties = new Map<string, DocumentPropertyValue>();
 
   const initialEntries = new Map(
-    Object.entries(properties).map((entry) => [canonicalPropertyKey(entry[0]), entry]),
+    Object.entries(properties).map(([key, raw]) => [
+      canonicalPropertyKey(key),
+      [storedPropertyKey(key), raw] as const,
+    ]),
   );
 
   for (const [key, raw] of initialEntries.values()) {

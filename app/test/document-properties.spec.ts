@@ -16,6 +16,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   aggregateStoredProperties,
+  DOCUMENT_TYPE_FILTER_KEY,
   isReservedDocumentPropertyKey,
   normalizeDocumentPropertyPatch,
   readDocumentProperty,
@@ -404,8 +405,10 @@ describe("colliding property keys survive the space-wide listing", () => {
     expect(listed.find((property) => property.name === "status")?.values).toContain(
       "published",
     );
-    // The virtual `type` property is always present.
-    expect(listed.some((property) => property.name === "type")).toBe(true);
+    // The virtual document-type entry is always present.
+    expect(listed.some((property) => property.name === DOCUMENT_TYPE_FILTER_KEY)).toBe(
+      true,
+    );
   });
 
   it("drops a deleted document's properties instead of listing them as ghosts", async () => {
@@ -468,6 +471,54 @@ describe("search filters over colliding property keys", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+});
+
+describe("a property named type is an ordinary property", () => {
+  async function searchTitles(filters: { key: string; value: string | null }[]) {
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/search?filters=${encodeURIComponent(JSON.stringify(filters))}`,
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).results.map(
+      (result: { properties?: Record<string, unknown> }) => result.properties?.title,
+    );
+  }
+
+  it("lists it beside the virtual document-type entry", async () => {
+    expect((await createDocument({ title: "Typed", Type: "invoice" })).status).toBe(201);
+
+    const listed = await listProperties();
+    const entry = listed.find(
+      (property) =>
+        property.name !== DOCUMENT_TYPE_FILTER_KEY &&
+        property.name.toLowerCase() === "type",
+    );
+    expect(entry?.values).toContain("invoice");
+    expect(
+      listed.find((property) => property.name === DOCUMENT_TYPE_FILTER_KEY)?.values,
+    ).toContain("document");
+  });
+
+  it("filters on the property, not on the document type", async () => {
+    expect(
+      (await createDocument({ title: "Filterable type", Type: "receipt" })).status,
+    ).toBe(201);
+
+    expect(await searchTitles([{ key: "type", value: "receipt" }])).toContain(
+      "Filterable type",
+    );
+  });
+
+  it("still filters on the document type through the reserved key", async () => {
+    expect((await createDocument({ title: "Plain document" })).status).toBe(201);
+
+    const titles = await searchTitles([
+      { key: DOCUMENT_TYPE_FILTER_KEY, value: "document" },
+    ]);
+    expect(titles).toContain("Plain document");
+    const files = await searchTitles([{ key: DOCUMENT_TYPE_FILTER_KEY, value: "file" }]);
+    expect(files).not.toContain("Plain document");
   });
 });
 

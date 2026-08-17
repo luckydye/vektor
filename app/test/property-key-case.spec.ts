@@ -7,6 +7,7 @@ import {
   canonicalPropertyKey,
   normalizeDocumentPropertyPatch,
   readDocumentProperty,
+  storedPropertyKey,
 } from "#documents/properties.ts";
 import {
   createApiRequest,
@@ -20,6 +21,24 @@ describe("canonicalPropertyKey", () => {
   it("folds case and surrounding space", () => {
     expect(canonicalPropertyKey("Date")).toBe("date");
     expect(canonicalPropertyKey("  dueDate ")).toBe("duedate");
+  });
+
+  it("leaves an internal key exactly as spelled", () => {
+    expect(canonicalPropertyKey("_databaseViews")).toBe("_databaseViews");
+    expect(canonicalPropertyKey("_workflowRunStatus")).toBe("_workflowRunStatus");
+  });
+});
+
+describe("storedPropertyKey", () => {
+  it("keeps the spelling a user key was written with", () => {
+    expect(storedPropertyKey("Due Date")).toBe("Due Date");
+    expect(storedPropertyKey("  region ")).toBe("region");
+  });
+
+  it("folds an app-owned key onto the spelling the app reads", () => {
+    expect(storedPropertyKey("TITLE")).toBe("title");
+    expect(storedPropertyKey("headerimage")).toBe("headerImage");
+    expect(storedPropertyKey("EVENTSTART")).toBe("eventStart");
   });
 });
 
@@ -95,6 +114,21 @@ describe("normalizeDocumentPropertyPatch", () => {
 
     expect(operations).toEqual([{ kind: "delete", key: "Date" }]);
   });
+
+  it("spells an app-owned key the way the app reads it", () => {
+    const operations = normalizeDocumentPropertyPatch({ TITLE: "Renamed" });
+
+    expect(operations[0]).toMatchObject({ key: "title", value: "Renamed" });
+  });
+
+  it("keeps two internal keys apart", () => {
+    const operations = normalizeDocumentPropertyPatch({ _schema: "a", _Schema: "b" });
+
+    expect(operations.map((operation) => operation.key).sort()).toEqual([
+      "_Schema",
+      "_schema",
+    ]);
+  });
 });
 
 const PORT = 7524;
@@ -159,23 +193,47 @@ async function listProperties(): Promise<{ name: string; values: string[] }[]> {
 }
 
 describe("a document holds one property per key, whatever the case", () => {
-  it("updates the stored key instead of adding a second one", async () => {
+  it("renames the stored key instead of adding a second one", async () => {
     const documentId = await createDocument({ title: "Case patch", date: "2026-01-01" });
 
     expect((await patchProperties(documentId, { Date: "2026-02-02" })).status).toBe(200);
 
     const properties = await documentProperties(documentId);
-    expect(properties.date).toBe("2026-02-02");
-    expect(properties).not.toHaveProperty("Date");
+    expect(properties.Date).toBe("2026-02-02");
+    expect(properties).not.toHaveProperty("date");
   });
 
-  it("keeps the spelling the property was created with", async () => {
+  it("stores the spelling of the write that named the property last", async () => {
     const documentId = await createDocument({ title: "Camel case", dueDate: "monday" });
 
     expect((await patchProperties(documentId, { DUEDATE: "tuesday" })).status).toBe(200);
 
     const properties = await documentProperties(documentId);
-    expect(properties.dueDate).toBe("tuesday");
+    expect(properties.DUEDATE).toBe("tuesday");
+    expect(properties).not.toHaveProperty("dueDate");
+  });
+
+  it("folds an app-owned key onto the spelling the app reads", async () => {
+    const documentId = await createDocument({
+      title: "App owned",
+      HEADERIMAGE: "cover.png",
+    });
+
+    expect((await patchProperties(documentId, { TITLE: "Renamed" })).status).toBe(200);
+
+    const properties = await documentProperties(documentId);
+    expect(properties.headerImage).toBe("cover.png");
+    expect(properties.title).toBe("Renamed");
+  });
+
+  it("keeps internal keys apart, whatever their case", async () => {
+    const documentId = await createDocument({ title: "Internal", _schema: "lower" });
+
+    expect((await patchProperties(documentId, { _Schema: "upper" })).status).toBe(200);
+
+    const properties = await documentProperties(documentId);
+    expect(properties._schema).toBe("lower");
+    expect(properties._Schema).toBe("upper");
   });
 
   it("deletes the property named with the other spelling", async () => {

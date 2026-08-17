@@ -6,6 +6,7 @@ import { document, property } from "#db/schema/space.ts";
 import {
   aggregateStoredProperties,
   canonicalPropertyKey,
+  DOCUMENT_TYPE_FILTER_KEY,
   type DocumentPropertyPatch,
   type DocumentPropertyPatchOperation,
   type DocumentPropertyValue,
@@ -42,7 +43,7 @@ async function resolveRenamedSlug(
   const titleUpdate = operations.find(
     (operation) =>
       operation.kind === "update" &&
-      canonicalPropertyKey(operation.key) === "title" &&
+      operation.key === "title" &&
       typeof operation.value === "string" &&
       operation.value.length > 0,
   );
@@ -98,63 +99,76 @@ export async function patchDocumentProperties(
     }
     const changes: DocumentPropertyChange[] = [];
 
+    // Folding two spellings together destroys a stored value, so it is logged and
+    // broadcast like any other delete.
+    const removeRow = async (row: (typeof existingRows)[number]) => {
+      const value = parseStoredPropertyValue(row.value);
+      await txStore.db.delete(property).where(eq(property.id, row.id));
+      await createAuditLog(txStore, {
+        docId: documentId,
+        userId,
+        event: "property_delete",
+        details: {
+          propertyKey: row.key,
+          propertyType: row.type || undefined,
+          previousValue: propertyValueToText(value),
+        },
+      });
+
+      changes.push({
+        kind: "document_property_deleted",
+        propertyKey: row.key,
+        propertyType: row.type ?? null,
+        previousValue: value,
+      });
+    };
+
     for (const operation of operations) {
       const group = existingByKey.get(canonicalPropertyKey(operation.key)) ?? [];
-      const [existing, ...superseded] = group;
-      for (const row of superseded) {
-        await txStore.db.delete(property).where(eq(property.id, row.id));
+      // The row the patch already names, else the one written most recently: that
+      // row is renamed, so the spelling of the last write is the one stored.
+      const current = group.find((row) => row.key === operation.key) ?? group[0];
+      const previousValue = current ? parseStoredPropertyValue(current.value) : undefined;
+
+      for (const row of group) {
+        if (row !== current) await removeRow(row);
       }
-      const previousValue = existing
-        ? parseStoredPropertyValue(existing.value)
-        : undefined;
-      const storedKey = existing?.key ?? operation.key;
 
       if (operation.kind === "delete") {
-        if (existing) {
-          await txStore.db.delete(property).where(eq(property.id, existing.id));
-
-          await createAuditLog(txStore, {
-            docId: documentId,
-            userId,
-            event: "property_delete",
-            details: {
-              propertyKey: storedKey,
-              propertyType: existing.type || undefined,
-              previousValue: propertyValueToText(previousValue ?? ""),
-            },
+        if (current) await removeRow(current);
+        else {
+          changes.push({
+            kind: "document_property_deleted",
+            propertyKey: operation.key,
+            propertyType: null,
+            previousValue: null,
           });
         }
-
-        changes.push({
-          kind: "document_property_deleted",
-          propertyKey: storedKey,
-          propertyType: existing?.type ?? null,
-          previousValue: previousValue ?? null,
-        });
         continue;
       }
 
       const storedValue = serializePropertyValue(operation.value);
       const nextType =
-        operation.type === undefined ? (existing?.type ?? null) : operation.type;
-      if (existing) {
+        operation.type === undefined ? (current?.type ?? null) : operation.type;
+      if (current) {
         const updateData: {
+          key: string;
           value: string;
           updatedAt: Date;
           type?: string | null;
-        } = { value: storedValue, updatedAt: now };
+        } = { key: operation.key, value: storedValue, updatedAt: now };
         if (operation.type !== undefined) updateData.type = operation.type;
         await txStore.db
           .update(property)
           .set(updateData)
-          .where(eq(property.id, existing.id));
+          .where(eq(property.id, current.id));
       } else {
         await txStore.db.insert(property).values({
           id: createId("property"),
           documentId,
-          key: storedKey,
+          key: operation.key,
           value: storedValue,
-          type: operation.type || null,
+          type: nextType || null,
           createdAt: now,
           updatedAt: now,
         });
@@ -165,7 +179,7 @@ export async function patchDocumentProperties(
         userId,
         event: "property_update",
         details: {
-          propertyKey: storedKey,
+          propertyKey: operation.key,
           propertyType: nextType || undefined,
           previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
           newValue: propertyValueToText(operation.value),
@@ -174,7 +188,7 @@ export async function patchDocumentProperties(
 
       changes.push({
         kind: "document_property_changed",
-        propertyKey: storedKey,
+        propertyKey: operation.key,
         propertyType: nextType,
         previousValue: previousValue ?? null,
         value: operation.value,
@@ -191,7 +205,7 @@ export async function patchDocumentProperties(
       kind: "documentProperties",
       documentId,
       affectsTree: operations.some((operation) =>
-        ["title", "category", "collection"].includes(canonicalPropertyKey(operation.key)),
+        ["title", "category", "collection"].includes(operation.key),
       ),
       data: {
         kind: "document_properties_changed",
@@ -237,7 +251,7 @@ export async function getAllPropertiesWithValues(
   }
 
   return [
-    { name: "type", type: "select", values: typeValues },
+    { name: DOCUMENT_TYPE_FILTER_KEY, type: "select", values: typeValues },
     ...aggregateStoredProperties(allProperties),
   ].sort((a, b) => a.name.localeCompare(b.name));
 }

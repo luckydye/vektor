@@ -9,6 +9,8 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
 import {
+  DATE_FILTER_KEY,
+  DOCUMENT_TYPE_FILTER_KEY,
   type DocumentProperties,
   parseStoredPropertyValue,
   propertyValueToText,
@@ -302,9 +304,11 @@ export async function searchDocuments(
     return { results: [], nextCursor: null };
   }
 
-  const typeFilters = filters.filter((f) => f.key === "type");
-  const dateFilters = filters.filter((f) => f.key === "_date");
-  const propertyFilters = filters.filter((f) => f.key !== "type" && f.key !== "_date");
+  const typeFilters = filters.filter((f) => f.key === DOCUMENT_TYPE_FILTER_KEY);
+  const dateFilters = filters.filter((f) => f.key === DATE_FILTER_KEY);
+  const propertyFilters = filters.filter(
+    (f) => f.key !== DOCUMENT_TYPE_FILTER_KEY && f.key !== DATE_FILTER_KEY,
+  );
 
   const matchesFilters = (
     properties: DocumentProperties,

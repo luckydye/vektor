@@ -2,7 +2,11 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
-import { canonicalPropertyKey } from "#documents/properties.ts";
+import {
+  canonicalPropertyKey,
+  DATE_FILTER_KEY,
+  DOCUMENT_TYPE_FILTER_KEY,
+} from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
@@ -14,8 +18,6 @@ interface Props {
   onInput?: (filters: PropertyFilter[]) => void;
   onSearch?: () => void;
 }
-
-const DATE_FILTER_KEY = "_date";
 
 /* Every chip in the row — date, type, property, add — shares one shell so the
  * row reads as a single control instead of a pile of one-off buttons. These are
@@ -87,34 +89,39 @@ export function SearchFilters(props: Props) {
 
   const { data: availableProperties } = useQuery({
     queryKey: createMemo(() => ["properties", props.spaceId]),
-    queryFn: async () => {
-      const properties = await api.properties.get(props.spaceId);
-      return properties.filter(
-        (p) => canonicalPropertyKey(p.name) !== "title" && !p.name.startsWith("_"),
-      );
-    },
+    queryFn: () => api.properties.get(props.spaceId),
   });
 
   const typeValues = createMemo(
     () =>
-      availableProperties()?.find((p) => canonicalPropertyKey(p.name) === "type")
-        ?.values ?? [],
+      availableProperties()?.find((p) => p.name === DOCUMENT_TYPE_FILTER_KEY)?.values ??
+      [],
   );
 
-  const nonTypeProperties = createMemo(
+  const filterableProperties = createMemo(
     () =>
-      availableProperties()?.filter((p) => canonicalPropertyKey(p.name) !== "type") ?? [],
+      availableProperties()?.filter(
+        (p) => canonicalPropertyKey(p.name) !== "title" && !p.name.startsWith("_"),
+      ) ?? [],
   );
 
   const activePropertyFilters = createMemo(() =>
-    props.value.filter((f) => f.key !== DATE_FILTER_KEY && f.key !== "type"),
+    props.value.filter(
+      (f) => f.key !== DATE_FILTER_KEY && f.key !== DOCUMENT_TYPE_FILTER_KEY,
+    ),
   );
 
+  // A chip carries the spelling the space listing prevails on, not always the one
+  // an active filter was created with.
+  const isFilterFor = (filter: PropertyFilter, key: string, value: string | null) =>
+    canonicalPropertyKey(filter.key) === canonicalPropertyKey(key) &&
+    filter.value === value;
+
   const hasActiveFilter = (key: string, value: string | null) =>
-    props.value.some((f) => f.key === key && f.value === value);
+    props.value.some((f) => isFilterFor(f, key, value));
 
   const removeFilterByKeyValue = (key: string, value: string | null) => {
-    commit(props.value.filter((f) => !(f.key === key && f.value === value)));
+    commit(props.value.filter((f) => !isFilterFor(f, key, value)));
   };
 
   const toggleFilter = (key: string, value: string | null) => {
@@ -192,10 +199,10 @@ export function SearchFilters(props: Props) {
         {(tv) => (
           <button
             type="button"
-            aria-pressed={hasActiveFilter("type", tv)}
-            onClick={() => toggleFilter("type", tv)}
+            aria-pressed={hasActiveFilter(DOCUMENT_TYPE_FILTER_KEY, tv)}
+            onClick={() => toggleFilter(DOCUMENT_TYPE_FILTER_KEY, tv)}
             class={`${CHIP} cursor-pointer capitalize ${
-              hasActiveFilter("type", tv)
+              hasActiveFilter(DOCUMENT_TYPE_FILTER_KEY, tv)
                 ? `${CHIP_ACTIVE} hover:bg-primary-100`
                 : CHIP_IDLE
             }`}
@@ -228,7 +235,7 @@ export function SearchFilters(props: Props) {
         )}
       </For>
 
-      <Show when={nonTypeProperties().length > 0}>
+      <Show when={filterableProperties().length > 0}>
         <a-popover-trigger class="group flex-none">
           <button
             type="button"
@@ -248,7 +255,7 @@ export function SearchFilters(props: Props) {
                   </span>
                 </div>
                 <div class="max-h-64 overflow-y-auto py-1">
-                  <For each={nonTypeProperties()}>
+                  <For each={filterableProperties()}>
                     {(prop) => (
                       <div class="px-1">
                         <button

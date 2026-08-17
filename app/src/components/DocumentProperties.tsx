@@ -330,12 +330,16 @@ export function DocumentProperties(props: Props) {
     return [...list, ...otherProps];
   });
 
-  const availableNewProperties = createMemo(() =>
-    spaceProperties().filter((sp) => {
+  const availableNewProperties = createMemo(() => {
+    // Folded: offering a property the document already holds under another case
+    // would overwrite its value.
+    const held = new Set(Object.keys(documentProperties()).map(canonicalPropertyKey));
+
+    return spaceProperties().filter((sp) => {
       if (isHiddenDocumentPropertyKey(sp.name)) return false;
-      return !(sp.name in documentProperties());
-    }),
-  );
+      return !held.has(canonicalPropertyKey(sp.name));
+    });
+  });
 
   return (
     <div

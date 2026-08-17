@@ -167,18 +167,21 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   }
 
   async function addColumn(column: DatabaseColumn) {
-    const currentColumns = derivedColumns();
-    const updated: DatabaseSchema = {
-      columns: [...currentColumns, column],
-    };
-    await updateSchemaMutation.mutateAsync(updated);
+    await addColumns([column]);
   }
 
   async function addColumns(columns: DatabaseColumn[]) {
     if (columns.length === 0) return;
     const currentColumns = derivedColumns();
-    const existing = new Set(currentColumns.map((column) => column.name));
-    const appended = columns.filter((column) => !existing.has(column.name));
+    const existing = new Set(
+      currentColumns.map((column) => canonicalPropertyKey(column.name)),
+    );
+    const appended = columns.filter((column) => {
+      const canonical = canonicalPropertyKey(column.name);
+      if (existing.has(canonical)) return false;
+      existing.add(canonical);
+      return true;
+    });
     if (appended.length === 0) return;
     const updated: DatabaseSchema = {
       columns: [...currentColumns, ...appended],

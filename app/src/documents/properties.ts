@@ -24,9 +24,56 @@ export type DocumentPropertyPatchOperation =
       type: string | null | undefined;
     };
 
+/**
+ * The identity two property keys are compared by.
+ *
+ * Keys starting with `_` are internal and keep their exact spelling: the app
+ * reads `_schema`, `_databaseViews` and the workflow-run keys by a fixed name, so
+ * folding their case would let a patch rename a row out from under its reader.
+ */
 export function canonicalPropertyKey(key: string): string {
-  return key.trim().toLowerCase();
+  const trimmed = key.trim();
+  return trimmed.startsWith("_") ? trimmed : trimmed.toLowerCase();
 }
+
+/**
+ * Keys the app itself reads by a fixed spelling — `headerImage` and the calendar
+ * pair among them. A write naming one of these in any other case folds onto the
+ * spelling listed here, instead of storing a row nothing reads.
+ */
+const APP_OWNED_PROPERTY_KEYS = [
+  "title",
+  "category",
+  "collection",
+  "layout",
+  "gridtype",
+  "headerImage",
+  "eventStart",
+  "eventEnd",
+];
+
+const appOwnedPropertyKeys = new Map(
+  APP_OWNED_PROPERTY_KEYS.map((key) => [canonicalPropertyKey(key), key]),
+);
+
+/**
+ * The key a write stores a property under.
+ *
+ * A user key keeps the spelling of the write that named it, so correcting the
+ * case renames the property rather than adding a second one beside it.
+ */
+export function storedPropertyKey(key: string): string {
+  const trimmed = key.trim();
+  return appOwnedPropertyKeys.get(canonicalPropertyKey(trimmed)) ?? trimmed;
+}
+
+/**
+ * Search filters that read something other than a stored property: the document
+ * type and the updated-at range. Both are `_`-prefixed so they cannot collide
+ * with a property a user names `type` or `date`.
+ */
+export const DOCUMENT_TYPE_FILTER_KEY = "_type";
+export const DATE_FILTER_KEY = "_date";
 
 export const HIDDEN_DOCUMENT_PROPERTY_KEYS = [
   "title",
@@ -125,7 +172,8 @@ export function normalizeDocumentPropertyPatch(
   patch: DocumentPropertyPatch,
 ): DocumentPropertyPatchOperation[] {
   const operations = Object.entries(patch).map<DocumentPropertyPatchOperation>(
-    ([key, patchValue]) => {
+    ([rawKey, patchValue]) => {
+      const key = storedPropertyKey(rawKey);
       if (!key) {
         throw new InvalidDocumentPropertyPatchError(
           "Property key is required and must be a non-empty string",
