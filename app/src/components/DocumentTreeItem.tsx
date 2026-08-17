@@ -58,6 +58,8 @@ export function DocumentTreeItem(props: Props) {
   const isExpanded = createMemo(() => props.expandedItems.has(props.doc.id));
   const isActive = createMemo(() => props.activeDocId === props.doc.slug);
 
+  const isLocked = createMemo(() => !!props.doc.locked);
+
   const [wasExpanded, setWasExpanded] = createSignal(isExpanded());
   createEffect(() => {
     if (isExpanded()) setWasExpanded(true);
@@ -67,53 +69,72 @@ export function DocumentTreeItem(props: Props) {
     return spacePath(currentSpace()?.slug, `/doc/${docSlug}`);
   }
 
-  return (
-    <page-target
-      attr:data-document-id={props.doc.id}
-      attr:data-document-type={props.doc.type ?? undefined}
-      attr:data-space-id={currentSpace()?.id}
-      attr:data-document-url={getDocumentUrl(props.doc.slug)}
-      class="block pl-[0.535rem] [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
-    >
+  function toggle() {
+    return (
+      <Show when={hasChildren()} fallback={<div class="w-4 flex-none" />}>
+        <button
+          type="button"
+          onClick={() => props.onToggle?.(props.doc.id)}
+          class="rounded-sm p-0.5 hover:bg-neutral-300 active:bg-neutral-200"
+          aria-label={isExpanded() ? t("Collapse") : t("Expand")}
+          aria-expanded={isExpanded()}
+        >
+          <Icon
+            class={twMerge(
+              "h-3 w-3 text-neutral transition-transform",
+              isExpanded() && "rotate-90",
+            )}
+            name="chevron-right-thin"
+          />
+        </button>
+      </Show>
+    );
+  }
+
+  function row() {
+    return (
       <div
         class="flex items-center gap-1 transition-opacity"
         classList={{ "opacity-40": isInvalidDropTarget() }}
       >
-        <Show when={hasChildren()} fallback={<div class="w-4 flex-none" />}>
-          <button
-            type="button"
-            onClick={() => props.onToggle?.(props.doc.id)}
-            class="rounded-sm p-0.5 hover:bg-neutral-300 active:bg-neutral-200"
-            aria-label={isExpanded() ? t("Collapse") : t("Expand")}
-            aria-expanded={isExpanded()}
-          >
-            <Icon
-              class={twMerge(
-                "h-3 w-3 text-neutral transition-transform",
-                isExpanded() && "rotate-90",
-              )}
-              name="chevron-right-thin"
-            />
-          </button>
-        </Show>
+        {toggle()}
 
-        <a
-          href={getDocumentUrl(props.doc.slug)}
-          class={`flex flex-1 items-center justify-between text-ellipsis whitespace-nowrap rounded-sm px-1.5 py-1 text-size-normal ${
-            isActive()
-              ? "bg-primary-200 text-neutral-700"
-              : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200"
-          }`}
+        <Show
+          when={!isLocked()}
+          fallback={
+            <div
+              class="flex flex-1 items-center gap-1.5 overflow-hidden rounded-sm px-1.5 py-1 text-neutral-400 text-size-normal"
+              title={t("You don't have access to this page")}
+            >
+              <Icon class="h-3 w-3 flex-none" name="lock-element" />
+              <span class="overflow-hidden text-ellipsis whitespace-nowrap">
+                {docTitle(props.doc)}
+              </span>
+            </div>
+          }
         >
-          <span>{docTitle(props.doc)}</span>
-          <Show when={props.doc.mentionCount && props.doc.mentionCount > 0}>
-            <span class="ml-2 min-w-[1.25rem] rounded-full bg-primary-600 px-1.5 text-center font-medium text-size-extra-small text-white leading-[1.25rem]">
-              {props.doc.mentionCount}
-            </span>
-          </Show>
-        </a>
+          <a
+            href={getDocumentUrl(props.doc.slug)}
+            class={`flex flex-1 items-center justify-between text-ellipsis whitespace-nowrap rounded-sm px-1.5 py-1 text-size-normal ${
+              isActive()
+                ? "bg-primary-200 text-neutral-700"
+                : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200"
+            }`}
+          >
+            <span>{docTitle(props.doc)}</span>
+            <Show when={props.doc.mentionCount && props.doc.mentionCount > 0}>
+              <span class="ml-2 min-w-[1.25rem] rounded-full bg-primary-600 px-1.5 text-center font-medium text-size-extra-small text-white leading-[1.25rem]">
+                {props.doc.mentionCount}
+              </span>
+            </Show>
+          </a>
+        </Show>
       </div>
+    );
+  }
 
+  function childTree() {
+    return (
       <Show when={hasChildren()}>
         <a-expandable
           attr:opened={isExpanded() ? "" : undefined}
@@ -146,6 +167,29 @@ export function DocumentTreeItem(props: Props) {
           </div>
         </a-expandable>
       </Show>
-    </page-target>
+    );
+  }
+
+  return (
+    <Show
+      when={!isLocked()}
+      fallback={
+        <div class="block pl-[0.535rem]">
+          {row()}
+          {childTree()}
+        </div>
+      }
+    >
+      <page-target
+        attr:data-document-id={props.doc.id}
+        attr:data-document-type={props.doc.type ?? undefined}
+        attr:data-space-id={currentSpace()?.id}
+        attr:data-document-url={getDocumentUrl(props.doc.slug)}
+        class="block pl-[0.535rem] [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
+      >
+        {row()}
+        {childTree()}
+      </page-target>
+    </Show>
   );
 }

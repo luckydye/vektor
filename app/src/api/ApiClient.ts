@@ -91,6 +91,7 @@ export interface DocumentWithProperties extends Document {
   mentionCount?: number;
   /** Natural width/height ratio derived from the stored header image. */
   headerImageAspectRatio?: number | null;
+  locked?: boolean;
 }
 
 export interface DocumentMember {
