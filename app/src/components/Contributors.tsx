@@ -23,11 +23,26 @@ interface Collaborator {
   isCollaborator: boolean;
 }
 
+function isSameCollaborator(left: Collaborator, right: Collaborator): boolean {
+  return (
+    left.isPresent === right.isPresent &&
+    left.isCollaborator === right.isCollaborator &&
+    left.user.name === right.user.name &&
+    left.user.image === right.user.image &&
+    left.user.appearance?.avatarFrame === right.user.appearance?.avatarFrame
+  );
+}
+
 export function Contributors(props: Props) {
   const merged = mergeProps({ max: 5 }, props);
 
   const collaboration = useActiveCollaboration();
   const { contributors } = useContributors(props.documentId);
+
+  // Presence is republished on every editor interaction, and each publish
+  // rebuilds the profile objects. `For` keys by reference, so passing fresh
+  // objects through would recreate every avatar element on every keystroke.
+  const previousCollaborators = new Map<string, Collaborator>();
 
   const collaborators = createMemo(() => {
     const collaboratorsByUser = new Map<string, Collaborator>();
@@ -58,9 +73,21 @@ export function Contributors(props: Props) {
       });
     }
 
-    return [...collaboratorsByUser.values()].sort(
-      (left, right) => Number(right.isPresent) - Number(left.isPresent),
-    );
+    const sorted = [...collaboratorsByUser.values()]
+      .sort((left, right) => Number(right.isPresent) - Number(left.isPresent))
+      .map((collaborator) => {
+        const previous = previousCollaborators.get(collaborator.key);
+        return previous && isSameCollaborator(previous, collaborator)
+          ? previous
+          : collaborator;
+      });
+
+    previousCollaborators.clear();
+    for (const collaborator of sorted) {
+      previousCollaborators.set(collaborator.key, collaborator);
+    }
+
+    return sorted;
   });
 
   const displayCollaborators = createMemo(() => collaborators().slice(0, merged.max));
