@@ -101,16 +101,12 @@ function jsonError(status: number, message: string): Response {
   return Response.json({ error: message }, { status });
 }
 
-/**
- * Tell a well-behaved client how much room it has left. Advisory, so a Response
- * whose headers are immutable — better-auth proxies one straight from `fetch` —
- * loses the hint rather than paying to reconstruct the body around it.
- */
 function withRateLimitHeaders(response: Response, limit: RateLimitCheck): Response {
   try {
     response.headers.set("X-Limit-Remaining", String(limit.remaining));
   } catch {
-    // Immutable headers; the hint is not worth a copy.
+    // A Response proxied from `fetch` (better-auth) has immutable headers, and
+    // an advisory hint is not worth reconstructing the body around.
   }
   return response;
 }
@@ -157,11 +153,9 @@ export async function apiRouter(
     return jsonError(403, "Cross-origin request rejected");
   }
 
-  // Ahead of `hydrateRequestContext`, so a caller over the limit is turned away
-  // before the session lookup runs rather than after paying for it — which is
-  // why the key comes from headers alone and never from the resolved user. Also
-  // ahead of the 405, so a flood of unsupported methods is counted rather than
-  // being the one shape of request that routes freely.
+  // Ahead of `hydrateRequestContext` so an over-limit caller is turned away
+  // before the session lookup, and ahead of the 405 so a flood of unsupported
+  // methods is counted rather than routing freely.
   const limit = checkRateLimit({
     pattern: match.pattern,
     method,
@@ -169,8 +163,7 @@ export async function apiRouter(
     ip: clientIp(c),
   });
   if (limit && !limit.allowed) {
-    // The key is in the line so an operator can name it in
-    // VEKTOR_RATE_LIMIT_BLOCK; it is an IP or a token hash, never a credential.
+    // The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK.
     appLogger.warn("API rate limit exceeded", {
       path: pathname,
       method,

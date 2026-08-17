@@ -9,10 +9,8 @@ import {
 } from "./helpers/server.ts";
 
 /**
- * End-to-end cover for the limiter's wiring: that `apiRouter` actually consults
- * it, that a refusal is a 429 carrying `Retry-After`, and that the killswitch
- * reaches a real request. The counting rules themselves are unit-tested in
- * `rate-limit.spec.ts` against an injected clock.
+ * Cover for the limiter's wiring into `apiRouter`. The counting rules are
+ * unit-tested in `rate-limit.spec.ts` against an injected clock.
  */
 
 process.env.AUTH_SECRET ??= "rate-limit-test-secret-do-not-use-in-production";
@@ -24,10 +22,7 @@ const apiRequest = createApiRequest(BASE_URL);
 /** Low enough to reach in a test, high enough for the server's own readiness probe. */
 const MAX = 20;
 
-/**
- * The killswitch names a *derived* key, never a credential — so the spec has to
- * derive it the same way the router will, from the token it is about to send.
- */
+/** The killswitch names a derived key, so derive it as the router will. */
 const BLOCKED_TOKEN = "at_blocked_integration_probe";
 const ALLOWED_TOKEN = "at_allowed_integration_probe";
 const BLOCKED_KEY = rateLimitKey(`Bearer ${BLOCKED_TOKEN}`, "127.0.0.1");
@@ -80,16 +75,13 @@ describe("API rate limiting", () => {
   });
 
   it("leaves every other token alone", async () => {
-    // Token callers are keyed by token, so this one keeps its own budget even
-    // once the shared 127.0.0.1 bucket is spent.
     const allowed = await withToken(ALLOWED_TOKEN);
 
     expect(allowed.status).not.toBe(429);
   });
 
   it("admits exactly the budget under a concurrent burst, never more", async () => {
-    // A fresh token is a fresh key, so the arithmetic is exact rather than
-    // whatever the earlier specs left of a shared bucket.
+    // A fresh token is a fresh key, so the arithmetic is exact.
     const token = "at_burst_probe";
     const burst = MAX * 3;
 
@@ -99,13 +91,13 @@ describe("API rate limiting", () => {
     const statuses = responses.map((response) => response.status);
     const admitted = statuses.filter((status) => status !== 429);
 
-    // The point of the test: parallel arrivals must not over-admit. A counter
-    // read and written across an await would let more than MAX through here.
+    // Parallel arrivals must not over-admit: a counter read and written across
+    // an await would let more than MAX through here.
     expect(admitted).toHaveLength(MAX);
     expect(statuses.filter((status) => status === 429)).toHaveLength(burst - MAX);
 
-    // Each admitted request consumed exactly one slot: the remaining counts are
-    // MAX-1 … 0 with no repeats, which a lost update would not produce.
+    // Each admitted request consumed exactly one slot; a lost update would not
+    // produce MAX-1 … 0 with no repeats.
     const remaining = responses
       .filter((response) => response.status !== 429)
       .map((response) => Number(response.headers.get("X-Limit-Remaining")))
@@ -119,8 +111,7 @@ describe("API rate limiting", () => {
       Promise.all(Array.from({ length: MAX }, () => withToken("at_burst_b"))),
     ]);
 
-    // Interleaved in one event loop, but counted apart: neither caller's burst
-    // may spend the other's budget.
+    // Interleaved in one event loop, but counted apart.
     expect(first.filter((r) => r.status === 429)).toHaveLength(0);
     expect(second.filter((r) => r.status === 429)).toHaveLength(0);
   });
@@ -128,8 +119,7 @@ describe("API rate limiting", () => {
   it("answers 429 with Retry-After once the window is spent", async () => {
     let limited: Response | undefined;
 
-    // The readiness probe and the spec above already spent part of the window,
-    // so drive well past MAX rather than exactly to it.
+    // Earlier specs already spent part of the window, so drive well past MAX.
     for (let i = 0; i < MAX * 2; i++) {
       const response = await apiRequest("/api/v1/spaces");
       if (response.status === 429) {

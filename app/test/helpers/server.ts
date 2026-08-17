@@ -96,10 +96,9 @@ export function startTestServer(
       ...childEnv(),
       HOST: "127.0.0.1",
       NODE_ENV: "test",
-      // Every spec drives the server from 127.0.0.1, so they all share one rate
-      // limit key and would spend each other's budget. Off by default here and
-      // switched back on by the specs that are actually about it
-      // (`rate-limit-api.spec.ts`), rather than left on to flake the rest.
+      // Every spec drives the server from 127.0.0.1, so they share one rate
+      // limit key and would spend each other's budget. `rate-limit-api.spec.ts`
+      // switches it back on.
       VEKTOR_RATE_LIMIT: "0",
       ...env,
     },

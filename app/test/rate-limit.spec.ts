@@ -8,7 +8,7 @@ import {
   ruleForRoute,
 } from "#api/rateLimit.ts";
 
-/** A limiter on a clock the test drives, so no spec waits on a real window. */
+/** A clock the test drives, so no spec waits on a real window. */
 function fixedClock(start = 1_000_000) {
   let now = start;
   return {
@@ -59,8 +59,7 @@ describe("RateLimiter", () => {
     const limiter = new RateLimiter({ now: clock.now });
 
     for (let i = 0; i < RULE.max; i++) limiter.check("ip:a", RULE);
-    // 100ms left in the window: rounding down would invite an instant retry.
-    clock.advance(900);
+    clock.advance(900); // 100ms left: rounding down would invite an instant retry.
 
     expect(limiter.check("ip:a", RULE).retryAfterSeconds).toBe(1);
   });
@@ -126,8 +125,7 @@ describe("rateLimitKey", () => {
 
   it("falls back to the caller IP without a bearer token", () => {
     expect(rateLimitKey(undefined, "1.2.3.4")).toBe("ip:1.2.3.4");
-    // An empty bearer is not an identity; it must not collapse every such
-    // caller onto one shared bucket.
+    // An empty bearer is not an identity, and must not share one bucket.
     expect(rateLimitKey("Bearer   ", "1.2.3.4")).toBe("ip:1.2.3.4");
   });
 
@@ -147,7 +145,6 @@ describe("ruleForRoute", () => {
 
   it("applies a method-scoped rule only to that method", () => {
     const pattern = "/api/v1/spaces/[spaceId]/workflows/runs";
-    // Starting a run is the expensive half; listing runs is not.
     expect(ruleForRoute(pattern, "POST").max).toBeLessThan(DEFAULT_MAX);
     expect(ruleForRoute(pattern, "GET").max).toBe(DEFAULT_MAX);
   });
@@ -209,8 +206,7 @@ describe("checkRateLimit", () => {
     const decision = checkRateLimit(request, limiter);
     expect(decision).toMatchObject({ allowed: false, blocked: true });
     expect(decision?.retryAfterSeconds).toBeGreaterThan(0);
-    // Blocked callers cost nothing to track.
-    expect(limiter.size()).toBe(0);
+    expect(limiter.size()).toBe(0); // blocked callers cost nothing to track
 
     expect(checkRateLimit({ ...request, ip: "5.5.5.5" }, limiter)).toMatchObject({
       allowed: true,
