@@ -39,6 +39,11 @@ interface Props {
   categories?: Category[];
   emptyText?: string;
   showToolbar?: boolean;
+  /**
+   * Keep the caller's order — a relevance ranking — instead of newest first.
+   * Honoured only with {@link Props.flat}, since time headings over a list
+   * ordered any other way read as a broken chronology.
+   */
   preserveOrder?: boolean;
   /** One unlabelled list instead of time groups — for a handful of ranked hits. */
   flat?: boolean;
@@ -150,7 +155,7 @@ export function DocumentGroupedList(props: Props) {
         (d) => normalizeTimestamp(d.updatedAt).getTime() < end.getTime(),
       );
     }
-    if (props.preserveOrder) return [...docs];
+    if (props.preserveOrder && props.flat) return [...docs];
 
     return [...docs].sort(
       (a, b) =>

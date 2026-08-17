@@ -539,7 +539,6 @@ export function Search(props: Props) {
         <DocumentGroupedList
           items={sortedResults() as unknown as DocumentWithProperties[]}
           showToolbar={false}
-          preserveOrder
           batchActions={batchActions}
           splitAfter={showOtherSpaces() ? 5 : undefined}
           splitContent={otherSpacesSection}
