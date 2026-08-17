@@ -46,7 +46,7 @@ function mount() {
   dispose = render(() => <DocumentShareDialog show={true} documentId="doc_1" />, host);
 }
 
-/** The dialog waits on `a-tabs` being defined, then runs four requests. */
+/** The dialog runs its three loads in parallel when it opens. */
 async function settle() {
   for (let i = 0; i < 5; i++) {
     await new Promise((resolve) => setTimeout(resolve, 0));

@@ -7,14 +7,8 @@ import {
   on,
   Show,
 } from "solid-js";
-import "@atrium-ui/elements/tabs";
 import { isOwner, Permission } from "#acl/permissions.ts";
-import type {
-  Category,
-  DocumentAccessEntry,
-  PermissionEntry,
-  User,
-} from "#api/client.ts";
+import type { Category, DocumentAccessEntry, User } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -28,12 +22,9 @@ interface Props {
   onUpdateShow?: (value: boolean) => void;
 }
 
-type ATabsEl = HTMLElement & {
-  selectTabByIndex: (index: number, focus?: boolean) => void;
-};
-
-type Scope = "document" | "category";
 type DocumentPermissionResource = "document" | "document_tree";
+
+const CATEGORY_SCOPE_PREFIX = "category:";
 
 function roleBadgeClass(role: string) {
   const map: Record<string, string> = {
@@ -58,21 +49,14 @@ export function DocumentShareDialog(props: Props) {
   const { currentSpaceId, currentSpace } = useSpace();
   const user = useUserProfile();
 
-  let tabsEl: ATabsEl | undefined;
-
-  const [scope, setScope] = createSignal<Scope>("document");
-  const [includeChildPages, setIncludeChildPages] = createSignal(false);
+  /** `document`, `document_tree`, or `category:<id>` — the resource a grant lands on. */
+  const [scope, setScope] = createSignal<string>("document");
 
   const [documentAccess, setDocumentAccess] = createSignal<DocumentAccessEntry[]>([]);
-  const [categoryPermissions, setCategoryPermissions] = createSignal<PermissionEntry[]>(
-    [],
-  );
   const [categories, setCategories] = createSignal<Category[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = createSignal("");
   const [usersMap, setUsersMap] = createSignal(new Map<string, User>());
   const [isLoading, setIsLoading] = createSignal(false);
   const [loadError, setLoadError] = createSignal<string | null>(null);
-  const [categoryError, setCategoryError] = createSignal<string | null>(null);
 
   const [newMemberEmail, setNewMemberEmail] = createSignal("");
   const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
@@ -81,49 +65,12 @@ export function DocumentShareDialog(props: Props) {
 
   const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
 
-  // The category panel reads both loads: the dropdown comes from the shared
-  // one, the list from its own.
-  const categoryPanelError = createMemo(() => loadError() ?? categoryError());
-
   // No owner: this dialog shares a document or a category, and owner is only
   // grantable on the space itself.
   const roleOptions = [
     { value: Permission.VIEWER, label: roleLabel("viewer") },
     { value: Permission.EDITOR, label: roleLabel("editor") },
   ];
-
-  function onTabSelected(e: Event) {
-    const { index } = (e as CustomEvent<{ index: number }>).detail;
-    setScope(index === 0 ? "document" : "category");
-    setNewMemberEmail("");
-    setAddMemberError(null);
-  }
-
-  async function loadCategoryPermissions() {
-    const spaceId = currentSpaceId();
-    const categoryId = selectedCategoryId();
-    setCategoryError(null);
-    if (!spaceId || !categoryId) {
-      setCategoryPermissions([]);
-      return;
-    }
-    try {
-      const response = await api.permissions.list(spaceId, "role", {
-        resourceType: "category",
-        resourceId: categoryId,
-      });
-      setCategoryPermissions(
-        (response.permissions || []).filter((p) => p.type === "role"),
-      );
-    } catch (err) {
-      // Handled here rather than thrown: this also runs on its own when the
-      // category picker changes, where there is no caller to report to.
-      setCategoryPermissions([]);
-      setCategoryError(
-        err instanceof Error ? err.message : "Failed to load category access",
-      );
-    }
-  }
 
   async function load() {
     const spaceId = currentSpaceId();
@@ -137,12 +84,7 @@ export function DocumentShareDialog(props: Props) {
         api.categories.get(spaceId),
       ]);
 
-      const categoryValues = categoryList?.categories || [];
-      setCategories(categoryValues);
-      if (!selectedCategoryId() && categoryValues.length > 0) {
-        setSelectedCategoryId(categoryValues[0].id);
-      }
-
+      setCategories(categoryList?.categories || []);
       setDocumentAccess(access);
 
       const map = new Map<string, User>();
@@ -150,13 +92,11 @@ export function DocumentShareDialog(props: Props) {
         if (member.user) map.set(member.user.id, member.user);
       }
       setUsersMap(map);
-      await loadCategoryPermissions();
     } catch (err) {
       // Every list in this dialog is a statement about who has access, so a
       // failed load must not fall through to the empty state — "no one has
       // access" is the opposite of "we could not find out".
       setDocumentAccess([]);
-      setCategoryPermissions([]);
       setLoadError(err instanceof Error ? err.message : "Failed to load sharing data");
     } finally {
       setIsLoading(false);
@@ -166,29 +106,36 @@ export function DocumentShareDialog(props: Props) {
   createEffect(
     on(
       () => props.show,
-      async (open) => {
+      (open) => {
         if (!open) return;
         setScope("document");
         setNewMemberEmail("");
         setNewMemberRole(Permission.VIEWER);
-        setIncludeChildPages(false);
-        setSelectedCategoryId("");
         setAddMemberError(null);
-        await customElements.whenDefined("a-tabs");
-        tabsEl?.selectTabByIndex(0, false);
         void load();
       },
     ),
   );
 
+  /** Turns the scope selection into the resource the grant is written to. */
+  function grantTarget() {
+    const value = scope();
+    if (value.startsWith(CATEGORY_SCOPE_PREFIX)) {
+      return {
+        resourceType: "category" as const,
+        resourceId: value.slice(CATEGORY_SCOPE_PREFIX.length),
+      };
+    }
+    return {
+      resourceType: value as DocumentPermissionResource,
+      resourceId: props.documentId,
+    };
+  }
+
   async function handleInvite(e: Event) {
     e.preventDefault();
     const spaceId = currentSpaceId();
     if (!spaceId || !newMemberEmail().trim()) return;
-    if (scope() === "category" && !selectedCategoryId()) {
-      setAddMemberError("Select a category");
-      return;
-    }
 
     setAddingMember(true);
     setAddMemberError(null);
@@ -197,14 +144,7 @@ export function DocumentShareDialog(props: Props) {
         type: "role",
         roleOrFeature: newMemberRole(),
         email: newMemberEmail().trim(),
-        ...(scope() === "document"
-          ? {
-              resourceType: (includeChildPages()
-                ? "document_tree"
-                : "document") as DocumentPermissionResource,
-              resourceId: props.documentId,
-            }
-          : { resourceType: "category" as const, resourceId: selectedCategoryId() }),
+        ...grantTarget(),
       });
       setNewMemberEmail("");
       await load();
@@ -240,27 +180,6 @@ export function DocumentShareDialog(props: Props) {
     }
   }
 
-  async function removeCategoryPerm(perm: PermissionEntry) {
-    const spaceId = currentSpaceId();
-    const categoryId = selectedCategoryId();
-    if (!spaceId || !categoryId || !confirm("Remove this person's category access?")) {
-      return;
-    }
-    try {
-      await api.permissions.revoke(spaceId, {
-        type: "role",
-        roleOrFeature: perm.permission.permission,
-        userId: perm.permission.userId,
-        groupId: perm.permission.groupId,
-        resourceType: "category",
-        resourceId: categoryId,
-      });
-      await loadCategoryPermissions();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove");
-    }
-  }
-
   function getMemberName(userId?: string, groupId?: string): string {
     if (!userId) return groupId ?? "";
     const member = usersMap().get(userId);
@@ -271,15 +190,17 @@ export function DocumentShareDialog(props: Props) {
     return (userId && usersMap().get(userId)?.email) || "";
   }
 
+  // What the grant covers, not what the person can reach — they may well hold
+  // grants on other documents, which this dialog never sees.
   function accessSourceLabel(entry: DocumentAccessEntry): string {
     const { resourceType, resourceLabel, inherited } = entry.via;
     const source =
       resourceType === "document"
-        ? "This document only"
+        ? "Granted on this page"
         : resourceType === "document_tree"
           ? inherited
             ? `Via page tree: ${resourceLabel || "parent page"}`
-            : "This document and child pages"
+            : "Granted on this page and child pages"
           : resourceType === "category"
             ? `Via category: ${resourceLabel || "category"}`
             : "Via space membership";
@@ -304,9 +225,22 @@ export function DocumentShareDialog(props: Props) {
     }),
   );
 
-  function isSelf(perm: PermissionEntry): boolean {
-    return perm.permission.userId === user()?.id;
-  }
+  // Direct and inherited access answer different questions — what this dialog
+  // granted, and what the person already had — so they are labelled apart.
+  const accessGroups = createMemo(() =>
+    [
+      {
+        label: "Direct access",
+        badgeClass: "bg-primary-50 text-primary-700",
+        entries: sortedDocumentAccess().filter((entry) => !entry.via.inherited),
+      },
+      {
+        label: "Inherited access",
+        badgeClass: "bg-neutral-100 text-neutral-600",
+        entries: sortedDocumentAccess().filter((entry) => entry.via.inherited),
+      },
+    ].filter((group) => group.entries.length > 0),
+  );
 
   const PermissionRow = (rowProps: {
     userId?: string;
@@ -365,34 +299,6 @@ export function DocumentShareDialog(props: Props) {
     </div>
   );
 
-  const EmailAndRoleFields = () => (
-    <>
-      <input
-        value={newMemberEmail()}
-        onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
-        type="email"
-        required
-        placeholder="person@example.com"
-        class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-      />
-      <select
-        value={newMemberRole()}
-        onChange={(e) => setNewMemberRole(e.currentTarget.value)}
-        class="rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-      >
-        <For each={roleOptions}>
-          {(opt) => <option value={opt.value}>{opt.label}</option>}
-        </For>
-      </select>
-    </>
-  );
-
-  const InviteError = () => (
-    <Show when={addMemberError()}>
-      <p class="mt-1.5 text-red-500 text-size-small">{addMemberError()}</p>
-    </Show>
-  );
-
   return (
     <Dialog
       show={props.show}
@@ -411,189 +317,153 @@ export function DocumentShareDialog(props: Props) {
         </div>
       }
     >
-      <a-tabs ref={tabsEl as never} class="block" on:tab-selected={onTabSelected}>
-        <a-tabs-list class="block px-4 pt-4xs pb-2xs">
-          <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-            <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-              This document
-            </span>
-          </a-tabs-tab>
-          <a-tabs-tab class="inline-flex items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-            <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-              Category
-            </span>
-          </a-tabs-tab>
-        </a-tabs-list>
-
-        <a-tabs-panel class="block">
-          <div class="space-y-3 px-5 py-3">
-            <form class="space-y-2" onSubmit={(e) => void handleInvite(e)}>
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                <EmailAndRoleFields />
-              </div>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <label class="inline-flex items-center gap-1.5 whitespace-nowrap text-neutral-600 text-size-small">
-                  <input
-                    checked={includeChildPages()}
-                    onChange={(e) => setIncludeChildPages(e.currentTarget.checked)}
-                    type="checkbox"
-                    class="h-4 w-4 rounded border-neutral-200 text-neutral-900 focus:ring-neutral-400"
-                  />
-                  <span>Include child pages</span>
-                </label>
-                <button
-                  type="submit"
-                  disabled={addingMember() || !newMemberEmail().trim()}
-                  class="button-primary px-3xs"
-                >
-                  {addingMember() ? "…" : "Invite"}
-                </button>
-              </div>
-              <InviteError />
-            </form>
-
-            <Show when={!isLoading()} fallback={<Spinner />}>
-              <Show
-                when={!loadError()}
-                fallback={
-                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
-                }
-              >
-                <Show
-                  when={sortedDocumentAccess().length > 0}
-                  fallback={
-                    <p class="text-neutral-400 text-size-small">
-                      No one has access to this document yet.
-                    </p>
-                  }
-                >
-                  <p class="text-neutral-400 text-size-small">
-                    {sortedDocumentAccess().length} with access
-                  </p>
-                  <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                    <For each={sortedDocumentAccess()}>
-                      {(entry) => (
-                        <PermissionRow
-                          userId={entry.userId}
-                          groupId={entry.groupId}
-                          detail={accessSourceLabel(entry)}
-                          trailing={
-                            <>
-                              <RoleBadge role={entry.permission} />
-                              <Show
-                                when={
-                                  directGrants(entry).length > 0 &&
-                                  entry.userId !== user()?.id &&
-                                  (userIsOwner() || !entry.groupId)
-                                }
-                              >
-                                <button
-                                  type="button"
-                                  class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                  onClick={() => void removeDocumentAccess(entry)}
-                                >
-                                  Remove
-                                </button>
-                              </Show>
-                            </>
-                          }
-                        />
-                      )}
-                    </For>
-                  </div>
-                </Show>
-              </Show>
-            </Show>
-          </div>
-        </a-tabs-panel>
-
-        <a-tabs-panel class="block">
-          <div class="space-y-3 px-5 py-3">
-            <select
-              value={selectedCategoryId()}
-              onChange={(e) => {
-                setSelectedCategoryId(e.currentTarget.value);
-                void loadCategoryPermissions();
-              }}
-              class="w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+      <div class="space-y-3 px-5 py-3">
+        <form
+          class="space-y-2 rounded-lg bg-neutral-50 p-3"
+          onSubmit={(e) => void handleInvite(e)}
+        >
+          <div class="flex items-center gap-2">
+            <input
+              id="share-email"
+              value={newMemberEmail()}
+              onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
+              type="email"
+              required
+              placeholder="person@example.com"
+              class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+            />
+            <button
+              type="submit"
+              disabled={addingMember() || !newMemberEmail().trim()}
+              class="button-primary flex-none px-3xs"
             >
-              <option value="">Select a category...</option>
-              <For each={categories()}>
-                {(category) => <option value={category.id}>{category.name}</option>}
-              </For>
-            </select>
+              {addingMember() ? "…" : "Invite"}
+            </button>
+          </div>
 
-            <form onSubmit={(e) => void handleInvite(e)}>
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <EmailAndRoleFields />
-                <button
-                  type="submit"
-                  disabled={
-                    addingMember() || !newMemberEmail().trim() || !selectedCategoryId()
-                  }
-                  class="button-primary col-span-2 justify-self-end px-3xs sm:col-span-1"
-                >
-                  {addingMember() ? "..." : "Invite"}
-                </button>
-              </div>
-              <InviteError />
-            </form>
-
-            <Show when={!isLoading()} fallback={<Spinner />}>
-              <Show
-                when={!categoryPanelError()}
-                fallback={
-                  <LoadError
-                    message={categoryPanelError() ?? ""}
-                    onRetry={() =>
-                      void (loadError() ? load() : loadCategoryPermissions())
-                    }
-                  />
-                }
+          {/* Both selects share the row evenly: neither fits beside the other
+              and the button at this dialog's width. */}
+          <div class="flex items-center gap-2">
+            <div class="flex min-w-0 flex-1 items-center gap-1.5">
+              <label
+                class="flex-none text-neutral-600 text-size-small"
+                for="share-access"
               >
-                <Show
-                  when={categoryPermissions().length > 0}
-                  fallback={
-                    <p class="text-neutral-400 text-size-small">
-                      No one has been given direct access to this category yet.
-                    </p>
-                  }
-                >
-                  <div class="max-h-64 divide-y divide-neutral-100 overflow-y-auto">
-                    <For each={categoryPermissions()}>
-                      {(perm) => (
-                        <PermissionRow
-                          userId={perm.permission.userId}
-                          groupId={perm.permission.groupId}
-                          trailing={
-                            <>
-                              <RoleBadge role={perm.permission.permission} />
-                              <Show
-                                when={
-                                  !isSelf(perm) &&
-                                  (userIsOwner() || !perm.permission.groupId)
-                                }
-                              >
-                                <button
-                                  type="button"
-                                  class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
-                                  onClick={() => void removeCategoryPerm(perm)}
-                                >
-                                  Remove
-                                </button>
-                              </Show>
-                            </>
-                          }
-                        />
+                Access
+              </label>
+              <select
+                id="share-access"
+                value={newMemberRole()}
+                onChange={(e) => setNewMemberRole(e.currentTarget.value)}
+                class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+              >
+                <For each={roleOptions}>
+                  {(opt) => <option value={opt.value}>{opt.label}</option>}
+                </For>
+              </select>
+            </div>
+
+            <div class="flex min-w-0 flex-1 items-center gap-1.5">
+              <label class="flex-none text-neutral-600 text-size-small" for="share-scope">
+                Scope
+              </label>
+              <select
+                id="share-scope"
+                value={scope()}
+                onChange={(e) => setScope(e.currentTarget.value)}
+                class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+              >
+                <option value="document">This page</option>
+                <option value="document_tree">This page and child pages</option>
+                <Show when={categories().length > 0}>
+                  <optgroup label="Category">
+                    <For each={categories()}>
+                      {(category) => (
+                        <option value={`${CATEGORY_SCOPE_PREFIX}${category.id}`}>
+                          {category.name}
+                        </option>
                       )}
                     </For>
-                  </div>
+                  </optgroup>
                 </Show>
+              </select>
+            </div>
+          </div>
+
+          <Show when={addMemberError()}>
+            <p class="text-red-500 text-size-small">{addMemberError()}</p>
+          </Show>
+        </form>
+
+        <div>
+          <h3 class="mb-2 font-semibold text-neutral-900 text-size-medium">
+            People with access
+          </h3>
+
+          <Show when={!isLoading()} fallback={<Spinner />}>
+            <Show
+              when={!loadError()}
+              fallback={
+                <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
+              }
+            >
+              <Show
+                when={accessGroups().length > 0}
+                fallback={
+                  <p class="text-neutral-400 text-size-small">
+                    No one has access to this document yet.
+                  </p>
+                }
+              >
+                <div class="max-h-80 divide-y divide-neutral-100 overflow-y-auto">
+                  <For each={accessGroups()}>
+                    {(group) => (
+                      <div class="py-2">
+                        <span
+                          class={`inline-flex rounded-md px-2 py-0.5 font-medium text-size-small ${group.badgeClass}`}
+                        >
+                          {group.label}
+                        </span>
+                        <div class="mt-1">
+                          <For each={group.entries}>
+                            {(entry) => (
+                              <PermissionRow
+                                userId={entry.userId}
+                                groupId={entry.groupId}
+                                detail={accessSourceLabel(entry)}
+                                trailing={
+                                  <>
+                                    <RoleBadge role={entry.permission} />
+                                    <Show
+                                      when={
+                                        directGrants(entry).length > 0 &&
+                                        entry.userId !== user()?.id &&
+                                        (userIsOwner() || !entry.groupId)
+                                      }
+                                    >
+                                      <button
+                                        type="button"
+                                        class="flex-shrink-0 text-neutral-400 text-size-small transition-colors hover:text-red-500"
+                                        onClick={() => void removeDocumentAccess(entry)}
+                                      >
+                                        Remove
+                                      </button>
+                                    </Show>
+                                  </>
+                                }
+                              />
+                            )}
+                          </For>
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
               </Show>
             </Show>
-          </div>
-        </a-tabs-panel>
-      </a-tabs>
+          </Show>
+        </div>
+      </div>
     </Dialog>
   );
 }
