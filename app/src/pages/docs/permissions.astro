@@ -1,26 +1,13 @@
 ---
+import DocsContent from "#components/DocsContent.astro";
 import Content, { getHeadings } from "#docs/permissions.md";
-import docStyles from "#editor/css/document.css?inline";
 import DocsLayout from "#layouts/DocsLayout.astro";
 
 const headings = getHeadings().filter((heading) => heading.depth === 2);
 ---
 
 <DocsLayout title="Permissions - Vektor" headings={headings}>
-  <document-view>
-    <template shadowrootmode="open">
-      <style set:html={docStyles}></style>
-      <style>
-      h1,
-      h2,
-      h3,
-      h4,
-      h5,
-      h6 {
-        scroll-margin-top: 5.5rem;
-      }
-      </style>
-      <Content />
-    </template>
-  </document-view>
+  <DocsContent>
+    <Content />
+  </DocsContent>
 </DocsLayout>

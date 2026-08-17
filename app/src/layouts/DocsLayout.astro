@@ -1,4 +1,5 @@
 ---
+import DocsNav from "#components/DocsNav.astro";
 import LandingLayout from "#layouts/LandingLayout.astro";
 
 export interface Props {
@@ -21,6 +22,10 @@ const docsNavigation = [
   },
 ];
 
+const outline = (headings ?? [])
+  .filter((heading) => heading.depth === 2)
+  .map((heading) => ({ slug: heading.slug, text: heading.text }));
+
 const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/docs";
 ---
 
@@ -29,7 +34,7 @@ const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/
     <header
       class="sticky top-0 z-10 border-b border-primary-600/12 bg-background/80 backdrop-blur-sm"
     >
-      <div class="max-w-7xl mx-auto flex items-center gap-3 px-5 sm:px-6 h-16">
+      <div class="max-w-[84rem] mx-auto flex items-center gap-3 px-5 sm:px-6 h-16">
         <a href="/" class="docs-logo shrink-0">
           <img src="/favicon_dark.png" alt="" class="docs-logo-mark docs-logo-mark-light">
           <img src="/favicon_light.png" alt="" class="docs-logo-mark docs-logo-mark-dark">
@@ -45,40 +50,22 @@ const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/
       </div>
     </header>
 
-    <main class="flex-1 max-w-7xl w-full mx-auto px-5 sm:px-6">
+    <main class="flex-1 max-w-[84rem] w-full mx-auto px-5 sm:px-6">
       <div class="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
         <!-- Sidebar -->
         <aside class="hidden lg:block border-r border-primary-600/12">
-          <nav class="sticky top-20 py-10 pr-6" aria-label="Documentation">
+          <nav
+            class="docs-nav sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto py-10 pr-6"
+            aria-label="Documentation"
+          >
             {docsNavigation.map((group) => (
                 <div class="mb-8">
-                  <p class="docs-nav-title">{group.title}</p>
-                  <ul class="mt-3 space-y-0.5">
-                    {group.links.map((link) => (
-                      <li>
-                        <a
-                          href={link.href}
-                          class:list={[
-                            "docs-nav-link",
-                            currentPath === link.href && "docs-nav-link-active",
-                          ]}
-                        >
-                          {link.label}
-                        </a>
-                        {headings && headings.length > 0 && currentPath === link.href && (
-                          <ul class="docs-nav-outline">
-                            {headings.map((heading) => (
-                              <li>
-                                <a href={`#${heading.slug}`} class="docs-nav-outline-link">
-                                  {heading.text}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  <DocsNav
+                    title={group.title}
+                    links={group.links}
+                    currentPath={currentPath}
+                    outline={outline}
+                  />
                 </div>
               ))}
           </nav>
@@ -109,39 +96,18 @@ const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/
             <div class="mt-3 rounded-xl border border-primary-600/15 p-4">
               {docsNavigation.map((group) => (
                   <div class="mb-4 last:mb-0">
-                    <p class="docs-nav-title">{group.title}</p>
-                    <ul class="mt-2 space-y-0.5">
-                      {group.links.map((link) => (
-                        <li>
-                          <a
-                            href={link.href}
-                            class:list={[
-                              "docs-nav-link",
-                              currentPath === link.href && "docs-nav-link-active",
-                            ]}
-                          >
-                            {link.label}
-                          </a>
-                          {headings && headings.length > 0 && currentPath === link.href && (
-                            <ul class="docs-nav-outline">
-                              {headings.map((heading) => (
-                                <li>
-                                  <a href={`#${heading.slug}`} class="docs-nav-outline-link">
-                                    {heading.text}
-                                  </a>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                    <DocsNav
+                      title={group.title}
+                      links={group.links}
+                      currentPath={currentPath}
+                      outline={outline}
+                    />
                   </div>
                 ))}
             </div>
           </details>
 
-          <div class="max-w-[48rem]">
+          <div class="max-w-[64rem]">
             <slot />
           </div>
         </article>
@@ -182,59 +148,15 @@ const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/
   }
 }
 
-.docs-nav-title {
-  color: var(--color-neutral-500);
-  font-size: 0.7rem;
-  font-weight: 750;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-}
-
-.docs-nav-link {
-  display: block;
-  border-radius: var(--radius-md);
-  padding: 0.4rem 0.7rem;
+/* The sidebar scrolls with a long outline: it owns the horizontal inset the
+   active pill is drawn into, since a scroll container clips what sits outside
+   its padding box. */
+.docs-nav {
   margin-left: -0.7rem;
-  color: var(--color-neutral-700);
-  font-size: 0.9375rem;
-  line-height: 1.4;
-  transition:
-    color 150ms ease,
-    background-color 150ms ease;
-}
-
-.docs-nav-link:hover {
-  color: var(--color-primary-700);
-  background-color: color-mix(in srgb, var(--color-primary-600) 6%, transparent);
-}
-
-.docs-nav-link-active {
-  color: var(--color-primary-700);
-  font-weight: 650;
-  background-color: color-mix(in srgb, var(--color-primary-600) 9%, transparent);
-}
-
-.docs-nav-outline {
-  margin: 0.15rem 0 0.5rem;
   padding-left: 0.7rem;
-  border-left: 1px solid color-mix(in srgb, var(--color-primary-600) 20%, transparent);
-}
-
-.docs-nav-outline-link {
-  display: block;
-  border-radius: var(--radius-md);
-  padding: 0.3rem 0.6rem;
-  color: var(--color-neutral-500);
-  font-size: 0.8125rem;
-  line-height: 1.4;
-  transition:
-    color 150ms ease,
-    background-color 150ms ease;
-}
-
-.docs-nav-outline-link:hover {
-  color: var(--color-primary-700);
-  background-color: color-mix(in srgb, var(--color-primary-600) 6%, transparent);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-neutral-300) 60%, transparent)
+    transparent;
 }
 </style>
 
@@ -242,15 +164,16 @@ const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/
 // Doc content is rendered inside a declarative shadow root, so heading ids
 // (and thus native #anchor scrolling) aren't reachable via document.getElementById —
 // resolve and scroll to them manually instead.
-function findHeading(id) {
-  const host = document.querySelector("document-view");
-  return host?.shadowRoot?.getElementById(id) ?? null;
+function contentRoot() {
+  return document.querySelector("docs-content")?.shadowRoot ?? null;
 }
 
 function scrollToHash(hash) {
   const id = hash.replace(/^#/, "");
   if (!id) return;
-  findHeading(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  contentRoot()
+    ?.getElementById(id)
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 document.addEventListener("click", (event) => {
@@ -267,4 +190,68 @@ document.addEventListener("click", (event) => {
 if (location.hash) {
   requestAnimationFrame(() => scrollToHash(location.hash));
 }
+
+/**
+ * Marks the outline entry for the section the reader is in. Driven by scroll
+ * position rather than IntersectionObserver — with headings this close together
+ * several are on screen at once, and "the last one passed" is the answer a
+ * reader expects.
+ */
+function trackOutline() {
+  const root = contentRoot();
+  const links = [...document.querySelectorAll(".docs-nav-outline-link")];
+  if (!root || links.length === 0) return;
+
+  // The outline is rendered twice — sticky sidebar and mobile disclosure — so a
+  // heading is tracked once and every link pointing at it is marked together.
+  const entries = [...new Set(links.map((link) => link.getAttribute("href")))]
+    .map((href) => ({ href, heading: root.getElementById(href.slice(1)) }))
+    .filter((entry) => entry.heading);
+
+  /** Keeps the marked entry visible without scrolling the page with it. */
+  const revealInNav = () => {
+    const link = document.querySelector('.docs-nav [aria-current="true"]');
+    const nav = link?.closest(".docs-nav");
+    if (!nav) return;
+    const bounds = nav.getBoundingClientRect();
+    const entry = link.getBoundingClientRect();
+    if (entry.top < bounds.top) nav.scrollTop -= bounds.top - entry.top + 16;
+    else if (entry.bottom > bounds.bottom) {
+      nav.scrollTop += entry.bottom - bounds.bottom + 16;
+    }
+  };
+
+  let frame = 0;
+  let marked = null;
+  const update = () => {
+    frame = 0;
+    // The sticky header's height, so a heading tucked under it doesn't count.
+    const cutoff = 96;
+    let active = entries[0].href;
+    for (const entry of entries) {
+      if (entry.heading.getBoundingClientRect().top <= cutoff) active = entry.href;
+    }
+    if (active === marked) return;
+    marked = active;
+
+    for (const link of links) {
+      const isActive = link.getAttribute("href") === active;
+      if (isActive) link.setAttribute("aria-current", "true");
+      else link.removeAttribute("aria-current");
+    }
+
+    revealInNav();
+  };
+
+  addEventListener(
+    "scroll",
+    () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    },
+    { passive: true },
+  );
+  update();
+}
+
+trackOutline();
 </script>

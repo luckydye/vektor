@@ -1,0 +1,525 @@
+/*
+ * Reading typography for the /docs pages.
+ *
+ * The docs render markdown through the editor's `document.css`, which is tuned
+ * for editing a page: display-size headings, boxed inline code, tight leading.
+ * This layer sits after it inside the same shadow root and replaces those parts
+ * with a reference-documentation scale — long-form body copy, endpoint headings
+ * that read as signatures, and code blocks that look like panels.
+ */
+
+:host {
+  display: block;
+  color: var(--color-neutral-700);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * The page is wide enough for an endpoint's samples to sit beside its
+ * description, but prose is not: everything outside an endpoint keeps a reading
+ * measure, and only the two-column sections use the full width.
+ */
+:host > * {
+  max-width: 53rem;
+}
+
+:host > .endpoint {
+  max-width: none;
+}
+
+/* Endpoint layout ------------------------------------------------------- */
+
+.endpoint {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  margin: 2.5rem 0 3rem;
+}
+
+.endpoint-doc > :is(h3, h4):first-child {
+  margin-top: 0;
+}
+
+.endpoint-doc > :last-child {
+  margin-bottom: 0;
+}
+
+.endpoint-samples {
+  min-width: 0;
+}
+
+/* A line of prose that introduces the panel under it. */
+.endpoint-samples > p {
+  margin: 1.25rem 0 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/*
+ * Two columns once the description keeps a readable measure beside a 26rem
+ * sample column — below that the samples stay under the text they belong to.
+ */
+@media (min-width: 80rem) {
+  .endpoint {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+    gap: 0 2.5rem;
+  }
+
+  .endpoint[data-samples="none"] {
+    grid-template-columns: minmax(0, 53rem);
+  }
+
+  /* Samples follow the description while it scrolls, clearing the page header. */
+  .endpoint-samples {
+    position: sticky;
+    top: 5rem;
+  }
+
+  .endpoint-samples > p:first-child {
+    margin-top: 0;
+  }
+}
+
+/*
+ * In a column this narrow, hiding the end of a line behind a scrollbar hides
+ * exactly the part that varies — an id, a cursor, the tail of a URL — so samples
+ * wrap here instead. Very long bodies are capped rather than pushing the
+ * description column into a tall empty gap.
+ */
+.endpoint-samples .code-panel pre {
+  max-height: 30rem;
+  overflow: auto;
+  font-size: 0.78125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+
+/* Headings ---------------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--color-neutral-900);
+  scroll-margin-top: 6rem;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: 2.375rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  margin: 0 0 0.75rem;
+}
+
+/* The sentence under the title reads as a standfirst, not as body copy. */
+h1 + p {
+  color: var(--color-neutral-500);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  margin-bottom: 1.5rem;
+}
+
+h2 {
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  margin: 3.25rem 0 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-neutral-200) 55%, transparent);
+}
+
+h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+h3 {
+  font-size: 1.0625rem;
+  font-weight: 620;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  margin: 2.5rem 0 0.85rem;
+}
+
+h4 {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  line-height: 1.5;
+  margin: 1.75rem 0 0.5rem;
+}
+
+/* Endpoint signatures: `GET /spaces/:spaceId` as a method chip plus a path. Not
+   `:only-child` — the hover anchor is appended to the heading beside it. */
+:is(h1, h2, h3) > code {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-neutral-900);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.http-method {
+  flex: none;
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.4rem;
+  background: color-mix(in srgb, var(--color-neutral-500) 12%, transparent);
+  color: var(--color-neutral-600);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  translate: 0 -0.1rem;
+}
+
+.http-method[data-method="get"] {
+  background: color-mix(in srgb, #2f7bd6 14%, transparent);
+  color: #2266bb;
+}
+
+.http-method[data-method="post"] {
+  background: color-mix(in srgb, #22996b 16%, transparent);
+  color: #157a52;
+}
+
+.http-method[data-method="put"],
+.http-method[data-method="patch"] {
+  background: color-mix(in srgb, #c8811c 18%, transparent);
+  color: #a3670f;
+}
+
+.http-method[data-method="delete"] {
+  background: color-mix(in srgb, #cf4b4b 16%, transparent);
+  color: #b23a3a;
+}
+
+@media (prefers-color-scheme: dark) {
+  .http-method[data-method="get"] {
+    color: #7fb2ee;
+  }
+
+  .http-method[data-method="post"] {
+    color: #5cc99a;
+  }
+
+  .http-method[data-method="put"],
+  .http-method[data-method="patch"] {
+    color: #e0a955;
+  }
+
+  .http-method[data-method="delete"] {
+    color: #ef8f8f;
+  }
+}
+
+/* Heading anchors, revealed on hover like a docs site's own. */
+.heading-anchor {
+  position: absolute;
+  margin-left: 0.4rem;
+  padding: 0 0.2rem;
+  border: 0;
+  color: var(--color-neutral-300);
+  font-size: 0.8em;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+:is(h1, h2, h3, h4):hover .heading-anchor,
+.heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.heading-anchor:hover {
+  color: var(--color-primary-600);
+}
+
+/* Body copy ------------------------------------------------------------- */
+
+p {
+  margin: 0 0 1.15rem;
+  line-height: 1.75;
+}
+
+p:not(:first-child) {
+  margin-top: 0;
+}
+
+strong {
+  color: var(--color-neutral-900);
+  font-weight: 620;
+}
+
+a[href] {
+  color: var(--color-primary-700);
+  text-decoration-color: color-mix(in srgb, var(--color-primary-600) 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+a[href]:hover {
+  text-decoration-color: currentcolor;
+}
+
+ul,
+ol {
+  margin: 0 0 1.15rem;
+  padding-left: 1.15rem;
+}
+
+li {
+  margin-bottom: 0.4rem;
+  line-height: 1.7;
+}
+
+li::marker {
+  color: var(--color-neutral-300);
+}
+
+li > ul,
+li > ol {
+  margin: 0.4rem 0 0.5rem;
+}
+
+li:last-child {
+  margin-bottom: 0;
+}
+
+hr {
+  height: 1px;
+  margin: 2.5rem 0;
+  border: 0;
+  background: color-mix(in srgb, var(--color-neutral-200) 55%, transparent);
+}
+
+/* Inline code ----------------------------------------------------------- */
+
+code {
+  padding: 0.08em 0.32em;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 35%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-neutral-100) 30%, transparent);
+  color: var(--color-neutral-800);
+  font-size: 0.85em;
+  font-variant-ligatures: none;
+}
+
+a[href] > code {
+  color: inherit;
+  border-color: color-mix(in srgb, var(--color-primary-600) 25%, transparent);
+}
+
+/* Code panels ----------------------------------------------------------- */
+
+/* Panel surface is the `github-dark` background the shiki config selects, so the
+   bar and the highlighted code read as one block. */
+.code-panel {
+  margin: 0 0 1.25rem;
+  border: 1px solid #1b1f24;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #24292e;
+}
+
+/* On a dark page the panel surface is close to the background, so the edge has
+   to come from the border rather than from the contrast. */
+@media (prefers-color-scheme: dark) {
+  .code-panel {
+    border-color: color-mix(in srgb, #ffffff 14%, transparent);
+  }
+}
+
+/* Consecutive request/response panels read as one exchange. */
+.code-panel + .code-panel {
+  margin-top: -0.5rem;
+}
+
+.code-panel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+}
+
+.code-panel-lang {
+  color: color-mix(in srgb, #ffffff 55%, transparent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.code-panel-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 65%, transparent);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.code-panel-copy:hover {
+  border-color: color-mix(in srgb, #ffffff 24%, transparent);
+  background: color-mix(in srgb, #ffffff 8%, transparent);
+  color: #ffffff;
+}
+
+.code-panel-copy[data-copied="true"] {
+  border-color: color-mix(in srgb, #3fb950 45%, transparent);
+  color: #56d364;
+}
+
+.code-panel pre {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 0;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  tab-size: 2;
+  overflow-x: auto;
+  /* Shiki paints its theme background as an inline style; the panel owns the
+     surface so the bar and the code read as one block whatever theme is set. */
+  background: transparent !important;
+}
+
+.code-panel pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+}
+
+/* A fenced block that never reached the enhancement script still has to read. */
+pre {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+
+/* Tables ---------------------------------------------------------------- */
+
+.table-scroll {
+  margin: 0 0 1.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 55%, transparent);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+}
+
+.table-scroll table {
+  width: 100%;
+  min-width: 34rem;
+  table-layout: auto;
+  border: 0;
+  border-radius: 0;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.table-scroll th,
+.table-scroll td {
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 40%, transparent);
+  padding: 0.6rem 0.85rem;
+  line-height: 1.6;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: top;
+}
+
+.table-scroll th {
+  background: color-mix(in srgb, var(--color-neutral-100) 35%, transparent);
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table-scroll tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Endpoint index: the method column is a label, so it is kept narrow and wraps
+   (`GET/PUT/DELETE/HEAD` would otherwise claim a quarter of the table) and the
+   description takes the width the paths do not need. */
+.table-scroll[data-columns="endpoints"] td:first-child {
+  width: 7rem;
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  /* Nothing breaks `GET/PUT/DELETE/HEAD` on its own — a slash is not a break
+     opportunity — so the column would hold its full width otherwise. */
+  overflow-wrap: anywhere;
+}
+
+.table-scroll[data-columns="endpoints"] td:nth-child(2) {
+  width: 40%;
+}
+
+/* Elsewhere the first column is a term the row is about. */
+.table-scroll td:first-child {
+  color: var(--color-neutral-900);
+  font-weight: 600;
+}
+
+.table-scroll code {
+  white-space: nowrap;
+}
+
+/* Small screens --------------------------------------------------------- */
+
+@media (max-width: 40rem) {
+  h1 {
+    font-size: 1.875rem;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+  }
+
+  h3 {
+    margin-top: 2rem;
+  }
+
+  :host {
+    font-size: 0.9375rem;
+  }
+}
