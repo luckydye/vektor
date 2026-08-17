@@ -15,6 +15,7 @@ import {
 import { extractMentionsFromHtml } from "#documents/mentions.ts";
 import {
   assertWritableDocumentPropertyKey,
+  type DocumentProperties,
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToScalar,
@@ -38,13 +39,29 @@ import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
 import { decompressHtml } from "./revisions.ts";
-import {
-  type DocumentWithProperties,
-  fileRowToDocument,
-  nonArchivedDocumentCondition,
-} from "./search.ts";
+import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
-export type { DocumentWithProperties } from "./search.ts";
+export interface DocumentWithProperties {
+  id: string;
+  slug: string;
+  type?: string | null;
+  content?: string;
+  currentRev: number;
+  publishedRev: number | null;
+  properties: DocumentProperties;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  parentId: string | null;
+  readonly: boolean;
+  archived: boolean;
+  mentionCount?: number;
+  locked?: boolean;
+  /** Set for file-table entries — use this URL instead of the doc route */
+  fileUrl?: string;
+  /** Set for file-table entries: the stored size in bytes, where it is known */
+  fileSize?: number;
+}
 
 const archivedDocumentCondition = sql`
   (
@@ -1001,15 +1018,32 @@ export async function listAllDocumentsByCategories(
       .orderBy(desc(document.updatedAt), desc(document.id)),
   );
 
-  if (viewer) {
-    const readable = await filterReadableResources(
-      s.spaceId,
-      ResourceType.DOCUMENT,
-      docs.map((doc) => doc.id),
-      viewer,
-    );
-    docs = docs.filter((doc) => readable.has(doc.id));
+  const parentByIdAll = new Map<string, string | null>(
+    docs.map((doc) => [doc.id, doc.parentId || null]),
+  );
+
+  const readableIds = viewer
+    ? await filterReadableResources(
+        s.spaceId,
+        ResourceType.DOCUMENT,
+        docs.map((doc) => doc.id),
+        viewer,
+      )
+    : new Set<string>(docs.map((doc) => doc.id));
+
+  const includedIds = new Set<string>(readableIds);
+  for (const id of readableIds) {
+    let parentId = parentByIdAll.get(id);
+    while (parentId && !includedIds.has(parentId)) {
+      includedIds.add(parentId);
+      parentId = parentByIdAll.get(parentId);
+    }
   }
+  const lockedIds = new Set<string>(
+    [...includedIds].filter((id) => !readableIds.has(id)),
+  );
+
+  docs = docs.filter((doc) => includedIds.has(doc.id));
 
   const allProps = await many(s.db.select().from(property));
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
@@ -1028,48 +1062,36 @@ export async function listAllDocumentsByCategories(
     parentId: doc.parentId || null,
     readonly: doc.readonly,
     archived: doc.archived,
+    locked: lockedIds.has(doc.id),
   }));
 
-  const childrenByParentId = new Map<string, string[]>();
-  for (const doc of typeFilteredResults) {
-    if (!doc.parentId) continue;
-    const children = childrenByParentId.get(doc.parentId) || [];
-    children.push(doc.id);
-    childrenByParentId.set(doc.parentId, children);
-  }
-
-  const directDocIdsBySlug = new Map<string, Set<string>>();
-  for (const slug of uniqueSlugs) {
-    directDocIdsBySlug.set(slug, new Set<string>());
-  }
-
-  for (const doc of typeFilteredResults) {
-    const categoryValues = [doc.properties.category, doc.properties.collection].flatMap(
-      (value) => (Array.isArray(value) ? value : value ? [value] : []),
-    );
-    for (const category of categoryValues) {
-      directDocIdsBySlug.get(category)?.add(doc.id);
-    }
-  }
-
   const docIdsBySlug = new Map<string, Set<string>>();
-
   for (const slug of uniqueSlugs) {
-    const collected = new Set<string>(directDocIdsBySlug.get(slug) || []);
-    const stack = Array.from(collected);
+    docIdsBySlug.set(slug, new Set<string>());
+  }
 
-    while (stack.length > 0) {
-      const parentId = stack.pop();
-      if (!parentId) continue;
-      const childIds = childrenByParentId.get(parentId) || [];
-      for (const childId of childIds) {
-        if (collected.has(childId)) continue;
-        collected.add(childId);
-        stack.push(childId);
+  // A document shows under every category tagged on itself or any ancestor, and
+  // brings its whole ancestor chain into that bucket so the tree can nest it.
+  for (const doc of typeFilteredResults) {
+    const chain: string[] = [];
+    for (let id: string | null | undefined = doc.id; id; id = parentByIdAll.get(id)) {
+      chain.push(id);
+    }
+
+    const slugs = new Set<string>();
+    for (const id of chain) {
+      const props = propsByDocId.get(id);
+      for (const value of [props?.category, props?.collection]) {
+        for (const slug of Array.isArray(value) ? value : value ? [value] : []) {
+          if (docIdsBySlug.has(slug)) slugs.add(slug);
+        }
       }
     }
 
-    docIdsBySlug.set(slug, collected);
+    for (const slug of slugs) {
+      const bucket = docIdsBySlug.get(slug);
+      if (bucket) for (const id of chain) bucket.add(id);
+    }
   }
 
   const mentionCountByDocId = new Map<string, number>();
@@ -1096,9 +1118,15 @@ export async function listAllDocumentsByCategories(
     const bucket = typeFilteredResults
       .filter((doc) => ids.has(doc.id))
       .map((doc) => {
-        if (!userEmail) return doc;
+        const base = doc.locked
+          ? {
+              ...doc,
+              properties: doc.properties.title ? { title: doc.properties.title } : {},
+            }
+          : doc;
+        if (!userEmail || doc.locked) return base;
         return {
-          ...doc,
+          ...base,
           mentionCount: mentionCountByDocId.get(doc.id) || 0,
         };
       });

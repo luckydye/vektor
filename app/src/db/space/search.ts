@@ -17,6 +17,7 @@ import {
 } from "#documents/properties.ts";
 import { embedSearchQuery } from "#search/embedding.ts";
 import { rankKeywordMatch, rankSearchCandidates } from "#search/ranking.ts";
+import type { DocumentWithProperties } from "./documents.ts";
 
 // ---------------------------------------------------------------------------
 // SQL helpers shared with documents.ts
@@ -41,30 +42,6 @@ export function nonArchivedColumnCondition(column: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared document types
-// ---------------------------------------------------------------------------
-
-export interface DocumentWithProperties {
-  id: string;
-  slug: string;
-  type?: string | null;
-  content?: string;
-  currentRev: number;
-  publishedRev: number | null;
-  properties: DocumentProperties;
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
-  parentId: string | null;
-  readonly: boolean;
-  archived: boolean;
-  mentionCount?: number;
-  /** Set for file-table entries — use this URL instead of the doc route */
-  fileUrl?: string;
-  /** Set for file-table entries: the stored size in bytes, where it is known */
-  fileSize?: number;
-}
-
 export type SearchResult = DocumentWithProperties & {
   rank: number;
   snippet: string;
