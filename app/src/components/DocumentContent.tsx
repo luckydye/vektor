@@ -537,6 +537,7 @@ export function DocumentContent(props: Props) {
               />
               <CommentOverlays
                 comments={commentBubble()?.commentsForOverlays() ?? []}
+                activeReference={commentBubble()?.activeReference() ?? null}
                 onMove={(payload) => void commentBubble()?.handleMoveThread(payload)}
                 onPositioned={() => commentBubble()?.handleThreadReposition()}
               />

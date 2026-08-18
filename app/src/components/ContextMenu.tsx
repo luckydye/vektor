@@ -9,6 +9,12 @@ interface Props {
   children?: JSX.Element;
 }
 
+// A plain element, not an <a-list-item>: a-list only collects list items, so
+// keyboard navigation skips the separator.
+export function ContextMenuSeparator() {
+  return <div class="my-5xs border-neutral-100 border-t" />;
+}
+
 export function ContextMenu(props: Props) {
   function handleSubmit(event: Event) {
     const detail = (event as CustomEvent<{ selected?: HTMLElement }>).detail;

@@ -239,7 +239,8 @@ export function AIChatPanel(props: Props) {
         title: t("AI Chat"),
         icon: () => "agent-chat",
         description: t("Open AI chat to ask questions about this document"),
-        group: "document",
+        group: "document:view",
+        order: 20,
         run: async () => {
           toggleWindow("ai-chat", { side: "right", width: 380 });
         },

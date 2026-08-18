@@ -220,7 +220,8 @@ describe("cached rows", () => {
     };
     const comment: Comment = {
       id: "comment_1",
-      documentId: "document_1",
+      resourceType: "document",
+      resourceId: "document_1",
       content: "Looks good",
       reference: null,
       parentId: null,
@@ -228,7 +229,6 @@ describe("cached rows", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       createdBy: "user_1",
       updatedAt: "2026-01-01T00:00:00.000Z",
-      updatedBy: "user_1",
     };
 
     globalThis.fetch = (async (input) => {
@@ -369,7 +369,8 @@ describe("optimistic rows", () => {
     const api = client();
     const stored: Comment = {
       id: "comment_2",
-      documentId: "document_1",
+      resourceType: "document",
+      resourceId: "document_1",
       content: "New",
       reference: null,
       parentId: null,
@@ -377,7 +378,6 @@ describe("optimistic rows", () => {
       createdAt: "2026-01-02T00:00:00.000Z",
       createdBy: "user_1",
       updatedAt: "2026-01-02T00:00:00.000Z",
-      updatedBy: "user_1",
     };
     globalThis.fetch = (async (_input, init) =>
       init?.method === "POST"

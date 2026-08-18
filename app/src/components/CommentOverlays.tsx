@@ -6,6 +6,7 @@ import {
   resolveReferenceSelector,
 } from "#composeables/useComments.ts";
 import "./AvatarElement.ts";
+import { Icon } from "./Icon.tsx";
 
 interface CommentUser {
   id: string;
@@ -22,6 +23,8 @@ export interface Comment {
 
 interface Props {
   comments: Comment[];
+  /** Reference of the open thread, drawn as the selected bubble. */
+  activeReference?: string | null;
   onMove?: (payload: { reference: string; y: number }) => void;
   onPositioned?: () => void;
 }
@@ -222,10 +225,13 @@ export function CommentOverlays(props: Props) {
             }}
             data-comment-overlay-bubble="true"
             data-comment-reference={overlay.reference}
-            class="pointer-events-auto absolute right-0 z-20 flex min-h-10 touch-none select-none items-center rounded-full px-1 transition-colors duration-200 hover:text-primary-600 hover:ring-2 hover:ring-primary-100"
+            class="pointer-events-auto absolute right-4xs z-20 flex touch-none select-none items-center gap-5xs rounded-full border border-neutral-100 bg-background py-5xs pr-4xs pl-5xs shadow-md transition duration-150 hover:border-primary-200 hover:text-primary-600 hover:shadow-lg active:scale-95 active:duration-75"
             classList={{
-              "cursor-grabbing shadow-lg":
+              // Dragging outranks the press squish: the bubble is lifted, not held down.
+              "scale-105! cursor-grabbing shadow-lg":
                 drag()?.reference === overlay.reference && !!drag()?.moved,
+              "border-primary-300 ring-2 ring-primary-100":
+                props.activeReference === overlay.reference,
               "cursor-pointer":
                 !(drag()?.reference === overlay.reference && drag()?.moved) &&
                 isInlineAnchorReference(overlay.reference),
@@ -239,12 +245,15 @@ export function CommentOverlays(props: Props) {
             }`}
             aria-label={`View ${overlay.count} comment${overlay.count === 1 ? "" : "s"}`}
           >
-            <span class="flex items-center py-1">
+            <span class="flex items-center">
               <For each={overlay.participants.slice(0, MAX_VISIBLE_AVATARS)}>
                 {(participant, avatarIndex) => (
-                  <span classList={{ "-ml-4": avatarIndex() > 0 }}>
+                  <span
+                    class="rounded-full ring-2 ring-background"
+                    classList={{ "-ml-4xs": avatarIndex() > 0 }}
+                  >
                     <vektor-avatar
-                      size="36"
+                      size="24"
                       attr:user-id={participant.userId}
                       prop:user={participant.user}
                       class="pointer-events-none"
@@ -253,10 +262,14 @@ export function CommentOverlays(props: Props) {
                 )}
               </For>
               <Show when={overlay.participants.length > MAX_VISIBLE_AVATARS}>
-                <span class="absolute -right-1 -bottom-1 flex h-6 min-w-6 items-center justify-center rounded-full border border-neutral-200 bg-background px-1 font-semibold text-neutral-700 text-size-extra-small shadow-sm">
+                <span class="-ml-4xs flex h-6 min-w-6 items-center justify-center rounded-full bg-neutral-100 pr-5xs pl-4xs font-semibold text-neutral-700 text-size-extra-small ring-2 ring-background">
                   +{overlay.participants.length - MAX_VISIBLE_AVATARS}
                 </span>
               </Show>
+            </span>
+            <span class="flex items-center gap-5xs text-neutral-500">
+              <Icon class="h-3.5 w-3.5" name="comment" />
+              <span class="font-semibold text-size-small">{overlay.count}</span>
             </span>
           </button>
         )}

@@ -61,7 +61,17 @@ export class IndexedDBDatabase {
             : db.createObjectStore(store.name, { keyPath: store.keyPath });
           if (!objectStore) continue;
 
-          for (const index of store.indexes ?? []) {
+          const declared = store.indexes ?? [];
+          // The declaration wins: an index that was renamed or re-keyed has to
+          // go, or the stale one survives every version bump and indexes nothing.
+          for (const name of Array.from(objectStore.indexNames)) {
+            const index = declared.find((candidate) => candidate.name === name);
+            const keyPath = index && objectStore.index(name).keyPath;
+            if (!index || String(keyPath) !== String(index.keyPath)) {
+              objectStore.deleteIndex(name);
+            }
+          }
+          for (const index of declared) {
             if (objectStore.indexNames.contains(index.name)) continue;
             objectStore.createIndex(index.name, index.keyPath, {
               unique: index.unique || false,

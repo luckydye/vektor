@@ -511,6 +511,27 @@
   pointer-events: none;
 }
 
+/**
+ * A comment thread growing out of the bubble that opened it.
+ *
+ * Enter only: the panel is unmounted rather than hidden, so there is no leaving
+ * state to transition. The origin sits on the right edge because the panel is
+ * anchored there, beside its bubble.
+ */
+@utility comment-thread-enter {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+  transform-origin: right top;
+  transition:
+    opacity 160ms var(--emphasized-curve, ease-out),
+    transform 160ms var(--emphasized-curve, ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96) translateX(6px);
+  }
+}
+
 /** The user preferences panel inside the profile popover. */
 @utility preferences-panel {
   position: static;
@@ -546,6 +567,7 @@
 @media (prefers-reduced-motion: reduce) {
   .overlay-fade,
   .overlay-slide,
+  .comment-thread-enter,
   .preferences-panel,
   .dialog-layer,
   .dialog-layer .dialog-backdrop,

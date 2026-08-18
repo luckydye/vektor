@@ -33,7 +33,7 @@ type ViewTransitionDocument = Document & {
 
 const tabs = [
   { id: "appearance", label: t("Appearance") },
-  { id: "cosmetics", label: t("Profile") },
+  // { id: "cosmetics", label: t("Profile") },
   { id: "notifications", label: t("Notifications") },
   { id: "integrations", label: t("Integrations") },
 ];
@@ -408,15 +408,15 @@ export function UserPreferencesPanel(props: Props) {
             </>
           ),
 
-          cosmetics: () => (
-            <CosmeticsPanel
-              inventory={cosmeticInventory}
-              loadout={cosmeticLoadout()}
-              appearance={cosmeticAppearance()}
-              user={currentUser()}
-              onEquip={equipCosmetic}
-            />
-          ),
+          // cosmetics: () => (
+          //   <CosmeticsPanel
+          //     inventory={cosmeticInventory}
+          //     loadout={cosmeticLoadout()}
+          //     appearance={cosmeticAppearance()}
+          //     user={currentUser()}
+          //     onEquip={equipCosmetic}
+          //   />
+          // ),
 
           notifications: () => (
             <section>

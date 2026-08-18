@@ -85,7 +85,7 @@ export function CommentThread(props: Props) {
   );
 
   return (
-    <div class="flex h-full max-h-[600px] w-80 flex-col rounded-lg border border-neutral-100 bg-background shadow-xl">
+    <div class="flex h-full max-h-[min(600px,calc(100dvh-1rem))] w-80 flex-col rounded-lg border border-neutral-100 bg-background shadow-xl">
       <div class="flex items-center justify-between rounded-t-lg border-neutral-100 border-b bg-neutral-50/80 p-3 backdrop-blur-sm">
         <div class="flex items-center gap-2">
           <h3 class="font-semibold text-neutral-800 text-size-medium">Thread</h3>

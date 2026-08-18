@@ -496,7 +496,9 @@ export type CrossSpaceSearchResult = SearchResult & {
 
 export interface Comment {
   id: string;
-  documentId: string;
+  /** The resource the comment hangs off — a document id, for every caller here. */
+  resourceType: string | null;
+  resourceId: string | null;
   content: string;
   reference: string | null;
   parentId: string | null;
@@ -504,7 +506,6 @@ export interface Comment {
   createdAt: Date | string;
   createdBy: string;
   updatedAt: Date | string;
-  updatedBy: string;
   createdByUser?: {
     id: string;
     name: string | null;
@@ -2023,7 +2024,8 @@ export class ApiClient {
       const now = new Date().toISOString();
       const optimisticComment: Comment = {
         id: optimisticId,
-        documentId,
+        resourceType: "document",
+        resourceId: documentId,
         content: body.content,
         reference: body.reference,
         parentId: body.parentId,
@@ -2031,10 +2033,9 @@ export class ApiClient {
         createdAt: now,
         createdBy: "",
         updatedAt: now,
-        updatedBy: "",
       };
       const response = await this.withOptimisticReplica(
-        () => this.replica.addComment(spaceId, optimisticComment),
+        () => this.replica.addComment(spaceId, documentId, optimisticComment),
         () =>
           this.apiPost<{ comment: Comment }>(
             this.baseUrl,
@@ -2042,7 +2043,12 @@ export class ApiClient {
             { ...body, documentId },
           ),
         async (response) =>
-          await this.replica.replaceComment(spaceId, optimisticId, response.comment),
+          await this.replica.replaceComment(
+            spaceId,
+            documentId,
+            optimisticId,
+            response.comment,
+          ),
       );
       return response.comment;
     },

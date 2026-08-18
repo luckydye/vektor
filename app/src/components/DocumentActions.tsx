@@ -22,7 +22,7 @@ import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { Button } from "./Button.tsx";
-import { ContextMenu } from "./ContextMenu.tsx";
+import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Contributors } from "./Contributors.tsx";
 import { DocumentShareDialog } from "./DocumentShareDialog.tsx";
@@ -31,6 +31,35 @@ import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
+
+function runContextMenuAction(e: Event, name: string) {
+  Actions.run(name);
+  (e.target as Element | null)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
+}
+
+function MenuActionItem(props: { name: string; options: ActionOptions; class?: string }) {
+  return (
+    <ContextMenuItem
+      class={props.class}
+      onClick={(event) => runContextMenuAction(event, props.name)}
+    >
+      <div class="aspect-sqaure w-[1rem] flex-none">
+        <Icon
+          name={props.options.icon?.() as IconName | undefined}
+          class="align-middle"
+        />
+      </div>
+      <span class="mr-2 block w-full text-left" data-action={props.name}>
+        {props.options.title}
+      </span>
+      <a-shortcut
+        attr:data-shortcut={
+          Actions.getShortcutsForAction(props.name)?.values().next().value
+        }
+      />
+    </ContextMenuItem>
+  );
+}
 
 interface Props {
   title?: string;
@@ -135,10 +164,33 @@ export function DocumentActions(props: Props) {
     },
   });
 
+  const [actionsView, setActionsView] = createSignal<[string, ActionOptions][]>([]);
   const [actions, setActions] = createSignal<[string, ActionOptions][]>([]);
+  const [actionsSpace, setActionsSpace] = createSignal<[string, ActionOptions][]>([]);
   const [actionsDanger, setActionsDanger] = createSignal<[string, ActionOptions][]>([]);
   const [actionsDev, setActionsDev] = createSignal<[string, ActionOptions][]>([]);
   const [devMode, setDevMode] = createSignal(false);
+
+  const showTableOfContents = createMemo(
+    () => documentType() === "document" && !!props.onToggleTableOfContents,
+  );
+  const showWorkflowEdit = createMemo(
+    () => documentType() === "workflow" && !!documentId() && userCanEdit(),
+  );
+  const showEditItem = createMemo(() => canUseDocumentEditor() && !editing());
+
+  // The menu groups view preferences, content actions, space-wide actions and
+  // destructive ones; a group only gets a separator when something precedes it.
+  const sections = createMemo(() => [
+    actionsSpace().length > 0,
+    showTableOfContents() || actionsView().length > 0,
+    showWorkflowEdit() ||
+      showEditItem() ||
+      actions().length > 0 ||
+      actionsDanger().length > 0,
+  ]);
+  const separatorBefore = (index: number) =>
+    sections()[index] && sections().slice(0, index).some(Boolean);
 
   async function publishDocument(e: MouseEvent) {
     const action = Actions.get("document:save:publish");
@@ -173,7 +225,9 @@ export function DocumentActions(props: Props) {
   }
 
   function refreshActionGroups() {
+    setActionsView(Actions.group("document:view"));
     setActions(Actions.group("document"));
+    setActionsSpace(Actions.group("document:space"));
     setActionsDanger(Actions.group("document:danger"));
   }
 
@@ -199,13 +253,6 @@ export function DocumentActions(props: Props) {
 
     refreshActionGroups();
   });
-
-  function runContextMenuAction(e: Event, name: string) {
-    Actions.run(name);
-    (e.target as Element | null)?.dispatchEvent(
-      new CustomEvent("exit", { bubbles: true }),
-    );
-  }
 
   createEffect(() => {
     const spaceId = currentSpaceId();
@@ -266,7 +313,7 @@ export function DocumentActions(props: Props) {
         title: t("Unpin from Home"),
         icon: () => "pin-to-home",
         description: t("Remove this document from the space home page"),
-        group: "document",
+        group: "document:space",
         order: 20,
         run: async () => {
           await api.space.patch(space.id, { preferences: { pinnedDocumentId: "" } });
@@ -280,7 +327,7 @@ export function DocumentActions(props: Props) {
       title: t("Pin to Home"),
       icon: () => "pin-to-home",
       description: t("Showcase this document on the space home page"),
-      group: "document",
+      group: "document:space",
       order: 20,
       run: async () => {
         await api.space.patch(space.id, { preferences: { pinnedDocumentId: docId } });
@@ -377,7 +424,7 @@ export function DocumentActions(props: Props) {
       title: t("Share"),
       icon: () => "users-group",
       description: t("Invite people to this document or category"),
-      group: "document",
+      group: "document:space",
       order: 10,
       run: async () => {
         setShowShareDialog(true);
@@ -415,9 +462,6 @@ export function DocumentActions(props: Props) {
       });
     }
   });
-
-  const actionIcon = (options: ActionOptions): IconName | undefined =>
-    options.icon?.() as IconName | undefined;
 
   return (
     <div
@@ -571,7 +615,15 @@ export function DocumentActions(props: Props) {
           )}
         </Show>
         <ContextMenu>
-          <Show when={documentType() === "document" && props.onToggleTableOfContents}>
+          <For each={actionsSpace()}>
+            {([name, options]) => <MenuActionItem name={name} options={options} />}
+          </For>
+
+          <Show when={separatorBefore(1)}>
+            <ContextMenuSeparator />
+          </Show>
+
+          <Show when={showTableOfContents()}>
             <ContextMenuItem onClick={toggleTableOfContentsFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
                 <Icon name="list" class="align-middle" />
@@ -584,7 +636,15 @@ export function DocumentActions(props: Props) {
             </ContextMenuItem>
           </Show>
 
-          <Show when={documentType() === "workflow" && documentId() && userCanEdit()}>
+          <For each={actionsView()}>
+            {([name, options]) => <MenuActionItem name={name} options={options} />}
+          </For>
+
+          <Show when={separatorBefore(2)}>
+            <ContextMenuSeparator />
+          </Show>
+
+          <Show when={showWorkflowEdit()}>
             <ContextMenuItem onClick={openWorkflowEditorFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
                 <Icon name="edit-document" class="align-middle" />
@@ -593,7 +653,7 @@ export function DocumentActions(props: Props) {
             </ContextMenuItem>
           </Show>
 
-          <Show when={canUseDocumentEditor() && !editing()}>
+          <Show when={showEditItem()}>
             <ContextMenuItem
               class="md:hidden"
               onClick={(event) => runContextMenuAction(event, "document:edit")}
@@ -606,49 +666,24 @@ export function DocumentActions(props: Props) {
           </Show>
 
           <For each={actions()}>
-            {([name, options]) => (
-              <ContextMenuItem onClick={(event) => runContextMenuAction(event, name)}>
-                <div class="aspect-sqaure w-[1rem] flex-none">
-                  <Icon name={actionIcon(options)} class="align-middle" />
-                </div>
-                <span class="mr-2 block w-full text-left" data-action={name}>
-                  {options.title}
-                </span>
-                <a-shortcut
-                  attr:data-shortcut={
-                    Actions.getShortcutsForAction(name)?.values().next().value
-                  }
-                />
-              </ContextMenuItem>
-            )}
+            {([name, options]) => <MenuActionItem name={name} options={options} />}
           </For>
 
           <For each={actionsDanger()}>
             {([name, options]) => (
-              <ContextMenuItem
-                onClick={(event) => runContextMenuAction(event, name)}
+              <MenuActionItem
+                name={name}
+                options={options}
                 class="text-orange-600 hover:text-orange-700"
-              >
-                <div class="aspect-sqaure w-[1rem] flex-none">
-                  <Icon name={actionIcon(options)} class="align-middle" />
-                </div>
-                <span>{options.title}</span>
-              </ContextMenuItem>
+              />
             )}
           </For>
 
-          <Show when={devMode()}>
+          <Show when={devMode() && actionsDev().length > 0}>
+            <ContextMenuSeparator />
             <For each={actionsDev()}>
               {([name, options]) => (
-                <ContextMenuItem
-                  onClick={(event) => runContextMenuAction(event, name)}
-                  class="text-neutral-400"
-                >
-                  <div class="aspect-sqaure w-[1rem] flex-none">
-                    <Icon name={actionIcon(options)} class="align-middle" />
-                  </div>
-                  <span>{options.title}</span>
-                </ContextMenuItem>
+                <MenuActionItem name={name} options={options} class="text-neutral-400" />
               )}
             </For>
           </Show>

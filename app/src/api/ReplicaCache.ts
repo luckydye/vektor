@@ -534,7 +534,7 @@ export class ReplicaCache {
   ): Promise<Comment[] | undefined> {
     const [collection, records] = await Promise.all([
       this.collection(spaceId, collections.comments(documentId)),
-      this.db.getByIndex<CommentRecord>(replicaStores.comment, "by_document", [
+      this.db.getByIndex<CommentRecord>(replicaStores.comment, "by_resource", [
         spaceId,
         documentId,
       ]),
@@ -566,7 +566,7 @@ export class ReplicaCache {
     await this.db.writeRemote(async () => {
       const stored = await this.db.getByIndex<CommentRecord>(
         replicaStores.comment,
-        "by_document",
+        "by_resource",
         [spaceId, documentId],
       );
       const incoming = new Set(comments.map((comment) => comment.id));
@@ -591,12 +591,16 @@ export class ReplicaCache {
     });
   }
 
-  async addComment(spaceId: string, comment: Comment): Promise<ReplicaOperation | null> {
+  async addComment(
+    spaceId: string,
+    documentId: string,
+    comment: Comment,
+  ): Promise<ReplicaOperation | null> {
     return await this.db.writeOptimistic(async () => [
       { store: replicaStores.comment, put: { ...comment, spaceId } },
       ...(await this.appendToCollection(
         spaceId,
-        collections.comments(comment.documentId),
+        collections.comments(documentId),
         comment.id,
       )),
     ]);
@@ -605,11 +609,12 @@ export class ReplicaCache {
   /** Swap a comment written before the request for the one the server stored. */
   async replaceComment(
     spaceId: string,
+    documentId: string,
     temporaryId: string,
     comment: Comment,
   ): Promise<void> {
     await this.db.writeRemote(async () => {
-      const name = collections.comments(comment.documentId);
+      const name = collections.comments(documentId);
       const collection = await this.collection(spaceId, name);
       const ids = collection
         ? collection.ids.map((id) => (id === temporaryId ? comment.id : id))
