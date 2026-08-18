@@ -23,8 +23,14 @@ import {
 import { appendQueryParams, normalizeRedirectPath } from "#integrations/oauthUtils.ts";
 import { appLogger } from "#observability/logger.ts";
 
+/**
+ * A relative `Location` is valid HTTP, but `Response.redirect` demands an
+ * absolute URL and throws on anything else. This helper is also the catch
+ * block's recovery path below, where a throw escapes as a 500 instead of the
+ * error redirect it is there to produce.
+ */
 function redirectToPath(path: string): Response {
-  return Response.redirect(path, 302);
+  return new Response(null, { status: 302, headers: { location: path } });
 }
 
 function defaultSettingsPath(spaceSlug: string): string {

@@ -90,6 +90,7 @@ export const reservedSpaceSlugs: readonly string[] = [
   "_server-islands",
   "_actions",
   // public/
+  "onboarding",
   "favicon.ico",
   "robots.txt",
   "manifest.json",

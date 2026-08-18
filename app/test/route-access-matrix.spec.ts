@@ -79,7 +79,8 @@ const PUBLIC_ROUTES: Record<string, string> = {
 const USER_SCOPED_ROUTES: Record<string, string> = {
   "/api/v1/access-tokens": "the caller's own tokens, in the spaces it belongs to",
   "/api/v1/access-tokens/[tokenId]": "reaches only a token the caller issued",
-  "/api/v1/search": "searches only the spaces the caller can read; empty without a session",
+  "/api/v1/search":
+    "searches only the spaces the caller can read; empty without a session",
   "/api/v1/spaces": "lists only spaces the caller belongs to",
   "/api/v1/users/me": "the caller's own profile",
   "/api/v1/users/suggestions": "invite suggestions from the caller's own groups",
@@ -157,7 +158,9 @@ let probes: Probe[] = [];
  */
 function outcomeOf(status: number | null): Outcome {
   if (status === null) return "not-probed";
-  if (status >= 200 && status < 300) return "allowed";
+  // A 3xx counts as admission: the guard ran, let the caller through, and the
+  // handler answered with a destination — which the leak assertion then reads.
+  if (status >= 200 && status < 400) return "allowed";
   if (status === 401 || status === 403) return "denied";
   if (status >= 500) return "error";
   return "inconclusive";
@@ -245,7 +248,10 @@ async function probeRoute(
   const fixture = fixtures[identity];
   const { path, unresolved } = buildPath(pattern, fixture);
 
-  const init: RequestInit = { method };
+  // `manual`, so the cell records what the route answered. Following a redirect
+  // records the *target's* status instead — the integrations callback then reads
+  // as the space page's 200, and turns red whenever that unrelated render fails.
+  const init: RequestInit = { method, redirect: "manual" };
   if (!READ_METHODS.has(method)) {
     init.body = JSON.stringify(ROUTE_BODY[pattern]?.(fixture) ?? {});
   }
@@ -260,7 +266,11 @@ async function probeRoute(
 
   // Always drained, so the server can close the connection.
   const body = await response.text().catch(() => "");
-  return { status: response.status, body: body.slice(0, 20_000), unresolved };
+  // A redirect carries its ids in `Location` and has no body at all, so the leak
+  // assertion has to read the header to see them.
+  const location = response.headers.get("location");
+  const recorded = location ? `${location}\n${body}` : body;
+  return { status: response.status, body: recorded.slice(0, 20_000), unresolved };
 }
 
 /** A space with a document, a category and an access token, created by `ownerToken`. */
@@ -531,7 +541,7 @@ describe("route access matrix", () => {
   }
 
   for (const identity of ["anonymous", "outsider"] as const) {
-    it(`never serves a 2xx on a space-scoped route to ${identity}`, () => {
+    it(`never admits ${identity} to a space-scoped route`, () => {
       const admitted = probes
         .filter(spaceScoped)
         // OPTIONS is discovery: it answers 204 with no body, and the leak

@@ -20,12 +20,17 @@
 | `/api/caldav/principals/[userId]` | GET | 401 | 403 | 403 | 403 | 403 |  |
 | `/api/caldav/principals/[userId]` | POST | 401 | 403 | 403 | 403 | 403 |  |
 | `/api/caldav/principals/[userId]` | PROPFIND | 401 | 403 | 403 | 403 | 403 |  |
+| `/api/v1/access-tokens` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — the caller's own tokens, in the spaces it belongs to |
+| `/api/v1/access-tokens` | POST | 401 | 400 | 400 | 400 | 400 | caller-scoped — the caller's own tokens, in the spaces it belongs to |
+| `/api/v1/access-tokens/[tokenId]` | DELETE | 401 | 404 | 404 | 404 | 404 | caller-scoped — reaches only a token the caller issued |
+| `/api/v1/access-tokens/[tokenId]` | PATCH | 401 | 404 | 404 | 404 | 404 | caller-scoped — reaches only a token the caller issued |
 | `/api/v1/auth/cli` | GET | 401 | 400 | 400 | 400 | 400 | public — CLI pairing: authenticated by the one-time code it mints |
 | `/api/v1/auth/cli` | POST | 401 | 400 | 400 | 400 | 400 | public — CLI pairing: authenticated by the one-time code it mints |
 | `/api/v1/auth/cli/token` | POST | 400 | 400 | 400 | 400 | 400 | public — CLI pairing: authenticated by the one-time code |
 | `/api/v1/chat/acp` | POST | 400 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/chat/completions` | POST | 400 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/proxy-media` | GET | 401 | 400 | 400 | 400 | 400 |  |
+| `/api/v1/search` | GET | 200 | 200 | 200 | 200 | 200 | caller-scoped — searches only the spaces the caller can read; empty without a session |
 | `/api/v1/spaces` | GET | 200 | 200 | 200 | 200 | 200 | caller-scoped — lists only spaces the caller belongs to |
 | `/api/v1/spaces` | POST | 401 | 400 | 400 | 400 | 400 | caller-scoped — lists only spaces the caller belongs to |
 | `/api/v1/spaces/[spaceId]` | DELETE | 401 | 403 | 403 | 403 | 200 |  |
@@ -78,7 +83,7 @@
 | `/api/v1/spaces/[spaceId]/integrations` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]` | DELETE | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]` | GET | 401 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/integrations/[provider]/callback` | GET | 401 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/integrations/[provider]/callback` | GET | 401 | 403 | 302 | 302 | 302 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/connect` | POST | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/proxy` | POST | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/jobs/run` | POST | 401 | 403 | 403 | 400 | 400 |  |
