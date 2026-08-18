@@ -21,8 +21,7 @@ const { title, links, currentPath, outline = [] } = Astro.props;
 
 <p class="docs-nav-title">{title}</p>
 <ul class="mt-3 space-y-0.5">
-  {
-    links.map((link) => (
+  {links.map((link) => (
       <li>
         <a
           href={link.href}
@@ -45,8 +44,7 @@ const { title, links, currentPath, outline = [] } = Astro.props;
           </ul>
         )}
       </li>
-    ))
-  }
+    ))}
 </ul>
 
 <style>

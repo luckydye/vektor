@@ -41,10 +41,7 @@ export function isValidPositiveDayDuration(
   maxDays = Number.POSITIVE_INFINITY,
 ): value is number {
   return (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    value > 0 &&
-    value <= maxDays
+    typeof value === "number" && Number.isFinite(value) && value > 0 && value <= maxDays
   );
 }
 

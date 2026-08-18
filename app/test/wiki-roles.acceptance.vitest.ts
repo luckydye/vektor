@@ -69,7 +69,7 @@ describe("SV Wiki roles — independent editor acceptance suite", () => {
     );
     const html = instance.getHTML();
     expect(html).toContain("image.png");
-    expect(html).toMatch(/width(?:=|:)['\" ]*320/);
+    expect(html).toMatch(/width(?:=|:)['" ]*320/);
     expect(html).toContain("file-attachment");
     expect(html).toContain("briefing.pdf");
   });

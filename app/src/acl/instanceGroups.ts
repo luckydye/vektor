@@ -12,7 +12,7 @@ import {
   PUBLIC_GROUP,
   tokenIdFromPrincipal,
 } from "#acl/permissions.ts";
-import { getUserGroups } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import { forbiddenResponse } from "#api/http.ts";
 import { config } from "#config";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";

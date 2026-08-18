@@ -11,7 +11,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { Permission, ResourceType, TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission, logAclChange } from "#acl/store.ts";
+import { hasPermission, logAclChange } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AccessToken, AclEntry } from "#db/schema/space.ts";

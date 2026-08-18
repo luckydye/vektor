@@ -1,8 +1,6 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { Permission, ResourceType } from "#acl/permissions.ts";
-import { grantPermission, listPermissions } from "#acl/store.ts";
 import {
   closeDatabase,
   createDatabase,
@@ -15,7 +13,6 @@ import {
   withoutDatabaseCredentials,
 } from "#db/client/connection.ts";
 import { many, one } from "#db/client/query.ts";
-import { openSpaceStore } from "#db/client/store.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { isInMemoryDb } from "#inMemoryDb";
@@ -270,41 +267,6 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
           `Database record changed while it was being enabled: ${recordId}`,
         );
       }
-    }
-
-    try {
-      const store = await openSpaceStore(metadata.id);
-      const hasOwner = (
-        await listPermissions(store, ResourceType.SPACE, metadata.id)
-      ).some(
-        (entry) =>
-          entry.permission === Permission.OWNER && !entry.userId?.startsWith("token:"),
-      );
-      if (!hasOwner) {
-        await grantPermission(
-          store,
-          ResourceType.SPACE,
-          metadata.id,
-          metadata.createdBy,
-          Permission.OWNER,
-          undefined,
-          metadata.createdBy,
-        );
-      }
-    } catch (error) {
-      if (existing.status === "disabled") {
-        await authDb
-          .update(spaceIndex)
-          .set({ status: "disabled", updatedAt: new Date() })
-          .where(
-            and(
-              eq(spaceIndex.id, existing.id),
-              eq(spaceIndex.status, "claimed"),
-              eq(spaceIndex.spaceId, metadata.id),
-            ),
-          );
-      }
-      throw error;
     }
 
     const activated = await one(

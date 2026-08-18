@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { config } from "#config";
+import { verifyJobToken } from "#jobs/jobToken.ts";
 
 /**
  * Fixed-window API rate limiting, in-memory and per-process to match the
@@ -42,6 +43,13 @@ interface RouteRule extends RateLimitRule {
   pattern: string;
   /** All methods when omitted. */
   methods?: readonly string[];
+  /**
+   * Whether a job's own call counts against this ceiling too. Set where the
+   * cost lands on whoever runs the instance no matter who asked; elsewhere a
+   * job falls back to the default rule, since a ceiling sized for one browser
+   * would throttle a fan-out job against its own sub-jobs.
+   */
+  boundsJobs?: boolean;
 }
 
 /**
@@ -51,10 +59,15 @@ interface RouteRule extends RateLimitRule {
  */
 const ROUTE_RULES: readonly RouteRule[] = [
   // Re-embeds every document in the space.
-  { pattern: "/api/v1/spaces/[spaceId]/search/rebuild", max: 5, windowMs: 60 * MINUTE },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/search/rebuild",
+    max: 5,
+    windowMs: 60 * MINUTE,
+    boundsJobs: true,
+  },
   // Proxied inference, billed to whoever runs the instance.
-  { pattern: "/api/v1/chat/completions", max: 30, windowMs: MINUTE },
-  { pattern: "/api/v1/chat/acp", max: 30, windowMs: MINUTE },
+  { pattern: "/api/v1/chat/completions", max: 30, windowMs: MINUTE, boundsJobs: true },
+  { pattern: "/api/v1/chat/acp", max: 30, windowMs: MINUTE, boundsJobs: true },
   // Arbitrary user-defined execution.
   { pattern: "/api/v1/spaces/[spaceId]/jobs/run", max: 30, windowMs: MINUTE },
   {
@@ -91,13 +104,33 @@ export function defaultRateLimitRule(): RateLimitRule {
   };
 }
 
-export function ruleForRoute(pattern: string, method: string): RateLimitRule {
+function matchRule(pattern: string, method: string, job: boolean): RouteRule | null {
   for (const rule of ROUTE_RULES) {
     if (rule.pattern !== pattern) continue;
     if (rule.methods && !rule.methods.includes(method)) continue;
-    return { max: rule.max, windowMs: rule.windowMs };
+    if (job && !rule.boundsJobs) return null;
+    return rule;
   }
-  return defaultRateLimitRule();
+  return null;
+}
+
+export function ruleForRoute(
+  pattern: string,
+  method: string,
+  job = false,
+): RateLimitRule {
+  const rule = matchRule(pattern, method, job);
+  return rule ? { max: rule.max, windowMs: rule.windowMs } : defaultRateLimitRule();
+}
+
+/**
+ * Which window a request counts against. A rule only counts its own route:
+ * sharing one window per caller would spend a tight ceiling on ordinary
+ * browsing, and let a long window hold every later request to that ceiling.
+ */
+export function bucketForRoute(pattern: string, method: string, job = false): string {
+  const rule = matchRule(pattern, method, job);
+  return rule ? `${rule.pattern}|${rule.methods?.join(",") ?? "*"}` : "default";
 }
 
 const BEARER_PREFIX = "bearer ";
@@ -119,12 +152,19 @@ function sessionCookieValue(cookie: string | undefined): string | null {
  * The access token when one is presented, otherwise the caller's IP. Derived
  * from headers alone so the check can run before the session lookup and bound
  * it too; the token is hashed because these keys reach the log on a 429.
+ *
+ * `jobToken` must already be verified: it precedes the other credentials
+ * because a job's call to this instance's own API carries neither a session
+ * nor a bearer, and would otherwise land on the loopback address every job in
+ * the process shares.
  */
 export function rateLimitKey(
   authorization: string | undefined,
   cookie: string | undefined,
   ip: string,
+  jobToken?: string | null,
 ): string {
+  if (jobToken) return `job:${shortHash(jobToken)}`;
   if (authorization?.toLowerCase().startsWith(BEARER_PREFIX)) {
     const token = authorization.slice(BEARER_PREFIX.length).trim();
     if (token) return `token:${shortHash(token)}`;
@@ -132,6 +172,25 @@ export function rateLimitKey(
   const session = sessionCookieValue(cookie);
   if (session) return `session:${shortHash(session)}`;
   return `ip:${ip || "unknown"}`;
+}
+
+/**
+ * A job token earns its own window only once the HMAC checks out — taking the
+ * header at face value would hand any caller an unlimited supply of fresh
+ * windows, one per invented token.
+ */
+function verifiedJobToken(
+  token: string | undefined,
+  spaceId: string | undefined,
+): string | null {
+  if (!token || !spaceId) return null;
+  try {
+    return verifyJobToken(token, spaceId) ? token : null;
+  } catch {
+    // Signing throws when AUTH_SECRET is unset, and an instance that cannot
+    // sign a token cannot have issued this one.
+    return null;
+  }
 }
 
 function shortHash(value: string): string {
@@ -240,12 +299,16 @@ export function checkRateLimit(
     authorization: string | undefined;
     cookie: string | undefined;
     ip: string;
+    jobToken?: string | undefined;
+    /** Scope the job token is checked against, from the header or the route. */
+    spaceId?: string | undefined;
   },
   limiter: RateLimiter = apiRateLimiter,
 ): RateLimitCheck | null {
   if (!isRateLimitEnabled()) return null;
 
-  const key = rateLimitKey(request.authorization, request.cookie, request.ip);
+  const jobToken = verifiedJobToken(request.jobToken, request.spaceId);
+  const key = rateLimitKey(request.authorization, request.cookie, request.ip, jobToken);
 
   if (blockedKeys().has(key)) {
     return {
@@ -257,6 +320,10 @@ export function checkRateLimit(
     };
   }
 
-  const decision = limiter.check(key, ruleForRoute(request.pattern, request.method));
+  const job = jobToken !== null;
+  const decision = limiter.check(
+    `${key}|${bucketForRoute(request.pattern, request.method, job)}`,
+    ruleForRoute(request.pattern, request.method, job),
+  );
   return { key, ...decision };
 }

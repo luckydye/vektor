@@ -148,9 +148,7 @@ export function Navigation() {
               onClick={() => Actions.run("ui:toggle:palatte")}
             >
               <Icon name="search" />
-              <span class="@max-xs:hidden flex-1 truncate">
-                {t("Quick Search")}
-              </span>
+              <span class="@max-xs:hidden flex-1 truncate">{t("Quick Search")}</span>
               <a-shortcut class="@max-xs:hidden! flex-none" data-shortcut="mod-k" />
             </button>
             <MenuLink

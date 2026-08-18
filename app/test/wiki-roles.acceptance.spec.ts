@@ -57,10 +57,14 @@ async function createDocument(
 }
 
 async function grant(body: Record<string, unknown>): Promise<void> {
-  const response = await apiRequest(`/api/v1/spaces/${spaceId}/permissions`, owner.token, {
-    method: "POST",
-    body: JSON.stringify({ type: "role", action: "grant", ...body }),
-  });
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/permissions`,
+    owner.token,
+    {
+      method: "POST",
+      body: JSON.stringify({ type: "role", action: "grant", ...body }),
+    },
+  );
   await responseJson(response);
 }
 
@@ -94,7 +98,7 @@ beforeAll(async () => {
 
   const briefing = await createDocument(
     "Briefing",
-    '<h1>Sommerkampagne</h1><p>Extern freigegebenes Briefing.</p>',
+    "<h1>Sommerkampagne</h1><p>Extern freigegebenes Briefing.</p>",
     { slug: "briefing" },
   );
   briefingId = briefing.id;
@@ -169,12 +173,8 @@ describe("SV Wiki roles — independent acceptance suite", () => {
       ).status,
     ).toBe(403);
     expect(
-      (
-        await bearerRequest(
-          `/api/v1/spaces/${spaceId}/documents/${credentialsId}`,
-          token,
-        )
-      ).status,
+      (await bearerRequest(`/api/v1/spaces/${spaceId}/documents/${credentialsId}`, token))
+        .status,
     ).toBe(403);
 
     const listed = await apiRequest(
@@ -211,10 +211,14 @@ describe("SV Wiki roles — independent acceptance suite", () => {
     const second = await createDocument("Motivliste", "<p>Motive</p>");
 
     for (const id of [moodboard.id, second.id]) {
-      const moved = await apiRequest(`/api/v1/spaces/${spaceId}/documents/${id}`, owner.token, {
-        method: "PATCH",
-        body: JSON.stringify({ parentId: assets.id }),
-      });
+      const moved = await apiRequest(
+        `/api/v1/spaces/${spaceId}/documents/${id}`,
+        owner.token,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ parentId: assets.id }),
+        },
+      );
       expect(moved.status).toBe(200);
     }
 
@@ -302,9 +306,9 @@ describe("SV Wiki roles — independent acceptance suite", () => {
       `/api/v1/spaces/${spaceId}/documents/${doc.id}/revisions`,
       owner.token,
     );
-    expect((await history.json()).revisions.map((rev: { rev: number }) => rev.rev)).toEqual(
-      expect.arrayContaining([firstRev, secondRev]),
-    );
+    expect(
+      (await history.json()).revisions.map((rev: { rev: number }) => rev.rev),
+    ).toEqual(expect.arrayContaining([firstRev, secondRev]));
 
     const diff = await apiRequest(
       `/api/v1/spaces/${spaceId}/documents/${doc.id}/diff?rev=${secondRev}`,
@@ -329,7 +333,10 @@ describe("SV Wiki roles — independent acceptance suite", () => {
   it("AT-08 PM-17/IT-07: image/PDF uploads work and direct URLs reject outsiders", async () => {
     const attachmentDoc = await createDocument("Media", "<p>Media</p>");
     const form = new FormData();
-    form.set("file", new File(["%PDF-1.7\nacceptance"], "briefing.pdf", { type: "application/pdf" }));
+    form.set(
+      "file",
+      new File(["%PDF-1.7\nacceptance"], "briefing.pdf", { type: "application/pdf" }),
+    );
     form.set("documentId", attachmentDoc.id);
     const uploaded = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
       method: "POST",
@@ -432,7 +439,10 @@ describe("SV Wiki roles — independent acceptance suite", () => {
   });
 
   it("AT-13 IT-05: a group grant controls read access", async () => {
-    const groupDoc = await createDocument("Public group document", "<p>GROUP-GRANTED</p>");
+    const groupDoc = await createDocument(
+      "Public group document",
+      "<p>GROUP-GRANTED</p>",
+    );
     await grant({
       roleOrFeature: "viewer",
       groupId: "public",
@@ -480,9 +490,9 @@ describe("SV Wiki roles — independent acceptance suite", () => {
     const parsed = JSON.parse(body);
     expect(Array.isArray(parsed.auditLogs)).toBe(true);
     expect(parsed.auditLogs.length).toBeGreaterThan(0);
-    expect(parsed.auditLogs.some((event: { docId: string }) => event.docId === briefingId)).toBe(
-      true,
-    );
+    expect(
+      parsed.auditLogs.some((event: { docId: string }) => event.docId === briefingId),
+    ).toBe(true);
   });
 });
 

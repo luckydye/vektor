@@ -146,11 +146,7 @@ beforeAll(async () => {
 
   owner = await createTestUser(BASE_URL, "Comment Owner", "test-comment-auth");
   editor = await createTestUser(BASE_URL, "Comment Editor", "test-comment-auth");
-  commenter = await createTestUser(
-    BASE_URL,
-    "Comment Viewer",
-    "test-comment-auth",
-  );
+  commenter = await createTestUser(BASE_URL, "Comment Viewer", "test-comment-auth");
   scopedEditor = await createTestUser(
     BASE_URL,
     "Comment Scoped Editor",
@@ -276,7 +272,9 @@ describe("document-scoped editor (issue #151)", () => {
     );
     expect(patched.status).toBe(200);
     expect(await comments(scopedDocumentId)).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: commentId, reference: "600" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ id: commentId, reference: "600" }),
+      ]),
     );
 
     const deleted = await deleteComment(scopedEditor.token, scopedDocumentId, commentId);

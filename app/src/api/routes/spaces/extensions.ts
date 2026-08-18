@@ -6,7 +6,8 @@ import {
   verifyTokenFeature,
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, hasFeature } from "#acl/store.ts";
+import { hasFeature } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   badRequestResponse,
   createdResponse,

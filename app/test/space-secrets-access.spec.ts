@@ -32,19 +32,15 @@ async function grantRole(
   userId: string,
   roleOrFeature: "editor" | "viewer",
 ): Promise<void> {
-  const response = await apiRequest(
-    `/api/v1/spaces/${spaceId}/permissions`,
-    ownerToken,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        type: "role",
-        roleOrFeature,
-        userId,
-        action: "grant",
-      }),
-    },
-  );
+  const response = await apiRequest(`/api/v1/spaces/${spaceId}/permissions`, ownerToken, {
+    method: "POST",
+    body: JSON.stringify({
+      type: "role",
+      roleOrFeature,
+      userId,
+      action: "grant",
+    }),
+  });
   if (!response.ok) {
     throw new Error(
       `Failed to grant ${roleOrFeature} (${response.status}): ${await response.text()}`,
@@ -65,11 +61,7 @@ beforeAll(async () => {
   const owner = await createTestUser(BASE_URL, "Secrets Owner", "secrets-owner");
   const editor = await createTestUser(BASE_URL, "Secrets Editor", "secrets-editor");
   const viewer = await createTestUser(BASE_URL, "Secrets Viewer", "secrets-viewer");
-  const outsider = await createTestUser(
-    BASE_URL,
-    "Secrets Outsider",
-    "secrets-outsider",
-  );
+  const outsider = await createTestUser(BASE_URL, "Secrets Outsider", "secrets-outsider");
   ownerToken = owner.token;
   editorToken = editor.token;
   viewerToken = viewer.token;
@@ -167,11 +159,7 @@ describe("space secret access", () => {
   for (const role of ["editor", "viewer", "outsider"] as const) {
     it(`denies every secret endpoint to a space ${role}`, async () => {
       const token =
-        role === "editor"
-          ? editorToken
-          : role === "viewer"
-            ? viewerToken
-            : outsiderToken;
+        role === "editor" ? editorToken : role === "viewer" ? viewerToken : outsiderToken;
       const attempts: Array<{ path: string; init?: RequestInit }> = [
         { path: secretsPath() },
         {

@@ -1,4 +1,4 @@
-import { getUserGroups } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   documentToICal,
   optionsPreflight,

@@ -54,7 +54,9 @@ describe("parseWorkflowInputFields", () => {
   });
 
   it("does not split a default value that is a comma-separated list", () => {
-    expect(namesOf(`const { columns = "Seiten-ID, Seitentitel", limit = 5 } = input;`)).toEqual([
+    expect(
+      namesOf(`const { columns = "Seiten-ID, Seitentitel", limit = 5 } = input;`),
+    ).toEqual([
       { name: "columns", required: false },
       { name: "limit", required: false },
     ]);

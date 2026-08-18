@@ -207,8 +207,7 @@ export function TableOfContents(props: Props) {
                   }`}
                   style={{
                     "padding-left": `${
-                      10 +
-                      Math.min(Math.max(heading.level, 2) - minimumLevel(), 3) * 12
+                      10 + Math.min(Math.max(heading.level, 2) - minimumLevel(), 3) * 12
                     }px`,
                   }}
                   title={heading.text}

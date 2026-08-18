@@ -350,7 +350,6 @@ export function SpaceSecretsSettings() {
                 Copy
               </button>
             </div>
-
           </div>
         )}
       </Show>

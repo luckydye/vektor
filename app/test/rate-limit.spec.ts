@@ -7,6 +7,7 @@ import {
   rateLimitKey,
   ruleForRoute,
 } from "#api/rateLimit.ts";
+import { createJobToken } from "#jobs/jobToken.ts";
 
 /** A clock the test drives, so no spec waits on a real window. */
 function fixedClock(start = 1_000_000) {
@@ -20,6 +21,8 @@ function fixedClock(start = 1_000_000) {
 }
 
 const RULE = { max: 3, windowMs: 1000 };
+
+process.env.AUTH_SECRET ??= "rate-limit-test-secret-do-not-use-in-production";
 
 const RATE_LIMIT_ENV = [
   "VEKTOR_RATE_LIMIT",
@@ -266,6 +269,132 @@ describe("checkRateLimit", () => {
         new RateLimiter(),
       ),
     ).toMatchObject({ allowed: false, blocked: true });
+  });
+
+  it("does not spend a tight route ceiling on ordinary browsing", () => {
+    const limiter = new RateLimiter();
+    const run = {
+      ...request,
+      pattern: "/api/v1/spaces/[spaceId]/jobs/run",
+      method: "POST",
+    };
+
+    // More ordinary requests than jobs/run allows, all well inside the default.
+    for (let i = 0; i < 40; i++)
+      expect(checkRateLimit(request, limiter)?.allowed).toBe(true);
+
+    expect(checkRateLimit(run, limiter)).toMatchObject({ allowed: true, remaining: 29 });
+  });
+
+  it("counts each rule against its own window", () => {
+    const limiter = new RateLimiter();
+    const completions = {
+      ...request,
+      pattern: "/api/v1/chat/completions",
+      method: "POST",
+    };
+    const run = {
+      ...request,
+      pattern: "/api/v1/spaces/[spaceId]/jobs/run",
+      method: "POST",
+    };
+
+    for (let i = 0; i < 30; i++)
+      expect(checkRateLimit(completions, limiter)?.allowed).toBe(true);
+    expect(checkRateLimit(completions, limiter)).toMatchObject({ allowed: false });
+
+    expect(checkRateLimit(run, limiter)).toMatchObject({ allowed: true });
+  });
+
+  it("does not stretch other windows to a long rule's reset", () => {
+    const clock = fixedClock();
+    const limiter = new RateLimiter({ now: clock.now });
+    const rebuild = {
+      ...request,
+      pattern: "/api/v1/spaces/[spaceId]/search/rebuild",
+      method: "POST",
+    };
+
+    // The rebuild rule holds its window for an hour; the default one must still
+    // reset a minute later.
+    expect(checkRateLimit(rebuild, limiter)?.allowed).toBe(true);
+    expect(checkRateLimit(request, limiter)).toMatchObject({
+      allowed: true,
+      remaining: 599,
+    });
+    clock.advance(61 * 1000);
+    expect(checkRateLimit(request, limiter)).toMatchObject({
+      allowed: true,
+      remaining: 599,
+    });
+  });
+
+  it("gives a verified job token a window of its own", () => {
+    const limiter = new RateLimiter();
+    const spaceId = "space-1";
+    const run = {
+      pattern: "/api/v1/spaces/[spaceId]/jobs/run",
+      method: "POST",
+      authorization: undefined,
+      cookie: undefined,
+      // Jobs reach the API over loopback, so every one of them shares this ip.
+      ip: "127.0.0.1",
+      spaceId,
+    };
+    const first = createJobToken(spaceId, String(Date.now()), "user-1");
+    const second = createJobToken(spaceId, String(Date.now() - 1), "user-2");
+
+    const decision = checkRateLimit({ ...run, jobToken: first }, limiter);
+    expect(decision?.key.startsWith("job:")).toBe(true);
+
+    // A second run, and an ordinary caller from the same address, are untouched.
+    for (let i = 0; i < 60; i++) {
+      expect(checkRateLimit({ ...run, jobToken: first }, limiter)?.allowed).toBe(true);
+    }
+    expect(checkRateLimit({ ...run, jobToken: second }, limiter)).toMatchObject({
+      allowed: true,
+      key: expect.not.stringMatching(decision?.key ?? ""),
+    });
+    expect(checkRateLimit(run, limiter)).toMatchObject({
+      allowed: true,
+      key: "ip:127.0.0.1",
+    });
+  });
+
+  it("still bounds a job on the routes that cost the operator", () => {
+    const limiter = new RateLimiter();
+    const spaceId = "space-1";
+    const completions = {
+      pattern: "/api/v1/chat/completions",
+      method: "POST",
+      authorization: undefined,
+      cookie: undefined,
+      ip: "127.0.0.1",
+      spaceId,
+      jobToken: createJobToken(spaceId, String(Date.now()), "user-1"),
+    };
+
+    for (let i = 0; i < 30; i++)
+      expect(checkRateLimit(completions, limiter)?.allowed).toBe(true);
+    expect(checkRateLimit(completions, limiter)).toMatchObject({ allowed: false });
+  });
+
+  it("ignores a job token it did not sign", () => {
+    const limiter = new RateLimiter();
+    const forged = {
+      ...request,
+      spaceId: "space-1",
+      jobToken: `${Date.now()}.-.${"0".repeat(64)}`,
+    };
+
+    // Falls back to the address, rather than minting a window per invention.
+    expect(checkRateLimit(forged, limiter)).toMatchObject({ key: "ip:1.2.3.4" });
+    expect(
+      checkRateLimit(
+        { ...forged, jobToken: createJobToken("other-space", String(Date.now()), null) },
+        limiter,
+      ),
+    ).toMatchObject({ key: "ip:1.2.3.4" });
   });
 
   it("marks over-limit callers as limited rather than blocked", () => {

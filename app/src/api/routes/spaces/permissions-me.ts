@@ -1,6 +1,7 @@
 import { verifyAccess } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
-import { getPermission, getUserGroups, hasFeature } from "#acl/store.ts";
+import { getPermission, hasFeature } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   jsonResponse,
   requireParam,

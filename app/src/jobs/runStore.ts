@@ -6,8 +6,8 @@ import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import {
   assertDocumentCanParent,
-  deleteDocument,
   type DocumentWithProperties,
+  deleteDocument,
   getDocument,
 } from "#db/space/documents.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";

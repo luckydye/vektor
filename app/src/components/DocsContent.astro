@@ -19,7 +19,15 @@ import docsProseStyles from "#styles/docs.css?inline";
 </docs-content>
 
 <script>
-const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+const HTTP_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+]);
 
 /** Splits `GET /spaces/:spaceId` in an endpoint heading into a chip and a path. */
 function markMethods(root: ShadowRoot): void {

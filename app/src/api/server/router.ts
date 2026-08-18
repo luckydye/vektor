@@ -162,6 +162,8 @@ export async function apiRouter(
     authorization: c.req.header("authorization"),
     cookie: c.req.header("cookie"),
     ip: clientIp(c),
+    jobToken: c.req.header("x-job-token"),
+    spaceId: c.req.header("x-space-id") ?? match.params.spaceId,
   });
   if (limit && !limit.allowed) {
     // The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK.

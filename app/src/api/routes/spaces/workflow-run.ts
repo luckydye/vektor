@@ -1,6 +1,7 @@
 import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { filterReadableResources, getUserGroups } from "#acl/store.ts";
+import { filterReadableResources } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   errorResponse,
   jsonResponse,

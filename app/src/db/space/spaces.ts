@@ -6,11 +6,11 @@ import { isInstanceAdmin } from "#acl/instanceGroups.ts";
 import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   countSpaceMembers,
-  getUserGroups,
   grantPermission,
   hasAnyResourceScopedAccess,
   listUserPermissions,
 } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   allocateSpaceDatabase,
   disableSpaceDatabase,

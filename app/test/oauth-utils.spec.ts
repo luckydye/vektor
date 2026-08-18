@@ -24,10 +24,13 @@ describe("normalizeRedirectPath", () => {
     expect(normalizeRedirectPath(path)).toBe(expected);
   });
 
-  it.each([null, undefined, "", "settings", "https://vektor.invalid/settings"])(
-    "rejects non-path redirect %j",
-    (path) => {
-      expect(normalizeRedirectPath(path)).toBeNull();
-    },
-  );
+  it.each([
+    null,
+    undefined,
+    "",
+    "settings",
+    "https://vektor.invalid/settings",
+  ])("rejects non-path redirect %j", (path) => {
+    expect(normalizeRedirectPath(path)).toBeNull();
+  });
 });

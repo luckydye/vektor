@@ -56,9 +56,7 @@ export function generateCreateTableSQL(table: SQLiteTable): string {
   // Reading the column shape silently omitted every FK from generated tables.
   for (const foreignKey of config.foreignKeys) {
     const reference = foreignKey.reference();
-    const localColumns = reference.columns.map((column) =>
-      quoteIdentifier(column.name),
-    );
+    const localColumns = reference.columns.map((column) => quoteIdentifier(column.name));
     const foreignColumns = reference.foreignColumns.map((column) =>
       quoteIdentifier(column.name),
     );

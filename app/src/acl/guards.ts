@@ -26,12 +26,12 @@ import {
   tokenIdFromPrincipal,
 } from "#acl/permissions.ts";
 import {
-  getUserGroups,
   hasAnyResourceScopedAccess,
   hasFeature,
   hasPermission,
   listAccessibleResources,
 } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   badRequestResponse,
   forbiddenResponse,

@@ -20,10 +20,7 @@ const AI_BASE_URL_KEY = "ai:baseUrl";
 
 const AI_PREF_KEYS = [AI_PROVIDER_KEY, AI_MODEL_KEY, AI_BASE_URL_KEY];
 
-const AI_API_KEY_SECRET = spaceSecretKey(
-  spaceSecretNamespaces.secrets,
-  "ai_api_key",
-);
+const AI_API_KEY_SECRET = spaceSecretKey(spaceSecretNamespaces.secrets, "ai_api_key");
 
 export async function getAIProvider(s: SpaceStore): Promise<AIProvider> {
   const prefs = await many(

@@ -3,7 +3,6 @@ import * as Y from "yjs";
 import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { documentLockChangedKind } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
-import { sweepIdleYRooms, yRooms } from "#realtime/yjsRooms.ts";
 import {
   type RealtimeAccessChangedMessage,
   type RealtimeErrorPayload,
@@ -17,6 +16,7 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
+import { sweepIdleYRooms, yRooms } from "#realtime/yjsRooms.ts";
 import {
   createApiRequest,
   createSessionApiRequest,
