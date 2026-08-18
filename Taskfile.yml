@@ -187,6 +187,16 @@ tasks:
     cmds:
       - bun ./scripts/record-onboarding.ts {{.CLI_ARGS}}
 
+  screenshot:website:
+    desc: >
+      Re-shoot the marketing website's product screenshots. Builds the client,
+      boots a disposable in-memory server, seeds a fixture space and photographs
+      four views in light and dark, writing them into the vektor-cloud checkout
+      beside this repo. Run it after the app's chrome changes.
+    dir: ./app
+    cmds:
+      - bun ./scripts/screenshot-website.ts {{.CLI_ARGS}}
+
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.
     deps: [compile]
