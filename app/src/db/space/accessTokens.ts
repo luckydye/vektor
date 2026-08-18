@@ -16,7 +16,10 @@ import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import type { AccessToken, AclEntry } from "#db/schema/space.ts";
 import { acl } from "#db/schema/space.ts";
-import { listAllSpaces } from "./spaces.ts";
+import { listAllSpaces, listUserSpaces } from "./spaces.ts";
+
+/** Ten years: long enough for any standing credential, short enough to expire. */
+export const MAX_ACCESS_TOKEN_EXPIRY_DAYS = 3650;
 
 export interface CreateAccessTokenOptions {
   name: string;
@@ -46,6 +49,13 @@ export interface AccessTokenSummary {
   createdAt: Date;
   createdBy: string | null;
   revokedAt: Date | null;
+}
+
+/** A token as its issuer sees it: which space it opens, and what it grants there. */
+export interface PersonalAccessToken extends AccessTokenSummary {
+  spaceId: string;
+  spaceName: string;
+  resources: TokenResource[];
 }
 
 export interface ValidateTokenResult {
@@ -337,6 +347,62 @@ export async function getAccessToken(
 ): Promise<AccessTokenSummary | null> {
   const [row] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
   return row ? toSummary(row) : null;
+}
+
+/**
+ * The tokens this user minted in this space. Tokens issued by anyone else stay
+ * out: this is the issuer's own listing, not the space's.
+ */
+export async function listAccessTokensCreatedBy(
+  s: SpaceStore,
+  userId: string,
+): Promise<AccessTokenSummary[]> {
+  const rows = await s.db
+    .select()
+    .from(acl)
+    .where(and(isNotNull(acl.token), eq(acl.createdBy, userId)));
+  return rows.map(toSummary);
+}
+
+/**
+ * Every token this user issued, across the spaces they still belong to. A token
+ * in a space they have left is left out — it no longer authenticates anyway,
+ * since resolution caps it at what its issuer can still do.
+ */
+export async function listPersonalAccessTokens(
+  userId: string,
+): Promise<PersonalAccessToken[]> {
+  const tokens: PersonalAccessToken[] = [];
+
+  for (const space of await listUserSpaces(userId)) {
+    const store = await openSpaceStore(space.id);
+    for (const token of await listAccessTokensCreatedBy(store, userId)) {
+      tokens.push({
+        ...token,
+        spaceId: space.id,
+        spaceName: space.name,
+        resources: await listTokenResources(store, token.id),
+      });
+    }
+  }
+
+  return tokens.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+/**
+ * The space holding a token this user issued. Null when no such token exists,
+ * which is also the answer for someone else's token — the caller may only reach
+ * its own.
+ */
+export async function findPersonalTokenSpace(
+  userId: string,
+  tokenId: string,
+): Promise<string | null> {
+  for (const space of await listUserSpaces(userId)) {
+    const token = await getAccessToken(await openSpaceStore(space.id), tokenId);
+    if (token?.createdBy === userId) return space.id;
+  }
+  return null;
 }
 
 /**

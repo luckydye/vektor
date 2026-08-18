@@ -77,6 +77,9 @@ const PUBLIC_ROUTES: Record<string, string> = {
  * assertion below — the response must not mention the fixture space.
  */
 const USER_SCOPED_ROUTES: Record<string, string> = {
+  "/api/v1/access-tokens": "the caller's own tokens, in the spaces it belongs to",
+  "/api/v1/access-tokens/[tokenId]": "reaches only a token the caller issued",
+  "/api/v1/search": "searches only the spaces the caller can read; empty without a session",
   "/api/v1/spaces": "lists only spaces the caller belongs to",
   "/api/v1/users/me": "the caller's own profile",
   "/api/v1/users/suggestions": "invite suggestions from the caller's own groups",

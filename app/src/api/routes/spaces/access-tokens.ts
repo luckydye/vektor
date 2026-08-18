@@ -15,10 +15,9 @@ import {
   createAccessToken,
   listAccessTokens,
   listTokenResources,
+  MAX_ACCESS_TOKEN_EXPIRY_DAYS,
 } from "#db/space/accessTokens.ts";
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
-
-const MAX_ACCESS_TOKEN_EXPIRY_DAYS = 3650;
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens

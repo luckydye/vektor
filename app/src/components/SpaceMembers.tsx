@@ -19,6 +19,12 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
+import {
+  roleBadgeClass,
+  tokenRole,
+  tokenStatus,
+  tokenStatusClass,
+} from "#utils/accessToken.ts";
 import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import "./AvatarElement.ts";
@@ -31,15 +37,6 @@ interface MemberAccess {
   spaceGrant?: PermissionEntry;
   categoryGrants: PermissionEntry[];
   highestRole: string;
-}
-
-function getRoleBadgeClass(role: string): string {
-  const classes: Record<string, string> = {
-    [Permission.OWNER]: "bg-purple-100 text-purple-800",
-    [Permission.EDITOR]: "bg-green-100 text-green-800",
-    [Permission.VIEWER]: "bg-neutral-100 text-neutral-800",
-  };
-  return classes[role] || classes[Permission.VIEWER];
 }
 
 function getHighestRole(grants: PermissionEntry[]): string {
@@ -100,26 +97,6 @@ function isScopedGrant(grant: PermissionEntry): boolean {
 function isSpaceGrant(grant: PermissionEntry): boolean {
   const { resourceType } = grant.permission;
   return !resourceType || resourceType === "space";
-}
-
-/** Whether a token can still be used, and why not when it cannot. */
-function tokenStatus(token: AccessToken): "Active" | "Expired" | "Revoked" {
-  if (token.revokedAt) return "Revoked";
-  if (token.expiresAt && new Date(token.expiresAt) < new Date()) return "Expired";
-  return "Active";
-}
-
-function tokenStatusClass(status: string): string {
-  if (status === "Revoked") return "bg-red-100 text-red-700";
-  if (status === "Expired") return "bg-yellow-100 text-yellow-700";
-  return "bg-green-100 text-green-700";
-}
-
-/** The level a token was granted — its ceiling, not necessarily what it can do. */
-function tokenRole(token: AccessToken): string {
-  const grant = token.resources?.[0];
-  if (!grant) return "none";
-  return grant.resourceType === ResourceType.FEATURE ? "capability" : grant.permission;
 }
 
 function tokenResourceLabel(resource: {
@@ -1087,7 +1064,7 @@ export function SpaceMembers() {
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5">
                           <span
-                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${getRoleBadgeClass(member.highestRole)}`}
+                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(member.highestRole)}`}
                           >
                             {hasMixedRoles(member) ? "Mixed roles" : member.highestRole}
                           </span>
@@ -1128,7 +1105,7 @@ export function SpaceMembers() {
                                         when={canEditMember(grant.permission.userId)}
                                         fallback={
                                           <span
-                                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${getRoleBadgeClass(grant.permission.permission)}`}
+                                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(grant.permission.permission)}`}
                                           >
                                             {grant.permission.permission}
                                           </span>
@@ -1282,7 +1259,7 @@ export function SpaceMembers() {
                       </td>
                       <td class="whitespace-nowrap px-4 py-2.5">
                         <span
-                          class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${getRoleBadgeClass(tokenRole(token))}`}
+                          class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(tokenRole(token))}`}
                         >
                           {tokenRole(token)}
                         </span>

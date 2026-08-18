@@ -1,3 +1,5 @@
+import * as personalAccessToken from "./routes/access-token.ts";
+import * as personalAccessTokens from "./routes/access-tokens.ts";
 import * as authAll from "./routes/auth/all.ts";
 import * as authCli from "./routes/auth/cli.ts";
 import * as authCliToken from "./routes/auth/cli-token.ts";
@@ -202,6 +204,10 @@ export const apiRoutes: ApiRoute[] = [
     pattern: "/api/v1/spaces/[spaceId]/workflows/schedules/[scheduleId]",
     module: workflowSchedule,
   },
+
+  // The caller's own tokens, so nothing in the path identifies whose they are.
+  { pattern: "/api/v1/access-tokens", module: personalAccessTokens },
+  { pattern: "/api/v1/access-tokens/[tokenId]", module: personalAccessToken },
 
   { pattern: "/api/v1/proxy-media", module: proxyMedia },
   { pattern: "/api/v1/search", module: crossSpaceSearch },

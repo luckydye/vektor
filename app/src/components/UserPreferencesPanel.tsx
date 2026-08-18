@@ -1,6 +1,7 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
+import { isPermission } from "#acl/permissions.ts";
 import {
   api,
   type OAuthIntegrationConnection,
@@ -8,6 +9,7 @@ import {
 } from "#api/client.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
@@ -18,6 +20,7 @@ import {
   storeThemePreference,
   type ThemePreference,
 } from "#utils/themePreference.ts";
+import { AccessTokensPanel } from "./AccessTokensPanel.tsx";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
@@ -36,6 +39,7 @@ const tabs = [
   // { id: "cosmetics", label: t("Profile") },
   { id: "notifications", label: t("Notifications") },
   { id: "integrations", label: t("Integrations") },
+  { id: "tokens", label: t("Access Tokens") },
 ];
 
 const themeOptions: { value: ThemePreference; label: string; swatchClass: string }[] = [
@@ -102,7 +106,14 @@ export function UserPreferencesPanel(props: Props) {
   const [notificationPreferenceError, setNotificationPreferenceError] = createSignal<
     string | null
   >(null);
-  const { currentSpace, currentSpaceId } = useSpace();
+  const { currentSpace, currentSpaceId, spaces } = useSpace();
+  const accessTokens = usePersonalAccessTokens();
+
+  // A token delegates its issuer's role on the space, so a space reached only
+  // through a document grant has no role to delegate and cannot mint one.
+  const tokenSpaces = createMemo(() =>
+    (spaces() ?? []).filter((space) => isPermission(space.userRole)),
+  );
 
   const activeSpaceName = createMemo(() => currentSpace()?.name || null);
 
@@ -207,6 +218,17 @@ export function UserPreferencesPanel(props: Props) {
     }
   };
 
+  const revokeToken = (tokenId: string) => {
+    if (!confirm(t("Revoke this token? Anything using it stops working immediately.")))
+      return;
+    void accessTokens.revoke(tokenId);
+  };
+
+  const deleteToken = (tokenId: string) => {
+    if (!confirm(t("Delete this token permanently?"))) return;
+    void accessTokens.remove(tokenId);
+  };
+
   const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
@@ -294,6 +316,9 @@ export function UserPreferencesPanel(props: Props) {
 
       <SettingsLayout
         tabs={tabs}
+        onTabChange={(id) => {
+          if (id === "tokens") void accessTokens.load();
+        }}
         class="min-h-[200px] w-[620px] max-w-[calc(100vw-2rem)]"
         panels={{
           appearance: () => (
@@ -466,6 +491,23 @@ export function UserPreferencesPanel(props: Props) {
                 </Show>
               </Show>
             </section>
+          ),
+
+          tokens: () => (
+            <AccessTokensPanel
+              tokens={accessTokens.tokens()}
+              spaces={tokenSpaces()}
+              defaultSpaceId={currentSpaceId()}
+              isLoading={accessTokens.isLoading()}
+              isCreating={accessTokens.isCreating()}
+              pendingTokenId={accessTokens.pendingTokenId()}
+              createdToken={accessTokens.createdToken()}
+              error={accessTokens.error()}
+              onCreate={accessTokens.create}
+              onDismissCreatedToken={accessTokens.dismissCreatedToken}
+              onRevoke={revokeToken}
+              onDelete={deleteToken}
+            />
           ),
 
           integrations: () => (

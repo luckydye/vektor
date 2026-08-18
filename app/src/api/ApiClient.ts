@@ -318,6 +318,12 @@ export interface AccessToken {
   }>;
 }
 
+/** A token the caller issued for itself, and the space it opens. */
+export interface PersonalAccessToken extends AccessToken {
+  spaceId: string;
+  spaceName: string;
+}
+
 /**
  * One row of the ACL as the permissions endpoint returns it.
  *
@@ -1763,6 +1769,46 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}`,
       );
+    },
+  };
+
+  /**
+   * The caller's own tokens, the kind `vektor login` mints. Separate from
+   * `accessTokens`: those are the space's, listed and minted by its owners.
+   */
+  personalAccessTokens = {
+    get: async () => {
+      return await this.apiGet<{ tokens: PersonalAccessToken[] }>(
+        this.baseUrl,
+        "/api/v1/access-tokens",
+      );
+    },
+
+    /** The token carries the caller's own role on the space; there is nothing to pick. */
+    create: async (body: {
+      name: string;
+      spaceId: string;
+      expiresInDays?: number | null;
+    }) => {
+      return await this.apiPost<{
+        id: string;
+        token: string;
+        spaceId: string;
+        permission: string;
+        message: string;
+      }>(this.baseUrl, "/api/v1/access-tokens", body);
+    },
+
+    revoke: async (tokenId: string) => {
+      return await this.apiPatch<{ message: string }>(
+        this.baseUrl,
+        `/api/v1/access-tokens/${tokenId}`,
+        {},
+      );
+    },
+
+    delete: async (tokenId: string) => {
+      await this.apiDelete(this.baseUrl, `/api/v1/access-tokens/${tokenId}`);
     },
   };
 
