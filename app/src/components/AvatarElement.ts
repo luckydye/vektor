@@ -1,3 +1,4 @@
+import { isCredentialPrincipal } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import eyesOne from "#assets/avatars/parts/eyes/eyes-1.svg?raw";
 import eyesTwo from "#assets/avatars/parts/eyes/eyes-2.svg?raw";
@@ -48,11 +49,10 @@ const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
 const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
-// Access tokens are represented in the ACL as "token:<token-id>" (see
-// getTokenUserId). They are machines, not people, so they get a robot face
-// instead of the hash-selected human features.
+// A credential id in place of a user id: machines and links, not people, so
+// they get a robot face instead of the hash-selected human features.
 function isTokenSeed(seed: string): boolean {
-  return seed.startsWith("token:");
+  return isCredentialPrincipal(seed);
 }
 
 const userCache = new Map<string, { expiresAt: number; user: AvatarUser }>();

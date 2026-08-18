@@ -18,12 +18,12 @@ import {
   type AclViewer,
   allPermissions,
   Feature,
+  isCredentialPrincipal,
   isPermission,
   meetsPermissionLevel,
   Permission,
   PUBLIC_GROUP,
   ResourceType,
-  tokenIdFromPrincipal,
 } from "#acl/permissions.ts";
 import {
   hasAnyResourceScopedAccess,
@@ -44,7 +44,7 @@ import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
-import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
+import { validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
@@ -89,12 +89,12 @@ export async function requireSpace(spaceId: string): Promise<void> {
 
 /**
  * The groups an ACL question resolves against: the `public` group for an
- * unauthenticated caller, none for an access token — its `token:<id>` principal
- * carries its own grants — and the user's own groups otherwise.
+ * unauthenticated caller, none for a credential — its own id carries its grants
+ * — and the user's own groups otherwise.
  */
 async function aclGroups(userId: string | null): Promise<string[] | undefined> {
   if (!userId) return [PUBLIC_GROUP];
-  if (tokenIdFromPrincipal(userId)) return undefined;
+  if (isCredentialPrincipal(userId)) return undefined;
   return await getUserGroups(userId);
 }
 
@@ -107,7 +107,7 @@ type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
  * sessions, access tokens, job tokens and public callers alike.
  *
  * @param userId The {@link SpaceAccess.aclUserId} convention: `null` or `""` is
- *   unauthenticated, `token:<id>` an access token, anything else a user.
+ *   unauthenticated, a `token_` id a credential, anything else a user.
  * @returns The decision, and the role it was actually decided at — which an
  *   archived document raises above the one that was asked for.
  */
@@ -189,9 +189,9 @@ function denialResponse(
 
   // An unauthenticated caller is told to authenticate; anyone else is told no.
   if (!userId) return unauthorizedResponse();
-  if (tokenIdFromPrincipal(userId)) {
+  if (isCredentialPrincipal(userId)) {
     return forbiddenResponse(
-      `Token does not have ${decided.requiredRole} permission for this ${target.type}`,
+      `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
     );
   }
   return forbiddenResponse();
@@ -221,7 +221,7 @@ export async function canAccess(
  *    and remains fully trusted within its space;
  *  - a space access token (`Authorization: Bearer at_...`) — a long-lived
  *    credential that remains valid while its creator belongs to the space and
- *    whose authority is defined by its ACL entries (`token:<id>`); or
+ *    whose authority is defined by the ACL entries under its id; or
  *  - a logged-in user session.
  *
  * For every credential that carries a user identity we MUST verify it actually
@@ -255,15 +255,15 @@ export async function authenticateJobTokenOrSpaceRole(
   const tokenResult = await authenticateWithToken(context, spaceId);
   if (tokenResult) {
     // Access tokens are NOT trusted job tokens: their authority is whatever the
-    // ACL grants `token:<id>`. Enforce the required role before proceeding,
+    // ACL grants that token's id. Enforce the required role before proceeding,
     // otherwise any valid (even viewer-scoped) token passes write gates.
     await verifyAccess(
       spaceId,
       { type: target.type, id: target.id },
-      getTokenUserId(tokenResult.tokenId),
+      tokenResult.tokenId,
       requiredRole,
     );
-    return { type: "job", userId: getTokenUserId(tokenResult.tokenId) };
+    return { type: "job", userId: tokenResult.tokenId };
   }
 
   const user = requireUser(context);
@@ -314,10 +314,10 @@ export async function authenticateDocumentAccess(
     await verifyAccess(
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
-      getTokenUserId(auth.token.tokenId),
+      auth.token.tokenId,
       requiredRole,
     );
-    return { aclUserId: getTokenUserId(auth.token.tokenId) };
+    return { aclUserId: auth.token.tokenId };
   }
   if (auth?.type === "user") {
     await verifyAccess(
@@ -451,7 +451,7 @@ async function spaceRoleOrResourceScope(
  *  - **HMAC job token** (`X-Job-Token`): user-scoped tokens are verified
  *    against the user's real role; user-less system tokens are trusted.
  *  - **Access token** (`Authorization: Bearer at_…`): verified via ACL
- *    (`token:<id>` identity).
+ *    (the token's own id as the identity).
  *  - **User session**: verified against the space role.
  *  - **Unauthenticated**: admitted when the `public` group holds
  *    `requiredRole` on the space; otherwise throws 401.
@@ -541,7 +541,7 @@ export async function authenticateSpaceAccess(
     };
   }
   if (auth?.type === "token") {
-    const tokenUserId = getTokenUserId(auth.token.tokenId);
+    const tokenUserId = auth.token.tokenId;
     const resourceScope = await spaceRoleOrResourceScope(
       spaceId,
       tokenUserId,
@@ -552,7 +552,7 @@ export async function authenticateSpaceAccess(
         verifyAccess(
           spaceId,
           { type: ResourceType.SPACE, id: spaceId },
-          getTokenUserId(auth.token.tokenId),
+          auth.token.tokenId,
           requiredRole,
         ),
     );
@@ -678,7 +678,7 @@ export interface RevisionAccess {
  *
  * @param userId The {@link SpaceAccess.aclUserId} convention: `null` is a
  *   trusted system caller, `""` is public. An access token passes
- *   `getTokenUserId(tokenId)`, which is its ACL identity.
+ *   `tokenId`, which is its ACL identity.
  * @param revs The revisions whose **content** is about to be served. Omit for a
  *   listing of the whole history, which gets no snapshot exemption.
  */
@@ -792,7 +792,7 @@ export function extractAccessToken(context: ApiContext): string | null {
  *   const canEdit = await canAccess(
  *     spaceId,
  *     { type: ResourceType.DOCUMENT, id: documentId },
- *     getTokenUserId(tokenAuth.tokenId),
+ *     tokenAuth.tokenId,
  *     Permission.EDITOR
  *   );
  * }
@@ -825,7 +825,7 @@ export async function verifyTokenFeature(
   spaceId: string,
   feature: Feature,
 ): Promise<void> {
-  const tokenUserId = getTokenUserId(tokenResult.tokenId);
+  const tokenUserId = tokenResult.tokenId;
   const hasIt = await hasFeature(spaceId, feature, tokenUserId);
   if (!hasIt) {
     throw forbiddenResponse(

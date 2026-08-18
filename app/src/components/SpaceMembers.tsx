@@ -2,6 +2,7 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import {
   Feature,
   highestPermission,
+  isCredentialPrincipal,
   isOwner,
   Permission,
   permissionLevel,
@@ -462,7 +463,7 @@ export function SpaceMembers() {
       if (!memberId) continue;
       // Tokens are grants too, but they are listed from the token endpoint
       // below, which knows their name and whether they still work.
-      if (perm.permission.userId?.startsWith("token:")) continue;
+      if (isCredentialPrincipal(perm.permission.userId)) continue;
 
       const key = `${perm.permission.userId ? "user" : "group"}:${memberId}`;
       const existing = accessByMember.get(key);
@@ -1215,7 +1216,7 @@ export function SpaceMembers() {
                     <tr class="hover:bg-neutral-50">
                       <td class="px-4 py-2.5">
                         <div class="flex items-center gap-3">
-                          <vektor-avatar size="28" attr:user-id={`token:${token.id}`} />
+                          <vektor-avatar size="28" attr:user-id={token.id} />
                           <div>
                             <div class="flex items-center gap-2">
                               <span class="font-medium text-neutral-900">

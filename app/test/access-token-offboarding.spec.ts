@@ -275,7 +275,7 @@ describe("access-token creator lifecycle", () => {
   it("removes a token's grant when the token is deleted", async () => {
     await grantDelegateOwnership();
     const token = await createDelegateToken("to be deleted");
-    expect(await granteeIds()).toContain(`token:${token.id}`);
+    expect(await granteeIds()).toContain(token.id);
 
     const deleted = await apiRequest(
       `/api/v1/spaces/${spaceId}/access-tokens/${token.id}`,
@@ -284,7 +284,7 @@ describe("access-token creator lifecycle", () => {
     );
     expect(deleted.status).toBe(200);
 
-    expect(await granteeIds()).not.toContain(`token:${token.id}`);
+    expect(await granteeIds()).not.toContain(token.id);
     expect((await readDocumentWithToken(token.token)).status).toBe(401);
   });
 });
@@ -295,8 +295,7 @@ describe("access-token audit trail", () => {
     const token = await createDelegateToken("audited mint");
 
     const entry = (await spaceAuditLogs()).find(
-      (log) =>
-        log.event === "acl_grant" && log.details?.targetUserId === `token:${token.id}`,
+      (log) => log.event === "acl_grant" && log.details?.targetUserId === token.id,
     );
 
     expect(entry).toBeDefined();
@@ -321,8 +320,7 @@ describe("access-token audit trail", () => {
     // Re-revoking is a success for the caller but changes nothing, so it must
     // not write a second entry.
     const entries = (await spaceAuditLogs()).filter(
-      (log) =>
-        log.event === "acl_revoke" && log.details?.targetUserId === `token:${token.id}`,
+      (log) => log.event === "acl_revoke" && log.details?.targetUserId === token.id,
     );
 
     expect(entries).toHaveLength(1);
@@ -357,8 +355,7 @@ describe("access-token audit trail", () => {
     const revokes = await spaceAuditLogs();
     const entriesFor = (id: string) =>
       revokes.filter(
-        (log) =>
-          log.event === "acl_revoke" && log.details?.targetUserId === `token:${id}`,
+        (log) => log.event === "acl_revoke" && log.details?.targetUserId === id,
       );
 
     expect(entriesFor(live.id)).toHaveLength(1);

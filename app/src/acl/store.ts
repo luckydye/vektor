@@ -1,9 +1,10 @@
-import { and, eq, inArray, isNotNull, isNull, like, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, like, or } from "drizzle-orm";
 import { isInstanceAdmin } from "#acl/instanceGroups.ts";
 import {
   type AclViewer,
   type Feature,
   GROUP_NAME_PATTERN,
+  isCredentialPrincipal,
   isPermission,
   meetsPermissionLevel,
   Permission,
@@ -13,7 +14,6 @@ import {
   ResourceType,
   resolveFeature,
   strongestGrant,
-  tokenIdFromPrincipal,
   weakerPermission,
 } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
@@ -45,8 +45,10 @@ type AclRow = {
   permission: string;
   createdAt: Date;
   updatedAt: Date;
-  /** Set only on a token row: the issuer whose access bounds this grant. */
+  /** Set only on a credential row: the issuer whose access bounds this grant. */
   createdBy?: string | null;
+  /** Set only on a credential row: which credential it carries. */
+  kind?: string | null;
 };
 
 /**
@@ -176,12 +178,12 @@ export async function logAclChange(
   const isDocumentScoped =
     params.resourceType === ResourceType.DOCUMENT ||
     params.resourceType === ResourceType.DOCUMENT_TREE;
-  // A token principal has no row in the user table, so don't look one up — and
-  // don't call it a user in the log either.
-  const tokenId = tokenIdFromPrincipal(params.userId);
-  const targetName = tokenId ? undefined : await resolveGranteeName(params.userId);
-  const target = tokenId
-    ? `token ${tokenId}`
+  // A credential has no row in the user table, so don't look one up — and don't
+  // call it a user in the log either.
+  const isCredential = isCredentialPrincipal(params.userId);
+  const targetName = isCredential ? undefined : await resolveGranteeName(params.userId);
+  const target = isCredential
+    ? `credential ${params.userId}`
     : params.userId
       ? `user ${targetName ?? params.userId}`
       : `group ${params.groupId}`;
@@ -339,10 +341,15 @@ export async function revokePermission(
 }
 
 /**
- * A revoked credential keeps its row so the revocation is reversible, but it
- * must stop authorizing. Every read of `acl` carries this.
+ * A revoked or expired grant keeps its row but stops authorizing; every read of
+ * `acl` carries this. A function, so `now` is the request's and not the boot's.
  */
-const live = isNull(acl.revokedAt);
+function live() {
+  return and(
+    isNull(acl.revokedAt),
+    or(isNull(acl.expiresAt), gt(acl.expiresAt, new Date())),
+  );
+}
 
 interface TokenIssuer {
   id: string;
@@ -357,14 +364,14 @@ async function tokenIssuer(
   spaceId: string,
   principalId: string,
 ): Promise<TokenIssuer | null> {
-  if (!tokenIdFromPrincipal(principalId)) return null;
+  if (!isCredentialPrincipal(principalId)) return null;
 
   const { db } = await openSpaceStore(spaceId);
   const row = await one(
     db
-      .select({ createdBy: acl.createdBy })
+      .select({ createdBy: acl.createdBy, kind: acl.kind })
       .from(acl)
-      .where(and(eq(acl.userId, principalId), isNotNull(acl.token))),
+      .where(and(eq(acl.userId, principalId), isNotNull(acl.kind))),
   );
 
   if (!row?.createdBy) return null;
@@ -483,7 +490,7 @@ export async function getPermission(
           eq(acl.resourceId, resourceId),
           eq(acl.userId, userId),
           isNull(acl.groupId),
-          live,
+          live(),
         ),
       ),
   );
@@ -507,7 +514,7 @@ export async function getPermission(
           eq(acl.resourceId, resourceId),
           isNull(acl.userId),
           inArray(acl.groupId, effectiveGroups),
-          live,
+          live(),
         ),
       ),
   );
@@ -554,7 +561,7 @@ async function getBestPermissionForResourceIds(
           inArray(acl.resourceId, resourceIds),
           eq(acl.userId, userId),
           isNull(acl.groupId),
-          live,
+          live(),
         ),
       ),
   );
@@ -573,7 +580,7 @@ async function getBestPermissionForResourceIds(
           inArray(acl.resourceId, resourceIds),
           isNull(acl.userId),
           inArray(acl.groupId, effectiveGroups),
-          live,
+          live(),
         ),
       ),
   );
@@ -800,6 +807,12 @@ export async function listDocumentAccess(
     { userId?: string; groupId?: string; grants: DocumentAccessGrant[] }
   >();
   for (const row of rows) {
+    // People and groups holding a role, and nothing else. A credential sits in
+    // this table under its own id and would read as a person, and a feature —
+    // or the legacy "extensions" pseudo-permission — is not a level of access
+    // to report as one.
+    if (isCredentialPrincipal(row.userId) || !isPermission(row.permission)) continue;
+
     const grantee = row.userId
       ? { key: `user:${row.userId}`, userId: row.userId }
       : row.groupId
@@ -990,7 +1003,7 @@ export async function hasAnyResourceScopedAccess(
     db
       .select({ resourceType: acl.resourceType, resourceId: acl.resourceId })
       .from(acl)
-      .where(and(resourceTypeCondition, live, or(...granteeConditions)))
+      .where(and(resourceTypeCondition, live(), or(...granteeConditions)))
       .limit(1),
   );
 
@@ -1192,7 +1205,7 @@ export async function hasFeature(
           eq(acl.resourceId, feature),
           eq(acl.userId, userId),
           isNull(acl.groupId),
-          live,
+          live(),
         ),
       ),
   );
@@ -1214,7 +1227,7 @@ export async function hasFeature(
           eq(acl.resourceId, feature),
           isNull(acl.userId),
           inArray(acl.groupId, effectiveGroups),
-          live,
+          live(),
         ),
       ),
   );
@@ -1371,7 +1384,7 @@ async function resolveAccessibleResources(
     return null;
   }
 
-  const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType), live];
+  const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType), live()];
 
   if (validPermissions) {
     conditions.push(inArray(acl.permission, validPermissions));
@@ -1390,7 +1403,7 @@ async function resolveAccessibleResources(
       isNull(acl.userId),
       inArray(acl.groupId, effectiveGroups),
       eq(acl.resourceType, resourceType),
-      live,
+      live(),
     ];
 
     if (validPermissions) {
@@ -1414,7 +1427,7 @@ async function resolveAccessibleResources(
         and(eq(acl.userId, userId), isNull(acl.groupId)),
         and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
       ),
-      live,
+      live(),
     ];
 
     if (validPermissions) {
@@ -1443,7 +1456,7 @@ async function resolveAccessibleResources(
         and(eq(acl.userId, userId), isNull(acl.groupId)),
         and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
       ),
-      live,
+      live(),
     ];
 
     if (validPermissions) {
@@ -1563,7 +1576,7 @@ async function resolveReadableResources(
             and(eq(acl.userId, userId), isNull(acl.groupId)),
             and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
           ),
-          live,
+          live(),
         ),
       ),
   );
@@ -1593,7 +1606,7 @@ async function resolveReadableResources(
               and(eq(acl.userId, userId), isNull(acl.groupId)),
               and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
             ),
-            live,
+            live(),
           ),
         ),
     );
@@ -1623,7 +1636,7 @@ async function resolveReadableResources(
               and(eq(acl.userId, userId), isNull(acl.groupId)),
               and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
             ),
-            live,
+            live(),
           ),
         ),
     );
@@ -1752,7 +1765,7 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
   for (const entry of results) {
     // A token holds a grant but is not a member — it is a credential one of
     // them issued, and counting it would inflate the space's membership.
-    if (entry.userId && !tokenIdFromPrincipal(entry.userId)) {
+    if (entry.userId && !isCredentialPrincipal(entry.userId)) {
       memberIds.add(entry.userId);
     }
     if (entry.groupId) {

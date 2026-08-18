@@ -85,10 +85,11 @@ accepts.
 | Job token | `X-Job-Token` | extension jobs, workflow runs, the AI agent calling back in |
 | None | — | readers of a resource shared with the `public` group |
 
-An access token carries only the ACL grants recorded for `token:<tokenId>`, and cannot be
-issued with more access than its issuer holds. Job tokens are minted by the server rather
-than by clients: one carrying a user id is limited to what that user may do, and one
-without a user id is a background credential, valid only inside its own space.
+An access token is an identity of its own in the ACL, named by its id (`token_…`), so it
+holds grants rather than borrowing an account's, and it cannot be issued with more access
+than its issuer holds. Job tokens are minted by the server rather than by clients: one
+carrying a user id is limited to what that user may do, and one without a user id is a
+background credential, valid only inside its own space.
 
 ## Authorization
 

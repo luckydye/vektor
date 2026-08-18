@@ -16,7 +16,6 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import {
   CategorySlugTakenError,
   deleteCategory,
@@ -49,7 +48,7 @@ async function verifyCategoryRead(
     await verifyAccess(
       spaceId,
       { type: ResourceType.CATEGORY, id: id },
-      getTokenUserId(auth.token.tokenId),
+      auth.token.tokenId,
       Permission.VIEWER,
     );
     return;

@@ -26,7 +26,6 @@ import { getSpaceDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import {
   archiveDocument,
@@ -425,10 +424,10 @@ export const PUT: ApiRouteHandler = (context) =>
         await verifyAccess(
           spaceId,
           { type: ResourceType.DOCUMENT, id: id },
-          getTokenUserId(auth.token.tokenId),
+          auth.token.tokenId,
           Permission.EDITOR,
         );
-        userId = getTokenUserId(auth.token.tokenId);
+        userId = auth.token.tokenId;
       } else {
         await verifyAccess(
           spaceId,

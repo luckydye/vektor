@@ -9,8 +9,8 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import { Permission, ResourceType, TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
+import { and, eq, isNull } from "drizzle-orm";
+import { AclKind, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasPermission, logAclChange } from "#acl/store.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -73,26 +73,19 @@ function generateToken(): string {
   return `at_${randomHex}`;
 }
 
-/**
- * Hash a token for secure storage
- */
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+/** Hash a token's string for storage. */
+function hashSecret(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex");
 }
 
-/** A token's identity in the ACL system. What it holds there is a ceiling. */
-export function getTokenUserId(tokenId: string): string {
-  return `${TOKEN_PRINCIPAL_PREFIX}${tokenId}`;
-}
-
-/** Matches the one row that is this token. */
+/** Matches the one row that is this token, and never a grant carrying no credential. */
 function tokenRow(tokenId: string) {
-  return and(eq(acl.userId, getTokenUserId(tokenId)), isNotNull(acl.token));
+  return and(eq(acl.userId, tokenId), eq(acl.kind, AclKind.TOKEN));
 }
 
 function toSummary(row: AclEntry): AccessTokenSummary {
   return {
-    id: row.userId?.slice(TOKEN_PRINCIPAL_PREFIX.length) ?? "",
+    id: row.userId ?? "",
     name: row.name,
     expiresAt: row.expiresAt,
     lastUsedAt: row.lastUsedAt,
@@ -128,13 +121,14 @@ export async function createAccessToken(
   await s.db.insert(acl).values({
     resourceType: options.resourceType,
     resourceId: options.resourceId,
-    userId: getTokenUserId(id),
+    userId: id,
     groupId: null,
     permission: options.permission,
     createdAt: now,
     updatedAt: now,
     name: options.name,
-    token: hashToken(token),
+    secret: hashSecret(token),
+    kind: AclKind.TOKEN,
     expiresAt: options.expiresAt,
     lastUsedAt: null,
     createdBy: options.createdBy,
@@ -145,7 +139,7 @@ export async function createAccessToken(
     event: "acl_grant",
     resourceType: options.resourceType,
     resourceId: options.resourceId,
-    userId: getTokenUserId(id),
+    userId: id,
     permission: options.permission,
     actorUserId: options.createdBy,
   });
@@ -188,7 +182,7 @@ export async function grantTokenAccess(
       event: "acl_revoke",
       resourceType: previous.resourceType as ResourceType,
       resourceId: previous.resourceId,
-      userId: getTokenUserId(tokenId),
+      userId: tokenId,
       previousPermission: previous.permission,
       actorUserId,
     });
@@ -199,7 +193,7 @@ export async function grantTokenAccess(
       event: "acl_grant",
       resourceType,
       resourceId,
-      userId: getTokenUserId(tokenId),
+      userId: tokenId,
       permission,
       previousPermission: rescoped ? undefined : previous.permission,
       actorUserId,
@@ -251,10 +245,16 @@ export async function validateAccessToken(
   const [result] = await s.db
     .select()
     .from(acl)
-    .where(and(eq(acl.token, hashToken(token)), isNull(acl.revokedAt)))
+    .where(
+      and(
+        eq(acl.secret, hashSecret(token)),
+        eq(acl.kind, AclKind.TOKEN),
+        isNull(acl.revokedAt),
+      ),
+    )
     .limit(1);
 
-  if (!result?.token || !result.createdBy || !result.userId) {
+  if (!result?.secret || !result.createdBy || !result.userId) {
     return null;
   }
 
@@ -263,7 +263,7 @@ export async function validateAccessToken(
     return null;
   }
 
-  const tokenId = result.userId.slice(TOKEN_PRINCIPAL_PREFIX.length);
+  const tokenId = result.userId;
 
   // Access tokens are delegations made by a space member, not independent
   // service accounts. If the creator no longer belongs to the space, revoke
@@ -285,7 +285,7 @@ export async function validateAccessToken(
   await s.db.update(acl).set({ lastUsedAt: new Date() }).where(tokenRow(tokenId));
 
   return {
-    token: { ...result, token: result.token, createdBy: result.createdBy },
+    token: { ...result, secret: result.secret, createdBy: result.createdBy },
     tokenId,
   };
 }
@@ -320,7 +320,7 @@ export async function revokeAccessToken(
       event: "acl_revoke",
       resourceType: previous.resourceType as ResourceType,
       resourceId: previous.resourceId,
-      userId: getTokenUserId(tokenId),
+      userId: tokenId,
       previousPermission: previous.permission,
       actorUserId,
     });
@@ -334,7 +334,7 @@ export async function revokeAccessToken(
  * Returns tokens without the actual token value (only metadata)
  */
 export async function listAccessTokens(s: SpaceStore): Promise<AccessTokenSummary[]> {
-  const rows = await s.db.select().from(acl).where(isNotNull(acl.token));
+  const rows = await s.db.select().from(acl).where(eq(acl.kind, AclKind.TOKEN));
   return rows.map(toSummary);
 }
 
@@ -361,7 +361,7 @@ export async function listAccessTokensCreatedBy(
   const rows = await s.db
     .select()
     .from(acl)
-    .where(and(isNotNull(acl.token), eq(acl.createdBy, userId)));
+    .where(and(eq(acl.kind, AclKind.TOKEN), eq(acl.createdBy, userId)));
   return rows.map(toSummary);
 }
 
@@ -443,7 +443,7 @@ export async function deleteAccessToken(
       event: "acl_revoke",
       resourceType: deleted.resourceType as ResourceType,
       resourceId: deleted.resourceId,
-      userId: getTokenUserId(tokenId),
+      userId: tokenId,
       previousPermission: deleted.permission,
       actorUserId,
     });

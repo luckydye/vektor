@@ -3617,6 +3617,44 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(403);
   });
 
+  // A feature grant lives in the acl table like a role does, so an unfiltered
+  // list reports it as that person's level of access to the document.
+  it("lists a feature grant as access, not as a person's role", async () => {
+    const featureUser = await createAclTestUser("Comment Only Grantee");
+    const feature = await apiRequest(
+      `/api/v1/spaces/${spaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          action: "grant",
+          roleOrFeature: "comment",
+          userId: featureUser.userId,
+          resourceType: "document",
+          resourceId: childId,
+        }),
+      },
+    );
+    expect(feature.status).toBe(200);
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
+      session1Token,
+    );
+    expect(response.status).toBe(200);
+
+    const { access } = await response.json();
+    expect(access.map((entry: { userId?: string }) => entry.userId)).not.toContain(
+      featureUser.userId,
+    );
+    expect(
+      access.flatMap((entry: { grants: { permission: string }[] }) =>
+        entry.grants.map((grant) => grant.permission),
+      ),
+    ).not.toContain("comment");
+  });
+
   // Sharing a document as viewer with someone who already outranks that — the
   // space owner most of all — used to lock them out of their own document,
   // including out of the sharing screen needed to take the grant back.

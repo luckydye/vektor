@@ -77,7 +77,7 @@ export function AccessTokensPanel(props: Props) {
   }
 
   async function copyToken() {
-    const value = props.createdToken;
+    const value = props.createdToken; // solid-reactivity-ok: click handler, reads per click
     if (!value) return;
     await navigator.clipboard.writeText(value);
     setCopied(true);

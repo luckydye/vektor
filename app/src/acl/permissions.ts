@@ -63,14 +63,29 @@ export type FeatureOverrides = Partial<Record<FeatureName, boolean>>;
  */
 export const PUBLIC_GROUP = "public";
 
-/** How an access token appears in the `acl.user_id` column. */
-export const TOKEN_PRINCIPAL_PREFIX = "token:";
+/**
+ * An `acl.user_id` that is a credential's id rather than a person's. Ids carry
+ * their type (`db/ids.ts`), and an account id from the IdP carries no underscore
+ * at all, so the id alone says which it is — which is why a credential no longer
+ * needs a synthetic `token:` prefix to be told from a person.
+ */
+const CREDENTIAL_ID_PREFIXES = ["token_"];
 
-/** The token id behind an ACL identity, or null when it is a plain user id. */
-export function tokenIdFromPrincipal(userId: string | undefined): string | null {
-  if (!userId?.startsWith(TOKEN_PRINCIPAL_PREFIX)) return null;
-  return userId.slice(TOKEN_PRINCIPAL_PREFIX.length) || null;
+export function isCredentialPrincipal(userId: string | null | undefined): boolean {
+  return CREDENTIAL_ID_PREFIXES.some((prefix) => userId?.startsWith(prefix) ?? false);
 }
+
+/**
+ * What credential a row carries, and so how its `secret` reads; null on an
+ * ordinary grant. One kind today, named rather than inferred from `secret`
+ * being set, so a second one is a row's own statement about itself and not a
+ * guess every read has to repeat.
+ */
+export const AclKind = {
+  TOKEN: "token",
+} as const;
+
+export type AclKind = (typeof AclKind)[keyof typeof AclKind];
 
 /**
  * Canonical shape of a group name. Group membership drives ACL access, so

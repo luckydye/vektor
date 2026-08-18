@@ -81,7 +81,9 @@ override a document-level `editor`.
   A grant to it is what makes a space, tree, category or document world-readable, and it
   is the only way an anonymous request gets past a guard. Write paths still require a
   real user, so `public: editor` reads as public *read* plus nothing.
-- **An access token** — the identity `token:<tokenId>`, never a role of its own.
+- **A credential** — an access token, named by its own id (`token_…`), never by a role
+  of its own. An account id from the IdP carries no underscore, so a credential
+  principal is never mistaken for a person's.
 
 ## Granting and revoking
 
@@ -112,7 +114,7 @@ grant is always evaluated against the privilege the caller already held.
 
 ## Access tokens
 
-A token authenticates as `token:<tokenId>` and carries exactly the grants written for
+A token authenticates as its own id and carries exactly the grants written for
 that identity — a token is scoped by ACL entries, not by the role of the person who
 created it. Creating and scoping tokens is owner-only.
 
