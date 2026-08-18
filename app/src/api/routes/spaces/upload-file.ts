@@ -82,7 +82,6 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const mimeType = MIME_TYPES[extension] || "application/octet-stream";
-
       const storage = getFileStorage();
 
       // If transform params are present, serve via the transform+cache path.

@@ -50,6 +50,8 @@ import * as searchRebuild from "./routes/spaces/search-rebuild.ts";
 import * as secret from "./routes/spaces/secret.ts";
 import * as secrets from "./routes/spaces/secrets.ts";
 import * as settingsAiProvider from "./routes/spaces/settings-ai-provider.ts";
+import * as shareLink from "./routes/spaces/share-link.ts";
+import * as shareLinks from "./routes/spaces/share-links.ts";
 import * as space from "./routes/spaces/space.ts";
 import * as spaces from "./routes/spaces/spaces.ts";
 import * as uploadFile from "./routes/spaces/upload-file.ts";
@@ -193,6 +195,9 @@ export const apiRoutes: ApiRoute[] = [
     pattern: "/api/v1/spaces/[spaceId]/settings/ai-provider",
     module: settingsAiProvider,
   },
+
+  { pattern: "/api/v1/spaces/[spaceId]/share-links", module: shareLinks },
+  { pattern: "/api/v1/spaces/[spaceId]/share-links/[linkId]", module: shareLink },
 
   { pattern: "/api/v1/spaces/[spaceId]/uploads", module: uploads },
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },

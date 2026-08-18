@@ -81,9 +81,10 @@ override a document-level `editor`.
   A grant to it is what makes a space, tree, category or document world-readable, and it
   is the only way an anonymous request gets past a guard. Write paths still require a
   real user, so `public: editor` reads as public *read* plus nothing.
-- **A credential** — an access token, named by its own id (`token_…`), never by a role
-  of its own. It has no groups but resolves against `public` like anyone else, so its
-  reach is its own grants plus whatever is world-readable.
+- **A credential** — an access token or a share link, named by its own id and marked
+  by its row's `kind`, never by a role of its own. It has no groups but resolves
+  against `public` like anyone else, so its reach is its own grants plus whatever is
+  world-readable.
 
 ## Granting and revoking
 
@@ -125,6 +126,50 @@ strictly less than the person who issued it.
 
 A token stops working when its creator stops belonging to the space, so offboarding a
 person also retires what they minted, without an owner having to find it.
+
+## Share links
+
+A share link is the same kind of row as an access token — a grant carrying a credential.
+`kind` says which it is (`link`, `token`, or null on a grant carrying none), and three
+differences follow from it, enforced on every read and write either side makes:
+
+- **An editor mints one.** Sharing a document or a tree is already an editor's to do,
+  and a link is that share handed to whoever holds the URL. Access tokens stay
+  owner-only, which is why the two never resolve through each other's endpoints.
+- **It is always `viewer`, and only on a `document` or a `document_tree`.** A link
+  cannot carry write access, so the rule that writes need a real user is untouched.
+- **It outlives its creator.** An access token dies when its issuer leaves the space;
+  a link does not, and is not capped at what its issuer still holds. What retires it
+  instead is its expiry, which is required rather than optional.
+
+The link's id is its URL (`/s/:linkId`), so possession of the URL is access — it appears
+in server logs like any other path. A password adds an HTTP Basic challenge on top: the
+id resolves the link, the password admits the caller, and an id that resolves nothing is
+a `404` before any challenge, so the prompt never advertises a link that is not there.
+
+The password's verifier is what the row's `secret` column holds, which is the column
+`kind` decides the reading of — an Argon2id verifier here, the SHA-256 of the token
+string under `kind = 'token'`, and null on a link that asks for no password.
+
+A link serves a read-only render of the page rather than the application, so its holder
+gets no realtime, presence or comments.
+
+Serving that page hands back a `vektor.share_links` cookie naming the link, because the
+requests the page then makes — for its images and attachments — go to `/api`, which
+neither the share URL nor an HTTP Basic challenge reaches. The cookie makes them
+authenticated requests: `authenticateDocumentAccess` resolves it to the link's id,
+below a session and an access token and above the `public` fallback, so a link never
+takes anything away from a caller who is already someone. Every check downstream is the
+one any other viewer of that document meets, and the link is re-read on each request, so
+revoking it stops the attachments with the page rather than whenever the cookie expires.
+
+Revoking a link is a soft revoke, like a token's.
+
+## Expiry
+
+Any grant may carry an `expires_at`, and every ACL read excludes a row that has passed
+it, exactly as it excludes a revoked one. Nothing is removed when it lapses, so
+extending the date brings the access back.
 
 ## Archived documents
 

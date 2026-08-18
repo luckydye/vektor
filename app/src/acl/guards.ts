@@ -5,9 +5,9 @@
  * an identity may act on a resource; {@link verifyAccess} throws that decision
  * and {@link canAccess} returns it as a boolean, and there is no third way to
  * ask. `authenticate*` sits on top, resolving whichever credential the request
- * carries (job token, access token, session, or none) to an identity first.
- * Guards throw a 401/403/404 Response rather than returning a decision, so a
- * route that forgets the failure path fails closed.
+ * carries (job token, access token, session, share link, or none) to an identity
+ * first. Guards throw a 401/403/404 Response rather than returning a decision,
+ * so a route that forgets the failure path fails closed.
  *
  * Features are the exception: {@link verifyFeatureAccess} and
  * {@link verifyRevisionAccess} ask about a capability rather than a resource.
@@ -45,6 +45,12 @@ import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { hasCredentialGrant, validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
+import {
+  findShareLink,
+  markShareLinkUsed,
+  validateShareLink,
+  verifyShareLinkPassword,
+} from "#db/space/shareLinks.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
 /** Distinguishes an access decision from a failure to read the ACL. */
@@ -111,7 +117,7 @@ type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
  * sessions, access tokens, job tokens and public callers alike.
  *
  * @param userId The {@link SpaceAccess.aclUserId} convention: `null` or `""` is
- *   unauthenticated, a `token_` id a credential, anything else a user.
+ *   unauthenticated, a `token_`/`share_` id a credential, anything else a user.
  * @returns The decision, and the role it was actually decided at — which an
  *   archived document raises above the one that was asked for.
  */
@@ -335,6 +341,19 @@ export async function authenticateDocumentAccess(
       requiredRole,
     );
     return { aclUserId: auth.user.id };
+  }
+
+  // Below a session and a token: a link never downgrades a caller who is
+  // already someone.
+  const shareLink = await shareLinkPrincipal(context, spaceId);
+  if (shareLink) {
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      shareLink,
+      requiredRole,
+    );
+    return { aclUserId: shareLink };
   }
 
   // Unauthenticated — the document check handles the `public` group.
@@ -821,6 +840,111 @@ export async function authenticateWithToken(
   }
 
   return result;
+}
+
+/**
+ * The cookie a share link is carried in once its page has been served. A shared
+ * page's own requests go to `/api`, which neither the share URL nor its Basic
+ * challenge reaches.
+ */
+export const SHARE_COOKIE = "vektor.share_links";
+
+const MAX_CARRIED_SHARE_LINKS = 5;
+
+/** The links a request carries, most recent first — a visitor may hold several. */
+export function shareLinkIdsFromCookie(cookie: string | null | undefined): string[] {
+  const value = cookie
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${SHARE_COOKIE}=`))
+    ?.slice(SHARE_COOKIE.length + 1);
+  if (!value) return [];
+
+  return decodeURIComponent(value)
+    .split(",")
+    .filter((id) => /^[A-Za-z0-9_-]{1,64}$/.test(id))
+    .slice(0, MAX_CARRIED_SHARE_LINKS);
+}
+
+/** As above, plus `linkId` at the front, for handing back to the browser. */
+export function withShareLinkId(cookie: string | null | undefined, linkId: string) {
+  const carried = shareLinkIdsFromCookie(cookie).filter((id) => id !== linkId);
+  return [linkId, ...carried].slice(0, MAX_CARRIED_SHARE_LINKS).join(",");
+}
+
+/** The identity a share cookie resolves to here. Re-read per request, so a
+ * revoke lands at once. */
+async function shareLinkPrincipal(
+  context: ApiContext,
+  spaceId: string,
+): Promise<string | null> {
+  const linkIds = shareLinkIdsFromCookie(context.req.raw.headers.get("cookie"));
+  if (linkIds.length === 0) return null;
+
+  const store = await openSpaceStore(spaceId);
+  for (const linkId of linkIds) {
+    if (await validateShareLink(store, linkId)) return linkId;
+  }
+  return null;
+}
+
+/** The HTTP Basic password on a request, or null when it carries none. */
+function basicAuthPassword(header: string | null): string | null {
+  if (!header?.startsWith("Basic ")) return null;
+  const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+  const separator = decoded.indexOf(":");
+  return separator === -1 ? null : decoded.slice(separator + 1);
+}
+
+/**
+ * The link's name as a `WWW-Authenticate` realm, which is what a browser shows
+ * in its password prompt. Reduced to a quoted-string a header can carry.
+ */
+function basicRealm(name: string | null): string {
+  const printable = (name ?? "").replace(/[^\x20-\x7e]/g, "").replace(/["\\]/g, "");
+  return printable.trim().slice(0, 64) || "Shared page";
+}
+
+/** What a share link resolves to: an ACL identity, and what it is scoped to. */
+export interface ShareLinkAccess {
+  spaceId: string;
+  aclUserId: string;
+  resourceType: ResourceType;
+  resourceId: string;
+}
+
+/**
+ * Resolve the link a share URL names, and the Basic password a protected one
+ * challenges for. Unknown, revoked and expired are all 404, so a dead link never
+ * confirms it existed.
+ */
+export async function authenticateShareLink(
+  request: Request,
+  linkId: string,
+): Promise<ShareLinkAccess> {
+  const found = await findShareLink(linkId);
+  if (!found) throw notFoundResponse("Share link");
+
+  if (found.requiresPassword) {
+    const password = basicAuthPassword(request.headers.get("Authorization"));
+    if (password === null || !(await verifyShareLinkPassword(found.link, password))) {
+      throw new Response("Password required", {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": `Basic realm="${basicRealm(found.link.name)}", charset="UTF-8"`,
+        },
+      });
+    }
+  }
+
+  await markShareLinkUsed(await openSpaceStore(found.spaceId), found.linkId);
+
+  return {
+    spaceId: found.spaceId,
+    aclUserId: found.linkId,
+    resourceType: found.link.resourceType as ResourceType,
+    resourceId: found.link.resourceId,
+  };
 }
 
 /**

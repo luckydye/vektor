@@ -78,6 +78,7 @@ export const reservedSpaceSlugs: readonly string[] = [
   "docs",
   "login",
   "new",
+  "s",
   "spaces",
   // Answered by Hono before the Astro fallback, which only runs on a 404, so no
   // page file records them.

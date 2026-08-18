@@ -3617,10 +3617,29 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(403);
   });
 
-  // A token scoped to a document holds a row in `acl` under its own id, in the
-  // same shape a person's grant has. Unfiltered, the sharing list reports the
-  // credential as one more person with editor access to the page.
-  it("omits a credential from the access list", async () => {
+  // Everything that lives in `acl` under an id of its own, or under a person's id
+  // without being a level of access: a token, a share link, and a feature grant.
+  // Unfiltered, the sharing list reports the first two as people and the third as
+  // that person's access to the page.
+  it("lists neither credentials nor feature grants as people", async () => {
+    const featureUser = await createAclTestUser("Comment Only Grantee");
+    const feature = await apiRequest(
+      `/api/v1/spaces/${spaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          action: "grant",
+          roleOrFeature: "comment",
+          userId: featureUser.userId,
+          resourceType: "document",
+          resourceId: childId,
+        }),
+      },
+    );
+    expect(feature.status).toBe(200);
+
     const created = await apiRequest(
       `/api/v1/spaces/${spaceId}/access-tokens`,
       session1Token,
@@ -3638,9 +3657,9 @@ describe("ACL API Tests - Document Access List", () => {
     // The response is flat: `token` is the secret, `id` is the credential.
     const tokenId = (await created.json()).id as string;
 
-    // The row has to be one this list would otherwise pick up, or the filter is
-    // not what is keeping the credential out of the response: same document
-    // scope, same editor role, and marked a credential only by `kind`.
+    // The token row has to be one this list would otherwise pick up, or the
+    // filter is not what is keeping it out of the response: same document scope,
+    // same editor role, and marked a credential only by `kind`.
     const rows = await apiRequest(
       `/api/v1/spaces/${spaceId}/permissions?type=role&resourceType=document&resourceId=${childId}`,
       session1Token,
@@ -3654,6 +3673,22 @@ describe("ACL API Tests - Document Access List", () => {
       ]),
     );
 
+    const link = await apiRequest(
+      `/api/v1/spaces/${spaceId}/share-links`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Access list link",
+          resourceType: "document",
+          resourceId: childId,
+          expiresInDays: 7,
+        }),
+      },
+    );
+    expect(link.status).toBe(201);
+    const linkId = (await link.json()).id as string;
+
     const response = await apiRequest(
       `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
       session1Token,
@@ -3661,13 +3696,17 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(200);
 
     const { access } = await response.json();
-    expect(access.map((entry: { userId?: string }) => entry.userId)).not.toContain(
-      tokenId,
-    );
+    const granteeIds = access.map((entry: { userId?: string }) => entry.userId);
+    expect(granteeIds).not.toContain(tokenId);
+    expect(granteeIds).not.toContain(linkId);
+    expect(granteeIds).not.toContain(featureUser.userId);
     // The people sharing the page are untouched by the filter.
-    expect(access.map((entry: { userId?: string }) => entry.userId)).toContain(
-      pageUser.userId,
-    );
+    expect(granteeIds).toContain(pageUser.userId);
+    expect(
+      access.flatMap((entry: { grants: { permission: string }[] }) =>
+        entry.grants.map((grant) => grant.permission),
+      ),
+    ).not.toContain("comment");
   });
 
   // Sharing a document as viewer with someone who already outranks that — the

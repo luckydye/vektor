@@ -1,0 +1,137 @@
+---
+import {
+  authenticateShareLink,
+  SHARE_COOKIE,
+  verifyAccess,
+  withShareLinkId,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import {
+  getDocument,
+  getDocumentChildren,
+  getDocumentContent,
+} from "#db/space/documents.ts";
+import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
+import { documentTitle } from "#documents/title.ts";
+import { contentIsHtml } from "#documents/types.ts";
+import docStyles from "#editor/css/document.css?inline";
+import BaseLayout from "#layouts/BaseLayout.astro";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
+
+const linkId = Astro.params.linkId ?? "";
+const requestedDocumentId = Astro.params.doc;
+
+// The URL is the credential: never cache it, never index it.
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+
+// A refusal is already the page's answer: a 404, or a Basic challenge.
+const link = await authenticateShareLink(Astro.request, linkId).catch(
+  (error: unknown) => {
+    if (error instanceof Response) return error;
+    throw error;
+  },
+);
+if (link instanceof Response) return link;
+
+const store = await openSpaceStore(link.spaceId);
+const documentId = requestedDocumentId || link.resourceId;
+
+/** Refusal and absence alike: a link holder learns nothing about the rest. */
+const notFound = new Response(null, { status: 404, statusText: "Not found" });
+
+try {
+  await verifyAccess(
+    link.spaceId,
+    { type: ResourceType.DOCUMENT, id: documentId },
+    link.aclUserId,
+    Permission.VIEWER,
+  );
+} catch (error) {
+  if (error instanceof Response) return notFound;
+  throw error;
+}
+
+const record = await getDocument(store, documentId);
+if (!record) return notFound;
+
+const rendersAsHtml = contentIsHtml(record.type);
+const stored = rendersAsHtml ? ((await getDocumentContent(store, documentId)) ?? "") : "";
+const published = await resolvePublishedDocumentContent(store, {
+  id: documentId,
+  content: stored,
+  publishedRev: record.publishedRev,
+});
+
+// Rendered into a declarative shadow root below: the document stylesheet is
+// written for one, and it keeps that CSS off the page around it.
+const content = sanitizeDocumentHtml(published.content ?? "");
+
+// Hand the link back as a cookie, so this page's own requests to `/api` — its
+// images, its attachments — arrive authenticated rather than anonymous.
+Astro.cookies.set(
+  SHARE_COOKIE,
+  withShareLinkId(Astro.request.headers.get("cookie"), linkId),
+  {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: Astro.url.protocol === "https:",
+  },
+);
+
+// Only a tree link reaches past the page it names.
+const children =
+  link.resourceType === ResourceType.DOCUMENT_TREE
+    ? await getDocumentChildren(store, documentId, {
+        userId: link.aclUserId,
+        userGroups: [],
+      })
+    : [];
+
+const title = documentTitle(record);
+---
+
+<BaseLayout title={title}>
+  <main class="mx-auto max-w-3xl px-6 py-10">
+    <h1 class="mb-6 font-semibold text-neutral-900 text-size-title">{title}</h1>
+
+    {rendersAsHtml ? (
+        <div>
+          <template shadowrootmode="open">
+            <style is:inline set:html={docStyles} />
+            <div set:html={content} />
+          </template>
+        </div>
+      ) : (
+        <p class="rounded-md border border-neutral-200 bg-neutral-50 p-4 text-neutral-600 text-size-medium">
+          This page is a {record.type}, which only opens in Vektor. Sign in to view it.
+        </p>
+      )}
+
+    {children.length > 0 && (
+        <nav class="mt-10 border-neutral-100 border-t pt-6">
+          <h2 class="mb-2 text-neutral-400 text-size-small">Pages in this share</h2>
+          <ul class="space-y-1">
+            {children.map((child) => (
+              <li>
+                <a
+                  class="text-neutral-900 text-size-medium underline"
+                  href={`/s/${linkId}/${child.id}`}
+                >
+                  {documentTitle(child)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
+    <footer
+      class="mt-10 border-neutral-100 border-t pt-6 text-neutral-400 text-size-small"
+    >
+      Shared read-only through a link.
+    </footer>
+  </main>
+</BaseLayout>
