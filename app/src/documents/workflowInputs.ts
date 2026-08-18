@@ -93,14 +93,25 @@ const DESTRUCTURING = /(?:const|let|var)\s*\{([^{}]*)\}\s*=\s*input\b/g;
 /** A `??` or `||` right after the read: the script has its own fallback. */
 const FALLBACK_AFTER = /^\s*(?:\?\?|\|\|)/;
 
-/** Split a destructuring pattern on its top-level commas. */
+/**
+ * Split a destructuring pattern on its top-level commas. A default value is
+ * often a comma-separated list in a string, and splitting inside it would offer
+ * each list item as a field of its own.
+ */
 function splitPatternEntries(pattern: string): string[] {
   const entries: string[] = [];
   let depth = 0;
   let start = 0;
+  let quote = "";
   for (let index = 0; index < pattern.length; index++) {
     const char = pattern[index];
-    if (char === "(" || char === "[" || char === "{") depth++;
+    if (quote) {
+      if (char === "\\") index++;
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") quote = char;
+    else if (char === "(" || char === "[" || char === "{") depth++;
     else if (char === ")" || char === "]" || char === "}") depth--;
     else if (char === "," && depth === 0) {
       entries.push(pattern.slice(start, index));
