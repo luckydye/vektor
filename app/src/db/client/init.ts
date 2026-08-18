@@ -3,7 +3,7 @@ import * as authSchema from "#db/schema/auth.ts";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
 import type { Database } from "./connection.ts";
-import { exec, many } from "./query.ts";
+import { exec } from "./query.ts";
 import {
   addColumnIfMissing,
   generateCreateTableSQL,
@@ -74,62 +74,6 @@ async function backfillAIChatSessionRoles(spaceDb: Database) {
 }
 
 /**
- * Enforce one row per `(document_id, rev)`, renumbering what an older release left.
- *
- * Concurrent saves used to allocate `max(rev) + 1` in JavaScript, so a document
- * can hold several rows at one `rev`; the oldest of each group keeps the number
- * `current_rev`/`published_rev` address and the rest move above the highest.
- */
-async function ensureUniqueRevisionNumbers(spaceDb: Database) {
-  const createIndex = () =>
-    exec(
-      spaceDb,
-      sql.raw(
-        "CREATE UNIQUE INDEX IF NOT EXISTS revision_document_id_rev_unique ON revision (document_id, rev)",
-      ),
-    );
-
-  try {
-    // The no-op on every database that already holds the index, so the scan
-    // below runs only for the databases that still need repairing.
-    await createIndex();
-    return;
-  } catch {
-    // Collisions are already stored. Renumber them and create the index after.
-  }
-
-  const collidingDocuments = await many<{ document_id: string }>(
-    spaceDb,
-    sql.raw(
-      "SELECT DISTINCT document_id FROM revision GROUP BY document_id, rev HAVING COUNT(*) > 1",
-    ),
-  );
-
-  for (const { document_id: documentId } of collidingDocuments) {
-    const rows = await many<{ id: string; rev: number }>(
-      spaceDb,
-      sql`SELECT id, rev FROM revision WHERE document_id = ${documentId} ORDER BY rev ASC, created_at ASC, id ASC`,
-    );
-
-    let nextFreeRev = Math.max(...rows.map((row) => row.rev)) + 1;
-    const kept = new Set<number>();
-    for (const row of rows) {
-      if (!kept.has(row.rev)) {
-        kept.add(row.rev);
-        continue;
-      }
-      await exec(
-        spaceDb,
-        sql`UPDATE revision SET rev = ${nextFreeRev} WHERE id = ${row.id}`,
-      );
-      nextFreeRev++;
-    }
-  }
-
-  await createIndex();
-}
-
-/**
  * Create a space database's tables and indexes from the Drizzle schema.
  *
  * Every statement is conditional, so this is idempotent — it runs on every
@@ -176,7 +120,12 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
       "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
     ),
   );
-  await ensureUniqueRevisionNumbers(spaceDb);
+  await exec(
+    spaceDb,
+    sql.raw(
+      "CREATE UNIQUE INDEX IF NOT EXISTS revision_document_id_rev_unique ON revision (document_id, rev)",
+    ),
+  );
 
   const preferenceSQL = generateCreateTableSQL(spaceSchema.preference);
   await exec(spaceDb, sql.raw(preferenceSQL));

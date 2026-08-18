@@ -101,27 +101,6 @@ export async function getLatestRevisionCreatedAt(
 
 const OVERWRITE_WINDOW_MS = 3 * 60 * 60 * 1000;
 
-/** How often an insert re-reads `max(rev)` after another writer took that number. */
-const REVISION_INSERT_ATTEMPTS = 4;
-
-/**
- * The unique-index violation two writers racing for one `rev` produce.
- *
- * Exported so a test can assert the driver still reports a collision this way —
- * a changed message would silently turn the retry below into a 500.
- */
-export function isRevisionNumberConflict(error: unknown): boolean {
-  for (let cause: unknown = error; cause instanceof Error; cause = cause.cause) {
-    if (
-      cause.message.includes("UNIQUE constraint failed") &&
-      cause.message.includes("revision.rev")
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 interface RevisionRow {
   id: string;
   documentId: string;
@@ -141,8 +120,8 @@ interface RevisionRow {
  *
  * `max(rev) + 1` computed in JavaScript let concurrent saves claim one number,
  * so all but one was lost and `currentRev`/`publishedRev` addressed several rows
- * at once. A writer racing another process is rejected by
- * `revision_document_id_rev_unique` and retries against the number it sees then.
+ * at once. As one statement the read and the write share SQLite's write lock,
+ * and `revision_document_id_rev_unique` rejects anything that says otherwise.
  */
 async function insertRevision(
   s: SpaceStore,
@@ -150,29 +129,21 @@ async function insertRevision(
 ): Promise<{ rev: number; parentRev: number | null }> {
   const highestRev = sql`(select max(${revision.rev}) from ${revision} where ${revision.documentId} = ${row.documentId})`;
 
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const inserted = await many(
-        s.db
-          .insert(revision)
-          .values({
-            ...row,
-            rev: sql`coalesce(${highestRev}, 0) + 1`,
-            parentRev: row.parentRev ?? highestRev,
-          })
-          .returning({ rev: revision.rev, parentRev: revision.parentRev }),
-      );
+  const inserted = await many(
+    s.db
+      .insert(revision)
+      .values({
+        ...row,
+        rev: sql`coalesce(${highestRev}, 0) + 1`,
+        parentRev: row.parentRev ?? highestRev,
+      })
+      .returning({ rev: revision.rev, parentRev: revision.parentRev }),
+  );
 
-      if (!inserted[0]) {
-        throw new Error(`Failed to create revision for document ${row.documentId}`);
-      }
-      return inserted[0];
-    } catch (error) {
-      if (attempt >= REVISION_INSERT_ATTEMPTS || !isRevisionNumberConflict(error)) {
-        throw error;
-      }
-    }
+  if (!inserted[0]) {
+    throw new Error(`Failed to create revision for document ${row.documentId}`);
   }
+  return inserted[0];
 }
 
 export async function createRevision(

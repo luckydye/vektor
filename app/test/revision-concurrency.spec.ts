@@ -10,12 +10,12 @@
  * point is what the real driver does when writes overlap.
  */
 
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase } from "#db/client/connection.ts";
 import { initSpaceDbSchema } from "#db/client/init.ts";
-import { exec, many } from "#db/client/query.ts";
-import { isRevisionNumberConflict } from "#db/space/revisions.ts";
+import { many } from "#db/client/query.ts";
 import { deleteSpace } from "#db/space/spaces.ts";
 import {
   createApiRequest,
@@ -84,11 +84,14 @@ function concurrentSaves(
   );
 }
 
-async function revisionNumbers(id: string): Promise<number[]> {
+async function revisionRows(id: string): Promise<{ rev: number; checksum: string }[]> {
   const response = await apiRequest(documentPath(id, "/revisions"));
   expect(response.status).toBe(200);
-  const revisions: { rev: number }[] = (await response.json()).revisions;
-  return revisions.map((revision) => revision.rev);
+  return (await response.json()).revisions;
+}
+
+async function revisionNumbers(id: string): Promise<number[]> {
+  return (await revisionRows(id)).map((revision) => revision.rev);
 }
 
 async function documentMeta(id: string): Promise<{
@@ -123,9 +126,11 @@ describe("concurrent saves of one document", () => {
       Array.from({ length: 15 }, () => 200),
     );
 
+    // Every save reaches the document without a prior revision to overwrite, so
+    // all fifteen are stored — the fourteen the old allocation lost included.
     const revs = await revisionNumbers(id);
-    expect(revs.length).toBeGreaterThan(0);
-    expect(new Set(revs).size).toBe(revs.length);
+    expect(revs.length).toBe(15);
+    expect(new Set(revs).size).toBe(15);
   });
 
   it("leaves currentRev pointing at the newest revision", async () => {
@@ -135,6 +140,39 @@ describe("concurrent saves of one document", () => {
 
     const revs = await revisionNumbers(id);
     expect((await documentMeta(id)).currentRev).toBe(Math.max(...revs));
+  });
+
+  // Saves inside the three-hour window coalesce into the revision already
+  // there, so racing ones overwrite each other instead of each taking a number.
+  it("coalesces racing saves into the revision they all overwrite", async () => {
+    const id = await createDocument("Racing overwrites");
+
+    const firstSave = await apiRequest(documentPath(id), {
+      method: "POST",
+      body: JSON.stringify({ html: "<p>base body</p>", mode: "revision" }),
+    });
+    expect(firstSave.status).toBe(200);
+    const rev = (await firstSave.json()).revision.rev as number;
+
+    const responses = await concurrentSaves(id, 10);
+    const reported = await Promise.all(
+      responses.map(async (response) => {
+        expect(response.status).toBe(200);
+        return (await response.json()).revision.rev as number;
+      }),
+    );
+
+    expect(reported).toEqual(Array.from({ length: 10 }, () => rev));
+    expect(await revisionNumbers(id)).toEqual([rev]);
+    expect((await documentMeta(id)).currentRev).toBe(rev);
+    // Whichever update landed last owns the row whole: one save's body under
+    // its own checksum, never one save's content beside another's.
+    const content = await revisionContent(id, rev);
+    expect(content).toMatch(/^<p>save \d<\/p>$/);
+    const [stored] = await revisionRows(id);
+    expect(stored.checksum).toBe(
+      createHash("sha256").update(content, "utf-8").digest("hex"),
+    );
   });
 
   it("cannot overwrite the published revision by racing saves against it", async () => {
@@ -181,60 +219,27 @@ describe("concurrent saves of one document", () => {
   });
 });
 
-describe("a database written before revision numbers were unique", () => {
-  /** Three rows at `rev` 1, as an interrupted set of concurrent saves left them. */
-  async function databaseWithCollidingRevisions() {
+// Allocating the number inside the insert is what keeps saves from colliding,
+// but only this index makes `(documentId, rev)` a pointer the rest of the code
+// can trust — nothing above fails if a second writer is allowed to duplicate it.
+describe("a space database", () => {
+  it("holds a unique index on (document_id, rev)", async () => {
     const db = createDatabase("file::memory:");
     await initSpaceDbSchema(db, { local: false });
-    // The collisions predate the index, so it cannot be in place while they are
-    // written — which is exactly the state on disk before this fix shipped.
-    await exec(db, sql.raw("DROP INDEX revision_document_id_rev_unique"));
-    await exec(
+
+    const indexes = await many<{ name: string; unique: number }>(
       db,
-      sql`INSERT INTO document (id, slug, content, current_rev, created_at, updated_at, created_by) VALUES ('doc', 'doc', '', 1, 0, 0, 'u')`,
+      sql.raw("PRAGMA index_list('revision')"),
     );
-    for (const [id, createdAt] of [
-      ["oldest", 10],
-      ["middle", 20],
-      ["newest", 30],
-    ] as const) {
-      await exec(
-        db,
-        sql`INSERT INTO revision (id, document_id, rev, slug, snapshot, checksum, created_at, created_by) VALUES (${id}, 'doc', 1, 'doc', x'00', ${id}, ${createdAt}, 'u')`,
-      );
-    }
-    return db;
-  }
+    const unique = indexes.find(
+      (index) => index.name === "revision_document_id_rev_unique",
+    );
+    expect(unique?.unique).toBe(1);
 
-  it("renumbers the collisions and keeps the row the pointers addressed", async () => {
-    const db = await databaseWithCollidingRevisions();
-
-    await initSpaceDbSchema(db, { local: false });
-
-    const rows = await many<{ id: string; rev: number }>(
+    const columns = await many<{ name: string }>(
       db,
-      sql.raw("SELECT id, rev FROM revision ORDER BY rev ASC"),
+      sql.raw("PRAGMA index_info('revision_document_id_rev_unique')"),
     );
-    expect(rows).toEqual([
-      { id: "oldest", rev: 1 },
-      { id: "middle", rev: 2 },
-      { id: "newest", rev: 3 },
-    ]);
-  });
-
-  it("refuses a duplicate number, in the shape the insert retry recognises", async () => {
-    const db = await databaseWithCollidingRevisions();
-    await initSpaceDbSchema(db, { local: false });
-
-    const rejection = await exec(
-      db,
-      sql`INSERT INTO revision (id, document_id, rev, slug, snapshot, checksum, created_at, created_by) VALUES ('extra', 'doc', 1, 'doc', x'00', 'extra', 40, 'u')`,
-    ).then(
-      () => null,
-      (error: unknown) => error,
-    );
-
-    expect(rejection).not.toBeNull();
-    expect(isRevisionNumberConflict(rejection)).toBe(true);
+    expect(columns.map((column) => column.name)).toEqual(["document_id", "rev"]);
   });
 });
