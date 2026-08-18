@@ -138,7 +138,6 @@ class IndexedDBReplicaBackend implements ReplicaBackend {
   constructor(scope: string) {
     this.database = new IndexedDBDatabase({
       name: `${DATABASE_PREFIX}${scope}`,
-      version: 2,
       stores: REPLICA_SCHEMA,
     });
   }
