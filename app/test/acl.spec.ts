@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { isCredentialPrincipal } from "#acl/permissions.ts";
 import {
   createSessionApiRequest,
   createTestUser,
@@ -3617,26 +3618,28 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(403);
   });
 
-  // A feature grant lives in the acl table like a role does, so an unfiltered
-  // list reports it as that person's level of access to the document.
-  it("lists a feature grant as access, not as a person's role", async () => {
-    const featureUser = await createAclTestUser("Comment Only Grantee");
-    const feature = await apiRequest(
-      `/api/v1/spaces/${spaceId}/permissions`,
+  // A token scoped to a document holds a row in `acl` under its own id, in the
+  // same shape a person's grant has. Unfiltered, the sharing list reports the
+  // credential as one more person with editor access to the page.
+  it("omits a credential from the access list", async () => {
+    const created = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens`,
       session1Token,
       {
         method: "POST",
         body: JSON.stringify({
-          type: "feature",
-          action: "grant",
-          roleOrFeature: "comment",
-          userId: featureUser.userId,
+          name: "Access List Token",
           resourceType: "document",
           resourceId: childId,
+          permission: "editor",
         }),
       },
     );
-    expect(feature.status).toBe(200);
+    expect(created.status).toBe(201);
+    const tokenId = (await created.json()).token.id as string;
+    // The row has to be one this list would otherwise pick up, or the filter is
+    // not what is keeping the credential out of the response.
+    expect(isCredentialPrincipal(tokenId)).toBe(true);
 
     const response = await apiRequest(
       `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
@@ -3646,13 +3649,12 @@ describe("ACL API Tests - Document Access List", () => {
 
     const { access } = await response.json();
     expect(access.map((entry: { userId?: string }) => entry.userId)).not.toContain(
-      featureUser.userId,
+      tokenId,
     );
-    expect(
-      access.flatMap((entry: { grants: { permission: string }[] }) =>
-        entry.grants.map((grant) => grant.permission),
-      ),
-    ).not.toContain("comment");
+    // The people sharing the page are untouched by the filter.
+    expect(access.map((entry: { userId?: string }) => entry.userId)).toContain(
+      pageUser.userId,
+    );
   });
 
   // Sharing a document as viewer with someone who already outranks that — the

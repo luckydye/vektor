@@ -149,10 +149,10 @@ export const acl = sqliteTable(
     name: text("name"),
     /**
      * The credential this row is opened with, read according to `kind`: an
-     * access token's SHA-256 today. Uniqueness is the `acl_secret_unique`
-     * index — SQLite cannot ADD COLUMN with UNIQUE.
+     * access token's SHA-256 today. Unique, and nullable so the ordinary grants
+     * that carry no credential are not held to it.
      */
-    secret: text("secret"),
+    secret: text("secret").unique(),
     /**
      * Which credential `secret` holds, or null on a grant carrying none. Named
      * rather than inferred from `secret` being set, so a row states what it is
