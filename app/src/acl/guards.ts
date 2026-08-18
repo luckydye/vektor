@@ -39,7 +39,7 @@ import {
   requireUser,
   unauthorizedResponse,
 } from "#api/http.ts";
-import { checkRateLimit } from "#api/rateLimit.ts";
+import { checkRateLimit, SHARE_LINK_ROUTE_PATTERN } from "#api/rateLimit.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
@@ -942,9 +942,6 @@ export interface ShareLinkAccess {
   /** What the page puts in the cookie; see {@link withShareLink}. */
   carried: CarriedShareLink;
 }
-
-/** The rate-limit pattern the share page counts against. */
-export const SHARE_LINK_ROUTE_PATTERN = "/s/[linkId]";
 
 /**
  * Resolve the link a share URL names, and the Basic password a protected one

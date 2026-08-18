@@ -83,9 +83,14 @@ export const POST: ApiRouteHandler = (context) =>
     const { name, resourceType, resourceId, expiresInDays, password } = body;
     const resource = requireLinkResource(resourceType, resourceId);
 
+    // Asked about the document either scope names, never about the
+    // `document_tree` pseudo-resource: a tree grant is somewhere access is
+    // written to, not something anyone holds a role on, so asking about one
+    // refuses every caller — a space owner included. Sharing the page and
+    // sharing its children are the same decision, and it is the page's.
     await verifyAccess(
       spaceId,
-      { type: resource.resourceType, id: resource.resourceId },
+      { type: ResourceType.DOCUMENT, id: resource.resourceId },
       user.id,
       Permission.EDITOR,
     );

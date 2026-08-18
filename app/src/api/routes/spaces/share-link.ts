@@ -1,5 +1,5 @@
 import { verifyAccess } from "#acl/guards.ts";
-import { isResourceType, Permission } from "#acl/permissions.ts";
+import { isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   notFoundResponse,
   requireParam,
@@ -27,10 +27,12 @@ export const DELETE: ApiRouteHandler = (context) =>
       throw notFoundResponse("Share link");
     }
 
-    // Authorized on what the link shares: whoever may share it may take it back.
+    // Authorized on the page the link shares — whoever may share it may take it
+    // back — and on the page rather than on the tree for the reason the mint
+    // path gives: a `document_tree` target answers no one.
     await verifyAccess(
       spaceId,
-      { type: link.resourceType, id: link.resourceId },
+      { type: ResourceType.DOCUMENT, id: link.resourceId },
       user.id,
       Permission.EDITOR,
     );

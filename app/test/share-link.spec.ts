@@ -302,6 +302,32 @@ describe("the cookie a shared page hands back", () => {
     expect((await attachment(firstUrl, bothCookie)).status).toBe(200);
   });
 
+  it("reaches a child page's attachments through a tree link", async () => {
+    const child = (
+      await (
+        await apiRequest(`/api/v1/spaces/${spaceId}/documents`, owner.token, {
+          method: "POST",
+          body: JSON.stringify({
+            content: "<p>Child</p>",
+            parentId: documentId,
+            properties: { title: "Child Fixture" },
+          }),
+        })
+      ).json()
+    ).document.id as string;
+    const childUrl = await attach(child);
+
+    // A tree link is minted on the parent and reaches past the page it names,
+    // so what the child page renders has to load too.
+    const link = await createLinkPath(owner, { resourceType: "document_tree" });
+    const cookie = await carriedCookie(`${link.path}/${child}`);
+    expect((await attachment(childUrl, cookie)).status).toBe(200);
+
+    // A link on the page alone stops at it.
+    const pageOnly = await createLinkPath(owner);
+    expect((await open(`${pageOnly.path}/${child}`)).status).toBe(404);
+  });
+
   it("reaches the page's attachments and nothing else about it", async () => {
     const link = await createLinkPath(owner);
     const cookie = await carriedCookie(link.path);
@@ -326,6 +352,19 @@ describe("who may mint a link", () => {
   it("admits an editor and refuses a viewer", async () => {
     expect((await createLink(editor)).status).toBe(201);
     expect((await createLink(viewer)).status).toBe(403);
+  });
+
+  it("admits both page scopes, and takes either back", async () => {
+    expect((await createLink(owner, { resourceType: "document" })).status).toBe(201);
+
+    const tree = await createLinkPath(owner, { resourceType: "document_tree" });
+    const revoked = await apiRequest(
+      `/api/v1/spaces/${spaceId}/share-links/${tree.id}`,
+      owner.token,
+      { method: "DELETE" },
+    );
+    expect(revoked.status).toBe(200);
+    expect((await open(tree.path)).status).toBe(404);
   });
 
   it("refuses a scope that names no page", async () => {
