@@ -78,6 +78,7 @@ export const reservedSpaceSlugs: readonly string[] = [
   "docs",
   "login",
   "new",
+  "s",
   "spaces",
   // Answered by Hono before the Astro fallback, which only runs on a 404, so no
   // page file records them.
@@ -97,6 +98,7 @@ export const reservedSpaceSlugs: readonly string[] = [
   "manifest.dev.json",
   "sw.js",
   "llms.txt",
+  "onboarding",
   "favicon_dark.png",
   "favicon_light.png",
   "favicon_dev.png",

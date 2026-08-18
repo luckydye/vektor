@@ -75,7 +75,7 @@ returns, followed by an example request and response.
 
 ## Authentication
 
-Four kinds of credential reach this API. Each endpoint's **Auth** line lists the ones it
+Five kinds of credential reach this API. Each endpoint's **Auth** line lists the ones it
 accepts.
 
 | Credential | Sent as | Used by |
@@ -83,13 +83,22 @@ accepts.
 | Session cookie | `vektor.session_token` cookie | the app in a browser |
 | Access token | `Authorization: Bearer at_…` | integrations, CI, scripts, the CLI |
 | Job token | `X-Job-Token` | extension jobs, workflow runs, the AI agent calling back in |
+| Share link | `vektor.share_links` cookie | a visitor reading a page opened from a `/s/:linkId` link |
 | None | — | readers of a resource shared with the `public` group |
 
-An access token is an identity of its own in the ACL, named by its id (`token_…`), so it
-holds grants rather than borrowing an account's, and it cannot be issued with more access
-than its issuer holds. Job tokens are minted by the server rather than by clients: one
-carrying a user id is limited to what that user may do, and one without a user id is a
-background credential, valid only inside its own space.
+A credential is an identity of its own in the ACL, named by its id — `token_…` for an
+access token, `share_…` for a share link — so it holds grants rather than borrowing an
+account's. Neither can be issued with more access than the person issuing it holds.
+
+Job tokens are minted by the server rather than by clients: one carrying a user id is
+limited to what that user may do, and one without a user id is a background credential,
+valid only inside its own space.
+
+A share link is resolved from its cookie on document-scoped routes, which is what makes a
+shared page's own requests — its attachments above all — ordinary authenticated ones. It
+is consulted only after a session and a token, so it never downgrades a caller who is
+already someone, and it is re-read per request, so revoking a link takes effect at once.
+See [Share links](#share-links) for minting and revoking them.
 
 ## Authorization
 
@@ -214,6 +223,8 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET | `/spaces/:spaceId/permissions/me` | Caller's role + feature flags in this space |
 | GET | `/spaces/:spaceId/search` | Full-text/semantic document search |
 | POST | `/spaces/:spaceId/search/rebuild` | Rebuild the space's search embeddings |
+| GET/POST | `/spaces/:spaceId/share-links` | List / create share links |
+| DELETE | `/spaces/:spaceId/share-links/:linkId` | Revoke a share link |
 | GET/POST | `/spaces/:spaceId/access-tokens` | List / create access tokens |
 | GET/PATCH/DELETE | `/spaces/:spaceId/access-tokens/:tokenId` | Read / revoke / delete a token |
 | GET/POST | `/spaces/:spaceId/uploads` | List uploaded files / upload a new file |
@@ -1032,14 +1043,15 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 ### `POST /spaces/:spaceId/search/rebuild`
 
 - **Auth**: session; `owner` on the space.
-- **Returns**: `200` success message (rebuilds the space's search embeddings).
+- **Returns**: `200` with a bare JSON string as the message; the work (re-embedding
+  every document in the space) runs before the response.
 
 ```bash
 curl -sS -X POST -b "$COOKIE" "$VEKTOR/spaces/$SPACE/search/rebuild"
 ```
 
 ```json
-{ "success": true, "message": "Search embeddings rebuilt successfully" }
+"Search embeddings rebuilt successfully"
 ```
 
 ## Access tokens
@@ -1176,6 +1188,112 @@ curl -sS -X DELETE -b "$COOKIE" \
 { "message": "Token deleted successfully" }
 ```
 
+## Share links
+
+A link is a credential row like an access token, minted by an editor rather than an
+owner, and always `viewer`. It is opened at `/s/:linkId` — not under `/api` — and
+serves a read-only render of the page. These endpoints manage them; none of them
+resolves an access token, and the token endpoints do not resolve a link.
+
+### `GET /spaces/:spaceId/share-links`
+
+- **Auth**: session; `editor` on that document.
+- **Query**: `documentId` (required).
+- **Returns**: `200 { links }` — every link on the page, at `document` and
+  `document_tree` scope, without secrets: a password shows as `hasPassword`.
+
+```bash
+curl -sS -b "$COOKIE" \
+  "$VEKTOR/spaces/$SPACE/share-links?documentId=doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31"
+```
+
+```json
+{
+  "links": [
+    {
+      "id": "share_0d5b7e12-9c34-4a86-b1f0-72e5c9a3d648",
+      "name": "Launch plan for the agency",
+      "resourceType": "document",
+      "resourceId": "doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31",
+      "hasPassword": true,
+      "expiresAt": "2026-09-16T08:41:02.000Z",
+      "lastUsedAt": "2026-08-17T07:55:10.000Z",
+      "createdAt": "2026-08-17T07:40:00.000Z",
+      "createdBy": "KJ8vQ2mNpR4tL6wX9yZ1aB3cD5eF7gH0",
+      "revokedAt": null
+    }
+  ]
+}
+```
+
+### `POST /spaces/:spaceId/share-links`
+
+- **Auth**: session; `editor` on the target resource.
+- **Body**: `name` (non-empty string, required), `resourceType` (`document` or
+  `document_tree`), `resourceId` (required), `expiresInDays` (number greater than 0
+  and at most 365, **required** — a link outlives its creator, so nothing else retires
+  it), `password?` (at least 8 characters).
+- **Returns**: `201 { id, path }` — `path` is the link.
+
+```bash
+curl -sS -b "$COOKIE" -H "Content-Type: application/json" \
+  -d '{
+        "name": "Launch plan for the agency",
+        "resourceType": "document",
+        "resourceId": "doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31",
+        "expiresInDays": 30,
+        "password": "hunter-two-hunter"
+      }' \
+  "$VEKTOR/spaces/$SPACE/share-links"
+```
+
+```json
+{
+  "id": "share_0d5b7e12-9c34-4a86-b1f0-72e5c9a3d648",
+  "path": "/s/share_0d5b7e12-9c34-4a86-b1f0-72e5c9a3d648"
+}
+```
+
+### `DELETE /spaces/:spaceId/share-links/:linkId`
+
+- **Auth**: session; `editor` on what the link shares — whoever may share it may take
+  it back.
+- **Behavior**: a soft revoke; the row and its grant stay, so it is reversible.
+- **Returns**: `200 { message }`. `404` if missing.
+
+```bash
+curl -sS -X DELETE -b "$COOKIE" \
+  "$VEKTOR/spaces/$SPACE/share-links/share_0d5b7e12-9c34-4a86-b1f0-72e5c9a3d648"
+```
+
+```json
+{ "message": "Share link revoked" }
+```
+
+### `GET /s/:linkId[/:documentId]`
+
+- **Auth**: the URL itself; HTTP Basic on top when the link carries a password
+  (`401 WWW-Authenticate: Basic`). Any other failure is `404`.
+- **Returns**: a read-only HTML render, and a `vektor.share_links` cookie naming the
+  link. Its attachments are then read from the ordinary `/spaces/:spaceId/uploads/*`
+  URL: the cookie is what makes those requests authenticated, and they meet the same
+  document check every other viewer meets.
+
+Not under `/api/v1` — this is the page a recipient opens. A password-protected link
+answers the first request with a challenge:
+
+```bash
+curl -sS -D - -o /dev/null \
+  "https://vektor.example.com/s/share_0d5b7e12-9c34-4a86-b1f0-72e5c9a3d648"
+```
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Basic realm="Launch plan for the agency"
+```
+
+---
+
 ## Uploads
 
 ### `GET /spaces/:spaceId/uploads`
@@ -1236,9 +1354,9 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 ### `GET /spaces/:spaceId/uploads/*path`
 
 - **Auth**: the document an upload hangs off is what authorizes it — `viewer` on that
-  document, which is how a public share, a resource grant and an archive all reach the
-  file. A file belonging to no document (a workflow artifact) takes `viewer` on the
-  space.
+  document, which is how a public share, a resource grant, a share link the caller has
+  opened, and an archive all reach the file. A file belonging to no document (a workflow
+  artifact) takes `viewer` on the space.
 - **Query**: image/video transform params (via `parseTransformParams`, e.g. resize).
 - **Behavior**: path-traversal-checked; resolves via storage adapter redirect,
   on-the-fly transform+cache, or local filesystem stream. Supports HTTP `Range`

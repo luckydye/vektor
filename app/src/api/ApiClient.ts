@@ -331,6 +331,20 @@ export interface PersonalAccessToken extends AccessToken {
   spaceName: string;
 }
 
+/** A share link as the API reports it. */
+export interface ShareLink {
+  id: string;
+  name: string | null;
+  resourceType: string;
+  resourceId: string;
+  hasPassword: boolean;
+  expiresAt: Date | string | null;
+  lastUsedAt: Date | string | null;
+  createdAt: Date | string;
+  createdBy: string | null;
+  revokedAt: Date | string | null;
+}
+
 /**
  * One row of the ACL as the permissions endpoint returns it.
  *
@@ -1816,6 +1830,39 @@ export class ApiClient {
 
     delete: async (tokenId: string) => {
       await this.apiDelete(this.baseUrl, `/api/v1/access-tokens/${tokenId}`);
+    },
+  };
+
+  shareLinks = {
+    get: async (spaceId: string, documentId: string) => {
+      return await this.apiGet<{ links: ShareLink[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/share-links?documentId=${encodeURIComponent(documentId)}`,
+      );
+    },
+
+    create: async (
+      spaceId: string,
+      body: {
+        name: string;
+        resourceType: string;
+        resourceId: string;
+        expiresInDays: number;
+        password?: string;
+      },
+    ) => {
+      return await this.apiPost<{ id: string; path: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/share-links`,
+        body,
+      );
+    },
+
+    revoke: async (spaceId: string, linkId: string) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/share-links/${linkId}`,
+      );
     },
   };
 

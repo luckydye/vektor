@@ -66,10 +66,9 @@ export const PUBLIC_GROUP = "public";
 /**
  * An `acl.user_id` that is a credential's id rather than a person's. Ids carry
  * their type (`db/ids.ts`), and an account id from the IdP carries no underscore
- * at all, so the id alone says which it is — which is why a credential no longer
- * needs a synthetic `token:` prefix to be told from a person.
+ * at all, so the id alone says which it is.
  */
-const CREDENTIAL_ID_PREFIXES = ["token_"];
+const CREDENTIAL_ID_PREFIXES = ["token_", "share_"];
 
 export function isCredentialPrincipal(userId: string | null | undefined): boolean {
   return CREDENTIAL_ID_PREFIXES.some((prefix) => userId?.startsWith(prefix) ?? false);
@@ -77,12 +76,12 @@ export function isCredentialPrincipal(userId: string | null | undefined): boolea
 
 /**
  * What credential a row carries, and so how its `secret` reads; null on an
- * ordinary grant. One kind today, named rather than inferred from `secret`
- * being set, so a second one is a row's own statement about itself and not a
- * guess every read has to repeat.
+ * ordinary grant. Editors mint links and owners mint tokens, so the two are told
+ * apart on every read and write either side makes.
  */
 export const AclKind = {
   TOKEN: "token",
+  LINK: "link",
 } as const;
 
 export type AclKind = (typeof AclKind)[keyof typeof AclKind];

@@ -106,6 +106,9 @@
 | `/api/v1/spaces/[spaceId]/settings/ai-provider` | DELETE | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/settings/ai-provider` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/settings/ai-provider` | PUT | 401 | 403 | 403 | 403 | 400 |  |
+| `/api/v1/spaces/[spaceId]/share-links` | GET | 401 | 400 | 400 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/share-links` | POST | 401 | 400 | 400 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/share-links/[linkId]` | DELETE | 401 | 404 | 404 | 404 | 404 | no fixture for linkId |
 | `/api/v1/spaces/[spaceId]/uploads` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/uploads` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/uploads/[...path]` | DELETE | 401 | 403 | 403 | 204 | 204 |  |

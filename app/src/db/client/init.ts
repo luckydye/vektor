@@ -138,7 +138,7 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
 
   const aclSQL = generateCreateTableSQL(spaceSchema.acl);
   await exec(spaceDb, sql.raw(aclSQL));
-  // Access tokens live in `acl`: a token is a grant that carries a credential.
+  // Access tokens and share links live in `acl`: both are grants with a credential.
   await renameColumnIfNeeded(spaceDb, spaceSchema.acl.secret, "token");
   for (const column of [
     spaceSchema.acl.name,

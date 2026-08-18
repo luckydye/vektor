@@ -3617,9 +3617,10 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(403);
   });
 
-  // A feature grant lives in the acl table like a role does, so an unfiltered
-  // list reports it as that person's level of access to the document.
-  it("lists a feature grant as access, not as a person's role", async () => {
+  // A share link and a feature both live in the acl table, the link under its own
+  // id — so an unfiltered list reports the link as a person and the feature as
+  // that person's level of access.
+  it("lists neither share links nor feature grants as people", async () => {
     const featureUser = await createAclTestUser("Comment Only Grantee");
     const feature = await apiRequest(
       `/api/v1/spaces/${spaceId}/permissions`,
@@ -3638,6 +3639,22 @@ describe("ACL API Tests - Document Access List", () => {
     );
     expect(feature.status).toBe(200);
 
+    const link = await apiRequest(
+      `/api/v1/spaces/${spaceId}/share-links`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Access list link",
+          resourceType: "document",
+          resourceId: childId,
+          expiresInDays: 7,
+        }),
+      },
+    );
+    expect(link.status).toBe(201);
+    const linkId = (await link.json()).id as string;
+
     const response = await apiRequest(
       `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
       session1Token,
@@ -3645,6 +3662,9 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(200);
 
     const { access } = await response.json();
+    expect(access.map((entry: { userId?: string }) => entry.userId)).not.toContain(
+      linkId,
+    );
     expect(access.map((entry: { userId?: string }) => entry.userId)).not.toContain(
       featureUser.userId,
     );

@@ -128,9 +128,9 @@ export const category = sqliteTable("category", {
 
 /**
  * Every permission grant in the space — and every credential, because an access
- * token *is* a grant that carries one. Folding them together means a credential
- * cannot outlive its grant or leave one behind: the row is both, scoped to
- * exactly one resource.
+ * token and a share link *are* grants that carry one. Folding them together
+ * means a credential cannot outlive its grant or leave one behind: the row is
+ * both, scoped to exactly one resource.
  *
  * The trailing columns are null on an ordinary grant.
  */
@@ -148,15 +148,15 @@ export const acl = sqliteTable(
     /** Human label for a credential, shown in space settings. */
     name: text("name"),
     /**
-     * The credential this row is opened with, read according to `kind`: an
-     * access token's SHA-256 today. Uniqueness is the `acl_secret_unique`
-     * index — SQLite cannot ADD COLUMN with UNIQUE.
+     * The credential this row is opened with, read according to `kind`: an access
+     * token's SHA-256, or a share link's Argon2id password verifier. Uniqueness
+     * is the `acl_secret_unique` index — SQLite cannot ADD COLUMN with UNIQUE.
      */
     secret: text("secret"),
     /**
-     * Which credential `secret` holds, or null on a grant carrying none. Named
-     * rather than inferred from `secret` being set, so a row states what it is
-     * instead of every read guessing.
+     * `token`, `link`, or null on a grant carrying no credential. It says how
+     * `secret` reads, and keeps the editor-facing share endpoints away from
+     * owner-minted access tokens.
      */
     kind: text("kind"),
     expiresAt: integer("expires_at", { mode: "timestamp" }),
