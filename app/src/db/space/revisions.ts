@@ -5,7 +5,7 @@ import {
   brotliDecompressSync,
   constants as zlibConstants,
 } from "node:zlib";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -99,6 +99,82 @@ export async function getLatestRevisionCreatedAt(
   return latestRevision?.createdAt ?? null;
 }
 
+const OVERWRITE_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+/** How often an insert re-reads `max(rev)` after another writer took that number. */
+const REVISION_INSERT_ATTEMPTS = 4;
+
+/**
+ * The unique-index violation two writers racing for one `rev` produce.
+ *
+ * Exported so a test can assert the driver still reports a collision this way —
+ * a changed message would silently turn the retry below into a 500.
+ */
+export function isRevisionNumberConflict(error: unknown): boolean {
+  for (let cause: unknown = error; cause instanceof Error; cause = cause.cause) {
+    if (
+      cause.message.includes("UNIQUE constraint failed") &&
+      cause.message.includes("revision.rev")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+interface RevisionRow {
+  id: string;
+  documentId: string;
+  slug: string;
+  snapshot: Buffer;
+  checksum: string;
+  /** Null follows the document's highest revision, whichever that is on insert. */
+  parentRev: number | null;
+  status: Revision["status"];
+  message: string | null;
+  createdAt: Date;
+  createdBy: string;
+}
+
+/**
+ * Insert a revision whose number the insert itself allocates.
+ *
+ * `max(rev) + 1` computed in JavaScript let concurrent saves claim one number,
+ * so all but one was lost and `currentRev`/`publishedRev` addressed several rows
+ * at once. A writer racing another process is rejected by
+ * `revision_document_id_rev_unique` and retries against the number it sees then.
+ */
+async function insertRevision(
+  s: SpaceStore,
+  row: RevisionRow,
+): Promise<{ rev: number; parentRev: number | null }> {
+  const highestRev = sql`(select max(${revision.rev}) from ${revision} where ${revision.documentId} = ${row.documentId})`;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const inserted = await many(
+        s.db
+          .insert(revision)
+          .values({
+            ...row,
+            rev: sql`coalesce(${highestRev}, 0) + 1`,
+            parentRev: row.parentRev ?? highestRev,
+          })
+          .returning({ rev: revision.rev, parentRev: revision.parentRev }),
+      );
+
+      if (!inserted[0]) {
+        throw new Error(`Failed to create revision for document ${row.documentId}`);
+      }
+      return inserted[0];
+    } catch (error) {
+      if (attempt >= REVISION_INSERT_ATTEMPTS || !isRevisionNumberConflict(error)) {
+        throw error;
+      }
+    }
+  }
+}
+
 export async function createRevision(
   s: SpaceStore,
   documentId: string,
@@ -108,6 +184,7 @@ export async function createRevision(
 ): Promise<Revision> {
   const checksum = calculateChecksum(html);
   const status = options.status ?? null;
+  const parentRev = options.parentRev ?? null;
 
   const lastRevision = await one(
     s.db
@@ -123,24 +200,11 @@ export async function createRevision(
     lastRevision &&
     lastRevision.checksum === checksum &&
     (lastRevision.status ?? null) === status &&
-    (lastRevision.parentRev ?? null) === (options.parentRev ?? null)
+    (lastRevision.parentRev ?? null) === parentRev
   ) {
-    return {
-      id: lastRevision.id,
-      documentId: lastRevision.documentId,
-      rev: lastRevision.rev,
-      slug: lastRevision.slug,
-      snapshot: lastRevision.snapshot,
-      checksum: lastRevision.checksum,
-      parentRev: lastRevision.parentRev,
-      status: (lastRevision.status as Revision["status"] | null) ?? null,
-      message: lastRevision.message,
-      createdAt: new Date(lastRevision.createdAt),
-      createdBy: lastRevision.createdBy,
-    };
+    return { ...rowToRevisionMetadata(lastRevision), snapshot: lastRevision.snapshot };
   }
 
-  const OVERWRITE_WINDOW_MS = 3 * 60 * 60 * 1000;
   const lastIsRecent =
     lastRevision &&
     Date.now() - new Date(lastRevision.createdAt).getTime() < OVERWRITE_WINDOW_MS;
@@ -156,56 +220,48 @@ export async function createRevision(
   // Overwrite the last revision in place if it's a regular save within the 3-hour window,
   // but never overwrite the published revision — that would silently change published content.
   if (
+    lastRevision &&
     lastIsRecent &&
     !lastIsPublished &&
     status === null &&
-    (lastRevision?.status ?? null) === null
+    (lastRevision.status ?? null) === null
   ) {
     const compressed = await compressHtml(html);
-    const updatedMessage = options.message ?? lastRevision?.message;
+    const updatedMessage = options.message ?? lastRevision.message;
     await s.db
       .update(revision)
       .set({ snapshot: compressed, checksum, message: updatedMessage })
-      .where(eq(revision.id, lastRevision?.id));
+      .where(eq(revision.id, lastRevision.id));
 
     await createAuditLog(s, {
       spaceId: s.spaceId,
       docId: documentId,
-      revisionId: lastRevision?.rev,
+      revisionId: lastRevision.rev,
       userId,
       event: "save",
       details: { message: options.message || "Revision updated" },
     });
 
     return {
-      id: lastRevision?.id,
-      documentId: lastRevision?.documentId,
-      rev: lastRevision?.rev,
-      slug: lastRevision?.slug,
+      ...rowToRevisionMetadata(lastRevision),
       snapshot: compressed,
       checksum,
-      parentRev: lastRevision?.parentRev,
-      status: null,
       message: updatedMessage,
-      createdAt: new Date(lastRevision?.createdAt),
-      createdBy: lastRevision?.createdBy,
     };
   }
 
-  const nextRev = lastRevision ? lastRevision.rev + 1 : 1;
   const compressed = await compressHtml(html);
   const id = createId("revision");
   const now = new Date();
   const slug = await getDocumentSlug(s, documentId);
 
-  await s.db.insert(revision).values({
+  const created = await insertRevision(s, {
     id,
     documentId,
-    rev: nextRev,
     slug,
     snapshot: compressed,
     checksum,
-    parentRev: options.parentRev ?? (lastRevision ? lastRevision.rev : null),
+    parentRev,
     status,
     message: options.message || null,
     createdAt: now,
@@ -213,22 +269,24 @@ export async function createRevision(
   });
 
   if (status === null) {
+    // Never backwards: a save that landed while this one compressed has already
+    // moved the pointer past the revision written here.
     await s.db
       .update(document)
-      .set({ currentRev: nextRev })
+      .set({ currentRev: sql`max(${document.currentRev}, ${created.rev})` })
       .where(eq(document.id, documentId));
   }
 
   await createAuditLog(s, {
     spaceId: s.spaceId,
     docId: documentId,
-    revisionId: nextRev,
+    revisionId: created.rev,
     userId,
     event: status !== null ? "suggest" : "save",
     details: {
       message:
         options.message || (status !== null ? "Suggestion created" : "Revision created"),
-      parentRev: options.parentRev ?? (lastRevision ? lastRevision.rev : null),
+      parentRev: created.parentRev,
       status,
     },
   });
@@ -236,11 +294,11 @@ export async function createRevision(
   return {
     id,
     documentId,
-    rev: nextRev,
+    rev: created.rev,
     slug,
     snapshot: compressed,
     checksum,
-    parentRev: options.parentRev ?? (lastRevision ? lastRevision.rev : null),
+    parentRev: created.parentRev,
     status,
     message: options.message || null,
     createdAt: now,

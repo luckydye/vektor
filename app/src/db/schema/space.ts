@@ -76,21 +76,27 @@ export const document = sqliteTable("document", {
   createdBy: text("created_by").notNull(),
 });
 
-export const revision = sqliteTable("revision", {
-  id: text("id").primaryKey(),
-  documentId: text("document_id")
-    .notNull()
-    .references(() => document.id, { onDelete: "cascade" }),
-  rev: integer("rev").notNull(),
-  slug: text("slug").notNull(),
-  snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
-  checksum: text("checksum").notNull(),
-  parentRev: integer("parent_rev"),
-  status: text("status"),
-  message: text("message"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-});
+export const revision = sqliteTable(
+  "revision",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    rev: integer("rev").notNull(),
+    slug: text("slug").notNull(),
+    snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
+    checksum: text("checksum").notNull(),
+    parentRev: integer("parent_rev"),
+    status: text("status"),
+    message: text("message"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    createdBy: text("created_by").notNull(),
+  },
+  // `currentRev` and `publishedRev` are (documentId, rev) pointers, so a second
+  // row at one number makes them ambiguous rather than merely untidy.
+  (t) => [uniqueIndex("revision_document_id_rev_unique").on(t.documentId, t.rev)],
+);
 
 export const property = sqliteTable(
   "property",
