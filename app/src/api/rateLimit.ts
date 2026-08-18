@@ -53,6 +53,14 @@ interface RouteRule extends RateLimitRule {
 }
 
 /**
+ * The share page, which Astro serves rather than the API router. Named here
+ * with the routes it sits beside, so the rule and the one caller that counts
+ * against it cannot drift into naming different patterns — a mismatch would
+ * silently drop the page back to the default ceiling.
+ */
+export const SHARE_LINK_ROUTE_PATTERN = "/s/[linkId]";
+
+/**
  * Routes whose per-request cost warrants a tighter bucket than the default.
  * Ceilings sit well above ordinary use — a canvas bursts link-previews on load,
  * a document page pulls many uploads — so reaching one means something is wrong.
@@ -86,7 +94,7 @@ const ROUTE_RULES: readonly RouteRule[] = [
   // Not an API route: the share page, which an unauthenticated caller reaches
   // with any id, and whose password check is a deliberately slow hash. Sized
   // for a link passed around an office behind one address, not for one reader.
-  { pattern: "/s/[linkId]", max: 120, windowMs: MINUTE },
+  { pattern: SHARE_LINK_ROUTE_PATTERN, max: 120, windowMs: MINUTE },
 ];
 
 function positiveInt(raw: string | undefined, fallback: number): number {

@@ -149,8 +149,8 @@ export async function validateShareLink(
 export async function findShareLink(
   linkId: string,
 ): Promise<(ValidateShareLinkResult & { spaceId: string }) | null> {
-  // The share page is reached without a session, so this can be the request
-  // that first touches the auth database.
+  // Cheap once the server has booted, and what makes this safe to call from
+  // the CLI and from tests that import it without going through `server.ts`.
   await initializeDatabases();
 
   const indexed = await one(
