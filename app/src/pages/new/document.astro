@@ -18,6 +18,6 @@ const activeSpaceSlug = await resolveActiveSpaceSlug(
   Astro.cookies.get(LAST_VISITED_SPACE_KEY)?.value,
 );
 
-return Astro.redirect(activeSpaceSlug ? `/${activeSpaceSlug}/new` : "/");
+return Astro.redirect(activeSpaceSlug ? `/${activeSpaceSlug}/new` : "/spaces");
 ---
 
