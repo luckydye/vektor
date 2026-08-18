@@ -16,12 +16,14 @@ export async function prepareAuthDb(authDb: Database) {
   const accountSQL = generateCreateTableSQL(authSchema.account);
   const verificationSQL = generateCreateTableSQL(authSchema.verification);
   const spaceIndexSQL = generateCreateTableSQL(authSchema.spaceIndex);
+  const shareLinkIndexSQL = generateCreateTableSQL(authSchema.shareLinkIndex);
 
   await exec(authDb, sql.raw(userSQL));
   await exec(authDb, sql.raw(sessionSQL));
   await exec(authDb, sql.raw(accountSQL));
   await exec(authDb, sql.raw(verificationSQL));
   await exec(authDb, sql.raw(spaceIndexSQL));
+  await exec(authDb, sql.raw(shareLinkIndexSQL));
   await renameColumnIfNeeded(authDb, authSchema.spaceIndex.location, "database_url");
   await exec(
     authDb,

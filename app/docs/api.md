@@ -88,7 +88,11 @@ accepts.
 
 A credential is an identity of its own in the ACL, named by its id — `token_…` for an
 access token, `share_…` for a share link — so it holds grants rather than borrowing an
-account's. Neither can be issued with more access than the person issuing it holds.
+account's. Neither can be issued with more access than the person issuing it holds, but
+they are held to that differently afterwards: an access token is re-capped at what its
+issuer holds *today*, so a demotion takes it down too, while a share link is fixed at
+`viewer` when it is minted and outlives whoever minted it. Only revoking it or its
+expiry retires a link.
 
 Job tokens are minted by the server rather than by clients: one carrying a user id is
 limited to what that user may do, and one without a user id is a background credential,
@@ -98,6 +102,9 @@ A share link is resolved from its cookie on document-scoped routes, which is wha
 shared page's own requests — its attachments above all — ordinary authenticated ones. It
 is consulted only after a session and a token, so it never downgrades a caller who is
 already someone, and it is re-read per request, so revoking a link takes effect at once.
+A password-protected link counts there only with the proof its page hands back once the
+password is accepted: the cookie is written by the client, so the id in it says which
+link is claimed and never that anyone opened it.
 See [Share links](#share-links) for minting and revoking them.
 
 ## Authorization

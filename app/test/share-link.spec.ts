@@ -212,6 +212,116 @@ describe("the attachments of a shared page", () => {
   });
 });
 
+describe("the cookie a shared page hands back", () => {
+  /** The `Set-Cookie` value a page hands back, as a request header. */
+  async function carriedCookie(
+    path: string,
+    headers: Record<string, string> = {},
+  ): Promise<string> {
+    const page = await open(path, headers);
+    expect(page.status).toBe(200);
+    const cookie = page.headers.get("set-cookie");
+    expect(cookie).toContain("vektor.share_links=");
+    return cookie?.split(";")[0] ?? "";
+  }
+
+  function attachment(url: string, cookie: string): Promise<Response> {
+    return fetch(`${BASE_URL}${url}`, { headers: { Cookie: cookie } });
+  }
+
+  /** Upload a file onto `document`, put it in the content, return its URL. */
+  async function attach(document: string): Promise<string> {
+    const form = new FormData();
+    form.set("file", new File(["ATTACHED"], "note.txt", { type: "text/plain" }));
+    form.set("filename", "note.txt");
+    form.set("documentId", document);
+
+    const uploaded = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
+      method: "POST",
+      headers: { Cookie: `vektor.session_token=${owner.token}` },
+      body: form,
+    });
+    expect(uploaded.status).toBe(200);
+    const url = (await uploaded.json()).url as string;
+
+    const saved = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${document}`,
+      owner.token,
+      { method: "PUT", body: JSON.stringify({ content: `<p><img src="${url}"></p>` }) },
+    );
+    expect(saved.status).toBe(200);
+    return url;
+  }
+
+  it("refuses a protected link that never passed its password", async () => {
+    const url = await attach(documentId);
+    const link = await createLinkPath(owner, { password: "correct horse" });
+
+    // The page challenges — but the cookie is the client's to write, so the id
+    // in it must not be taken as proof anyone ever answered.
+    expect((await open(link.path)).status).toBe(401);
+    expect((await attachment(url, `vektor.share_links=${link.id}`)).status).toBe(401);
+
+    // With the password given, the page hands back a cookie that does work.
+    const cookie = await carriedCookie(link.path, basic("correct horse"));
+    expect((await attachment(url, cookie)).status).toBe(200);
+
+    // And that cookie is this link's alone: it does not open another one.
+    const other = await createLinkPath(owner, { password: "different horse" });
+    const proof = cookie.split("~")[1];
+    expect(
+      (await attachment(url, `vektor.share_links=${other.id}~${proof}`)).status,
+    ).toBe(401);
+  });
+
+  it("resolves every link it carries, not only the newest", async () => {
+    const secondDocument = (
+      await (
+        await apiRequest(`/api/v1/spaces/${spaceId}/documents`, owner.token, {
+          method: "POST",
+          body: JSON.stringify({
+            content: "<p>Second</p>",
+            properties: { title: "Second Fixture" },
+          }),
+        })
+      ).json()
+    ).document.id as string;
+
+    const firstUrl = await attach(documentId);
+    const secondUrl = await attach(secondDocument);
+
+    const first = await createLinkPath(owner);
+    const second = await createLinkPath(owner, { resourceId: secondDocument });
+
+    // Both pages visited in turn, as a browser accumulates them.
+    const firstCookie = await carriedCookie(first.path);
+    const bothCookie = await carriedCookie(second.path, { Cookie: firstCookie });
+
+    // The newest resolves, and so does the one it was stacked on top of.
+    expect((await attachment(secondUrl, bothCookie)).status).toBe(200);
+    expect((await attachment(firstUrl, bothCookie)).status).toBe(200);
+  });
+
+  it("reaches the page's attachments and nothing else about it", async () => {
+    const link = await createLinkPath(owner);
+    const cookie = await carriedCookie(link.path);
+
+    // A link is a rendered page, not the application: what the page does not
+    // load, the cookie does not open.
+    const comments = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/comments?documentId=${documentId}`,
+      { headers: { Cookie: cookie } },
+    );
+    expect(comments.status).toBe(401);
+
+    const document = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/documents/${documentId}`,
+      { headers: { Cookie: cookie } },
+    );
+    expect(document.status).toBe(401);
+  });
+});
+
 describe("who may mint a link", () => {
   it("admits an editor and refuses a viewer", async () => {
     expect((await createLink(editor)).status).toBe(201);

@@ -39,6 +39,7 @@ import {
   requireUser,
   unauthorizedResponse,
 } from "#api/http.ts";
+import { checkRateLimit } from "#api/rateLimit.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
@@ -49,10 +50,13 @@ import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import {
   findShareLink,
   markShareLinkUsed,
+  shareLinkProof,
   validateShareLink,
   verifyShareLinkPassword,
+  verifyShareLinkProof,
 } from "#db/space/shareLinks.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
+import { appLogger } from "#observability/logger.ts";
 
 /** Distinguishes an access decision from a failure to read the ACL. */
 export function isAccessDenied(error: unknown): boolean {
@@ -285,12 +289,18 @@ export async function authenticateJobTokenOrSpaceRole(
  *
  * Returns the caller's ACL identity in the {@link SpaceAccess.aclUserId}
  * convention: `null` is a trusted system caller, `""` is public.
+ *
+ * @param options.shareLinks Whether the share cookie counts here. Off by
+ *   default: a link serves a rendered page, not the application, so it reaches
+ *   only what that page itself loads — turn it on there and nowhere else, or a
+ *   link quietly grants everything a viewer may read about the document.
  */
 export async function authenticateDocumentAccess(
   context: ApiContext,
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
+  options: { shareLinks?: boolean } = {},
 ): Promise<{ aclUserId: string | null }> {
   // Ahead of the credential, not delegated to the guards below: authenticating
   // an access token opens the space store first, and a space that does not
@@ -336,16 +346,15 @@ export async function authenticateDocumentAccess(
   }
 
   // Below a session and a token: a link never downgrades a caller who is
-  // already someone.
-  const shareLink = await shareLinkPrincipal(context, spaceId);
-  if (shareLink) {
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.DOCUMENT, id: documentId },
-      shareLink,
-      requiredRole,
-    );
-    return { aclUserId: shareLink };
+  // already someone. Every link carried is tried, not just the newest — a
+  // visitor holding two pages of one space reaches both.
+  if (options.shareLinks) {
+    for (const principal of await shareLinkPrincipals(context, spaceId)) {
+      const target = { type: ResourceType.DOCUMENT, id: documentId } as const;
+      if (await canAccess(spaceId, target, principal, requiredRole)) {
+        return { aclUserId: principal };
+      }
+    }
   }
 
   // Unauthenticated — the document check handles the `public` group.
@@ -843,8 +852,19 @@ export const SHARE_COOKIE = "vektor.share_links";
 
 const MAX_CARRIED_SHARE_LINKS = 5;
 
+/**
+ * One link a request carries: its id, and — for a password-protected link — the
+ * proof its password was accepted. See {@link shareLinkProof}.
+ */
+export interface CarriedShareLink {
+  id: string;
+  proof: string | null;
+}
+
 /** The links a request carries, most recent first — a visitor may hold several. */
-export function shareLinkIdsFromCookie(cookie: string | null | undefined): string[] {
+export function shareLinksFromCookie(
+  cookie: string | null | undefined,
+): CarriedShareLink[] {
   const value = cookie
     ?.split(";")
     .map((part) => part.trim())
@@ -854,30 +874,46 @@ export function shareLinkIdsFromCookie(cookie: string | null | undefined): strin
 
   return decodeURIComponent(value)
     .split(",")
-    .filter((id) => /^[A-Za-z0-9_-]{1,64}$/.test(id))
+    .map((entry) => {
+      const [id, proof] = entry.split("~");
+      return { id, proof: proof ?? null };
+    })
+    .filter(({ id, proof }) => {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return false;
+      return proof === null || /^[a-f0-9]{64}$/.test(proof);
+    })
     .slice(0, MAX_CARRIED_SHARE_LINKS);
 }
 
-/** As above, plus `linkId` at the front, for handing back to the browser. */
-export function withShareLinkId(cookie: string | null | undefined, linkId: string) {
-  const carried = shareLinkIdsFromCookie(cookie).filter((id) => id !== linkId);
-  return [linkId, ...carried].slice(0, MAX_CARRIED_SHARE_LINKS).join(",");
+/** As above, plus `link` at the front, for handing back to the browser. */
+export function withShareLink(cookie: string | null | undefined, link: CarriedShareLink) {
+  const carried = shareLinksFromCookie(cookie).filter((held) => held.id !== link.id);
+  return [link, ...carried]
+    .slice(0, MAX_CARRIED_SHARE_LINKS)
+    .map((held) => (held.proof ? `${held.id}~${held.proof}` : held.id))
+    .join(",");
 }
 
-/** The identity a share cookie resolves to here. Re-read per request, so a
- * revoke lands at once. */
-async function shareLinkPrincipal(
+/**
+ * The links a request carries that still resolve in this space, in the order
+ * they were carried. Read per request, so a revoke lands at once, and a
+ * password-protected link counts only with the proof its page handed back —
+ * the cookie is the client's to write, so the id alone claims nothing.
+ */
+async function shareLinkPrincipals(
   context: ApiContext,
   spaceId: string,
-): Promise<string | null> {
-  const linkIds = shareLinkIdsFromCookie(context.req.raw.headers.get("cookie"));
-  if (linkIds.length === 0) return null;
+): Promise<string[]> {
+  const carried = shareLinksFromCookie(context.req.raw.headers.get("cookie"));
+  if (carried.length === 0) return [];
 
   const store = await openSpaceStore(spaceId);
-  for (const linkId of linkIds) {
-    if (await validateShareLink(store, linkId)) return linkId;
+  const principals: string[] = [];
+  for (const { id, proof } of carried) {
+    const link = await validateShareLink(store, id);
+    if (link && verifyShareLinkProof(link.link, proof)) principals.push(id);
   }
-  return null;
+  return principals;
 }
 
 /** The HTTP Basic password on a request, or null when it carries none. */
@@ -903,17 +939,46 @@ export interface ShareLinkAccess {
   aclUserId: string;
   resourceType: ResourceType;
   resourceId: string;
+  /** What the page puts in the cookie; see {@link withShareLink}. */
+  carried: CarriedShareLink;
 }
+
+/** The rate-limit pattern the share page counts against. */
+export const SHARE_LINK_ROUTE_PATTERN = "/s/[linkId]";
 
 /**
  * Resolve the link a share URL names, and the Basic password a protected one
  * challenges for. Unknown, revoked and expired are all 404, so a dead link never
  * confirms it existed.
+ *
+ * The page this serves is reached before the API router, and so before the
+ * limit every `/api` route sits behind — it takes its own here, because both
+ * halves of the work below are an unauthenticated caller's to trigger: the
+ * lookup, and the password verifier's deliberately slow hash.
  */
 export async function authenticateShareLink(
   request: Request,
   linkId: string,
+  clientIp: string,
 ): Promise<ShareLinkAccess> {
+  const limit = checkRateLimit({
+    pattern: SHARE_LINK_ROUTE_PATTERN,
+    method: request.method,
+    authorization: undefined,
+    cookie: request.headers.get("cookie") ?? undefined,
+    ip: clientIp,
+  });
+  if (limit && !limit.allowed) {
+    appLogger.warn("Share link rate limit exceeded", {
+      key: limit.key,
+      blocked: limit.blocked,
+    });
+    throw new Response("Too many requests", {
+      status: 429,
+      headers: { "Retry-After": String(limit.retryAfterSeconds) },
+    });
+  }
+
   const found = await findShareLink(linkId);
   if (!found) throw notFoundResponse("Share link");
 
@@ -936,6 +1001,7 @@ export async function authenticateShareLink(
     aclUserId: found.linkId,
     resourceType: found.link.resourceType as ResourceType,
     resourceId: found.link.resourceId,
+    carried: { id: found.linkId, proof: shareLinkProof(found.link) },
   };
 }
 
