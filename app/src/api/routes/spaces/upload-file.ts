@@ -70,7 +70,15 @@ export const GET: ApiRouteHandler = (context) =>
       // artifact, say — keeps the space check.
       const documentId = await getFileDocumentId(spaceId, path);
       if (documentId) {
-        await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
+        // The one place a share link counts: a shared page's images and
+        // attachments are requested from here, by the cookie it handed back.
+        await authenticateDocumentAccess(
+          context,
+          spaceId,
+          documentId,
+          Permission.VIEWER,
+          { shareLinks: true },
+        );
       } else {
         await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
       }

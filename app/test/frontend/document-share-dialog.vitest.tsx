@@ -63,7 +63,7 @@ describe("DocumentShareDialog", () => {
     mount();
     await settle();
 
-    expect(bodyText()).not.toContain("No one has access to this document yet.");
+    expect(bodyText()).not.toContain("No one has access to this page yet.");
     expect(bodyText()).toContain("Forbidden");
     expect(document.body.querySelector('[role="alert"]')).toBeTruthy();
   });
@@ -82,7 +82,7 @@ describe("DocumentShareDialog", () => {
     await settle();
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
-    expect(bodyText()).toContain("No one has access to this document yet.");
+    expect(bodyText()).toContain("No one has access to this page yet.");
   });
 
   it("still shows the empty state when the load succeeds with no grants", async () => {
@@ -91,6 +91,6 @@ describe("DocumentShareDialog", () => {
     await settle();
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
-    expect(bodyText()).toContain("No one has access to this document yet.");
+    expect(bodyText()).toContain("No one has access to this page yet.");
   });
 });

@@ -75,3 +75,18 @@ export const spaceIndex = sqliteTable("space_index", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
+
+/**
+ * Which space a share link belongs to. A `/s/:linkId` URL names no space, and
+ * the link row itself lives in one space's database — without this the only way
+ * to find it is to open every space in turn, which an unauthenticated caller
+ * could trigger with any invented id.
+ *
+ * It is a locator, not the credential: the row in `acl` is what authorizes, and
+ * revocation and expiry are still read from there on every request.
+ */
+export const shareLinkIndex = sqliteTable("share_link_index", {
+  id: text("id").primaryKey(),
+  spaceId: text("space_id").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});

@@ -7,14 +7,19 @@
  * challenge in front of that, and its verifier is the row's `secret`.
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { AclKind, Permission, type ResourceType } from "#acl/permissions.ts";
 import { logAclChange } from "#acl/store.ts";
+import { config } from "#config";
+import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
+import { getAuthDb, initializeDatabases } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
+import { shareLinkIndex } from "#db/schema/auth.ts";
 import type { AclEntry } from "#db/schema/space.ts";
 import { acl } from "#db/schema/space.ts";
-import { listAllSpaces } from "./spaces.ts";
 
 export interface CreateShareLinkOptions {
   name: string;
@@ -98,6 +103,14 @@ export async function createShareLink(
     revokedAt: null,
   });
 
+  // Written after the row, so an index entry never points at a link that is not
+  // there; the reverse — a row no entry names — only costs that link its URL.
+  await getAuthDb().insert(shareLinkIndex).values({
+    id,
+    spaceId: s.spaceId,
+    createdAt: now,
+  });
+
   await logAclChange(s, s.spaceId, {
     event: "acl_grant",
     resourceType: options.resourceType,
@@ -127,15 +140,29 @@ export async function validateShareLink(
   };
 }
 
-/** The space a link belongs to — a share URL names none, so scan for it. */
+/**
+ * The link a share URL names, found through the index — a URL names no space.
+ *
+ * An id that is not indexed is answered by that lookup alone, which is what
+ * keeps an invented one from costing a read of every space in the instance.
+ */
 export async function findShareLink(
   linkId: string,
 ): Promise<(ValidateShareLinkResult & { spaceId: string }) | null> {
-  for (const space of await listAllSpaces()) {
-    const result = await validateShareLink(await openSpaceStore(space.id), linkId);
-    if (result) return { ...result, spaceId: space.id };
-  }
-  return null;
+  // The share page is reached without a session, so this can be the request
+  // that first touches the auth database.
+  await initializeDatabases();
+
+  const indexed = await one(
+    getAuthDb().select().from(shareLinkIndex).where(eq(shareLinkIndex.id, linkId)),
+  );
+  if (!indexed) return null;
+
+  // A space that is gone or disabled answers for its links too.
+  if (!(await getIndexedSpace(indexed.spaceId))) return null;
+
+  const result = await validateShareLink(await openSpaceStore(indexed.spaceId), linkId);
+  return result && { ...result, spaceId: indexed.spaceId };
 }
 
 /** Verify the HTTP Basic password a protected link challenges for. */
@@ -145,6 +172,39 @@ export async function verifyShareLinkPassword(
 ): Promise<boolean> {
   if (!link.secret) return true;
   return await Bun.password.verify(password, link.secret);
+}
+
+/**
+ * Proof that this link's password was accepted, for the cookie the page hands
+ * back — the cookie is written by the client, so the link id in it says only
+ * which link is claimed, never that its password was ever given.
+ *
+ * Signed over the password verifier, so changing or clearing the password
+ * retires every proof outstanding for it. Null when there is no signing key:
+ * a protected link then serves its page and nothing else, rather than trusting
+ * an unsigned claim.
+ */
+export function shareLinkProof(link: AclEntry): string | null {
+  if (!link.secret || !link.userId) return null;
+
+  const key = config().AUTH_SECRET?.trim();
+  if (!key) return null;
+
+  return createHmac("sha256", key)
+    .update(`share-link:${link.userId}:${link.secret}`)
+    .digest("hex");
+}
+
+/**
+ * Whether `proof` is this link's, in constant time. A link with no password
+ * needs none: its URL is the whole credential.
+ */
+export function verifyShareLinkProof(link: AclEntry, proof: string | null): boolean {
+  if (!link.secret) return true;
+
+  const expected = shareLinkProof(link);
+  if (!expected || !proof || proof.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(proof), Buffer.from(expected));
 }
 
 /** Records a use, once any password has been accepted. */

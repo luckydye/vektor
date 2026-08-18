@@ -83,6 +83,10 @@ const ROUTE_RULES: readonly RouteRule[] = [
   { pattern: "/api/v1/proxy-media", max: 120, windowMs: MINUTE },
   // Image decode/resize per request.
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", max: 300, windowMs: MINUTE },
+  // Not an API route: the share page, which an unauthenticated caller reaches
+  // with any id, and whose password check is a deliberately slow hash. Sized
+  // for a link passed around an office behind one address, not for one reader.
+  { pattern: "/s/[linkId]", max: 120, windowMs: MINUTE },
 ];
 
 function positiveInt(raw: string | undefined, fallback: number): number {

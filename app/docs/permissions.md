@@ -152,7 +152,10 @@ The password's verifier is what the row's `secret` column holds, which is the co
 string under `kind = 'token'`, and null on a link that asks for no password.
 
 A link serves a read-only render of the page rather than the application, so its holder
-gets no realtime, presence or comments.
+gets no realtime, presence or comments. What the page itself loads is the whole of the
+link's reach into `/api`: the cookie it hands back is honoured on the attachment route
+and nowhere else, so a link cannot be turned on the document's comments, revisions or
+draft content by asking for them directly.
 
 Serving that page hands back a `vektor.share_links` cookie naming the link, because the
 requests the page then makes — for its images and attachments — go to `/api`, which

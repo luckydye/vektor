@@ -3,9 +3,10 @@ import {
   authenticateShareLink,
   SHARE_COOKIE,
   verifyAccess,
-  withShareLinkId,
+  withShareLink,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { resolveClientIp } from "#api/clientIp.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   getDocument,
@@ -26,13 +27,15 @@ const requestedDocumentId = Astro.params.doc;
 Astro.response.headers.set("Cache-Control", "private, no-store");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
 
-// A refusal is already the page's answer: a 404, or a Basic challenge.
-const link = await authenticateShareLink(Astro.request, linkId).catch(
-  (error: unknown) => {
-    if (error instanceof Response) return error;
-    throw error;
-  },
-);
+// A refusal is already the page's answer: a 404, a Basic challenge, or a 429.
+const link = await authenticateShareLink(
+  Astro.request,
+  linkId,
+  resolveClientIp(Astro.clientAddress, Astro.request.headers.get("x-forwarded-for")),
+).catch((error: unknown) => {
+  if (error instanceof Response) return error;
+  throw error;
+});
 if (link instanceof Response) return link;
 
 const store = await openSpaceStore(link.spaceId);
@@ -69,10 +72,12 @@ const published = await resolvePublishedDocumentContent(store, {
 const content = sanitizeDocumentHtml(published.content ?? "");
 
 // Hand the link back as a cookie, so this page's own requests to `/api` — its
-// images, its attachments — arrive authenticated rather than anonymous.
+// images, its attachments — arrive authenticated rather than anonymous. A
+// protected link carries the proof its password was accepted; the id alone is
+// the client's to write and so claims nothing.
 Astro.cookies.set(
   SHARE_COOKIE,
-  withShareLinkId(Astro.request.headers.get("cookie"), linkId),
+  withShareLink(Astro.request.headers.get("cookie"), link.carried),
   {
     path: "/",
     httpOnly: true,
