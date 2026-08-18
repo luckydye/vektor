@@ -5,6 +5,7 @@ import { documentLockChangedKind } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import {
   type RealtimeAccessChangedMessage,
+  type RealtimeErrorPayload,
   realtimeTopics,
   WS_CLOSE_FORBIDDEN,
   WS_CLOSE_UNAUTHORIZED,
@@ -355,6 +356,62 @@ describe("Realtime WebSocket", () => {
       expect(source).not.toContain("const version = 2;");
     } finally {
       connection.socket.close();
+    }
+  });
+
+  it("serves one document to joins that race the load of a cold room", async () => {
+    const created = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>cold room</p>",
+        properties: { title: "Concurrent Join" },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const documentId = (await created.json()).document.id;
+
+    const first = await connectWebSocket(BASE_URL, testSpaceId);
+    const second = await connectWebSocket(BASE_URL, testSpaceId);
+    try {
+      // Both frames go out before either load can finish, which is what a
+      // document switch does: two joins land on a room that has no doc yet.
+      first.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+      second.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+
+      const firstDoc = new Y.Doc();
+      Y.applyUpdate(
+        firstDoc,
+        wsDecodeYjsUpdate(await first.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS))
+          .update,
+        "remote",
+      );
+      await second.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS);
+      expect(firstDoc.getXmlFragment("default").toString()).toContain("cold room");
+
+      first.socket.send(
+        wsEncodeYjsUpdate(documentId, appendParagraph(firstDoc, "raced edit")),
+      );
+      // Applied to whichever doc the room kept. A join that overwrote it would
+      // hand the next client a document without this paragraph.
+      Y.applyUpdate(
+        firstDoc,
+        wsDecodeYjsUpdate(
+          await second.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
+        ).update,
+        "remote",
+      );
+
+      const late = await connectWebSocket(BASE_URL, testSpaceId);
+      try {
+        const lateDoc = await joinRoom(late, documentId);
+        expect(lateDoc.getXmlFragment("default").toString()).toContain("raced edit");
+        expect(lateDoc.getXmlFragment("default").toString()).toContain("cold room");
+      } finally {
+        late.socket.close();
+      }
+    } finally {
+      first.socket.close();
+      second.socket.close();
     }
   });
 
@@ -736,11 +793,11 @@ describe("Realtime WebSocket document-level grants", () => {
             user: { id: documentViewer.userId, name: "Document Viewer" },
           }),
         );
-        expect(
-          wsDecodeJson<{ message: string }>(
-            await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
-          ).message,
-        ).toBe("Forbidden");
+        const presenceError = wsDecodeJson<RealtimeErrorPayload>(
+          await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+        );
+        expect(presenceError.scope).toBe("presence-join");
+        expect(presenceError.room).toBe(privateDocumentId);
         await connection.expectNoFrame(WsMsgType.PresenceSnapshot);
       } finally {
         connection.socket.close();
@@ -784,6 +841,36 @@ describe("Realtime WebSocket document-level grants", () => {
       );
       expect(error.message).toBe("Forbidden");
       await waitForClose(connection.socket);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "names the document when it refuses a Yjs join",
+    async () => {
+      const connection = await connectWebSocket(
+        AUTH_BASE_URL,
+        spaceId,
+        documentViewer.token,
+      );
+
+      try {
+        connection.socket.send(
+          wsEncode(WsMsgType.YjsJoin, { documentId: privateDocumentId }),
+        );
+
+        // The client rejects the pending join off these fields; without them it
+        // has nothing to match the refusal to and waits out its whole budget.
+        const error = wsDecodeJson<RealtimeErrorPayload>(
+          await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+        );
+        expect(error.scope).toBe("yjs-join");
+        expect(error.documentId).toBe(privateDocumentId);
+        expect(error.message).toBeTruthy();
+        await connection.expectNoFrame(WsMsgType.YjsUpdate);
+      } finally {
+        connection.socket.close();
+      }
     },
     TEST_TIMEOUT_MS,
   );
@@ -1111,11 +1198,11 @@ describe("Realtime WebSocket access revocation", () => {
           resourceId: revokedDocumentId,
           access: "none",
         });
-        expect(
-          wsDecodeJson<{ message: string }>(
-            await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
-          ).message,
-        ).toBe("Forbidden");
+        const error = wsDecodeJson<RealtimeErrorPayload>(
+          await connection.waitForFrame(WsMsgType.Error, FRAME_TIMEOUT_MS),
+        );
+        expect(error.scope).toBe("yjs-room");
+        expect(error.documentId).toBe(revokedDocumentId);
         expect(connection.socket.readyState).toBe(WebSocket.OPEN);
       } finally {
         connection.socket.close();

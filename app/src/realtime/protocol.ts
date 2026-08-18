@@ -180,6 +180,32 @@ export const WsMsgType = {
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];
 
+/**
+ * Payload of an `Error` frame. `documentId` is what makes one actionable: it
+ * names the Yjs join to reject rather than leaving it to time out.
+ */
+export interface RealtimeErrorPayload {
+  message?: string;
+  /** Where the failure happened, for logs; the client branches on the fields. */
+  scope?: "yjs-join" | "yjs-room" | "presence-join" | "frame";
+  /** Set only for a Yjs room: it is what the client rejects the join against. */
+  documentId?: string;
+  /** Presence room the failure belongs to, which is not always a document. */
+  room?: string;
+  /** Name of the frame being handled, for a failure that decoded far enough. */
+  frame?: string;
+}
+
+const wsMsgTypeNames = new Map<number, string>(
+  Object.entries(WsMsgType).map(([name, value]) => [value, name]),
+);
+
+/** Names a frame for logs and error payloads, where the number explains nothing. */
+export function wsMsgTypeName(type: number | null | undefined): string {
+  if (type === null || type === undefined) return "undecoded";
+  return wsMsgTypeNames.get(type) ?? `unknown(${type})`;
+}
+
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 

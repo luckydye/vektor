@@ -10,6 +10,7 @@ import {
   type PresenceUpdatePayload,
   type PresenceUser,
   type RealtimeAccessChangedMessage,
+  type RealtimeErrorPayload,
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
@@ -588,6 +589,8 @@ interface RealtimeSubscription {
 interface YjsRoomEntry {
   ydoc: YDoc;
   onSynced?: () => void;
+  /** Both are cleared on the first of the two, so a join settles exactly once. */
+  onError?: (error: Error) => void;
 }
 
 interface RealtimeConnection {
@@ -2458,6 +2461,17 @@ export class ApiClient {
       return;
     }
 
+    // A refused or failed frame is answered with this and nothing else, so
+    // dropping it left the failure — a rejected Yjs join above all — as silence.
+    if (type === WsMsgType.Error) {
+      const detail = wsDecodeJson<RealtimeErrorPayload>(payload);
+      console.error("Realtime error frame", { spaceId: connection.spaceId, detail });
+      if (detail.documentId) {
+        this.failYjsRoomJoins(connection, detail.documentId, detail.message);
+      }
+      return;
+    }
+
     if (type === WsMsgType.AccessChanged) {
       const change = wsDecodeJson<Omit<RealtimeAccessChangedMessage, "type">>(payload);
       for (const listener of this.realtimeAccessListeners) {
@@ -2483,6 +2497,7 @@ export class ApiClient {
           applyUpdate(entry.ydoc, update, "remote");
           const onSynced = entry.onSynced;
           entry.onSynced = undefined;
+          entry.onError = undefined;
           onSynced?.();
         }
       }
@@ -2810,6 +2825,37 @@ export class ApiClient {
     };
   }
 
+  /**
+   * Fails the joins still waiting on the room the server refused. Cleared like
+   * `onSynced`, so a frame for a room that already synced reaches nobody: losing
+   * access to a joined room is announced by `AccessChanged`, not by this.
+   */
+  private failYjsRoomJoins(
+    connection: RealtimeConnection,
+    documentId: string,
+    message: string | undefined,
+  ): void {
+    const entries = connection.yjsRooms.get(documentId);
+    if (!entries) return;
+    for (const entry of entries) {
+      const onError = entry.onError;
+      entry.onSynced = undefined;
+      entry.onError = undefined;
+      onError?.(new Error(message || "The server refused the document"));
+    }
+  }
+
+  /**
+   * Whether the space's realtime socket is up right now. Callers waiting on a
+   * reply time themselves out, and a reconnect backoff runs up to 30s, which
+   * would otherwise be indistinguishable from a server that never answered.
+   */
+  isRealtimeConnected(spaceId: string): boolean {
+    const connection = this.realtimeConnections.get(spaceId);
+    if (!connection || connection.closed) return false;
+    return connection.socket?.readyState === WebSocket.OPEN;
+  }
+
   subscribeToRealtimeAccessChanges(
     listener: (change: RealtimeAccessChange) => void,
   ): () => void {
@@ -2849,6 +2895,7 @@ export class ApiClient {
     documentId: string,
     ydoc: YDoc,
     onSynced?: () => void,
+    onError?: (error: Error) => void,
   ): () => void {
     if (!(ydoc instanceof YDoc)) {
       console.warn("Ignoring Yjs room join without a Y.Doc", { documentId, spaceId });
@@ -2858,7 +2905,7 @@ export class ApiClient {
     const connection = this.getRealtimeConnection(spaceId);
 
     let ydocs = connection.yjsRooms.get(documentId);
-    const entry: YjsRoomEntry = { ydoc, onSynced };
+    const entry: YjsRoomEntry = { ydoc, onSynced, onError };
     if (!ydocs) {
       ydocs = new Set();
       connection.yjsRooms.set(documentId, ydocs);
@@ -2871,6 +2918,7 @@ export class ApiClient {
         applyUpdate(ydoc, encodeStateAsUpdate(source.ydoc), "remote");
         queueMicrotask(() => {
           entry.onSynced = undefined;
+          entry.onError = undefined;
           onSynced?.();
         });
       }

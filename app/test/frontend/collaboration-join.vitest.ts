@@ -1,0 +1,259 @@
+import { createRoot } from "solid-js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as Y from "yjs";
+import { ApiClient } from "#api/ApiClient.ts";
+import { reportJoinFailure, useCollaboration } from "#composeables/useCollaboration.ts";
+import { useToast } from "#composeables/useToast.ts";
+import { CollaborationJoinAbandoned } from "#editor/collaboration.ts";
+import {
+  type RealtimeErrorPayload,
+  type WsMsgType as WsMessageType,
+  WsMsgType,
+  wsDecode,
+  wsDecodeJson,
+  wsEncode,
+  wsEncodeYjsUpdate,
+} from "#realtime/protocol.ts";
+
+/** An open socket that records what was sent and can be fed server frames. */
+class TestWebSocket extends EventTarget {
+  static instances: TestWebSocket[] = [];
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  readyState = TestWebSocket.OPEN;
+  readonly url: string;
+  binaryType = "blob";
+  readonly sent: Uint8Array[] = [];
+
+  constructor(url: string | URL) {
+    super();
+    this.url = String(url);
+    TestWebSocket.instances.push(this);
+    queueMicrotask(() => this.dispatchEvent(new Event("open")));
+  }
+
+  send(data: Uint8Array): void {
+    this.sent.push(data);
+  }
+
+  close(): void {
+    this.readyState = TestWebSocket.CLOSED;
+  }
+
+  receive(frame: Uint8Array): void {
+    const data = frame.buffer.slice(
+      frame.byteOffset,
+      frame.byteOffset + frame.byteLength,
+    ) as ArrayBuffer;
+    this.dispatchEvent(new MessageEvent("message", { data }));
+  }
+
+  receiveJson(type: WsMessageType, payload: object): void {
+    this.receive(wsEncode(type, payload));
+  }
+
+  /** Frames of one type sent by the client, newest last. */
+  static sentFrames(type: WsMessageType): Uint8Array[] {
+    return TestWebSocket.instances
+      .flatMap((instance) => instance.sent)
+      .map((frame) => wsDecode(frame))
+      .filter((frame) => frame.type === type)
+      .map((frame) => frame.payload);
+  }
+}
+
+const REFUSAL: RealtimeErrorPayload = {
+  message: "You do not have access to this document",
+  scope: "yjs-join",
+  documentId: "doc-1",
+};
+
+const originalWebSocket = globalThis.WebSocket;
+
+beforeEach(() => {
+  globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket;
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  globalThis.WebSocket = originalWebSocket;
+  TestWebSocket.instances = [];
+});
+
+describe("a Yjs join the server refuses", () => {
+  it("fails the pending join instead of leaving it to time out", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    let synced = false;
+    let failure: Error | null = null;
+    client.joinYjsRoom(
+      "space-1",
+      "doc-1",
+      new Y.Doc(),
+      () => {
+        synced = true;
+      },
+      (error) => {
+        failure = error;
+      },
+    );
+
+    TestWebSocket.instances[0]?.receiveJson(WsMsgType.Error, REFUSAL);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as unknown as Error).message).toBe(REFUSAL.message);
+    expect(synced).toBe(false);
+  });
+
+  it("leaves a room that already synced alone", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    const ydoc = new Y.Doc();
+    let failure: Error | null = null;
+    client.joinYjsRoom(
+      "space-1",
+      "doc-1",
+      ydoc,
+      () => {},
+      (error) => {
+        failure = error;
+      },
+    );
+
+    const socket = TestWebSocket.instances[0];
+    // Losing access to a joined room is announced by AccessChanged; rejecting
+    // a join that already resolved would report a failure to nobody.
+    socket?.receive(wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(new Y.Doc())));
+    socket?.receiveJson(WsMsgType.Error, {
+      message: "You no longer have access to this document",
+      scope: "yjs-room",
+      documentId: "doc-1",
+    } satisfies RealtimeErrorPayload);
+
+    expect(failure).toBeNull();
+  });
+
+  it("fails no join when the frame names no document", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    let failure: Error | null = null;
+    client.joinYjsRoom(
+      "space-1",
+      "doc-1",
+      new Y.Doc(),
+      () => {},
+      (error) => {
+        failure = error;
+      },
+    );
+
+    TestWebSocket.instances[0]?.receiveJson(WsMsgType.Error, {
+      message: "Invalid message",
+      scope: "frame",
+      frame: "Subscribe",
+    } satisfies RealtimeErrorPayload);
+
+    expect(failure).toBeNull();
+  });
+});
+
+describe("collaboration session joins", () => {
+  // The composable talks to the `api` singleton, which keeps one connection per
+  // space for the whole file. A space of its own gives each test a fresh socket.
+  let spaces = 0;
+
+  function session(documentId: string) {
+    spaces += 1;
+    return createRoot((dispose) => ({
+      dispose,
+      collaboration: useCollaboration({
+        spaceId: `space-${spaces}`,
+        documentId: () => documentId,
+      }),
+    }));
+  }
+
+  it("rejects with the reason the server gave", async () => {
+    const { collaboration, dispose } = session("doc-1");
+    try {
+      const joined = collaboration.joinUntilReady();
+      TestWebSocket.instances.at(-1)?.receiveJson(WsMsgType.Error, REFUSAL);
+      await expect(joined).rejects.toThrow(REFUSAL.message);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("joins again after a failure rather than replaying the rejection", async () => {
+    const { collaboration, dispose } = session("doc-1");
+    try {
+      const joined = collaboration.joinUntilReady();
+      TestWebSocket.instances.at(-1)?.receiveJson(WsMsgType.Error, REFUSAL);
+      await expect(joined).rejects.toThrow(REFUSAL.message);
+
+      // Not a count: the client also replays its rooms when a socket opens, so
+      // what matters is that the retry put another join on the wire at all.
+      const before = TestWebSocket.sentFrames(WsMsgType.YjsJoin).length;
+      const retried = collaboration.joinUntilReady();
+      // Claim the rejection before asserting: a failing assertion below would
+      // otherwise leave this promise floating and surface as a timeout.
+      const rejected = expect(retried).rejects.toThrow(REFUSAL.message);
+
+      const joins = TestWebSocket.sentFrames(WsMsgType.YjsJoin);
+      expect(joins.length).toBe(before + 1);
+      expect(wsDecodeJson<{ documentId: string }>(joins.at(-1)).documentId).toBe("doc-1");
+
+      TestWebSocket.instances.at(-1)?.receiveJson(WsMsgType.Error, REFUSAL);
+      await rejected;
+    } finally {
+      dispose();
+    }
+  });
+
+  it("reports leaving mid-join as abandonment, not as a failure", async () => {
+    const { collaboration, dispose } = session("doc-1");
+    try {
+      const joined = collaboration.joinUntilReady();
+      collaboration.leave();
+      await expect(joined).rejects.toBeInstanceOf(CollaborationJoinAbandoned);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("resolves once the server sends the room state", async () => {
+    const { collaboration, dispose } = session("doc-1");
+    try {
+      const joined = collaboration.joinUntilReady();
+      TestWebSocket.instances
+        .at(-1)
+        ?.receive(wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(new Y.Doc())));
+      await expect(joined).resolves.toBeUndefined();
+    } finally {
+      dispose();
+    }
+  });
+});
+
+describe("reporting a join nobody is waiting on", () => {
+  const { toasts, drop } = useToast();
+
+  afterEach(() => {
+    for (const toast of toasts()) drop(toast.id);
+  });
+
+  it("tells the user why, not just the console", () => {
+    reportJoinFailure(new Error("You do not have access to this document"));
+
+    expect(toasts()).toHaveLength(1);
+    expect(toasts()[0]?.type).toBe("error");
+    expect(toasts()[0]?.message).toContain("You do not have access to this document");
+  });
+
+  it("stays quiet when the caller left the room itself", () => {
+    reportJoinFailure(new CollaborationJoinAbandoned());
+
+    expect(toasts()).toHaveLength(0);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+});

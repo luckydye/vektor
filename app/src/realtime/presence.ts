@@ -4,6 +4,7 @@ import {
   type PresenceJoinPayload,
   type PresenceLeavePayload,
   type PresenceUpdatePayload,
+  type RealtimeErrorPayload,
   WsMsgType,
   wsDecodeJson,
   wsEncode,
@@ -109,7 +110,13 @@ export class PresenceConnection {
 
   private async join(join: PresenceJoinPayload): Promise<void> {
     if ((await this.hooks.authorizeRoom(join.room)) !== "allowed") {
-      this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+      this.websocket.send(
+        wsEncode(WsMsgType.Error, {
+          message: "You do not have access to this document",
+          scope: "presence-join",
+          room: join.room,
+        } satisfies RealtimeErrorPayload),
+      );
       return;
     }
 

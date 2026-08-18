@@ -9,6 +9,7 @@ import {
 import { Canvas } from "#canvas/index.ts";
 import {
   provideCollaboration,
+  reportJoinFailure,
   useCollaboration,
 } from "#composeables/useCollaboration.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
@@ -42,7 +43,9 @@ export function CanvasView(props: Props) {
       return;
     }
 
-    void collaboration.joinUntilReady();
+    // Nothing here waits on the room, so a failed join would otherwise surface
+    // only as an unhandled rejection.
+    void collaboration.joinUntilReady().catch(reportJoinFailure);
     collaboration.setPresenceState(state);
     void collaboration.setupPresence();
     collaboration.updatePresence(state);

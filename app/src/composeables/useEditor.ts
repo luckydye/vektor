@@ -8,6 +8,7 @@ import {
 } from "solid-js";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
+import { CollaborationJoinAbandoned } from "#editor/collaboration.ts";
 import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
 import { useQueryClient } from "./query.ts";
@@ -137,6 +138,10 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   const toast = useToast();
 
   let editorSession = 0;
+  // Which document the running session belongs to, so the two effects below can
+  // tell "the session has to move" from "it is already where it belongs".
+  let sessionActive = false;
+  let sessionDocumentId: string | undefined;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearSaveStatusTimer() {
@@ -252,8 +257,13 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   async function startEditorSession() {
+    // A document switch flushes the `editing` and `documentId` effects back to
+    // back, and each asks for a session on the document arriving.
+    if (sessionActive && sessionDocumentId === documentId()) return;
     const session = ++editorSession;
     if (!canMountEditor()) return;
+    sessionActive = true;
+    sessionDocumentId = documentId();
     // A new session has not failed yet — a message left over from the previous
     // one would sit next to the button as if it had.
     setSaveStatus("");
@@ -262,6 +272,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     try {
       await collaboration.joinUntilReady();
     } catch (error) {
+      if (error instanceof CollaborationJoinAbandoned) return;
       if (session === editorSession) {
         const failure = error instanceof Error ? error : new Error(String(error));
         setSaveStatus("error");
@@ -281,6 +292,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   function stopEditorSession() {
     editorSession++;
+    sessionActive = false;
+    sessionDocumentId = undefined;
     unregisterSaveActions();
     setShouldMountEditor(false);
     collaboration.leave();
@@ -307,6 +320,9 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   createEffect(
     on(documentId, (currentDocumentId, previousDocumentId) => {
       if (currentDocumentId === previousDocumentId) return;
+      // The `editing` effect may already have moved the session here, and
+      // tearing that down to rebuild it drops a join the server is answering.
+      if (sessionActive && sessionDocumentId === currentDocumentId) return;
 
       stopEditorSession();
       if (editing()) {

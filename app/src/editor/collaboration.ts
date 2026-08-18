@@ -111,6 +111,17 @@ export function currentEditorPresenceState(
   }
 }
 
+/**
+ * Rejection for a join whose room was left before the server answered. The
+ * caller moved on by definition, so it is not a failure worth reporting.
+ */
+export class CollaborationJoinAbandoned extends Error {
+  constructor() {
+    super("Left the document before it finished syncing");
+    this.name = "CollaborationJoinAbandoned";
+  }
+}
+
 export function colorForPresenceProfile(profile: DocumentPresenceProfile) {
   if (profile.user.color && /^#[0-9a-f]{6}$/i.test(profile.user.color)) {
     return profile.user.color;

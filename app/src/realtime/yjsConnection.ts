@@ -12,6 +12,7 @@ import { documentIsReadonlyById } from "#db/space/documents.ts";
 import { appLogger } from "#observability/logger.ts";
 import { tracedSync } from "#observability/trace.ts";
 import {
+  type RealtimeErrorPayload,
   WsMsgType,
   wsDecodeJson,
   wsDecodeYjsUpdate,
@@ -19,8 +20,8 @@ import {
   wsEncodeYjsUpdate,
 } from "./protocol.ts";
 import {
+  ensureRoomDoc,
   getRoom,
-  loadYDoc,
   persistYRoomDraftBestEffort,
   scheduleYRoomDraftPersist,
   yRooms,
@@ -92,16 +93,28 @@ export class YjsConnection {
   private async join(documentId: string): Promise<void> {
     const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
     if (access !== "edit" && access !== "view") {
-      this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+      // The client rejects the pending join on this, so the message is one a
+      // person reads in a toast rather than a status word.
+      this.websocket.send(
+        wsEncode(WsMsgType.Error, {
+          message: "You do not have access to this document",
+          scope: "yjs-join",
+          documentId,
+        } satisfies RealtimeErrorPayload),
+      );
       return;
     }
 
     const roomKey = `${this.spaceId}:${documentId}`;
-    const room = getRoom(this.spaceId, documentId);
-    if (!room.doc) {
-      room.doc = await loadYDoc(this.spaceId, documentId);
-    }
+    const doc = await ensureRoomDoc(this.spaceId, documentId);
+    // `close()` only visits rooms in `joinedRooms`, which this join has not
+    // reached yet, so a socket that dropped during the load would stay in
+    // `clients` forever and pin the room and its document.
+    if (this.websocket.readyState !== 1) return;
 
+    // Re-read: the room this started from may have been dropped while the
+    // document loaded, and updates only reach the one that is registered now.
+    const room = getRoom(this.spaceId, documentId);
     room.clients.add(this.websocket);
     this.joinedRooms.set(roomKey, {
       canEdit: access === "edit",
@@ -109,9 +122,7 @@ export class YjsConnection {
       aclVersion: version,
     });
 
-    const stateUpdate = tracedSync("yjs.encodeState", () =>
-      Y.encodeStateAsUpdate(room.doc as Y.Doc),
-    );
+    const stateUpdate = tracedSync("yjs.encodeState", () => Y.encodeStateAsUpdate(doc));
     tracedSync("yjs.sendState", () =>
       this.websocket.send(wsEncodeYjsUpdate(documentId, stateUpdate)),
     );
@@ -178,7 +189,13 @@ export class YjsConnection {
           access: "none",
         }),
       );
-      this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+      this.websocket.send(
+        wsEncode(WsMsgType.Error, {
+          message: "You no longer have access to this document",
+          scope: "yjs-room",
+          documentId,
+        } satisfies RealtimeErrorPayload),
+      );
       appLogger.info("Evicted realtime connection from a room it lost access to", {
         spaceId: this.spaceId,
         documentId,

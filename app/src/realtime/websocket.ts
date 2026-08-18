@@ -15,11 +15,13 @@ import {
 import { PresenceConnection, type PresenceRoomAccess } from "./presence.ts";
 import {
   extensionIdFromPresenceRoom,
+  type RealtimeErrorPayload,
   WS_CLOSE_FORBIDDEN,
   WS_CLOSE_UNAUTHORIZED,
   WsMsgType,
   wsDecode,
   wsEncode,
+  wsMsgTypeName,
 } from "./protocol.ts";
 import { TopicSubscriptions } from "./subscriptions.ts";
 import { noteAclChange, YjsConnection } from "./yjsConnection.ts";
@@ -208,8 +210,12 @@ async function handleRealtimeWebSocket(
   });
 
   websocket.on("message", async (rawMessage: Buffer | ArrayBuffer | Buffer[]) => {
+    // Hoisted so the failure below can name the frame it was handling; the
+    // client logs the payload, and "Invalid message" alone identifies nothing.
+    let frameType: WsMsgType | null = null;
     try {
       const { type, payload } = wsDecode(toBuffer(rawMessage));
+      frameType = type;
 
       if (type === WsMsgType.Ping) {
         websocket.send(wsEncode(WsMsgType.Pong, {}));
@@ -223,8 +229,15 @@ async function handleRealtimeWebSocket(
 
       throw new Error("Unsupported message type");
     } catch (error) {
-      appLogger.warn("Failed to handle realtime message", { error, spaceId });
-      websocket.send(wsEncode(WsMsgType.Error, { message: "Invalid message" }));
+      const frame = wsMsgTypeName(frameType);
+      appLogger.warn("Failed to handle realtime message", { error, spaceId, frame });
+      websocket.send(
+        wsEncode(WsMsgType.Error, {
+          message: "Invalid message",
+          scope: "frame",
+          frame,
+        } satisfies RealtimeErrorPayload),
+      );
     }
   });
 

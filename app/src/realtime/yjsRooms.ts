@@ -33,6 +33,8 @@ import {
 
 export interface YRoom {
   doc?: Y.Doc;
+  /** In-flight `loadYDoc` for a room that has no doc yet; see `ensureRoomDoc`. */
+  loading?: Promise<Y.Doc>;
   clients: Set<WebSocket>;
   presences: Map<string, PresenceEnvelope>;
   writeBlocked?: boolean;
@@ -65,6 +67,27 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
   // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
   // event loop and spikes memory; the pool falls back to in-process on failure.
   return traced("loadYDoc", () => deserializeDocContent(meta.type, content));
+}
+
+/**
+ * The room's document, deserializing it once for however many joins arrive
+ * while that is in flight. Switching documents sends two joins in the same
+ * tick, and each would otherwise pay the full off-thread deserialize and then
+ * overwrite the doc the other had already handed out and applied updates to.
+ */
+export async function ensureRoomDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
+  const room = getRoom(spaceId, documentId);
+  if (room.doc) return room.doc;
+
+  room.loading ??= loadYDoc(spaceId, documentId).finally(() => {
+    room.loading = undefined;
+  });
+  const doc = await room.loading;
+  // Re-read: the room can be dropped while the load runs, and the doc has to
+  // land on the one that is registered now or its updates go nowhere.
+  const current = getRoom(spaceId, documentId);
+  current.doc ??= doc;
+  return current.doc;
 }
 
 export function getRoom(spaceId: string, documentId: string): YRoom {
