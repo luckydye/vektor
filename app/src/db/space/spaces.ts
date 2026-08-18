@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import { canAccess } from "#acl/guards.ts";
+import { isInstanceAdmin } from "#acl/instanceGroups.ts";
 import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   countSpaceMembers,
@@ -34,7 +35,6 @@ import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { getUserPreferences } from "#db/space/userPreferences.ts";
 import { isInMemoryDb } from "#inMemoryDb";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
@@ -52,6 +52,11 @@ export interface Space {
   updatedAt: Date;
   userRole?: string;
   memberCount?: number;
+  /**
+   * Set on a listing only: the space is reachable because the caller
+   * administers the instance, not because any grant in it names them.
+   */
+  adminAccess?: boolean;
 }
 
 /** A caller-supplied space slug that cannot become a space URL. */
@@ -265,7 +270,9 @@ export async function getUserSpaceRole(
   space: Space,
   userId: string,
 ): Promise<Permission | undefined> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) return Permission.OWNER;
+  // Instance admins included, so a space they administer without belonging to
+  // still hands the client the role the guards will decide the request at.
+  if (await isInstanceAdmin(userId)) return Permission.OWNER;
 
   try {
     const userGroups = await getUserGroups(userId);
@@ -292,34 +299,50 @@ async function spaceGrants(
     .map((p) => p.permission);
 }
 
+/**
+ * What the user holds in the space on their own account: their space-wide role,
+ * and whether any grant in it reaches them at all. Both unset means they are not
+ * a member, which for an instance admin separates a space they administer from
+ * one they belong to.
+ */
+async function spaceMembership(
+  space: Space,
+  userId: string,
+): Promise<{ role?: Permission; reachable: boolean }> {
+  try {
+    const userGroups = await getUserGroups(userId);
+    const role = highestPermission(await spaceGrants(space, userId, userGroups));
+    if (role) return { role, reachable: true };
+    return { reachable: await hasAnyResourceScopedAccess(space.id, userId, userGroups) };
+  } catch {
+    return { reachable: false };
+  }
+}
+
 export async function listUserSpaces(userId: string): Promise<Space[]> {
   const allSpaces = await listAllSpaces();
-
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return withUserPreferences(
-      allSpaces.map((s) => ({ ...s, userRole: Permission.OWNER })),
-      userId,
-    );
-  }
-
+  const admin = await isInstanceAdmin(userId);
   const userSpaces: Space[] = [];
 
   for (const space of allSpaces) {
-    // Include space if user is a member
-    try {
-      const userGroups = await getUserGroups(userId);
-      const spacePermission = highestPermission(
-        await spaceGrants(space, userId, userGroups),
-      );
-      if (spacePermission) {
-        userSpaces.push({ ...space, userRole: spacePermission });
-      } else if (await hasAnyResourceScopedAccess(space.id, userId, userGroups)) {
-        // No space-wide grant, but the user has a document/tree/category
-        // grant in this space — surface the space so they can reach it.
-        // Leave userRole unset so space-wide UI stays gated as before.
-        userSpaces.push({ ...space });
-      }
-    } catch {}
+    const membership = await spaceMembership(space, userId);
+
+    if (admin) {
+      // The whole instance, at the role the guards will decide their requests
+      // at. `adminAccess` is what tells the two apart in the UI.
+      userSpaces.push({
+        ...space,
+        userRole: Permission.OWNER,
+        adminAccess: !membership.reachable,
+      });
+    } else if (membership.role) {
+      userSpaces.push({ ...space, userRole: membership.role });
+    } else if (membership.reachable) {
+      // No space-wide grant, but a document/tree/category grant in this space —
+      // surface it so they can reach it, with `userRole` left unset so
+      // space-wide UI stays gated as before.
+      userSpaces.push({ ...space });
+    }
   }
 
   return await withUserPreferences(userSpaces, userId);

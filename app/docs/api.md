@@ -421,9 +421,11 @@ curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
 ### `GET /users/me`
 
 - **Auth**: session (`requireUser`).
-- **Returns**: `200 { id, name, email, image, canCreateSpace }` — `canCreateSpace` is
-  the instance-level gate (`VEKTOR_SPACE_CREATION_GROUPS`), which no space-scoped
-  `permissions/me` can carry.
+- **Returns**: `200 { id, name, email, image, canCreateSpace, adminGroups }` —
+  `canCreateSpace` is the instance-level gate (`VEKTOR_SPACE_CREATION_GROUPS`), which no
+  space-scoped `permissions/me` can carry. `adminGroups` lists the caller's own
+  `VEKTOR_ADMIN_GROUPS` memberships — empty unless they administer the instance — and is
+  what the client names when it grants itself standing access to a space.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/users/me"
@@ -469,7 +471,8 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/suggestions?q=grace"
 - **Auth**: any of access token / session / unauthenticated.
 - **Behavior**: if a bearer access token is present, returns the single space it's
   scoped to (or `[]`); else if a session exists, returns all spaces the user belongs
-  to (`listUserSpaces`); else returns spaces with `public` viewer access.
+  to (`listUserSpaces`) — every space on the instance, as `owner`, for a member of
+  `VEKTOR_ADMIN_GROUPS`; else returns spaces with `public` viewer access.
 - **Returns**: `200` array of space objects.
 
 ```bash
@@ -494,7 +497,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces"
 ### `POST /spaces`
 
 - **Auth**: session (`requireUser`), plus the instance's space-creation gate — `403`
-  when `VEKTOR_SPACE_CREATION_GROUPS` is set and the caller is in none of them.
+  when `VEKTOR_SPACE_CREATION_GROUPS` is set and the caller is in none of them, unless
+  they are an instance admin (`VEKTOR_ADMIN_GROUPS`).
 - **Body**: `name` (string, required), `slug` (string, required), `preferences?`
   (object, ≤512KB serialized — see the preferences rules under `PATCH`).
 - **Returns**: `201 { space }`, where `space` also carries `userRole` and the creator's
@@ -587,7 +591,8 @@ curl -sS -X PATCH -b "$COOKIE" -H "Content-Type: application/json" \
 
 ### `DELETE /spaces/:spaceId`
 
-- **Auth**: session; `owner` role.
+- **Auth**: session; `owner` role, which a member of `VEKTOR_ADMIN_GROUPS` holds on
+  every space.
 - **Returns**: `200 { success: true }`.
 
 ```bash

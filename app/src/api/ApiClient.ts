@@ -46,6 +46,8 @@ export interface User {
  */
 export interface CurrentUser extends User {
   canCreateSpace: boolean;
+  /** The caller's own instance-admin groups; empty unless they administer it. */
+  adminGroups: string[];
 }
 
 export interface Space {
@@ -64,6 +66,11 @@ export interface Space {
   updatedAt: Date | string;
   userRole?: string;
   memberCount?: number;
+  /**
+   * Listings only: reachable because the caller administers the instance rather
+   * than because a grant in the space names them.
+   */
+  adminAccess?: boolean;
 }
 
 export interface SpaceMember {

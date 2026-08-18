@@ -13,6 +13,7 @@
  * {@link verifyRevisionAccess} ask about a capability rather than a resource.
  */
 
+import { isInstanceAdmin } from "#acl/instanceGroups.ts";
 import {
   type AclViewer,
   allPermissions,
@@ -146,6 +147,12 @@ async function decideAccess(
   // refused like anyone else, not short-circuited into a 401.
   if (!granted && target.anyGrantInSpace) {
     granted = await hasAnyResourceScopedAccess(spaceId, principal, groups);
+  }
+  // An instance admin holds every role in every space, so the check sits here
+  // rather than in the routes that care: it has to hold for a delete as much as
+  // for a read, and asking it last leaves the ordinary path untouched.
+  if (!granted) {
+    granted = await isInstanceAdmin(principal);
   }
   return { decision: granted ? "ok" : "denied", requiredRole: effectiveRole };
 }

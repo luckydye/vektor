@@ -38,10 +38,6 @@ export function config() {
        */
       COLLABORATION_HOST: process.env.VEKTOR_COLLABORATION_HOST,
 
-      /**
-       * The default space to redirect to from root "/"
-       */
-      DEFAULT_SPACE: process.env.VEKTOR_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
       IN_MEMORY_DB: process.env.VEKTOR_IN_MEMORY_DB,
       /**
@@ -127,6 +123,15 @@ export function config() {
       SPACE_CREATION_GROUPS: process.env.VEKTOR_SPACE_CREATION_GROUPS,
 
       /**
+       * Comma-separated OAuth group ids whose members administer the instance:
+       * owner on every space that exists, which is what lets them list and
+       * delete spaces they do not belong to. Unset means nobody — the opposite
+       * default to the allow list above, since an absent setting must not hand
+       * everyone authority over every space.
+       */
+      ADMIN_GROUPS: process.env.VEKTOR_ADMIN_GROUPS,
+
+      /**
        * Google social login. When both id and secret are set, a "Continue with
        * Google" option is shown on the login screen. The redirect URI defaults
        * to `${SITE_URL}/api/auth/callback/google` unless overridden.
@@ -197,7 +202,6 @@ export function config() {
     SITE_URL: publicEnv.VEKTOR_SITE_URL,
     API_URL: publicEnv.VEKTOR_API_URL,
     COLLABORATION_HOST: publicEnv.VEKTOR_COLLABORATION_HOST,
-    DEFAULT_SPACE: publicEnv.VEKTOR_DEFAULT_SPACE,
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
@@ -226,7 +230,6 @@ export function getPublicEnv(): App.PublicEnv {
     VEKTOR_SITE_URL: appConfig.SITE_URL,
     VEKTOR_API_URL: appConfig.API_URL,
     VEKTOR_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
-    VEKTOR_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
     // Never expose the client secret; only a boolean flag reaches the browser.

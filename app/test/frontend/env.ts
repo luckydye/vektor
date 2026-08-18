@@ -11,7 +11,6 @@ const PUBLIC_ENV = {
   VEKTOR_SITE_URL: "http://localhost",
   VEKTOR_API_URL: "http://localhost",
   VEKTOR_COLLABORATION_HOST: "localhost",
-  VEKTOR_DEFAULT_SPACE: "",
   VEKTOR_NO_AUTH: "1",
 };
 

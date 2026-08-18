@@ -1,5 +1,5 @@
 import { extractAccessToken } from "#acl/guards.ts";
-import { verifyCanCreateSpace } from "#acl/spaceCreation.ts";
+import { verifyCanCreateSpace } from "#acl/instanceGroups.ts";
 import {
   badRequestResponse,
   createdResponse,

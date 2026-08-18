@@ -134,6 +134,24 @@ group ids. Unset, creation is open to every signed-in user. `public` is dropped 
 list rather than honoured — accepting it would make a configured allow list behave as if
 it were absent.
 
+## Administering the instance
+
+`ADMIN_GROUPS` names the groups whose members are owner on every space that exists.
+Unlike the allow list above, unset means nobody: an absent setting cannot hand everyone
+authority over every space. The check lives in the one access decision every guard asks,
+so it holds for a delete exactly as it does for a read, and `GET /spaces` lists the whole
+instance for an admin instead of their memberships.
+
+Administering a space is not the same as belonging to one: `GET /spaces` marks the ones
+an admin reaches this way with `adminAccess`, and the overview shows them locked. Taking
+standing access is an ordinary `POST /spaces/:spaceId/permissions` grant — no separate
+endpoint — written to the admin group rather than to the person, so it survives whoever
+administers the instance next and shows up in the members list like any other grant.
+
+Only a user identity can be an admin. An access token's authority stays the grants its
+`token:<id>` principal holds, so a token minted by an admin is not a skeleton key for the
+instance.
+
 ## What the client knows
 
 The browser cannot reach the ACL table. It receives its own resolved role and feature

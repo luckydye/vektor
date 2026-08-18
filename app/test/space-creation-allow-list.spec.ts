@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { canCreateSpace, spaceCreationGroups } from "#acl/spaceCreation.ts";
+import { canCreateSpace, spaceCreationGroups } from "#acl/instanceGroups.ts";
 import { LOCAL_USER_ID } from "#noAuth";
 
 function setAllowList(value: string | undefined) {

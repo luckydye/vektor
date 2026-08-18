@@ -5,10 +5,13 @@ import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
-import { setClientLang } from "#utils/lang.ts";
+import { useToast } from "#composeables/useToast.ts";
+import { setClientLang, t } from "#utils/lang.ts";
 import { MIN_SIDEBAR_WIDTH } from "#utils/sidebarState.ts";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
-import { SpacesOverview } from "./SpacesOverview.tsx";
+import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
+import { type OverviewSpace, SpacesOverview } from "./SpacesOverview.tsx";
+import { ToastContainer } from "./ToastContainer.tsx";
 import { UserProfile } from "./UserProfile.tsx";
 
 interface Props {
@@ -56,9 +59,12 @@ function SpacesRail() {
 }
 
 function SpacesOverviewContainer() {
-  const { spaces, isLoading, createSpace, canCreateSpace } = useSpace();
+  const { spaces, isLoading, createSpace, deleteSpace, gainAccess, canCreateSpace } =
+    useSpace();
+  const toast = useToast();
   const { pinnedSpaceIds, togglePin } = usePinnedSpaces();
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
+  const [pendingDelete, setPendingDelete] = createSignal<OverviewSpace | null>(null);
 
   const overviewSpaces = createMemo(() => {
     const pinned = pinnedSpaceIds();
@@ -69,6 +75,7 @@ function SpacesOverviewContainer() {
       description: space.preferences?.description,
       members: space.memberCount,
       role: space.userRole,
+      adminAccess: space.adminAccess,
       color: space.preferences?.brandColor,
       logoSvg: space.preferences?.logoSvg,
       pinned: pinned.has(space.id),
@@ -91,11 +98,35 @@ function SpacesOverviewContainer() {
         }}
       />
 
+      <DeleteSpaceDialog
+        space={pendingDelete()}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async (spaceId) => {
+          // Failures propagate on purpose: the dialog reports them and stays
+          // open, since the space is still there.
+          await deleteSpace(spaceId);
+          setPendingDelete(null);
+        }}
+      />
+
       <SpacesOverview
         spaces={overviewSpaces()}
         loading={isLoading()}
         onTogglePin={togglePin}
         onCreate={() => setShowCreateDialog(true)}
+        onDelete={setPendingDelete}
+        onGainAccess={async (space) => {
+          try {
+            await gainAccess(space.id);
+            toast.success(
+              t("You now have owner access to {name}").replace("{name}", space.name),
+            );
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : t("Failed to gain access"),
+            );
+          }
+        }}
         canCreate={canCreateSpace() === true}
       />
     </main>
@@ -118,6 +149,7 @@ export function SpacesApp(props: Props) {
       <div class="flex min-h-screen">
         <SpacesRail />
         <SpacesOverviewContainer />
+        <ToastContainer />
       </div>
     </QueryClientContext.Provider>
   );

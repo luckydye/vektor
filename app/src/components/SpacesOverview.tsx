@@ -2,6 +2,8 @@ import { createMemo, For, Show } from "solid-js";
 import { t } from "#utils/lang.ts";
 import { memberCountLabel } from "#utils/utils.ts";
 import { Button } from "./Button.tsx";
+import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
+import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
 
@@ -12,6 +14,8 @@ export interface OverviewSpace {
   description?: string;
   members?: number;
   role?: string;
+  /** Reachable only because the viewer administers the instance. */
+  adminAccess?: boolean;
   color?: string;
   logoSvg?: string;
   pinned: boolean;
@@ -22,17 +26,23 @@ interface Props {
   loading?: boolean;
   onTogglePin?: (spaceId: string) => void;
   onCreate?: () => void;
+  onDelete?: (space: OverviewSpace) => void;
+  onGainAccess?: (space: OverviewSpace) => void;
   canCreate?: boolean;
 }
 
 function SpaceCard(props: {
   space: OverviewSpace;
   onTogglePin?: (spaceId: string) => void;
+  onDelete?: (space: OverviewSpace) => void;
+  onGainAccess?: (space: OverviewSpace) => void;
 }) {
   return (
-    <div class="group relative flex flex-col overflow-hidden rounded-xl border border-neutral-400/25 bg-neutral-25 transition-colors hover:border-neutral-400/70">
+    <div class="group relative flex flex-col rounded-xl border border-neutral-400/25 bg-neutral-25 transition-colors hover:border-neutral-400/70">
+      {/* Rounded here rather than clipped on the card, which would cut the
+          actions menu off at the card's edge. */}
       <div
-        class="h-14 w-full bg-primary-500"
+        class="h-14 w-full rounded-t-xl bg-primary-500"
         style={{ "background-color": props.space.color }}
       />
 
@@ -51,6 +61,42 @@ function SpaceCard(props: {
       >
         <Icon name="pin-to-home" class="block h-4 w-4" />
       </button>
+
+      {/* Owner only, which an instance admin is on every space. Deleting from
+          the overview rather than from inside the space: an admin administering
+          one they are not a member of has no reason to open it first. */}
+      <Show when={props.space.role === "owner"}>
+        <div class="absolute top-2 right-11 z-10">
+          <ContextMenu
+            trigger={
+              <button
+                type="button"
+                slot="trigger"
+                aria-label={t("Space actions")}
+                title={t("Space actions")}
+                class="rounded-md bg-black/20 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/35"
+              >
+                <Icon name="context-menu-more" class="block h-4 w-4" />
+              </button>
+            }
+          >
+            {/* Only on a space the admin has no grant in: elsewhere the role
+                they already hold is the access. */}
+            <Show when={props.space.adminAccess}>
+              <ContextMenuItem onClick={() => props.onGainAccess?.(props.space)}>
+                <Icon class="h-4 w-4 flex-none" name="unlock-element" />
+                <span>{t("Gain access")}</span>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </Show>
+
+            <ContextMenuItem onClick={() => props.onDelete?.(props.space)}>
+              <Icon class="h-4 w-4 flex-none text-red-600" name="delete-entry" />
+              <span class="text-red-600">{t("Delete space")}</span>
+            </ContextMenuItem>
+          </ContextMenu>
+        </div>
+      </Show>
 
       <div class="flex flex-1 flex-col px-3xs pb-3xs">
         <div
@@ -74,9 +120,25 @@ function SpaceCard(props: {
           </p>
         </Show>
 
-        <p class="mt-auto pt-4xs text-neutral-500 text-size-small">
-          {memberCountLabel(props.space.members)}
-          <Show when={props.space.role}>
+        <p class="mt-auto flex items-center pt-4xs text-neutral-500 text-size-small">
+          <span>{memberCountLabel(props.space.members)}</span>
+
+          {/* An admin's role here is owner, but printing that on a space they do
+              not belong to would read as membership. */}
+          <Show when={props.space.adminAccess}>
+            <span class="px-1">·</span>
+            <Icon name="lock-element" class="h-3.5 w-3.5 flex-none" />
+            <span
+              class="pl-1"
+              title={t(
+                "You are not a member — visible because you administer this instance",
+              )}
+            >
+              {t("Not a member")}
+            </span>
+          </Show>
+
+          <Show when={!props.space.adminAccess && props.space.role}>
             {(role) => (
               <>
                 <span class="px-1">·</span>
@@ -93,11 +155,20 @@ function SpaceCard(props: {
 function SpaceGrid(props: {
   spaces: OverviewSpace[];
   onTogglePin?: (spaceId: string) => void;
+  onDelete?: (space: OverviewSpace) => void;
+  onGainAccess?: (space: OverviewSpace) => void;
 }) {
   return (
     <div class="grid grid-cols-1 gap-2xs sm:grid-cols-2 xl:grid-cols-3">
       <For each={props.spaces}>
-        {(space) => <SpaceCard space={space} onTogglePin={props.onTogglePin} />}
+        {(space) => (
+          <SpaceCard
+            space={space}
+            onTogglePin={props.onTogglePin}
+            onDelete={props.onDelete}
+            onGainAccess={props.onGainAccess}
+          />
+        )}
       </For>
     </div>
   );
@@ -148,7 +219,12 @@ export function SpacesOverview(props: Props) {
       <Show when={pinned().length > 0}>
         <section class="space-y-3xs">
           <h2 class="font-medium text-neutral-600 text-size-small">{t("Pinned")}</h2>
-          <SpaceGrid spaces={pinned()} onTogglePin={props.onTogglePin} />
+          <SpaceGrid
+            spaces={pinned()}
+            onTogglePin={props.onTogglePin}
+            onDelete={props.onDelete}
+            onGainAccess={props.onGainAccess}
+          />
         </section>
       </Show>
 
@@ -159,7 +235,12 @@ export function SpacesOverview(props: Props) {
               {t("All spaces")}
             </h2>
           </Show>
-          <SpaceGrid spaces={unpinned()} onTogglePin={props.onTogglePin} />
+          <SpaceGrid
+            spaces={unpinned()}
+            onTogglePin={props.onTogglePin}
+            onDelete={props.onDelete}
+            onGainAccess={props.onGainAccess}
+          />
         </section>
       </Show>
     </div>
