@@ -27,10 +27,20 @@ export interface Revision {
   createdBy: string;
 }
 
+export type RevisionKind = "save" | "checkpoint" | "suggestion" | "restore";
+
 export interface CreateRevisionOptions {
   message?: string;
-  status?: Revision["status"];
   parentRev?: number | null;
+  kind?: RevisionKind;
+}
+
+function statusForKind(kind: RevisionKind): Revision["status"] {
+  return kind === "suggestion" ? "open" : null;
+}
+
+function coalescesWithPrevious(kind: RevisionKind): boolean {
+  return kind === "save" || kind === "checkpoint";
 }
 
 const brotliCompressAsync = promisify(brotliCompress);
@@ -154,7 +164,8 @@ export async function createRevision(
   options: CreateRevisionOptions = {},
 ): Promise<Revision> {
   const checksum = calculateChecksum(html);
-  const status = options.status ?? null;
+  const kind = options.kind ?? "save";
+  const status = statusForKind(kind);
   const parentRev = options.parentRev ?? null;
 
   const lastRevision = await one(
@@ -194,7 +205,7 @@ export async function createRevision(
     lastRevision &&
     lastIsRecent &&
     !lastIsPublished &&
-    status === null &&
+    coalescesWithPrevious(kind) &&
     (lastRevision.status ?? null) === null
   ) {
     const compressed = await compressHtml(html);
@@ -239,7 +250,7 @@ export async function createRevision(
     createdBy: userId,
   });
 
-  if (status === null) {
+  if (kind !== "suggestion") {
     // Never backwards: a save that landed while this one compressed has already
     // moved the pointer past the revision written here.
     await s.db
@@ -253,10 +264,11 @@ export async function createRevision(
     docId: documentId,
     revisionId: created.rev,
     userId,
-    event: status !== null ? "suggest" : "save",
+    event: kind === "suggestion" ? "suggest" : "save",
     details: {
       message:
-        options.message || (status !== null ? "Suggestion created" : "Revision created"),
+        options.message ||
+        (kind === "suggestion" ? "Suggestion created" : "Revision created"),
       parentRev: created.parentRev,
       status,
     },
@@ -354,7 +366,7 @@ export async function restoreRevision(
   rev: number,
   userId: string,
   message?: string,
-): Promise<Revision | null> {
+): Promise<{ revision: Revision; content: string } | null> {
   const content = await getRevisionContent(s, documentId, rev);
   if (!content) {
     return null;
@@ -371,9 +383,11 @@ export async function restoreRevision(
     details: { message: restoredMessage },
   });
 
-  return createRevision(s, documentId, content, userId, {
+  const revision = await createRevision(s, documentId, content, userId, {
     message: restoredMessage,
+    kind: "restore",
   });
+  return { revision, content };
 }
 
 export async function getRevisionMetadata(
@@ -489,7 +503,7 @@ export async function createSuggestion(
 
   return createRevision(s, documentId, html, userId, {
     message,
-    status: "open",
+    kind: "suggestion",
     parentRev,
   });
 }

@@ -100,37 +100,78 @@ describe("RateLimiter", () => {
 
 describe("rateLimitKey", () => {
   it("keys on the access token when one is presented", () => {
-    expect(rateLimitKey("Bearer at_secret", "1.2.3.4")).toBe(
-      rateLimitKey("Bearer at_secret", "5.6.7.8"),
+    expect(rateLimitKey("Bearer at_secret", undefined, "1.2.3.4")).toBe(
+      rateLimitKey("Bearer at_secret", undefined, "5.6.7.8"),
     );
   });
 
   it("separates distinct tokens", () => {
-    expect(rateLimitKey("Bearer at_one", "1.2.3.4")).not.toBe(
-      rateLimitKey("Bearer at_two", "1.2.3.4"),
+    expect(rateLimitKey("Bearer at_one", undefined, "1.2.3.4")).not.toBe(
+      rateLimitKey("Bearer at_two", undefined, "1.2.3.4"),
     );
   });
 
   it("never puts the raw token in the key", () => {
-    const key = rateLimitKey("Bearer at_secret", "1.2.3.4");
+    const key = rateLimitKey("Bearer at_secret", undefined, "1.2.3.4");
     expect(key.startsWith("token:")).toBe(true);
     expect(key).not.toContain("at_secret");
   });
 
   it("accepts the scheme case-insensitively", () => {
-    expect(rateLimitKey("bearer at_secret", "1.2.3.4")).toBe(
-      rateLimitKey("Bearer at_secret", "1.2.3.4"),
+    expect(rateLimitKey("bearer at_secret", undefined, "1.2.3.4")).toBe(
+      rateLimitKey("Bearer at_secret", undefined, "1.2.3.4"),
     );
   });
 
-  it("falls back to the caller IP without a bearer token", () => {
-    expect(rateLimitKey(undefined, "1.2.3.4")).toBe("ip:1.2.3.4");
+  it("falls back to the caller IP with neither token nor session", () => {
+    expect(rateLimitKey(undefined, undefined, "1.2.3.4")).toBe("ip:1.2.3.4");
     // An empty bearer is not an identity, and must not share one bucket.
-    expect(rateLimitKey("Bearer   ", "1.2.3.4")).toBe("ip:1.2.3.4");
+    expect(rateLimitKey("Bearer   ", undefined, "1.2.3.4")).toBe("ip:1.2.3.4");
   });
 
   it("still produces a key when the IP is unavailable", () => {
-    expect(rateLimitKey(undefined, "")).toBe("ip:unknown");
+    expect(rateLimitKey(undefined, undefined, "")).toBe("ip:unknown");
+  });
+
+  it("gives each session its own bucket, so one user cannot spend another's", () => {
+    const alice = rateLimitKey(undefined, "vektor.session_token=alice-token", "1.2.3.4");
+    const bob = rateLimitKey(undefined, "vektor.session_token=bob-token", "1.2.3.4");
+    expect(alice).not.toBe(bob);
+    expect(alice.startsWith("session:")).toBe(true);
+  });
+
+  it("keys the same session identically from a different address", () => {
+    expect(rateLimitKey(undefined, "vektor.session_token=alice", "1.2.3.4")).toBe(
+      rateLimitKey(undefined, "vektor.session_token=alice", "5.6.7.8"),
+    );
+  });
+
+  it("never puts the raw session token in the key", () => {
+    const key = rateLimitKey(undefined, "vektor.session_token=s3cret", "1.2.3.4");
+    expect(key).not.toContain("s3cret");
+  });
+
+  it("finds the session cookie among others, and under the Secure prefix", () => {
+    const plain = rateLimitKey(undefined, "vektor.session_token=abc", "1.2.3.4");
+    expect(
+      rateLimitKey(undefined, "theme=dark; vektor.session_token=abc; tz=UTC", "1.2.3.4"),
+    ).toBe(plain);
+    expect(rateLimitKey(undefined, "__Secure-vektor.session_token=abc", "1.2.3.4")).toBe(
+      plain,
+    );
+  });
+
+  it("prefers the access token over the session cookie", () => {
+    expect(
+      rateLimitKey("Bearer at_secret", "vektor.session_token=alice", "1.2.3.4"),
+    ).toBe(rateLimitKey("Bearer at_secret", undefined, "9.9.9.9"));
+  });
+
+  it("falls back to the IP when the session cookie carries no value", () => {
+    expect(rateLimitKey(undefined, "vektor.session_token=", "1.2.3.4")).toBe(
+      "ip:1.2.3.4",
+    );
+    expect(rateLimitKey(undefined, "theme=dark", "1.2.3.4")).toBe("ip:1.2.3.4");
   });
 });
 
@@ -181,6 +222,7 @@ describe("checkRateLimit", () => {
     pattern: "/api/v1/spaces/[spaceId]/documents",
     method: "GET",
     authorization: undefined,
+    cookie: undefined,
     ip: "1.2.3.4",
   };
 
@@ -215,7 +257,7 @@ describe("checkRateLimit", () => {
   });
 
   it("blocks a token key by its hash, as the 429 log line reports it", () => {
-    const key = rateLimitKey("Bearer at_abusive", "1.2.3.4");
+    const key = rateLimitKey("Bearer at_abusive", undefined, "1.2.3.4");
     process.env.VEKTOR_RATE_LIMIT_BLOCK = key;
 
     expect(

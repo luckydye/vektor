@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { documentLockChangedKind } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
+import { sweepIdleYRooms, yRooms } from "#realtime/yjsRooms.ts";
 import {
   type RealtimeAccessChangedMessage,
   type RealtimeErrorPayload,
@@ -1503,4 +1504,207 @@ describe("Realtime WebSocket readonly documents", () => {
     },
     TEST_TIMEOUT_MS,
   );
+});
+
+describe("Realtime WebSocket writes against an open room", () => {
+  const PERSIST_MS = 6_500;
+
+  async function createDocument(title: string, content: string): Promise<string> {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({ content, properties: { title } }),
+    });
+    expect(response.status).toBe(201);
+    return (await response.json()).document.id;
+  }
+
+  async function readStoredContent(documentId: string): Promise<string> {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+    );
+    expect(response.status).toBe(200);
+    return (await response.json()).document.content;
+  }
+
+  it(
+    "carries a saved document into the room, so the next edit does not revert it",
+    async () => {
+      const documentId = await createDocument("Save into room", "<p>original</p>");
+      const editor = await connectWebSocket(BASE_URL, testSpaceId);
+
+      try {
+        const editorDoc = await joinRoom(editor, documentId);
+
+        const save = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+          { method: "PUT", body: JSON.stringify({ content: "<p>saved over http</p>" }) },
+        );
+        expect(save.status).toBe(200);
+
+        const update = wsDecodeYjsUpdate(
+          await editor.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
+        );
+        Y.applyUpdate(editorDoc, update.update, "remote");
+        expect(editorDoc.getXmlFragment("default").toString()).toContain(
+          "saved over http",
+        );
+
+        editor.socket.send(
+          wsEncodeYjsUpdate(documentId, appendParagraph(editorDoc, "typed after save")),
+        );
+        await Bun.sleep(PERSIST_MS);
+
+        const stored = await readStoredContent(documentId);
+        expect(stored).toContain("saved over http");
+        expect(stored).toContain("typed after save");
+      } finally {
+        editor.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps a reconnecting editor's unsynced updates, and applies what it sends next",
+    async () => {
+      const documentId = await createDocument("Reconnect sync", "<p>base</p>");
+      const first = await connectWebSocket(BASE_URL, testSpaceId);
+      const clientDoc = await joinRoom(first, documentId);
+
+      first.socket.send(
+        wsEncodeYjsUpdate(documentId, appendParagraph(clientDoc, "before the drop")),
+      );
+      await Bun.sleep(PERSIST_MS);
+      first.socket.close();
+      await waitForClose(first.socket);
+
+      const second = await connectWebSocket(BASE_URL, testSpaceId);
+      try {
+        second.socket.send(
+          wsEncode(WsMsgType.YjsJoin, {
+            documentId,
+            stateVector: Buffer.from(Y.encodeStateVector(clientDoc)).toString("base64"),
+          }),
+        );
+        Y.applyUpdate(
+          clientDoc,
+          wsDecodeYjsUpdate(
+            await second.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
+          ).update,
+          "remote",
+        );
+
+        const request = wsDecodeYjsUpdate(
+          await second.waitForFrame(WsMsgType.YjsSyncRequest, FRAME_TIMEOUT_MS),
+        );
+        expect(request.documentId).toBe(documentId);
+        const missing = Y.encodeStateAsUpdate(clientDoc, request.update);
+        second.socket.send(wsEncodeYjsUpdate(documentId, missing));
+
+        expect(
+          clientDoc.getXmlFragment("default").toString().split("before the drop").length -
+            1,
+        ).toBe(1);
+
+        second.socket.send(
+          wsEncodeYjsUpdate(
+            documentId,
+            appendParagraph(clientDoc, "after the reconnect"),
+          ),
+        );
+        await Bun.sleep(PERSIST_MS);
+
+        const stored = await readStoredContent(documentId);
+        expect(stored).toContain("before the drop");
+        expect(stored).toContain("after the reconnect");
+      } finally {
+        second.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "persists the room before dropping it, so an immediate reopen sees the last edit",
+    async () => {
+      const documentId = await createDocument("Reopen race", "<p>base</p>");
+      const first = await connectWebSocket(BASE_URL, testSpaceId);
+      const clientDoc = await joinRoom(first, documentId);
+
+      first.socket.send(
+        wsEncodeYjsUpdate(
+          documentId,
+          appendParagraph(clientDoc, "last edit before close"),
+        ),
+      );
+      await Bun.sleep(50);
+      first.socket.close();
+      await waitForClose(first.socket);
+
+      const second = await connectWebSocket(BASE_URL, testSpaceId);
+      try {
+        const reopened = await joinRoom(second, documentId);
+        expect(reopened.getXmlFragment("default").toString()).toContain(
+          "last edit before close",
+        );
+      } finally {
+        second.socket.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
+describe("idle Yjs rooms", () => {
+  const GRACE_MS = 10 * 60 * 1000;
+
+  function addIdleRoom(key: string): void {
+    yRooms.set(key, { clients: new Set(), presences: new Map(), doc: new Y.Doc() });
+  }
+
+  afterEach(() => {
+    for (const key of [...yRooms.keys()]) {
+      if (key.startsWith("sweep:")) yRooms.delete(key);
+    }
+  });
+
+  it("keeps a room a client just left, so a reconnect resumes the same document", () => {
+    addIdleRoom("sweep:kept");
+    const now = Date.now();
+    sweepIdleYRooms(now);
+    expect(yRooms.has("sweep:kept")).toBe(true);
+
+    sweepIdleYRooms(now + GRACE_MS - 1_000);
+    expect(yRooms.has("sweep:kept")).toBe(true);
+  });
+
+  it("drops it once the grace period has passed", () => {
+    addIdleRoom("sweep:expired");
+    const now = Date.now();
+    sweepIdleYRooms(now);
+    sweepIdleYRooms(now + GRACE_MS + 1_000);
+    expect(yRooms.has("sweep:expired")).toBe(false);
+  });
+
+  it("keeps a room with a client in it however long it sits", () => {
+    const socket = { readyState: 1 } as unknown as WebSocket;
+    yRooms.set("sweep:busy", {
+      clients: new Set([socket]),
+      presences: new Map(),
+      doc: new Y.Doc(),
+    });
+    const now = Date.now();
+    sweepIdleYRooms(now);
+    sweepIdleYRooms(now + GRACE_MS * 10);
+    expect(yRooms.has("sweep:busy")).toBe(true);
+  });
+
+  it("caps how many idle rooms it holds, dropping the ones idle longest first", () => {
+    const now = Date.now();
+    for (let i = 0; i < 205; i++) addIdleRoom(`sweep:capped-${i}`);
+    sweepIdleYRooms(now);
+    const held = [...yRooms.keys()].filter((key) => key.startsWith("sweep:capped-"));
+    expect(held.length).toBeLessThanOrEqual(200);
+    expect(held.length).toBeGreaterThan(0);
+  });
 });

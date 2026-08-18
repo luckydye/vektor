@@ -12,12 +12,16 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { updateDocument } from "#db/space/documents.ts";
 import {
   getRevisionMetadata,
   listRevisionMetadata,
   restoreRevision,
   updateRevisionStatus,
 } from "#db/space/revisions.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import { replaceLiveDocumentContent } from "#realtime/yjsRooms.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -65,10 +69,18 @@ export const POST: ApiRouteHandler = (context) =>
     const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.req.raw);
     const message = typeof body.message === "string" ? body.message : undefined;
     const store = await openSpaceStore(spaceId);
-    const revision = await restoreRevision(store, documentId, rev, user.id, message);
-    if (!revision) {
+    const restored = await restoreRevision(store, documentId, rev, user.id, message);
+    if (!restored) {
       throw notFoundResponse("Revision");
     }
+
+    const { revision, content } = restored;
+    const document = await updateDocument(store, documentId, content);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
+    replaceLiveDocumentContent(spaceId, documentId, document.type, content);
+    sendSyncEvent(spaceId, realtimeTopics.document(documentId));
 
     return jsonResponse({
       revision: {

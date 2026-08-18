@@ -17,12 +17,14 @@ import {
   wsDecodeJson,
   wsDecodeYjsUpdate,
   wsEncode,
+  wsEncodeYjsSyncRequest,
   wsEncodeYjsUpdate,
 } from "./protocol.ts";
 import {
   ensureRoomDoc,
   getRoom,
   persistYRoomDraftBestEffort,
+  retireYRoom,
   scheduleYRoomDraftPersist,
   yRooms,
 } from "./yjsRooms.ts";
@@ -48,6 +50,16 @@ function aclVersion(spaceId: string): number {
   return aclVersions.get(spaceId) ?? 0;
 }
 
+function decodeStateVector(encoded: string | undefined): Uint8Array | null {
+  if (!encoded) return null;
+  try {
+    const bytes = Buffer.from(encoded, "base64");
+    return bytes.length > 0 ? new Uint8Array(bytes) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Tracks the Yjs rooms belonging to one realtime connection. */
 export class YjsConnection {
   private readonly joinedRooms = new Map<string, JoinedRoom>();
@@ -61,7 +73,8 @@ export class YjsConnection {
   /** Handles a Yjs frame and returns whether the frame was recognized. */
   async handle(type: WsMsgType, payload: Uint8Array): Promise<boolean> {
     if (type === WsMsgType.YjsJoin) {
-      await this.join(wsDecodeJson<{ documentId: string }>(payload).documentId);
+      const join = wsDecodeJson<{ documentId: string; stateVector?: string }>(payload);
+      await this.join(join.documentId, decodeStateVector(join.stateVector));
       return true;
     }
 
@@ -90,7 +103,10 @@ export class YjsConnection {
     return this.joinedRooms.has(`${this.spaceId}:${documentId}`);
   }
 
-  private async join(documentId: string): Promise<void> {
+  private async join(
+    documentId: string,
+    clientStateVector: Uint8Array | null,
+  ): Promise<void> {
     const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
     if (access !== "edit" && access !== "view") {
       // The client rejects the pending join on this, so the message is one a
@@ -122,10 +138,18 @@ export class YjsConnection {
       aclVersion: version,
     });
 
-    const stateUpdate = tracedSync("yjs.encodeState", () => Y.encodeStateAsUpdate(doc));
+    const stateUpdate = tracedSync("yjs.encodeState", () =>
+      Y.encodeStateAsUpdate(doc, clientStateVector ?? undefined),
+    );
     tracedSync("yjs.sendState", () =>
       this.websocket.send(wsEncodeYjsUpdate(documentId, stateUpdate)),
     );
+
+    if (clientStateVector) {
+      tracedSync("yjs.sendSyncRequest", () =>
+        this.websocket.send(wsEncodeYjsSyncRequest(documentId, Y.encodeStateVector(doc))),
+      );
+    }
   }
 
   private async applyUpdate(documentId: string, update: Uint8Array): Promise<void> {
@@ -239,10 +263,11 @@ export class YjsConnection {
     const room = yRooms.get(roomKey);
     if (!room) return;
 
-    persistYRoomDraftBestEffort(roomKey);
     room.clients.delete(this.websocket);
     if (room.clients.size === 0 && room.presences.size === 0) {
-      yRooms.delete(roomKey);
+      retireYRoom(roomKey);
+    } else {
+      persistYRoomDraftBestEffort(roomKey);
     }
   }
 

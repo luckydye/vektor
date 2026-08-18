@@ -21,7 +21,7 @@ import {
 } from "#documents/serializationPool.ts";
 import { contentIsHtml, documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
-import { traced } from "#observability/trace.ts";
+import { traced, tracedSync } from "#observability/trace.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
@@ -42,6 +42,7 @@ export interface YRoom {
   lastPersistAt?: number;
   /** User who made the most recently received collaborative update. */
   lastEditorId?: string;
+  idleSince?: number;
 }
 
 export const yRooms = new Map<string, YRoom>();
@@ -352,14 +353,71 @@ export async function persistYRoomDraft(key: string): Promise<void> {
     room.lastEditorId,
     {
       message: "Collaboration checkpoint",
+      kind: "checkpoint",
     },
   );
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
 export function persistYRoomDraftBestEffort(key: string): void {
-  void persistYRoomDraft(key).catch((error) => {
+  void settledPersist(key);
+}
+
+function settledPersist(key: string): Promise<void> {
+  return persistYRoomDraft(key).catch((error) => {
     appLogger.warn("Failed to persist realtime room draft", { error, roomKey: key });
+  });
+}
+
+const ROOM_GRACE_MS = 10 * 60 * 1000;
+const MAX_IDLE_ROOMS = 200;
+const ROOM_SWEEP_INTERVAL_MS = 60 * 1000;
+
+function roomIsIdle(room: YRoom): boolean {
+  return room.clients.size === 0 && room.presences.size === 0 && !room.loading;
+}
+
+export function sweepIdleYRooms(now = Date.now()): number {
+  const idle: Array<{ key: string; idleSince: number }> = [];
+  for (const [key, room] of yRooms) {
+    if (!roomIsIdle(room)) {
+      room.idleSince = undefined;
+      continue;
+    }
+    if (room.idleSince === undefined) room.idleSince = now;
+    idle.push({ key, idleSince: room.idleSince });
+  }
+
+  let dropped = 0;
+  for (const { key, idleSince } of idle) {
+    if (now - idleSince >= ROOM_GRACE_MS) {
+      yRooms.delete(key);
+      dropped++;
+    }
+  }
+
+  const surviving = idle
+    .filter(({ key }) => yRooms.has(key))
+    .sort((a, b) => a.idleSince - b.idleSince);
+  for (const { key } of surviving.slice(
+    0,
+    Math.max(0, surviving.length - MAX_IDLE_ROOMS),
+  )) {
+    yRooms.delete(key);
+    dropped++;
+  }
+  return dropped;
+}
+
+const roomSweep = setInterval(() => sweepIdleYRooms(), ROOM_SWEEP_INTERVAL_MS);
+roomSweep.unref?.();
+
+export function retireYRoom(key: string): void {
+  void settledPersist(key).then(() => {
+    const room = yRooms.get(key);
+    if (!room || !roomIsIdle(room)) return;
+    room.idleSince = Date.now();
+    sweepIdleYRooms();
   });
 }
 
@@ -411,7 +469,7 @@ function clearAgentPresence(key: string, documentId: string): void {
   );
 
   if (room.clients.size === 0 && room.presences.size === 0) {
-    yRooms.delete(key);
+    retireYRoom(key);
   }
 }
 

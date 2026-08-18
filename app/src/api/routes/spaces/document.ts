@@ -516,6 +516,8 @@ export const PUT: ApiRouteHandler = (context) =>
       throw notFoundResponse("Document");
     }
 
+    replaceLiveDocumentContent(spaceId, id, nextType, contentSanitized);
+
     if (userId) {
       const revision = await createRevision(store, id, contentSanitized, userId, {
         message: "Document updated",

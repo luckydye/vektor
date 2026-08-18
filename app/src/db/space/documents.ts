@@ -864,7 +864,12 @@ export async function listArchivedDocuments(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  const allProps = await many(s.db.select().from(property));
+  const archivedIds = docs.map((doc) => doc.id);
+  const allProps = archivedIds.length
+    ? await many(
+        s.db.select().from(property).where(inArray(property.documentId, archivedIds)),
+      )
+    : [];
 
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 

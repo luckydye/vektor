@@ -160,6 +160,7 @@ export async function apiRouter(
     pattern: match.pattern,
     method,
     authorization: c.req.header("authorization"),
+    cookie: c.req.header("cookie"),
     ip: clientIp(c),
   });
   if (limit && !limit.allowed) {

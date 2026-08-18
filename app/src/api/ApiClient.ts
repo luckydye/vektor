@@ -1,4 +1,11 @@
-import { applyUpdate, encodeStateAsUpdate, Doc as YDoc } from "yjs";
+import {
+  applyUpdate,
+  decodeStateVector,
+  encodeStateAsUpdate,
+  encodeStateVector,
+  encodeStateVectorFromUpdate,
+  Doc as YDoc,
+} from "yjs";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
 import {
@@ -587,8 +594,25 @@ interface RealtimeSubscription {
   callback: (event: RealtimeEventMessage) => void;
 }
 
+function sharesNoHistory(ydoc: YDoc, update: Uint8Array): boolean {
+  let local: Map<number, number>;
+  let incoming: Map<number, number>;
+  try {
+    local = decodeStateVector(encodeStateVector(ydoc));
+    incoming = decodeStateVector(encodeStateVectorFromUpdate(update));
+  } catch {
+    return false;
+  }
+  if (local.size === 0 || incoming.size === 0) return false;
+  for (const client of incoming.keys()) {
+    if (local.has(client)) return false;
+  }
+  return true;
+}
+
 interface YjsRoomEntry {
   ydoc: YDoc;
+  onReset?: () => void;
   onSynced?: () => void;
   /** Both are cleared on the first of the two, so a join settles exactly once. */
   onError?: (error: Error) => void;
@@ -2500,11 +2524,31 @@ export class ApiClient {
       const ydocs = connection.yjsRooms.get(documentId);
       if (ydocs) {
         for (const entry of ydocs) {
+          if (entry.onSynced && entry.onReset && sharesNoHistory(entry.ydoc, update)) {
+            const onReset = entry.onReset;
+            entry.onSynced = undefined;
+            entry.onError = undefined;
+            entry.onReset = undefined;
+            onReset();
+            continue;
+          }
           applyUpdate(entry.ydoc, update, "remote");
           const onSynced = entry.onSynced;
           entry.onSynced = undefined;
           entry.onError = undefined;
           onSynced?.();
+        }
+      }
+      return;
+    }
+
+    if (type === WsMsgType.YjsSyncRequest) {
+      const { documentId, update: serverStateVector } = wsDecodeYjsUpdate(payload);
+      const ydocs = connection.yjsRooms.get(documentId);
+      for (const entry of ydocs ?? []) {
+        const missing = encodeStateAsUpdate(entry.ydoc, serverStateVector);
+        if (missing.length > 2) {
+          this.sendRealtimeEphemeral(connection, wsEncodeYjsUpdate(documentId, missing));
         }
       }
       return;
@@ -2674,8 +2718,8 @@ export class ApiClient {
       socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
     }
 
-    for (const documentId of connection.yjsRooms.keys()) {
-      socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    for (const [documentId, entries] of connection.yjsRooms) {
+      socket.send(wsEncode(WsMsgType.YjsJoin, this.yjsJoinPayload(documentId, entries)));
     }
 
     for (const payload of connection.presenceJoinPayloads.values()) {
@@ -2831,6 +2875,19 @@ export class ApiClient {
     };
   }
 
+  private yjsJoinPayload(
+    documentId: string,
+    entries: Iterable<YjsRoomEntry>,
+  ): { documentId: string; stateVector?: string } {
+    const first = entries[Symbol.iterator]().next();
+    if (first.done) return { documentId };
+    const vector = encodeStateVector(first.value.ydoc);
+    if (vector.length <= 1) return { documentId };
+    let binary = "";
+    for (const byte of vector) binary += String.fromCharCode(byte);
+    return { documentId, stateVector: btoa(binary) };
+  }
+
   /**
    * Fails the joins still waiting on the room the server refused. Cleared like
    * `onSynced`, so a frame for a room that already synced reaches nobody: losing
@@ -2902,6 +2959,7 @@ export class ApiClient {
     ydoc: YDoc,
     onSynced?: () => void,
     onError?: (error: Error) => void,
+    onReset?: () => void,
   ): () => void {
     if (!(ydoc instanceof YDoc)) {
       console.warn("Ignoring Yjs room join without a Y.Doc", { documentId, spaceId });
@@ -2911,13 +2969,16 @@ export class ApiClient {
     const connection = this.getRealtimeConnection(spaceId);
 
     let ydocs = connection.yjsRooms.get(documentId);
-    const entry: YjsRoomEntry = { ydoc, onSynced, onError };
+    const entry: YjsRoomEntry = { ydoc, onSynced, onError, onReset };
     if (!ydocs) {
       ydocs = new Set();
       connection.yjsRooms.set(documentId, ydocs);
       ydocs.add(entry);
       // First doc for this room — announce the join (replayed on reconnect).
-      this.sendRealtimeState(connection, wsEncode(WsMsgType.YjsJoin, { documentId }));
+      this.sendRealtimeState(
+        connection,
+        wsEncode(WsMsgType.YjsJoin, this.yjsJoinPayload(documentId, ydocs)),
+      );
     } else {
       const source = ydocs.values().next().value;
       if (source) {
@@ -2925,6 +2986,7 @@ export class ApiClient {
         queueMicrotask(() => {
           entry.onSynced = undefined;
           entry.onError = undefined;
+          entry.onReset = undefined;
           onSynced?.();
         });
       }

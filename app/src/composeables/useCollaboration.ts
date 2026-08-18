@@ -9,7 +9,10 @@ import {
 } from "solid-js";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
-import { CollaborationJoinAbandoned } from "#editor/collaboration.ts";
+import {
+  CollaborationJoinAbandoned,
+  CollaborationResetRequired,
+} from "#editor/collaboration.ts";
 import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import {
@@ -292,6 +295,7 @@ export function useCollaboration<TPresenceState>(options: {
           ydoc(),
           onSynced,
           onFailed,
+          () => onFailed(new CollaborationResetRequired()),
         );
       });
       // A join that failed still holds the room and a document that never
@@ -309,7 +313,16 @@ export function useCollaboration<TPresenceState>(options: {
       });
       joinedDocumentId = currentDocumentId;
     }
-    await yjsReady;
+
+    try {
+      await yjsReady;
+    } catch (error) {
+      if (error instanceof CollaborationResetRequired) {
+        await joinUntilReady();
+        return;
+      }
+      throw error;
+    }
   }
 
   function syncPresenceProfiles() {

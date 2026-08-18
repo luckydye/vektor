@@ -25,7 +25,7 @@ const MAX = 20;
 /** The killswitch names a derived key, so derive it as the router will. */
 const BLOCKED_TOKEN = "at_blocked_integration_probe";
 const ALLOWED_TOKEN = "at_allowed_integration_probe";
-const BLOCKED_KEY = rateLimitKey(`Bearer ${BLOCKED_TOKEN}`, "127.0.0.1");
+const BLOCKED_KEY = rateLimitKey(`Bearer ${BLOCKED_TOKEN}`, undefined, "127.0.0.1");
 
 let serverProcess: TestServerProcess;
 

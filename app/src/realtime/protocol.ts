@@ -176,6 +176,7 @@ export const WsMsgType = {
   Ping: 10,
   Pong: 11,
   AccessChanged: 12,
+  YjsSyncRequest: 13,
 } as const;
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];
@@ -221,12 +222,27 @@ export function wsEncodeYjsUpdate(
   documentId: string,
   update: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
+  return wsEncodeYjsBinary(WsMsgType.YjsUpdate, documentId, update);
+}
+
+export function wsEncodeYjsSyncRequest(
+  documentId: string,
+  stateVector: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  return wsEncodeYjsBinary(WsMsgType.YjsSyncRequest, documentId, stateVector);
+}
+
+function wsEncodeYjsBinary(
+  type: WsMsgType,
+  documentId: string,
+  body: Uint8Array,
+): Uint8Array<ArrayBuffer> {
   const idBytes = enc.encode(documentId);
-  const frame = new Uint8Array(1 + 4 + idBytes.length + update.length);
-  frame[0] = WsMsgType.YjsUpdate;
+  const frame = new Uint8Array(1 + 4 + idBytes.length + body.length);
+  frame[0] = type;
   new DataView(frame.buffer).setUint32(1, idBytes.length, false);
   frame.set(idBytes, 5);
-  frame.set(update, 5 + idBytes.length);
+  frame.set(body, 5 + idBytes.length);
   return frame;
 }
 

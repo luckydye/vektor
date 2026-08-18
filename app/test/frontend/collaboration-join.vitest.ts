@@ -257,3 +257,107 @@ describe("reporting a join nobody is waiting on", () => {
     expect(console.error).not.toHaveBeenCalled();
   });
 });
+
+describe("rejoining a room the server rebuilt from storage", () => {
+  function docWithText(text: string): Y.Doc {
+    const doc = new Y.Doc();
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText(text)]);
+    doc.getXmlFragment("default").push([paragraph]);
+    return doc;
+  }
+
+  it("asks for a reset when the server's state shares no history with the local doc", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    const local = docWithText("typed before the drop");
+    let reset = false;
+    let synced = false;
+    client.joinYjsRoom(
+      "space-1",
+      "doc-1",
+      local,
+      () => {
+        synced = true;
+      },
+      () => {},
+      () => {
+        reset = true;
+      },
+    );
+
+    const rebuilt = docWithText("typed before the drop");
+    TestWebSocket.instances[0]?.receive(
+      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(rebuilt)),
+    );
+
+    expect(reset).toBe(true);
+    expect(synced).toBe(false);
+    expect(local.getXmlFragment("default").toString()).not.toContain(
+      "typed before the droptyped before the drop",
+    );
+    expect(
+      local.getXmlFragment("default").toString().split("typed before the drop").length -
+        1,
+    ).toBe(1);
+  });
+
+  it("syncs normally when the room is still the one this client was talking to", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    const live = docWithText("shared history");
+    const local = new Y.Doc();
+    Y.applyUpdate(local, Y.encodeStateAsUpdate(live), "remote");
+
+    let reset = false;
+    let synced = false;
+    client.joinYjsRoom(
+      "space-1",
+      "doc-1",
+      local,
+      () => {
+        synced = true;
+      },
+      () => {},
+      () => {
+        reset = true;
+      },
+    );
+
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText("added by a peer")]);
+    live.getXmlFragment("default").push([paragraph]);
+    TestWebSocket.instances[0]?.receive(
+      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(live)),
+    );
+
+    expect(reset).toBe(false);
+    expect(synced).toBe(true);
+    expect(local.getXmlFragment("default").toString()).toContain("added by a peer");
+  });
+
+  it("does not ask a first-time join to reset", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    const local = new Y.Doc();
+    let reset = false;
+    let synced = false;
+    client.joinYjsRoom(
+      "space-1",
+      "doc-1",
+      local,
+      () => {
+        synced = true;
+      },
+      () => {},
+      () => {
+        reset = true;
+      },
+    );
+
+    TestWebSocket.instances[0]?.receive(
+      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(docWithText("server content"))),
+    );
+
+    expect(reset).toBe(false);
+    expect(synced).toBe(true);
+    expect(local.getXmlFragment("default").toString()).toContain("server content");
+  });
+});

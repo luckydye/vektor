@@ -122,6 +122,13 @@ export class CollaborationJoinAbandoned extends Error {
   }
 }
 
+export class CollaborationResetRequired extends Error {
+  constructor() {
+    super("The document was reopened from storage and has to be resynced");
+    this.name = "CollaborationResetRequired";
+  }
+}
+
 export function colorForPresenceProfile(profile: DocumentPresenceProfile) {
   if (profile.user.color && /^#[0-9a-f]{6}$/i.test(profile.user.color)) {
     return profile.user.color;

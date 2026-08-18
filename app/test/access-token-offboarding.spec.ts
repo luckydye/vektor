@@ -94,6 +94,36 @@ async function setDelegateRole(role: string): Promise<void> {
   expect(response.status).toBe(200);
 }
 
+async function listDocumentIdsWithToken(token: string): Promise<string[]> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/spaces/${spaceId}/documents?limit=100`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (response.status !== 200) return [];
+  const body = await response.json();
+  return (body.documents ?? []).map((entry: { id: string }) => entry.id);
+}
+
+async function createScopedToken(name: string, scopedTo: string) {
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/access-tokens`,
+    delegate.token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        resourceType: "document",
+        resourceId: scopedTo,
+        permission: "editor",
+      }),
+    },
+  );
+  expect(response.status).toBe(201);
+  return await response.json();
+}
+
 function createDocumentWithToken(token: string): Promise<Response> {
   return fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/documents`, {
     method: "POST",
@@ -212,6 +242,34 @@ describe("access-token creator lifecycle", () => {
     // Not destructive: restoring the role restores the token.
     await grantDelegateOwnership();
     expect((await createDocumentWithToken(token.token)).status).toBe(201);
+  });
+
+  it("lists the space for a token whose creator still holds a space role", async () => {
+    await grantDelegateOwnership();
+    const token = await createDelegateToken("listing");
+    expect(await listDocumentIdsWithToken(token.token)).toContain(documentId);
+
+    await setDelegateRole("viewer");
+    expect(await listDocumentIdsWithToken(token.token)).toContain(documentId);
+    await grantDelegateOwnership();
+  });
+
+  it("confines a document-scoped token's listing to the document it was scoped to", async () => {
+    await grantDelegateOwnership();
+    const other = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, owner.token, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "# out of scope",
+        properties: { title: "Out of scope" },
+      }),
+    });
+    expect(other.status).toBe(201);
+    const otherId = (await other.json()).document.id;
+
+    const scoped = await createScopedToken("scoped listing", documentId);
+    const listed = await listDocumentIdsWithToken(scoped.token);
+    expect(listed).toContain(documentId);
+    expect(listed).not.toContain(otherId);
   });
 
   it("removes a token's grant when the token is deleted", async () => {

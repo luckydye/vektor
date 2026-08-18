@@ -165,17 +165,14 @@ describe("API Tests - Spaces", () => {
 
 describe("API Tests - Access Tokens", () => {
   it.each([3651, 1e308])("rejects an excessive expiry of %s days", async (days) => {
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/access-tokens`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: "Invalid expiry",
-          permission: "extensions",
-          expiresInDays: days,
-        }),
-      },
-    );
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/access-tokens`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Invalid expiry",
+        permission: "extensions",
+        expiresInDays: days,
+      }),
+    });
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
@@ -551,19 +548,13 @@ describe("API Tests - Documents", () => {
       {},
       "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
     ],
-    [
-      { archived: true },
-      "archived cannot be patched; use DELETE to archive a document",
-    ],
+    [{ archived: true }, "archived cannot be patched; use DELETE to archive a document"],
     [{ foo: "bar" }, "Unknown document patch field: foo"],
     [
       { parentId: null, readonly: true },
       "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
     ],
-    [
-      { readonly: true, foo: "bar" },
-      "Unknown document patch field: foo",
-    ],
+    [{ readonly: true, foo: "bar" }, "Unknown document patch field: foo"],
   ])("rejects invalid document patch body %j", async (body, error) => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
@@ -638,16 +629,13 @@ describe("API Tests - Documents", () => {
   });
 
   it("rejects making a document its own parent", async () => {
-    const createResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          content: "<p>Self parent target</p>",
-          properties: { title: "Self Parent Target" },
-        }),
-      },
-    );
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Self parent target</p>",
+        properties: { title: "Self Parent Target" },
+      }),
+    });
     expect(createResponse.status).toBe(201);
     const documentId = (await createResponse.json()).document.id;
 
@@ -667,17 +655,14 @@ describe("API Tests - Documents", () => {
 
   it("rejects a parent change that would create a multi-document cycle", async () => {
     const createDocument = async (title: string, parentId?: string) => {
-      const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            content: `<p>${title}</p>`,
-            properties: { title },
-            parentId,
-          }),
-        },
-      );
+      const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({
+          content: `<p>${title}</p>`,
+          properties: { title },
+          parentId,
+        }),
+      });
       expect(response.status).toBe(201);
       return (await response.json()).document.id as string;
     };
@@ -706,31 +691,25 @@ describe("API Tests - Documents", () => {
   });
 
   it("allows children under a custom prototype-key document type", async () => {
-    const parentResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "__proto__",
-          content: "<p>Custom parent</p>",
-          properties: { title: "Prototype Key Parent" },
-        }),
-      },
-    );
+    const parentResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "__proto__",
+        content: "<p>Custom parent</p>",
+        properties: { title: "Prototype Key Parent" },
+      }),
+    });
     expect(parentResponse.status).toBe(201);
     const parentId = (await parentResponse.json()).document.id;
 
-    const childResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          content: "<p>Child of custom type</p>",
-          parentId,
-          properties: { title: "Prototype Key Child" },
-        }),
-      },
-    );
+    const childResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Child of custom type</p>",
+        parentId,
+        properties: { title: "Prototype Key Child" },
+      }),
+    });
 
     expect(childResponse.status).toBe(201);
     expect((await childResponse.json()).document.parentId).toBe(parentId);
@@ -2254,6 +2233,52 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
         },
       );
       expect(response.status).toBe(400);
+    });
+
+    it("restores the content onto the document, and appends rather than rewriting history", async () => {
+      const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ content: "<p>v1</p>", properties: { title: "Rollback" } }),
+      });
+      const docId = (await createResponse.json()).document.id;
+
+      const save = (content: string) =>
+        apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${docId}`, {
+          method: "PUT",
+          body: JSON.stringify({ content }),
+        });
+      const revisionContent = async (rev: number) => {
+        const response = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${docId}?rev=${rev}`,
+        );
+        return response.status === 200 ? (await response.json()).revision.content : null;
+      };
+
+      expect((await save("<p>v1</p>")).status).toBe(200);
+      expect(
+        (
+          await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${docId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ publishedRev: 1 }),
+          })
+        ).status,
+      ).toBe(200);
+      expect((await save("<p>v2 draft</p>")).status).toBe(200);
+      expect(await revisionContent(2)).toContain("v2 draft");
+
+      const restore = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}/revisions?rev=1`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      expect(restore.status).toBe(200);
+      expect((await restore.json()).revision.rev).toBe(3);
+      expect(await revisionContent(2)).toContain("v2 draft");
+      expect(await revisionContent(3)).toContain("v1");
+
+      const document = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}`,
+      );
+      expect((await document.json()).document.content).toContain("v1");
     });
   });
 

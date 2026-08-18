@@ -9,7 +9,7 @@ import {
   wsDecodeJson,
   wsEncode,
 } from "./protocol.ts";
-import { getRoom, type YRoom, yRooms } from "./yjsRooms.ts";
+import { getRoom, retireYRoom, type YRoom, yRooms } from "./yjsRooms.ts";
 
 function broadcastPresence(
   room: YRoom,
@@ -104,7 +104,7 @@ export class PresenceConnection {
       room.clients.delete(this.websocket);
     }
     if (room.clients.size === 0 && room.presences.size === 0) {
-      yRooms.delete(roomKey);
+      retireYRoom(roomKey);
     }
   }
 
@@ -193,7 +193,7 @@ export class PresenceConnection {
     });
 
     if (room.clients.size === 0 && room.presences.size === 0) {
-      yRooms.delete(roomKey);
+      retireYRoom(roomKey);
     }
   }
 }

@@ -102,19 +102,40 @@ export function ruleForRoute(pattern: string, method: string): RateLimitRule {
 
 const BEARER_PREFIX = "bearer ";
 
+function sessionCookieValue(cookie: string | undefined): string | null {
+  if (!cookie) return null;
+  for (const part of cookie.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    const name = part.slice(0, separator).trim();
+    if (!name.endsWith("session_token")) continue;
+    const value = part.slice(separator + 1).trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 /**
  * The access token when one is presented, otherwise the caller's IP. Derived
  * from headers alone so the check can run before the session lookup and bound
  * it too; the token is hashed because these keys reach the log on a 429.
  */
-export function rateLimitKey(authorization: string | undefined, ip: string): string {
+export function rateLimitKey(
+  authorization: string | undefined,
+  cookie: string | undefined,
+  ip: string,
+): string {
   if (authorization?.toLowerCase().startsWith(BEARER_PREFIX)) {
     const token = authorization.slice(BEARER_PREFIX.length).trim();
-    if (token) {
-      return `token:${createHash("sha256").update(token).digest("hex").slice(0, 16)}`;
-    }
+    if (token) return `token:${shortHash(token)}`;
   }
+  const session = sessionCookieValue(cookie);
+  if (session) return `session:${shortHash(session)}`;
   return `ip:${ip || "unknown"}`;
+}
+
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
 /** Keys the operator has switched off, from `VEKTOR_RATE_LIMIT_BLOCK`. */
@@ -217,13 +238,14 @@ export function checkRateLimit(
     pattern: string;
     method: string;
     authorization: string | undefined;
+    cookie: string | undefined;
     ip: string;
   },
   limiter: RateLimiter = apiRateLimiter,
 ): RateLimitCheck | null {
   if (!isRateLimitEnabled()) return null;
 
-  const key = rateLimitKey(request.authorization, request.ip);
+  const key = rateLimitKey(request.authorization, request.cookie, request.ip);
 
   if (blockedKeys().has(key)) {
     return {
