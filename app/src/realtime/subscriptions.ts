@@ -88,19 +88,15 @@ export class TopicSubscriptions {
     }
 
     for (const topic of authorized) this.topics.add(topic);
-    // Answered against the subscriptions this frame just established, which is
-    // why the cursor arrives with them rather than in a frame of its own.
     this.answerCursor(cursor);
     return true;
   }
 
   /**
-   * Tell a subscribing client where it stands: what changed while it was away,
-   * or that the history no longer reaches its cursor and it has to refetch.
-   *
-   * A client with no cursor yet is answered with the current head, so that its
-   * next reconnect has a position to catch up from rather than no basis for
-   * comparison at all.
+   * Tell a subscribing client what changed while it was away, or that the
+   * history no longer reaches its cursor and it has to refetch. A client with
+   * no cursor yet is given the current head, so its next reconnect has a
+   * position to catch up from.
    */
   private answerCursor(cursor: SyncCursor | undefined): void {
     const catchUp: SyncCatchUp = cursor
@@ -111,8 +107,7 @@ export class TopicSubscriptions {
     if (catchUp.kind === "resync") {
       // No topics: the client synthesises one event per subscription from the
       // topics it holds, which is narrower than anything this side knows. The
-      // head still travels with it, so the client leaves the resync holding a
-      // usable position instead of the dead one it arrived with.
+      // head travels with it so the client does not keep the dead position.
       this.websocket.send(
         wsEncode(WsMsgType.Event, {
           resync: true,
@@ -126,8 +121,8 @@ export class TopicSubscriptions {
       return;
     }
 
-    // Sent even when nothing matched, because the cursor still has to advance
-    // past envelopes this connection had no interest in.
+    // Sent even when nothing matched: the cursor still has to advance past
+    // envelopes this connection had no interest in.
     this.websocket.send(
       wsEncode(WsMsgType.Event, {
         topics: catchUp.events.map(({ topic }) => topic),

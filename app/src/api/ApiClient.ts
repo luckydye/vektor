@@ -666,10 +666,8 @@ interface RealtimeConnection {
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
   /**
-   * How far through this space's event history the client has read. Sent with
-   * every `Subscribe` so the server can answer with what was missed instead of
-   * the client having to refetch everything it holds. Null until the first
-   * answer arrives; survives the socket, which is the point of it.
+   * How far through this space's event history the client has read. Outlives
+   * the socket, which is what lets a reconnect ask for only what it missed.
    */
   syncCursor: SyncCursor | null;
   reconnectAttempts: number;
@@ -2550,8 +2548,7 @@ export class ApiClient {
         if (connection.socket === socket) connection.reconnectAttempts = 0;
       }, RECONNECT_SETTLED_MS);
       // No blanket resync on reconnect: the `Subscribe` replayed below carries
-      // the cursor, and the server answers with the topics that actually
-      // changed — or with a resync verdict when it cannot name them.
+      // the cursor, and the server answers with what actually changed.
       this.resyncRealtimeConnection(connection);
       this.startRealtimeHeartbeat(connection);
     });
@@ -2603,13 +2600,9 @@ export class ApiClient {
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
 
-      // Advanced before anything is dispatched, and on a resync too: the
-      // position is what the next reconnect asks from, so leaving a stale one
-      // in place would make every later reconnect resync again.
-      //
-      // Only ever forwards within an epoch. A catch-up answer computed before a
-      // live event can arrive after it, and letting that move the position back
-      // would have the next reconnect re-deliver what this one already applied.
+      // Advanced on a resync too, or every later reconnect would resync again.
+      // Only ever forwards: a catch-up answer computed before a live event can
+      // arrive after it.
       if (msg.epoch !== undefined && msg.seq !== undefined) {
         const held = connection.syncCursor;
         if (!held || held.epoch !== msg.epoch || msg.seq > held.seq) {
@@ -2617,8 +2610,6 @@ export class ApiClient {
         }
       }
 
-      // The server cannot name what was missed, so every subscription refetches
-      // the topics it holds.
       if (msg.resync) {
         this.notifyRealtimeResync(connection);
         return;
@@ -2696,10 +2687,8 @@ export class ApiClient {
   }
 
   /**
-   * Refetch everything, for when the server cannot say what was missed — its
-   * history no longer reaches the cursor, or the process that numbered it has
-   * restarted. Per subscription, because the topics one holds are narrower than
-   * the connection's.
+   * Refetch everything, for when the server cannot say what was missed. Per
+   * subscription, whose topics are narrower than the connection's.
    */
   private notifyRealtimeResync(connection: RealtimeConnection): void {
     for (const subscription of connection.subscriptions) {
@@ -2931,12 +2920,9 @@ export class ApiClient {
   }
 
   /**
-   * A `Subscribe` frame carrying the connection's cursor.
-   *
-   * The cursor rides on every subscribe rather than only the one after a
-   * reconnect: the server answers relative to the position the client actually
-   * holds, so an incremental subscribe cannot advance it past envelopes the
-   * client has yet to hear about.
+   * A `Subscribe` frame carrying the connection's cursor. Every subscribe sends
+   * it, not just the one after a reconnect, so an incremental one cannot
+   * advance the position past envelopes the client has yet to hear about.
    */
   private subscribeFrame(
     connection: RealtimeConnection,

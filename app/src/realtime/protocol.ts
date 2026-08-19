@@ -30,29 +30,19 @@ export interface RealtimeTopicEvent {
 
 export type RealtimeEventInput = RealtimeTopic | RealtimeTopicEvent;
 
-/**
- * How far through a space's event history a client has read.
- *
- * `epoch` names the process that issued `seq`. Sequence numbers are held in
- * memory and restart from zero when the server does, so a cursor without one
- * would let a client that holds seq 500 from a previous process mistake the new
- * 1..500 for events it had already seen — silently, and forever.
- */
+/** How far through a space's event history a client has read. */
 export interface SyncCursor {
   epoch: string;
   seq: number;
 }
 
 /**
- * A `Subscribe` frame. The cursor rides along with the topics rather than
- * arriving as its own frame so that it is answered against the subscriptions
- * this frame establishes: frame handling is not serialised, so a cursor in a
- * frame of its own could be read while the `Subscribe` was still authorizing,
- * and be answered against topics that had yet to be added.
+ * A `Subscribe` frame. The cursor travels with the topics rather than in a
+ * frame of its own: frame handling is not serialised, so a separate frame could
+ * be answered against topics that had yet to be authorized.
  */
 export interface RealtimeSubscribePayload {
   topics: RealtimeTopic[];
-  /** Absent on a first connect, which has no history to catch up on. */
   cursor?: SyncCursor;
 }
 
@@ -67,12 +57,7 @@ export interface RealtimeEventMessage {
    * `data` must refetch on it regardless.
    */
   resync?: true;
-  /**
-   * Position of this event in the space's history, and the process that
-   * numbered it. Together they form the cursor the client sends on reconnect.
-   * Absent only on the message the client synthesises for itself, which stands
-   * in for a position rather than holding one.
-   */
+  /** Position in the space's history, and the process that numbered it. */
   seq?: number;
   epoch?: string;
 }

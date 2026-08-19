@@ -22,7 +22,6 @@ export interface RealtimeEventEnvelope {
   timestamp: string;
   /** Position in the space's history; see `changeLog.ts`. */
   seq: number;
-  /** The process that issued `seq`. */
   epoch: string;
 }
 
@@ -53,9 +52,8 @@ function drainPendingEvents(): UnnumberedEnvelope[] {
 
 export function publishSyncEvents(events: UnnumberedEnvelope[]) {
   for (const event of events) {
-    // Numbered here rather than where the change was made, so that every route
-    // reaching `sendSyncEvent` is recorded without having to know about it, and
-    // so a sequence number describes exactly the envelope clients receive.
+    // Numbered here so every route reaching `sendSyncEvent` is recorded without
+    // having to know about the log.
     const envelope: RealtimeEventEnvelope = {
       ...event,
       seq: appendSyncEnvelope(event.spaceId, event.events),

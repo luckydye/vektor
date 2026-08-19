@@ -7,10 +7,7 @@ import {
   syncEpoch,
 } from "#realtime/changeLog.ts";
 
-/**
- * The history is module state keyed by space, so every test invents its own
- * space id rather than resetting it — which is also how the server uses it.
- */
+/** Module state is keyed by space, so each test invents its own space id. */
 let counter = 0;
 function aSpace(): string {
   counter += 1;
@@ -24,8 +21,6 @@ describe("Realtime change log", () => {
     const spaceId = aSpace();
 
     expect(headSyncSeq(spaceId)).toBe(0);
-    // A client holding that position has missed nothing, and must not be told
-    // to refetch: a quiet space is the common case on reconnect.
     expect(catchUpSince(spaceId, { epoch: syncEpoch, seq: 0 }, all)).toEqual({
       kind: "events",
       seq: 0,
@@ -78,8 +73,6 @@ describe("Realtime change log", () => {
     );
     if (catchUp.kind !== "events") throw new Error("expected events");
     expect(catchUp.events).toEqual([{ topic: "space:categories" }]);
-    // The position still advances past the envelope, so an ignored topic is not
-    // re-read on every reconnect.
     expect(catchUp.seq).toBe(1);
   });
 
@@ -113,8 +106,6 @@ describe("Realtime change log", () => {
     const spaceId = aSpace();
     appendSyncEnvelope(spaceId, [{ topic: "space:documents" }]);
 
-    // The failure this guards is silent: without the epoch, a cursor from a
-    // previous process would read the new numbering as already seen.
     expect(catchUpSince(spaceId, { epoch: "a-previous-process", seq: 1 }, all)).toEqual({
       kind: "resync",
     });
@@ -131,7 +122,6 @@ describe("Realtime change log", () => {
     expect(catchUpSince(spaceId, { epoch: syncEpoch, seq: seen }, all)).toEqual({
       kind: "resync",
     });
-    // The newest entries are still describable, so a current client is spared.
     const recent = catchUpSince(
       spaceId,
       { epoch: syncEpoch, seq: SYNC_HISTORY_LIMIT },
