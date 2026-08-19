@@ -30,10 +30,10 @@ function renderedSource(element: HTMLElement): string {
 }
 
 describe("<vektor-avatar> faces", () => {
-  it("draws a robot when the caller says the id is a credential", () => {
+  it('draws a robot for kind="credential"', () => {
     const element = mountAvatar({
       "user-id": "token_d69fb9f4-06a0-46ff-9117-9473fb0e0c8d",
-      credential: "",
+      kind: "credential",
       size: "28",
     });
 
@@ -50,9 +50,17 @@ describe("<vektor-avatar> faces", () => {
     }
   });
 
-  it("asks the server about an id it was given no verdict on", () => {
-    // No `credential` attribute means the element resolves the id rather than
-    // guessing: the robot is never chosen without being told.
+  it('keeps human features on kind="person", lookup or no lookup', () => {
+    // A caller that knows the id is an account is believed, so a profile the
+    // server cannot serve does not downgrade the face to neutral.
+    const element = mountAvatar({ "user-id": "u_gone", kind: "person" });
+    expect(renderedSource(element)).not.toBe(neutralFace);
+    expect(renderedSource(element)).not.toBe(robotFace);
+  });
+
+  it("asks the server about an id it was given no kind for", () => {
+    // No `kind` means the element resolves the id rather than guessing: the
+    // robot is never chosen without being told.
     const element = mountAvatar({ "user-id": "token_d69fb9f4" });
     expect(renderedSource(element)).not.toBe(robotFace);
   });

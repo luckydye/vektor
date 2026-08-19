@@ -46,8 +46,9 @@ declare module "solid-js" {
       // Every dynamic attribute on a custom element needs the namespace: Solid
       // drops an un-namespaced one entirely. See custom-elements.vitest.tsx.
       "attr:user-id"?: string | undefined;
-      // Presence of the attribute is the signal, so "" is the way to set it.
-      "attr:credential"?: string | undefined;
+      // What an id is, when the caller knows: see AvatarElement.declaredKind.
+      "attr:kind"?: string | undefined;
+      kind?: string;
       "attr:asset-id"?: string | undefined;
       "attr:data-document-id"?: string | undefined;
       "attr:data-document-type"?: string | undefined;

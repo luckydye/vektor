@@ -194,7 +194,7 @@ const AvatarElement =
   typeof HTMLElement === "undefined"
     ? undefined
     : class AvatarElement extends HTMLElement {
-        static observedAttributes = ["size", "user-id", "credential"];
+        static observedAttributes = ["size", "user-id", "kind"];
 
         private readonly avatarContainer: HTMLDivElement;
         private fetchedUser: AvatarUser | undefined;
@@ -258,9 +258,15 @@ const AvatarElement =
           void this.resolveUser();
         }
 
-        /** A machine's avatar, said so by whoever is listing it. */
-        private get isCredential(): boolean {
-          return this.hasAttribute("credential");
+        /**
+         * What the caller says this id is, when it knows: `credential` for any
+         * machine identity, `person` for an account. Absent means it does not
+         * know, and the server is asked. Deliberately not a property — a
+         * getter-only `kind` would break a dynamic `kind={…}` binding.
+         */
+        private get declaredKind(): "credential" | "person" | undefined {
+          const kind = this.getAttribute("kind")?.trim();
+          return kind === "credential" || kind === "person" ? kind : undefined;
         }
 
         private async resolveUser() {
@@ -270,7 +276,7 @@ const AvatarElement =
           // image here so every avatar also gets a server-derived Gravatar URL.
           const userId = (this.providedUser?.id || this.getAttribute("user-id"))?.trim();
           // A credential has no user row, so there is no profile to resolve.
-          if (!userId || this.isCredential) return;
+          if (!userId || this.declaredKind === "credential") return;
 
           const version = ++this.loadVersion;
           const user = await loadUser(userId);
@@ -303,18 +309,17 @@ const AvatarElement =
           // caller has their (PII-gated) email.
           const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
           const drawGeneratedAvatar = () => {
-            // An id nobody could resolve gets the neutral face rather than a
+            const kind = this.declaredKind;
+            // An id that resolves to nobody gets the neutral face rather than a
             // person's features: it may be a credential, or an account since
-            // deleted, and inventing a face for either claims a person.
-            if (!seed || (this.noSuchUser && !this.isCredential)) {
+            // deleted, and inventing a face for either claims a person. A caller
+            // that declared a kind is believed over the lookup.
+            if (!seed || (this.noSuchUser && !kind)) {
               image.src = defaultAvatar;
               return;
             }
 
-            const generatedAvatar = getGeneratedAvatar(
-              seed,
-              this.isCredential ? "credential" : "person",
-            );
+            const generatedAvatar = getGeneratedAvatar(seed, kind ?? "person");
             avatar.style.background = generatedAvatar.color;
             image.src = generatedAvatar.src;
           };

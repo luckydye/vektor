@@ -1218,7 +1218,7 @@ export function SpaceMembers() {
                           <vektor-avatar
                             size="28"
                             attr:user-id={token.id}
-                            attr:credential=""
+                            kind="credential"
                           />
                           <div>
                             <div class="flex items-center gap-2">
