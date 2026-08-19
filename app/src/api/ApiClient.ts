@@ -21,6 +21,7 @@ import {
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
+  type SyncCursor,
   WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
@@ -664,8 +665,13 @@ interface RealtimeConnection {
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
-  /** True once a socket has opened; every later open is a reconnect. */
-  hasConnected: boolean;
+  /**
+   * How far through this space's event history the client has read. Sent with
+   * every `Subscribe` so the server can answer with what was missed instead of
+   * the client having to refetch everything it holds. Null until the first
+   * answer arrives; survives the socket, which is the point of it.
+   */
+  syncCursor: SyncCursor | null;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   /** Pending idle teardown; see `REALTIME_IDLE_GRACE_MS`. */
@@ -2505,7 +2511,7 @@ export class ApiClient {
       yjsRooms: new Map(),
       presenceJoinPayloads: new Map(),
       closed: false,
-      hasConnected: false,
+      syncCursor: null,
       reconnectAttempts: 0,
       reconnectTimer: null,
       idleTimer: null,
@@ -2543,11 +2549,11 @@ export class ApiClient {
       setTimeout(() => {
         if (connection.socket === socket) connection.reconnectAttempts = 0;
       }, RECONNECT_SETTLED_MS);
-      const isReconnect = connection.hasConnected;
-      connection.hasConnected = true;
+      // No blanket resync on reconnect: the `Subscribe` replayed below carries
+      // the cursor, and the server answers with the topics that actually
+      // changed — or with a resync verdict when it cannot name them.
       this.resyncRealtimeConnection(connection);
       this.startRealtimeHeartbeat(connection);
-      if (isReconnect) this.notifyRealtimeResync(connection);
     });
 
     socket.addEventListener("message", (event) => {
@@ -2596,6 +2602,28 @@ export class ApiClient {
 
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
+
+      // Advanced before anything is dispatched, and on a resync too: the
+      // position is what the next reconnect asks from, so leaving a stale one
+      // in place would make every later reconnect resync again.
+      //
+      // Only ever forwards within an epoch. A catch-up answer computed before a
+      // live event can arrive after it, and letting that move the position back
+      // would have the next reconnect re-deliver what this one already applied.
+      if (msg.epoch !== undefined && msg.seq !== undefined) {
+        const held = connection.syncCursor;
+        if (!held || held.epoch !== msg.epoch || msg.seq > held.seq) {
+          connection.syncCursor = { epoch: msg.epoch, seq: msg.seq };
+        }
+      }
+
+      // The server cannot name what was missed, so every subscription refetches
+      // the topics it holds.
+      if (msg.resync) {
+        this.notifyRealtimeResync(connection);
+        return;
+      }
+
       for (const subscription of connection.subscriptions) {
         if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
         subscription.callback({ type: "event", ...msg });
@@ -2668,9 +2696,10 @@ export class ApiClient {
   }
 
   /**
-   * Replace the events that happened while the socket was down. The server
-   * keeps no per-connection backlog, so a subscriber's only way back to the
-   * truth is to refetch everything it holds for the topics it subscribes to.
+   * Refetch everything, for when the server cannot say what was missed — its
+   * history no longer reaches the cursor, or the process that numbered it has
+   * restarted. Per subscription, because the topics one holds are narrower than
+   * the connection's.
    */
   private notifyRealtimeResync(connection: RealtimeConnection): void {
     for (const subscription of connection.subscriptions) {
@@ -2799,7 +2828,7 @@ export class ApiClient {
 
     const topics = [...connection.topicRefCounts.keys()];
     if (topics.length > 0) {
-      socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
+      socket.send(this.subscribeFrame(connection, topics));
     }
 
     for (const [documentId, entries] of connection.yjsRooms) {
@@ -2901,13 +2930,36 @@ export class ApiClient {
     });
   }
 
+  /**
+   * A `Subscribe` frame carrying the connection's cursor.
+   *
+   * The cursor rides on every subscribe rather than only the one after a
+   * reconnect: the server answers relative to the position the client actually
+   * holds, so an incremental subscribe cannot advance it past envelopes the
+   * client has yet to hear about.
+   */
+  private subscribeFrame(
+    connection: RealtimeConnection,
+    topics: RealtimeTopic[],
+  ): Uint8Array<ArrayBuffer> {
+    return wsEncode(WsMsgType.Subscribe, {
+      topics,
+      ...(connection.syncCursor ? { cursor: connection.syncCursor } : {}),
+    });
+  }
+
   private sendRealtimeMessage(
     connection: RealtimeConnection,
     type: typeof WsMsgType.Subscribe | typeof WsMsgType.Unsubscribe,
     topics: RealtimeTopic[],
   ) {
     if (topics.length === 0) return;
-    this.sendRealtimeState(connection, wsEncode(type, { topics }));
+    this.sendRealtimeState(
+      connection,
+      type === WsMsgType.Subscribe
+        ? this.subscribeFrame(connection, topics)
+        : wsEncode(type, { topics }),
+    );
   }
 
   subscribeToTopics(
