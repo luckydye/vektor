@@ -113,6 +113,7 @@ export async function createShareLink(
 
   await logAclChange(s, s.spaceId, {
     event: "acl_grant",
+    kind: AclKind.LINK,
     resourceType: options.resourceType,
     resourceId: options.resourceId,
     userId: id,
@@ -259,6 +260,7 @@ export async function revokeShareLink(
   if (!previous.revokedAt) {
     await logAclChange(s, s.spaceId, {
       event: "acl_revoke",
+      kind: AclKind.LINK,
       resourceType: previous.resourceType as ResourceType,
       resourceId: previous.resourceId,
       userId: linkId,
