@@ -120,7 +120,16 @@ export function DocumentShareDialog(props: Props) {
     if (!spaceId || !props.documentId) return;
     try {
       const response = await api.shareLinks.get(spaceId, props.documentId);
-      setLinks(response.links.filter((link) => !link.revokedAt));
+      // Revoked and expired alike answer 404, so neither is offered for copying
+      // nor counted among the links that work.
+      const now = Date.now();
+      setLinks(
+        response.links.filter(
+          (link) =>
+            !link.revokedAt &&
+            (!link.expiresAt || new Date(link.expiresAt).getTime() > now),
+        ),
+      );
       setCanManageLinks(true);
     } catch {
       setLinks([]);
@@ -176,6 +185,11 @@ export function DocumentShareDialog(props: Props) {
         setCreatedLinkId(null);
         setLinkPassword("");
         setLinkError(null);
+        // This instance outlives navigation between pages of the same type, so
+        // anything left from the last page it was opened on is a statement about
+        // the wrong document — including live Revoke buttons.
+        setLinks([]);
+        setCanManageLinks(false);
       },
     ),
   );

@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentShareDialog } from "#components/DocumentShareDialog.tsx";
@@ -20,10 +21,12 @@ vi.mock("#composeables/useUserProfile.ts", () => ({
 }));
 
 const documentAccessGet = vi.fn();
+const shareLinksGet = vi.fn(async () => ({ links: [] }));
 
 vi.mock("#api/client.ts", () => ({
   api: {
     documentAccess: { get: (...args: unknown[]) => documentAccessGet(...args) },
+    shareLinks: { get: (...args: unknown[]) => shareLinksGet(...args) },
     permissions: { list: async () => ({ permissions: [] }) },
     spaceMembers: { get: async () => [] },
     categories: { get: async () => ({ categories: [] }) },
@@ -44,6 +47,16 @@ function mount() {
   host = document.createElement("div");
   document.body.append(host);
   dispose = render(() => <DocumentShareDialog show={true} documentId="doc_1" />, host);
+}
+
+/** A dialog whose `show` and `documentId` can change, as navigation does. */
+function mountControlled(documentId: string) {
+  const [show, setShow] = createSignal(true);
+  const [id, setId] = createSignal(documentId);
+  host = document.createElement("div");
+  document.body.append(host);
+  dispose = render(() => <DocumentShareDialog show={show()} documentId={id()} />, host);
+  return { setShow, setId };
 }
 
 /** The dialog runs its three loads in parallel when it opens. */
@@ -92,5 +105,65 @@ describe("DocumentShareDialog", () => {
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
     expect(bodyText()).toContain("No one has access to this page yet.");
+  });
+
+  // A link that has lapsed answers 404, so offering its Copy button hands out a
+  // dead URL and counting it overstates who can reach the page.
+  it("counts neither expired nor revoked links among the active ones", async () => {
+    documentAccessGet.mockResolvedValue([]);
+    const day = 24 * 60 * 60 * 1000;
+    shareLinksGet.mockResolvedValue({
+      links: [
+        { id: "share_live", resourceType: "document", hasPassword: false },
+        {
+          id: "share_expired",
+          resourceType: "document",
+          hasPassword: false,
+          expiresAt: new Date(Date.now() - day).toISOString(),
+        },
+        {
+          id: "share_revoked",
+          resourceType: "document",
+          hasPassword: false,
+          revokedAt: new Date(Date.now() - day).toISOString(),
+        },
+      ],
+    });
+
+    mount();
+    await settle();
+
+    expect(bodyText()).toContain("1 active link");
+  });
+
+  // The dialog instance survives navigation between pages of the same type, so
+  // whatever it loaded last has to go when it reopens: those rows carry a live
+  // Revoke button, and revoking the previous page's link is not recoverable.
+  it("does not show the previous page's links when reopened on another", async () => {
+    documentAccessGet.mockResolvedValue([]);
+    shareLinksGet.mockResolvedValue({
+      links: [{ id: "share_first", resourceType: "document", hasPassword: false }],
+    });
+
+    const { setShow, setId } = mountControlled("doc_1");
+    await settle();
+    expect(bodyText()).toContain("1 active link");
+
+    // Navigate with the dialog closed, then reopen on a page whose links have
+    // not arrived yet.
+    setShow(false);
+    let release: (() => void) | undefined;
+    shareLinksGet.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ links: [] });
+        }),
+    );
+    setId("doc_2");
+    setShow(true);
+    await settle();
+
+    expect(bodyText()).not.toContain("active link");
+    release?.();
   });
 });
