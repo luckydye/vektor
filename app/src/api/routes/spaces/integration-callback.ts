@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   requireParam,
@@ -23,8 +23,14 @@ import {
 import { appendQueryParams, normalizeRedirectPath } from "#integrations/oauthUtils.ts";
 import { appLogger } from "#observability/logger.ts";
 
+/**
+ * A relative `Location` is valid HTTP, but `Response.redirect` demands an
+ * absolute URL and throws on anything else. This helper is also the catch
+ * block's recovery path below, where a throw escapes as a 500 instead of the
+ * error redirect it is there to produce.
+ */
 function redirectToPath(path: string): Response {
-  return Response.redirect(path, 302);
+  return new Response(null, { status: 302, headers: { location: path } });
 }
 
 function defaultSettingsPath(spaceSlug: string): string {
@@ -53,7 +59,12 @@ export const GET: ApiRouteHandler = (context) =>
     // redirect, and that redirect's path is derived from the space slug, which
     // an unauthorized caller must not learn.
     const user = requireUser(context);
-    await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const fallbackPath = await resolveFallbackPath(spaceId);
 

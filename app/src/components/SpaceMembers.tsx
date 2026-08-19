@@ -1,6 +1,14 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
-import { isOwner, Permission, permissionLevel } from "#acl/permissions.ts";
+import {
+  Feature,
+  highestPermission,
+  isOwner,
+  Permission,
+  permissionLevel,
+  ResourceType,
+} from "#acl/permissions.ts";
 import type {
+  AccessToken,
   Category,
   DocumentWithProperties,
   PermissionEntry,
@@ -8,8 +16,16 @@ import type {
 } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { formatDate } from "#utils/datetime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import {
+  roleBadgeClass,
+  tokenRole,
+  tokenStatus,
+  tokenStatusClass,
+} from "#utils/accessToken.ts";
+import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
@@ -23,22 +39,10 @@ interface MemberAccess {
   highestRole: string;
 }
 
-function getRoleBadgeClass(role: string): string {
-  const classes: Record<string, string> = {
-    [Permission.OWNER]: "bg-purple-100 text-purple-800",
-    [Permission.EDITOR]: "bg-green-100 text-green-800",
-    [Permission.VIEWER]: "bg-neutral-100 text-neutral-800",
-  };
-  return classes[role] || classes[Permission.VIEWER];
-}
-
 function getHighestRole(grants: PermissionEntry[]): string {
-  return grants.reduce(
-    (highest, grant) =>
-      permissionLevel(grant.permission.permission) > permissionLevel(highest)
-        ? grant.permission.permission
-        : highest,
-    Permission.VIEWER as string,
+  return (
+    highestPermission(grants.map((grant) => grant.permission.permission)) ??
+    Permission.VIEWER
   );
 }
 
@@ -89,6 +93,25 @@ function isScopedGrant(grant: PermissionEntry): boolean {
   return ["document", "document_tree"].includes(grant.permission.resourceType ?? "");
 }
 
+/** Owner is only grantable on the space, so only a space grant may offer it. */
+function isSpaceGrant(grant: PermissionEntry): boolean {
+  const { resourceType } = grant.permission;
+  return !resourceType || resourceType === "space";
+}
+
+function tokenResourceLabel(resource: {
+  resourceType: string;
+  resourceId: string;
+}): string {
+  if (resource.resourceType === ResourceType.FEATURE) {
+    return resource.resourceId === Feature.MANAGE_EXTENSIONS
+      ? "Extensions (install/update)"
+      : `Feature: ${resource.resourceId}`;
+  }
+  if (resource.resourceType === ResourceType.SPACE) return "Entire space";
+  return `${resource.resourceType}: ${resource.resourceId}`;
+}
+
 export function SpaceMembers() {
   const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
@@ -115,6 +138,20 @@ export function SpaceMembers() {
   const [expandedMembers, setExpandedMembers] = createSignal(new Set<string>());
   const [inviteSuggestions, setInviteSuggestions] = createSignal<User[]>([]);
   const [showSuggestions, setShowSuggestions] = createSignal(false);
+  const [accessTokens, setAccessTokens] = createSignal<AccessToken[]>([]);
+  const [isCreatingToken, setIsCreatingToken] = createSignal(false);
+  const [isSubmittingToken, setIsSubmittingToken] = createSignal(false);
+  const [newTokenName, setNewTokenName] = createSignal("");
+  const [newTokenPermission, setNewTokenPermission] = createSignal<string>(
+    Permission.EDITOR,
+  );
+  const [newTokenResourceType, setNewTokenResourceType] = createSignal("space");
+  const [newTokenResourceId, setNewTokenResourceId] = createSignal("");
+  const [newTokenExpiresInDays, setNewTokenExpiresInDays] = createSignal<number | null>(
+    null,
+  );
+  const [createdTokenValue, setCreatedTokenValue] = createSignal<string | null>(null);
+  const [tokenCopied, setTokenCopied] = createSignal(false);
 
   async function fetchAllDocuments(spaceId: string) {
     const all: DocumentWithProperties[] = [];
@@ -154,6 +191,102 @@ export function SpaceMembers() {
     }
   }
 
+  /**
+   * Tokens are ACL rows, but they are read from their own endpoint rather than
+   * the permission listing: that is where a token's name, expiry and last use
+   * live, and a feature-scoped token has no role grant to list.
+   */
+  async function fetchAccessTokens() {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+    try {
+      const response = await api.accessTokens.get(spaceId);
+      setAccessTokens(response.tokens || []);
+    } catch {
+      setAccessTokens([]);
+    }
+  }
+
+  async function handleRevokeToken(tokenId: string) {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+    if (!confirm("Revoke this token? Anything using it stops working immediately."))
+      return;
+    setError(null);
+    try {
+      await api.accessTokens.revoke(spaceId, tokenId);
+      await fetchAccessTokens();
+    } catch {
+      setError("Failed to revoke token");
+    }
+  }
+
+  async function handleDeleteToken(tokenId: string) {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+    if (!confirm("Delete this token and its access?")) return;
+    setError(null);
+    try {
+      await api.accessTokens.delete(spaceId, tokenId);
+      await Promise.all([fetchAccessTokens(), fetchPermissions()]);
+    } catch {
+      setError("Failed to delete token");
+    }
+  }
+
+  function openCreateToken() {
+    setIsCreatingToken(true);
+    setShowAddMember(false);
+    setNewTokenName("");
+    setNewTokenPermission(Permission.EDITOR);
+    setNewTokenResourceType("space");
+    setNewTokenResourceId(currentSpace()?.id ?? "");
+    setNewTokenExpiresInDays(null);
+    setError(null);
+  }
+
+  async function handleCreateToken() {
+    const spaceId = currentSpace()?.id;
+    if (!spaceId) return;
+    setIsSubmittingToken(true);
+    setError(null);
+
+    try {
+      const isExtensionsCapability = newTokenPermission() === "extensions";
+      const result = await api.accessTokens.create(spaceId, {
+        name: newTokenName().trim(),
+        permission: newTokenPermission(),
+        ...(isExtensionsCapability
+          ? {}
+          : {
+              resourceType: newTokenResourceType(),
+              resourceId:
+                newTokenResourceType() === "space"
+                  ? spaceId
+                  : newTokenResourceId().trim(),
+            }),
+        ...(newTokenExpiresInDays()
+          ? { expiresInDays: newTokenExpiresInDays() as number }
+          : {}),
+      });
+      setCreatedTokenValue(result.token);
+      setTokenCopied(false);
+      setIsCreatingToken(false);
+      await Promise.all([fetchAccessTokens(), fetchPermissions()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create token");
+    } finally {
+      setIsSubmittingToken(false);
+    }
+  }
+
+  async function handleCopyToken() {
+    const value = createdTokenValue();
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setTokenCopied(true);
+  }
+
   async function fetchUsers() {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
@@ -187,7 +320,26 @@ export function SpaceMembers() {
     on(currentSpaceId, () => {
       void fetchPermissions();
       void fetchUsers();
+      void fetchAccessTokens();
     }),
+  );
+
+  useSync(currentSpaceId, [realtimeTopics.acl], (topics) => {
+    if (!topics.includes(realtimeTopics.acl)) return;
+    void Promise.all([fetchPermissions(), fetchUsers()]);
+  });
+
+  // The form opens pre-filled with the space id. Switching to another resource
+  // type has to clear it, or that id rides along as the document/extension id
+  // and mints a grant that matches nothing.
+  createEffect(
+    on(
+      newTokenResourceType,
+      (type) => {
+        setNewTokenResourceId(type === "space" ? (currentSpace()?.id ?? "") : "");
+      },
+      { defer: true },
+    ),
   );
 
   createEffect(
@@ -264,6 +416,41 @@ export function SpaceMembers() {
     return perm.permission.userId ? "User" : "Group";
   }
 
+  /** The role a user holds today, for comparing a token against its issuer. */
+  function roleOfUser(userId: string): string | undefined {
+    return memberAccess().find((member) => member.key === `user:${userId}`)?.highestRole;
+  }
+
+  /**
+   * Who delegated this token — and, when their role has since dropped below what
+   * the token was granted, what it is actually limited to now.
+   */
+  function tokenIssuerLabel(token: AccessToken): string {
+    const issuerId = token.createdBy;
+    if (!issuerId) return "Issuer unknown";
+
+    const issuer = usersMap().get(issuerId);
+    const name = issuer?.name || issuer?.email || issuerId;
+    const issuerRole = roleOfUser(issuerId);
+    const ceiling = tokenRole(token);
+
+    if (issuerRole && permissionLevel(issuerRole) < permissionLevel(ceiling)) {
+      return `Issued by ${name} · limited to ${issuerRole}`;
+    }
+    return `Issued by ${name}`;
+  }
+
+  // Space-wide membership and group grants are owner-only on the API, so a
+  // non-owner is offered neither.
+  const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
+
+  function openAddMember() {
+    setNewMemberType("user");
+    setNewMemberRole(Permission.VIEWER);
+    setNewMemberScope(userIsOwner() ? "space" : "category");
+    setShowAddMember(true);
+  }
+
   const memberAccess = createMemo<MemberAccess[]>(() => {
     const accessByMember = new Map<
       string,
@@ -273,6 +460,9 @@ export function SpaceMembers() {
     for (const perm of rolePermissions()) {
       const memberId = perm.permission.userId || perm.permission.groupId;
       if (!memberId) continue;
+      // Tokens are grants too, but they are listed from the token endpoint
+      // below, which knows their name and whether they still work.
+      if (perm.permission.userId?.startsWith("token:")) continue;
 
       const key = `${perm.permission.userId ? "user" : "group"}:${memberId}`;
       const existing = accessByMember.get(key);
@@ -354,7 +544,7 @@ export function SpaceMembers() {
       setNewMemberEmail("");
       setNewMemberType("user");
       setNewMemberRole(Permission.VIEWER);
-      setNewMemberScope("space");
+      setNewMemberScope(userIsOwner() ? "space" : "category");
       setNewMemberCategoryId("");
       await Promise.all([fetchPermissions(), fetchUsers()]);
     } catch (err) {
@@ -511,7 +701,7 @@ export function SpaceMembers() {
     );
   }
 
-  function canEditMember(userId: string | undefined, perm: PermissionEntry): boolean {
+  function canEditMember(userId: string | undefined): boolean {
     const me = user();
     if (!me || !currentSpace()) return false;
     if (me.id === userId) return false;
@@ -581,9 +771,188 @@ export function SpaceMembers() {
     <>
       <div class="space-y-6">
         <div class="flex items-center justify-between">
-          <h2 class="font-semibold text-neutral-900 text-size-large">Members</h2>
-          <Button text="Invite People" onClick={() => setShowAddMember(true)} />
+          <h2 class="font-semibold text-neutral-900 text-size-large">Access</h2>
+          <div class="flex items-center gap-3">
+            <Show when={userIsOwner() && !isCreatingToken()}>
+              <button
+                type="button"
+                onClick={openCreateToken}
+                class="font-medium text-blue-600 text-size-small hover:text-blue-800"
+              >
+                + Create token
+              </button>
+            </Show>
+            <Button text="Invite People" onClick={openAddMember} />
+          </div>
         </div>
+
+        <Show when={isCreatingToken()}>
+          <div class="rounded-md border border-blue-200 bg-blue-50 p-3">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleCreateToken();
+              }}
+              class="space-y-3"
+            >
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label
+                    for="token-name"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Name
+                  </label>
+                  <input
+                    id="token-name"
+                    value={newTokenName()}
+                    onInput={(e) => setNewTokenName(e.currentTarget.value)}
+                    type="text"
+                    required
+                    placeholder="e.g. CI Deploy Token"
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                  />
+                </div>
+                <div>
+                  <label
+                    for="token-permission"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Permission
+                  </label>
+                  <select
+                    id="token-permission"
+                    value={newTokenPermission()}
+                    onChange={(e) => setNewTokenPermission(e.currentTarget.value)}
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                  >
+                    <option value={Permission.VIEWER}>Viewer</option>
+                    <option value={Permission.EDITOR}>Editor</option>
+                    <option value="extensions">Extensions (install/update)</option>
+                  </select>
+                </div>
+                <Show
+                  when={newTokenPermission() !== "extensions"}
+                  fallback={
+                    <div class="self-center text-neutral-500 text-size-small md:col-span-2">
+                      Grants space-wide permission to install and update extensions. No
+                      resource needed.
+                    </div>
+                  }
+                >
+                  <div>
+                    <label
+                      for="token-resource-type"
+                      class="mb-1 block font-medium text-neutral-700 text-size-small"
+                    >
+                      Resource Type
+                    </label>
+                    <select
+                      id="token-resource-type"
+                      value={newTokenResourceType()}
+                      onChange={(e) => setNewTokenResourceType(e.currentTarget.value)}
+                      class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                    >
+                      <option value="space">Space</option>
+                      <option value="document">Document</option>
+                      <option value="extension">Extension</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      for="token-resource-id"
+                      class="mb-1 block font-medium text-neutral-700 text-size-small"
+                    >
+                      Resource ID
+                      <Show when={newTokenResourceType() === "space"}>
+                        <span class="font-normal text-neutral-400">
+                          (space ID auto-filled)
+                        </span>
+                      </Show>
+                    </label>
+                    <input
+                      id="token-resource-id"
+                      value={newTokenResourceId()}
+                      onInput={(e) => setNewTokenResourceId(e.currentTarget.value)}
+                      type="text"
+                      required
+                      disabled={newTokenResourceType() === "space"}
+                      class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium disabled:bg-neutral-100 disabled:text-neutral-400"
+                    />
+                  </div>
+                </Show>
+                <div>
+                  <label
+                    for="token-expires"
+                    class="mb-1 block font-medium text-neutral-700 text-size-small"
+                  >
+                    Expires in days{" "}
+                    <span class="font-normal text-neutral-400">(optional)</span>
+                  </label>
+                  <input
+                    id="token-expires"
+                    value={newTokenExpiresInDays() ?? ""}
+                    onInput={(e) =>
+                      setNewTokenExpiresInDays(
+                        e.currentTarget.value ? Number(e.currentTarget.value) : null,
+                      )
+                    }
+                    type="number"
+                    min="1"
+                    placeholder="Never"
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
+                  />
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingToken(false)}
+                  class="px-3 py-1.5 text-neutral-600 text-size-medium hover:text-neutral-800"
+                >
+                  Cancel
+                </button>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingToken()}
+                  text={isSubmittingToken() ? "Creating..." : "Create Token"}
+                />
+              </div>
+            </form>
+          </div>
+        </Show>
+
+        <Show when={createdTokenValue()}>
+          {(value) => (
+            <div class="rounded-md border border-green-200 bg-green-50 p-3">
+              <p class="mb-2 font-medium text-green-800 text-size-small">
+                Token created — copy it now, it won't be shown again.
+              </p>
+              <div class="flex items-center gap-2">
+                <code class="flex-1 select-all break-all rounded-sm border border-green-200 bg-background px-2 py-1.5 font-mono text-size-small">
+                  {value()}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyToken()}
+                  class="shrink-0 rounded-sm border border-green-300 bg-green-100 px-2 py-1.5 font-medium text-green-700 text-size-small hover:bg-green-200"
+                >
+                  {tokenCopied() ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedTokenValue(null);
+                  setTokenCopied(false);
+                }}
+                class="mt-2 text-green-700 text-size-small hover:text-green-900"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </Show>
 
         <Show when={isLoading() || loadingUsers()}>
           <div class="flex justify-center py-8">
@@ -597,7 +966,13 @@ export function SpaceMembers() {
           </div>
         </Show>
 
-        <Show when={!isLoading() && !loadingUsers() && memberAccess().length > 0}>
+        <Show
+          when={
+            !isLoading() &&
+            !loadingUsers() &&
+            (memberAccess().length > 0 || accessTokens().length > 0)
+          }
+        >
           <div class="overflow-x-auto rounded-md border border-neutral-100">
             <table class="min-w-full text-size-medium">
               <thead class="bg-neutral-50">
@@ -689,7 +1064,7 @@ export function SpaceMembers() {
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5">
                           <span
-                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${getRoleBadgeClass(member.highestRole)}`}
+                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(member.highestRole)}`}
                           >
                             {hasMixedRoles(member) ? "Mixed roles" : member.highestRole}
                           </span>
@@ -727,13 +1102,10 @@ export function SpaceMembers() {
                                     </div>
                                     <div class="flex items-center gap-3">
                                       <Show
-                                        when={canEditMember(
-                                          grant.permission.userId,
-                                          grant,
-                                        )}
+                                        when={canEditMember(grant.permission.userId)}
                                         fallback={
                                           <span
-                                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${getRoleBadgeClass(grant.permission.permission)}`}
+                                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(grant.permission.permission)}`}
                                           >
                                             {grant.permission.permission}
                                           </span>
@@ -760,7 +1132,11 @@ export function SpaceMembers() {
                                           <option value={Permission.EDITOR}>
                                             Editor
                                           </option>
-                                          <option value={Permission.OWNER}>Owner</option>
+                                          <Show when={isSpaceGrant(grant)}>
+                                            <option value={Permission.OWNER}>
+                                              Owner
+                                            </option>
+                                          </Show>
                                         </select>
                                       </Show>
                                       <Show when={canRemoveMember(grant)}>
@@ -834,12 +1210,96 @@ export function SpaceMembers() {
                     </>
                   )}
                 </For>
+                <For each={accessTokens()}>
+                  {(token) => (
+                    <tr class="hover:bg-neutral-50">
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center gap-3">
+                          <vektor-avatar size="28" attr:user-id={`token:${token.id}`} />
+                          <div>
+                            <div class="flex items-center gap-2">
+                              <span class="font-medium text-neutral-900">
+                                {token.name}
+                              </span>
+                              {/* Active is the default, so only say what is wrong. */}
+                              <Show when={tokenStatus(token) !== "Active"}>
+                                <span
+                                  class={`rounded-sm px-1.5 py-0.5 text-size-small ${tokenStatusClass(tokenStatus(token))}`}
+                                >
+                                  {tokenStatus(token)}
+                                </span>
+                              </Show>
+                            </div>
+                            <div class="text-neutral-500 text-size-small">
+                              {token.lastUsedAt
+                                ? `Last used ${formatAbsoluteDate(token.lastUsedAt)}`
+                                : "Never used"}
+                              {token.expiresAt
+                                ? ` · Expires ${formatAbsoluteDate(token.expiresAt)}`
+                                : ""}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2.5 text-neutral-600">
+                        Token
+                      </td>
+                      <td class="px-4 py-2.5">
+                        <div class="whitespace-nowrap font-medium text-neutral-800">
+                          <For each={token.resources}>
+                            {(resource) => <span>{tokenResourceLabel(resource)}</span>}
+                          </For>
+                          <Show when={!token.resources?.length}>
+                            <span class="text-neutral-400 italic">No access</span>
+                          </Show>
+                        </div>
+                        <div class="text-neutral-500 text-size-small">
+                          {tokenIssuerLabel(token)}
+                        </div>
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-2.5">
+                        <span
+                          class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(tokenRole(token))}`}
+                        >
+                          {tokenRole(token)}
+                        </span>
+                      </td>
+                      <td class="space-x-3 whitespace-nowrap px-4 py-2.5 text-right">
+                        <Show when={userIsOwner()}>
+                          <Show when={!token.revokedAt}>
+                            <button
+                              type="button"
+                              onClick={() => void handleRevokeToken(token.id)}
+                              class="text-red-600 text-size-small hover:text-red-800"
+                            >
+                              Revoke
+                            </button>
+                          </Show>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteToken(token.id)}
+                            class="text-neutral-500 text-size-small hover:text-neutral-700"
+                          >
+                            Delete
+                          </button>
+                        </Show>
+                      </td>
+                    </tr>
+                  )}
+                </For>
               </tbody>
             </table>
           </div>
         </Show>
 
-        <Show when={!isLoading() && !loadingUsers() && memberAccess().length === 0}>
+        <Show
+          when={
+            !isLoading() &&
+            !loadingUsers() &&
+            memberAccess().length === 0 &&
+            accessTokens().length === 0
+          }
+        >
           <div class="rounded-lg border border-neutral-100 py-12 text-center">
             <Icon class="mx-auto h-12 w-12 text-neutral-400" name="users-group" />
             <p class="mt-4 text-neutral-500">
@@ -863,23 +1323,25 @@ export function SpaceMembers() {
               Invite People
             </h3>
             <form onSubmit={(event) => void handleAddMember(event)} class="space-y-4">
-              <div>
-                <label
-                  for="member-type"
-                  class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                >
-                  Type
-                </label>
-                <select
-                  id="member-type"
-                  value={newMemberType()}
-                  onChange={(e) => setNewMemberType(e.currentTarget.value)}
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                >
-                  <option value="user">User</option>
-                  <option value="group">OAuth Group</option>
-                </select>
-              </div>
+              <Show when={userIsOwner()}>
+                <div>
+                  <label
+                    for="member-type"
+                    class="mb-1 block font-medium text-neutral-900 text-size-medium"
+                  >
+                    Type
+                  </label>
+                  <select
+                    id="member-type"
+                    value={newMemberType()}
+                    onChange={(e) => setNewMemberType(e.currentTarget.value)}
+                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
+                  >
+                    <option value="user">User</option>
+                    <option value="group">OAuth Group</option>
+                  </select>
+                </div>
+              </Show>
 
               <div>
                 <label
@@ -979,10 +1441,21 @@ export function SpaceMembers() {
                 <select
                   id="member-scope"
                   value={newMemberScope()}
-                  onChange={(e) => setNewMemberScope(e.currentTarget.value)}
+                  onChange={(e) => {
+                    setNewMemberScope(e.currentTarget.value);
+                    // Owner is a space role; leaving it selected under a
+                    // narrower scope would submit a request the API refuses.
+                    if (e.currentTarget.value !== "space") {
+                      setNewMemberRole((role) =>
+                        role === Permission.OWNER ? Permission.VIEWER : role,
+                      );
+                    }
+                  }}
                   class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
                 >
-                  <option value="space">Entire space</option>
+                  <Show when={userIsOwner()}>
+                    <option value="space">Entire space</option>
+                  </Show>
                   <option value="category">Category</option>
                 </select>
               </div>
@@ -1027,7 +1500,9 @@ export function SpaceMembers() {
                   <option value={Permission.EDITOR}>
                     Editor - Create and edit content
                   </option>
-                  <option value={Permission.OWNER}>Owner - Full control</option>
+                  <Show when={newMemberScope() === "space"}>
+                    <option value={Permission.OWNER}>Owner - Full control</option>
+                  </Show>
                 </select>
               </div>
 

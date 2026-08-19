@@ -8,7 +8,7 @@ import {
   createDatabase,
   type Database,
   getAuthDb,
-  getDatabaseFilePath,
+  resolveSpaceLocation,
 } from "./connection.ts";
 import { initSpaceDbSchema, prepareAuthDb } from "./init.ts";
 
@@ -71,20 +71,18 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
       throw new Error(`Space database not found: ${spaceId}`);
     }
 
-    const isMemoryDatabase = databaseRecord.databaseUrl.startsWith("memory:");
-    const databaseUrl = isMemoryDatabase ? "file::memory:" : databaseRecord.databaseUrl;
-    const databasePath = getDatabaseFilePath(databaseUrl);
-    if (databasePath && !createLocalFile && !existsSync(databasePath)) {
+    const location = resolveSpaceLocation(databaseRecord.location);
+    if (location.filePath && !createLocalFile && !existsSync(location.filePath)) {
       throw new Error(`Space database file not found: ${spaceId}`);
     }
 
-    const spaceDb = createDatabase(databaseUrl);
+    const spaceDb = createDatabase(location.url);
     // Cache before applying schema so concurrent first requests share both the
     // connection and its preparation promise.
     spaceDbCache.set(spaceId, spaceDb);
 
     const preparation = initSpaceDbSchema(spaceDb, {
-      local: databaseUrl.startsWith("file:") && !isMemoryDatabase,
+      local: location.localFile,
     }).catch((error) => {
       spaceDbCache.delete(spaceId);
       spaceDbPreparation.delete(spaceId);

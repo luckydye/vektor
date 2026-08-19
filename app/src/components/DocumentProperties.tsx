@@ -6,13 +6,14 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useProperties } from "#composeables/useProperties.ts";
 import type { Property } from "#documents/properties.ts";
 import {
+  canonicalPropertyKey,
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
 } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
-import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import type { IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
@@ -104,17 +105,15 @@ export function DocumentProperties(props: Props) {
       ? props.initialCategory
       : null);
 
-  const getCategoryIcon = (categorySlug: string | undefined) => {
-    if (!categorySlug) return null;
+  const getCategoryBadge = (
+    categorySlug: string | undefined,
+  ): CategoryBadgeData | undefined => {
+    if (!categorySlug) return undefined;
 
     const category = findCategory(categorySlug);
-    if (!category) return null;
+    if (!category) return undefined;
 
-    const bgColor = category.color || "#E5E7EB";
-    const textColor = getTextColor(bgColor);
-    const iconText = category.icon || category.name.charAt(0).toUpperCase();
-
-    return `<div class="w-[18px] h-[18px] rounded-sm flex items-center justify-center text-size-small font-semibold" style="background-color: ${bgColor}; color: ${textColor};">${iconText}</div>`;
+    return { name: category.name, color: category.color, icon: category.icon };
   };
 
   const getPropertyLabel = (property: Property): string => {
@@ -174,9 +173,9 @@ export function DocumentProperties(props: Props) {
     return property.value.map((value) => getPropertyLabel({ ...property, value }));
   };
 
-  const getPropertyIconSvg = (property: Property) =>
+  const getPropertyBadge = (property: Property) =>
     property.id?.toLowerCase() === "category"
-      ? (getCategoryIcon(propertyValueToScalar(property.value)) ?? undefined)
+      ? getCategoryBadge(propertyValueToScalar(property.value))
       : undefined;
 
   const getPropertyIcon = (property: Property): IconName | undefined => {
@@ -225,10 +224,11 @@ export function DocumentProperties(props: Props) {
 
   const getPropertyValues = async (property: Property): Promise<SelectMenuItem[]> => {
     if (property.name?.toLowerCase() === "category") {
-      return categories().map((cat) => {
-        const badge = getCategoryIcon(cat.slug);
-        return { id: cat.slug, label: cat.name, iconSvg: badge || undefined };
-      });
+      return categories().map((cat) => ({
+        id: cat.slug,
+        label: cat.name,
+        badge: { name: cat.name, color: cat.color, icon: cat.icon },
+      }));
     }
 
     if (property.name?.toLowerCase() === "layout") {
@@ -259,7 +259,9 @@ export function DocumentProperties(props: Props) {
 
     return (
       spaceProperties()
-        ?.find((sp) => sp.name === property.name)
+        ?.find(
+          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(property.name),
+        )
         ?.values?.map((value) => ({
           id: value,
           label: value,
@@ -311,7 +313,9 @@ export function DocumentProperties(props: Props) {
     const otherProps = Object.entries(documentProperties())
       .map(([key, value]): Property | null => {
         if (isHiddenDocumentPropertyKey(key)) return null;
-        const spaceProperty = spaceProperties()?.find((sp) => sp.name === key);
+        const spaceProperty = spaceProperties()?.find(
+          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(key),
+        );
         const propertyType = (spaceProperty?.type as Property["type"]) || "select";
 
         return {
@@ -326,12 +330,16 @@ export function DocumentProperties(props: Props) {
     return [...list, ...otherProps];
   });
 
-  const availableNewProperties = createMemo(() =>
-    spaceProperties().filter((sp) => {
+  const availableNewProperties = createMemo(() => {
+    // Folded: offering a property the document already holds under another case
+    // would overwrite its value.
+    const held = new Set(Object.keys(documentProperties()).map(canonicalPropertyKey));
+
+    return spaceProperties().filter((sp) => {
       if (isHiddenDocumentPropertyKey(sp.name)) return false;
-      return !(sp.name in documentProperties());
-    }),
-  );
+      return !held.has(canonicalPropertyKey(sp.name));
+    });
+  });
 
   return (
     <div
@@ -368,7 +376,7 @@ export function DocumentProperties(props: Props) {
                 nameLabel={getPropertyName(property)}
                 valueLabels={getPropertyValueLabels(property)}
                 icon={getPropertyIcon(property)}
-                iconSvg={getPropertyIconSvg(property)}
+                badge={getPropertyBadge(property)}
                 variant={getPropertyVariant(property)}
                 readonly={readonly()}
                 property={property}

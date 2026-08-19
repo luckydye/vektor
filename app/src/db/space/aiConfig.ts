@@ -1,9 +1,11 @@
 import { eq, inArray } from "drizzle-orm";
 import type { AIProvider } from "#api/provider/types.ts";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceSecret } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
+import { spaceSecretKey, spaceSecretNamespaces } from "./spaceSecrets.ts";
 
 /**
  * Space preference keys holding the AI provider config. The provider config is
@@ -18,14 +20,12 @@ const AI_BASE_URL_KEY = "ai:baseUrl";
 
 const AI_PREF_KEYS = [AI_PROVIDER_KEY, AI_MODEL_KEY, AI_BASE_URL_KEY];
 
-const AI_API_KEY_SECRET = "__ai_api_key";
+const AI_API_KEY_SECRET = spaceSecretKey(spaceSecretNamespaces.secrets, "ai_api_key");
 
 export async function getAIProvider(s: SpaceStore): Promise<AIProvider> {
-  const prefs = await s.db
-    .select()
-    .from(preference)
-    .where(inArray(preference.key, AI_PREF_KEYS))
-    .all();
+  const prefs = await many(
+    s.db.select().from(preference).where(inArray(preference.key, AI_PREF_KEYS)),
+  );
 
   const prefMap = Object.fromEntries(prefs.map((p) => [p.key, p.value]));
   const provider = prefMap[AI_PROVIDER_KEY];
@@ -49,12 +49,13 @@ export async function getAIProvider(s: SpaceStore): Promise<AIProvider> {
     provider === "openrouter" ||
     provider === "opencode-zen"
   ) {
-    const secretRow = await s.db
-      .select()
-      .from(spaceSecret)
-      .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
-      .limit(1)
-      .get();
+    const secretRow = await one(
+      s.db
+        .select()
+        .from(spaceSecret)
+        .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
+        .limit(1),
+    );
 
     if (!secretRow) {
       throw new Error(
@@ -82,12 +83,9 @@ export async function setAIConfig(
   const now = new Date();
 
   async function upsertPref(key: string, value: string) {
-    const existing = await s.db
-      .select()
-      .from(preference)
-      .where(eq(preference.key, key))
-      .limit(1)
-      .get();
+    const existing = await one(
+      s.db.select().from(preference).where(eq(preference.key, key)).limit(1),
+    );
     if (existing) {
       await s.db
         .update(preference)
@@ -114,12 +112,13 @@ export async function setAIConfig(
     await s.db.delete(preference).where(eq(preference.key, AI_BASE_URL_KEY));
 
     const encrypted = encryptSecret(config.apiKey);
-    const existing = await s.db
-      .select()
-      .from(spaceSecret)
-      .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
-      .limit(1)
-      .get();
+    const existing = await one(
+      s.db
+        .select()
+        .from(spaceSecret)
+        .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
+        .limit(1),
+    );
 
     if (existing) {
       await s.db
@@ -166,11 +165,9 @@ export type AIConfigMeta =
     };
 
 export async function getAIConfigMeta(s: SpaceStore): Promise<AIConfigMeta> {
-  const prefs = await s.db
-    .select()
-    .from(preference)
-    .where(inArray(preference.key, AI_PREF_KEYS))
-    .all();
+  const prefs = await many(
+    s.db.select().from(preference).where(inArray(preference.key, AI_PREF_KEYS)),
+  );
 
   const prefMap = Object.fromEntries(prefs.map((p) => [p.key, p.value]));
 
@@ -178,12 +175,13 @@ export async function getAIConfigMeta(s: SpaceStore): Promise<AIConfigMeta> {
     return { configured: false };
   }
 
-  const secretRow = await s.db
-    .select({ name: spaceSecret.name })
-    .from(spaceSecret)
-    .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
-    .limit(1)
-    .get();
+  const secretRow = await one(
+    s.db
+      .select({ name: spaceSecret.name })
+      .from(spaceSecret)
+      .where(eq(spaceSecret.name, AI_API_KEY_SECRET))
+      .limit(1),
+  );
 
   return {
     configured: true,

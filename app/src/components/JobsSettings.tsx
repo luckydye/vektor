@@ -5,7 +5,7 @@ import { useInfiniteQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import { formatDateTime } from "#utils/datetime.ts";
+import { formatDateTime } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 

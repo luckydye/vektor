@@ -1,5 +1,6 @@
 import { inArray } from "drizzle-orm";
-import { verifyDocumentAccess } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   jsonResponse,
   requireParam,
@@ -7,7 +8,8 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getAuthDb, getSpaceDb } from "#db/client/db.ts";
+import { getAuthDb } from "#db/client/db.ts";
+import { many } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import {
@@ -21,7 +23,12 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = requireParam(context.var.params, "documentId");
 
-    await verifyDocumentAccess(spaceId, documentId, currentUser.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      currentUser.id,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const { rows: logs } = await getAuditLogsForDocument(store, documentId, 1000);
@@ -49,15 +56,16 @@ export const GET: ApiRouteHandler = (context) =>
     // and is never needed here, so it is not selected or returned.
     const authDb = getAuthDb();
     const userIdsArray = Array.from(userIds);
-    const contributors = await authDb
-      .select({
-        userId: user.id,
-        name: user.name,
-        image: user.image,
-      })
-      .from(user)
-      .where(inArray(user.id, userIdsArray))
-      .all();
+    const contributors = await many(
+      authDb
+        .select({
+          userId: user.id,
+          name: user.name,
+          image: user.image,
+        })
+        .from(user)
+        .where(inArray(user.id, userIdsArray)),
+    );
 
     return jsonResponse({ contributors });
   }, "Failed to list contributors");

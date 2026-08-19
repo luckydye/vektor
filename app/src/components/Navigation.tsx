@@ -1,12 +1,15 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { canAccessSettings, canEdit } from "#acl/permissions.ts";
+import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Button } from "./Button.tsx";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
 import { Icon } from "./Icon.tsx";
@@ -18,7 +21,14 @@ export function Navigation() {
   const navigate = useNavigate();
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
-  const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
+  const {
+    currentSpace,
+    spaces,
+    createSpace,
+    canCreateSpace,
+    isLoading: spaceIsLoading,
+  } = useSpace();
+  const { pinnedSpaceIds } = usePinnedSpaces();
 
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
   const [extensionMenuLinks, setExtensionMenuLinks] = createSignal<
@@ -47,7 +57,18 @@ export function Navigation() {
       members: space.memberCount,
       color: space.preferences?.brandColor,
       logoSvg: space.preferences?.logoSvg,
+      pinned: pinnedSpaceIds().has(space.id),
     })),
+  );
+
+  const selectorSpaces = createMemo(() =>
+    spaceSelectorSlots(uiSpaces(), pinnedSpaceIds()),
+  );
+
+  // Looked up separately: an unpinned current space can fall outside the listed
+  // ones, and the trigger still has to name it.
+  const currentUiSpace = createMemo(
+    () => uiSpaces().find((space) => space.id === currentSpace()?.id) ?? null,
   );
 
   const userCanAccessSettings = createMemo(
@@ -92,21 +113,21 @@ export function Navigation() {
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}
           onCreate={async (data) => {
-            try {
-              const newSpace = await createSpace(data.name, data.slug, {
-                brandColor: data.brandColor,
-                logoSvg: data.logoSvg,
-              });
-              window.location.href = `/${newSpace.slug}/`;
-            } catch (err) {
-              console.error("Failed to create space:", err);
-            }
+            // Failures propagate on purpose: the dialog shows them in its form
+            // error and stays open so the slug can be corrected.
+            const newSpace = await createSpace(data.name, data.slug, {
+              brandColor: data.brandColor,
+              logoSvg: data.logoSvg,
+            });
+            window.location.href = `/${newSpace.slug}/`;
           }}
         />
         <SpaceSelector
-          spaces={uiSpaces()}
-          value={currentSpace()?.id}
+          spaces={selectorSpaces()}
+          current={currentUiSpace()}
+          allSpacesHref="/spaces"
           canCreateDocs={userCanEdit()}
+          canCreateSpaces={canCreateSpace() === true}
           loading={isLoading()}
           onSelect={(space) => {
             const full = spaces()?.find((s: ApiSpace) => s.id === space.id);
@@ -122,14 +143,12 @@ export function Navigation() {
           <div class="flex flex-none flex-col gap-0.5 px-3xs pt-5xs">
             <button
               type="button"
-              class="button-with-icon mb-4xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
+              class="button-with-icon mb-4xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
               title={t("Quick Search")}
               onClick={() => Actions.run("ui:toggle:palatte")}
             >
               <Icon name="search" />
-              <span class="@max-xs:hidden flex-1 truncate text-size-normal">
-                {t("Quick Search")}
-              </span>
+              <span class="@max-xs:hidden flex-1 truncate">{t("Quick Search")}</span>
               <a-shortcut class="@max-xs:hidden! flex-none" data-shortcut="mod-k" />
             </button>
             <MenuLink
@@ -167,16 +186,20 @@ export function Navigation() {
           <div class="@max-xs:hidden px-5xs pt-4xs pb-s">
             <div class="mx-4xs border-neutral-400/25 border-b"></div>
 
+            {/* The hint gives the lone Done button something to belong to, and says
+                what the mode is for — nothing else on screen does. */}
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
               <Show when={documentTree()?.isEditMode}>
-                <button
-                  type="button"
+                <span class="truncate text-neutral-500 text-size-extra-small">
+                  {t("Drag to reorder")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  text={t("Done")}
+                  ariaLabel={t("Done rearranging")}
                   onClick={() => documentTree()?.toggleEditMode()}
-                  class="rounded-sm px-1 py-0.5 font-medium text-blue-600 text-size-extra-small transition-colors hover:text-blue-700"
-                  title={t("Done rearranging")}
-                >
-                  {t("Done")}
-                </button>
+                />
               </Show>
             </div>
 

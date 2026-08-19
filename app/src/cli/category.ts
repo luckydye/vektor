@@ -1,24 +1,8 @@
-import { config } from "#config";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
+import { slugify } from "#utils/slug.ts";
+import { resolveConfig } from "./resolve.ts";
 
 function authHeaders(token: string | undefined): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function resolveConnection() {
-  const host = resolveHost();
-  const token = config().CLI_ACCESS_TOKEN;
-  const spaceId = await resolveSpaceId(host, token);
-  return { host, token, spaceId };
-}
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 type Category = {
@@ -49,7 +33,7 @@ async function fetchCategory(
 }
 
 export async function commandCategoryLs(): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const res = await fetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories`,
     { headers: authHeaders(token) },
@@ -70,7 +54,7 @@ export async function commandCategoryCreate(flags: {
   color?: string;
   icon?: string;
 }): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const slug = flags.slug ?? slugify(flags.name);
 
   const res = await fetch(
@@ -103,7 +87,7 @@ export async function commandCategoryEdit(
     icon?: string;
   },
 ): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const existing = await fetchCategory(host, token, spaceId, idOrSlug);
 
   const name = flags.name ?? existing.name;
@@ -130,7 +114,7 @@ export async function commandCategoryEdit(
 }
 
 export async function commandCategoryRm(idOrSlug: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const existing = await fetchCategory(host, token, spaceId, idOrSlug);
 
   const res = await fetch(

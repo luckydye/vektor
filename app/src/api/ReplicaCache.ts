@@ -493,8 +493,9 @@ export class ReplicaCache {
   }
 
   /**
-   * Archiving keeps the document readable but takes it out of every listing,
-   * which is exactly the distinction the `archived` column carries.
+   * Archiving keeps the local copy but takes it out of every listing. The server
+   * stops serving an archived document below `editor`, so for a viewer the cached
+   * body outlives the access it was fetched with.
    */
   async archiveDocument(spaceId: string, documentId: string): Promise<void> {
     await this.db.writeRemote(async () => await this.archiveWrites(spaceId, documentId));
@@ -533,7 +534,7 @@ export class ReplicaCache {
   ): Promise<Comment[] | undefined> {
     const [collection, records] = await Promise.all([
       this.collection(spaceId, collections.comments(documentId)),
-      this.db.getByIndex<CommentRecord>(replicaStores.comment, "by_document", [
+      this.db.getByIndex<CommentRecord>(replicaStores.comment, "by_resource", [
         spaceId,
         documentId,
       ]),
@@ -565,7 +566,7 @@ export class ReplicaCache {
     await this.db.writeRemote(async () => {
       const stored = await this.db.getByIndex<CommentRecord>(
         replicaStores.comment,
-        "by_document",
+        "by_resource",
         [spaceId, documentId],
       );
       const incoming = new Set(comments.map((comment) => comment.id));
@@ -590,12 +591,16 @@ export class ReplicaCache {
     });
   }
 
-  async addComment(spaceId: string, comment: Comment): Promise<ReplicaOperation | null> {
+  async addComment(
+    spaceId: string,
+    documentId: string,
+    comment: Comment,
+  ): Promise<ReplicaOperation | null> {
     return await this.db.writeOptimistic(async () => [
       { store: replicaStores.comment, put: { ...comment, spaceId } },
       ...(await this.appendToCollection(
         spaceId,
-        collections.comments(comment.documentId),
+        collections.comments(documentId),
         comment.id,
       )),
     ]);
@@ -604,11 +609,12 @@ export class ReplicaCache {
   /** Swap a comment written before the request for the one the server stored. */
   async replaceComment(
     spaceId: string,
+    documentId: string,
     temporaryId: string,
     comment: Comment,
   ): Promise<void> {
     await this.db.writeRemote(async () => {
-      const name = collections.comments(comment.documentId);
+      const name = collections.comments(documentId);
       const collection = await this.collection(spaceId, name);
       const ids = collection
         ? collection.ids.map((id) => (id === temporaryId ? comment.id : id))

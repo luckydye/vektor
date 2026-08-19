@@ -4,11 +4,12 @@ import {
   type PresenceJoinPayload,
   type PresenceLeavePayload,
   type PresenceUpdatePayload,
+  type RealtimeErrorPayload,
   WsMsgType,
   wsDecodeJson,
   wsEncode,
 } from "./protocol.ts";
-import { getRoom, type YRoom, yRooms } from "./yjsRooms.ts";
+import { getRoom, retireYRoom, type YRoom, yRooms } from "./yjsRooms.ts";
 
 function broadcastPresence(
   room: YRoom,
@@ -25,6 +26,13 @@ function broadcastPresence(
   }
 }
 
+export type PresenceRoomAccess = "allowed" | "denied" | "unknown";
+
+interface PresenceConnectionHooks {
+  authorizeRoom: (room: string) => Promise<PresenceRoomAccess>;
+  holdsYjsRoom: (room: string) => boolean;
+}
+
 /** Tracks presence registrations belonging to one realtime connection. */
 export class PresenceConnection {
   private readonly joinedRooms = new Map<string, Set<string>>();
@@ -32,7 +40,7 @@ export class PresenceConnection {
   constructor(
     private readonly spaceId: string,
     private readonly websocket: WebSocket,
-    private readonly authorizeRoom: (room: string) => Promise<boolean>,
+    private readonly hooks: PresenceConnectionHooks,
   ) {}
 
   /** Handles a presence frame and returns whether the frame was recognized. */
@@ -56,32 +64,59 @@ export class PresenceConnection {
   }
 
   close(): void {
-    for (const [roomKey, clientIds] of this.joinedRooms.entries()) {
-      const room = yRooms.get(roomKey);
-      if (!room) {
+    for (const roomKey of [...this.joinedRooms.keys()]) {
+      this.leaveRoomEntirely(roomKey);
+    }
+  }
+
+  async revalidate(): Promise<void> {
+    for (const roomKey of [...this.joinedRooms.keys()]) {
+      if ((await this.hooks.authorizeRoom(this.roomIdOf(roomKey))) !== "denied") {
         continue;
       }
+      this.leaveRoomEntirely(roomKey);
+    }
+  }
 
-      const roomId = roomKey.slice(this.spaceId.length + 1);
-      for (const clientId of clientIds) {
-        room.presences.delete(clientId);
-        broadcastPresence(room, this.websocket, WsMsgType.PresenceLeave, {
-          room: roomId,
-          clientId,
-          timestamp: new Date().toISOString(),
-        });
-      }
+  private roomIdOf(roomKey: string): string {
+    return roomKey.slice(this.spaceId.length + 1);
+  }
 
+  private leaveRoomEntirely(roomKey: string): void {
+    const clientIds = this.joinedRooms.get(roomKey);
+    this.joinedRooms.delete(roomKey);
+    const room = yRooms.get(roomKey);
+    if (!room || !clientIds) {
+      return;
+    }
+
+    const roomId = this.roomIdOf(roomKey);
+    for (const clientId of clientIds) {
+      room.presences.delete(clientId);
+      broadcastPresence(room, this.websocket, WsMsgType.PresenceLeave, {
+        room: roomId,
+        clientId,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (!this.hooks.holdsYjsRoom(roomId)) {
       room.clients.delete(this.websocket);
-      if (room.clients.size === 0 && room.presences.size === 0) {
-        yRooms.delete(roomKey);
-      }
+    }
+    if (room.clients.size === 0 && room.presences.size === 0) {
+      retireYRoom(roomKey);
     }
   }
 
   private async join(join: PresenceJoinPayload): Promise<void> {
-    if (!(await this.authorizeRoom(join.room))) {
-      this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+    if ((await this.hooks.authorizeRoom(join.room)) !== "allowed") {
+      this.websocket.send(
+        wsEncode(WsMsgType.Error, {
+          message: "You do not have access to this document",
+          scope: "presence-join",
+          room: join.room,
+        } satisfies RealtimeErrorPayload),
+      );
       return;
     }
 
@@ -113,7 +148,7 @@ export class PresenceConnection {
   private async update(update: PresenceUpdatePayload): Promise<void> {
     const roomKey = `${this.spaceId}:${update.room}`;
     // Presence access is verified once in join(); a connection may only update
-    // the presence entries it created. Re-running verifyDocumentRole here would
+    // the presence entries it created. Re-running the document check here would
     // issue several DB queries per presence frame (pointer-move rate), which is
     // the dominant server cost under active collaboration. Gating on the joined
     // set keeps it authorized without the per-frame lookup.
@@ -138,6 +173,12 @@ export class PresenceConnection {
 
   private leave(leave: PresenceLeavePayload): void {
     const roomKey = `${this.spaceId}:${leave.room}`;
+    // Same rule as update(): only entries this connection created. Otherwise
+    // any client can evict anyone's presence from any room by naming it.
+    if (!this.joinedRooms.get(roomKey)?.has(leave.clientId)) {
+      return;
+    }
+
     const room = yRooms.get(roomKey);
     if (!room) {
       return;
@@ -152,7 +193,7 @@ export class PresenceConnection {
     });
 
     if (room.clients.size === 0 && room.presences.size === 0) {
-      yRooms.delete(roomKey);
+      retireYRoom(roomKey);
     }
   }
 }

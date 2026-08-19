@@ -1,3 +1,5 @@
+import * as personalAccessToken from "./routes/access-token.ts";
+import * as personalAccessTokens from "./routes/access-tokens.ts";
 import * as authAll from "./routes/auth/all.ts";
 import * as authCli from "./routes/auth/cli.ts";
 import * as authCliToken from "./routes/auth/cli-token.ts";
@@ -8,8 +10,8 @@ import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
 import * as proxyMedia from "./routes/proxy-media.ts";
+import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
-import * as accessTokenResource from "./routes/spaces/access-token-resource.ts";
 import * as accessTokens from "./routes/spaces/access-tokens.ts";
 import * as aiChatSession from "./routes/spaces/ai-chat-session.ts";
 import * as aiChatSessions from "./routes/spaces/ai-chat-sessions.ts";
@@ -105,11 +107,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]", module: accessToken },
-  {
-    pattern:
-      "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId]",
-    module: accessTokenResource,
-  },
 
   { pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions", module: aiChatSessions },
   {
@@ -208,7 +205,12 @@ export const apiRoutes: ApiRoute[] = [
     module: workflowSchedule,
   },
 
+  // The caller's own tokens, so nothing in the path identifies whose they are.
+  { pattern: "/api/v1/access-tokens", module: personalAccessTokens },
+  { pattern: "/api/v1/access-tokens/[tokenId]", module: personalAccessToken },
+
   { pattern: "/api/v1/proxy-media", module: proxyMedia },
+  { pattern: "/api/v1/search", module: crossSpaceSearch },
   { pattern: "/api/v1/url-metadata", module: urlMetadata },
   { pattern: "/api/v1/users", module: users },
   { pattern: "/api/v1/users/me", module: usersMe },

@@ -29,12 +29,16 @@ function gravatarHost(): string | null {
 }
 
 /**
+ * MD5, not the SHA-256 gravatar.com now prefers: it is the one hash every
+ * Gravatar-compatible service keys on, and self-hosted ones commonly accept
+ * nothing else.
+ *
  * `d=404` makes the service refuse rather than serve one of its own default
  * images for an address with no account, which is what lets the client fall
  * back to the id-seeded generated face.
  */
 function gravatarUrl(host: string, email: string): string {
-  const hash = createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+  const hash = createHash("md5").update(email.trim().toLowerCase()).digest("hex");
   return `${host}/avatar/${hash}?d=404&s=${gravatarSize}`;
 }
 

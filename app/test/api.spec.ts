@@ -163,6 +163,24 @@ describe("API Tests - Spaces", () => {
   });
 });
 
+describe("API Tests - Access Tokens", () => {
+  it.each([3651, 1e308])("rejects an excessive expiry of %s days", async (days) => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/access-tokens`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Invalid expiry",
+        permission: "extensions",
+        expiresInDays: days,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "expiresInDays must be greater than 0 and at most 3650",
+    });
+  });
+});
+
 describe("API Tests - Extensions", () => {
   function createExtensionPackage(id: string): Buffer {
     return createZipBuffer([
@@ -283,6 +301,66 @@ describe("API Tests - Documents", () => {
     testDocumentId = data.document.id;
   });
 
+  it("preserves valid importer timestamps from a job token", async () => {
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const createdAt = "2001-02-03T04:05:06.000Z";
+    const updatedAt = "2002-03-04T05:06:07.000Z";
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Job-Token": jobToken,
+      },
+      body: JSON.stringify({
+        content: "<p>Imported document</p>",
+        createdAt,
+        updatedAt,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const { document } = await response.json();
+    expect(document.createdAt).toBe(createdAt);
+    expect(document.updatedAt).toBe(updatedAt);
+  });
+
+  it.each([
+    ["createdAt", "not-a-date"],
+    ["updatedAt", "999999-01-01T00:00:00Z"],
+    ["createdAt", 123],
+  ])("rejects invalid importer %s values", async (field, value) => {
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Job-Token": jobToken,
+      },
+      body: JSON.stringify({ content: "<p>Invalid timestamp</p>", [field]: value }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: `${field} must be a valid date string`,
+    });
+  });
+
+  it("rejects custom timestamps from a browser session", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Spoofed timestamp</p>",
+        createdAt: "2001-02-03T04:05:06.000Z",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error:
+        "Custom document timestamps require access-token or job-token authentication",
+    });
+  });
+
   it("should derive slug from wrapped title property", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
@@ -366,7 +444,9 @@ describe("API Tests - Documents", () => {
     expect(fetched.slug).toBe("finally-named");
   });
 
-  it("should reject a title with nothing sluggable in it", async () => {
+  it("should create a document whose title has nothing sluggable in it", async () => {
+    // A title the URL cannot represent is ordinary input, not a bad request:
+    // see test/slugs-api.spec.ts for the non-Latin scripts this also covers.
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
       body: JSON.stringify({
@@ -375,9 +455,10 @@ describe("API Tests - Documents", () => {
       }),
     });
 
-    expect(response.status).toBe(400);
-    const data = await response.json();
-    expect(data.error).toContain("letter or number");
+    expect(response.status).toBe(201);
+    const { document } = await response.json();
+    expect(document.properties.title).toBe("-----------------------");
+    expect(document.slug).toMatch(/^document-[0-9a-f]{8}$/);
   });
 
   it("should list documents", async () => {
@@ -462,6 +543,39 @@ describe("API Tests - Documents", () => {
     expect(fetchedData.document.content).toBe(updatedContent);
   });
 
+  it.each([
+    [
+      {},
+      "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
+    ],
+    [{ archived: true }, "archived cannot be patched; use DELETE to archive a document"],
+    [{ foo: "bar" }, "Unknown document patch field: foo"],
+    [
+      { parentId: null, readonly: true },
+      "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
+    ],
+    [{ readonly: true, foo: "bar" }, "Unknown document patch field: foo"],
+  ])("rejects invalid document patch body %j", async (body, error) => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error });
+  });
+
+  it("does not archive a document when archived is sent to PATCH", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).document.archived).toBe(false);
+  });
+
   it("should create a child document", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
@@ -512,6 +626,93 @@ describe("API Tests - Documents", () => {
     ).then((res) => res.json());
 
     expect(data.document.parentId).toBe(null);
+  });
+
+  it("rejects making a document its own parent", async () => {
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Self parent target</p>",
+        properties: { title: "Self Parent Target" },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const documentId = (await createResponse.json()).document.id;
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ parentId: documentId }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Cannot set parent: document cannot be its own parent",
+    });
+  });
+
+  it("rejects a parent change that would create a multi-document cycle", async () => {
+    const createDocument = async (title: string, parentId?: string) => {
+      const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({
+          content: `<p>${title}</p>`,
+          properties: { title },
+          parentId,
+        }),
+      });
+      expect(response.status).toBe(201);
+      return (await response.json()).document.id as string;
+    };
+
+    const rootId = await createDocument("Cycle Root");
+    const childId = await createDocument("Cycle Child", rootId);
+    const grandchildId = await createDocument("Cycle Grandchild", childId);
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${rootId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ parentId: grandchildId }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Cannot set parent: this would create a document cycle",
+    });
+
+    const rootResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${rootId}`,
+    );
+    expect((await rootResponse.json()).document.parentId).toBe(null);
+  });
+
+  it("allows children under a custom prototype-key document type", async () => {
+    const parentResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "__proto__",
+        content: "<p>Custom parent</p>",
+        properties: { title: "Prototype Key Parent" },
+      }),
+    });
+    expect(parentResponse.status).toBe(201);
+    const parentId = (await parentResponse.json()).document.id;
+
+    const childResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Child of custom type</p>",
+        parentId,
+        properties: { title: "Prototype Key Child" },
+      }),
+    });
+
+    expect(childResponse.status).toBe(201);
+    expect((await childResponse.json()).document.parentId).toBe(parentId);
   });
 
   it("should archive a document (soft delete)", async () => {
@@ -917,6 +1118,7 @@ describe("API Tests - Document Properties", () => {
 
 describe("API Tests - Categories", () => {
   let testCategoryId: string;
+  let advancedCategoryId: string;
 
   it("should create a category", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/categories`, {
@@ -1002,6 +1204,61 @@ describe("API Tests - Categories", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.category.name).toBe("Advanced Topics");
+    advancedCategoryId = data.category.id;
+  });
+
+  it("should reject creating a category with a duplicate slug", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/categories`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Duplicate Advanced Topics",
+        slug: "advanced-topics",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Category with slug "advanced-topics" already exists',
+    });
+  });
+
+  it("should reject updating a category to a duplicate slug", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${advancedCategoryId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: "Advanced Topics",
+          slug: "beginners-guide",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Category with slug "beginners-guide" already exists',
+    });
+
+    const unchanged = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${advancedCategoryId}`,
+    );
+    expect((await unchanged.json()).category.slug).toBe("advanced-topics");
+  });
+
+  it("should allow updating a category without changing its slug", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${advancedCategoryId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: "Advanced Topics Updated",
+          slug: "advanced-topics",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).category.slug).toBe("advanced-topics");
   });
 
   it("should delete a category", async () => {
@@ -1243,17 +1500,13 @@ describe("API Tests - Revisions", () => {
     }
   });
 
-  it("should return empty array for history of non-existent document", async () => {
+  it("should return 404 for history of non-existent document", async () => {
     const fakeDocId = crypto.randomUUID();
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${fakeDocId}/revisions`,
     );
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.revisions).toBeDefined();
-    expect(Array.isArray(data.revisions)).toBe(true);
-    expect(data.revisions.length).toBe(0);
+    expect(response.status).toBe(404);
   });
 
   it("should return empty history for a newly created document", async () => {
@@ -1981,6 +2234,52 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       );
       expect(response.status).toBe(400);
     });
+
+    it("restores the content onto the document, and appends rather than rewriting history", async () => {
+      const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ content: "<p>v1</p>", properties: { title: "Rollback" } }),
+      });
+      const docId = (await createResponse.json()).document.id;
+
+      const save = (content: string) =>
+        apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${docId}`, {
+          method: "PUT",
+          body: JSON.stringify({ content }),
+        });
+      const revisionContent = async (rev: number) => {
+        const response = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${docId}?rev=${rev}`,
+        );
+        return response.status === 200 ? (await response.json()).revision.content : null;
+      };
+
+      expect((await save("<p>v1</p>")).status).toBe(200);
+      expect(
+        (
+          await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${docId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ publishedRev: 1 }),
+          })
+        ).status,
+      ).toBe(200);
+      expect((await save("<p>v2 draft</p>")).status).toBe(200);
+      expect(await revisionContent(2)).toContain("v2 draft");
+
+      const restore = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}/revisions?rev=1`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      expect(restore.status).toBe(200);
+      expect((await restore.json()).revision.rev).toBe(3);
+      expect(await revisionContent(2)).toContain("v2 draft");
+      expect(await revisionContent(3)).toContain("v1");
+
+      const document = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}`,
+      );
+      expect((await document.json()).document.content).toContain("v1");
+    });
   });
 
   describe("Children and Hierarchy Edge Cases", () => {
@@ -2410,5 +2709,58 @@ describe("API Tests - Contributors (noAuth)", () => {
     const data = await resp.json();
     expect(Array.isArray(data.contributors)).toBe(true);
     expect(data.contributors.length).toBe(0);
+  });
+});
+
+/**
+ * The media proxy is the endpoint from issue #50, so the guard is asserted here
+ * rather than only on `safeFetch` in `ssrf.spec.ts`.
+ *
+ * Every refusal has to be the same refusal. Two distinguishable answers — one for
+ * a blocked host, one for a wrong content type — are what made this a host and
+ * port scanner, so a target that is off-limits, one that cannot be resolved and
+ * one with an unusable scheme must all come back identical.
+ *
+ * The redirect hop itself is covered in `ssrf.spec.ts` against a real upstream: a
+ * public first hop cannot be staged here, since the guard refuses loopback, which
+ * is the only thing a test can serve.
+ */
+describe("API Tests - Media Proxy (SSRF)", () => {
+  const REFUSED = "URL cannot be proxied as media";
+
+  it.each([
+    ["loopback", "http://127.0.0.1:9099/secret.mp3"],
+    ["localhost by name", "http://localhost:9099/secret.mp3"],
+    ["the cloud metadata endpoint", "http://169.254.169.254/latest/meta-data/"],
+    ["a private range", "http://10.0.0.5/internal.mp4"],
+    ["IPv6 loopback", "http://[::1]:9099/secret.mp3"],
+    ["an IPv4-mapped loopback", "http://[::ffff:127.0.0.1]:9099/secret.mp3"],
+    ["a name that does not resolve", "http://nonexistent.invalid/clip.mp3"],
+    ["a non-HTTP scheme", "file:///etc/passwd"],
+  ])("refuses %s with nothing but the generic message", async (_case, url) => {
+    const response = await apiRequest(
+      `/api/v1/proxy-media?url=${encodeURIComponent(url)}`,
+    );
+    expect(response.status).toBe(400);
+
+    const body = await response.json();
+    expect(body.error).toBe(REFUSED);
+    // Neither which check failed nor whether the target was reachable.
+    expect(JSON.stringify(body)).not.toMatch(
+      /not allowed|resolve|content|scheme|refused/i,
+    );
+  });
+
+  it("does not relay a body for a refused URL", async () => {
+    const response = await apiRequest(
+      "/api/v1/proxy-media?url=http%3A%2F%2F127.0.0.1%3A9099%2Fsecret.mp3",
+    );
+    expect(await response.text()).toBe(JSON.stringify({ error: REFUSED }));
+  });
+
+  it("rejects a missing url parameter distinctly, since that is not about the target", async () => {
+    const response = await apiRequest("/api/v1/proxy-media");
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("url parameter is required");
   });
 });

@@ -1547,6 +1547,62 @@ describe("ACL API Tests - Categories Access Control", () => {
     expect(response.status).toBe(403);
   });
 
+  // A token scoped to the space holds no `category:<id>` grant, so it reaches a
+  // category only through hasPermission's category->space fallback. The viewer
+  // token proves that fallback carries the token's own level rather than
+  // admitting it outright.
+  it("should let a space-scoped token reach a category at its own level", async () => {
+    const tokenFor = async (permission: string) => {
+      const response = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/access-tokens`,
+        session1Token,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: `category-fallback-${permission}`,
+            resourceType: "space",
+            resourceId: testSpaceId,
+            permission,
+          }),
+        },
+      );
+      expect(response.status).toBe(201);
+      return (await response.json()).token;
+    };
+    const categoryUrl = `${BASE_URL}/api/v1/spaces/${testSpaceId}/categories/${testCategoryId}`;
+    const rename = (name: string) => ({
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, slug: "test-category" }),
+    });
+
+    const viewerToken = await tokenFor("viewer");
+    const editorToken = await tokenFor("editor");
+
+    const viewerRead = await fetch(categoryUrl, {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+    });
+    expect(viewerRead.status).toBe(200);
+
+    const viewerWrite = await fetch(categoryUrl, {
+      ...rename("Renamed By Viewer Token"),
+      headers: {
+        ...rename("").headers,
+        Authorization: `Bearer ${viewerToken}`,
+      },
+    });
+    expect(viewerWrite.status).toBe(403);
+
+    const editorWrite = await fetch(categoryUrl, {
+      ...rename("Renamed By Editor Token"),
+      headers: {
+        ...rename("").headers,
+        Authorization: `Bearer ${editorToken}`,
+      },
+    });
+    expect(editorWrite.status).toBe(200);
+  });
+
   it("should allow editor to delete category", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/categories/${testCategoryId}`,
@@ -1963,7 +2019,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     expect(data.document.id).toBeDefined();
   });
 
-  it("should allow editor to add new members with non-owner roles", async () => {
+  it("should not allow editor to add new members at space level", async () => {
     const newUserData = await createAclTestUser("New Member User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
@@ -1978,7 +2034,7 @@ describe("ACL API Tests - Permission Level Access", () => {
         }),
       },
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
   });
 
   it("should allow editor to see space in their spaces list", async () => {
@@ -2022,7 +2078,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("should allow editor to add members with non-owner roles", async () => {
+  it("should not allow editor to add members at space level", async () => {
     const newUserData = await createAclTestUser("Editor Attempt User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
@@ -2037,7 +2093,7 @@ describe("ACL API Tests - Permission Level Access", () => {
         }),
       },
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
   });
 });
 
@@ -2277,6 +2333,29 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(Array.isArray(data.categories)).toBe(true);
+  });
+
+  // The `public` group holds viewer on the space and nothing on the category
+  // itself, so this passes only through hasPermission's category->space
+  // fallback. Listing categories cannot prove it: that route checks the space
+  // role directly.
+  it("should allow unauthenticated users to read one category in a public space", async () => {
+    const created = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/categories`,
+      ownerUser.token,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Public Category", slug: "public-category" }),
+      },
+    );
+    expect(created.status).toBe(201);
+    const { category } = await created.json();
+
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/categories/${category.id}`,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).category.id).toBe(category.id);
   });
 
   it("should allow unauthenticated users to list properties in a public space", async () => {
@@ -3196,14 +3275,12 @@ describe("ACL API Tests - Contributors", () => {
     expect(contributors.filter((c: any) => c.userId === testUser1.id).length).toBe(1);
   });
 
-  it("should return empty array for non-existent document", async () => {
+  it("should return 404 for non-existent document", async () => {
     const resp = await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/documents/non-existent-doc/contributors`,
       session1Token,
     );
-    expect(resp.status).toBe(200);
-    const { contributors } = await resp.json();
-    expect(contributors).toEqual([]);
+    expect(resp.status).toBe(404);
   });
 });
 
@@ -3424,6 +3501,7 @@ describe("ACL API Tests - Document Access List", () => {
   let pageUser: Awaited<ReturnType<typeof createAclTestUser>>;
   let treeUser: Awaited<ReturnType<typeof createAclTestUser>>;
   let spaceUser: Awaited<ReturnType<typeof createAclTestUser>>;
+  let downgradeUser: Awaited<ReturnType<typeof createAclTestUser>>;
 
   function grant(body: Record<string, unknown>) {
     return apiRequest(`/api/v1/spaces/${spaceId}/permissions`, session1Token, {
@@ -3466,6 +3544,7 @@ describe("ACL API Tests - Document Access List", () => {
     pageUser = await createAclTestUser("Page Grantee");
     treeUser = await createAclTestUser("Tree Grantee");
     spaceUser = await createAclTestUser("Space Grantee");
+    downgradeUser = await createAclTestUser("Downgrade Grantee");
 
     await grant({
       roleOrFeature: "editor",
@@ -3473,15 +3552,23 @@ describe("ACL API Tests - Document Access List", () => {
       resourceType: "document",
       resourceId: childId,
     });
-    // A space role plus a narrower grant on an ancestor: the narrower one wins.
-    await grant({ roleOrFeature: "editor", userId: treeUser.userId });
+    // A space role plus a stronger grant on an ancestor: the stronger one wins.
+    await grant({ roleOrFeature: "viewer", userId: treeUser.userId });
     await grant({
-      roleOrFeature: "viewer",
+      roleOrFeature: "editor",
       userId: treeUser.userId,
       resourceType: "document_tree",
       resourceId: parentId,
     });
     await grant({ roleOrFeature: "editor", userId: spaceUser.userId });
+    // The reverse: a narrower grant below the space role must not subtract.
+    await grant({ roleOrFeature: "editor", userId: downgradeUser.userId });
+    await grant({
+      roleOrFeature: "viewer",
+      userId: downgradeUser.userId,
+      resourceType: "document",
+      resourceId: childId,
+    });
   });
 
   it("lists direct, inherited and space-level access to a document", async () => {
@@ -3503,8 +3590,12 @@ describe("ACL API Tests - Document Access List", () => {
     expect(inherited.via.resourceType).toBe("document_tree");
     expect(inherited.via.inherited).toBe(true);
     expect(inherited.via.resourceLabel).toBe("Parent Page");
-    // The tree grant overrides the space role, even though the space role is higher.
-    expect(inherited.permission).toBe("viewer");
+    expect(inherited.permission).toBe("editor");
+
+    // A document grant below the space role leaves the space role in charge.
+    const notDowngraded = byUser.get(downgradeUser.userId);
+    expect(notDowngraded.permission).toBe("editor");
+    expect(notDowngraded.via.resourceType).toBe("space");
 
     const viaSpace = byUser.get(spaceUser.userId);
     expect(viaSpace.permission).toBe("editor");
@@ -3524,6 +3615,32 @@ describe("ACL API Tests - Document Access List", () => {
       viewer.token,
     );
     expect(response.status).toBe(403);
+  });
+
+  // Sharing a document as viewer with someone who already outranks that — the
+  // space owner most of all — used to lock them out of their own document,
+  // including out of the sharing screen needed to take the grant back.
+  it("keeps the space owner in control after a viewer grant on their document", async () => {
+    const response = await grant({
+      roleOrFeature: "viewer",
+      userId: testUser1.id,
+      resourceType: "document",
+      resourceId: childId,
+    });
+    expect(response.status).toBe(200);
+
+    const access = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
+      session1Token,
+    );
+    expect(access.status).toBe(200);
+
+    const update = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}`,
+      session1Token,
+      { method: "PUT", body: JSON.stringify({ content: "<p>Child Page edited</p>" }) },
+    );
+    expect(update.status).toBe(200);
   });
 });
 

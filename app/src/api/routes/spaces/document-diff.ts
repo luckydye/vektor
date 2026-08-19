@@ -1,10 +1,6 @@
 import { createPatch } from "diff";
-import {
-  authenticateRequest,
-  verifyDocumentRole,
-  verifyTokenPermission,
-} from "#acl/guards.ts";
-import { Permission, ResourceType } from "#acl/permissions.ts";
+import { authenticateDocumentAccess, verifyRevisionAccess } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   notFoundResponse,
@@ -14,6 +10,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { getDocument } from "#db/space/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/space/revisions.ts";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
@@ -56,22 +53,15 @@ export const GET: ApiRouteHandler = (context) =>
         ? null
         : parseQueryInt(searchParams, "base", { min: 1 });
 
-    // Authenticate with either user session or access token
-    const auth = await authenticateRequest(context, spaceId);
+    const { aclUserId } = await authenticateDocumentAccess(
+      context,
+      spaceId,
+      id,
+      Permission.VIEWER,
+    );
 
-    // Handle token-based authentication
-    if (auth.type === "token") {
-      await verifyTokenPermission(
-        auth.token,
-        spaceId,
-        ResourceType.DOCUMENT,
-        id,
-        Permission.VIEWER,
-      );
-    } else {
-      // Handle user-based authentication
-      await verifyDocumentRole(spaceId, id, auth.user.id, Permission.VIEWER);
-    }
+    // Both sides are content, so both are held to the `?rev=N` rule.
+    await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
 
     const revisionContent = await getRevision(rev, spaceId, id);
     const store = await openSpaceStore(spaceId);
@@ -95,6 +85,7 @@ export const GET: ApiRouteHandler = (context) =>
     if (!compareBaseRev) {
       throw badRequestResponse("Document has no comparable base revision");
     }
+    await verifyRevisionAccess(spaceId, id, aclUserId, [compareBaseRev]);
 
     const baseContent = await getRevisionContent(store, id, compareBaseRev);
     if (!baseContent) {

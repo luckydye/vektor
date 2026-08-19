@@ -57,7 +57,12 @@ export const verification = sqliteTable("verification", {
 
 export const spaceIndex = sqliteTable("space_index", {
   id: text("id").primaryKey(),
-  databaseUrl: text("database_url").notNull().unique(),
+  /**
+   * Where the space's database lives, read by the driver in use: a file URL
+   * under libsql, `memory:{spaceId}` in tests, and a schema name under a server
+   * dialect. Only `resolveSpaceLocation` interprets it.
+   */
+  location: text("location").notNull().unique(),
   status: text("status", {
     enum: ["available", "claimed", "active", "disabled", "deleted"],
   })

@@ -140,10 +140,6 @@ function getGeneratedAvatar(seed: string): { color: string; src: string } {
   };
 }
 
-function hasAvatarIdentity(user: AvatarUser | null | undefined): boolean {
-  return Boolean(user?.email || user?.image);
-}
-
 function resolveAvatarUser(
   providedUser: AvatarUser | null | undefined,
   fetchedUser: AvatarUser | undefined,
@@ -154,7 +150,7 @@ function resolveAvatarUser(
   return {
     id: providedUser.id ?? fetchedUser.id,
     email: providedUser.email ?? fetchedUser.email,
-    image: providedUser.image ?? fetchedUser.image,
+    image: providedUser.image || fetchedUser.image,
     name: providedUser.name ?? fetchedUser.name,
     appearance: providedUser.appearance ?? fetchedUser.appearance,
   };
@@ -253,9 +249,11 @@ const AvatarElement =
         }
 
         private async resolveUser() {
-          if (!this.isConnected || hasAvatarIdentity(this.providedUser)) return;
+          if (!this.isConnected || this.providedUser?.image) return;
 
-          const userId = this.getAttribute("user-id");
+          // Session profiles contain the stored image only. Resolve any missing
+          // image here so every avatar also gets a server-derived Gravatar URL.
+          const userId = (this.providedUser?.id || this.getAttribute("user-id"))?.trim();
           if (!userId || isTokenSeed(userId)) return;
 
           const version = ++this.loadVersion;

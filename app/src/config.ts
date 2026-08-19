@@ -38,10 +38,6 @@ export function config() {
        */
       COLLABORATION_HOST: process.env.VEKTOR_COLLABORATION_HOST,
 
-      /**
-       * The default space to redirect to from root "/"
-       */
-      DEFAULT_SPACE: process.env.VEKTOR_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
       IN_MEMORY_DB: process.env.VEKTOR_IN_MEMORY_DB,
       /**
@@ -59,6 +55,18 @@ export function config() {
       TRUST_PROXY: process.env.VEKTOR_TRUST_PROXY,
       /** Hard cap (bytes) for buffered API request bodies. */
       MAX_REQUEST_BYTES: process.env.VEKTOR_MAX_REQUEST_BYTES,
+
+      /** Set to "0"/"false" to turn API rate limiting off entirely. */
+      RATE_LIMIT: process.env.VEKTOR_RATE_LIMIT,
+      /** Requests per window on routes without a tighter rule. */
+      RATE_LIMIT_MAX: process.env.VEKTOR_RATE_LIMIT_MAX,
+      /** Rate limit window, in seconds. */
+      RATE_LIMIT_WINDOW: process.env.VEKTOR_RATE_LIMIT_WINDOW,
+      /**
+       * Killswitch: comma-separated rate limit keys to refuse outright, as they
+       * appear in the 429 log line (`ip:<addr>`, `token:<hash>`).
+       */
+      RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */
@@ -81,8 +89,6 @@ export function config() {
       SMTP_SECURE: process.env.VEKTOR_SMTP_SECURE,
       SMTP_USER: process.env.VEKTOR_SMTP_USER,
       SMTP_PASSWORD: process.env.VEKTOR_SMTP_PASSWORD,
-      /** Comma-separated allowlist of OAuth group claims the IdP may assign. */
-      OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
 
       /** CLI connection settings (vektor document/workflow commands). */
       CLI_HOST: process.env.VEKTOR_HOST,
@@ -106,6 +112,24 @@ export function config() {
       OAUTH_TOKEN_URL: process.env.OAUTH_TOKEN_URL,
       OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
+      /** Seconds a group claim may age before the next re-read. 0 is off. */
+      OAUTH_GROUP_SYNC_INTERVAL: process.env.OAUTH_GROUP_SYNC_INTERVAL,
+      /**
+       * Comma-separated OAuth group ids whose members may create spaces of
+       * their own. Unset leaves creation open to every signed-in user, which is
+       * what it has always been. Set but naming no usable group means nobody
+       * may create one — a misconfigured allow list has to deny, not open up.
+       */
+      SPACE_CREATION_GROUPS: process.env.VEKTOR_SPACE_CREATION_GROUPS,
+
+      /**
+       * Comma-separated OAuth group ids whose members administer the instance:
+       * owner on every space that exists, which is what lets them list and
+       * delete spaces they do not belong to. Unset means nobody — the opposite
+       * default to the allow list above, since an absent setting must not hand
+       * everyone authority over every space.
+       */
+      ADMIN_GROUPS: process.env.VEKTOR_ADMIN_GROUPS,
 
       /**
        * Google social login. When both id and secret are set, a "Continue with
@@ -143,12 +167,25 @@ export function config() {
        */
       JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
       /**
-       * Allow job `fetch` to reach loopback and private address ranges. Off by
+       * Allow server-side fetches of user-configured URLs — job `fetch`, and an AI
+       * provider base URL — to reach loopback and private address ranges. Off by
        * default: that is where the internal API, the database and cloud metadata
-       * endpoints live, and jobs have capabilities for the space data they need.
-       * Only enable for local development against a private service.
+       * endpoints live. Enabling it for a self-hosted Ollama also lets a space
+       * owner aim the server at any internal host, with viewers reading the reply.
        */
       JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
+
+      /**
+       * OpenTelemetry log export (OTLP/HTTP, JSON encoding). Logs keep going to
+       * stdout/stderr regardless; a collector base URL adds a second sink and
+       * `/v1/logs` is appended to it. Standard OTEL_* names so an existing
+       * collector deployment configures the app unchanged.
+       */
+      OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      /** Extra request headers as `k1=v1,k2=v2` (e.g. an ingest token). */
+      OTEL_EXPORTER_OTLP_HEADERS: process.env.OTEL_EXPORTER_OTLP_HEADERS,
+      /** Reported as `service.name`; defaults to "vektor". */
+      OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
 
       /**
        * Comma-separated list of extension sources the server will accept.
@@ -165,7 +202,6 @@ export function config() {
     SITE_URL: publicEnv.VEKTOR_SITE_URL,
     API_URL: publicEnv.VEKTOR_API_URL,
     COLLABORATION_HOST: publicEnv.VEKTOR_COLLABORATION_HOST,
-    DEFAULT_SPACE: publicEnv.VEKTOR_DEFAULT_SPACE,
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
@@ -194,7 +230,6 @@ export function getPublicEnv(): App.PublicEnv {
     VEKTOR_SITE_URL: appConfig.SITE_URL,
     VEKTOR_API_URL: appConfig.API_URL,
     VEKTOR_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
-    VEKTOR_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
     // Never expose the client secret; only a boolean flag reaches the browser.

@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { comment } from "#db/schema/space.ts";
@@ -60,14 +61,29 @@ export async function listComments(
     .orderBy(asc(comment.createdAt));
 }
 
+/**
+ * @param resource Confine the lookup to one resource. A comment id alone says
+ *   nothing about which document the comment hangs off, so a caller that
+ *   authorized against a document must scope the read to it — otherwise the
+ *   authorized resource and the acted-on one are free to differ.
+ */
 export async function getComment(
   s: SpaceStore,
   commentId: string,
+  resource?: { type: string; id: string },
 ): Promise<Comment | undefined> {
   const [foundComment] = await s.db
     .select()
     .from(comment)
-    .where(eq(comment.id, commentId));
+    .where(
+      resource
+        ? and(
+            eq(comment.id, commentId),
+            eq(comment.resourceType, resource.type),
+            eq(comment.resourceId, resource.id),
+          )
+        : eq(comment.id, commentId),
+    );
 
   return foundComment;
 }
@@ -124,34 +140,36 @@ export async function listThreadParticipantIds(
   parentId: string | null,
 ): Promise<string[]> {
   const parent = parentId
-    ? await s.db
-        .select({ createdBy: comment.createdBy, reference: comment.reference })
-        .from(comment)
-        .where(
-          and(
-            eq(comment.id, parentId),
-            eq(comment.resourceType, "document"),
-            eq(comment.resourceId, documentId),
+    ? await one(
+        s.db
+          .select({ createdBy: comment.createdBy, reference: comment.reference })
+          .from(comment)
+          .where(
+            and(
+              eq(comment.id, parentId),
+              eq(comment.resourceType, "document"),
+              eq(comment.resourceId, documentId),
+            ),
           ),
-        )
-        .get()
+      )
     : undefined;
   const normalizedReference = normalizeCommentReference(
     reference ?? parent?.reference ?? null,
   );
   if (!normalizedReference) return [];
 
-  const rows = await s.db
-    .select({ createdBy: comment.createdBy, reference: comment.reference })
-    .from(comment)
-    .where(
-      and(
-        eq(comment.resourceType, "document"),
-        eq(comment.resourceId, documentId),
-        eq(comment.archived, false),
+  const rows = await many(
+    s.db
+      .select({ createdBy: comment.createdBy, reference: comment.reference })
+      .from(comment)
+      .where(
+        and(
+          eq(comment.resourceType, "document"),
+          eq(comment.resourceId, documentId),
+          eq(comment.archived, false),
+        ),
       ),
-    )
-    .all();
+  );
 
   return [
     ...(parent ? [parent.createdBy] : []),

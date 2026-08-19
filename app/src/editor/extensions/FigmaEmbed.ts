@@ -60,8 +60,11 @@ function createSuggestionPopup(
     display: flex;
     align-items: center;
     gap: 12px;
+    box-sizing: border-box;
   `;
 
+  // Wrapping is the fallback for a pane too narrow to hold the popup on one
+  // line; the buttons keep their size so they stay clickable.
   const label = document.createElement("span");
   label.textContent = "Convert to Figma embed?";
   label.style.cssText = "font-size: 14px; color: #374151;";
@@ -76,6 +79,7 @@ function createSuggestionPopup(
     border-radius: var(--radius-sm);
     font-size: 13px;
     cursor: pointer;
+    flex-shrink: 0;
   `;
   embedBtn.addEventListener("click", onEmbed);
 
@@ -89,6 +93,7 @@ function createSuggestionPopup(
     border-radius: var(--radius-sm);
     font-size: 13px;
     cursor: pointer;
+    flex-shrink: 0;
   `;
   dismissBtn.addEventListener("click", onDismiss);
 
@@ -156,8 +161,11 @@ export const FigmaEmbed = Node.create({
   addProseMirrorPlugins() {
     const nodeType = this.type;
     let activePopup: HTMLDivElement | null = null;
+    let stopTracking: (() => void) | null = null;
 
     const cleanup = () => {
+      stopTracking?.();
+      stopTracking = null;
       if (activePopup) {
         activePopup.remove();
         activePopup = null;
@@ -189,8 +197,6 @@ export const FigmaEmbed = Node.create({
             const pastedTextEnd = insertPos + text.length;
 
             setTimeout(() => {
-              const coords = view.coordsAtPos(pastedTextEnd);
-
               const popup = createSuggestionPopup(() => {
                 const currentState = view.state;
                 const embedNode = nodeType.create({ url: text });
@@ -203,10 +209,47 @@ export const FigmaEmbed = Node.create({
                 cleanup();
               }, cleanup);
 
-              popup.style.left = `${coords.left}px`;
-              popup.style.top = `${coords.bottom + 8}px`;
-
+              popup.style.visibility = "hidden";
               document.body.appendChild(popup);
+
+              // The anchor is the caret at the end of a pasted URL, so it sits
+              // near the right edge and moves whenever the editor reflows —
+              // re-read it and re-clamp on every reflow, not just once.
+              const reposition = () => {
+                let coords: { left: number; bottom: number };
+                try {
+                  coords = view.coordsAtPos(pastedTextEnd);
+                } catch {
+                  cleanup();
+                  return;
+                }
+                popup.style.maxWidth = `${window.innerWidth - 16}px`;
+                const left = Math.min(
+                  coords.left,
+                  window.innerWidth - popup.offsetWidth - 8,
+                );
+                const top = Math.min(
+                  coords.bottom + 8,
+                  window.innerHeight - popup.offsetHeight - 8,
+                );
+                popup.style.left = `${Math.max(8, left)}px`;
+                popup.style.top = `${Math.max(8, top)}px`;
+                popup.style.visibility = "visible";
+              };
+              reposition();
+
+              window.addEventListener("resize", reposition);
+              window.addEventListener("scroll", reposition, true);
+              // The editor pane can resize without the window doing so, e.g. a
+              // sidebar or split-view drag.
+              const observer = new ResizeObserver(reposition);
+              observer.observe(view.dom);
+
+              stopTracking = () => {
+                window.removeEventListener("resize", reposition);
+                window.removeEventListener("scroll", reposition, true);
+                observer.disconnect();
+              };
               activePopup = popup;
             }, 0);
 

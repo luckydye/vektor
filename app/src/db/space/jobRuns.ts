@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { many } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { type JobRun, type JobRunInsert, jobRun } from "#db/schema/space.ts";
@@ -144,13 +145,14 @@ export async function listJobRuns(
 
   const limit = options?.limit ?? 50;
   const fetchLimit = limit + 1;
-  const rows = await s.db
-    .select()
-    .from(jobRun)
-    .where(where)
-    .orderBy(desc(jobRun.queuedAt), desc(jobRun.id))
-    .limit(fetchLimit)
-    .all();
+  const rows = await many(
+    s.db
+      .select()
+      .from(jobRun)
+      .where(where)
+      .orderBy(desc(jobRun.queuedAt), desc(jobRun.id))
+      .limit(fetchLimit),
+  );
 
   let nextCursor: string | null = null;
   let runs = rows;

@@ -1,6 +1,7 @@
-import { verifyDocumentAccess } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, listAccessibleResources } from "#acl/store.ts";
+import { listAccessibleResources } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -17,7 +18,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "documentId");
-    await verifyDocumentAccess(spaceId, id, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: id },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const document = await getDocument(store, id);

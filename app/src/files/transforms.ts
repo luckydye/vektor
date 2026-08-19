@@ -34,6 +34,9 @@ const OUTPUT_FORMATS = new Set(["webp", "jpeg", "png"]);
 const ALLOWED_DIMENSIONS = [160, 320, 640, 960, 1280, 1920];
 const FIXED_QUALITY = 80;
 
+/** Ceiling on the original served in place of a transform that could not run. */
+const MAX_UNTRANSFORMED_FALLBACK = 2 * 1024 * 1024;
+
 function snapToPreset(value: number, presets: number[]): number {
   if (value <= 0) return 0;
   return presets.reduce((best, preset) =>
@@ -215,6 +218,18 @@ export async function serveTransformed(
   // with untransformed bytes that get served forever once the addon recovers.
   if (!buffer) {
     const origExt = originalPath.split(".").pop()?.toLowerCase() ?? "";
+
+    // Past a point the fallback is worse than no image: a caller asking for a
+    // 320px thumbnail must never be handed hundreds of megabytes, which is what
+    // an image too large for the decoder's memory limit would send.
+    if (original.byteLength > MAX_UNTRANSFORMED_FALLBACK) {
+      appLogger.warn("[transforms] transform failed and the original is too large", {
+        originalPath,
+        bytes: original.byteLength,
+      });
+      return new Response("Image could not be transformed", { status: 502 });
+    }
+
     return new Response(new Uint8Array(original), {
       status: 200,
       headers: {

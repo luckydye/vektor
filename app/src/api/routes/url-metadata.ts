@@ -1,4 +1,5 @@
-import { verifyDocumentAccess } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -518,7 +519,12 @@ export const GET: ApiRouteHandler = (context) =>
 
         const userId = context.var.user?.id || null;
         try {
-          await verifyDocumentAccess(space.id, doc.id, userId);
+          await verifyAccess(
+            space.id,
+            { type: ResourceType.DOCUMENT, id: doc.id },
+            userId,
+            Permission.VIEWER,
+          );
         } catch {
           throw badRequestResponse("Access denied");
         }

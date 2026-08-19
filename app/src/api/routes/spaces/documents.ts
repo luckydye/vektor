@@ -17,7 +17,6 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   createDocument,
-  EmptyDocumentSlugError,
   getDocumentChildren,
   InvalidDocumentParentError,
   listAllDocumentsByCategories,
@@ -30,7 +29,13 @@ import {
   getMimeType,
   toHtmlIfMarkdown,
 } from "#documents/content.ts";
-import { propertyValueToText } from "#documents/properties.ts";
+import {
+  propertyValueToText,
+  ReservedDocumentPropertyKeyError,
+} from "#documents/properties.ts";
+import { contentIsHtml } from "#documents/types.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
@@ -46,6 +51,19 @@ function propertyInitToSlugText(value: PropertyInit | undefined): string | undef
 
   if (value === null) return undefined;
   return String(value);
+}
+
+function parseDocumentTimestamp(value: unknown, field: string): Date | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "") {
+    throw badRequestResponse(`${field} must be a valid date string`);
+  }
+
+  try {
+    return normalizeTimestamp(value);
+  } catch {
+    throw badRequestResponse(`${field} must be a valid date string`);
+  }
 }
 
 export const GET: ApiRouteHandler = (context) =>
@@ -91,18 +109,27 @@ export const GET: ApiRouteHandler = (context) =>
         viewer,
         userEmail,
       );
-      const filteredDocumentsByCategory = Object.fromEntries(
-        Object.entries(documentsByCategory).map(([slug, docs]) => [
-          slug,
-          docs.filter(
-            (doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam),
-          ),
-        ]),
+      // The Map stays a Map for the lookups below — `categorySlugs` is raw query
+      // input, and indexing a plain object with a slug like `__proto__` reads an
+      // inherited member back instead of a bucket. It becomes an object only at
+      // the point it is serialised, where `Object.fromEntries` defines own keys
+      // and so is not fooled by the same slug.
+      const filteredDocumentsByCategory = new Map(
+        Array.from(
+          documentsByCategory,
+          ([slug, docs]) =>
+            [
+              slug,
+              docs.filter(
+                (doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam),
+              ),
+            ] as const,
+        ),
       );
 
       if (grouped) {
         return jsonResponse({
-          documentsByCategory: filteredDocumentsByCategory,
+          documentsByCategory: Object.fromEntries(filteredDocumentsByCategory),
           categorySlugs,
         });
       }
@@ -111,7 +138,7 @@ export const GET: ApiRouteHandler = (context) =>
       const documents = [];
 
       for (const slug of categorySlugs) {
-        const bucket = filteredDocumentsByCategory[slug] || [];
+        const bucket = filteredDocumentsByCategory.get(slug) ?? [];
         for (const doc of bucket) {
           if (seen.has(doc.id)) continue;
           seen.add(doc.id);
@@ -195,10 +222,13 @@ export const POST: ApiRouteHandler = (context) =>
       parentId = typeof jsonParentId === "string" ? jsonParentId : undefined;
       type = typeof jsonType === "string" ? jsonType : undefined;
       if (jsonSlug && typeof jsonSlug === "string") slugHint = jsonSlug;
-      if (jsonCreatedAt && typeof jsonCreatedAt === "string")
-        createdAt = new Date(jsonCreatedAt);
-      if (jsonUpdatedAt && typeof jsonUpdatedAt === "string")
-        updatedAt = new Date(jsonUpdatedAt);
+      createdAt = parseDocumentTimestamp(jsonCreatedAt, "createdAt");
+      updatedAt = parseDocumentTimestamp(jsonUpdatedAt, "updatedAt");
+      if ((createdAt || updatedAt) && auth.type !== "job") {
+        throw badRequestResponse(
+          "Custom document timestamps require access-token or job-token authentication",
+        );
+      }
       content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType, type);
     } else {
       const rawContent = await context.req.raw.text();
@@ -231,6 +261,10 @@ export const POST: ApiRouteHandler = (context) =>
       }
     }
 
+    // Sanitized at rest, on the same boundary the save and collaboration paths
+    // use. Non-HTML types (canvas, app) store serialized JSON, not markup.
+    if (contentIsHtml(type)) content = sanitizeDocumentHtml(content);
+
     const titleValue = properties?.title;
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
 
@@ -249,7 +283,7 @@ export const POST: ApiRouteHandler = (context) =>
     ).catch((error) => {
       if (
         error instanceof InvalidDocumentParentError ||
-        error instanceof EmptyDocumentSlugError
+        error instanceof ReservedDocumentPropertyKeyError
       ) {
         throw badRequestResponse(error.message);
       }

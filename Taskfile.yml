@@ -157,6 +157,17 @@ tasks:
       # project loses the Bun global it needs to spawn the app.
       - bunx --bun vitest run --project frontend {{.CLI_ARGS}}
 
+  test:wiki-roles:
+    desc: Independent acceptance suite for SV_Wiki-Testfaelle_Rollen_2026-08-fk.pptx.
+    dir: ./app
+    dotenv:
+      - ../.env
+    env:
+      NODE_ENV: test
+    cmds:
+      - bunx --bun vitest run --project server test/wiki-roles.acceptance.spec.ts
+      - bunx --bun vitest run --project frontend test/wiki-roles.acceptance.vitest.ts
+
   test:e2e:
     desc: >
       Browser tests (Playwright). Builds the client, boots a disposable
@@ -165,6 +176,16 @@ tasks:
     dir: ./app
     cmds:
       - bun ./test/e2e/run.ts {{.CLI_ARGS}}
+
+  record:onboarding:
+    desc: >
+      Re-film the onboarding tour's clips into public/onboarding. Builds the
+      client, boots a disposable in-memory server, seeds a space and drives the
+      real sidebar. Run it after the document tree changes appearance. Needs
+      ffmpeg.
+    dir: ./app
+    cmds:
+      - bun ./scripts/record-onboarding.ts {{.CLI_ARGS}}
 
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.

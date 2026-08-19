@@ -97,6 +97,7 @@ export { default as preferencesIcon } from "#assets/icons/preferences.svg?raw";
 export { default as presentationIcon } from "./icons/presentation.svg?raw";
 export { default as printIcon } from "#assets/icons/print.svg?raw";
 export { default as publishIcon } from "./icons/publish.svg?raw";
+export { default as recordIcon } from "#assets/icons/record.svg?raw";
 export { default as redoIcon } from "#assets/icons/redo.svg?raw";
 export { default as refreshIcon } from "./icons/refresh.svg?raw";
 export { default as resizeHandleIcon } from "./icons/resize-handle.svg?raw";

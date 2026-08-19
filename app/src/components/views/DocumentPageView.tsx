@@ -5,6 +5,7 @@ import {
   createSignal,
   type JSX,
   Match,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -39,11 +40,12 @@ import { useDocumentContext } from "#composeables/useDocument.ts";
 import { editing, resetEditingState } from "#composeables/useEditor.ts";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
+import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
 
@@ -119,6 +121,15 @@ export function DocumentPageView(props: Props) {
   });
 
   const doc = createMemo(() => docQuery.data());
+  const [realtimeAccess, setRealtimeAccess] = createSignal<"edit" | "view" | "none">();
+
+  createEffect(
+    on(
+      () => doc()?.id,
+      () => setRealtimeAccess(undefined),
+      { defer: true },
+    ),
+  );
 
   const breadcrumbsQuery = useQuery({
     queryKey: createMemo(() => ["document_breadcrumbs", currentSpace()?.id, doc()?.id]),
@@ -179,6 +190,7 @@ export function DocumentPageView(props: Props) {
   const isCsv = createMemo(() => documentType() === "csv");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
+  const isRegularDocument = createMemo(() => documentType() === "document");
   const isFullHeightView = createMemo(() => isCsv() || isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
@@ -234,7 +246,12 @@ export function DocumentPageView(props: Props) {
     },
   );
 
-  const userCanEdit = createMemo(() => canEdit(currentSpace()?.userRole));
+  const userCanEdit = createMemo(() => {
+    const access = realtimeAccess();
+    return (
+      access === "edit" || (access === undefined && canEdit(currentSpace()?.userRole))
+    );
+  });
 
   const isReadonly = createMemo(() =>
     isDraft()
@@ -279,6 +296,14 @@ export function DocumentPageView(props: Props) {
 
   const [redirecting, setRedirecting] = createSignal(false);
   const [hasMounted, setHasMounted] = createSignal(false);
+  const { value: tableOfContentsVisible, commit: setTableOfContentsVisible } =
+    usePersistedState<boolean>({
+      key: "document-table-of-contents-visible",
+      fallback: true,
+    });
+  const hasDocumentAside = () =>
+    (hasMounted() && isRegularDocument() && tableOfContentsVisible()) ||
+    documentRightViews().length > 0;
 
   async function maybeAutoCreateDraft() {
     if (!hasMounted()) return;
@@ -315,6 +340,35 @@ export function DocumentPageView(props: Props) {
   onMount(() => {
     setHasMounted(true);
     setNow(Date.now());
+
+    const unsubscribeAccessChanges = api.subscribeToRealtimeAccessChanges((change) => {
+      const currentDocument = doc();
+      if (
+        change.spaceId !== currentSpace()?.id ||
+        change.scope !== "document" ||
+        change.resourceId !== currentDocument?.id ||
+        change.access === "refresh"
+      ) {
+        return;
+      }
+
+      setRealtimeAccess(change.access);
+      if (change.access === "edit") {
+        toast.show("You can edit this document again.", "info");
+        return;
+      }
+
+      resetEditingState();
+      if (change.access === "view") {
+        toast.show("Your access to this document changed to view only.", "info");
+        return;
+      }
+
+      toast.show("Your access to this document was revoked.", "error", 10_000);
+      navigate("/", { replace: true });
+    });
+
+    onCleanup(unsubscribeAccessChanges);
   });
 
   createEffect(() => {
@@ -394,6 +448,30 @@ export function DocumentPageView(props: Props) {
     </Show>
   );
 
+  const documentActions = (): JSX.Element => (
+    <DocumentActions
+      title={title()}
+      headerImage={headerImageSrc()}
+      tableOfContentsVisible={tableOfContentsVisible()}
+      onToggleTableOfContents={
+        isRegularDocument()
+          ? () => setTableOfContentsVisible(!tableOfContentsVisible())
+          : undefined
+      }
+    />
+  );
+
+  const documentAside = (): JSX.Element => (
+    <DocumentExtensionViews
+      views={documentRightViews()}
+      documentId={doc()?.id ?? null}
+      fullWidth={effectiveLayout() === "full"}
+      onHideTableOfContents={() => setTableOfContentsVisible(false)}
+      spaceId={currentSpace()?.id as string}
+      tableOfContents={hasMounted() && isRegularDocument() && tableOfContentsVisible()}
+    />
+  );
+
   return (
     <>
       <Show
@@ -431,231 +509,241 @@ export function DocumentPageView(props: Props) {
             )}
           >
             <div
-              data-type={documentType()}
-              data-updated-at={doc()?.updatedAt as string | undefined}
-              data-created-at={doc()?.createdAt as string | undefined}
-              data-layout={effectiveLayout()}
               class={twMerge(
-                "relative mx-auto flex h-full w-full flex-col",
-                isFullHeightView() && "min-h-0 flex-1",
+                "relative mx-auto h-full w-full",
+                isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                 isCsv() || isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
               )}
             >
-              <Show when={doc()?.archived}>
-                <BottomBanner class="archived-banner">
-                  <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
-                    <div class="min-w-0">
-                      <p class="font-semibold text-size-medium text-yellow-900">
-                        ⚠️ This document is archived
-                      </p>
-                      <p class="my-0! text-size-small text-yellow-700">
-                        This document has been archived and is no longer actively
-                        maintained.
-                      </p>
+              <div
+                data-type={documentType()}
+                data-updated-at={doc()?.updatedAt as string | undefined}
+                data-created-at={doc()?.createdAt as string | undefined}
+                data-layout={effectiveLayout()}
+                class={twMerge(
+                  "relative flex h-full w-full min-w-0 max-w-full flex-col",
+                  isFullHeightView() && "min-h-0 flex-1",
+                  effectiveLayout() !== "full" &&
+                    "min-[1920px]:left-[-80px] print:left-0",
+                )}
+              >
+                <Show when={doc()?.archived}>
+                  <BottomBanner class="archived-banner">
+                    <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
+                      <div class="min-w-0">
+                        <p class="font-semibold text-size-medium text-yellow-900">
+                          ⚠️ This document is archived
+                        </p>
+                        <p class="my-0! text-size-small text-yellow-700">
+                          This document has been archived and is no longer actively
+                          maintained.
+                        </p>
+                      </div>
+                      <RestoreButton documentId={doc()?.id as string} />
                     </div>
-                    <RestoreButton documentId={doc()?.id as string} />
-                  </div>
-                </BottomBanner>
-              </Show>
+                  </BottomBanner>
+                </Show>
 
-              <Show when={isCanvas()}>
-                <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
-                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-m">
-                    <div class="min-w-0 flex-1">{breadcrumbs()}</div>
-                    <DocumentActions title={title()} headerImage={headerImageSrc()} />
-                  </div>
+                <Show when={isCanvas()}>
+                  <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
+                    <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-m">
+                      <div class="min-w-0 flex-1">{breadcrumbs()}</div>
+                      <DocumentActions title={title()} headerImage={headerImageSrc()} />
+                    </div>
 
-                  <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                    {titleRow()}
-                  </inset-view>
-
-                  <inset-view
-                    id="document-properties"
-                    class="mb-l block px-xs md:px-m print:px-0"
-                  >
-                    {documentPropertiesBlock()}
-                  </inset-view>
-                </div>
-              </Show>
-
-              <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
-                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
-                  <div class="min-w-0 flex-1">{breadcrumbs()}</div>
-                  <DocumentActions title={title()} headerImage={headerImageSrc()} />
-                </div>
-
-                <div class="mb-4 flex flex-col gap-xl px-xs md:flex-row md:items-start md:px-xl print:px-0">
-                  <HeaderImage
-                    class="w-full max-w-[320px] shrink-0"
-                    orientation="portrait"
-                    aspectRatio={headerImageAspectRatio()}
-                    documentId={doc()?.id as string}
-                    initialSrc={headerImageSrc()}
-                  />
-
-                  <div class="flex min-w-0 flex-1 flex-col">
-                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
+                    <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-m print:px-0">
                       {titleRow()}
                     </inset-view>
 
-                    <inset-view id="document-properties" class="mb-l block print:px-0">
-                      {documentPropertiesBlock("labeled")}
+                    <inset-view
+                      id="document-properties"
+                      class="mb-l block px-xs md:px-m print:px-0"
+                    >
+                      {documentPropertiesBlock()}
                     </inset-view>
                   </div>
-                </div>
-              </Show>
-
-              <Show when={!isCanvas() && !isApp() && !isPortraitHeader()}>
-                <Show when={!isDraft() && !isWorkflow()}>
-                  <HeaderImage
-                    class="mt-4"
-                    documentId={doc()?.id as string}
-                    initialSrc={optionalPropertyValueToText(
-                      doc()?.properties?.headerImage,
-                    )}
-                  />
                 </Show>
 
-                <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
-                  <Show
-                    when={isWorkflow()}
-                    fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
-                  >
-                    <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
-                  </Show>
-                  <DocumentActions title={title()} headerImage={headerImageSrc()} />
-                </div>
+                <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
+                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
+                    <div class="min-w-0 flex-1">{breadcrumbs()}</div>
+                    {documentActions()}
+                  </div>
 
-                <Show when={!isCsv()}>
-                  <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                    {titleRow()}
+                  <div class="mb-4 flex flex-col gap-xl px-xs md:flex-row md:items-start md:px-xl print:px-0">
+                    <HeaderImage
+                      class="w-full max-w-[320px] shrink-0"
+                      orientation="portrait"
+                      aspectRatio={headerImageAspectRatio()}
+                      documentId={doc()?.id as string}
+                      initialSrc={headerImageSrc()}
+                    />
+
+                    <div class="flex min-w-0 flex-1 flex-col">
+                      <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
+                        {titleRow()}
+                      </inset-view>
+
+                      <inset-view id="document-properties" class="mb-l block print:px-0">
+                        {documentPropertiesBlock("labeled")}
+                      </inset-view>
+                    </div>
+                  </div>
+                </Show>
+
+                <Show when={!isCanvas() && !isApp() && !isPortraitHeader()}>
+                  <Show when={!isDraft() && !isWorkflow()}>
+                    <HeaderImage
+                      class="mt-4"
+                      documentId={doc()?.id as string}
+                      initialSrc={optionalPropertyValueToText(
+                        doc()?.properties?.headerImage,
+                      )}
+                    />
+                  </Show>
+
+                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
+                    <Show
+                      when={isWorkflow()}
+                      fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
+                    >
+                      <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
+                    </Show>
+                    {documentActions()}
+                  </div>
+
+                  <Show when={!isCsv()}>
+                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
+                      {titleRow()}
+                    </inset-view>
+                  </Show>
+
+                  <inset-view
+                    id="document-properties"
+                    class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-l"}`}
+                  >
+                    {documentPropertiesBlock()}
                   </inset-view>
                 </Show>
 
-                <inset-view
-                  id="document-properties"
-                  class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-l"}`}
-                >
-                  {documentPropertiesBlock()}
-                </inset-view>
-              </Show>
-
-              <div
-                class={twMerge(
-                  isFullHeightView() && "flex min-h-0 flex-1 flex-col",
-                  documentRightViews().length > 0 &&
-                    "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6",
-                )}
-              >
                 <div
                   class={twMerge(
-                    "min-w-0",
                     isFullHeightView() && "flex min-h-0 flex-1 flex-col",
+                    hasDocumentAside() &&
+                      effectiveLayout() === "full" &&
+                      "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-6",
                   )}
                 >
                   <div
                     class={twMerge(
-                      "h-full max-w-none overflow-x-auto text-neutral-700",
-                      isFullHeightView()
-                        ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-                        : "h-full overflow-x-auto",
-                      isPaddedDocument() && "px-xs md:px-m print:px-0",
-                      isCsv() && "pb-4",
+                      "min-w-0",
+                      isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                     )}
                   >
-                    <Show
-                      when={!isDraft()}
-                      fallback={
-                        <>
-                          <DocumentContent
-                            spaceId={currentSpace()?.id as string}
-                            documentType={documentType()}
-                          />
-                          <Show when={showPicker()}>
-                            <NewDocumentPicker />
-                          </Show>
-                        </>
-                      }
+                    <div
+                      class={twMerge(
+                        "h-full max-w-none overflow-x-auto text-neutral-700",
+                        isFullHeightView()
+                          ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                          : "h-full overflow-x-auto",
+                        isPaddedDocument() && "px-xs md:px-m print:px-0",
+                        isCsv() && "pb-4",
+                      )}
                     >
-                      <RevisionView
-                        documentId={doc()?.id as string}
-                        documentType={documentType()}
-                        spaceId={currentSpace()?.id as string}
-                      />
-
-                      <Switch
+                      <Show
+                        when={!isDraft()}
                         fallback={
-                          <DocumentContent
-                            spaceId={currentSpace()?.id as string}
-                            documentId={doc()?.id}
-                            initialHtml={doc()?.content}
-                            documentType={documentType()}
-                            readonly={isReadonly()}
-                          />
+                          <>
+                            <DocumentContent
+                              spaceId={currentSpace()?.id as string}
+                              documentType={documentType()}
+                            />
+                            <Show when={showPicker()}>
+                              <NewDocumentPicker />
+                            </Show>
+                          </>
                         }
                       >
-                        <Match when={isApp()}>
-                          <AppView html={doc()?.content || ""} />
-                        </Match>
-                        <Match when={isWorkflow()}>
-                          <WorkflowView
-                            documentId={doc()?.id as string}
-                            spaceId={currentSpace()?.id as string}
-                          />
-                        </Match>
-                        <Match when={isDatabase()}>
-                          <DatabaseDocumentView
-                            databaseDocumentId={doc()?.id as string}
-                            spaceId={currentSpace()?.id as string}
-                            views={databaseViews()}
-                            viewConfig={doc()?.properties._databaseViews}
-                            schemaJson={
-                              optionalPropertyValueToText(doc()?.properties._schema) ??
-                              undefined
-                            }
-                          />
-                        </Match>
-                        <Match when={isCanvas()}>
-                          <CanvasView
-                            documentId={doc()?.id}
-                            spaceId={currentSpace()?.id as string}
-                          />
-                        </Match>
-                        <Match when={isCsv()}>
-                          <CsvView
-                            documentId={doc()?.id as string}
-                            initialHtml={doc()?.content}
-                          />
-                        </Match>
-                      </Switch>
+                        <RevisionView
+                          documentId={doc()?.id as string}
+                          documentType={documentType()}
+                          spaceId={currentSpace()?.id as string}
+                        />
+
+                        <Switch
+                          fallback={
+                            <DocumentContent
+                              spaceId={currentSpace()?.id as string}
+                              documentId={doc()?.id}
+                              initialHtml={doc()?.content}
+                              documentType={documentType()}
+                              readonly={isReadonly()}
+                            />
+                          }
+                        >
+                          <Match when={isApp()}>
+                            <AppView html={doc()?.content || ""} />
+                          </Match>
+                          <Match when={isWorkflow()}>
+                            <WorkflowView
+                              documentId={doc()?.id as string}
+                              spaceId={currentSpace()?.id as string}
+                            />
+                          </Match>
+                          <Match when={isDatabase()}>
+                            <DatabaseDocumentView
+                              databaseDocumentId={doc()?.id as string}
+                              spaceId={currentSpace()?.id as string}
+                              views={databaseViews()}
+                              viewConfig={doc()?.properties._databaseViews}
+                              schemaJson={
+                                optionalPropertyValueToText(doc()?.properties._schema) ??
+                                undefined
+                              }
+                            />
+                          </Match>
+                          <Match when={isCanvas()}>
+                            <CanvasView
+                              documentId={doc()?.id}
+                              spaceId={currentSpace()?.id as string}
+                            />
+                          </Match>
+                          <Match when={isCsv()}>
+                            <CsvView
+                              documentId={doc()?.id as string}
+                              initialHtml={doc()?.content}
+                            />
+                          </Match>
+                        </Switch>
+                      </Show>
+                    </div>
+
+                    <Show
+                      when={
+                        !isDraft() &&
+                        !editing() &&
+                        !isCanvas() &&
+                        !isCsv() &&
+                        !isWorkflow()
+                      }
+                    >
+                      <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
+                        <Show when={doc()?.updatedAt}>
+                          <div class="mb-12 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
+                            <Show when={hasMounted() && updatedAtStr()}>
+                              <span>Updated {updatedAtStr()}</span>
+                            </Show>
+                          </div>
+                        </Show>
+                      </inset-view>
                     </Show>
                   </div>
-
-                  <Show
-                    when={
-                      !isDraft() && !editing() && !isCanvas() && !isCsv() && !isWorkflow()
-                    }
-                  >
-                    <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
-                      <Show when={doc()?.updatedAt}>
-                        <div class="mb-12 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
-                          <Show when={hasMounted() && updatedAtStr()}>
-                            <span>Updated {updatedAtStr()}</span>
-                          </Show>
-                        </div>
-                      </Show>
-                    </inset-view>
-                  </Show>
+                  <Show when={effectiveLayout() === "full"}>{documentAside()}</Show>
                 </div>
-
-                <DocumentExtensionViews
-                  views={documentRightViews()}
-                  documentId={doc()?.id as string}
-                  spaceId={currentSpace()?.id as string}
-                />
               </div>
+              <Show when={effectiveLayout() !== "full"}>{documentAside()}</Show>
             </div>
           </inset-view>
         </div>

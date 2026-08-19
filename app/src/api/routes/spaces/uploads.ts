@@ -1,24 +1,29 @@
 import { createHash } from "node:crypto";
-import { authenticateJobTokenOrSpaceRole, verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { sql } from "drizzle-orm";
+import {
+  authenticateJobTokenOrSpaceRole,
+  authenticateSpaceAccess,
+  spaceAccessToViewer,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   errorResponse,
   jsonResponse,
   parseFormBody,
   requireParam,
-  requireUser,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { updateDocumentEmbedding } from "#db/space/search.ts";
+import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
+import { updateDocumentEmbedding } from "#search/indexing.ts";
 
 const MAX_FILE_SIZE = 1280 * 1024 * 1024; // 1.25GB
 
@@ -26,14 +31,32 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const user = requireUser(context);
-      await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+      // Admitted on a resource grant alone, since every row is then filtered
+      // against the documents it reaches.
+      const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
+        allowResourceGrants: true,
+      });
 
       const storage = getFileStorage();
       const files = await storage.list(spaceId);
 
+      const parentIds = await getFileDocumentIds(
+        spaceId,
+        files.map((f) => f.key),
+      );
+      const visible = await filterAccessibleFiles(
+        spaceId,
+        files.map((f) => ({ ...f, documentId: parentIds.get(f.key) ?? null })),
+        spaceAccessToViewer(access),
+      );
+
       return jsonResponse(
-        { files: files.map((f) => ({ ...f, url: storage.url(spaceId, f.key) })) },
+        {
+          files: visible.map(({ documentId, ...f }) => ({
+            ...f,
+            url: storage.url(spaceId, f.key),
+          })),
+        },
         200,
       );
     },
@@ -50,12 +73,13 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      const auth = await authenticateJobTokenOrSpaceRole(
-        context,
-        spaceId,
-        Permission.EDITOR,
-      );
-      const isJobAuth = auth.type === "job";
+
+      // The real gate is below, on the document the body names. This one runs
+      // first so a caller with no editor reach into the space at all cannot
+      // stream a gigabyte into the parser.
+      await authenticateSpaceAccess(context, spaceId, Permission.EDITOR, {
+        allowResourceGrants: true,
+      });
 
       // Parse the form data
       const formData = await parseFormBody(context.req.raw);
@@ -73,6 +97,16 @@ export const POST: ApiRouteHandler = (context) =>
       if (documentId !== null && !isSafeUploadIdPart(documentId)) {
         return badRequestResponse("Invalid documentId");
       }
+
+      // Editor on the document being attached to, or on the space itself for
+      // an upload that belongs to no document.
+      const auth = await authenticateJobTokenOrSpaceRole(
+        context,
+        spaceId,
+        Permission.EDITOR,
+        documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,
+      );
+      const isJobAuth = auth.type === "job";
 
       // Validate file size (user uploads only; job uploads are trusted)
       if (!isJobAuth && file.size > MAX_FILE_SIZE) {
@@ -107,6 +141,7 @@ export const POST: ApiRouteHandler = (context) =>
           documentId: documentId ?? null,
           originalName,
           mimeType: file.type || null,
+          size: buffer.byteLength,
           url,
           updatedAt: new Date(),
           extractedText,
@@ -114,9 +149,15 @@ export const POST: ApiRouteHandler = (context) =>
         .onConflictDoUpdate({
           target: fileTable.path,
           set: {
-            documentId: documentId ?? null,
+            // Keys are content hashes, so uploading the same bytes again lands
+            // on someone else's row. The first document to claim it keeps it:
+            // that document's ACL is what serves the file, and a later upload
+            // must not be able to move an image out from under the document
+            // already showing it. Only an unclaimed row takes the new parent.
+            documentId: sql`COALESCE(${fileTable.documentId}, ${documentId ?? null})`,
             originalName,
             mimeType: file.type || null,
+            size: buffer.byteLength,
             url,
             updatedAt: new Date(),
             extractedText,

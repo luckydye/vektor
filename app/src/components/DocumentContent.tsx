@@ -43,6 +43,7 @@ import {
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { CommentBubble, type CommentBubbleHandle } from "./CommentBubble.tsx";
 import { CommentOverlays } from "./CommentOverlays.tsx";
 import "#editor/elements/toolbar.ts";
@@ -476,7 +477,9 @@ export function DocumentContent(props: Props) {
       '<template shadowrootmode="open">',
       `<style data-document-styles>${escapeRawTextElement(docStyles)}</style>`,
       '<div part="content"><div>',
-      renderedHtml(),
+      // The declarative shadow root ships stored HTML in the server response,
+      // so it is the server-side twin of `renderReadHtml`'s sanitize.
+      sanitizeDocumentHtml(renderedHtml()),
       "</div></div>",
       "</template>",
     ].join("");
@@ -534,6 +537,7 @@ export function DocumentContent(props: Props) {
               />
               <CommentOverlays
                 comments={commentBubble()?.commentsForOverlays() ?? []}
+                activeReference={commentBubble()?.activeReference() ?? null}
                 onMove={(payload) => void commentBubble()?.handleMoveThread(payload)}
                 onPositioned={() => commentBubble()?.handleThreadReposition()}
               />

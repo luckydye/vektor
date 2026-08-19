@@ -1,9 +1,14 @@
 import { and, eq, lte, or } from "drizzle-orm";
+import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { emailNotificationOutbox } from "#db/schema/space.ts";
 
-export type EmailNotificationKind = "document_published" | "comment_created";
+export type EmailNotificationKind =
+  | "document_published"
+  | "document_mention"
+  | "comment_created"
+  | "comment_mention";
 
 export interface EmailNotificationInit {
   kind: EmailNotificationKind;
@@ -56,43 +61,45 @@ export async function claimDueEmailNotifications(
 ): Promise<(typeof emailNotificationOutbox.$inferSelect)[]> {
   const now = new Date();
   const staleAt = new Date(now.getTime() - 5 * 60 * 1000);
-  const due = await s.db
-    .select()
-    .from(emailNotificationOutbox)
-    .where(
-      or(
-        and(
-          eq(emailNotificationOutbox.status, "pending"),
-          lte(emailNotificationOutbox.availableAt, now),
-        ),
-        and(
-          eq(emailNotificationOutbox.status, "sending"),
-          lte(emailNotificationOutbox.updatedAt, staleAt),
-        ),
-      ),
-    )
-    .limit(limit)
-    .all();
-
-  const claimed: (typeof emailNotificationOutbox.$inferSelect)[] = [];
-  for (const row of due) {
-    const updated = await s.db
-      .update(emailNotificationOutbox)
-      .set({ status: "sending", updatedAt: now })
+  const due = await many(
+    s.db
+      .select()
+      .from(emailNotificationOutbox)
       .where(
-        and(
-          eq(emailNotificationOutbox.id, row.id),
-          or(
+        or(
+          and(
             eq(emailNotificationOutbox.status, "pending"),
-            and(
-              eq(emailNotificationOutbox.status, "sending"),
-              lte(emailNotificationOutbox.updatedAt, staleAt),
-            ),
+            lte(emailNotificationOutbox.availableAt, now),
+          ),
+          and(
+            eq(emailNotificationOutbox.status, "sending"),
+            lte(emailNotificationOutbox.updatedAt, staleAt),
           ),
         ),
       )
-      .returning()
-      .get();
+      .limit(limit),
+  );
+
+  const claimed: (typeof emailNotificationOutbox.$inferSelect)[] = [];
+  for (const row of due) {
+    const updated = await one(
+      s.db
+        .update(emailNotificationOutbox)
+        .set({ status: "sending", updatedAt: now })
+        .where(
+          and(
+            eq(emailNotificationOutbox.id, row.id),
+            or(
+              eq(emailNotificationOutbox.status, "pending"),
+              and(
+                eq(emailNotificationOutbox.status, "sending"),
+                lte(emailNotificationOutbox.updatedAt, staleAt),
+              ),
+            ),
+          ),
+        )
+        .returning(),
+    );
     if (updated) claimed.push(updated);
   }
   return claimed;

@@ -1,15 +1,4 @@
-function serializeError(error: Error): Record<string, unknown> {
-  return {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
-    ...(error.cause === undefined
-      ? {}
-      : {
-          cause: error.cause instanceof Error ? serializeError(error.cause) : error.cause,
-        }),
-  };
-}
+import { flushOtlpLogs, type LogLevel, recordOtlpLog, serializeError } from "./otlp.ts";
 
 function serializeAttributeValue(value: unknown): unknown {
   if (
@@ -127,24 +116,50 @@ function enqueue(buffer: string[], line: string): void {
 // process.exit() paths) — NOT SIGINT/SIGTERM, since adding signal listeners
 // would suppress default termination for CLIs that import this module. Code
 // with its own shutdown path can call `appLogger.flush()` explicitly.
+//
+// `beforeExit` additionally kicks off an OTLP export: it runs while the loop is
+// still usable, so the request can complete. `exit` cannot — nothing async
+// survives it — which is why shutdown paths should await `appLogger.flush()`.
 if (typeof process !== "undefined" && typeof process.on === "function") {
-  process.on("beforeExit", flushLogs);
+  process.on("beforeExit", () => {
+    flushLogs();
+    void flushOtlpLogs();
+  });
   process.on("exit", flushLogs);
+}
+
+function log(
+  level: LogLevel,
+  buffer: string[],
+  message: string,
+  attributes?: Record<string, unknown>,
+): void {
+  enqueue(buffer, formatConsoleMessage(message, attributes));
+  // Console output is the primary sink and stays unconditional; OTLP export is
+  // an additional one that no-ops unless a collector endpoint is configured.
+  recordOtlpLog(level, message, attributes);
 }
 
 export const appLogger = {
   debug(message: string, attributes?: Record<string, unknown>) {
-    enqueue(stdoutBuffer, formatConsoleMessage(message, attributes));
+    log("debug", stdoutBuffer, message, attributes);
   },
   info(message: string, attributes?: Record<string, unknown>) {
-    enqueue(stdoutBuffer, formatConsoleMessage(message, attributes));
+    log("info", stdoutBuffer, message, attributes);
   },
   warn(message: string, attributes?: Record<string, unknown>) {
-    enqueue(stderrBuffer, formatConsoleMessage(message, attributes));
+    log("warn", stderrBuffer, message, attributes);
   },
   error(message: string, attributes?: Record<string, unknown>) {
-    enqueue(stderrBuffer, formatConsoleMessage(message, attributes));
+    log("error", stderrBuffer, message, attributes);
   },
-  /** Flush buffered logs immediately (e.g. before a controlled shutdown). */
-  flush: flushLogs,
+  /**
+   * Flush buffered logs immediately (e.g. before a controlled shutdown).
+   * Console output is written synchronously before the returned promise, which
+   * resolves once queued OTLP records have reached the collector.
+   */
+  flush(): Promise<void> {
+    flushLogs();
+    return flushOtlpLogs();
+  },
 };

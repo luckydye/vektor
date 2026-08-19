@@ -1,4 +1,5 @@
-import { verifyExtensionAccess } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   notFoundResponse,
   requireParam,
@@ -53,7 +54,12 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     // Check ACL-based access to extension
-    await verifyExtensionAccess(spaceId, extensionId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.EXTENSION, id: extensionId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const packageBuffer = await getExtensionPackage(store, extensionId);

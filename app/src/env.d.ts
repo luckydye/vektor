@@ -7,7 +7,6 @@ declare namespace App {
     VEKTOR_SITE_URL?: string;
     VEKTOR_API_URL?: string;
     VEKTOR_COLLABORATION_HOST?: string;
-    VEKTOR_DEFAULT_SPACE?: string;
     AUTH_LOGIN?: string;
     OAUTH_PROVIDER_ID?: string;
     GOOGLE_AUTH_ENABLED?: string;

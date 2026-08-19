@@ -28,6 +28,8 @@ export interface CommentBubbleHandle {
   }>;
   handleMoveThread: (payload: { reference: string; y: number }) => Promise<void>;
   handleThreadReposition: () => void;
+  /** Which thread is open, so its bubble can render as the selected one. */
+  activeReference: () => string | null;
 }
 
 interface Props {
@@ -42,11 +44,56 @@ interface Props {
 const EDGE_THRESHOLD_PX = 60;
 const COMMENT_BUBBLE_PROXIMITY_PX = 20;
 const THREAD_GAP_PX = 8;
-const ADD_BUBBLE_GAP_PX = 4;
+// Clears the image resize handle, which overhangs the document edge by 20px.
+const ADD_BUBBLE_GAP_PX = 28;
 const ADD_BUBBLE_SIZE_PX = 32;
 const VIEWPORT_MARGIN_PX = 8;
 const ADD_BUBBLE_REACH_PX = 12;
 const HIDE_GRACE_MS = 400;
+
+/**
+ * Where an element sits in layout, ignoring any transform on it.
+ *
+ * A bubble carries a press squish and a drag lift, and `getBoundingClientRect`
+ * reports the painted box: anchoring to that pins the panel to whichever frame
+ * of the animation was current, and it shifts as soon as anything re-measures.
+ */
+function layoutOrigin(el: HTMLElement): { top: number; left: number } {
+  const parent = el.offsetParent as HTMLElement | null;
+  if (!parent) {
+    const rect = el.getBoundingClientRect();
+    return { top: rect.top, left: rect.left };
+  }
+  const parentRect = parent.getBoundingClientRect();
+  return {
+    top: parentRect.top + parent.clientTop + el.offsetTop,
+    left: parentRect.left + parent.clientLeft + el.offsetLeft,
+  };
+}
+
+/**
+ * Holds a panel inside the viewport: it keeps the anchor it was given while it
+ * fits, and rides up by exactly the overflow when it does not.
+ */
+function useViewportFit() {
+  const [height, setHeight] = createSignal(0);
+
+  const ref = (el: HTMLElement) => {
+    if (typeof ResizeObserver === "undefined") return;
+    // Measured rather than assumed: a thread grows as replies arrive, and the
+    // clamp has to follow it without waiting for a scroll or resize event.
+    const observer = new ResizeObserver(() => setHeight(el.offsetHeight));
+    observer.observe(el);
+    onCleanup(() => observer.disconnect());
+  };
+
+  const top = (anchor: number) => {
+    const lowest = window.innerHeight - VIEWPORT_MARGIN_PX - height();
+    return Math.max(VIEWPORT_MARGIN_PX, Math.min(anchor, lowest));
+  };
+
+  return { ref, top };
+}
 
 function toThreadComment(c: ApiComment): CommentThreadType {
   return {
@@ -100,6 +147,10 @@ export function CommentBubble(props: Props) {
     right: number;
   } | null>(null);
 
+  const threadFit = useViewportFit();
+  const composeFit = useViewportFit();
+  const anchorTooltipFit = useViewportFit();
+
   function anchorFromPath(e: MouseEvent): { el: HTMLElement; commentId: string } | null {
     for (const node of e.composedPath()) {
       if (node instanceof HTMLElement && node.dataset.commentId) {
@@ -149,10 +200,10 @@ export function CommentBubble(props: Props) {
       setThreadAnchor(null);
       return;
     }
-    const rect = bubble.getBoundingClientRect();
+    const origin = layoutOrigin(bubble);
     setThreadAnchor({
-      top: rect.top,
-      right: window.innerWidth - rect.left + THREAD_GAP_PX,
+      top: origin.top,
+      right: window.innerWidth - origin.left + THREAD_GAP_PX,
     });
   }
 
@@ -252,8 +303,11 @@ export function CommentBubble(props: Props) {
   }
 
   function isNearAddBubble(x: number, y: number) {
+    // Reach back to the document edge so the gap the cursor crosses stays live.
+    const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
+    const docRight = docView?.getBoundingClientRect().right ?? Number.POSITIVE_INFINITY;
     return (
-      x >= bubbleX() - ADD_BUBBLE_REACH_PX &&
+      x >= Math.min(docRight, bubbleX() - ADD_BUBBLE_REACH_PX) &&
       x <= bubbleX() + ADD_BUBBLE_SIZE_PX + ADD_BUBBLE_REACH_PX &&
       y >= bubbleY() - ADD_BUBBLE_SIZE_PX / 2 - ADD_BUBBLE_REACH_PX &&
       y <= bubbleY() + ADD_BUBBLE_SIZE_PX / 2 + ADD_BUBBLE_REACH_PX
@@ -370,7 +424,12 @@ export function CommentBubble(props: Props) {
     });
   });
 
-  props.ref?.({ commentsForOverlays, handleMoveThread, handleThreadReposition });
+  props.ref?.({
+    commentsForOverlays,
+    handleMoveThread,
+    handleThreadReposition,
+    activeReference,
+  });
 
   return (
     <Show when={hasMounted()}>
@@ -398,29 +457,30 @@ export function CommentBubble(props: Props) {
             </div>
           </Show>
 
-          <Show when={activeReference()}>
+          <Show keyed when={activeReference()}>
             {(reference) => (
               <div
-                class="fixed z-40"
+                ref={threadFit.ref}
+                class="comment-thread-enter fixed z-40"
                 style={
                   threadAnchor()
                     ? {
-                        top: `${threadAnchor()?.top}px`,
+                        top: `${threadFit.top(threadAnchor()?.top ?? 0)}px`,
                         right: `${threadAnchor()?.right}px`,
                       }
-                    : { top: `${threadPosition()}px`, right: "1rem" }
+                    : { top: `${threadFit.top(threadPosition())}px`, right: "1rem" }
                 }
               >
                 <CommentThread
                   spaceId={props.spaceId}
                   documentId={props.documentId}
                   comments={commentsForThread()}
-                  activeReference={reference()}
+                  activeReference={reference}
                   isSubmitting={isSubmitting()}
                   isDeletingComment={isDeletingComment()}
                   onSubmit={(payload) => void handleSubmit(payload)}
                   onDelete={(id) => void handleDeleteComment(id)}
-                  onResolve={() => void handleResolve(reference())}
+                  onResolve={() => void handleResolve(reference)}
                   onClose={handleCloseThread}
                 />
               </div>
@@ -429,9 +489,10 @@ export function CommentBubble(props: Props) {
 
           <Show when={addingCommentY() !== null && !activeReference()}>
             <div
-              class="fixed z-40"
+              ref={composeFit.ref}
+              class="comment-thread-enter fixed z-40"
               style={{
-                top: `${addingCommentY()}px`,
+                top: `${composeFit.top(addingCommentY() ?? 0)}px`,
                 right: `${window.innerWidth - addingCommentX() + THREAD_GAP_PX}px`,
               }}
             >
@@ -458,10 +519,13 @@ export function CommentBubble(props: Props) {
               if (!anchor) return null;
               return (
                 <div
-                  ref={tooltipEl}
-                  class="fixed z-40"
+                  ref={(el) => {
+                    tooltipEl = el;
+                    anchorTooltipFit.ref(el);
+                  }}
+                  class="comment-thread-enter fixed z-40"
                   style={{
-                    top: `${tooltipPos().top}px`,
+                    top: `${anchorTooltipFit.top(tooltipPos().top)}px`,
                     left: `${tooltipPos().left}px`,
                   }}
                 >

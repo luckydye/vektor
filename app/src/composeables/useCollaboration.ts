@@ -9,6 +9,10 @@ import {
 } from "solid-js";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
+import {
+  CollaborationJoinAbandoned,
+  CollaborationResetRequired,
+} from "#editor/collaboration.ts";
 import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import {
@@ -19,6 +23,7 @@ import {
 } from "#utils/clientStorage.ts";
 import { useCanvasCursorColor } from "./useCanvasCursorColor.ts";
 import { useCosmetics } from "./useCosmetics.ts";
+import { useToast } from "./useToast.ts";
 import { useUserProfile } from "./useUserProfile.ts";
 
 export type CollaborationPresenceProfile<TState> = {
@@ -53,6 +58,26 @@ export type CollaborationSession<TPresenceState = unknown> = ReturnType<
 export const CollaborationContext = createContext<CollaborationSession | null>(null);
 const [activeCollaboration, setActiveCollaboration] =
   createSignal<CollaborationSession | null>(null);
+
+/**
+ * Reports a join failure that nothing else is waiting on, to the console and to
+ * the user. An abandoned join is neither: the caller left the room on purpose.
+ *
+ * Callers that surface the failure themselves — a toast of their own, or an
+ * error painted into the view — must not route it through here.
+ */
+export function reportJoinFailure(error: unknown): void {
+  if (error instanceof CollaborationJoinAbandoned) return;
+  console.error("Could not join the collaboration room", error);
+  const reason = error instanceof Error ? error.message : String(error);
+  useToast().error(`Could not sync this document: ${reason}`);
+}
+
+/** Budget for the server's first state frame, counted only while connected. */
+const SYNC_TIMEOUT_MS = 20_000;
+/** Ceiling for the whole wait, so a socket that never opens still reports. */
+const SYNC_OFFLINE_TIMEOUT_MS = 60_000;
+const SYNC_WATCHDOG_INTERVAL_MS = 500;
 
 const CLIENT_ID_STORAGE_KEY = "vektor:collaboration-client-id";
 const CLIENT_ID_LEASE_PREFIX = "vektor:collaboration-client-lease:";
@@ -206,17 +231,52 @@ export function useCollaboration<TPresenceState>(options: {
   } | null = null;
   let lastPresenceState = "";
   let presenceRequested = false;
+  let cancelSyncWait: (() => void) | null = null;
 
-  function waitForInitialSync(onJoin: (onSynced: () => void) => void): Promise<void> {
+  /**
+   * Waits for the server's first state frame, or for the server to refuse the
+   * room. Gives up after `SYNC_TIMEOUT_MS` of *connected* time: the join is
+   * replayed on the next open, so a socket that is down is not a document that
+   * will never sync. Both budgets are counted in watchdog ticks, which a
+   * background tab throttles, so they are floors rather than wall-clock.
+   */
+  function waitForInitialSync(
+    onJoin: (onSynced: () => void, onFailed: (error: Error) => void) => void,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error("Timed out waiting for editor document sync"));
-      }, 10_000);
+      let elapsedMs = 0;
+      let connectedMs = 0;
+      let settled = false;
 
-      onJoin(() => {
-        clearTimeout(timeout);
-        resolve();
-      });
+      // The four outcomes race — synced, refused, timed out, abandoned — and
+      // whichever lands first owns the watchdog and the promise.
+      function settle(error: Error | null): void {
+        if (settled) return;
+        settled = true;
+        clearInterval(watchdog);
+        cancelSyncWait = null;
+        if (error) reject(error);
+        else resolve();
+      }
+
+      const watchdog = setInterval(() => {
+        elapsedMs += SYNC_WATCHDOG_INTERVAL_MS;
+        if (api.isRealtimeConnected(spaceId)) connectedMs += SYNC_WATCHDOG_INTERVAL_MS;
+        const failure =
+          connectedMs >= SYNC_TIMEOUT_MS
+            ? "Timed out waiting for editor document sync"
+            : elapsedMs >= SYNC_OFFLINE_TIMEOUT_MS
+              ? "Timed out waiting for the realtime connection"
+              : null;
+        if (failure) settle(new Error(failure));
+      }, SYNC_WATCHDOG_INTERVAL_MS);
+
+      cancelSyncWait = () => settle(new CollaborationJoinAbandoned());
+
+      onJoin(
+        () => settle(null),
+        (error) => settle(error),
+      );
     });
   }
 
@@ -227,13 +287,42 @@ export function useCollaboration<TPresenceState>(options: {
       leave();
     }
     if (!leaveYjsRoom) {
-      yjsReady = waitForInitialSync((onSynced) => {
+      const pending = waitForInitialSync((onSynced, onFailed) => {
         // Returns a cleanup function that disconnects from the Y.js room.
-        leaveYjsRoom = api.joinYjsRoom(spaceId, currentDocumentId, ydoc(), onSynced);
+        leaveYjsRoom = api.joinYjsRoom(
+          spaceId,
+          currentDocumentId,
+          ydoc(),
+          onSynced,
+          onFailed,
+          () => onFailed(new CollaborationResetRequired()),
+        );
+      });
+      // A join that failed still holds the room and a document that never
+      // synced, and rejoining an already-held room resolves against that stale
+      // copy. Dropping both makes a retry a real join instead of a replay of
+      // this rejection.
+      yjsReady = pending.catch((error: unknown) => {
+        if (
+          !(error instanceof CollaborationJoinAbandoned) &&
+          joinedDocumentId === currentDocumentId
+        ) {
+          leave();
+        }
+        throw error;
       });
       joinedDocumentId = currentDocumentId;
     }
-    await yjsReady;
+
+    try {
+      await yjsReady;
+    } catch (error) {
+      if (error instanceof CollaborationResetRequired) {
+        await joinUntilReady();
+        return;
+      }
+      throw error;
+    }
   }
 
   function syncPresenceProfiles() {
@@ -347,6 +436,10 @@ export function useCollaboration<TPresenceState>(options: {
 
   function leave() {
     clearPresence();
+    // The room this join was waiting on is being dropped, so nothing will ever
+    // answer it; left alone the watchdog would report that as a sync failure.
+    cancelSyncWait?.();
+    cancelSyncWait = null;
     leaveYjsRoom?.();
     leaveYjsRoom = null;
     yjsReady = null;

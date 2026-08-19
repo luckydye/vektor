@@ -9,7 +9,7 @@ import { initializeDatabases } from "#db/client/db.ts";
 export async function commandSpaceRegister(databaseUrl: string): Promise<void> {
   await initializeDatabases();
   const database = await registerAvailableSpaceDatabase(databaseUrl);
-  process.stdout.write(`${database.id}\t${database.status}\t${database.databaseUrl}\n`);
+  process.stdout.write(`${database.id}\t${database.status}\t${database.location}\n`);
 }
 
 export async function commandSpaceList(): Promise<void> {
@@ -17,7 +17,7 @@ export async function commandSpaceList(): Promise<void> {
   const databases = await listSpaceDatabaseRecords();
   for (const database of databases) {
     process.stdout.write(
-      `${database.id}\t${database.status}\t${database.spaceId ?? "-"}\t${database.databaseUrl}\n`,
+      `${database.id}\t${database.status}\t${database.spaceId ?? "-"}\t${database.location}\n`,
     );
   }
 }
@@ -31,5 +31,5 @@ export async function commandSpaceAttach(databaseUrl: string): Promise<void> {
 export async function commandSpaceEnable(databaseId: string): Promise<void> {
   await initializeDatabases();
   const database = await enableSpaceDatabase(databaseId);
-  process.stdout.write(`${database.id}\t${database.status}\t${database.databaseUrl}\n`);
+  process.stdout.write(`${database.id}\t${database.status}\t${database.location}\n`);
 }

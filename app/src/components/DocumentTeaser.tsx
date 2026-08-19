@@ -3,7 +3,7 @@ import type { DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate } from "#utils/dateFormat.ts";
 import { spacePath } from "#utils/utils.ts";
 
 interface Props {

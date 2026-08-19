@@ -264,7 +264,7 @@ describe("Workflow schedules - single-schedule access (GET/PATCH/DELETE)", () =>
 
 describe("Workflow schedules - require a space-level role, not a narrower grant", () => {
   // These users have "editor" on a single document / category, but no
-  // space-level role at all. verifySpaceRole must reject them — schedule
+  // space-level role at all. The space check must reject them — schedule
   // access is a space-wide capability, not something a doc/category grant
   // can substitute for.
   let docEditorToken: string;

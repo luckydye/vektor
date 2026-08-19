@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import { type JSX, Show } from "solid-js";
 import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
@@ -7,6 +7,19 @@ import "@atrium-ui/elements/list";
 
 interface Props {
   children?: JSX.Element;
+  ariaLabel?: string;
+  /**
+   * Replaces the default trigger button, which must carry `slot="trigger"`.
+   * For a menu sitting on artwork, where the button's own styling would fight
+   * the surface behind it.
+   */
+  trigger?: JSX.Element;
+}
+
+// A plain element, not an <a-list-item>: a-list only collects list items, so
+// keyboard navigation skips the separator.
+export function ContextMenuSeparator() {
+  return <div class="my-5xs border-neutral-100 border-t" />;
 }
 
 export function ContextMenu(props: Props) {
@@ -17,14 +30,21 @@ export function ContextMenu(props: Props) {
 
   return (
     <a-popover-trigger class="group relative z-10 flex-none">
-      <Button
-        variant="secondary"
-        slot="trigger"
-        ariaLabel={t("Document actions")}
-        class="px-4xs"
+      <Show
+        when={props.trigger}
+        fallback={
+          <Button
+            variant="secondary"
+            slot="trigger"
+            ariaLabel={props.ariaLabel ?? t("Document actions")}
+            class="px-4xs"
+          >
+            <Icon name="context-menu-more" />
+          </Button>
+        }
       >
-        <Icon name="context-menu-more" />
-      </Button>
+        {props.trigger}
+      </Show>
 
       <a-popover class="group" placements="bottom-end">
         <div class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">

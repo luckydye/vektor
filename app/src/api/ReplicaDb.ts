@@ -45,7 +45,9 @@ const REPLICA_SCHEMA: Array<{
   {
     name: replicaStores.comment,
     keyPath: ["spaceId", "id"],
-    indexes: [{ name: "by_document", keyPath: ["spaceId", "documentId"] }],
+    // Keyed by the resource column the server sends, not by a `documentId` the
+    // wire never carries — an index key a record lacks silently excludes it.
+    indexes: [{ name: "by_resource", keyPath: ["spaceId", "resourceId"] }],
   },
   { name: replicaStores.extension, keyPath: ["spaceId", "id"] },
   { name: replicaStores.collection, keyPath: ["spaceId", "name"] },
@@ -136,7 +138,6 @@ class IndexedDBReplicaBackend implements ReplicaBackend {
   constructor(scope: string) {
     this.database = new IndexedDBDatabase({
       name: `${DATABASE_PREFIX}${scope}`,
-      version: 1,
       stores: REPLICA_SCHEMA,
     });
   }

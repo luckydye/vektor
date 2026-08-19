@@ -1,5 +1,13 @@
-import { applyUpdate, encodeStateAsUpdate, Doc as YDoc } from "yjs";
+import {
+  applyUpdate,
+  decodeStateVector,
+  encodeStateAsUpdate,
+  encodeStateVector,
+  encodeStateVectorFromUpdate,
+  Doc as YDoc,
+} from "yjs";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -8,9 +16,12 @@ import {
   type PresenceUpdateMessage,
   type PresenceUpdatePayload,
   type PresenceUser,
+  type RealtimeAccessChangedMessage,
+  type RealtimeErrorPayload,
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
+  WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
   wsDecodeJson,
@@ -29,16 +40,37 @@ export interface User {
   appearance?: PublicUserAppearance;
 }
 
+/**
+ * The signed-in caller, as only `users/me` can report them: their profile plus
+ * the things they may do that no space's `permissions/me` covers.
+ */
+export interface CurrentUser extends User {
+  canCreateSpace: boolean;
+  /** The caller's own instance-admin groups; empty unless they administer it. */
+  adminGroups: string[];
+}
+
 export interface Space {
   id: string;
   name: string;
   slug: string;
   createdBy: string;
+  /** The space's own preferences, the same for every member. */
   preferences: Record<string, string>;
+  /**
+   * The requester's own preferences for this space — the `user:` namespace, kept
+   * in per-user rows. Written through the same `preferences` body as the space's.
+   */
+  userPreferences?: Record<string, string>;
   createdAt: Date | string;
   updatedAt: Date | string;
   userRole?: string;
   memberCount?: number;
+  /**
+   * Listings only: reachable because the caller administers the instance rather
+   * than because a grant in the space names them.
+   */
+  adminAccess?: boolean;
 }
 
 export interface SpaceMember {
@@ -65,13 +97,16 @@ export interface Document {
   createdBy: string;
   updatedBy: string;
   fileUrl?: string;
+  /** Set for file-table entries: the stored size in bytes, where it is known */
+  fileSize?: number;
 }
 
 export interface DocumentWithProperties extends Document {
-  properties: Record<string, string | string[]>;
+  properties: DocumentProperties;
   mentionCount?: number;
   /** Natural width/height ratio derived from the stored header image. */
   headerImageAspectRatio?: number | null;
+  locked?: boolean;
 }
 
 export interface DocumentMember {
@@ -102,9 +137,12 @@ export interface Revision {
   createdBy: string;
 }
 
-export interface RevisionWithContent extends Revision {
-  content: string;
-}
+/**
+ * A revision read back with its content. Everything describing the revision is
+ * withheld from a caller without VIEW_HISTORY, so only these three are certain.
+ */
+export type RevisionWithContent = Partial<Revision> &
+  Pick<Revision, "rev" | "status"> & { content: string };
 
 export interface RevisionMetadata {
   id: string;
@@ -287,6 +325,12 @@ export interface AccessToken {
   }>;
 }
 
+/** A token the caller issued for itself, and the space it opens. */
+export interface PersonalAccessToken extends AccessToken {
+  spaceId: string;
+  spaceName: string;
+}
+
 /**
  * One row of the ACL as the permissions endpoint returns it.
  *
@@ -334,7 +378,6 @@ export type PermissionResourceType =
   | "document_tree"
   | "category"
   | "extension"
-  | "secret"
   | "feature";
 
 export interface SpaceSecret {
@@ -448,7 +491,7 @@ export interface SearchResult {
   slug: string;
   type?: string | null;
   content: string;
-  properties: Record<string, string | string[]>;
+  properties: DocumentProperties;
   createdAt: string;
   updatedAt: string;
   userId: string;
@@ -457,11 +500,25 @@ export interface SearchResult {
   snippet: string;
   /** Set for file-table entries — use this URL instead of the doc route */
   fileUrl?: string;
+  /** Set for file-table entries: the stored size in bytes, where it is known */
+  fileSize?: number;
 }
+
+/**
+ * A result from a space other than the one being searched. Carries no branding:
+ * the space's logo and color come from the cached space listing.
+ */
+export type CrossSpaceSearchResult = SearchResult & {
+  spaceId: string;
+  spaceName: string;
+  spaceSlug: string;
+};
 
 export interface Comment {
   id: string;
-  documentId: string;
+  /** The resource the comment hangs off — a document id, for every caller here. */
+  resourceType: string | null;
+  resourceId: string | null;
   content: string;
   reference: string | null;
   parentId: string | null;
@@ -469,7 +526,6 @@ export interface Comment {
   createdAt: Date | string;
   createdBy: string;
   updatedAt: Date | string;
-  updatedBy: string;
   createdByUser?: {
     id: string;
     name: string | null;
@@ -535,14 +591,44 @@ export interface AIChatSessionListEntry {
  */
 const REALTIME_IDLE_GRACE_MS = 2_000;
 
+/**
+ * How often the client probes its socket, and how long it waits for the answer.
+ * A dropped socket stays in `readyState` OPEN with no `close` ever firing, so
+ * without this round trip the connection is silently dead until a reload.
+ */
+const REALTIME_PING_INTERVAL_MS = 25_000;
+const REALTIME_PONG_TIMEOUT_MS = 10_000;
+
+/** Prevent an accept-then-refuse socket from resetting reconnect backoff. */
+const RECONNECT_SETTLED_MS = 5_000;
+
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
   callback: (event: RealtimeEventMessage) => void;
 }
 
+function sharesNoHistory(ydoc: YDoc, update: Uint8Array): boolean {
+  let local: Map<number, number>;
+  let incoming: Map<number, number>;
+  try {
+    local = decodeStateVector(encodeStateVector(ydoc));
+    incoming = decodeStateVector(encodeStateVectorFromUpdate(update));
+  } catch {
+    return false;
+  }
+  if (local.size === 0 || incoming.size === 0) return false;
+  for (const client of incoming.keys()) {
+    if (local.has(client)) return false;
+  }
+  return true;
+}
+
 interface YjsRoomEntry {
   ydoc: YDoc;
+  onReset?: () => void;
   onSynced?: () => void;
+  /** Both are cleared on the first of the two, so a join settles exactly once. */
+  onError?: (error: Error) => void;
 }
 
 interface RealtimeConnection {
@@ -559,11 +645,20 @@ interface RealtimeConnection {
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
+  /** True once a socket has opened; every later open is a reconnect. */
+  hasConnected: boolean;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   /** Pending idle teardown; see `REALTIME_IDLE_GRACE_MS`. */
   idleTimer: ReturnType<typeof setTimeout> | null;
+  /** Liveness probe; see `REALTIME_PING_INTERVAL_MS`. */
+  pingTimer: ReturnType<typeof setInterval> | null;
+  pongTimer: ReturnType<typeof setTimeout> | null;
 }
+
+export type RealtimeAccessChange = Omit<RealtimeAccessChangedMessage, "type"> & {
+  spaceId: string;
+};
 
 interface PresenceSubscription<TState = unknown> {
   room: string;
@@ -592,6 +687,9 @@ export class ApiClient {
   accessToken?: string;
   socketHost?: string;
   realtimeConnections = new Map<string, RealtimeConnection>();
+  private readonly realtimeAccessListeners = new Set<
+    (change: RealtimeAccessChange) => void
+  >();
   private readonly replica = new ReplicaCache();
 
   constructor(options: {
@@ -602,6 +700,13 @@ export class ApiClient {
     this.baseUrl = options.baseUrl ?? "";
     this.accessToken = options.accessToken;
     this.socketHost = options?.socketHost;
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", () => this.reconnectRealtimeNow());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") this.reconnectRealtimeNow();
+      });
+    }
   }
 
   /**
@@ -795,7 +900,7 @@ export class ApiClient {
       );
     },
     me: async () => {
-      return await this.apiGet<User>(this.baseUrl, "/api/v1/users/me");
+      return await this.apiGet<CurrentUser>(this.baseUrl, "/api/v1/users/me");
     },
     /**
      * People the caller shares an OAuth group with — invite suggestions.
@@ -1489,6 +1594,22 @@ export class ApiClient {
       return response;
     },
 
+    /**
+     * The strongest matches in the user's other spaces. `q` is required here —
+     * filters alone give a foreign document nothing to be ranked by.
+     */
+    otherSpaces: async (query: {
+      q: string;
+      excludeSpaceId?: string;
+      filters?: string;
+    }) => {
+      const response = await this.apiGet<{
+        results: CrossSpaceSearchResult[];
+        query: string;
+      }>(this.baseUrl, "/api/v1/search", query);
+      return response.results;
+    },
+
     rebuild: async (spaceId: string) => {
       await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/search/rebuild`, {});
     },
@@ -1642,32 +1763,6 @@ export class ApiClient {
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/access-tokens`, body);
     },
 
-    grantResource: async (
-      spaceId: string,
-      tokenId: string,
-      resourceType: string,
-      resourceId: string,
-      body: { permission: string },
-    ) => {
-      return await this.apiPut<{ resources: unknown[]; message: string }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
-        body,
-      );
-    },
-
-    revokeResource: async (
-      spaceId: string,
-      tokenId: string,
-      resourceType: string,
-      resourceId: string,
-    ) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
-      );
-    },
-
     revoke: async (spaceId: string, tokenId: string) => {
       return await this.apiPatch<{ message: string }>(
         this.baseUrl,
@@ -1681,6 +1776,46 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}`,
       );
+    },
+  };
+
+  /**
+   * The caller's own tokens, the kind `vektor login` mints. Separate from
+   * `accessTokens`: those are the space's, listed and minted by its owners.
+   */
+  personalAccessTokens = {
+    get: async () => {
+      return await this.apiGet<{ tokens: PersonalAccessToken[] }>(
+        this.baseUrl,
+        "/api/v1/access-tokens",
+      );
+    },
+
+    /** The token carries the caller's own role on the space; there is nothing to pick. */
+    create: async (body: {
+      name: string;
+      spaceId: string;
+      expiresInDays?: number | null;
+    }) => {
+      return await this.apiPost<{
+        id: string;
+        token: string;
+        spaceId: string;
+        permission: string;
+        message: string;
+      }>(this.baseUrl, "/api/v1/access-tokens", body);
+    },
+
+    revoke: async (tokenId: string) => {
+      return await this.apiPatch<{ message: string }>(
+        this.baseUrl,
+        `/api/v1/access-tokens/${tokenId}`,
+        {},
+      );
+    },
+
+    delete: async (tokenId: string) => {
+      await this.apiDelete(this.baseUrl, `/api/v1/access-tokens/${tokenId}`);
     },
   };
 
@@ -1966,7 +2101,8 @@ export class ApiClient {
       const now = new Date().toISOString();
       const optimisticComment: Comment = {
         id: optimisticId,
-        documentId,
+        resourceType: "document",
+        resourceId: documentId,
         content: body.content,
         reference: body.reference,
         parentId: body.parentId,
@@ -1974,10 +2110,9 @@ export class ApiClient {
         createdAt: now,
         createdBy: "",
         updatedAt: now,
-        updatedBy: "",
       };
       const response = await this.withOptimisticReplica(
-        () => this.replica.addComment(spaceId, optimisticComment),
+        () => this.replica.addComment(spaceId, documentId, optimisticComment),
         () =>
           this.apiPost<{ comment: Comment }>(
             this.baseUrl,
@@ -1985,7 +2120,12 @@ export class ApiClient {
             { ...body, documentId },
           ),
         async (response) =>
-          await this.replica.replaceComment(spaceId, optimisticId, response.comment),
+          await this.replica.replaceComment(
+            spaceId,
+            documentId,
+            optimisticId,
+            response.comment,
+          ),
       );
       return response.comment;
     },
@@ -2334,9 +2474,12 @@ export class ApiClient {
       yjsRooms: new Map(),
       presenceJoinPayloads: new Map(),
       closed: false,
+      hasConnected: false,
       reconnectAttempts: 0,
       reconnectTimer: null,
       idleTimer: null,
+      pingTimer: null,
+      pongTimer: null,
     };
 
     this.openRealtimeSocket(connection);
@@ -2366,8 +2509,14 @@ export class ApiClient {
 
     socket.addEventListener("open", () => {
       if (connection.socket !== socket) return; // stale handler from a prior socket
-      connection.reconnectAttempts = 0;
+      setTimeout(() => {
+        if (connection.socket === socket) connection.reconnectAttempts = 0;
+      }, RECONNECT_SETTLED_MS);
+      const isReconnect = connection.hasConnected;
+      connection.hasConnected = true;
       this.resyncRealtimeConnection(connection);
+      this.startRealtimeHeartbeat(connection);
+      if (isReconnect) this.notifyRealtimeResync(connection);
     });
 
     socket.addEventListener("message", (event) => {
@@ -2375,9 +2524,9 @@ export class ApiClient {
       this.handleRealtimeMessage(connection, event);
     });
 
-    const onClose = () => {
+    const onClose = (event: Event) => {
       if (connection.socket !== socket) return; // a newer socket already took over
-      this.handleRealtimeClose(connection);
+      this.handleRealtimeClose(connection, (event as CloseEvent).code);
     };
     socket.addEventListener("close", onClose);
     socket.addEventListener("error", onClose);
@@ -2389,6 +2538,30 @@ export class ApiClient {
   ): void {
     if (!(event.data instanceof ArrayBuffer)) return;
     const { type, payload } = wsDecode(new Uint8Array(event.data));
+
+    if (type === WsMsgType.Pong) {
+      this.clearRealtimePongTimeout(connection);
+      return;
+    }
+
+    // A refused or failed frame is answered with this and nothing else, so
+    // dropping it left the failure — a rejected Yjs join above all — as silence.
+    if (type === WsMsgType.Error) {
+      const detail = wsDecodeJson<RealtimeErrorPayload>(payload);
+      console.error("Realtime error frame", { spaceId: connection.spaceId, detail });
+      if (detail.documentId) {
+        this.failYjsRoomJoins(connection, detail.documentId, detail.message);
+      }
+      return;
+    }
+
+    if (type === WsMsgType.AccessChanged) {
+      const change = wsDecodeJson<Omit<RealtimeAccessChangedMessage, "type">>(payload);
+      for (const listener of this.realtimeAccessListeners) {
+        listener({ spaceId: connection.spaceId, ...change });
+      }
+      return;
+    }
 
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
@@ -2404,10 +2577,31 @@ export class ApiClient {
       const ydocs = connection.yjsRooms.get(documentId);
       if (ydocs) {
         for (const entry of ydocs) {
+          if (entry.onSynced && entry.onReset && sharesNoHistory(entry.ydoc, update)) {
+            const onReset = entry.onReset;
+            entry.onSynced = undefined;
+            entry.onError = undefined;
+            entry.onReset = undefined;
+            onReset();
+            continue;
+          }
           applyUpdate(entry.ydoc, update, "remote");
           const onSynced = entry.onSynced;
           entry.onSynced = undefined;
+          entry.onError = undefined;
           onSynced?.();
+        }
+      }
+      return;
+    }
+
+    if (type === WsMsgType.YjsSyncRequest) {
+      const { documentId, update: serverStateVector } = wsDecodeYjsUpdate(payload);
+      const ydocs = connection.yjsRooms.get(documentId);
+      for (const entry of ydocs ?? []) {
+        const missing = encodeStateAsUpdate(entry.ydoc, serverStateVector);
+        if (missing.length > 2) {
+          this.sendRealtimeEphemeral(connection, wsEncodeYjsUpdate(documentId, missing));
         }
       }
       return;
@@ -2442,8 +2636,96 @@ export class ApiClient {
     }
   }
 
-  private handleRealtimeClose(connection: RealtimeConnection): void {
+  /**
+   * Replace the events that happened while the socket was down. The server
+   * keeps no per-connection backlog, so a subscriber's only way back to the
+   * truth is to refetch everything it holds for the topics it subscribes to.
+   */
+  private notifyRealtimeResync(connection: RealtimeConnection): void {
+    for (const subscription of connection.subscriptions) {
+      const topics = [...subscription.topics];
+      if (topics.length === 0) continue;
+      subscription.callback({
+        type: "event",
+        resync: true,
+        topics,
+        events: topics.map((topic) => ({ topic })),
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  private pingRealtimeConnection(connection: RealtimeConnection): void {
+    if (connection.socket.readyState !== WebSocket.OPEN) return;
+    if (connection.pongTimer !== null) return;
+
+    connection.socket.send(wsEncode(WsMsgType.Ping, {}));
+    connection.pongTimer = setTimeout(() => {
+      connection.pongTimer = null;
+      // Unanswered: the socket is dead but still reports OPEN, so nothing else
+      // will ever close it. Closing it here runs the reconnect path.
+      try {
+        connection.socket.close();
+      } catch {
+        // already closing — the close handler still runs
+      }
+      this.handleRealtimeClose(connection);
+    }, REALTIME_PONG_TIMEOUT_MS);
+  }
+
+  private startRealtimeHeartbeat(connection: RealtimeConnection): void {
+    this.stopRealtimeHeartbeat(connection);
+    connection.pingTimer = setInterval(
+      () => this.pingRealtimeConnection(connection),
+      REALTIME_PING_INTERVAL_MS,
+    );
+  }
+
+  private clearRealtimePongTimeout(connection: RealtimeConnection): void {
+    if (connection.pongTimer === null) return;
+    clearTimeout(connection.pongTimer);
+    connection.pongTimer = null;
+  }
+
+  private stopRealtimeHeartbeat(connection: RealtimeConnection): void {
+    if (connection.pingTimer !== null) {
+      clearInterval(connection.pingTimer);
+      connection.pingTimer = null;
+    }
+    this.clearRealtimePongTimeout(connection);
+  }
+
+  /**
+   * Called when the device comes back: the browser knows the network returned
+   * long before the next backoff attempt is due, and a socket that died while
+   * the tab was hidden is worth probing rather than trusting for another cycle.
+   */
+  private reconnectRealtimeNow(): void {
+    for (const connection of this.realtimeConnections.values()) {
+      if (connection.closed) continue;
+
+      if (connection.socket.readyState === WebSocket.OPEN) {
+        this.pingRealtimeConnection(connection);
+        continue;
+      }
+
+      if (connection.reconnectTimer === null) continue;
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
+      connection.reconnectAttempts = 0;
+      this.openRealtimeSocket(connection);
+    }
+  }
+
+  private handleRealtimeClose(connection: RealtimeConnection, code?: number): void {
+    this.stopRealtimeHeartbeat(connection);
     if (connection.closed) return;
+
+    // A later subscription creates a fresh connection and authorization attempt.
+    if (code === WS_CLOSE_FORBIDDEN) {
+      this.teardownRealtimeConnection(connection);
+      return;
+    }
 
     // No active interest left — let it stay closed rather than reconnecting.
     if (
@@ -2489,8 +2771,8 @@ export class ApiClient {
       socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
     }
 
-    for (const documentId of connection.yjsRooms.keys()) {
-      socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    for (const [documentId, entries] of connection.yjsRooms) {
+      socket.send(wsEncode(WsMsgType.YjsJoin, this.yjsJoinPayload(documentId, entries)));
     }
 
     for (const payload of connection.presenceJoinPayloads.values()) {
@@ -2501,6 +2783,7 @@ export class ApiClient {
   /** Permanently close a connection and stop any pending reconnect. */
   private teardownRealtimeConnection(connection: RealtimeConnection): void {
     connection.closed = true;
+    this.stopRealtimeHeartbeat(connection);
     if (connection.reconnectTimer !== null) {
       clearTimeout(connection.reconnectTimer);
       connection.reconnectTimer = null;
@@ -2645,6 +2928,57 @@ export class ApiClient {
     };
   }
 
+  private yjsJoinPayload(
+    documentId: string,
+    entries: Iterable<YjsRoomEntry>,
+  ): { documentId: string; stateVector?: string } {
+    const first = entries[Symbol.iterator]().next();
+    if (first.done) return { documentId };
+    const vector = encodeStateVector(first.value.ydoc);
+    if (vector.length <= 1) return { documentId };
+    let binary = "";
+    for (const byte of vector) binary += String.fromCharCode(byte);
+    return { documentId, stateVector: btoa(binary) };
+  }
+
+  /**
+   * Fails the joins still waiting on the room the server refused. Cleared like
+   * `onSynced`, so a frame for a room that already synced reaches nobody: losing
+   * access to a joined room is announced by `AccessChanged`, not by this.
+   */
+  private failYjsRoomJoins(
+    connection: RealtimeConnection,
+    documentId: string,
+    message: string | undefined,
+  ): void {
+    const entries = connection.yjsRooms.get(documentId);
+    if (!entries) return;
+    for (const entry of entries) {
+      const onError = entry.onError;
+      entry.onSynced = undefined;
+      entry.onError = undefined;
+      onError?.(new Error(message || "The server refused the document"));
+    }
+  }
+
+  /**
+   * Whether the space's realtime socket is up right now. Callers waiting on a
+   * reply time themselves out, and a reconnect backoff runs up to 30s, which
+   * would otherwise be indistinguishable from a server that never answered.
+   */
+  isRealtimeConnected(spaceId: string): boolean {
+    const connection = this.realtimeConnections.get(spaceId);
+    if (!connection || connection.closed) return false;
+    return connection.socket?.readyState === WebSocket.OPEN;
+  }
+
+  subscribeToRealtimeAccessChanges(
+    listener: (change: RealtimeAccessChange) => void,
+  ): () => void {
+    this.realtimeAccessListeners.add(listener);
+    return () => this.realtimeAccessListeners.delete(listener);
+  }
+
   subscribeToDocument(
     spaceId: string,
     documentId: string,
@@ -2677,6 +3011,8 @@ export class ApiClient {
     documentId: string,
     ydoc: YDoc,
     onSynced?: () => void,
+    onError?: (error: Error) => void,
+    onReset?: () => void,
   ): () => void {
     if (!(ydoc instanceof YDoc)) {
       console.warn("Ignoring Yjs room join without a Y.Doc", { documentId, spaceId });
@@ -2686,19 +3022,24 @@ export class ApiClient {
     const connection = this.getRealtimeConnection(spaceId);
 
     let ydocs = connection.yjsRooms.get(documentId);
-    const entry: YjsRoomEntry = { ydoc, onSynced };
+    const entry: YjsRoomEntry = { ydoc, onSynced, onError, onReset };
     if (!ydocs) {
       ydocs = new Set();
       connection.yjsRooms.set(documentId, ydocs);
       ydocs.add(entry);
       // First doc for this room — announce the join (replayed on reconnect).
-      this.sendRealtimeState(connection, wsEncode(WsMsgType.YjsJoin, { documentId }));
+      this.sendRealtimeState(
+        connection,
+        wsEncode(WsMsgType.YjsJoin, this.yjsJoinPayload(documentId, ydocs)),
+      );
     } else {
       const source = ydocs.values().next().value;
       if (source) {
         applyUpdate(ydoc, encodeStateAsUpdate(source.ydoc), "remote");
         queueMicrotask(() => {
           entry.onSynced = undefined;
+          entry.onError = undefined;
+          entry.onReset = undefined;
           onSynced?.();
         });
       }

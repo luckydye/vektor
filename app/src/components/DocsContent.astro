@@ -1,0 +1,221 @@
+---
+/**
+ * Renders a markdown docs page inside a shadow root, so the editor's document
+ * styles can be reused without leaking into the surrounding site chrome. The
+ * markdown is passed as children and ends up *inside* the declarative template
+ * (Astro slots are template composition, not `<slot>` projection), which is what
+ * puts it under these styles.
+ */
+import docStyles from "#editor/css/document.css?inline";
+import docsProseStyles from "#styles/docs.css?inline";
+---
+
+<docs-content>
+  <template shadowrootmode="open">
+    <style set:html={docStyles}></style>
+    <style set:html={docsProseStyles}></style>
+    <slot />
+  </template>
+</docs-content>
+
+<script>
+const HTTP_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+]);
+
+/** Splits `GET /spaces/:spaceId` in an endpoint heading into a chip and a path. */
+function markMethods(root: ShadowRoot): void {
+  for (const code of root.querySelectorAll("h3 > code")) {
+    const [method, ...rest] = (code.textContent ?? "").split(" ");
+    if (!method || !HTTP_METHODS.has(method)) continue;
+
+    const chip = document.createElement("span");
+    chip.className = "http-method";
+    chip.dataset.method = method.toLowerCase();
+    chip.textContent = method;
+
+    code.textContent = "";
+    // A heading may also name a second method for the same path (`POST` /
+    // `DELETE …`), which is a chip on its own.
+    code.append(chip);
+    if (rest.length > 0) code.append(document.createTextNode(rest.join(" ")));
+  }
+}
+
+function addHeadingAnchors(root: ShadowRoot): void {
+  for (const heading of root.querySelectorAll("h2[id], h3[id], h4[id]")) {
+    const anchor = document.createElement("a");
+    anchor.className = "heading-anchor";
+    anchor.href = `#${heading.id}`;
+    anchor.textContent = "#";
+    anchor.setAttribute("aria-label", `Link to ${heading.textContent ?? heading.id}`);
+    heading.append(anchor);
+  }
+}
+
+/**
+ * Wide tables scroll inside their own box rather than widening the page. The
+ * endpoint index is marked so its method column can be styled as the label it
+ * is — every other table's first column is ordinary prose.
+ */
+function wrapTables(root: ShadowRoot): void {
+  for (const table of root.querySelectorAll("table")) {
+    if (table.parentElement?.classList.contains("table-scroll")) continue;
+    const wrap = document.createElement("div");
+    wrap.className = "table-scroll";
+    if (table.querySelector("th")?.textContent?.trim() === "Method") {
+      wrap.dataset.columns = "endpoints";
+    }
+    table.replaceWith(wrap);
+    wrap.append(table);
+  }
+}
+
+function copyLabel(button: HTMLButtonElement, label: string, copied: boolean): void {
+  button.textContent = label;
+  button.dataset.copied = String(copied);
+}
+
+/**
+ * What a code block is, for its panel label. An endpoint's samples come in
+ * pairs — the curl call, then what it answers with — which reads better than
+ * the bare language does.
+ */
+function panelLabel(pre: HTMLPreElement, previousWasRequest: boolean): string {
+  const language = pre.getAttribute("data-language") ?? "code";
+  if (language === "bash" && (pre.textContent ?? "").trimStart().startsWith("curl")) {
+    return "Request";
+  }
+  // A block of status line and headers is an answer wherever it appears.
+  if (language === "http") return "Response";
+  return previousWasRequest ? "Response" : language;
+}
+
+/** Gives every fenced block a label and a copy button. */
+function buildCodePanels(root: ShadowRoot): void {
+  let previousWasRequest = false;
+
+  for (const pre of root.querySelectorAll("pre")) {
+    if (pre.parentElement?.classList.contains("code-panel")) continue;
+
+    const panel = document.createElement("div");
+    panel.className = "code-panel";
+
+    const bar = document.createElement("div");
+    bar.className = "code-panel-bar";
+
+    const label = panelLabel(pre, previousWasRequest);
+    previousWasRequest = label === "Request";
+
+    const language = document.createElement("span");
+    language.className = "code-panel-lang";
+    language.textContent = label;
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copyLabel(copy, "Copy", false);
+    copy.className = "code-panel-copy";
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(pre.textContent ?? "");
+        copyLabel(copy, "Copied", true);
+      } catch {
+        // Clipboard access can be refused (insecure origin, denied permission).
+        // Selecting the block leaves the reader one keystroke from the same result.
+        const range = document.createRange();
+        range.selectNodeContents(pre);
+        const selection = getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        copyLabel(copy, "Selected", false);
+      }
+      setTimeout(() => copyLabel(copy, "Copy", false), 1600);
+    });
+
+    bar.append(language, copy);
+    pre.replaceWith(panel);
+    panel.append(bar, pre);
+  }
+}
+
+/**
+ * Lays each endpoint out as description beside samples: the heading, its spec
+ * bullets and prose on the left, the request/response panels in a column that
+ * stays in view while the description scrolls.
+ *
+ * Only headings carrying a method chip are grouped, so guide pages — whose `h3`s
+ * are steps rather than endpoints — keep reading as one column. A paragraph
+ * introducing a panel ("Streaming variant:") travels with it as its caption.
+ */
+function groupEndpoints(root: ShadowRoot): void {
+  const isPanel = (element: Element | undefined) =>
+    element?.classList.contains("code-panel") ?? false;
+
+  for (const heading of root.querySelectorAll("h3")) {
+    if (!heading.querySelector(".http-method")) continue;
+
+    const body: Element[] = [];
+    for (
+      let node = heading.nextElementSibling;
+      node && node.tagName !== "H2" && node.tagName !== "H3";
+      node = node.nextElementSibling
+    ) {
+      body.push(node);
+    }
+
+    const section = document.createElement("section");
+    section.className = "endpoint";
+    const description = document.createElement("div");
+    description.className = "endpoint-doc";
+    const samples = document.createElement("div");
+    samples.className = "endpoint-samples";
+
+    heading.replaceWith(section);
+    description.append(heading);
+    body.forEach((element, index) => {
+      const isCaption = element.tagName === "P" && isPanel(body[index + 1]);
+      (isPanel(element) || isCaption ? samples : description).append(element);
+    });
+
+    if (samples.children.length === 0) section.dataset.samples = "none";
+    section.append(description, samples);
+  }
+}
+
+/**
+ * Anchors inside the shadow root: the document-level handler in DocsLayout sees
+ * the host element rather than the link, so in-shadow clicks are handled here.
+ */
+function handleAnchorClicks(root: ShadowRoot): void {
+  root.addEventListener("click", (event) => {
+    const link = (event.target as Element | null)?.closest?.('a[href^="#"]');
+    if (!link) return;
+    const hash = link.getAttribute("href") ?? "";
+    if (hash.length < 2) return;
+
+    event.preventDefault();
+    history.pushState(null, "", hash);
+    root.getElementById(hash.slice(1))?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+}
+
+const shadowRoot = document.querySelector("docs-content")?.shadowRoot;
+if (shadowRoot) {
+  markMethods(shadowRoot);
+  addHeadingAnchors(shadowRoot);
+  wrapTables(shadowRoot);
+  // Panels first: the two-column pass moves the panels it finds.
+  buildCodePanels(shadowRoot);
+  groupEndpoints(shadowRoot);
+  handleAnchorClicks(shadowRoot);
+}
+</script>

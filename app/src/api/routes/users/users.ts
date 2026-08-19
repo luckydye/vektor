@@ -1,5 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
-import { verifySpaceAccess } from "#acl/guards.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { getSpaceMemberIds } from "#acl/store.ts";
 import {
   badRequestResponse,
@@ -10,6 +11,7 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { user } from "#db/schema/auth.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
@@ -52,11 +54,9 @@ export const GET: ApiRouteHandler = (context) =>
     });
 
     if (id) {
-      const result = await db
-        .select(profileFields)
-        .from(user)
-        .where(eq(user.id, id))
-        .get();
+      const result = await one(
+        db.select(profileFields).from(user).where(eq(user.id, id)),
+      );
       if (!result) {
         throw notFoundResponse("User");
       }
@@ -65,7 +65,12 @@ export const GET: ApiRouteHandler = (context) =>
 
     if (spaceId) {
       // Only members of the space may enumerate its members.
-      await verifySpaceAccess(spaceId, caller.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        caller.id,
+        Permission.VIEWER,
+      );
 
       const memberIds = [...(await getSpaceMemberIds(spaceId))];
       // The space creator may not have an explicit ACL row; include the caller.

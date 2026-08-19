@@ -1,9 +1,5 @@
-import {
-  tryAuthenticateRequest,
-  verifyPublicSpaceRole,
-  verifySpaceRole,
-} from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { tryAuthenticateRequest, verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { jsonResponse, requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -16,9 +12,19 @@ export const GET: ApiRouteHandler = (context) =>
 
     const auth = await tryAuthenticateRequest(context, spaceId);
     if (auth?.type === "user") {
-      await verifySpaceRole(spaceId, auth.user.id, Permission.VIEWER);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        auth.user.id,
+        Permission.VIEWER,
+      );
     } else {
-      await verifyPublicSpaceRole(spaceId, Permission.VIEWER);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        null,
+        Permission.VIEWER,
+      );
     }
 
     const store = await openSpaceStore(spaceId);

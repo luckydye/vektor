@@ -13,7 +13,7 @@ type UserProfile = {
   image?: string | null | undefined;
 };
 
-// Browser islands share the resolved profile. SSR must not retain either the
+// Browser islands share the session profile. SSR must not retain either the
 // authenticated user or an in-flight session lookup in the server module graph.
 const [browserUser, setBrowserUser] = createSignal<UserProfile>();
 let browserLoading = false;

@@ -1,9 +1,5 @@
-import {
-  verifyDocumentAccess,
-  verifyDocumentRole,
-  verifyFeatureAccess,
-} from "#acl/guards.ts";
-import { Feature, Permission } from "#acl/permissions.ts";
+import { verifyAccess, verifyRevisionAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -16,12 +12,16 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { updateDocument } from "#db/space/documents.ts";
 import {
   getRevisionMetadata,
   listRevisionMetadata,
   restoreRevision,
   updateRevisionStatus,
 } from "#db/space/revisions.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import { replaceLiveDocumentContent } from "#realtime/yjsRooms.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -29,10 +29,15 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = requireParam(context.var.params, "documentId");
 
-    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.VIEWER,
+    );
 
-    // Verify user has history viewing feature access
-    await verifyFeatureAccess(spaceId, Feature.VIEW_HISTORY, user.id);
+    // No revision is named, so no snapshot exemption: VIEW_HISTORY is required.
+    await verifyRevisionAccess(spaceId, documentId, user.id);
 
     const store = await openSpaceStore(spaceId);
     const revisions = await listRevisionMetadata(store, documentId);
@@ -47,7 +52,12 @@ export const POST: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
-    await verifyDocumentRole(spaceId, documentId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const revParam = new URL(context.req.url).searchParams.get("rev");
     if (!revParam) {
@@ -59,10 +69,18 @@ export const POST: ApiRouteHandler = (context) =>
     const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.req.raw);
     const message = typeof body.message === "string" ? body.message : undefined;
     const store = await openSpaceStore(spaceId);
-    const revision = await restoreRevision(store, documentId, rev, user.id, message);
-    if (!revision) {
+    const restored = await restoreRevision(store, documentId, rev, user.id, message);
+    if (!restored) {
       throw notFoundResponse("Revision");
     }
+
+    const { revision, content } = restored;
+    const document = await updateDocument(store, documentId, content);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
+    replaceLiveDocumentContent(spaceId, documentId, document.type, content);
+    sendSyncEvent(spaceId, realtimeTopics.document(documentId));
 
     return jsonResponse({
       revision: {
@@ -86,7 +104,12 @@ export const PATCH: ApiRouteHandler = (context) =>
     const documentId = requireParam(context.var.params, "documentId");
     // Authorized before the query is read: a caller who may not edit this
     // document should get that verdict, not a complaint about `rev`.
-    await verifyDocumentRole(spaceId, documentId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const revParam = new URL(context.req.url).searchParams.get("rev");
     if (!revParam) {

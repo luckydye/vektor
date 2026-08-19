@@ -1,5 +1,12 @@
 import { appLogger } from "#observability/logger.ts";
-import { type HtmlNode, parseHtml, SyntaxKind } from "#utils/html.ts";
+import {
+  BLOCK_TAGS,
+  type HtmlNode,
+  type HtmlTagNode,
+  htmlToPlainText,
+  parseHtml,
+  SyntaxKind,
+} from "#utils/html.ts";
 
 export interface ExtractedMention {
   email: string;
@@ -77,4 +84,53 @@ export function getUniqueMentionedEmails(html: string): string[] {
   const mentions = extractMentionsFromHtml(html);
   const uniqueEmails = new Set(mentions.map((m) => m.email));
   return Array.from(uniqueEmails);
+}
+
+function mentionEmail(node: HtmlTagNode): string | undefined {
+  if (node.name !== "user-mention") return undefined;
+  return node.attributes?.find((attr) => attr.name.value === "email")?.value?.value;
+}
+
+/**
+ * The text around every mention, keyed by lowercased email — what a mention
+ * notification quotes back so the recipient reads what they were pulled into.
+ *
+ * The excerpt is the innermost block the `<user-mention>` sits in, so a mention
+ * in a list item quotes that item and not the whole list.
+ */
+export function getMentionContexts(html: string): Map<string, string[]> {
+  const contexts = new Map<string, string[]>();
+
+  const record = (email: string, node: HtmlTagNode) => {
+    const text = htmlToPlainText(html.slice(node.start, node.end));
+    if (!text) return;
+    const key = email.trim().toLowerCase();
+    const seen = contexts.get(key);
+    if (!seen) contexts.set(key, [text]);
+    else if (!seen.includes(text)) seen.push(text);
+  };
+
+  const visit = (nodes: HtmlNode[], block: HtmlTagNode | null) => {
+    for (const node of nodes) {
+      if (node.type !== SyntaxKind.Tag) continue;
+
+      const email = mentionEmail(node);
+      if (email) {
+        record(email, block ?? node);
+        continue;
+      }
+
+      if (node.body) {
+        visit(node.body, BLOCK_TAGS.has(node.name.toLowerCase()) ? node : block);
+      }
+    }
+  };
+
+  try {
+    visit(parseHtml(html), null);
+  } catch (error) {
+    appLogger.error("Failed to parse HTML for mention contexts", { error });
+  }
+
+  return contexts;
 }

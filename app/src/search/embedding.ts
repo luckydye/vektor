@@ -4,14 +4,14 @@
  * No database access: callers read and write the stored columns themselves.
  */
 
-import type { DocumentPropertyValue } from "#documents/properties.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { embedTexts, getEmbeddingModel } from "#search/embeddingRuntime.ts";
 import { normalizeText, stripMarkup } from "#search/text.ts";
 
 export function buildDocumentSearchText(
   content: string,
-  properties: Record<string, DocumentPropertyValue>,
+  properties: DocumentProperties,
   fileText?: string,
 ): string {
   const titleValue = properties.title;
@@ -29,6 +29,19 @@ export async function embedText(text: string): Promise<number[]> {
     throw new Error("Native embedding runtime returned no vector");
   }
   return embedding;
+}
+
+/**
+ * The vector a search query is compared against documents by, or null when the
+ * embedding runtime is unavailable — search then falls back to keyword matching
+ * rather than failing.
+ */
+export async function embedSearchQuery(query: string): Promise<number[] | null> {
+  try {
+    return await embedText(query.trim());
+  } catch {
+    return null;
+  }
 }
 
 export function parseEmbedding(value: string | null | undefined): number[] | null {

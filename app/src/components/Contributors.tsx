@@ -3,6 +3,7 @@ import { useActiveCollaboration } from "#composeables/useCollaboration.ts";
 import { useContributors } from "#composeables/useContributors.ts";
 import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import type { PresenceUser } from "#realtime/protocol.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
 import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
@@ -23,11 +24,45 @@ interface Collaborator {
   isCollaborator: boolean;
 }
 
+interface PresentUser {
+  key: string;
+  user: PresenceUser;
+}
+
+function isSameRoster(left: PresentUser[], right: PresentUser[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every(({ key, user }, index) => {
+      const other = right[index];
+      return (
+        key === other.key &&
+        user.name === other.user.name &&
+        user.image === other.user.image &&
+        user.appearance?.avatarFrame === other.user.appearance?.avatarFrame
+      );
+    })
+  );
+}
+
 export function Contributors(props: Props) {
   const merged = mergeProps({ max: 5 }, props);
 
   const collaboration = useActiveCollaboration();
   const { contributors } = useContributors(props.documentId);
+
+  // Presence is republished on every caret move, carrying a rebuilt profile
+  // for every participant. This list shows who is here, not where their caret
+  // is, so it recomputes only when the roster itself changes — otherwise `For`
+  // sees new objects and recreates every avatar, which reads as a flicker.
+  const presentUsers = createMemo<PresentUser[]>(
+    () =>
+      (collaboration()?.roomPresenceProfiles() ?? []).map((profile) => ({
+        key: profile.user.id || profile.clientId,
+        user: profile.user,
+      })),
+    [],
+    { equals: isSameRoster },
+  );
 
   const collaborators = createMemo(() => {
     const collaboratorsByUser = new Map<string, Collaborator>();
@@ -41,18 +76,12 @@ export function Contributors(props: Props) {
       });
     }
 
-    for (const profile of collaboration()?.roomPresenceProfiles() ?? []) {
-      const key = profile.user.id || profile.clientId;
+    for (const { key, user } of presentUsers()) {
       const contributor = collaboratorsByUser.get(key);
 
       collaboratorsByUser.set(key, {
         key,
-        user: contributor
-          ? {
-              ...contributor.user,
-              ...profile.user,
-            }
-          : profile.user,
+        user: contributor ? { ...contributor.user, ...user } : user,
         isPresent: true,
         isCollaborator: contributor?.isCollaborator ?? false,
       });
@@ -103,7 +132,7 @@ export function Contributors(props: Props) {
                   class="relative block"
                   classList={{ "z-10": collaborator.isPresent }}
                   style={{
-                    "margin-left": index() > 0 ? "-18px" : "0",
+                    "margin-left": index() > 0 ? "-8px" : "0",
                     "z-index": String(visibleAvatars().length - index()),
                     "view-transition-name": viewTransitionName(
                       "vt-collab",
@@ -135,7 +164,7 @@ export function Contributors(props: Props) {
               style={{
                 width: "32px",
                 height: "32px",
-                "margin-left": "-18px",
+                "margin-left": "-8px",
                 "z-index": "0",
               }}
             >

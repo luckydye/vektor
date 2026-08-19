@@ -115,6 +115,37 @@ describe("in-memory server — spaces", () => {
     expect(spaces[0].id).toBe(spaceId);
   });
 
+  it("keeps a member's own preferences out of the space's", async () => {
+    // One request writes both halves; they land in different rows and come back
+    // in different fields, because `preferences` is shared with every member and
+    // `userPreferences` is the requester's alone.
+    const res = await api(`/api/v1/spaces/${spaceId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        preferences: { description: "A space", "user:sidebar": "collapsed" },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const patched = await res.json();
+    expect(patched.preferences.description).toBe("A space");
+    expect(patched.preferences["user:sidebar"]).toBeUndefined();
+    expect(patched.userPreferences["user:sidebar"]).toBe("collapsed");
+
+    // And read back the same way on the space and in the listing, which is where
+    // the client takes its copy from.
+    const space = await apiJson<{
+      preferences: Record<string, string>;
+      userPreferences: Record<string, string>;
+    }>(`/api/v1/spaces/${spaceId}`);
+    expect(space.preferences["user:sidebar"]).toBeUndefined();
+    expect(space.userPreferences["user:sidebar"]).toBe("collapsed");
+
+    const spaces =
+      await apiJson<{ userPreferences: Record<string, string> }[]>("/api/v1/spaces");
+    expect(spaces[0].userPreferences["user:sidebar"]).toBe("collapsed");
+  });
+
   it("returns 404 for a non-existent space", async () => {
     const res = await api("/api/v1/spaces/space_doesnotexist");
     expect(res.status).toBe(404);

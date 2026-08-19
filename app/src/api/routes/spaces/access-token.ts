@@ -1,5 +1,5 @@
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -27,7 +27,12 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const tokenId = requireParam(context.var.params, "tokenId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const token = await getAccessToken(await openSpaceStore(spaceId), tokenId);
     if (!token) {
@@ -49,9 +54,18 @@ export const PATCH: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const tokenId = requireParam(context.var.params, "tokenId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
-    const success = await revokeAccessToken(await openSpaceStore(spaceId), tokenId);
+    const success = await revokeAccessToken(
+      await openSpaceStore(spaceId),
+      tokenId,
+      user.id,
+    );
     if (!success) {
       throw notFoundResponse("Access token");
     }
@@ -69,9 +83,18 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const tokenId = requireParam(context.var.params, "tokenId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
-    const success = await deleteAccessToken(await openSpaceStore(spaceId), tokenId);
+    const success = await deleteAccessToken(
+      await openSpaceStore(spaceId),
+      tokenId,
+      user.id,
+    );
     if (!success) {
       throw notFoundResponse("Access token");
     }

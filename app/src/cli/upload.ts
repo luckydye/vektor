@@ -1,7 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { basename } from "node:path";
-import { config } from "#config";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
+import { resolveConfig } from "./resolve.ts";
 
 type UploadResult = {
   key: string;
@@ -10,13 +9,6 @@ type UploadResult = {
 
 function authHeaders(token: string | undefined): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function resolveConnection() {
-  const host = resolveHost();
-  const token = config().CLI_ACCESS_TOKEN;
-  const spaceId = await resolveSpaceId(host, token);
-  return { host, token, spaceId };
 }
 
 export function toAbsoluteUrl(host: string, url: string): string {
@@ -40,7 +32,7 @@ export async function commandUploadFile(flags: {
     throw new Error(`Not a file: ${flags.source}`);
   }
 
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const file = Bun.file(flags.source);
   const filename = flags.filename ?? basename(flags.source);
   const contentType = flags.contentType ?? file.type ?? "application/octet-stream";

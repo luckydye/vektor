@@ -3,8 +3,10 @@
  *
  * The recipient set is policy, not storage: contributors and mentions and
  * thread participants, minus the actor, minus anyone who muted the document.
- * The queries behind each of those live in the repository that owns the table;
- * writing the resulting rows is `insertEmailNotifications`.
+ * A mentioned user is notified about the mention instead of the change that
+ * carried it, so each event splits into a `*_mention` fan-out and a generic one
+ * over everybody else. The queries behind each of those live in the repository
+ * that owns the table; writing the resulting rows is `insertEmailNotifications`.
  */
 
 import { config } from "#config";
@@ -17,8 +19,9 @@ import {
   type EmailNotificationInit,
   insertEmailNotifications,
 } from "#db/space/emailOutbox.ts";
-import { getPublishedContent } from "#db/space/revisions.ts";
+import { getRevisionContent } from "#db/space/revisions.ts";
 import { getUniqueMentionedEmails } from "#documents/mentions.ts";
+import { renderMessageMarkdown } from "#utils/markdown.ts";
 
 async function mentionedUserIds(html: string | null): Promise<string[]> {
   if (!html) return [];
@@ -64,53 +67,87 @@ export async function enqueueDocumentPublishedEmails(params: {
   publishedHtml: string;
   actorId: string;
 }): Promise<number> {
-  const [contributors, mentioned] = await Promise.all([
-    listDocumentContributorIds(await openSpaceStore(params.spaceId), params.documentId),
+  const store = await openSpaceStore(params.spaceId);
+  const [contributors, mentioned, previousHtml] = await Promise.all([
+    listDocumentContributorIds(store, params.documentId),
     mentionedUserIds(params.publishedHtml),
+    params.previousPublishedRevision === null
+      ? null
+      : getRevisionContent(store, params.documentId, params.previousPublishedRevision),
   ]);
 
-  return enqueueRecipients(
-    params.spaceId,
-    {
-      kind: "document_published",
-      sourceId: String(params.publicationId),
-      documentId: params.documentId,
-      publishedRevision: params.revision,
-      previousPublishedRevision: params.previousPublishedRevision,
-      actorId: params.actorId,
-    },
-    [...contributors, ...mentioned],
-  );
+  // A mention is news the first time it reaches a published revision. Everyone
+  // mentioned earlier stays on the generic fan-out, or every later publish
+  // would announce the same mention again.
+  const carriedOver = new Set(await mentionedUserIds(previousHtml));
+  const newlyMentioned = mentioned.filter((userId) => !carriedOver.has(userId));
+  const announced = new Set(newlyMentioned);
+
+  const source = {
+    sourceId: String(params.publicationId),
+    documentId: params.documentId,
+    publishedRevision: params.revision,
+    previousPublishedRevision: params.previousPublishedRevision,
+    actorId: params.actorId,
+  };
+
+  const queued = await Promise.all([
+    enqueueRecipients(
+      params.spaceId,
+      { ...source, kind: "document_mention" },
+      newlyMentioned,
+    ),
+    enqueueRecipients(
+      params.spaceId,
+      { ...source, kind: "document_published" },
+      [...contributors, ...mentioned].filter((userId) => !announced.has(userId)),
+    ),
+  ]);
+
+  return queued[0] + queued[1];
 }
 
 export async function enqueueCommentCreatedEmails(params: {
   spaceId: string;
   documentId: string;
   commentId: string;
+  /** Null for a comment that is not text at all, such as a reaction. */
+  commentContent: string | null;
   commentReference: string | null;
   commentParentId: string | null;
   actorId: string;
 }): Promise<number> {
-  const [contributors, publishedHtml, threadParticipants] = await Promise.all([
-    listDocumentContributorIds(await openSpaceStore(params.spaceId), params.documentId),
-    getPublishedContent(await openSpaceStore(params.spaceId), params.documentId),
+  const store = await openSpaceStore(params.spaceId);
+  const [contributors, threadParticipants, mentioned] = await Promise.all([
+    listDocumentContributorIds(store, params.documentId),
     listThreadParticipantIds(
-      await openSpaceStore(params.spaceId),
+      store,
       params.documentId,
       params.commentReference,
       params.commentParentId,
     ),
+    // A comment is stored as markdown; a mention is only a `<user-mention>`
+    // once rendered, which is also how the thread displays it.
+    mentionedUserIds(
+      params.commentContent ? renderMessageMarkdown(params.commentContent) : null,
+    ),
   ]);
-  const mentioned = await mentionedUserIds(publishedHtml);
 
-  return enqueueRecipients(
-    params.spaceId,
-    {
-      kind: "comment_created",
-      sourceId: params.commentId,
-      documentId: params.documentId,
-      actorId: params.actorId,
-    },
-    [...contributors, ...mentioned, ...threadParticipants],
-  );
+  const announced = new Set(mentioned);
+  const source = {
+    sourceId: params.commentId,
+    documentId: params.documentId,
+    actorId: params.actorId,
+  };
+
+  const queued = await Promise.all([
+    enqueueRecipients(params.spaceId, { ...source, kind: "comment_mention" }, mentioned),
+    enqueueRecipients(
+      params.spaceId,
+      { ...source, kind: "comment_created" },
+      [...contributors, ...threadParticipants].filter((userId) => !announced.has(userId)),
+    ),
+  ]);
+
+  return queued[0] + queued[1];
 }

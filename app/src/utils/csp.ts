@@ -50,9 +50,9 @@ export const APP_CSP = [
   "object-src 'none'",
   // Canvas PDF previews use the browser's built-in viewer in a same-origin
   // iframe. The X/Twitter widget hydrates a tweet into an iframe served from
-  // Twitter's platform/syndication hosts. Every other third-party frame stays
-  // blocked.
-  "frame-src 'self' https://platform.twitter.com https://syndication.twitter.com",
+  // Twitter's platform/syndication hosts, and Figma embeds are always rewritten
+  // to `embed.figma.com`. Every other third-party frame stays blocked.
+  "frame-src 'self' https://platform.twitter.com https://syndication.twitter.com https://embed.figma.com",
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",

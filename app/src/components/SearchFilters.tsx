@@ -2,9 +2,15 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
+import {
+  canonicalPropertyKey,
+  DATE_FILTER_KEY,
+  DOCUMENT_TYPE_FILTER_KEY,
+} from "#documents/properties.ts";
+import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
-import { Icon } from "./Icon.tsx";
+import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
   spaceId: string;
@@ -13,13 +19,30 @@ interface Props {
   onSearch?: () => void;
 }
 
-const DATE_FILTER_KEY = "_date";
+/* Every chip in the row — date, type, property, add — shares one shell so the
+ * row reads as a single control instead of a pile of one-off buttons. These are
+ * concatenated, never run through twMerge: it reads the project's `text-size-*`
+ * and `text-interactive` as plain `text-*` and drops all but the last one. */
+const CHIP =
+  "inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-lg border px-3xs font-medium text-size-small transition-colors focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-1";
+const CHIP_IDLE =
+  "cursor-pointer border-neutral-200 bg-background text-neutral-600 hover:border-neutral-300 hover:bg-primary-10";
+const CHIP_ACTIVE = "border-primary-200 bg-primary-50 text-primary-700";
+const CHIP_REMOVE =
+  "-mr-1 flex-none rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100";
 
-const TYPE_STYLES: Record<string, string> = {
-  canvas: "bg-violet-100 text-violet-600",
-  csv: "bg-emerald-100 text-emerald-700",
-  file: "bg-neutral-100 text-neutral-600",
-  document: "bg-neutral-100 text-neutral-600",
+/* Types come from the documents in the space, so an extension can introduce one
+ * this map has never heard of — hence the generic fallback. */
+const TYPE_ICONS: Record<string, IconName> = {
+  app: "extension",
+  canvas: "canvas",
+  csv: "csv-file",
+  database: "database",
+  document: "document",
+  file: "file",
+  markdown: "source-code",
+  record: "record",
+  workflow: "bolt",
 };
 
 export function SearchFilters(props: Props) {
@@ -66,29 +89,39 @@ export function SearchFilters(props: Props) {
 
   const { data: availableProperties } = useQuery({
     queryKey: createMemo(() => ["properties", props.spaceId]),
-    queryFn: async () => {
-      const properties = await api.properties.get(props.spaceId);
-      return properties.filter((p) => p.name !== "title" && !p.name.startsWith("_"));
-    },
+    queryFn: () => api.properties.get(props.spaceId),
   });
 
   const typeValues = createMemo(
-    () => availableProperties()?.find((p) => p.name === "type")?.values ?? [],
+    () =>
+      availableProperties()?.find((p) => p.name === DOCUMENT_TYPE_FILTER_KEY)?.values ??
+      [],
   );
 
-  const nonTypeProperties = createMemo(
-    () => availableProperties()?.filter((p) => p.name !== "type") ?? [],
+  const filterableProperties = createMemo(
+    () =>
+      availableProperties()?.filter(
+        (p) => canonicalPropertyKey(p.name) !== "title" && !p.name.startsWith("_"),
+      ) ?? [],
   );
 
   const activePropertyFilters = createMemo(() =>
-    props.value.filter((f) => f.key !== DATE_FILTER_KEY && f.key !== "type"),
+    props.value.filter(
+      (f) => f.key !== DATE_FILTER_KEY && f.key !== DOCUMENT_TYPE_FILTER_KEY,
+    ),
   );
 
+  // A chip carries the spelling the space listing prevails on, not always the one
+  // an active filter was created with.
+  const isFilterFor = (filter: PropertyFilter, key: string, value: string | null) =>
+    canonicalPropertyKey(filter.key) === canonicalPropertyKey(key) &&
+    filter.value === value;
+
   const hasActiveFilter = (key: string, value: string | null) =>
-    props.value.some((f) => f.key === key && f.value === value);
+    props.value.some((f) => isFilterFor(f, key, value));
 
   const removeFilterByKeyValue = (key: string, value: string | null) => {
-    commit(props.value.filter((f) => !(f.key === key && f.value === value)));
+    commit(props.value.filter((f) => !isFilterFor(f, key, value)));
   };
 
   const toggleFilter = (key: string, value: string | null) => {
@@ -108,20 +141,28 @@ export function SearchFilters(props: Props) {
 
   return (
     <div class="flex select-none flex-wrap items-center gap-2">
-      <a-popover-trigger class="group">
+      <a-popover-trigger class="group flex-none">
         <button
           type="button"
           slot="trigger"
-          class={`flex items-center gap-1 rounded-lg border px-3xs py-1 text-interactive text-size-small transition-colors ${activeDateRange() ? "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100" : "border-neutral-200 bg-background text-neutral-600 hover:border-neutral-300 hover:bg-primary-10"}`}
+          class={`${CHIP} cursor-pointer ${
+            activeDateRange() ? `${CHIP_ACTIVE} hover:bg-primary-100` : CHIP_IDLE
+          }`}
         >
-          <Icon class="h-3 w-3 opacity-60" name="date" />
-          <span>{dateRangeLabel() ?? "Modified"}</span>
-          <Show when={activeDateRange()}>
+          <Icon class="h-3.5 w-3.5 flex-none opacity-60" name="date" />
+          <span>{dateRangeLabel() ?? t("Modified")}</span>
+          <Show
+            when={activeDateRange()}
+            fallback={
+              <Icon class="-mr-1 h-3 w-3 flex-none opacity-40" name="chevron-down" />
+            }
+          >
             {/* biome-ignore lint/a11y/useFocusableInteractive: a nested control inside the chip trigger; the trigger itself takes the focus. */}
             {/* biome-ignore lint/a11y/useSemanticElements: a <button> here would nest inside the trigger <button>, which is invalid HTML. */}
             <span
               role="button"
-              class="flex-none hover:opacity-70"
+              aria-label={t("Remove filter")}
+              class={CHIP_REMOVE}
               onClick={clearDateFilter}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" && event.key !== " ") return;
@@ -158,49 +199,35 @@ export function SearchFilters(props: Props) {
         {(tv) => (
           <button
             type="button"
-            onClick={() => toggleFilter("type", tv)}
-            class={`flex items-center gap-1 rounded-lg border px-3xs py-1 text-interactive text-size-small capitalize transition-colors ${
-              hasActiveFilter("type", tv)
-                ? `${TYPE_STYLES[tv] ?? "bg-neutral-100 text-neutral-600"} border-transparent`
-                : "border-neutral-200 bg-background text-neutral-600 hover:border-neutral-300 hover:bg-primary-10"
+            aria-pressed={hasActiveFilter(DOCUMENT_TYPE_FILTER_KEY, tv)}
+            onClick={() => toggleFilter(DOCUMENT_TYPE_FILTER_KEY, tv)}
+            class={`${CHIP} cursor-pointer capitalize ${
+              hasActiveFilter(DOCUMENT_TYPE_FILTER_KEY, tv)
+                ? `${CHIP_ACTIVE} hover:bg-primary-100`
+                : CHIP_IDLE
             }`}
           >
+            <Icon
+              class="h-3.5 w-3.5 flex-none opacity-60"
+              name={TYPE_ICONS[tv] ?? "document"}
+            />
             {tv}
-            <Show when={hasActiveFilter("type", tv)}>
-              {/* biome-ignore lint/a11y/useFocusableInteractive: a nested control inside the chip; the chip itself takes the focus. */}
-              {/* biome-ignore lint/a11y/useSemanticElements: a <button> here would nest inside the chip <button>, which is invalid HTML. */}
-              <span
-                role="button"
-                class="flex-none hover:opacity-70"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  removeFilterByKeyValue("type", tv);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.stopPropagation();
-                  removeFilterByKeyValue("type", tv);
-                }}
-              >
-                <Icon class="h-3 w-3" name="cancel" />
-              </span>
-            </Show>
           </button>
         )}
       </For>
 
       <For each={activePropertyFilters()}>
         {(filter) => (
-          <div class="flex items-center gap-1 rounded-lg border border-primary-200 bg-primary-50 px-3xs py-1 text-interactive text-primary-700 text-size-small transition-colors hover:bg-primary-100">
-            <span class="font-medium">{filter.key}</span>
-            <span class="opacity-40">:</span>
+          <div class={`${CHIP} ${CHIP_ACTIVE}`}>
+            <span class="opacity-70">{filter.key}:</span>
             <span classList={{ "italic opacity-70": filter.value === null }}>
-              {filter.value ?? "exists"}
+              {filter.value ?? t("any value")}
             </span>
             <button
               type="button"
+              aria-label={t("Remove filter")}
               onClick={() => removeFilterByKeyValue(filter.key, filter.value)}
-              class="ml-0.5 flex-none hover:opacity-70"
+              class={`${CHIP_REMOVE} cursor-pointer`}
             >
               <Icon class="h-3 w-3" name="cancel" />
             </button>
@@ -208,27 +235,27 @@ export function SearchFilters(props: Props) {
         )}
       </For>
 
-      <Show when={nonTypeProperties().length > 0}>
-        <a-popover-trigger class="group">
+      <Show when={filterableProperties().length > 0}>
+        <a-popover-trigger class="group flex-none">
           <button
             type="button"
             slot="trigger"
-            class="flex items-center gap-1 rounded-lg border border-neutral-300 border-dashed px-3xs py-1 text-interactive text-neutral-500 text-size-small transition-colors hover:border-primary-300 hover:text-primary-600"
+            class={`${CHIP} cursor-pointer border-neutral-300 border-dashed bg-background text-neutral-500 hover:border-primary-300 hover:bg-primary-10 hover:text-primary-600`}
           >
-            <Icon class="h-3.5 w-3.5" name="add" />
-            <span>Filter</span>
+            <Icon class="h-3.5 w-3.5 flex-none" name="add" />
+            <span>{t("Filter")}</span>
           </button>
 
           <a-popover class="group" placements="bottom-start">
             <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
               <div class="w-52 origin-top-left scale-95 overflow-hidden rounded-lg border border-neutral-100 bg-background shadow-large transition-all duration-150 group-[[enabled]]:scale-100">
                 <div class="border-neutral-100 border-b px-3 py-2">
-                  <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
-                    Properties
+                  <span class="font-medium text-neutral-500 text-size-extra-small uppercase tracking-wider">
+                    {t("Properties")}
                   </span>
                 </div>
                 <div class="max-h-64 overflow-y-auto py-1">
-                  <For each={nonTypeProperties()}>
+                  <For each={filterableProperties()}>
                     {(prop) => (
                       <div class="px-1">
                         <button
@@ -238,7 +265,7 @@ export function SearchFilters(props: Props) {
                         >
                           <Icon
                             class={twMerge(
-                              "h-3 w-3 flex-none text-neutral transition-transform duration-150",
+                              "h-3 w-3 flex-none text-neutral-400 transition-transform duration-150",
                               expandedProperties().has(prop.name) && "rotate-90",
                             )}
                             name="chevron-right-thin"
@@ -287,11 +314,14 @@ export function SearchFilters(props: Props) {
                                 ),
                               }}
                             >
-                              any value
+                              {t("any value")}
                             </button>
                             <Show when={prop.values.length > 20}>
                               <span class="px-2 text-neutral-400 text-size-extra-small">
-                                +{prop.values.length - 20} more
+                                {t("+{count} more").replace(
+                                  "{count}",
+                                  String(prop.values.length - 20),
+                                )}
                               </span>
                             </Show>
                           </div>
@@ -307,12 +337,13 @@ export function SearchFilters(props: Props) {
       </Show>
 
       <Show when={props.value.length > 0}>
+        <span aria-hidden="true" class="mx-1 h-4 w-px flex-none bg-neutral-100" />
         <button
           type="button"
           onClick={() => commit([])}
-          class="ml-1 text-neutral text-size-extra-small transition-colors hover:text-neutral-800"
+          class="inline-flex h-8 cursor-pointer items-center rounded-lg px-4xs font-medium text-neutral-500 text-size-small transition-colors hover:bg-neutral-50 hover:text-neutral-800 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-1"
         >
-          Clear all
+          {t("Clear all")}
         </button>
       </Show>
     </div>

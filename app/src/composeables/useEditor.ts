@@ -8,6 +8,7 @@ import {
 } from "solid-js";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
+import { CollaborationJoinAbandoned } from "#editor/collaboration.ts";
 import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
 import { useQueryClient } from "./query.ts";
@@ -131,12 +132,16 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveError: documentSaveError,
     saveDocument,
   } = useDocument(documentId, documentType);
-  const { saveRevision } = useRevisions(documentId);
+  const { saveRevision, error: revisionError } = useRevisions(documentId);
   const { updateProperty } = useProperties();
   const queryClient = useQueryClient();
   const toast = useToast();
 
   let editorSession = 0;
+  // Which document the running session belongs to, so the two effects below can
+  // tell "the session has to move" from "it is already where it belongs".
+  let sessionActive = false;
+  let sessionDocumentId: string | undefined;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearSaveStatusTimer() {
@@ -170,27 +175,39 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     setSaveStatus("saving");
     setSaveError(null);
 
-    let saved = false;
-    try {
-      const content = getEditorHtml();
-      if (content) {
-        if (mode === "suggestion") {
-          saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
-        } else {
-          // Marked before the publish, so a marker that cannot be written
-          // leaves the document as it was rather than published without it.
-          if (mode === "template") await markAsTemplate();
-          saved = await saveDocument(content, { publish: true });
-        }
-      }
-    } catch (error) {
-      setSaveStatus("error");
-      setSaveError(error instanceof Error ? error : new Error(String(error)));
+    const content = getEditorHtml();
+    if (!content) {
+      // No editor, or nothing in it. Not a failure, so nothing to report.
+      setSaveStatus("idle");
       return;
     }
 
-    if (!saved) {
-      setSaveStatus("idle");
+    try {
+      if (mode === "suggestion") {
+        // `saveRevision` keeps its failure to itself and answers null, so the
+        // message has to be picked up from the composable's own error signal.
+        if (!(await saveRevision(content, "Suggested changes", "suggestion"))) {
+          throw new Error(revisionError() ?? "Could not save the suggestion");
+        }
+      } else {
+        // Marked before the publish, so a marker that cannot be written
+        // leaves the document as it was rather than published without it.
+        if (mode === "template") await markAsTemplate();
+        if (!(await saveDocument(content, { publish: true }))) {
+          // Also swallowed, but `useDocument` has raised the toast already —
+          // record it so the editor keeps showing that nothing was published.
+          setSaveStatus("error");
+          setSaveError(
+            new Error(documentSaveError() ?? "Could not publish the document"),
+          );
+          return;
+        }
+      }
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      setSaveStatus("error");
+      setSaveError(failure);
+      toast.error(failure.message);
       return;
     }
 
@@ -240,15 +257,29 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   async function startEditorSession() {
+    // A document switch flushes the `editing` and `documentId` effects back to
+    // back, and each asks for a session on the document arriving.
+    if (sessionActive && sessionDocumentId === documentId()) return;
     const session = ++editorSession;
     if (!canMountEditor()) return;
+    sessionActive = true;
+    sessionDocumentId = documentId();
+    // A new session has not failed yet — a message left over from the previous
+    // one would sit next to the button as if it had.
+    setSaveStatus("");
+    setSaveError(null);
     registerSaveActions();
     try {
       await collaboration.joinUntilReady();
     } catch (error) {
+      if (error instanceof CollaborationJoinAbandoned) return;
       if (session === editorSession) {
+        const failure = error instanceof Error ? error : new Error(String(error));
         setSaveStatus("error");
-        setSaveError(error instanceof Error ? error : new Error(String(error)));
+        setSaveError(failure);
+        // Editing is turned back off here, so without this the click on Edit
+        // looks like it simply did nothing.
+        toast.error(`Could not start editing: ${failure.message}`);
         setEditing(false);
       }
       return;
@@ -261,6 +292,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   function stopEditorSession() {
     editorSession++;
+    sessionActive = false;
+    sessionDocumentId = undefined;
     unregisterSaveActions();
     setShouldMountEditor(false);
     collaboration.leave();
@@ -287,6 +320,9 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   createEffect(
     on(documentId, (currentDocumentId, previousDocumentId) => {
       if (currentDocumentId === previousDocumentId) return;
+      // The `editing` effect may already have moved the session here, and
+      // tearing that down to rebuild it drops a join the server is answering.
+      if (sessionActive && sessionDocumentId === currentDocumentId) return;
 
       stopEditorSession();
       if (editing()) {

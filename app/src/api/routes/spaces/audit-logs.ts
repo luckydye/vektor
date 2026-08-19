@@ -1,9 +1,5 @@
-import {
-  verifyDocumentAccess,
-  verifyFeatureAccess,
-  verifySpaceAccess,
-} from "#acl/guards.ts";
-import { Feature } from "#acl/permissions.ts";
+import { requireSpace, verifyAccess, verifyFeatureAccess } from "#acl/guards.ts";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   jsonResponse,
   parsePaginationParams,
@@ -12,13 +8,13 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   getAuditLogsForDocument,
   getRecentAuditLogs,
   parseAuditDetails,
 } from "#db/space/auditLogs.ts";
+import { getDocument } from "#db/space/documents.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -26,10 +22,29 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = new URL(context.req.url).searchParams.get("documentId");
 
-    if (documentId) {
-      await verifyDocumentAccess(spaceId, documentId, user.id);
+    // Ahead of opening the store, which a space that does not exist would
+    // answer with a read error rather than a verdict.
+    await requireSpace(spaceId);
+
+    const store = await openSpaceStore(spaceId);
+    const document = documentId ? await getDocument(store, documentId) : null;
+
+    // An audit trail outlives the document it describes, so a deleted one is
+    // gated on the space role — which is what its own grants resolved to.
+    if (documentId && document) {
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        user.id,
+        Permission.VIEWER,
+      );
     } else {
-      await verifySpaceAccess(spaceId, user.id);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.VIEWER,
+      );
     }
 
     // Verify user has audit log viewing feature access
@@ -39,7 +54,6 @@ export const GET: ApiRouteHandler = (context) =>
       new URL(context.req.url).searchParams,
     );
 
-    const store = await openSpaceStore(spaceId);
     const { rows, nextCursor } = documentId
       ? await getAuditLogsForDocument(store, documentId, limit, cursor)
       : await getRecentAuditLogs(store, limit, cursor);

@@ -4,6 +4,7 @@ import { api, type DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 
@@ -41,7 +42,7 @@ export function PinnedDocument(props: Props) {
     const content = document.createElement("div");
     content.setAttribute("part", "content");
     const inner = document.createElement("div");
-    inner.innerHTML = html;
+    inner.innerHTML = sanitizeDocumentHtml(html);
     content.appendChild(inner);
     root.appendChild(style);
     root.appendChild(content);

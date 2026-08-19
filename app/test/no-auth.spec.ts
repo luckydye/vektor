@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { Feature } from "#acl/permissions.ts";
-import { hasFeature } from "#acl/store.ts";
+import { Feature, ResourceType } from "#acl/permissions.ts";
+import { hasFeature, listAccessibleResources } from "#acl/store.ts";
 import { createSpace, deleteSpace } from "#db/space/spaces.ts";
 import { LOCAL_USER_ID } from "#noAuth";
 
@@ -29,5 +29,23 @@ describe("No auth mode", () => {
     expect(await hasFeature(space.id, Feature.VIEW_AUDIT, LOCAL_USER_ID)).toBe(true);
     expect(await hasFeature(space.id, Feature.VIEW_HISTORY, LOCAL_USER_ID)).toBe(true);
     expect(await hasFeature(space.id, Feature.COMMENT, LOCAL_USER_ID)).toBe(true);
+  });
+
+  it("reads every resource of a space the local user did not create as accessible", async () => {
+    process.env.VEKTOR_NO_AUTH = "1";
+
+    const timestamp = Date.now();
+    const space = await createSpace(
+      "owner-for-test",
+      `No Auth Scope ${timestamp}`,
+      `no-auth-scope-${timestamp}`,
+    );
+    createdSpaceIds.push(space.id);
+
+    // The local user holds no ACL row here, so an empty list would read as
+    // "nothing accessible" and silently empty every search in dev.
+    expect(
+      await listAccessibleResources(space.id, LOCAL_USER_ID, ResourceType.DOCUMENT),
+    ).toBeNull();
   });
 });

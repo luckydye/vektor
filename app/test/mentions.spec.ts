@@ -2,6 +2,7 @@ import { generateHTML } from "@tiptap/html";
 import { describe, expect, it } from "vitest";
 import {
   extractMentionsFromHtml,
+  getMentionContexts,
   getUniqueMentionedEmails,
 } from "#documents/mentions.ts";
 import { contentExtensions } from "#editor/extensions.ts";
@@ -169,5 +170,53 @@ describe("Mention extraction", () => {
     expect(extractMentionsFromHtml("")).toHaveLength(0);
     expect(extractMentionsFromHtml("<>")).toHaveLength(0);
     expect(getUniqueMentionedEmails("")).toHaveLength(0);
+  });
+});
+
+describe("Mention contexts", () => {
+  it("quotes the passage a mention sits in, keyed by email", () => {
+    const html =
+      "<p>Unrelated paragraph.</p>" +
+      '<p>Hey <user-mention email="John@Example.com">@John Doe</user-mention>, can you ' +
+      "review the locale handling?</p>";
+
+    expect(getMentionContexts(html).get("john@example.com")).toEqual([
+      "Hey @John Doe, can you review the locale handling?",
+    ]);
+  });
+
+  it("quotes the innermost block rather than the whole list", () => {
+    const html =
+      "<ul><li>Ship the parser</li>" +
+      '<li>Ask <user-mention email="bob@example.com">@Bob</user-mention> about specs</li></ul>';
+
+    expect(getMentionContexts(html).get("bob@example.com")).toEqual([
+      "• Ask @Bob about specs",
+    ]);
+  });
+
+  it("keeps one entry per distinct passage", () => {
+    const html =
+      '<p>First, <user-mention email="a@example.com">@Ada</user-mention> writes it.</p>' +
+      '<p>Then <user-mention email="a@example.com">@Ada</user-mention> reviews it.</p>' +
+      '<p>Then <user-mention email="a@example.com">@Ada</user-mention> reviews it.</p>';
+
+    expect(getMentionContexts(html).get("a@example.com")).toEqual([
+      "First, @Ada writes it.",
+      "Then @Ada reviews it.",
+    ]);
+  });
+
+  it("falls back to the mention itself outside any block", () => {
+    const html = '<user-mention email="a@example.com">@Ada</user-mention>';
+
+    expect(getMentionContexts(html).get("a@example.com")).toEqual(["@Ada"]);
+  });
+
+  it("has nothing for an unmentioned reader", () => {
+    const html = '<p>Hi <user-mention email="a@example.com">@Ada</user-mention></p>';
+
+    expect(getMentionContexts(html).get("b@example.com")).toBeUndefined();
+    expect(getMentionContexts("").size).toBe(0);
   });
 });

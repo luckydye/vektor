@@ -1,15 +1,16 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
-import { Permission, PUBLIC_GROUP, ResourceType } from "#acl/permissions.ts";
+import { canAccess } from "#acl/guards.ts";
+import { isInstanceAdmin } from "#acl/instanceGroups.ts";
+import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   countSpaceMembers,
-  getUserGroups,
   grantPermission,
   hasAnyResourceScopedAccess,
-  hasPermission,
   listUserPermissions,
 } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   allocateSpaceDatabase,
   disableSpaceDatabase,
@@ -21,19 +22,21 @@ import {
   updateIndexedSpaceMetadata,
   upsertSpaceIndex,
 } from "#db/auth/spaceIndex.ts";
-import { getDatabaseFilePath } from "#db/client/connection.ts";
+import { resolveSpaceLocation } from "#db/client/connection.ts";
 import {
   closeSpaceDb,
   createAllocatedSpaceDb,
   getSpaceDb,
   initializeDatabases,
 } from "#db/client/db.ts";
+import { many, one } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
+import { getUserPreferences } from "#db/space/userPreferences.ts";
 import { isInMemoryDb } from "#inMemoryDb";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { slugify } from "#utils/utils.ts";
 
 const DATA_DIR = "./data";
 const DELETED_DIR = join(DATA_DIR, "deleted");
@@ -49,6 +52,51 @@ export interface Space {
   updatedAt: Date;
   userRole?: string;
   memberCount?: number;
+  /**
+   * Set on a listing only: the space is reachable because the caller
+   * administers the instance, not because any grant in it names them.
+   */
+  adminAccess?: boolean;
+}
+
+/** A caller-supplied space slug that cannot become a space URL. */
+export class InvalidSpaceSlugError extends Error {}
+
+/** A space slug another space already owns. */
+export class SpaceSlugTakenError extends Error {
+  constructor(slug: string) {
+    super(`Space with slug "${slug}" already exists`);
+  }
+}
+
+/**
+ * The database is the authority on slug uniqueness; the pre-check below only
+ * turns the common case into a readable message. This maps the race that slips
+ * past it onto the same failure.
+ */
+function isSlugUniqueViolation(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("space_index_active_slug_unique") ||
+    /UNIQUE constraint failed:\s*space_index\.slug/i.test(message)
+  );
+}
+
+/**
+ * The single place a caller-supplied space slug becomes a stored one, so create
+ * and update cannot drift apart again — creation used to sanitize silently while
+ * update stored whatever it was handed.
+ */
+async function resolveSpaceSlug(input: string, spaceId?: string): Promise<string> {
+  const rejection = spaceSlugRejection(input);
+  if (rejection) throw new InvalidSpaceSlugError(rejection);
+
+  const slug = canonicalSpaceSlug(input);
+  await initializeDatabases();
+  const owner = await getIndexedSpaceBySlug(slug);
+  if (owner && owner.spaceId !== spaceId) throw new SpaceSlugTakenError(slug);
+
+  return slug;
 }
 
 export async function createSpace(
@@ -60,18 +108,7 @@ export async function createSpace(
   const id = createId("space");
   const now = new Date();
 
-  // Sanitize slug to contain only URL-compatible characters
-  slug = slugify(slug);
-
-  if (!slug) {
-    throw new Error("Slug not valid");
-  }
-
-  // Check if slug already exists
-  const existingSpace = await getSpaceBySlug(slug);
-  if (existingSpace) {
-    throw new Error(`Space with slug "${slug}" already exists`);
-  }
+  slug = await resolveSpaceSlug(slug);
 
   const allocation = await allocateSpaceDatabase(id);
   let spaceDb: Awaited<ReturnType<typeof getSpaceDb>>;
@@ -110,12 +147,12 @@ export async function createSpace(
   } catch (error) {
     closeSpaceDb(id);
     await disableSpaceDatabase(allocation.id, id);
-    throw error;
+    throw isSlugUniqueViolation(error) ? new SpaceSlugTakenError(slug) : error;
   }
 
   // Grant owner permission to creator (after closing initial connection)
   await grantPermission(
-    id,
+    await openSpaceStore(id),
     ResourceType.SPACE,
     id,
     createdBy,
@@ -141,30 +178,29 @@ export async function getSpace(id: string): Promise<Space | null> {
 
   const spaceDb = await getSpaceDb(id);
 
-  const result = await spaceDb
-    .select()
-    .from(spaceMetadata)
-    .where(eq(spaceMetadata.id, id))
-    .get();
+  const result = await one(
+    spaceDb.select().from(spaceMetadata).where(eq(spaceMetadata.id, id)),
+  );
 
   if (!result) {
     return null;
   }
 
   // Load preferences
-  const prefs = await spaceDb
-    .select()
-    .from(preference)
-    .where(isNull(preference.userId))
-    .all();
+  const prefs = await many(
+    spaceDb.select().from(preference).where(isNull(preference.userId)),
+  );
 
-  const preferences: Record<string, string> = {};
-  for (const pref of prefs) {
-    preferences[pref.key] = pref.value;
-  }
+  // Collected in a `Map`: preference keys are user-supplied, and
+  // `preferences["__proto__"] = value` on an object literal is a silent no-op for
+  // a string value, so a stored `__proto__` preference could never be read back
+  // — and, being invisible, made the emptiness check below insert a default
+  // brandColor row on what is supposed to be a read. `Object.fromEntries` defines
+  // own keys, so every stored preference round-trips.
+  const preferenceEntries = new Map(prefs.map((pref) => [pref.key, pref.value]));
 
   // Set default preferences if none exist
-  if (Object.keys(preferences).length === 0) {
+  if (preferenceEntries.size === 0) {
     const now = new Date();
     await spaceDb.insert(preference).values({
       id: createId("preference"),
@@ -173,8 +209,10 @@ export async function getSpace(id: string): Promise<Space | null> {
       createdAt: now,
       updatedAt: now,
     });
-    preferences.brandColor = "#1e293b";
+    preferenceEntries.set("brandColor", "#1e293b");
   }
+
+  const preferences: Record<string, string> = Object.fromEntries(preferenceEntries);
 
   const memberCount = await countSpaceMembers(id);
 
@@ -211,69 +249,103 @@ export async function listAllSpaces(): Promise<Space[]> {
  * the client caches spaces by id, so a response that omits it overwrites the
  * role the listing established and locks the user out of role-gated UI.
  */
+/**
+ * Each space with the caller's own preferences attached — the `user:` namespace,
+ * which lives in per-user rows and so is not part of the space itself.
+ *
+ * Every response carrying a `Space` sets it for the same reason it sets
+ * `userRole`: the client caches spaces by id, so a response that omits it
+ * overwrites what the last one established.
+ */
+async function withUserPreferences(spaces: Space[], userId: string): Promise<Space[]> {
+  return await Promise.all(
+    spaces.map(async (space) => ({
+      ...space,
+      userPreferences: await getUserPreferences(await openSpaceStore(space.id), userId),
+    })),
+  );
+}
+
 export async function getUserSpaceRole(
   space: Space,
   userId: string,
-): Promise<string | undefined> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) return "owner";
-  if (space.createdBy === userId) return "owner";
+): Promise<Permission | undefined> {
+  // Instance admins included, so a space they administer without belonging to
+  // still hands the client the role the guards will decide the request at.
+  if (await isInstanceAdmin(userId)) return Permission.OWNER;
 
   try {
     const userGroups = await getUserGroups(userId);
-    const permissions = await listUserPermissions(
-      space.id,
-      userId,
-      userGroups,
-      ResourceType.SPACE,
-    );
-    return permissions.find(
-      (p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id,
-    )?.permission;
+    return highestPermission(await spaceGrants(space, userId, userGroups));
   } catch {
     return undefined;
   }
 }
 
+/** The user's own and group-inherited role grants on the space itself. */
+async function spaceGrants(
+  space: Space,
+  userId: string,
+  userGroups: string[],
+): Promise<string[]> {
+  const permissions = await listUserPermissions(
+    space.id,
+    userId,
+    userGroups,
+    ResourceType.SPACE,
+  );
+  return permissions
+    .filter((p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id)
+    .map((p) => p.permission);
+}
+
+/**
+ * What the user holds in the space on their own account: their space-wide role,
+ * and whether any grant in it reaches them at all. Both unset means they are not
+ * a member, which for an instance admin separates a space they administer from
+ * one they belong to.
+ */
+async function spaceMembership(
+  space: Space,
+  userId: string,
+): Promise<{ role?: Permission; reachable: boolean }> {
+  try {
+    const userGroups = await getUserGroups(userId);
+    const role = highestPermission(await spaceGrants(space, userId, userGroups));
+    if (role) return { role, reachable: true };
+    return { reachable: await hasAnyResourceScopedAccess(space.id, userId, userGroups) };
+  } catch {
+    return { reachable: false };
+  }
+}
+
 export async function listUserSpaces(userId: string): Promise<Space[]> {
   const allSpaces = await listAllSpaces();
-
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return allSpaces.map((s) => ({ ...s, userRole: "owner" }));
-  }
-
+  const admin = await isInstanceAdmin(userId);
   const userSpaces: Space[] = [];
 
   for (const space of allSpaces) {
-    // Include space if user created it
-    if (space.createdBy === userId) {
-      userSpaces.push({ ...space, userRole: "owner" });
-      continue;
-    }
+    const membership = await spaceMembership(space, userId);
 
-    // Include space if user is a member
-    try {
-      const userGroups = await getUserGroups(userId);
-      const permissions = await listUserPermissions(
-        space.id,
-        userId,
-        userGroups,
-        ResourceType.SPACE,
-      );
-      const spacePermission = permissions.find(
-        (p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id,
-      );
-      if (spacePermission) {
-        userSpaces.push({ ...space, userRole: spacePermission.permission });
-      } else if (await hasAnyResourceScopedAccess(space.id, userId, userGroups)) {
-        // No space-wide grant, but the user has a document/tree/category
-        // grant in this space — surface the space so they can reach it.
-        // Leave userRole unset so space-wide UI stays gated as before.
-        userSpaces.push({ ...space });
-      }
-    } catch {}
+    if (admin) {
+      // The whole instance, at the role the guards will decide their requests
+      // at. `adminAccess` is what tells the two apart in the UI.
+      userSpaces.push({
+        ...space,
+        userRole: Permission.OWNER,
+        adminAccess: !membership.reachable,
+      });
+    } else if (membership.role) {
+      userSpaces.push({ ...space, userRole: membership.role });
+    } else if (membership.reachable) {
+      // No space-wide grant, but a document/tree/category grant in this space —
+      // surface it so they can reach it, with `userRole` left unset so
+      // space-wide UI stays gated as before.
+      userSpaces.push({ ...space });
+    }
   }
 
-  return userSpaces;
+  return await withUserPreferences(userSpaces, userId);
 }
 
 export async function listPublicSpaces(): Promise<Space[]> {
@@ -282,13 +354,11 @@ export async function listPublicSpaces(): Promise<Space[]> {
 
   for (const space of allSpaces) {
     try {
-      const canView = await hasPermission(
+      const canView = await canAccess(
         space.id,
-        ResourceType.SPACE,
-        space.id,
-        "",
+        { type: ResourceType.SPACE, id: space.id },
+        null,
         Permission.VIEWER,
-        [PUBLIC_GROUP],
       );
       if (canView) {
         publicSpaces.push({ ...space, userRole: "viewer" });
@@ -310,12 +380,10 @@ export async function updateSpace(
     return null;
   }
 
-  // Check if slug is changing and if new slug already exists
+  // Only when it changes, so a space that predates these rules can still be
+  // renamed.
   if (slug !== existing.slug) {
-    const existingSpace = await getSpaceBySlug(slug);
-    if (existingSpace && existingSpace.id !== id) {
-      throw new Error(`Space with slug "${slug}" already exists`);
-    }
+    slug = await resolveSpaceSlug(slug, id);
   }
 
   const now = new Date();
@@ -343,19 +411,22 @@ export async function updateSpace(
         `Failed to update the space index and restore metadata for space ${id}`,
       );
     }
-    throw indexError;
+    throw isSlugUniqueViolation(indexError) ? new SpaceSlugTakenError(slug) : indexError;
   }
 
-  // Update preferences if provided
-  const updatedPreferences = { ...existing.preferences };
+  // Update preferences if provided. A `Map` for the same reason as in `getSpace`:
+  // the response has to report back a `__proto__` preference it just wrote, and
+  // bracket assignment on an object would drop it.
+  const updatedPreferences = new Map(Object.entries(existing.preferences));
   if (preferences) {
     for (const [key, value] of Object.entries(preferences)) {
       // Check if preference exists
-      const existingPref = await spaceDb
-        .select()
-        .from(preference)
-        .where(and(eq(preference.key, key), isNull(preference.userId)))
-        .get();
+      const existingPref = await one(
+        spaceDb
+          .select()
+          .from(preference)
+          .where(and(eq(preference.key, key), isNull(preference.userId))),
+      );
 
       if (existingPref) {
         // Update existing preference
@@ -373,7 +444,7 @@ export async function updateSpace(
           updatedAt: now,
         });
       }
-      updatedPreferences[key] = value;
+      updatedPreferences.set(key, value);
     }
   }
 
@@ -382,7 +453,7 @@ export async function updateSpace(
     name,
     slug,
     createdBy: existing.createdBy,
-    preferences: updatedPreferences,
+    preferences: Object.fromEntries(updatedPreferences),
     createdAt: existing.createdAt,
     updatedAt: now,
   };
@@ -398,7 +469,7 @@ export async function deleteSpace(id: string): Promise<boolean> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   let databaseExisted = true;
 
-  const spacePath = getDatabaseFilePath(databaseRecord.databaseUrl);
+  const spacePath = resolveSpaceLocation(databaseRecord.location).filePath;
   if (!isInMemoryDb() && spacePath) {
     databaseExisted = existsSync(spacePath);
     if (databaseExisted) {

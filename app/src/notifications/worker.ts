@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
-import { verifyDocumentRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
@@ -58,9 +59,9 @@ async function deliver(
   }
 
   try {
-    await verifyDocumentRole(
+    await verifyAccess(
       spaceId,
-      notification.documentId,
+      { type: ResourceType.DOCUMENT, id: notification.documentId },
       notification.recipientUserId,
       Permission.VIEWER,
     );
@@ -71,16 +72,18 @@ async function deliver(
 
   const authDb = getAuthDb();
   const [recipient, actor, doc, space] = await Promise.all([
-    authDb
-      .select({ email: user.email, emailVerified: user.emailVerified })
-      .from(user)
-      .where(eq(user.id, notification.recipientUserId))
-      .get(),
-    authDb
-      .select({ name: user.name, email: user.email, image: user.image })
-      .from(user)
-      .where(eq(user.id, notification.actorId))
-      .get(),
+    one(
+      authDb
+        .select({ email: user.email, emailVerified: user.emailVerified })
+        .from(user)
+        .where(eq(user.id, notification.recipientUserId)),
+    ),
+    one(
+      authDb
+        .select({ name: user.name, email: user.email, image: user.image })
+        .from(user)
+        .where(eq(user.id, notification.actorId)),
+    ),
     getDocument(await openSpaceStore(spaceId), notification.documentId),
     getSpace(spaceId),
   ]);
@@ -96,28 +99,29 @@ async function deliver(
 
   const titleValue = doc.properties.title;
   const title = titleValue ? propertyValueToText(titleValue).trim() : doc.slug;
+  // A comment email quotes the comment; a publication email quotes the revision
+  // it announced — and diffs it against its predecessor unless it is a mention,
+  // which quotes the passage the recipient's name is in instead.
+  const aboutComment =
+    notification.kind === "comment_created" || notification.kind === "comment_mention";
+  const aboutPublication =
+    notification.kind === "document_published" ||
+    notification.kind === "document_mention";
   const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
-    notification.kind === "comment_created"
-      ? getComment(store, notification.sourceId)
-      : undefined,
-    notification.kind === "document_published" &&
-    typeof notification.publishedRevision === "number"
-      ? getRevisionContent(
-          await openSpaceStore(spaceId),
-          notification.documentId,
-          notification.publishedRevision,
-        )
+    aboutComment ? getComment(store, notification.sourceId) : undefined,
+    aboutPublication && typeof notification.publishedRevision === "number"
+      ? getRevisionContent(store, notification.documentId, notification.publishedRevision)
       : undefined,
     notification.kind === "document_published" &&
     typeof notification.previousPublishedRevision === "number"
       ? getRevisionContent(
-          await openSpaceStore(spaceId),
+          store,
           notification.documentId,
           notification.previousPublishedRevision,
         )
       : undefined,
   ]);
-  if (notification.kind === "comment_created" && !commentRecord) {
+  if (aboutComment && !commentRecord) {
     await markEmailNotificationSkipped(store, notification.id, "Comment unavailable");
     return;
   }
@@ -132,6 +136,8 @@ async function deliver(
     commentContent: commentRecord?.content,
     previousPublishedContent,
     publishedContent,
+    recipientEmail: recipient.email,
+    brandColor: space.preferences?.brandColor,
   });
   await sendEmail({ to: recipient.email, ...rendered });
   await markEmailNotificationSent(store, notification.id);

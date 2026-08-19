@@ -14,8 +14,8 @@
  * }
  */
 
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -39,7 +39,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const store = await openSpaceStore(spaceId);
     const schedules = await listWorkflowSchedules(store);
@@ -52,7 +57,12 @@ export const POST: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const body = await parseJsonBody(context.req.raw);
     const { documentId, cronExpression, timezone, inputs, enabled } = body;

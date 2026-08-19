@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import type { AIChatMessage } from "#api/client.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
-import { formatTime } from "#utils/datetime.ts";
+import { formatTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";

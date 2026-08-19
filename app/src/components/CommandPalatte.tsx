@@ -7,7 +7,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { history } from "#utils/history.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -187,7 +187,8 @@ export function CommandPalatte() {
 
   function searchSpace(query: string) {
     closePalette();
-    navigate(`/search?q=${encodeURIComponent(query)}`);
+    const trimmed = query.trim();
+    navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
   }
 
   function runResult(result: Result) {
@@ -252,6 +253,16 @@ export function CommandPalatte() {
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
               onKeyDown={handleKeydown}
             />
+            <button
+              type="button"
+              onClick={() => searchSpace(searchQuery())}
+              class="flex flex-none items-center gap-1 rounded-md px-2 py-1 font-medium text-neutral text-size-small transition-colors hover:bg-neutral-100 hover:text-neutral-800"
+              title="Open the full search page"
+            >
+              Full search
+              <Icon class="h-3 w-3" name="chevron-right-small" />
+            </button>
+
             <a-shortcut class="hidden sm:flex" attr:data-shortcut="esc" />
           </div>
 

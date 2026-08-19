@@ -2,13 +2,13 @@ import { createEffect, createSignal, Show } from "solid-js";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 import {
   isWorkflowCreationEnabled,
   spacePreferenceKeys,
 } from "#utils/spacePreferences.ts";
 import { Button } from "./Button.tsx";
-import { Dialog } from "./Dialog.tsx";
-import { DialogFooter } from "./DialogFooter.tsx";
+import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
 import { SpaceMembers } from "./SpaceMembers.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
@@ -75,11 +75,12 @@ export function SpaceGeneralSettings(props: Props) {
 
     try {
       if (file.type === "image/svg+xml") {
-        let text = await file.text();
-        text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-        text = text.replace(/on\w+="[^"]*"/g, "");
-        text = text.replace(/on\w+='[^']*'/g, "");
-        setLocalLogoSvg(text);
+        const svg = sanitizeSvgMarkup(await file.text());
+        if (!svg) {
+          setError("That file is not an SVG image");
+          return;
+        }
+        setLocalLogoSvg(svg);
       } else {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -122,30 +123,6 @@ export function SpaceGeneralSettings(props: Props) {
   }
 
   const [showDeleteConfirm, setShowDeleteConfirm] = createSignal(false);
-  const [deleteConfirmText, setDeleteConfirmText] = createSignal("");
-  const [isDeleting, setIsDeleting] = createSignal(false);
-  const [deleteError, setDeleteError] = createSignal<string | null>(null);
-
-  function closeDeleteConfirm() {
-    setShowDeleteConfirm(false);
-    setDeleteConfirmText("");
-    setDeleteError(null);
-  }
-
-  async function handleDeleteSpace() {
-    const space = currentSpace();
-    if (!space?.id || deleteConfirmText() !== space.slug) return;
-    setDeleteError(null);
-    setIsDeleting(true);
-
-    try {
-      await api.space.delete(space.id);
-      window.location.href = "/";
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete space");
-      setIsDeleting(false);
-    }
-  }
 
   createEffect(() => {
     const space = currentSpace();
@@ -278,49 +255,16 @@ export function SpaceGeneralSettings(props: Props) {
         </div>
       </div>
 
-      <Dialog
-        show={showDeleteConfirm()}
-        title="Delete Space"
-        closeOnBackdrop={!isDeleting()}
-        onUpdateShow={(v) => {
-          if (!v) closeDeleteConfirm();
+      <DeleteSpaceDialog
+        space={showDeleteConfirm() ? currentSpace() : null}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={async (spaceId) => {
+          // Rejections stay in the dialog; a space that is gone has nothing
+          // left to show, so the redirect only happens on success.
+          await api.space.delete(spaceId);
+          window.location.href = "/";
         }}
-        footer={
-          <DialogFooter
-            tone="danger"
-            confirmLabel="Delete Space"
-            pendingLabel="Deleting..."
-            pending={isDeleting()}
-            disabled={deleteConfirmText() !== currentSpace()?.slug}
-            onCancel={closeDeleteConfirm}
-            onConfirm={() => void handleDeleteSpace()}
-          />
-        }
-      >
-        <p class="mb-3 text-neutral-600 text-size-medium">
-          Are you sure you want to delete <strong>{currentSpace()?.name}</strong>? This
-          action will archive all documents and data.
-        </p>
-        <p class="mb-3 text-neutral-600 text-size-medium">
-          Type{" "}
-          <code class="rounded-sm bg-neutral-100 px-1.5 py-0.5 font-mono text-size-medium">
-            {currentSpace()?.slug}
-          </code>{" "}
-          to confirm:
-        </p>
-        <input
-          value={deleteConfirmText()}
-          onInput={(e) => setDeleteConfirmText(e.currentTarget.value)}
-          type="text"
-          placeholder="Type space slug"
-          class="mb-3 w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium focus:outline-none focus:ring-2 focus:ring-red-500"
-        />
-        <Show when={deleteError()}>
-          <div class="mb-3 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
-            {deleteError()}
-          </div>
-        </Show>
-      </Dialog>
+      />
     </>
   );
 }

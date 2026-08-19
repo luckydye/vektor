@@ -1,104 +1,37 @@
-import {
-  authenticateJobTokenOrSpaceRole,
-  authenticateSpaceAccess,
-  tryAuthenticateRequest,
-} from "#acl/guards.ts";
-import { Permission, PUBLIC_GROUP, ResourceType } from "#acl/permissions.ts";
-import { getUserGroups, hasPermission, listAccessibleResources } from "#acl/store.ts";
+import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   createdResponse,
-  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
-  unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import {
+  CategorySlugTakenError,
   createCategory,
   listCategories,
   reorderCategories,
 } from "#db/space/categories.ts";
 import { getSpace } from "#db/space/spaces.ts";
+import { isHexColor } from "#utils/color.ts";
 
+/**
+ * The categories the caller may see: `null` when a space-wide role carries all
+ * of them, otherwise the ids their category grants reach.
+ */
 async function visibleCategoryIds(
   context: Parameters<ApiRouteHandler>[0],
   spaceId: string,
 ) {
-  if (context.req.raw.headers.get("X-Job-Token")) {
-    await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
-    return null;
-  }
-
-  const auth = await tryAuthenticateRequest(context, spaceId);
-  if (auth?.type === "user") {
-    const groups = await getUserGroups(auth.user.id);
-    const hasSpaceAccess = await hasPermission(
-      spaceId,
-      ResourceType.SPACE,
-      spaceId,
-      auth.user.id,
-      Permission.VIEWER,
-      groups,
-    );
-    if (hasSpaceAccess) return null;
-
-    const ids = await listAccessibleResources(
-      spaceId,
-      auth.user.id,
-      ResourceType.CATEGORY,
-      groups,
-      Permission.VIEWER,
-    );
-    if (!ids || ids.length === 0) throw forbiddenResponse();
-    return new Set(ids);
-  }
-
-  if (auth?.type === "token") {
-    const tokenUserId = getTokenUserId(auth.token.tokenId);
-    const hasSpaceAccess = await hasPermission(
-      spaceId,
-      ResourceType.SPACE,
-      spaceId,
-      tokenUserId,
-      Permission.VIEWER,
-    );
-    if (hasSpaceAccess) return null;
-
-    const ids = await listAccessibleResources(
-      spaceId,
-      tokenUserId,
-      ResourceType.CATEGORY,
-      undefined,
-      Permission.VIEWER,
-    );
-    if (!ids || ids.length === 0) throw forbiddenResponse();
-    return new Set(ids);
-  }
-
-  const hasPublicSpaceAccess = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    "",
-    Permission.VIEWER,
-    [PUBLIC_GROUP],
-  );
-  if (hasPublicSpaceAccess) return null;
-
-  const ids = await listAccessibleResources(
-    spaceId,
-    "",
-    ResourceType.CATEGORY,
-    [PUBLIC_GROUP],
-    Permission.VIEWER,
-  );
-  if (!ids || ids.length === 0) throw unauthorizedResponse();
-  return new Set(ids);
+  const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
+    allowResourceGrants: true,
+    scopeType: ResourceType.CATEGORY,
+  });
+  return access.resourceScope ? new Set(access.resourceScope) : null;
 }
 
 export const GET: ApiRouteHandler = (context) =>
@@ -130,32 +63,46 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to list categories");
 
 export const POST: ApiRouteHandler = (context) =>
-  withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.var.params, "spaceId");
-    await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
+  withApiErrorHandling(
+    async () => {
+      const spaceId = requireParam(context.var.params, "spaceId");
+      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
 
-    const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
-    const name = typeof body.name === "string" ? body.name : undefined;
-    const slug = typeof body.slug === "string" ? body.slug : undefined;
-    const description =
-      typeof body.description === "string" ? body.description : undefined;
-    const color = typeof body.color === "string" ? body.color : undefined;
-    const icon = typeof body.icon === "string" ? body.icon : undefined;
+      const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
+      const name = typeof body.name === "string" ? body.name : undefined;
+      const slug = typeof body.slug === "string" ? body.slug : undefined;
+      const description =
+        typeof body.description === "string" ? body.description : undefined;
+      const color = typeof body.color === "string" ? body.color : undefined;
+      const icon = typeof body.icon === "string" ? body.icon : undefined;
 
-    if (!name || !slug) {
-      throw badRequestResponse("Name and slug are required");
-    }
+      if (!name || !slug) {
+        throw badRequestResponse("Name and slug are required");
+      }
 
-    const store = await openSpaceStore(spaceId);
-    const categoryData = await createCategory(store, {
-      name,
-      slug,
-      description,
-      color,
-      icon,
-    });
-    return createdResponse({ category: categoryData });
-  }, "Failed to create category");
+      // A category colour is rendered into a style attribute for every member.
+      if (color && !isHexColor(color)) {
+        throw badRequestResponse("color must be a hex color, e.g. #4ecdc4");
+      }
+
+      const store = await openSpaceStore(spaceId);
+      const categoryData = await createCategory(store, {
+        name,
+        slug,
+        description,
+        color,
+        icon,
+      });
+      return createdResponse({ category: categoryData });
+    },
+    {
+      fallbackMessage: "Failed to create category",
+      onError: (error) =>
+        error instanceof CategorySlugTakenError
+          ? badRequestResponse(error.message)
+          : undefined,
+    },
+  );
 
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

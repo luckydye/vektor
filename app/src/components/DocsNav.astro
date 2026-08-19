@@ -1,0 +1,114 @@
+---
+/**
+ * The docs sidebar: page links, and under the current page its section outline.
+ * Rendered twice by DocsLayout — once for the sticky sidebar, once inside the
+ * mobile disclosure — so the markup lives here rather than being duplicated.
+ */
+export interface OutlineEntry {
+  slug: string;
+  text: string;
+}
+
+export interface Props {
+  title: string;
+  links: { href: string; label: string }[];
+  currentPath: string;
+  outline?: OutlineEntry[];
+}
+
+const { title, links, currentPath, outline = [] } = Astro.props;
+---
+
+<p class="docs-nav-title">{title}</p>
+<ul class="mt-3 space-y-0.5">
+  {links.map((link) => (
+      <li>
+        <a
+          href={link.href}
+          class:list={[
+            "docs-nav-link",
+            currentPath === link.href && "docs-nav-link-active",
+          ]}
+        >
+          {link.label}
+        </a>
+        {currentPath === link.href && outline.length > 0 && (
+          <ul class="docs-nav-outline">
+            {outline.map((section) => (
+              <li>
+                <a href={`#${section.slug}`} class="docs-nav-outline-link">
+                  {section.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    ))}
+</ul>
+
+<style>
+.docs-nav-title {
+  /* Aligns the label with the text inside the nav links, whose own padding is
+     what the active pill is drawn around. */
+  padding-left: 0.7rem;
+  color: var(--color-neutral-500);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.docs-nav-link {
+  display: block;
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.7rem;
+  color: var(--color-neutral-700);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.docs-nav-link:hover {
+  color: var(--color-primary-700);
+  background-color: color-mix(in srgb, var(--color-primary-600) 6%, transparent);
+}
+
+.docs-nav-link-active {
+  color: var(--color-primary-700);
+  font-weight: 650;
+  background-color: color-mix(in srgb, var(--color-primary-600) 9%, transparent);
+}
+
+.docs-nav-outline {
+  margin: 0.15rem 0 0.5rem 0.7rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid color-mix(in srgb, var(--color-primary-600) 20%, transparent);
+}
+
+.docs-nav-outline-link {
+  display: block;
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.6rem;
+  color: var(--color-neutral-500);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.docs-nav-outline-link:hover {
+  color: var(--color-primary-700);
+  background-color: color-mix(in srgb, var(--color-primary-600) 6%, transparent);
+}
+
+/* The section under the header, tracked while scrolling. */
+.docs-nav-outline-link[aria-current="true"] {
+  color: var(--color-primary-700);
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--color-primary-600) 8%, transparent);
+}
+</style>

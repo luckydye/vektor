@@ -48,27 +48,16 @@ export const TableEditing = Extension.create({
 
   addExtensions() {
     // The table package supplies the editing behaviour — commands, the
-    // tableEditing plugin, column resizing. Its schema half is replaced with
-    // the shared spec table, so the server serializes tables without it.
+    // tableEditing plugin, column resizing, and the Tab / Shift-Tab cell
+    // navigation keymap. Its schema half is replaced with the shared spec
+    // table, so the server serializes tables without it.
     return [
-      Table.extend({
-        addKeyboardShortcuts: () => ({}),
-        ...nodeFromSpec("table"),
-      }).configure({
+      Table.extend(nodeFromSpec("table")).configure({
         resizable: true,
       }),
-      TableRow.extend({
-        addKeyboardShortcuts: () => ({}),
-        ...nodeFromSpec("tableRow"),
-      }),
-      TableHeader.extend({
-        addKeyboardShortcuts: () => ({}),
-        ...nodeFromSpec("tableHeader"),
-      }),
-      TableCell.extend({
-        addKeyboardShortcuts: () => ({}),
-        ...nodeFromSpec("tableCell"),
-      }),
+      TableRow.extend(nodeFromSpec("tableRow")),
+      TableHeader.extend(nodeFromSpec("tableHeader")),
+      TableCell.extend(nodeFromSpec("tableCell")),
       ExpressionCell,
     ];
   },

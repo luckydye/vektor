@@ -16,7 +16,7 @@ export type SpaceChange =
       data: Record<string, unknown>;
     }
   | {
-      kind: "documentProperty";
+      kind: "documentProperties";
       documentId: string;
       affectsTree: boolean;
       data: Record<string, unknown>;
@@ -44,6 +44,8 @@ function categoryTopics(
   ];
 }
 
+export const documentLockChangedKind = "document_lock_changed";
+
 /**
  * Which audit events reach clients. An event not listed here is recorded in the
  * audit log without any websocket traffic — the empty list is the decision, not
@@ -51,9 +53,16 @@ function categoryTopics(
  */
 function auditTopics(event: string, docId: string): RealtimeEventInput[] {
   switch (event) {
-    case "save":
     case "lock":
     case "unlock":
+      return [
+        realtimeTopics.documents,
+        {
+          topic: realtimeTopics.document(docId),
+          data: { kind: documentLockChangedKind, documentId: docId },
+        },
+      ];
+    case "save":
       return [realtimeTopics.documents, realtimeTopics.document(docId)];
     case "acl_grant":
     case "acl_revoke":
@@ -82,7 +91,7 @@ export function changeToEvents(change: SpaceChange): RealtimeEventInput[] {
       return [realtimeTopics.extensions];
     case "audit":
       return auditTopics(change.event, change.documentId);
-    case "documentProperty":
+    case "documentProperties":
       return [
         { topic: realtimeTopics.properties, data: change.data },
         { topic: realtimeTopics.document(change.documentId), data: change.data },

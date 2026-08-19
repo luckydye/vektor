@@ -1,6 +1,7 @@
-import { verifySpaceAccess } from "#acl/guards.ts";
-import { Feature, ResourceType } from "#acl/permissions.ts";
-import { getPermission, getUserGroups, hasFeature } from "#acl/store.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
+import { getPermission, hasFeature } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   jsonResponse,
   requireParam,
@@ -14,7 +15,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    await verifySpaceAccess(spaceId, user.id);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.VIEWER,
+    );
 
     const userGroups = await getUserGroups(user.id);
 

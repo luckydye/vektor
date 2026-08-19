@@ -7,15 +7,16 @@ import {
   textblockTypeInputRule,
   wrappingInputRule,
 } from "@tiptap/core";
-import type { NodeType } from "@tiptap/pm/model";
+import { Fragment, type NodeType, type Node as PMNode } from "@tiptap/pm/model";
 import {
   liftListItem as pmLiftListItem,
   sinkListItem as pmSinkListItem,
   splitListItem as pmSplitListItem,
   wrapInList as pmWrapInList,
 } from "@tiptap/pm/schema-list";
-import type { EditorState } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
+import { canJoin } from "@tiptap/pm/transform";
 import { HEADING_LEVELS, nodesWithAttr } from "#documents/schema/specs.ts";
 import { markFromSpec, nodeFromSpec } from "./specSchema.ts";
 
@@ -618,12 +619,179 @@ export const Link = Mark.create({
 
 // ---- Lists ----
 
-function findParentOfType(type: NodeType, state: EditorState) {
-  const { $from } = state.selection;
+const LIST_ITEM_TYPES: Record<string, string> = {
+  bulletList: "listItem",
+  orderedList: "listItem",
+  taskList: "taskItem",
+};
+
+/** A list, and the span of its items a toggle applies to. */
+type ItemSpan = { pos: number; node: PMNode; first: number; last: number };
+
+/**
+ * The innermost list around the selection, and which of its items the
+ * selection covers. A caret is one item; a selection dragged over the whole
+ * list is all of them.
+ */
+function selectedItems(state: EditorState): ItemSpan | null {
+  const { $from, $to } = state.selection;
   for (let d = $from.depth; d > 0; d--) {
-    if ($from.node(d).type === type) return { pos: $from.before(d), node: $from.node(d) };
+    const node = $from.node(d);
+    if (!(node.type.name in LIST_ITEM_TYPES)) continue;
+    const inSameList = $to.depth >= d && $to.node(d) === node;
+    return {
+      pos: $from.before(d),
+      node,
+      first: $from.index(d),
+      // A selection running past the end of this list takes the rest of it.
+      last: inSameList ? $to.index(d) : node.childCount - 1,
+    };
   }
   return null;
+}
+
+/**
+ * Whole lists the selection encloses, for a selection that starts outside any
+ * of them — select-all above all, which resolves at the top of the document
+ * and so has no list to walk up to.
+ */
+function enclosedLists(state: EditorState): ItemSpan[] {
+  const { $from, $to } = state.selection;
+  const depth = $from.sharedDepth($to.pos);
+  const start = $from.start(depth);
+  const spans: ItemSpan[] = [];
+  $from.node(depth).forEach((child, offset) => {
+    const pos = start + offset;
+    const enclosed = pos >= $from.pos && pos + child.nodeSize <= $to.pos;
+    if (enclosed && child.type.name in LIST_ITEM_TYPES) {
+      spans.push({ pos, node: child, first: 0, last: child.childCount - 1 });
+    }
+  });
+  return spans;
+}
+
+function totalSize(items: PMNode[]) {
+  return items.reduce((size, item) => size + item.nodeSize, 0);
+}
+
+/**
+ * Whether `pos` sits between two lists of `listType`, the only join worth
+ * making. `canJoin` alone is not enough: it answers yes for any *empty*
+ * neighbour, including the trailing paragraph the document editor keeps after
+ * the last block, and the join then throws.
+ */
+function joinsTwoLists(tr: Transaction, pos: number, listType: NodeType) {
+  const $pos = tr.doc.resolve(pos);
+  return (
+    $pos.nodeBefore?.type === listType &&
+    $pos.nodeAfter?.type === listType &&
+    canJoin(tr.doc, pos)
+  );
+}
+
+/**
+ * Rewrite `span`'s items as `itemType` under a `listType` list, splitting the
+ * list around them, and join the result onto an adjacent list of the same type.
+ *
+ * It goes in one step because the intermediate states are invalid content (task
+ * items under a bullet list and vice versa), which `setNodeMarkup` refuses.
+ * Returns how far the items moved, or null when they cannot hold the item type.
+ */
+function convertItems(
+  tr: Transaction,
+  span: ItemSpan,
+  listType: NodeType,
+  itemType: NodeType,
+) {
+  const before: PMNode[] = [];
+  const converted: PMNode[] = [];
+  const after: PMNode[] = [];
+  for (let i = 0; i < span.node.childCount; i++) {
+    const item = span.node.child(i);
+    if (i < span.first) before.push(item);
+    else if (i > span.last) after.push(item);
+    else if (!itemType.validContent(item.content)) return null;
+    else converted.push(itemType.create(null, item.content, item.marks));
+  }
+
+  const lists = [listType.create(null, converted, span.node.marks)];
+  if (before.length) lists.unshift(span.node.copy(Fragment.from(before)));
+  if (after.length) {
+    // The items that stay behind keep counting where the split left off.
+    const attrs =
+      typeof span.node.attrs.start === "number"
+        ? { ...span.node.attrs, start: span.node.attrs.start + before.length }
+        : span.node.attrs;
+    lists.push(span.node.type.create(attrs, after, span.node.marks));
+  }
+
+  const start = span.pos + (before.length ? totalSize(before) + 2 : 0);
+  const end = start + totalSize(converted) + 2;
+  tr.replaceWith(span.pos, span.pos + span.node.nodeSize, lists);
+
+  // Meeting a list of the same type — a sibling, or one made by an earlier
+  // toggle — makes one list rather than two. The joins map the selection.
+  if (joinsTwoLists(tr, end, listType)) tr.join(end);
+  if (joinsTwoLists(tr, start, listType)) tr.join(start);
+
+  // Item nodes keep their content, so the only shift is the wrapper opened for
+  // the items left in front.
+  return before.length ? 2 : 0;
+}
+
+/**
+ * Toggle the selected list items to `listTypeName`: unwrap them when they are
+ * already that type, otherwise convert them.
+ */
+function toggleListType(
+  listTypeName: string,
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+) {
+  const listType = state.schema.nodes[listTypeName];
+  const itemType = state.schema.nodes[LIST_ITEM_TYPES[listTypeName]];
+  const selected = selectedItems(state);
+
+  if (selected) {
+    if (selected.node.type === listType) return pmLiftListItem(itemType)(state, dispatch);
+    const { tr } = state;
+    const offset = convertItems(tr, selected, listType, itemType);
+    if (offset === null) return false;
+    if (dispatch) {
+      const { anchor, head } = state.selection;
+      dispatch(
+        tr.setSelection(TextSelection.create(tr.doc, anchor + offset, head + offset)),
+      );
+    }
+    return true;
+  }
+
+  // Back to front, so each span's positions still hold when it is its turn.
+  const spans = enclosedLists(state).reverse();
+  if (!spans.length) return pmWrapInList(listType)(state, dispatch);
+
+  const { tr } = state;
+  let changed = false;
+  if (spans.every((span) => span.node.type === listType)) {
+    for (const span of spans) {
+      const blocks: PMNode[] = [];
+      span.node.forEach((item) => {
+        item.forEach((block) => {
+          blocks.push(block);
+        });
+      });
+      tr.replaceWith(span.pos, span.pos + span.node.nodeSize, blocks);
+      changed = true;
+    }
+  } else {
+    for (const span of spans) {
+      if (span.node.type === listType) continue;
+      if (convertItems(tr, span, listType, itemType) !== null) changed = true;
+    }
+  }
+  if (!changed) return false;
+  if (dispatch) dispatch(tr);
+  return true;
 }
 
 export const BulletList = Node.create({
@@ -636,21 +804,8 @@ export const BulletList = Node.create({
     return {
       toggleBulletList:
         () =>
-        ({ state, dispatch, chain }) => {
-          const { schema } = state;
-          const inThis = findParentOfType(schema.nodes.bulletList, state);
-          if (inThis) return pmLiftListItem(schema.nodes.listItem)(state, dispatch);
-          const inOther = findParentOfType(schema.nodes.orderedList, state);
-          if (inOther) {
-            return chain()
-              .command(({ tr }) => {
-                tr.setNodeMarkup(inOther.pos, schema.nodes.bulletList);
-                return true;
-              })
-              .run();
-          }
-          return pmWrapInList(schema.nodes.bulletList)(state, dispatch);
-        },
+        ({ state, dispatch }) =>
+          toggleListType("bulletList", state, dispatch),
     };
   },
   addInputRules() {
@@ -673,21 +828,8 @@ export const OrderedList = Node.create({
     return {
       toggleOrderedList:
         () =>
-        ({ state, dispatch, chain }) => {
-          const { schema } = state;
-          const inThis = findParentOfType(schema.nodes.orderedList, state);
-          if (inThis) return pmLiftListItem(schema.nodes.listItem)(state, dispatch);
-          const inOther = findParentOfType(schema.nodes.bulletList, state);
-          if (inOther) {
-            return chain()
-              .command(({ tr }) => {
-                tr.setNodeMarkup(inOther.pos, schema.nodes.orderedList);
-                return true;
-              })
-              .run();
-          }
-          return pmWrapInList(schema.nodes.orderedList)(state, dispatch);
-        },
+        ({ state, dispatch }) =>
+          toggleListType("orderedList", state, dispatch),
     };
   },
   addInputRules() {
@@ -750,12 +892,8 @@ export const TaskList = Node.create({
     return {
       toggleTaskList:
         () =>
-        ({ state, dispatch }) => {
-          const { schema } = state;
-          const inThis = findParentOfType(schema.nodes.taskList, state);
-          if (inThis) return pmLiftListItem(schema.nodes.taskItem)(state, dispatch);
-          return pmWrapInList(schema.nodes.taskList)(state, dispatch);
-        },
+        ({ state, dispatch }) =>
+          toggleListType("taskList", state, dispatch),
     };
   },
   addInputRules() {

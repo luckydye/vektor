@@ -93,6 +93,7 @@ import {
   presentationIcon,
   printIcon,
   publishIcon,
+  recordIcon,
   redoIcon,
   refreshIcon,
   resizeHandleIcon,
@@ -128,6 +129,7 @@ import {
   videoIcon,
   warningTriangleIcon,
 } from "#assets/icons.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 
 const icons = {
   "2-columns": twoColumnsIcon,
@@ -223,6 +225,7 @@ const icons = {
   presentation: presentationIcon,
   print: printIcon,
   publish: publishIcon,
+  record: recordIcon,
   redo: redoIcon,
   refresh: refreshIcon,
   "resize-handle": resizeHandleIcon,
@@ -258,8 +261,6 @@ const icons = {
 } as const;
 
 export type IconName = keyof typeof icons;
-
-const isMarkup = (value: string): boolean => /^\s*</.test(value);
 
 const FALLBACK = icons.missing;
 
@@ -300,7 +301,11 @@ interface Props {
 
 export function Icon(props: Props) {
   const svg = () => {
-    if (props.svg) return isMarkup(props.svg) ? props.svg : FALLBACK;
+    // `svg` is untrusted: a space logo and an extension icon are both markup a
+    // user stored (`preferences.logoSvg`), and both end up in `innerHTML` here
+    // and in the SSR branch below. A value that is not an SVG document — a URL,
+    // or a payload dressed up as one — sanitizes to "" and shows the fallback.
+    if (props.svg) return sanitizeSvgMarkup(props.svg) || FALLBACK;
     if (props.name) return icons[props.name] ?? FALLBACK;
     return "";
   };

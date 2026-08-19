@@ -1,6 +1,7 @@
 import { type Accessor, createMemo, createSignal } from "solid-js";
 import { api } from "#api/client.ts";
-import type { DocumentPropertyValue } from "#documents/properties.ts";
+import type { DocumentProperties } from "#documents/properties.ts";
+import { canonicalPropertyKey } from "#documents/properties.ts";
 import { placeholderDocumentTitle } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
@@ -23,7 +24,7 @@ interface AddRowOptions {
 }
 
 interface AddRowMutationVariables {
-  properties?: Record<string, DocumentPropertyValue>;
+  properties?: DocumentProperties;
   invalidate: boolean;
 }
 
@@ -72,13 +73,19 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
 
   const derivedColumns = createMemo<DatabaseColumn[]>(() => {
     if (schema().columns.length > 0) return schema().columns;
-    const keySet = new Set<string>();
+    const columnKeys = new Map<string, string>();
     for (const row of rows()) {
       for (const key of Object.keys(row.properties)) {
-        if (key !== "title") keySet.add(key);
+        const canonical = canonicalPropertyKey(key);
+        if (canonical === "title" || columnKeys.has(canonical)) continue;
+        columnKeys.set(canonical, key);
       }
     }
-    return Array.from(keySet).map((k) => ({ name: k, type: "text" as const, label: k }));
+    return Array.from(columnKeys.values()).map((k) => ({
+      name: k,
+      type: "text" as const,
+      label: k,
+    }));
   });
 
   const addRowMutation = useMutation({
@@ -144,10 +151,7 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
     queryClient.invalidateQueries({ queryKey: queryKey() });
   }
 
-  async function addRow(
-    properties?: Record<string, DocumentPropertyValue>,
-    options?: AddRowOptions,
-  ) {
+  async function addRow(properties?: DocumentProperties, options?: AddRowOptions) {
     return await addRowMutation.mutateAsync({
       properties,
       invalidate: options?.invalidate ?? true,
@@ -163,18 +167,21 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   }
 
   async function addColumn(column: DatabaseColumn) {
-    const currentColumns = derivedColumns();
-    const updated: DatabaseSchema = {
-      columns: [...currentColumns, column],
-    };
-    await updateSchemaMutation.mutateAsync(updated);
+    await addColumns([column]);
   }
 
   async function addColumns(columns: DatabaseColumn[]) {
     if (columns.length === 0) return;
     const currentColumns = derivedColumns();
-    const existing = new Set(currentColumns.map((column) => column.name));
-    const appended = columns.filter((column) => !existing.has(column.name));
+    const existing = new Set(
+      currentColumns.map((column) => canonicalPropertyKey(column.name)),
+    );
+    const appended = columns.filter((column) => {
+      const canonical = canonicalPropertyKey(column.name);
+      if (existing.has(canonical)) return false;
+      existing.add(canonical);
+      return true;
+    });
     if (appended.length === 0) return;
     const updated: DatabaseSchema = {
       columns: [...currentColumns, ...appended],

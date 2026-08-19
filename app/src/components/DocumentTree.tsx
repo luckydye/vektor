@@ -1,6 +1,15 @@
 import "@atrium-ui/elements/expandable";
 import "@atrium-ui/elements/popover";
-import { createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { canEdit } from "#acl/permissions.ts";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
@@ -13,9 +22,11 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
-import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
+import { registerScopedAction } from "#utils/scopedAction.ts";
+import { slugify } from "#utils/slug.ts";
 import { spacePath } from "#utils/utils.ts";
+import { CategoryBadge } from "./CategoryBadge.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 import { Icon } from "./Icon.tsx";
@@ -248,11 +259,12 @@ export function DocumentTree(props: Props) {
     setFormError(null);
 
     const form = formData();
+    const name = form.name.trim();
     try {
       if (editingId()) {
         await updateCategory(
           editingId() as string,
-          form.name.trim(),
+          name,
           form.slug.trim(),
           form.description?.trim() || undefined,
           form.color || undefined,
@@ -260,8 +272,8 @@ export function DocumentTree(props: Props) {
         );
       } else {
         await createCategory(
-          form.name.trim(),
-          form.slug.trim(),
+          name,
+          slugify(name),
           form.description?.trim() || undefined,
           form.color || undefined,
           form.icon?.trim() || undefined,
@@ -386,6 +398,15 @@ export function DocumentTree(props: Props) {
     });
   }
 
+  createEffect(() => {
+    if (!canManageCategories()) return;
+    registerScopedAction("category:create", {
+      title: t("Create Category"),
+      description: t("Group documents into a new category"),
+      run: async () => startCreating(),
+    });
+  });
+
   onMount(() => {
     setIsMounted(true);
 
@@ -490,6 +511,13 @@ export function DocumentTree(props: Props) {
                   { docs: [], rootDocs: [] } as ReturnType<typeof categoryDocuments>,
                 );
 
+                const isEmpty = createMemo(
+                  () =>
+                    expandedItems().has(category().id) &&
+                    !isSlugLoading(category().slug) &&
+                    documents().rootDocs.length === 0,
+                );
+
                 return (
                   <div>
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: the drag, long-press and context-menu gestures live on the row; the button inside is the control. */}
@@ -530,17 +558,7 @@ export function DocumentTree(props: Props) {
                           class="flex flex-1 items-center gap-2 px-1 py-1 text-left"
                           aria-expanded={isCategoryOpen(category())}
                         >
-                          <div
-                            class="relative flex h-6 w-6 flex-none items-center justify-center rounded-sm font-semibold text-size-extra-small"
-                            style={{
-                              "background-color": category().color || "#E5E7EB",
-                              color: getTextColor(category().color),
-                            }}
-                          >
-                            <span class="block transition-opacity group-hover/category:opacity-0">
-                              {category().icon || category().name.charAt(0).toUpperCase()}
-                            </span>
-
+                          <CategoryBadge category={category()} class="h-6 w-6">
                             <Icon
                               class={twMerge(
                                 "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100",
@@ -548,7 +566,7 @@ export function DocumentTree(props: Props) {
                               )}
                               name="chevron-right-thin"
                             />
-                          </div>
+                          </CategoryBadge>
 
                           <span class="font-medium">{category().name}</span>
                         </button>
@@ -640,6 +658,30 @@ export function DocumentTree(props: Props) {
                             />
                           )}
                         </For>
+
+                        <Show when={isEmpty()}>
+                          <div class="pl-[0.535rem]">
+                            <Show
+                              when={canManageCategories()}
+                              fallback={
+                                <p class="px-1.5 py-1 text-neutral-500 text-size-normal">
+                                  {t("No documents yet.")}
+                                </p>
+                              }
+                            >
+                              <a
+                                href={spacePath(
+                                  currentSpace()?.slug,
+                                  `/new?category=${category().slug}`,
+                                )}
+                                class="flex items-center gap-1.5 rounded-md border border-neutral-300 border-dashed px-2 py-1.5 text-neutral-500 text-size-normal transition-colors hover:border-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
+                              >
+                                <Icon class="h-3.5 w-3.5 flex-none" name="add" />
+                                <span>{t("New document")}</span>
+                              </a>
+                            </Show>
+                          </div>
+                        </Show>
                       </div>
                     </a-expandable>
                   </div>
@@ -819,28 +861,6 @@ export function DocumentTree(props: Props) {
                 class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
                 placeholder={t("Category name")}
               />
-            </div>
-
-            <div>
-              <label
-                for="category-slug"
-                class="mb-1 block font-medium text-neutral-900 text-size-small"
-              >
-                {t("Slug")}
-              </label>
-              <input
-                id="category-slug"
-                value={formData().slug}
-                onInput={(e) => patchForm({ slug: e.currentTarget.value })}
-                type="text"
-                required
-                pattern="[a-z0-9-]+"
-                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                placeholder="slug-name"
-              />
-              <p class="mt-1 text-neutral text-size-small">
-                {t("Lowercase, numbers, hyphens only")}
-              </p>
             </div>
 
             <div>

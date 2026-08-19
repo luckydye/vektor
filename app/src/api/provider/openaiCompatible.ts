@@ -15,6 +15,12 @@ export type OpenAICompatibleProvider = {
   model: string;
 };
 
+/**
+ * This table *is* the allow-list for the configured API key, which rides along as
+ * a bearer token: the provider is a closed union and nothing user-supplied enters
+ * the URL, so there is no SSRF surface to guard. Adding a configurable base URL
+ * means routing these through an egress policy and keeping the key off it.
+ */
 const CHAT_COMPLETIONS_URLS: Record<OpenAICompatibleProvider["provider"], string> = {
   openai: "https://api.openai.com/v1/chat/completions",
   openrouter: "https://openrouter.ai/api/v1/chat/completions",

@@ -19,10 +19,10 @@ import {
   deserializeDocContent,
   serializeDocContent,
 } from "#documents/serializationPool.ts";
-import { contentIsHtml } from "#documents/types.ts";
+import { contentIsHtml, documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
-import { traced } from "#observability/trace.ts";
-import { stripScriptTags } from "#utils/html.ts";
+import { traced, tracedSync } from "#observability/trace.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -33,12 +33,16 @@ import {
 
 export interface YRoom {
   doc?: Y.Doc;
+  /** In-flight `loadYDoc` for a room that has no doc yet; see `ensureRoomDoc`. */
+  loading?: Promise<Y.Doc>;
   clients: Set<WebSocket>;
   presences: Map<string, PresenceEnvelope>;
+  writeBlocked?: boolean;
   /** Timestamp (ms) of the last persist attempt, used to throttle serialize frequency. */
   lastPersistAt?: number;
   /** User who made the most recently received collaborative update. */
   lastEditorId?: string;
+  idleSince?: number;
 }
 
 export const yRooms = new Map<string, YRoom>();
@@ -66,6 +70,27 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
   return traced("loadYDoc", () => deserializeDocContent(meta.type, content));
 }
 
+/**
+ * The room's document, deserializing it once for however many joins arrive
+ * while that is in flight. Switching documents sends two joins in the same
+ * tick, and each would otherwise pay the full off-thread deserialize and then
+ * overwrite the doc the other had already handed out and applied updates to.
+ */
+export async function ensureRoomDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
+  const room = getRoom(spaceId, documentId);
+  if (room.doc) return room.doc;
+
+  room.loading ??= loadYDoc(spaceId, documentId).finally(() => {
+    room.loading = undefined;
+  });
+  const doc = await room.loading;
+  // Re-read: the room can be dropped while the load runs, and the doc has to
+  // land on the one that is registered now or its updates go nowhere.
+  const current = getRoom(spaceId, documentId);
+  current.doc ??= doc;
+  return current.doc;
+}
+
 export function getRoom(spaceId: string, documentId: string): YRoom {
   const key = roomKey(spaceId, documentId);
   let room = yRooms.get(key);
@@ -77,6 +102,18 @@ export function getRoom(spaceId: string, documentId: string): YRoom {
     yRooms.set(key, room);
   }
   return room;
+}
+
+export function setYRoomWriteBlocked(
+  spaceId: string,
+  documentId: string,
+  blocked: boolean,
+): boolean {
+  const room = yRooms.get(roomKey(spaceId, documentId));
+  if (!room) return false;
+  const previous = room.writeBlocked ?? false;
+  room.writeBlocked = blocked;
+  return previous;
 }
 
 /**
@@ -124,7 +161,10 @@ function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): vo
       }
     }
     for (const key of [...map.keys()]) {
-      if (!(key in item)) map.delete(key);
+      // `in` would see inherited keys, so a key named after an `Object.prototype`
+      // member (`__proto__`, `toString`, ...) always looked present and was never
+      // deleted — a removal on the wire silently no-op'd on the live document.
+      if (!Object.hasOwn(item, key)) map.delete(key);
     }
   }
 }
@@ -271,11 +311,21 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   const meta = await getDocument(await openSpaceStore(ids.spaceId), ids.documentId);
   if (!meta) return;
 
+  if (documentIsReadonly(meta)) {
+    appLogger.info("Skipped persisting a readonly document from its live room", {
+      spaceId: ids.spaceId,
+      documentId: ids.documentId,
+    });
+    return;
+  }
+
   const doc = room.doc;
   const serialized = await traced("persist.serialize", () =>
     serializeDocContent(meta.type, doc),
   );
-  const content = contentIsHtml(meta.type) ? stripScriptTags(serialized) : serialized;
+  const content = contentIsHtml(meta.type)
+    ? sanitizeDocumentHtml(serialized)
+    : serialized;
 
   const store = await openSpaceStore(ids.spaceId);
   await traced("persist.write", () =>
@@ -303,14 +353,71 @@ export async function persistYRoomDraft(key: string): Promise<void> {
     room.lastEditorId,
     {
       message: "Collaboration checkpoint",
+      kind: "checkpoint",
     },
   );
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
 export function persistYRoomDraftBestEffort(key: string): void {
-  void persistYRoomDraft(key).catch((error) => {
+  void settledPersist(key);
+}
+
+function settledPersist(key: string): Promise<void> {
+  return persistYRoomDraft(key).catch((error) => {
     appLogger.warn("Failed to persist realtime room draft", { error, roomKey: key });
+  });
+}
+
+const ROOM_GRACE_MS = 10 * 60 * 1000;
+const MAX_IDLE_ROOMS = 200;
+const ROOM_SWEEP_INTERVAL_MS = 60 * 1000;
+
+function roomIsIdle(room: YRoom): boolean {
+  return room.clients.size === 0 && room.presences.size === 0 && !room.loading;
+}
+
+export function sweepIdleYRooms(now = Date.now()): number {
+  const idle: Array<{ key: string; idleSince: number }> = [];
+  for (const [key, room] of yRooms) {
+    if (!roomIsIdle(room)) {
+      room.idleSince = undefined;
+      continue;
+    }
+    if (room.idleSince === undefined) room.idleSince = now;
+    idle.push({ key, idleSince: room.idleSince });
+  }
+
+  let dropped = 0;
+  for (const { key, idleSince } of idle) {
+    if (now - idleSince >= ROOM_GRACE_MS) {
+      yRooms.delete(key);
+      dropped++;
+    }
+  }
+
+  const surviving = idle
+    .filter(({ key }) => yRooms.has(key))
+    .sort((a, b) => a.idleSince - b.idleSince);
+  for (const { key } of surviving.slice(
+    0,
+    Math.max(0, surviving.length - MAX_IDLE_ROOMS),
+  )) {
+    yRooms.delete(key);
+    dropped++;
+  }
+  return dropped;
+}
+
+const roomSweep = setInterval(() => sweepIdleYRooms(), ROOM_SWEEP_INTERVAL_MS);
+roomSweep.unref?.();
+
+export function retireYRoom(key: string): void {
+  void settledPersist(key).then(() => {
+    const room = yRooms.get(key);
+    if (!room || !roomIsIdle(room)) return;
+    room.idleSince = Date.now();
+    sweepIdleYRooms();
   });
 }
 
@@ -362,7 +469,7 @@ function clearAgentPresence(key: string, documentId: string): void {
   );
 
   if (room.clients.size === 0 && room.presences.size === 0) {
-    yRooms.delete(key);
+    retireYRoom(key);
   }
 }
 
@@ -570,7 +677,7 @@ function applyBlockSpliceInsert(
   splice: { position: "start" | "end"; content: string },
   onUpdate: (update: Uint8Array) => void,
 ): boolean {
-  const blocks = htmlToDoc(stripScriptTags(splice.content)).content ?? [];
+  const blocks = htmlToDoc(sanitizeDocumentHtml(splice.content)).content ?? [];
   if (blocks.length === 0) return false;
 
   const insertIndex =
@@ -626,6 +733,10 @@ export async function transformDocumentContent(
     return null;
   }
 
+  if (documentIsReadonly(dbDoc)) {
+    throw new Error("Cannot edit readonly document");
+  }
+
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
     const persisted =
@@ -641,6 +752,10 @@ export async function transformDocumentContent(
       asBlockSpliceInsert(operations) !== null;
     const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
     return { content: transform(base), live: false };
+  }
+
+  if (room.writeBlocked) {
+    throw new Error("Cannot edit readonly document");
   }
 
   const doc = room.doc;

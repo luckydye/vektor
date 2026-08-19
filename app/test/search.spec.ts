@@ -332,6 +332,66 @@ describe("Search API Tests", () => {
   });
 });
 
+// The #128 repro, in its own space so the corpus is exactly these three docs.
+describe("Search Precision", () => {
+  let precisionSpaceId: string;
+
+  beforeAll(async () => {
+    const spaceResponse = await apiRequest("/api/v1/spaces", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Search Precision Space",
+        slug: `search-precision-space-${Date.now()}`,
+      }),
+    });
+
+    expect(spaceResponse.status).toBe(201);
+    precisionSpaceId = (await spaceResponse.json()).space.id;
+
+    const docs = [
+      { slug: "apple", content: "red fruit orchard", properties: { title: "Apple" } },
+      { slug: "banana", content: "yellow tropical", properties: { title: "Banana" } },
+      { slug: "cherry", content: "small stone pit", properties: { title: "Cherry" } },
+    ];
+
+    for (const doc of docs) {
+      const response = await apiRequest(`/api/v1/spaces/${precisionSpaceId}/documents`, {
+        method: "POST",
+        body: JSON.stringify(doc),
+      });
+      expect(response.status).toBe(201);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+
+  const search = async (term: string) => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${precisionSpaceId}/search?q=${encodeURIComponent(term)}`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    return data.results.map((result: { slug: string }) => result.slug);
+  };
+
+  it.each([
+    "qwertyuiop",
+    "xxxyyyzzz",
+    "notarealword",
+  ])("returns nothing for %s, which no document contains", async (term) => {
+    expect(await search(term)).toEqual([]);
+  });
+
+  it.each([
+    ["Apple", "apple"],
+    ["Cherry", "cherry"],
+    ["tropical", "banana"],
+  ])("returns only the document containing %s", async (term, slug) => {
+    expect(await search(term)).toEqual([slug]);
+  });
+});
+
 describe("Search Property Filters", () => {
   it("should filter documents by property value", async () => {
     // Filter for documents with category = "Programming"

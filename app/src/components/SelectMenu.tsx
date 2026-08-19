@@ -1,4 +1,5 @@
 import { For, mergeProps } from "solid-js";
+import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import type { IconName } from "./Icon.tsx";
 import { SelectItem } from "./SelectItem.tsx";
 
@@ -7,6 +8,7 @@ export interface SelectMenuItem {
   label: string;
   icon?: IconName;
   iconSvg?: string;
+  badge?: CategoryBadgeData;
 }
 
 interface Props {
@@ -29,6 +31,7 @@ export function SelectMenu(props: Props) {
           <SelectItem
             icon={item.icon}
             iconSvg={item.iconSvg}
+            badge={item.badge}
             label={item.label}
             selected={isSelected(item.id)}
             onClick={() => {

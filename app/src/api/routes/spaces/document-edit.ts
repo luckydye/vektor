@@ -1,4 +1,4 @@
-import { authenticateJobTokenOrSpaceRole, verifyDocumentRole } from "#acl/guards.ts";
+import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -15,7 +15,7 @@ import { getDocument, updateDocument } from "#db/space/documents.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
 import { documentIsReadonly } from "#documents/types.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";
-import { stripScriptTags } from "#utils/html.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 /**
  * Applies partial edit operations to a document through the collaboration
@@ -46,7 +46,12 @@ export const POST: ApiRouteHandler = (context) =>
     // Parity with PATCH/DELETE on the sibling route: a user session must also
     // hold editor on the document itself, not just on the space.
     if (auth.type === "user") {
-      await verifyDocumentRole(spaceId, id, auth.user.id, Permission.EDITOR);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        auth.user.id,
+        Permission.EDITOR,
+      );
     }
 
     if (documentIsReadonly(existingDoc)) {
@@ -61,7 +66,7 @@ export const POST: ApiRouteHandler = (context) =>
       result = await transformDocumentContent(
         spaceId,
         id,
-        (content) => stripScriptTags(applyEditOperations(content, operations)),
+        (content) => sanitizeDocumentHtml(applyEditOperations(content, operations)),
         operations,
       );
     } catch (error) {

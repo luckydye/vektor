@@ -11,7 +11,6 @@ export const ResourceType = {
   DOCUMENT_TREE: "document_tree",
   CATEGORY: "category",
   EXTENSION: "extension",
-  SECRET: "secret",
   FEATURE: "feature",
 } as const;
 
@@ -63,6 +62,15 @@ export type FeatureOverrides = Partial<Record<FeatureName, boolean>>;
  * A grant to it is what makes a space or document publicly readable.
  */
 export const PUBLIC_GROUP = "public";
+
+/** How an access token appears in the `acl.user_id` column. */
+export const TOKEN_PRINCIPAL_PREFIX = "token:";
+
+/** The token id behind an ACL identity, or null when it is a plain user id. */
+export function tokenIdFromPrincipal(userId: string | undefined): string | null {
+  if (!userId?.startsWith(TOKEN_PRINCIPAL_PREFIX)) return null;
+  return userId.slice(TOKEN_PRINCIPAL_PREFIX.length) || null;
+}
 
 /**
  * Canonical shape of a group name. Group membership drives ACL access, so
@@ -125,6 +133,12 @@ export function isFeature(value: unknown): value is Feature {
   );
 }
 
+export function isResourceType(value: unknown): value is ResourceType {
+  return (
+    typeof value === "string" && (Object.values(ResourceType) as string[]).includes(value)
+  );
+}
+
 /** The grantable roles, weakest first. For validation messages and pickers. */
 export function allPermissions(): Permission[] {
   return (Object.keys(PERMISSION_HIERARCHY) as PermissionName[])
@@ -140,6 +154,41 @@ export function allFeatures(): Feature[] {
 /** Rank of a permission. Unknown or absent ranks 0 so it never outranks a real grant. */
 export function permissionLevel(permission: string | undefined): number {
   return isPermission(permission) ? rankOf(permission as unknown as PermissionName) : 0;
+}
+
+/**
+ * The item whose role ranks highest, or undefined when there are none. A user
+ * can hold several grants on one resource — their own plus one per group — and
+ * `hasPermission` lets the strongest decide, so everything reporting or
+ * delegating a role resolves it through here to agree with that.
+ */
+export function strongestGrant<T>(
+  items: Iterable<T>,
+  permissionOf: (item: T) => string | undefined,
+): T | undefined {
+  let best: T | undefined;
+  for (const item of items) {
+    if (
+      best === undefined ||
+      permissionLevel(permissionOf(item)) > permissionLevel(permissionOf(best))
+    ) {
+      best = item;
+    }
+  }
+  return best;
+}
+
+/** The weaker of two roles. */
+export function weakerPermission<T extends string | undefined>(a: T, b: T): T {
+  return permissionLevel(a) <= permissionLevel(b) ? a : b;
+}
+
+/** As above, for role names: a feature grant or a typo never wins. */
+export function highestPermission(
+  permissions: Iterable<string | undefined>,
+): Permission | undefined {
+  const roles = [...permissions].filter(isPermission);
+  return strongestGrant(roles, (role) => role);
 }
 
 /** Permission names ranking at or above `minPermission`, for ACL queries filtering by level. */

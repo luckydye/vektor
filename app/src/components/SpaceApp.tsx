@@ -1,6 +1,14 @@
 import { Route, Router, useParams, useSearchParams } from "@solidjs/router";
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { isServer } from "solid-js/web";
+import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
@@ -12,16 +20,19 @@ import {
 import { SsrUrlContext } from "#composeables/useRoute.ts";
 import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
 import { setClientLang } from "#utils/lang.ts";
+import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
 import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
+import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
 import { DocumentOverlay } from "./DocumentOverlay.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
@@ -101,11 +112,28 @@ export function SpaceApp(props: Props) {
     );
   }
 
-  const { currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
+  const { currentSpace, currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
+  const toast = useToast();
   const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
   const [hasMounted, setHasMounted] = createSignal(false);
   const [mobileSidebarOffset, setMobileSidebarOffset] = createSignal(0);
   const [isMobileSidebarDragging, setIsMobileSidebarDragging] = createSignal(false);
+
+  const [showOrganizationTour, setShowOrganizationTour] = createSignal(false);
+
+  /**
+   * Offers the organizing tour the first time this browser can actually organize.
+   *
+   * An effect rather than a line in `onMount` because the role is not always known
+   * at mount: without the SSR prop, or on a mid-session promotion, it arrives later.
+   */
+  let offeredOrganizationTour = false;
+  createEffect(() => {
+    if (offeredOrganizationTour || !hasMounted()) return;
+    if (!canEdit(currentSpace()?.userRole) || hasSeenOrganizationTour()) return;
+    offeredOrganizationTour = true;
+    setShowOrganizationTour(true);
+  });
 
   const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
 
@@ -166,7 +194,41 @@ export function SpaceApp(props: Props) {
     const spaceId = activeSpaceId();
     if (spaceId) extensions.init(spaceId).catch(console.error);
 
-    onCleanup(() => window.removeEventListener("resize", resetMobileDrawerOnDesktop));
+    let redirectingAfterRevocation = false;
+    let accessRefresh = Promise.resolve();
+
+    const handleRevocation = () => {
+      if (redirectingAfterRevocation) return;
+      redirectingAfterRevocation = true;
+      toast.show("Your access to this space was revoked.", "error", 10_000);
+      setTimeout(() => window.location.assign("/spaces"), 1200);
+    };
+
+    const refreshAccess = () => {
+      accessRefresh = accessRefresh
+        .then(async () => {
+          const previousRole = currentSpace()?.userRole;
+          const spaces = await api.spaces.get();
+          const refreshedSpace = spaces.find((candidate) => candidate.id === spaceId);
+          if (!refreshedSpace) {
+            handleRevocation();
+          } else if (refreshedSpace.userRole !== previousRole) {
+            toast.show("Your permissions in this space changed.", "info");
+          }
+        })
+        .catch(console.error);
+    };
+
+    const unsubscribeAccessChanges = api.subscribeToRealtimeAccessChanges((change) => {
+      if (change.spaceId !== spaceId || change.scope !== "space") return;
+      if (change.access === "none") handleRevocation();
+      else if (change.access === "refresh") refreshAccess();
+    });
+
+    onCleanup(() => {
+      unsubscribeAccessChanges();
+      window.removeEventListener("resize", resetMobileDrawerOnDesktop);
+    });
   });
 
   const layoutStyle = createMemo(() => ({
@@ -238,6 +300,14 @@ export function SpaceApp(props: Props) {
       </button>
 
       <Show when={hasMounted()}>
+        <DocumentOrganizationTour
+          show={showOrganizationTour()}
+          onUpdateShow={(value) => {
+            // Dismissal is the only way out, so this is where "seen" is recorded.
+            if (!value) markOrganizationTourSeen();
+            setShowOrganizationTour(value);
+          }}
+        />
         <CalDAVSetupDialog />
         <ToastContainer />
         <DocumentOverlay />

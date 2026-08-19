@@ -358,7 +358,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   const { createSpace } = await import("#db/space/spaces.ts");
   const { createId } = await import("#db/ids.ts");
   const { buildDocumentSearchText } = await import("#search/embedding.ts");
-  const { slugify } = await import("#utils/utils.ts");
+  const { slugify } = await import("#utils/slug.ts");
   const authSchema = await import("#db/schema/auth.ts");
   const space = await import("#db/schema/space.ts");
 

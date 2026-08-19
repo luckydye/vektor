@@ -1,6 +1,4 @@
 ---
-import { FirstSpacePrompt } from "#components/FirstSpacePrompt.tsx";
-import BaseLayout from "#layouts/BaseLayout.astro";
 import {
   LAST_VISITED_SPACE_KEY,
   resolveActiveSpaceSlug,
@@ -15,12 +13,9 @@ const activeSpaceSlug = await resolveActiveSpaceSlug(
   Astro.cookies.get(LAST_VISITED_SPACE_KEY)?.value,
 );
 
-if (activeSpaceSlug) {
-  return Astro.redirect(`/${activeSpaceSlug}`);
-}
+// No reachable space means there is nothing for a space-scoped route to render,
+// so the overview takes over: it states the empty case and offers creation only
+// when the account is allowed it.
+return Astro.redirect(activeSpaceSlug ? `/${activeSpaceSlug}` : "/spaces");
 ---
 
-<BaseLayout>
-  <!-- First Space Onboarding Prompt -->
-  <FirstSpacePrompt client:only="solid-js" />
-</BaseLayout>

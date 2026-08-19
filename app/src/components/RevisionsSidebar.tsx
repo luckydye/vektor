@@ -200,7 +200,8 @@ export function RevisionsSidebar(props: Props) {
     title: t("Activity"),
     icon: () => "activity",
     description: t("Open or close the document activity"),
-    group: "document",
+    group: "document:view",
+    order: 10,
     run: async () => {
       toggleWindow("revisions", { side: "right", width: 420 });
     },

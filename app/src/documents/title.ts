@@ -1,6 +1,5 @@
-import { propertyValueToText } from "#documents/properties.ts";
+import { type DocumentProperties, propertyValueToText } from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
-import type { DocumentPropertyValue } from "./properties.ts";
 
 /**
  * What a document is called in a list.
@@ -9,7 +8,7 @@ import type { DocumentPropertyValue } from "./properties.ts";
  * which therefore stays free of the client's i18n.
  */
 export function documentTitle(document: {
-  properties?: Record<string, DocumentPropertyValue> | null;
+  properties?: DocumentProperties | null;
 }): string {
   const title = document.properties?.title;
   return title ? propertyValueToText(title) : t("Untitled");

@@ -1,11 +1,5 @@
-import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
-import {
-  Feature,
-  Permission,
-  ResourceType,
-  type ResourceType as ResourceTypeValue,
-} from "#acl/permissions.ts";
-import { grantFeature } from "#acl/store.ts";
+import { validateTokenGrant, verifyAccess } from "#acl/guards.ts";
+import { Feature, isResourceType, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -19,11 +13,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   createAccessToken,
-  getTokenUserId,
-  grantTokenAccess,
   listAccessTokens,
   listTokenResources,
+  MAX_ACCESS_TOKEN_EXPIRY_DAYS,
 } from "#db/space/accessTokens.ts";
+import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens
@@ -34,7 +28,12 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     // Get all tokens for this space
     const tokens = await listAccessTokens(await openSpaceStore(spaceId));
@@ -72,7 +71,12 @@ export const POST: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
 
     // Token creation is a privileged delegation; restrict to space owners.
-    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      user.id,
+      Permission.OWNER,
+    );
 
     const body = await parseJsonBody(context.req.raw);
     const { name, resourceType, resourceId, permission, expiresInDays } = body;
@@ -92,12 +96,18 @@ export const POST: ApiRouteHandler = (context) =>
     // to a token does not escalate beyond what the caller has.
     const isExtensionsCapability = permission === "extensions";
 
-    if (!isExtensionsCapability) {
-      if (
-        !resourceType ||
-        typeof resourceType !== "string" ||
-        !Object.values(ResourceType).includes(resourceType as ResourceType)
-      ) {
+    // The capability is stored as the feature grant it is, so the token is one
+    // row like any other.
+    let grant: { resourceType: ResourceType; resourceId: string; permission: string };
+
+    if (isExtensionsCapability) {
+      grant = {
+        resourceType: ResourceType.FEATURE,
+        resourceId: Feature.MANAGE_EXTENSIONS,
+        permission: Permission.VIEWER,
+      };
+    } else {
+      if (!resourceType || !isResourceType(resourceType)) {
         throw badRequestResponse(
           `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
         );
@@ -107,49 +117,32 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Resource ID is required");
       }
 
-      // Validate the grant and ensure the caller cannot delegate more than they hold.
-      await verifyCanGrantTokenAccess(
-        spaceId,
-        user.id,
-        resourceType as ResourceTypeValue,
+      grant = {
+        resourceType,
         resourceId,
-        permission,
-      );
+        permission: validateTokenGrant(resourceType, permission),
+      };
     }
 
     let expiresAt: Date | undefined;
     if (expiresInDays !== undefined) {
-      if (typeof expiresInDays !== "number" || expiresInDays <= 0) {
-        throw badRequestResponse("expiresInDays must be a positive number");
+      if (!isValidPositiveDayDuration(expiresInDays, MAX_ACCESS_TOKEN_EXPIRY_DAYS)) {
+        throw badRequestResponse(
+          `expiresInDays must be greater than 0 and at most ${MAX_ACCESS_TOKEN_EXPIRY_DAYS}`,
+        );
       }
-      expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      expiresAt = addPositiveDays(new Date(), expiresInDays);
     }
 
-    // Create the token
-    const result = await createAccessToken(await openSpaceStore(spaceId), {
-      spaceId,
+    const store = await openSpaceStore(spaceId);
+    const result = await createAccessToken(store, {
+      ...grant,
       name: name.trim(),
       expiresAt,
       createdBy: user.id,
     });
 
-    // Grant the capability or resource access to the new token.
-    if (isExtensionsCapability) {
-      await grantFeature(spaceId, Feature.MANAGE_EXTENSIONS, getTokenUserId(result.id));
-    } else {
-      await grantTokenAccess({
-        tokenId: result.id,
-        spaceId,
-        // Validated above: resourceType/resourceId are required and checked
-        // when !isExtensionsCapability.
-        resourceType: resourceType as ResourceType,
-        resourceId: resourceId as string,
-        permission,
-      });
-    }
-
-    // Get the resources to return
-    const resources = await listTokenResources(await openSpaceStore(spaceId), result.id);
+    const resources = await listTokenResources(store, result.id);
 
     return createdResponse({
       id: result.id,

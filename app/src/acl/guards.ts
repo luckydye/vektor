@@ -1,29 +1,37 @@
 /**
  * The enforcement layer: everything a route calls to gate a request.
  *
- * Two tiers. `verify*` asks the ACL whether an identity holds a role/feature on
- * one resource. `authenticate*` sits above it, resolving whichever credential
- * the request carries (job token, access token, session, or none) to an
- * identity first. Both throw a 401/403/404 Response rather than returning a
- * verdict, so a route that forgets to handle the failure path fails closed.
+ * One access question, asked in one place. {@link decideAccess} decides whether
+ * an identity may act on a resource; {@link verifyAccess} throws that decision
+ * and {@link canAccess} returns it as a boolean, and there is no third way to
+ * ask. `authenticate*` sits on top, resolving whichever credential the request
+ * carries (job token, access token, session, or none) to an identity first.
+ * Guards throw a 401/403/404 Response rather than returning a decision, so a
+ * route that forgets the failure path fails closed.
+ *
+ * Features are the exception: {@link verifyFeatureAccess} and
+ * {@link verifyRevisionAccess} ask about a capability rather than a resource.
  */
 
+import { isInstanceAdmin } from "#acl/instanceGroups.ts";
 import {
   type AclViewer,
   allPermissions,
-  type Feature,
+  Feature,
   isPermission,
+  meetsPermissionLevel,
   Permission,
   PUBLIC_GROUP,
   ResourceType,
+  tokenIdFromPrincipal,
 } from "#acl/permissions.ts";
 import {
-  getUserGroups,
   hasAnyResourceScopedAccess,
   hasFeature,
   hasPermission,
   listAccessibleResources,
 } from "#acl/store.ts";
+import { getUserGroups } from "#acl/userGroups.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -32,33 +40,174 @@ import {
   unauthorizedResponse,
 } from "#api/http.ts";
 import type { ApiContext } from "#api/server/types.ts";
+import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
+import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "#db/space/accessTokens.ts";
-import { documentExists } from "#db/space/documents.ts";
-import { getSpace } from "#db/space/spaces.ts";
+import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+
+/** Distinguishes an access decision from a failure to read the ACL. */
+export function isAccessDenied(error: unknown): boolean {
+  return error instanceof Response;
+}
+
+/** A resource to gate a request on. */
+interface AclTarget {
+  type: ResourceType;
+  id: string;
+  /**
+   * Space targets only: also admit a caller who holds any resource-scoped grant
+   * inside the space, who must reach the container their resource lives in.
+   * Only for endpoints exposing bare space metadata — one that lists a
+   * space-wide collection (members, integrations) would hand a resource-scoped
+   * grantee unrelated data.
+   */
+  anyGrantInSpace?: boolean;
+}
 
 /**
- * Verify `userId` actually holds `requiredRole` on `target`, using the same
- * resolution as an interactive session would: document targets fall back to
- * the space role (see `hasPermission`), everything else is gated on the space
- * role directly. Throws a 403/404 Response on failure.
+ * Whether the space exists, from the index rather than by reading the space:
+ * a guard needs the fact, not the metadata and preferences behind it.
  */
-async function enforceUserRoleOnTarget(
-  spaceId: string,
-  userId: string,
-  requiredRole: Permission,
-  target: { type: ResourceType; id: string },
-): Promise<void> {
-  if (target.type === ResourceType.DOCUMENT) {
-    await verifyDocumentRole(spaceId, target.id, userId, requiredRole);
-  } else if (target.type === ResourceType.CATEGORY) {
-    await verifyCategoryRole(spaceId, target.id, userId, requiredRole);
-  } else {
-    await verifySpaceRole(spaceId, userId, requiredRole);
+async function spaceExists(spaceId: string): Promise<boolean> {
+  await initializeDatabases();
+  return (await getIndexedSpace(spaceId)) !== null;
+}
+
+/**
+ * Throw 404 unless the space exists, ahead of anything that opens its database
+ * — a space that is not there must surface as a decision, not as a read error.
+ * Exported for a route that reads the space before it can pick its guard.
+ */
+export async function requireSpace(spaceId: string): Promise<void> {
+  if (!(await spaceExists(spaceId))) {
+    throw notFoundResponse("Space");
   }
+}
+
+/**
+ * The groups an ACL question resolves against: the `public` group for an
+ * unauthenticated caller, none for an access token — its `token:<id>` principal
+ * carries its own grants — and the user's own groups otherwise.
+ */
+async function aclGroups(userId: string | null): Promise<string[] | undefined> {
+  if (!userId) return [PUBLIC_GROUP];
+  if (tokenIdFromPrincipal(userId)) return undefined;
+  return await getUserGroups(userId);
+}
+
+/** Why {@link decideAccess} answered the way it did. */
+type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
+
+/**
+ * **The** access question: may `userId` act on `target` at `requiredRole`?
+ * Every guard in this file is a caller of it, so a rule added here holds for
+ * sessions, access tokens, job tokens and public callers alike.
+ *
+ * @param userId The {@link SpaceAccess.aclUserId} convention: `null` or `""` is
+ *   unauthenticated, `token:<id>` an access token, anything else a user.
+ * @returns The decision, and the role it was actually decided at — which an
+ *   archived document raises above the one that was asked for.
+ */
+async function decideAccess(
+  spaceId: string,
+  target: AclTarget,
+  userId: string | null,
+  requiredRole: Permission,
+): Promise<{ decision: AccessDecision; requiredRole: Permission }> {
+  if (!(await spaceExists(spaceId))) {
+    return { decision: "no-space", requiredRole };
+  }
+
+  // A document is the one resource whose own state moves the bar, and the one
+  // whose absence is worth telling apart from a refusal.
+  let effectiveRole = requiredRole;
+  if (target.type === ResourceType.DOCUMENT) {
+    const document = await requiredRoleForDocument(spaceId, target.id, requiredRole);
+    if (!document.exists) {
+      return { decision: "no-document", requiredRole };
+    }
+    effectiveRole = document.requiredRole;
+  }
+
+  const principal = userId || "";
+  const groups = await aclGroups(userId);
+  let granted = await hasPermission(
+    spaceId,
+    target.type,
+    target.id,
+    principal,
+    effectiveRole,
+    groups,
+  );
+  // A resource-scoped grantee holds no row on the space itself. Widening here
+  // rather than in a caller keeps the anonymous case on the same path: `""` is
+  // refused like anyone else, not short-circuited into a 401.
+  if (!granted && target.anyGrantInSpace) {
+    granted = await hasAnyResourceScopedAccess(spaceId, principal, groups);
+  }
+  // An instance admin holds every role in every space, so the check sits here
+  // rather than in the routes that care: it has to hold for a delete as much as
+  // for a read, and asking it last leaves the ordinary path untouched.
+  if (!granted) {
+    granted = await isInstanceAdmin(principal);
+  }
+  return { decision: granted ? "ok" : "denied", requiredRole: effectiveRole };
+}
+
+/**
+ * Answer {@link decideAccess} with a thrown 401/403/404 Response, so a route
+ * that forgets the failure path fails closed. The single gate every route
+ * passes through, whatever resource it is protecting.
+ */
+export async function verifyAccess(
+  spaceId: string,
+  target: AclTarget,
+  userId: string | null,
+  requiredRole: Permission,
+): Promise<void> {
+  const decided = await decideAccess(spaceId, target, userId, requiredRole);
+  if (decided.decision === "ok") return;
+  throw denialResponse(decided, target, userId);
+}
+
+/**
+ * The Response a non-`ok` decision answers with. Split from {@link verifyAccess}
+ * so a guard that widens a refusal can branch on the decision itself: the
+ * 401/403 split below is presentation, and reading it back off a thrown
+ * Response confuses "not allowed" with "not authenticated".
+ */
+function denialResponse(
+  decided: { decision: AccessDecision; requiredRole: Permission },
+  target: AclTarget,
+  userId: string | null,
+): Response {
+  if (decided.decision === "no-space") return notFoundResponse("Space");
+  if (decided.decision === "no-document") return notFoundResponse("Document");
+
+  // An unauthenticated caller is told to authenticate; anyone else is told no.
+  if (!userId) return unauthorizedResponse();
+  if (tokenIdFromPrincipal(userId)) {
+    return forbiddenResponse(
+      `Token does not have ${decided.requiredRole} permission for this ${target.type}`,
+    );
+  }
+  return forbiddenResponse();
+}
+
+/**
+ * Answer {@link decideAccess} as a boolean, for a caller filtering a list
+ * rather than gating a request.
+ */
+export async function canAccess(
+  spaceId: string,
+  target: AclTarget,
+  userId: string | null,
+  requiredRole: Permission,
+): Promise<boolean> {
+  return (await decideAccess(spaceId, target, userId, requiredRole)).decision === "ok";
 }
 
 /**
@@ -71,8 +220,8 @@ async function enforceUserRoleOnTarget(
  *    A user-less token (`userId === null`) is a system/background credential
  *    and remains fully trusted within its space;
  *  - a space access token (`Authorization: Bearer at_...`) — a long-lived
- *    credential whose authority is defined entirely by its ACL entries
- *    (`token:<id>`); or
+ *    credential that remains valid while its creator belongs to the space and
+ *    whose authority is defined by its ACL entries (`token:<id>`); or
  *  - a logged-in user session.
  *
  * For every credential that carries a user identity we MUST verify it actually
@@ -98,7 +247,7 @@ export async function authenticateJobTokenOrSpaceRole(
     // A token carrying a user id only grants that user's real access. Only
     // user-less system tokens keep the historical "fully trusted" behaviour.
     if (parsed.userId) {
-      await enforceUserRoleOnTarget(spaceId, parsed.userId, requiredRole, target);
+      await verifyAccess(spaceId, target, parsed.userId, requiredRole);
     }
     return { type: "job", userId: parsed.userId };
   }
@@ -108,19 +257,86 @@ export async function authenticateJobTokenOrSpaceRole(
     // Access tokens are NOT trusted job tokens: their authority is whatever the
     // ACL grants `token:<id>`. Enforce the required role before proceeding,
     // otherwise any valid (even viewer-scoped) token passes write gates.
-    await verifyTokenPermission(
-      tokenResult,
+    await verifyAccess(
       spaceId,
-      target.type,
-      target.id,
+      { type: target.type, id: target.id },
+      getTokenUserId(tokenResult.tokenId),
       requiredRole,
     );
     return { type: "job", userId: getTokenUserId(tokenResult.tokenId) };
   }
 
   const user = requireUser(context);
-  await enforceUserRoleOnTarget(spaceId, user.id, requiredRole, target);
+  await verifyAccess(spaceId, target, user.id, requiredRole);
   return { type: "user", user };
+}
+
+/**
+ * Authorize a request against one document, whichever credential it carries —
+ * the document-scoped sibling of {@link authenticateJobTokenOrSpaceRole},
+ * extended with the unauthenticated case. For a resource that belongs to a
+ * document rather than to the space, an attachment above all.
+ *
+ * Returns the caller's ACL identity in the {@link SpaceAccess.aclUserId}
+ * convention: `null` is a trusted system caller, `""` is public.
+ */
+export async function authenticateDocumentAccess(
+  context: ApiContext,
+  spaceId: string,
+  documentId: string,
+  requiredRole: Permission,
+): Promise<{ aclUserId: string | null }> {
+  // Ahead of the credential, not delegated to the guards below: authenticating
+  // an access token opens the space store first, and a space that does not
+  // exist must be a decision rather than the error opening its database.
+  await requireSpace(spaceId);
+
+  const jobToken = context.req.raw.headers.get("X-Job-Token");
+  if (jobToken) {
+    // A token that does not parse is a bad credential, not an insufficient
+    // one — 401, as the document routes have always answered a forged one.
+    const parsed = parseJobToken(jobToken, spaceId);
+    if (!parsed) throw unauthorizedResponse();
+    // Only user-less system tokens read without a per-document check.
+    if (parsed.userId) {
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        parsed.userId,
+        requiredRole,
+      );
+    }
+    return { aclUserId: parsed.userId };
+  }
+
+  const auth = await tryAuthenticateRequest(context, spaceId);
+  if (auth?.type === "token") {
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      getTokenUserId(auth.token.tokenId),
+      requiredRole,
+    );
+    return { aclUserId: getTokenUserId(auth.token.tokenId) };
+  }
+  if (auth?.type === "user") {
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      auth.user.id,
+      requiredRole,
+    );
+    return { aclUserId: auth.user.id };
+  }
+
+  // Unauthenticated — the document check handles the `public` group.
+  await verifyAccess(
+    spaceId,
+    { type: ResourceType.DOCUMENT, id: documentId },
+    null,
+    requiredRole,
+  );
+  return { aclUserId: "" };
 }
 
 /**
@@ -145,10 +361,12 @@ export interface SpaceAccess {
   isPublic: boolean;
   /**
    * Set only when `allowResourceGrants` admitted a caller who holds no
-   * space-wide role: the documents their grants reach, which is everything they
-   * may see in the space. See {@link AclViewer.documentScope}.
+   * space-wide role: the resources of {@link SpaceAccessOptions.scopeType}
+   * their grants reach, which is everything they may see in the space.
    */
-  documentScope?: string[] | null;
+  resourceScope?: string[] | null;
+  /** The resource type {@link resourceScope} is expressed in. */
+  scopeType?: ResourceType;
 }
 
 /**
@@ -157,10 +375,14 @@ export interface SpaceAccess {
  */
 export function spaceAccessToViewer(access: SpaceAccess): AclViewer | null {
   if (access.aclUserId === null) return null;
+  // A scope in any other resource type says nothing about which documents this
+  // caller may read, so it must not be handed over as if it did.
+  const scopedToDocuments =
+    !access.scopeType || access.scopeType === ResourceType.DOCUMENT;
   return {
     userId: access.aclUserId,
     userGroups: access.aclGroups,
-    documentScope: access.documentScope,
+    documentScope: scopedToDocuments ? access.resourceScope : [],
   };
 }
 
@@ -170,21 +392,31 @@ export interface SpaceAccessOptions {
    * Admit a caller who holds no space-wide role but does hold a
    * document/tree/category grant in the space, confining them to the documents
    * those grants reach (`documentScope` on the result). Only for endpoints that
-   * list documents — a scoped grantee has to be able to browse to the documents
-   * they were shared. Endpoints exposing space-wide collections (members,
-   * uploads, integrations) must leave it off.
+   * list documents, or things owned by documents, and then filter every row
+   * against that scope. Endpoints exposing space-wide collections that cannot
+   * be filtered per document (members, integrations) must leave it off.
    */
   allowResourceGrants?: boolean;
+  /**
+   * The resource type such a grantee is confined to, documents unless set.
+   * Categories ask the same question about their own rows.
+   */
+  scopeType?: ResourceType;
+}
+
+/** {@link SpaceAccessOptions.scopeType}, defaulted. */
+function scopeType(options: SpaceAccessOptions | undefined): ResourceType {
+  return options?.scopeType ?? ResourceType.DOCUMENT;
 }
 
 /**
  * The space-role check behind {@link authenticateSpaceAccess}, widened for
- * `allowResourceGrants` callers. Returns the caller's `documentScope`: `null`
+ * `allowResourceGrants` callers. Returns the caller's `resourceScope`: `null`
  * when a space-wide role carries the whole space, or the allowlist a
  * resource-scoped grantee is confined to. Throws the original 403 when the
  * caller holds neither.
  */
-async function spaceRoleOrDocumentScope(
+async function spaceRoleOrResourceScope(
   spaceId: string,
   userId: string,
   requiredRole: Permission,
@@ -201,15 +433,15 @@ async function spaceRoleOrDocumentScope(
     // credential or the space itself is the problem.
     if (!(error instanceof Response) || error.status !== 403) throw error;
 
-    const documentIds = await listAccessibleResources(
+    const scopedIds = await listAccessibleResources(
       spaceId,
       userId,
-      ResourceType.DOCUMENT,
+      scopeType(options),
       userGroups,
       requiredRole,
     );
-    if (!documentIds || documentIds.length === 0) throw error;
-    return documentIds;
+    if (!scopedIds || scopedIds.length === 0) throw error;
+    return scopedIds;
   }
 }
 
@@ -220,7 +452,7 @@ async function spaceRoleOrDocumentScope(
  *    against the user's real role; user-less system tokens are trusted.
  *  - **Access token** (`Authorization: Bearer at_…`): verified via ACL
  *    (`token:<id>` identity).
- *  - **User session**: verified via `verifySpaceRole`.
+ *  - **User session**: verified against the space role.
  *  - **Unauthenticated**: admitted when the `public` group holds
  *    `requiredRole` on the space; otherwise throws 401.
  *
@@ -249,12 +481,32 @@ export async function authenticateSpaceAccess(
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");
-    if (parsed.userId) {
-      await verifySpaceRole(spaceId, parsed.userId, requiredRole);
+    const { userId } = parsed;
+    if (userId) {
+      // A job token is the user's own access, resource grants included: work
+      // they can start from the browser must not be refused because it went
+      // through an agent or a workflow.
+      const aclGroups = await getUserGroups(userId);
+      const resourceScope = await spaceRoleOrResourceScope(
+        spaceId,
+        userId,
+        requiredRole,
+        aclGroups,
+        options,
+        () =>
+          verifyAccess(
+            spaceId,
+            { type: ResourceType.SPACE, id: spaceId },
+            userId,
+            requiredRole,
+          ),
+      );
       return {
-        aclUserId: parsed.userId,
-        aclGroups: await getUserGroups(parsed.userId),
+        aclUserId: userId,
+        aclGroups,
         isPublic: false,
+        resourceScope,
+        scopeType: scopeType(options),
       };
     }
     // User-less system token — fully trusted within the space.
@@ -265,75 +517,86 @@ export async function authenticateSpaceAccess(
   const auth = await tryAuthenticateRequest(context, spaceId);
   if (auth?.type === "user") {
     const aclGroups = await getUserGroups(auth.user.id);
-    const documentScope = await spaceRoleOrDocumentScope(
+    const resourceScope = await spaceRoleOrResourceScope(
       spaceId,
       auth.user.id,
       requiredRole,
       aclGroups,
       options,
-      () => verifySpaceRole(spaceId, auth.user.id, requiredRole),
+      () =>
+        verifyAccess(
+          spaceId,
+          { type: ResourceType.SPACE, id: spaceId },
+          auth.user.id,
+          requiredRole,
+        ),
     );
     return {
       user: auth.user,
       aclUserId: auth.user.id,
       aclGroups,
       isPublic: false,
-      documentScope,
+      resourceScope,
+      scopeType: scopeType(options),
     };
   }
   if (auth?.type === "token") {
     const tokenUserId = getTokenUserId(auth.token.tokenId);
-    const documentScope = await spaceRoleOrDocumentScope(
+    const resourceScope = await spaceRoleOrResourceScope(
       spaceId,
       tokenUserId,
       requiredRole,
       undefined,
       options,
       () =>
-        verifyTokenPermission(
-          auth.token,
+        verifyAccess(
           spaceId,
-          ResourceType.SPACE,
-          spaceId,
+          { type: ResourceType.SPACE, id: spaceId },
+          getTokenUserId(auth.token.tokenId),
           requiredRole,
         ),
     );
     return {
       aclUserId: tokenUserId,
       isPublic: false,
-      documentScope,
+      resourceScope,
+      scopeType: scopeType(options),
     };
   }
 
-  // 3. Unauthenticated — check public group access
-  const hasPublicAccess = await hasPermission(
+  // 3. Unauthenticated — admitted by the `public` group.
+  const { decision } = await decideAccess(
     spaceId,
-    ResourceType.SPACE,
-    spaceId,
+    { type: ResourceType.SPACE, id: spaceId },
     "",
     requiredRole,
-    [PUBLIC_GROUP],
   );
-  if (!hasPublicAccess) {
-    const documentScope = options?.allowResourceGrants
+  // A space that does not exist is a 401 like any other refusal: its existence
+  // is not something an anonymous caller gets to learn.
+  if (decision === "no-space") {
+    throw unauthorizedResponse();
+  }
+  if (decision !== "ok") {
+    const resourceScope = options?.allowResourceGrants
       ? await listAccessibleResources(
           spaceId,
           "",
-          ResourceType.DOCUMENT,
+          scopeType(options),
           [PUBLIC_GROUP],
           requiredRole,
         )
       : null;
     // A document shared with the `public` group in an otherwise private space:
     // browsable, but only as far as that grant reaches.
-    if (!documentScope || documentScope.length === 0) {
+    if (!resourceScope || resourceScope.length === 0) {
       throw unauthorizedResponse();
     }
     return {
       aclUserId: "",
       aclGroups: [PUBLIC_GROUP],
       isPublic: true,
-      documentScope,
+      resourceScope,
+      scopeType: scopeType(options),
     };
   }
   return {
@@ -343,251 +606,35 @@ export async function authenticateSpaceAccess(
   };
 }
 
-export async function verifySpaceOwnership(
-  spaceId: string,
-  userId: string,
-  getSpace: (id: string) => Promise<{ createdBy: string } | null>,
-) {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    const space = await getSpace(spaceId);
-    if (!space) {
-      throw notFoundResponse("Space");
-    }
-    return space;
-  }
-
-  const space = await getSpace(spaceId);
-  if (!space) {
-    throw notFoundResponse("Space");
-  }
-  if (space.createdBy !== userId) {
-    throw forbiddenResponse();
-  }
-  return space;
-}
-
-export async function verifySpaceAccess(spaceId: string, userId: string): Promise<void> {
-  const space = await getSpace(spaceId);
-  if (!space) {
-    throw notFoundResponse("Space");
-  }
-
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return;
-  }
-
-  if (space.createdBy === userId) {
-    return;
-  }
-
-  const userGroups = await getUserGroups(userId);
-  const hasAccess = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    userId,
-    Permission.VIEWER,
-    userGroups,
-  );
-  if (!hasAccess) {
-    throw forbiddenResponse();
-  }
-}
-
-export async function verifySpaceRole(
-  spaceId: string,
-  userId: string,
-  requiredRole: Permission,
-): Promise<void> {
-  const space = await getSpace(spaceId);
-  if (!space) {
-    throw notFoundResponse("Space");
-  }
-
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return;
-  }
-
-  if (space.createdBy === userId) {
-    return;
-  }
-
-  const userGroups = await getUserGroups(userId);
-  const hasRole = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    userId,
-    requiredRole,
-    userGroups,
-  );
-  if (!hasRole) {
-    throw forbiddenResponse();
-  }
-}
-
 /**
- * Like `verifySpaceRole(..., Permission.VIEWER)`, but also lets through a user who
- * holds no space-wide grant but does hold a document/tree/category grant
- * somewhere in the space — they need to be able to reach the space
- * container their resource lives in. Only use this for endpoints that
- * expose bare space metadata; endpoints that list space-wide collections
- * (members, uploads, integrations, etc.) must keep using `verifySpaceRole`
- * directly so resource-scoped grantees aren't handed unrelated data.
+ * The role a caller must hold on a document, raised to `editor` while it is
+ * archived: archive is the trash, so a viewer-level grant — a public link
+ * included — stops resolving without being revoked, and a restore brings the
+ * shares back with it. Opens the space store, so only {@link decideAccess} may
+ * call it — it has already established that the space is there.
  */
-export async function verifyResourceAccess(
-  spaceId: string,
-  userId: string,
-): Promise<void> {
-  try {
-    await verifySpaceRole(spaceId, userId, Permission.VIEWER);
-    return;
-  } catch (error) {
-    // Only widen on "forbidden" (no space-wide grant) — a 404 (space
-    // doesn't exist) or any other error must propagate unchanged.
-    if (!(error instanceof Response) || error.status !== 403) {
-      throw error;
-    }
-    const userGroups = await getUserGroups(userId);
-    if (await hasAnyResourceScopedAccess(spaceId, userId, userGroups)) {
-      return;
-    }
-    throw error;
-  }
-}
-
-export async function verifyDocumentAccess(
+async function requiredRoleForDocument(
   spaceId: string,
   documentId: string,
-  userId: string | null,
-): Promise<void> {
-  const space = await getSpace(spaceId);
-  if (!space) {
-    throw notFoundResponse("Space");
-  }
-
-  // For unauthenticated users, check if document has public access
-  if (!userId) {
-    const hasPublicAccess = await hasPermission(
-      spaceId,
-      ResourceType.DOCUMENT,
-      documentId,
-      "", // Empty userId for public check
-      Permission.VIEWER,
-      [PUBLIC_GROUP],
-    );
-    if (!hasPublicAccess) {
-      throw unauthorizedResponse();
-    }
-    return;
-  }
-
-  const userGroups = await getUserGroups(userId);
-  const hasAccess = await hasPermission(
-    spaceId,
-    ResourceType.DOCUMENT,
-    documentId,
-    userId,
-    Permission.VIEWER,
-    userGroups,
-  );
-  if (!hasAccess) {
-    throw forbiddenResponse();
-  }
-}
-
-export async function verifyDocumentRole(
-  spaceId: string,
-  documentId: string,
-  userId: string | null,
   requiredRole: Permission,
-): Promise<void> {
-  // Reject references to documents that do not exist before evaluating access,
-  // mirroring verifySpaceRole. Otherwise no-auth mode (where hasPermission short
-  // -circuits to true) would authorize any documentId, real or not. Use an
-  // id-only existence check — loading the full document (with its content
-  // column) here cost tens of MB per auth call on large canvases.
-  if (!(await documentExists(await openSpaceStore(spaceId), documentId))) {
-    throw notFoundResponse("Document");
+): Promise<{ exists: boolean; requiredRole: Permission }> {
+  const state = await getDocumentAuthState(await openSpaceStore(spaceId), documentId);
+  if (!state?.archived) {
+    return { exists: state != null, requiredRole };
   }
-
-  // For unauthenticated users, check if document has public access with required role
-  if (!userId) {
-    const hasPublicAccess = await hasPermission(
-      spaceId,
-      ResourceType.DOCUMENT,
-      documentId,
-      "", // Empty userId for public check
-      requiredRole,
-      [PUBLIC_GROUP],
-    );
-    if (!hasPublicAccess) {
-      throw unauthorizedResponse();
-    }
-    return;
-  }
-
-  const userGroups = await getUserGroups(userId);
-  const hasRole = await hasPermission(
-    spaceId,
-    ResourceType.DOCUMENT,
-    documentId,
-    userId,
-    requiredRole,
-    userGroups,
-  );
-  if (!hasRole) {
-    throw forbiddenResponse();
-  }
-}
-
-export async function verifyCategoryRole(
-  spaceId: string,
-  categoryId: string,
-  userId: string | null,
-  requiredRole: Permission,
-): Promise<void> {
-  if (!userId) {
-    const hasPublicAccess = await hasPermission(
-      spaceId,
-      ResourceType.CATEGORY,
-      categoryId,
-      "",
-      requiredRole,
-      [PUBLIC_GROUP],
-    );
-    if (!hasPublicAccess) {
-      throw unauthorizedResponse();
-    }
-    return;
-  }
-
-  const userGroups = await getUserGroups(userId);
-  const hasCategoryRole = await hasPermission(
-    spaceId,
-    ResourceType.CATEGORY,
-    categoryId,
-    userId,
-    requiredRole,
-    userGroups,
-  );
-  if (hasCategoryRole) return;
-
-  const hasSpaceRole = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    userId,
-    requiredRole,
-    userGroups,
-  );
-  if (!hasSpaceRole) {
-    throw forbiddenResponse();
-  }
+  return {
+    exists: true,
+    requiredRole: meetsPermissionLevel(requiredRole, Permission.EDITOR)
+      ? requiredRole
+      : Permission.EDITOR,
+  };
 }
 
 /**
  * Verify user has access to a specific feature, throws 403 if not.
+ *
+ * @param documentId Resolve against this document's role rather than the space
+ *   role, for a feature exercised on one document. See {@link hasFeature}.
  *
  * @example
  * await verifyFeatureAccess(spaceId, Feature.COMMENT, userId);
@@ -597,9 +644,10 @@ export async function verifyFeatureAccess(
   spaceId: string,
   feature: Feature,
   userId: string,
+  documentId?: string,
 ): Promise<void> {
   const userGroups = await getUserGroups(userId);
-  const hasAccess = await hasFeature(spaceId, feature, userId, userGroups);
+  const hasAccess = await hasFeature(spaceId, feature, userId, userGroups, documentId);
   if (!hasAccess) {
     throw forbiddenResponse(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
@@ -608,62 +656,73 @@ export async function verifyFeatureAccess(
 }
 
 /**
- * Check if user can access an extension.
- * Returns true if user is an editor on the space OR has explicit ACL entry for the extension.
+ * What a caller may read of a revision, once authorized. `metadata` is false for
+ * a snapshot-exemption caller without `VIEW_HISTORY`: content, but not the
+ * authorship, message, checksum or lineage `/revisions` gates.
  */
-export async function canAccessExtension(
-  spaceId: string,
-  extensionId: string,
-  userId: string,
-): Promise<boolean> {
-  const space = await getSpace(spaceId);
-  if (!space) {
-    return false;
-  }
-
-  // Space owner has full access
-  if (space.createdBy === userId) {
-    return true;
-  }
-
-  const userGroups = await getUserGroups(userId);
-
-  // Check if user has editor permission on space (editors can access all extensions)
-  const isEditor = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    userId,
-    Permission.EDITOR,
-    userGroups,
-  );
-  if (isEditor) {
-    return true;
-  }
-
-  // Check if user has explicit ACL entry for this extension
-  return await hasPermission(
-    spaceId,
-    ResourceType.EXTENSION,
-    extensionId,
-    userId,
-    Permission.VIEWER,
-    userGroups,
-  );
+export interface RevisionAccess {
+  metadata: boolean;
 }
 
 /**
- * Verify user has access to an extension, throws if not.
+ * The one rule for reading a document's revision history:
+ *
+ *  1. Exactly the published revision: plain read access, since the document GET
+ *     serves the same content. Metadata is history, so the decision says whether
+ *     it may travel with it.
+ *  2. Anything else: `Feature.VIEW_HISTORY`, never implied by a role.
+ *
+ * Reading history is one privilege and does not subdivide — whether a revision
+ * was ever published decides nothing, since access to any revision is access to
+ * all of them.
+ *
+ * @param userId The {@link SpaceAccess.aclUserId} convention: `null` is a
+ *   trusted system caller, `""` is public. An access token passes
+ *   `getTokenUserId(tokenId)`, which is its ACL identity.
+ * @param revs The revisions whose **content** is about to be served. Omit for a
+ *   listing of the whole history, which gets no snapshot exemption.
  */
-export async function verifyExtensionAccess(
+export async function verifyRevisionAccess(
   spaceId: string,
-  extensionId: string,
-  userId: string,
-): Promise<void> {
-  const hasAccess = await canAccessExtension(spaceId, extensionId, userId);
-  if (!hasAccess) {
-    throw forbiddenResponse();
+  documentId: string,
+  userId: string | null,
+  revs?: readonly number[],
+): Promise<RevisionAccess> {
+  // A user-less system token is the space's own background work.
+  if (userId === null) return { metadata: true };
+
+  const requested = revs ?? [];
+
+  let publishedRev: number | null = null;
+  if (requested.length > 0) {
+    const document = await getDocument(await openSpaceStore(spaceId), documentId);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
+    publishedRev = document.publishedRev;
   }
+
+  const userGroups = userId === "" ? [PUBLIC_GROUP] : await getUserGroups(userId);
+  const history = await hasFeature(
+    spaceId,
+    Feature.VIEW_HISTORY,
+    userId,
+    userGroups,
+    documentId,
+  );
+
+  // Plain read access already buys the published snapshot's content.
+  const snapshotOnly =
+    requested.length > 0 && requested.every((rev) => rev === publishedRev);
+  if (snapshotOnly) {
+    return { metadata: history };
+  }
+
+  if (!history) {
+    throw forbiddenResponse("You don't have access to the view history feature");
+  }
+
+  return { metadata: true };
 }
 
 /** Resource types a token grant may target. Secrets/features are intentionally
@@ -676,23 +735,15 @@ const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
 ];
 
 /**
- * Authorize a request to grant an access token `permission` on a resource.
- *
- * Enforces two invariants that were previously missing (privilege escalation):
- *  1. `permission` / `resourceType` are valid values (rejects bogus inputs like
- *     the old "extensions" pseudo-permission that resolved to level 0).
- *  2. The caller may not grant a token MORE authority than the caller holds on
- *     that resource — a token is a delegation of the issuer's own access.
- *
- * Throws a 400/403 Response on violation.
+ * Validate a token grant and return the role it names. Shape only — authority is
+ * bounded at use. Keeps values that name nothing (a typo'd role, the old
+ * "extensions" pseudo-permission) out of the ACL, where they would sit as a
+ * grant that silently does nothing. Throws a 400 Response.
  */
-export async function verifyCanGrantTokenAccess(
-  spaceId: string,
-  callerUserId: string,
+export function validateTokenGrant(
   resourceType: ResourceType,
-  resourceId: string,
   permission: string,
-): Promise<void> {
+): Permission {
   if (!isPermission(permission)) {
     throw badRequestResponse(`Permission must be one of: ${allPermissions().join(", ")}`);
   }
@@ -701,14 +752,13 @@ export async function verifyCanGrantTokenAccess(
       `Token access cannot be granted for resource type: ${resourceType}`,
     );
   }
-
-  if (resourceType === ResourceType.DOCUMENT) {
-    await verifyDocumentRole(spaceId, resourceId, callerUserId, permission);
-  } else {
-    // Space, category, and extension grants are gated on the caller's
-    // space-level role (the level that lets them manage those resources).
-    await verifySpaceRole(spaceId, callerUserId, permission);
+  // Owner is authority over the space; below that scope it names nothing, so a
+  // token cannot be handed it there either.
+  if (permission === Permission.OWNER && resourceType !== ResourceType.SPACE) {
+    throw badRequestResponse("owner can only be granted on the space itself");
   }
+
+  return permission;
 }
 
 /**
@@ -739,11 +789,9 @@ export function extractAccessToken(context: ApiContext): string | null {
  * ```ts
  * const tokenAuth = await authenticateWithToken(context, spaceId);
  * if (tokenAuth) {
- *   // Check permissions via ACL
- *   const canEdit = await hasPermission(
+ *   const canEdit = await canAccess(
  *     spaceId,
- *     "document",
- *     documentId,
+ *     { type: ResourceType.DOCUMENT, id: documentId },
  *     getTokenUserId(tokenAuth.tokenId),
  *     Permission.EDITOR
  *   );
@@ -768,45 +816,9 @@ export async function authenticateWithToken(
 }
 
 /**
- * Verify token has required permission for a resource via ACL
- *
- * @example
- * ```ts
- * await verifyTokenPermission(tokenAuth, spaceId, "document", "doc123", Permission.EDITOR);
- * ```
- */
-export async function verifyTokenPermission(
-  tokenResult: ValidateTokenResult,
-  spaceId: string,
-  resourceType: ResourceType,
-  resourceId: string,
-  requiredPermission: Permission,
-): Promise<void> {
-  const tokenUserId = getTokenUserId(tokenResult.tokenId);
-
-  const hasAccess = await hasPermission(
-    spaceId,
-    resourceType,
-    resourceId,
-    tokenUserId,
-    requiredPermission,
-  );
-
-  if (!hasAccess) {
-    throw forbiddenResponse(
-      `Token does not have ${requiredPermission} permission for this ${resourceType}`,
-    );
-  }
-}
-
-/**
- * Verify a token holds a space-wide `feature` capability.
- *
- * Features are space-scoped (no resource id), so a feature-granted token can
- * act across the whole space — e.g. a token with `manage_extensions` can
- * install NEW extensions, not just ones that already exist. The check does not
- * fall back to a space role unless the role's defaults include the feature, so
- * a plain viewer/editor token (which lacks the feature by default) is rejected.
+ * Verify a token holds a space-wide `feature` capability, so a token granted one
+ * acts across the whole space. A plain viewer/editor token is rejected unless the
+ * role's defaults include the feature.
  */
 export async function verifyTokenFeature(
   tokenResult: ValidateTokenResult,
@@ -873,25 +885,4 @@ export async function tryAuthenticateRequest(
   }
 
   return null;
-}
-
-/**
- * Verify that the `public` group has the required role on a space, granting
- * unauthenticated callers access. Throws unauthorizedResponse() otherwise.
- */
-export async function verifyPublicSpaceRole(
-  spaceId: string,
-  requiredRole: Permission,
-): Promise<void> {
-  const hasPublicAccess = await hasPermission(
-    spaceId,
-    ResourceType.SPACE,
-    spaceId,
-    "",
-    requiredRole,
-    [PUBLIC_GROUP],
-  );
-  if (!hasPublicAccess) {
-    throw unauthorizedResponse();
-  }
 }

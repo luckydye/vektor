@@ -1,4 +1,5 @@
 import { and, eq, lt } from "drizzle-orm";
+import { one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { oauthIntegration, oauthIntegrationState } from "#db/schema/space.ts";
@@ -67,14 +68,15 @@ export async function getOAuthIntegrationForUser(
   userId: string,
   provider: OAuthIntegrationProvider,
 ): Promise<OAuthIntegrationConnection | null> {
-  const row = await s.db
-    .select()
-    .from(oauthIntegration)
-    .where(
-      and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
-    )
-    .limit(1)
-    .get();
+  const row = await one(
+    s.db
+      .select()
+      .from(oauthIntegration)
+      .where(
+        and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
+      )
+      .limit(1),
+  );
 
   return row ? rowToConnection(row) : null;
 }
@@ -84,14 +86,15 @@ export async function getOAuthIntegrationCredentialForUser(
   userId: string,
   provider: OAuthIntegrationProvider,
 ): Promise<OAuthIntegrationCredential | null> {
-  const row = await s.db
-    .select()
-    .from(oauthIntegration)
-    .where(
-      and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
-    )
-    .limit(1)
-    .get();
+  const row = await one(
+    s.db
+      .select()
+      .from(oauthIntegration)
+      .where(
+        and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
+      )
+      .limit(1),
+  );
 
   if (!row) {
     return null;
@@ -131,14 +134,15 @@ export async function upsertOAuthIntegrationForUser(
   instanceUrl: string | null,
   tokenSet: OAuthIntegrationTokenSet,
 ): Promise<OAuthIntegrationConnection> {
-  const existing = await s.db
-    .select()
-    .from(oauthIntegration)
-    .where(
-      and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
-    )
-    .limit(1)
-    .get();
+  const existing = await one(
+    s.db
+      .select()
+      .from(oauthIntegration)
+      .where(
+        and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
+      )
+      .limit(1),
+  );
 
   const now = new Date();
   const accessEncrypted = encryptSecret(tokenSet.accessToken);
@@ -303,18 +307,19 @@ export async function consumeOAuthIntegrationState(
 } | null> {
   const now = new Date();
 
-  const row = await s.db
-    .select()
-    .from(oauthIntegrationState)
-    .where(
-      and(
-        eq(oauthIntegrationState.state, state),
-        eq(oauthIntegrationState.userId, userId),
-        eq(oauthIntegrationState.provider, provider),
-      ),
-    )
-    .limit(1)
-    .get();
+  const row = await one(
+    s.db
+      .select()
+      .from(oauthIntegrationState)
+      .where(
+        and(
+          eq(oauthIntegrationState.state, state),
+          eq(oauthIntegrationState.userId, userId),
+          eq(oauthIntegrationState.provider, provider),
+        ),
+      )
+      .limit(1),
+  );
 
   if (!row) {
     return null;

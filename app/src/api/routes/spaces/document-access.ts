@@ -1,5 +1,5 @@
-import { verifyDocumentRole } from "#acl/guards.ts";
-import { Permission } from "#acl/permissions.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listDocumentAccess } from "#acl/store.ts";
 import {
   jsonResponse,
@@ -19,7 +19,12 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Editor on the document is what it takes to change sharing, so it is also
     // what it takes to see who the document is shared with.
-    await verifyDocumentRole(spaceId, documentId, user.id, Permission.EDITOR);
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.EDITOR,
+    );
 
     const access = await listDocumentAccess(spaceId, documentId);
     return jsonResponse({ access });

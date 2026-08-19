@@ -1,11 +1,9 @@
 import { inArray } from "drizzle-orm";
-import { verifySpaceRole } from "#acl/guards.ts";
-import { Permission, ResourceType } from "#acl/permissions.ts";
+import { canAccess, verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType, tokenIdFromPrincipal } from "#acl/permissions.ts";
 import {
   getResourceScopedGranteeUserIds,
   getSpaceMembersWithGroups,
-  getUserGroups,
-  hasPermission,
   listPermissions,
 } from "#acl/store.ts";
 import {
@@ -16,8 +14,9 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
+import { many } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
-import { getSpace } from "#db/space/spaces.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 export const GET: ApiRouteHandler = (context) =>
@@ -26,23 +25,24 @@ export const GET: ApiRouteHandler = (context) =>
       const user = requireUser(context);
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      await verifySpaceRole(spaceId, user.id, Permission.VIEWER);
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.VIEWER,
+      );
 
       // Member email addresses are PII: only expose them to editors/owners
       // (who need them e.g. for mentions); plain viewers get id/name/image.
-      const space = await getSpace(spaceId);
-      const canSeeEmails =
-        space?.createdBy === user.id ||
-        (await hasPermission(
-          spaceId,
-          ResourceType.SPACE,
-          spaceId,
-          user.id,
-          Permission.EDITOR,
-          await getUserGroups(user.id),
-        ));
+      const canSeeEmails = await canAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.EDITOR,
+      );
 
-      const permissions = await listPermissions(spaceId, ResourceType.SPACE, spaceId);
+      const store = await openSpaceStore(spaceId);
+      const permissions = await listPermissions(store, ResourceType.SPACE, spaceId);
       const { directUserIds, groupMembers } = await getSpaceMembersWithGroups(spaceId);
 
       // Users who only hold a document/tree/category grant (no space-wide
@@ -56,17 +56,17 @@ export const GET: ApiRouteHandler = (context) =>
       const allUserIds = [
         ...new Set([...directUserIds, ...groupMembers.keys(), ...resourceScopedUserIds]),
       ];
-      const users = await authDb
-        .select()
-        .from(userTable)
-        .where(inArray(userTable.id, allUserIds))
-        .all();
+      const users = await many(
+        authDb.select().from(userTable).where(inArray(userTable.id, allUserIds)),
+      );
 
       const userMap = new Map(users.map((u) => [u.id, u]));
 
       // Add direct user permissions
       const members = permissions
-        .filter((p) => p.userId && !p.groupId)
+        // A token holds a space grant but is a credential a member issued, not
+        // a member — and it is listed with the rest of the access elsewhere.
+        .filter((p) => p.userId && !p.groupId && !tokenIdFromPrincipal(p.userId))
         .map((p) => {
           const userData = p.userId ? userMap.get(p.userId) : undefined;
 
