@@ -67,15 +67,14 @@ describe("UsersOverview", () => {
     expect(queryByText(document.body, "No accounts have signed in yet.")).toBeTruthy();
   });
 
-  // A 403 is what a caller who lost their admin rights mid-session gets, and an
-  // empty table would read as an instance with nobody in it.
+  // The register comes back empty for a caller who may not see it, so a request
+  // that failed outright has to say so — an empty table would otherwise read as
+  // an instance with nobody in it.
   it("reports a failure instead of an empty register", async () => {
-    mount({ users: [], error: "You are not allowed to list the instance's users" });
+    mount({ users: [], error: "Failed to list users" });
     await settle();
 
-    expect(
-      queryByText(document.body, "You are not allowed to list the instance's users"),
-    ).toBeTruthy();
+    expect(queryByText(document.body, "Failed to list users")).toBeTruthy();
     expect(queryByText(document.body, "No accounts have signed in yet.")).toBeNull();
   });
 });

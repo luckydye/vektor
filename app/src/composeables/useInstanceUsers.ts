@@ -6,9 +6,10 @@ import { useQuery } from "./query.ts";
  * The instance's user register, and whether the caller may see it at all.
  *
  * Both answers come from the server: `users/me` says who administers the
- * instance, and the register itself is admin-only, so the query stays disabled
- * for everyone else rather than the UI swallowing a 403. `active` keeps it from
- * being read until the tab showing it is open.
+ * instance, and the register is what `/users` answers unscoped — empty for
+ * anyone else, so the query stays disabled rather than the page rendering that
+ * emptiness as an instance with nobody in it. `active` keeps it from being read
+ * until the tab showing it is open.
  */
 export function useInstanceUsers(active: Accessor<boolean>) {
   // The same key `useSpace` reads, so asking here costs no extra request.

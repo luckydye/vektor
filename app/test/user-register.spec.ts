@@ -15,8 +15,9 @@ import {
  * `GET /api/v1/users` unscoped: the register, which hands over the email and
  * group claim of people the caller shares nothing with. The route's scoped forms
  * are covered by the access matrix, which pins them to `?spaceId=` — so this is
- * the spec for the form that matrix cannot reach, and the two things worth
- * proving are that an instance admin reads it and that nobody else does.
+ * the spec for the form that matrix cannot reach, and what it proves is that an
+ * instance admin reads the register and that the empty list everyone else gets
+ * is empty of other people rather than merely status-checked.
  */
 
 const PORT = 7531;
@@ -94,10 +95,17 @@ describe("GET /api/v1/users (unscoped: the register)", () => {
     expect(byId.get(member.id)?.groups).toEqual([]);
   });
 
-  it("refuses a signed-in user who does not administer the instance", async () => {
+  // Empty rather than refused, like `/spaces` and `/search`. The assertion that
+  // matters is not the status but the body: an empty list is only correct if it
+  // is actually empty of other people.
+  it("answers a signed-in non-admin with an empty register", async () => {
     const res = await apiRequest("/api/v1/users", member.token);
-    expect(res.status).toBe(403);
-    expect(await res.text()).not.toContain(admin.email);
+    expect(res.status).toBe(200);
+
+    const body = await res.text();
+    expect(JSON.parse(body)).toEqual([]);
+    expect(body).not.toContain(admin.email);
+    expect(body).not.toContain(member.email);
   });
 
   it("refuses a caller with no session at all", async () => {

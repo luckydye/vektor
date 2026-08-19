@@ -923,8 +923,8 @@ export class ApiClient {
     },
     /**
      * The register: every account on the instance, which is what the same
-     * collection answers unscoped. Admins only — 403 for everyone else, which is
-     * why the users tab is not offered to them.
+     * collection answers unscoped. Admins only — everyone else gets an empty
+     * list, which is also why the users tab is not offered to them.
      */
     all: async () => {
       return await this.apiGet<InstanceUser[]>(this.baseUrl, "/api/v1/users");

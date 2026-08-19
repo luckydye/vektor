@@ -199,7 +199,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | POST | `/chat/completions` | OpenAI/Anthropic/Ollama-compatible chat completions proxy |
 | GET/POST | `/auth/cli` | CLI login approval page / approve and mint a one-time code |
 | POST | `/auth/cli/token` | Exchange that code for a space access token |
-| GET | `/users` | Profile lookup (`?id=` / `?spaceId=`), or unscoped the instance register (admins) |
+| GET | `/users` | Profile lookup (`?id=` / `?spaceId=`), or unscoped the register an admin may see |
 | GET | `/users/me` | Current user profile |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
@@ -401,17 +401,18 @@ curl -sS -H "Content-Type: application/json" \
 
 ### `GET /users`
 
-- **Auth**: session (`requireUser`); unscoped also requires administering the instance
-  (`VEKTOR_ADMIN_GROUPS`).
+- **Auth**: session (`requireUser`). Unscoped, what comes back depends on whether the
+  caller administers the instance (`VEKTOR_ADMIN_GROUPS`).
 - **Query**: `id` (single user), `spaceId` (space members), or neither (the register).
 - **Behavior (`id`)**: returns `{ id, name, image }` for that user, `404` if none.
 - **Behavior (`spaceId`)**: `viewer` on the space, returns an array of
   `{ id, name, image }` for all space members (ACL member ids + the caller).
 - **Behavior (unscoped)**: the user register — every account, newest first, as
   `{ id, name, email, image, groups, createdAt }`, where `groups` is the stored IdP
-  claim without the synthetic `public`. Instance admins only; everyone else gets `403`.
-  An admin is already owner on every space that exists, so the register exposes nothing
-  they could not read a space at a time.
+  claim without the synthetic `public`. An admin is already owner on every space that
+  exists, so the register exposes nothing they could not read a space at a time. Anyone
+  else gets `200 []`, not a refusal: like `/spaces` and `/search`, this lists what the
+  caller may see, and for them that is nothing.
 - The scoped forms never include email (PII), which is what keeps them answerable to any
   signed-in account. `image` is the provider's picture, a derived Gravatar URL when one
   is configured, or `null` for a client-drawn avatar.

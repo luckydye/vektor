@@ -9,7 +9,6 @@ import {
 } from "#acl/permissions.ts";
 import { getSpaceMemberIds } from "#acl/store.ts";
 import {
-  forbiddenResponse,
   jsonResponse,
   notFoundResponse,
   requireUser,
@@ -53,16 +52,17 @@ function storedGroups(raw: string | null): string[] {
  *   - `?spaceId=<id>`    → members of a space the caller belongs to, the same
  *                          minimal profiles
  *   - unscoped           → the register: every account with its email, group
- *                          claim and join date. Instance admins only.
+ *                          claim and join date, for an instance admin — and an
+ *                          empty list for anyone else.
  *
  * The scoped forms are deliberately narrow, and stay so: they are what any
  * signed-in account may ask, and an unscoped listing there would dump the table
- * and every address in it. The register is the same listing behind the one gate
- * that makes it answerable — an instance admin is owner on every space that
- * exists, so it shows them nothing they could not read a space at a time —
- * which is why a caller who does not administer the instance gets 403 rather
- * than a 400 telling them to scope the request. Inviting people is still done
- * by email through the permissions endpoint; nobody needs the register for that.
+ * and every address in it. Unscoped is the register, and what makes it
+ * answerable is that an instance admin is owner on every space that exists — it
+ * shows them nothing they could not read a space at a time. Anyone else gets an
+ * empty array, not a refusal: this is a listing of what the caller may see, and
+ * for them that is nothing. Inviting people is still done by email through the
+ * permissions endpoint; nobody needs the register for that.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -127,8 +127,13 @@ export const GET: ApiRouteHandler = (context) =>
       return jsonResponse(members.map(toPublicProfile));
     }
 
+    // Everything the caller may see, which is every account for an instance admin
+    // and none for anyone else — the same shape of answer as `/spaces` and
+    // `/search`, rather than a refusal. `isInstanceAdmin` filters here, it does
+    // not gate: nothing is withheld from a caller who could name it, because
+    // there is nothing to name.
     if (!(await isInstanceAdmin(caller.id))) {
-      throw forbiddenResponse("You are not allowed to list the instance's users");
+      return jsonResponse([]);
     }
 
     const accounts = await db
