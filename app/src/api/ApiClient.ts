@@ -48,6 +48,23 @@ export interface CurrentUser extends User {
   canCreateSpace: boolean;
   /** The caller's own instance-admin groups; empty unless they administer it. */
   adminGroups: string[];
+  /** Whether the caller administers the instance — see `users/me`. */
+  isAdmin: boolean;
+}
+
+/**
+ * A register entry: an account as an instance admin sees it, which is more than
+ * the {@link User} anyone else may read — the email of someone they share no
+ * space with, and the group claim their access is decided by.
+ */
+export interface InstanceUser {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+  /** The stored IdP group claim, without the synthetic `public`. */
+  groups: string[];
+  createdAt: Date | string;
 }
 
 export interface Space {
@@ -903,6 +920,13 @@ export class ApiClient {
     },
     me: async () => {
       return await this.apiGet<CurrentUser>(this.baseUrl, "/api/v1/users/me");
+    },
+    /**
+     * Every account on the instance. Admins only; 403 for everyone else, which
+     * is why the users tab is not offered to them.
+     */
+    directory: async () => {
+      return await this.apiGet<InstanceUser[]>(this.baseUrl, "/api/v1/users/directory");
     },
     /**
      * People the caller shares an OAuth group with — invite suggestions.

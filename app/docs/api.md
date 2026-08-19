@@ -201,6 +201,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | POST | `/auth/cli/token` | Exchange that code for a space access token |
 | GET | `/users` | Minimal public profile lookup (`?id=` or `?spaceId=`) |
 | GET | `/users/me` | Current user profile |
+| GET | `/users/directory` | Every account on the instance (instance admins only) |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
 | GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space |
@@ -423,11 +424,13 @@ curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
 ### `GET /users/me`
 
 - **Auth**: session (`requireUser`).
-- **Returns**: `200 { id, name, email, image, canCreateSpace, adminGroups }` —
+- **Returns**: `200 { id, name, email, image, canCreateSpace, adminGroups, isAdmin }` —
   `canCreateSpace` is the instance-level gate (`VEKTOR_SPACE_CREATION_GROUPS`), which no
   space-scoped `permissions/me` can carry. `adminGroups` lists the caller's own
   `VEKTOR_ADMIN_GROUPS` memberships — empty unless they administer the instance — and is
-  what the client names when it grants itself standing access to a space.
+  what the client names when it grants itself standing access to a space. `isAdmin` is
+  whether they administer it at all, which no-auth's local account does without being in
+  any group.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/users/me"
@@ -443,12 +446,40 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/me"
 }
 ```
 
+### `GET /users/directory`
+
+- **Auth**: session (`requireUser`), and the caller must administer the instance
+  (`VEKTOR_ADMIN_GROUPS`); everyone else gets `403`.
+- **Behavior**: the user register — every account, newest first. This is the listing
+  `/users` refuses to serve, because it carries the email and group claim of people the
+  caller shares no space with. An instance admin is already owner on every space that
+  exists, so it exposes nothing they could not read a space at a time.
+- **Returns**: `200` array of `{ id, name, email, image, groups, createdAt }`, where
+  `groups` is the stored IdP claim without the synthetic `public`.
+
+```bash
+curl -sS -b "$COOKIE" "$VEKTOR/users/directory"
+```
+
+```json
+[
+  {
+    "id": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE",
+    "name": "Grace Hopper",
+    "email": "grace@acme.test",
+    "image": null,
+    "groups": ["vektor-admins"],
+    "createdAt": "2026-02-11T09:14:00.000Z"
+  }
+]
+```
+
 ### `GET /users/suggestions`
 
 - **Auth**: session (`requireUser`).
 - **Query**: `q?` — case-insensitive substring of name or email.
 - **Behavior**: everyone who shares at least one OAuth group with the caller, capped at
-  20. There is no global directory: a caller with no OAuth groups gets `[]`.
+  20. Not a listing of everyone: a caller with no OAuth groups gets `[]`.
 - **Returns**: `200` array of `{ id, name, email, image }`.
 
 ```bash
