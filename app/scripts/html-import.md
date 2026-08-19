@@ -55,6 +55,9 @@ name and key, or to the XWiki root page's title); `--out` is the database file;
 attachments are written under; `--max-attachment-mb` (default 100) refuses
 anything larger and reports it; `--limit N` keeps smoke tests fast.
 
+`--drop-root` drops the export's wrapper page even when it carries text of its
+own; see *The wrapper page* below.
+
 Confluence only: `--confluence-url` sets the origin that links to pages outside
 the export are repointed at — omit it and they become plain text.
 `--no-comments` drops page comment threads instead of appending them.
@@ -81,9 +84,30 @@ Both refuse to overwrite an existing database or a slug already active in
   heading, one blockquote per comment with its author and timestamp. Without
   this they would simply be dropped — the schema has no place for them.
 
-Categories work exactly as in `xar-to-space.ts`: every first-level page under the
-space home becomes a `category`, one that renders empty is replaced by its
-category, and its children move up a level.
+## Categories and the tree
+
+Every first-level page under the space home becomes a `category`. One that
+renders empty is replaced by its category and its children move up a level —
+otherwise the sidebar shows "Design" nested inside the "Design" category.
+
+The search for a document's parent **stops at its section**, because the category
+has taken the section page's place. Letting it walk further up re-parents every
+subtree onto the export's wrapper page, which then appears as a node inside every
+single category — the shape a real `see-Conference` import produced before this
+was fixed.
+
+### The wrapper page
+
+An export hangs everything off one page above the sections (`see-Conference`,
+`X / GreenTrails Startseite`). It is not a section, so no category covers it, and
+a document with no categorised ancestor never appears in the sidebar. So:
+
+- empty (the usual case) — dropped like any empty branch page;
+- with a body — kept, and *reported*, since deleting text is worse than storing a
+  document only search and links reach;
+- with `--drop-root` — dropped along with its text, and reported as such. Use it
+  when that text is the wiki's own "your space was created" placeholder, which is
+  what XWiki leaves behind.
 
 ## Content conversion
 
