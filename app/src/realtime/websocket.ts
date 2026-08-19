@@ -3,10 +3,10 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { auth } from "#auth";
+import { resolveRequestIdentity } from "#authSession";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { isNoAuthMode } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import {
   decrementWebSocketConnections,
@@ -85,17 +85,18 @@ async function authenticateConnection(
   request: IncomingMessage,
   spaceId: string,
 ): Promise<string | null> {
-  if (isNoAuthMode()) return LOCAL_USER_ID;
+  const { user } = await resolveRequestIdentity(request.headers as unknown as Headers);
 
-  const session = await auth.api.getSession({
-    headers: request.headers as unknown as Headers,
-  });
-
-  if (!session?.user?.id) {
+  if (!user) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
     websocket.close(WS_CLOSE_UNAUTHORIZED, "Unauthorized");
     return null;
   }
+
+  // No-auth's local user is owner on every space that exists, so the
+  // reachability check below can only agree — and it must not refuse a space
+  // this mode has yet to create.
+  if (isNoAuthMode()) return user.id;
 
   try {
     // Reachability only — a space role OR any document/tree/category grant, so
@@ -104,7 +105,7 @@ async function authenticateConnection(
     await verifyAccess(
       spaceId,
       { type: ResourceType.SPACE, id: spaceId, anyGrantInSpace: true },
-      session.user.id,
+      user.id,
       Permission.VIEWER,
     );
   } catch (error) {
@@ -118,7 +119,7 @@ async function authenticateConnection(
     return null;
   }
 
-  return session.user.id;
+  return user.id;
 }
 
 function toBuffer(rawMessage: Buffer | ArrayBuffer | Buffer[]): Buffer {

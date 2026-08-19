@@ -1,9 +1,9 @@
 import type { Next } from "hono";
-import { isCredentialPrincipal } from "#acl/permissions.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
-import { auth, authTrustedOrigins } from "#auth";
+import { authTrustedOrigins } from "#auth";
+import { resolveRequestIdentity } from "#authSession";
 import { getPublicEnv } from "#config";
 import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
@@ -66,28 +66,7 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
     headers.delete("x-forwarded-for");
   }
 
-  let user: App.Locals["user"] = null;
-  let session: App.Locals["session"] = null;
-  if (isNoAuthMode()) {
-    user = LOCAL_USER;
-    session = LOCAL_SESSION;
-  } else {
-    const authenticated = await auth.api.getSession({ headers });
-    if (authenticated) {
-      user = authenticated.user;
-      session = authenticated.session;
-    }
-    // Every guard reads a credential-shaped id as a credential, so a person
-    // carrying one would silently lose their groups and their place in the
-    // member lists. Refuse the session instead of guessing which they are.
-    if (user && isCredentialPrincipal(user.id)) {
-      appLogger.error("Refusing a session whose user id is credential-shaped", {
-        userId: user.id,
-      });
-      user = null;
-      session = null;
-    }
-  }
+  const { user, session } = await resolveRequestIdentity(headers);
 
   c.set("publicEnv", getPublicEnv());
   c.set("requestHeaders", headers);
