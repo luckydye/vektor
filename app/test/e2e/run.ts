@@ -72,6 +72,7 @@ const playwright = Bun.spawn(
       VEKTOR_E2E_SPACE: seeded.slug,
       VEKTOR_E2E_DOCUMENT: seeded.documentSlugs[0] ?? "untitled",
       VEKTOR_E2E_CANVAS: seeded.canvasSlug,
+      VEKTOR_E2E_CANVAS_SECOND: seeded.secondCanvasSlug,
     },
     stdout: "inherit",
     stderr: "inherit",

@@ -1,0 +1,143 @@
+/**
+ * POST /api/v1/spaces/:spaceId/jobs/run
+ *
+ * Runs a single extension job. jobIds are unique within a space — no extensionId required.
+ *
+ * Auth: X-Job-Token (job-to-job) OR user session (requires editor role).
+ *
+ * Body: { jobId: string, inputs?: Record<string, unknown>, stream?: boolean }
+ *
+ * Default:          runs inline, returns { outputs, logs }
+ * Stream (stream:true): SSE stream with events:
+ *   data: { type: "log",    message: string }
+ *   data: { type: "output", outputs: Record<string, unknown> }
+ *   data: { type: "error",  error: string }
+ *   data: [DONE]
+ */
+
+import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
+import {
+  badRequestResponse,
+  errorResponse,
+  jsonResponse,
+  parseJsonBody,
+  requireParam,
+  withApiErrorHandling,
+} from "#api/http.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getExtensionPackage, listExtensions } from "#db/space/extensions.ts";
+import { runJob } from "#jobs/scheduler.ts";
+import { appLogger } from "#observability/logger.ts";
+
+export const POST: ApiRouteHandler = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const spaceId = requireParam(context.var.params, "spaceId");
+
+      // Auth: job token OR user session
+      const auth = await authenticateJobTokenOrSpaceRole(
+        context,
+        spaceId,
+        Permission.EDITOR,
+      );
+      const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
+
+      const body = await parseJsonBody<{
+        jobId?: string;
+        inputs?: Record<string, unknown>;
+        stream?: boolean;
+      }>(context.req.raw);
+      const { jobId, inputs = {} } = body;
+
+      if (!jobId) return badRequestResponse("jobId is required");
+
+      // Resolve job across all extensions in the space
+      const store = await openSpaceStore(spaceId);
+      const extensions = await listExtensions(store);
+      let extensionId: string | undefined;
+      let entry: string | undefined;
+      for (const ext of extensions) {
+        const jobDef = ext.manifest.jobs?.find((j) => j.id === jobId);
+        if (jobDef) {
+          extensionId = ext.id;
+          entry = jobDef.entry;
+          break;
+        }
+      }
+
+      if (!extensionId || !entry) return badRequestResponse(`Job "${jobId}" not found`);
+
+      const zipBuffer = await getExtensionPackage(store, extensionId);
+      if (!zipBuffer)
+        return badRequestResponse(`Extension package not found for job "${jobId}"`);
+
+      if (body.stream) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const send = (data: unknown) => {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+            };
+
+            try {
+              const outputs = await runJob(
+                zipBuffer,
+                entry,
+                inputs,
+                spaceId,
+                (message) => send({ type: "log", message }),
+                {
+                  signal: context.req.raw.signal,
+                  initiatedByUserId,
+                  jobType: "single_job",
+                  jobId,
+                },
+              );
+              send({ type: "output", outputs });
+            } catch (err) {
+              const error = err instanceof Error ? err.message : "Job run failed";
+              send({ type: "error", error });
+            }
+
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
+      // Sync mode: run inline and return outputs
+      const logs: string[] = [];
+      const outputs = await runJob(
+        zipBuffer,
+        entry,
+        inputs,
+        spaceId,
+        (msg) => logs.push(msg),
+        {
+          initiatedByUserId,
+          jobType: "single_job",
+          jobId,
+        },
+      );
+
+      return jsonResponse({ outputs, logs });
+    },
+    {
+      fallbackMessage: "Job run failed",
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        appLogger.error("Job run error", { error: message });
+        return errorResponse(message, 500);
+      },
+    },
+  );

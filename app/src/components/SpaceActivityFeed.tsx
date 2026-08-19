@@ -9,8 +9,8 @@ import {
   groupActivityEntries,
   isPermissionEvent,
 } from "#utils/auditActivity.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
 
@@ -18,7 +18,6 @@ interface CompactActivityBatch {
   id: string;
   docId: string;
   action: string;
-  /** Permission batches describe membership, not a document. */
   isPermission: boolean;
   entries: AuditLog[];
 }
@@ -74,10 +73,6 @@ function getChangeCountLabel(count: number): string {
   return `${count} ${count === 1 ? t("change") : t("changes")}`;
 }
 
-/**
- * Secondary line of a card: a change count for document work, and the actual
- * membership changes ("Invited: Jane (editor)") for permission entries.
- */
 function getBatchSummary(batch: CompactActivityBatch): string {
   if (batch.isPermission) {
     const changes = getBatchChanges(batch);
@@ -94,7 +89,6 @@ function activityTimeMs(dateString: string | Date): number {
   }
 }
 
-/** Space entries batch by proximity: anything within a quarter hour is one visit. */
 function withinActivityWindow(entry: AuditLog, group: ActivityGroup): boolean {
   return Math.abs(activityTimeMs(group.time) - activityTimeMs(entry.createdAt)) <= 900000;
 }
@@ -233,8 +227,6 @@ export function SpaceActivityFeed(props: Props) {
                           </div>
                         </div>
 
-                        {/* Permission cards are not links, but keep the column so the
-                            middle column stays aligned with the document cards. */}
                         <Icon
                           class={twMerge(
                             "@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400",

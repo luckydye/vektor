@@ -12,10 +12,10 @@ import type { AuditLog } from "#api/client.ts";
 import { useAuditLogs } from "#composeables/useAuditLogs.ts";
 import { useRevisions } from "#composeables/useRevisions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import { DockedPanel } from "./DockedPanel.tsx";
 import { DocumentActivityFeed } from "./DocumentActivityFeed.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
@@ -63,14 +63,11 @@ export function RevisionsSidebar(props: Props) {
 
   const [publishedRev, setPublishedRev] = createSignal<number | null>(null);
   const [isPublishing, setIsPublishing] = createSignal(false);
-  // Tracked but not rendered here: RevisionView owns the banner. Kept so the
-  // close handler can clear it.
   const [, setSelectedRevisionNumber] = createSignal<number | null>(null);
 
   const { toggle: toggleWindow, windows } = useDockedWindows();
   const isOpen = createMemo(() => windows().get("revisions")?.open ?? false);
 
-  /** Sorted audit log entries, newest first. */
   const sortedEntries = createMemo(() =>
     [...auditLogs()].sort(
       (a, b) =>
@@ -81,8 +78,6 @@ export function RevisionsSidebar(props: Props) {
 
   const revisionsByNumber = createMemo(() => new Map(revisions().map((r) => [r.rev, r])));
 
-  // ── User resolver passed to DocumentActivityFeed ────────────────────────────
-
   function getUser(userId?: string | null) {
     return findMemberUser(members(), userId);
   }
@@ -90,8 +85,6 @@ export function RevisionsSidebar(props: Props) {
   function getUserName(userId?: string | null): string {
     return userDisplayName(getUser(userId), userId);
   }
-
-  // ── Per-entry helpers used in the action slot ───────────────────────────────
 
   function isPublishedEntry(entry: AuditLog): boolean {
     return !!entry.revisionId && entry.revisionId === publishedRev();
@@ -108,12 +101,9 @@ export function RevisionsSidebar(props: Props) {
     return revisionsByNumber().get(entry.revisionId)?.status ?? null;
   }
 
-  /** The most recent entry in a group that has a revision (used for the header action). */
   function primaryRevisionEntry(items: AuditLog[]): AuditLog | undefined {
     return items.find((i) => !!i.revisionId);
   }
-
-  // ── Data fetching ───────────────────────────────────────────────────────────
 
   async function fetchPublishedRev() {
     const spaceId = currentSpaceId();
@@ -135,15 +125,6 @@ export function RevisionsSidebar(props: Props) {
     await Promise.all([fetchAuditLogs(), fetchPublishedRev(), fetchHistory()]);
   }
 
-  // ── Revision actions ────────────────────────────────────────────────────────
-
-  /**
-   * The returned path carries the router base ("/{space}/") — it comes from
-   * `location.pathname` — so `navigate()` must pass `resolve: false` or the base
-   * lands twice ("/space/space/…"). A revision on its own is viewed as-is; the
-   * `base` a redline compares it against is added by RevisionView, which is
-   * where the server resolves it.
-   */
   function withRevisionQuery(revisionId: number): string {
     const query = new URLSearchParams(location.search);
     query.set("revision", String(revisionId));
@@ -172,13 +153,6 @@ export function RevisionsSidebar(props: Props) {
     );
   }
 
-  /**
-   * `base` is optional: without it the server compares against the revision
-   * this one was meant to change, and RevisionView writes the resolved pair
-   * into the URL. The revision is fetched for its status rather than read from
-   * the loaded history, because restoring `?revision=…&base=…` runs before the
-   * activity feed has any entries. RevisionView fetches the redline itself.
-   */
   async function showRevisionDiff(revisionId: number | null | undefined, base?: number) {
     if (!revisionId) return;
     const revision = await getRevision(revisionId);
@@ -222,10 +196,6 @@ export function RevisionsSidebar(props: Props) {
     );
   }
 
-  // ── Lifecycle / panel watcher ───────────────────────────────────────────────
-
-  // Scoped: the activity panel needs a document, so the action must not linger
-  // on the home page.
   registerScopedAction("revisions:toggle", {
     title: t("Activity"),
     icon: () => "activity",
@@ -248,15 +218,6 @@ export function RevisionsSidebar(props: Props) {
     });
   }
 
-  /**
-   * A `?revision=` in the URL opens that revision once the space is known — as
-   * its redline against `&base=` when that rides along.
-   *
-   * Read during setup, not in `onMount`: effects run in creation order, so an
-   * effect declared here would run *before* `onMount` filled these in, bail out
-   * on the null, and — having read no signal on that path — never run again.
-   * The panel only renders on the client, but SSR has no location to read.
-   */
   const urlRevision = isServer
     ? null
     : (() => {
@@ -267,12 +228,9 @@ export function RevisionsSidebar(props: Props) {
         return { rev, base: Number.isNaN(base) ? null : base };
       })();
 
-  // Latched, so a later space change cannot reopen what the user has closed.
   let urlRevisionOpened = false;
 
   createEffect(() => {
-    // Read first: an early return above this line would leave the effect
-    // tracking nothing, and the space resolves asynchronously on a cold load.
     const spaceId = currentSpaceId();
     if (!spaceId || urlRevisionOpened || urlRevision === null) return;
     urlRevisionOpened = true;

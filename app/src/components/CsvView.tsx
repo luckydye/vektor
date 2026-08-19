@@ -8,15 +8,9 @@ import "#editor/elements/table-view.ts";
 
 interface Props {
   documentId: string;
-  /** The document's stored CSV, so the first paint needs no request. */
   initialHtml?: string;
 }
 
-/**
- * Spreadsheet view for `csv` documents. The content is immutable through the
- * UI, so this only re-reads the document when a realtime event says it changed
- * (a re-upload or an import).
- */
 export function CsvView(props: Props) {
   const { currentSpaceId } = useSpace();
   const documentId = createMemo(() => props.documentId);

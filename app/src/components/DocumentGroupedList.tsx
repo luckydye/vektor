@@ -14,9 +14,9 @@ import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate, normalizeTimestamp } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
 
@@ -33,8 +33,6 @@ interface Props {
   batchActions?: (selectedIds: Set<string>, deselectAll: () => void) => JSX.Element;
   rowActions?: (doc: DocumentWithProperties) => JSX.Element;
 }
-
-// ── Time grouping ────────────────────────────────────────────────────────────
 
 const GROUP_ORDER = [
   "today",
@@ -71,15 +69,11 @@ export function DocumentGroupedList(props: Props) {
     import("#editor/elements/page-target.ts");
   });
 
-  // ── Category lookup ────────────────────────────────────────────────────────
-
   const categoryBySlug = createMemo(() => {
     const map = new Map<string, Category>();
     for (const c of props.categories ?? []) map.set(c.slug, c);
     return map;
   });
-
-  // ── Filters & sort ─────────────────────────────────────────────────────────
 
   const [dateRangeStart, setDateRangeStart] = createSignal<Date | null>(null);
   const [dateRangeEnd, setDateRangeEnd] = createSignal<Date | null>(null);
@@ -125,7 +119,6 @@ export function DocumentGroupedList(props: Props) {
       docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() >= start);
     }
     if (rangeEnd) {
-      // include the full end day
       const end = new Date(rangeEnd);
       end.setDate(end.getDate() + 1);
       docs = docs.filter(
@@ -161,8 +154,6 @@ export function DocumentGroupedList(props: Props) {
     }));
   });
 
-  // ── Selection ──────────────────────────────────────────────────────────────
-
   const [selectedIds, setSelectedIds] = createSignal(new Set<string>());
   const allIds = createMemo(() => filtered().map((d) => d.id));
   let lastClickedId: string | null = null;
@@ -192,8 +183,6 @@ export function DocumentGroupedList(props: Props) {
     setSelectedIds(new Set<string>());
   }
 
-  // Drop any selected id that's no longer in `items` (e.g. after paging) so
-  // stale ids from a previous page never reach batch actions.
   createEffect(
     on(
       () => props.items,
@@ -208,8 +197,6 @@ export function DocumentGroupedList(props: Props) {
     ),
   );
 
-  // ── Collapsed groups ───────────────────────────────────────────────────────
-
   const [collapsed, setCollapsed] = createSignal(new Set<TimeGroup>());
   function toggleCollapse(groupId: TimeGroup) {
     const next = new Set(collapsed());
@@ -217,8 +204,6 @@ export function DocumentGroupedList(props: Props) {
     else next.add(groupId);
     setCollapsed(next);
   }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   function docTitle(doc: DocumentListItem) {
     const title = doc.properties?.title ?? doc.properties?.name;
@@ -251,10 +236,8 @@ export function DocumentGroupedList(props: Props) {
 
   return (
     <div>
-      {/* Toolbar */}
       <Show when={props.showToolbar !== false}>
         <div class="mb-4 flex items-center gap-2">
-          {/* Date range picker */}
           <a-popover-trigger>
             <button
               slot="trigger"
@@ -315,7 +298,6 @@ export function DocumentGroupedList(props: Props) {
         </div>
       </Show>
 
-      {/* Deselect + batch actions (outside toolbar, when toolbar hidden) */}
       <Show when={props.showToolbar === false}>
         <div class="mb-4 flex min-h-[32px] items-center justify-end gap-2">
           {selectionBar()}
@@ -336,7 +318,6 @@ export function DocumentGroupedList(props: Props) {
           <For each={groups()}>
             {(group) => (
               <div>
-                {/* Group header */}
                 <button
                   type="button"
                   class="mb-2 flex w-full items-center gap-2 text-left"
@@ -359,7 +340,6 @@ export function DocumentGroupedList(props: Props) {
                   />
                 </button>
 
-                {/* Group rows */}
                 <a-expandable
                   attr:opened={collapsed().has(group.id) ? undefined : ""}
                   inert={collapsed().has(group.id)}
@@ -381,7 +361,6 @@ export function DocumentGroupedList(props: Props) {
                           "bg-primary-50 hover:bg-primary-50": selectedIds().has(doc.id),
                         }}
                       >
-                        {/* Checkbox */}
                         {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the checkbox is the control. */}
                         {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
                         <div
@@ -397,7 +376,6 @@ export function DocumentGroupedList(props: Props) {
                           />
                         </div>
 
-                        {/* Link: doc icon + title + meta + badge + date */}
                         <a
                           href={
                             doc.fileUrl ??
@@ -422,8 +400,6 @@ export function DocumentGroupedList(props: Props) {
                               </Show>
                               <span class="capitalize">{doc.type || t("Document")}</span>
                             </p>
-                            {/* Snippets are document HTML, so they render behind the
-                                document-view shadow boundary and cannot style the shell. */}
                             <Show when={doc.snippet}>
                               {(snippet) => (
                                 <SearchSnippet html={snippet()} class="mt-1" />
@@ -442,7 +418,6 @@ export function DocumentGroupedList(props: Props) {
                           </span>
                         </a>
 
-                        {/* Row actions */}
                         {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the actions are the controls. */}
                         {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
                         <div

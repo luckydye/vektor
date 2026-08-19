@@ -28,7 +28,6 @@ export type PendingAttachment = {
   previewUrl?: string;
 };
 
-/** Imperative handle, handed back through the `ref` prop. */
 export interface MessageInputHandle {
   focus: () => void;
   clearAttachments: () => void;
@@ -38,7 +37,6 @@ export interface MessageInputHandle {
 }
 
 interface Props {
-  /** Two-way bound value. */
   value: string;
   onInput?: (value: string) => void;
   onSubmit?: () => void;
@@ -47,17 +45,11 @@ interface Props {
   autofocus?: boolean;
   autoGrow?: boolean;
   submitKey?: "enter" | "ctrl+enter";
-  /** Externally disabled — blocks submit regardless of content (e.g. isGenerating, isUploading) */
   disabled?: boolean;
-  /** Enable file attachment UI (drag-drop, paste, picker, previews) */
   attachments?: boolean;
-  /** Show "Uploading files…" status (set by parent during API upload) */
   isUploading?: boolean;
-  /** Upload error message from parent */
   uploadError?: string;
-  /** Enable people and document @mention suggestions. */
   mentions?: boolean;
-  /** Insert selected documents as agent-readable inline references. */
   inlineDocumentReferences?: boolean;
   spaceId?: string;
   documentId?: string;
@@ -107,8 +99,6 @@ export function MessageInput(props: Props) {
   function toggleFormat(name: RichTextEditorFormat) {
     editorElement()?.toggleFormat(name);
   }
-
-  // ── File management ─────────────────────────────────────────────────────────
 
   function revokePreviewUrl(url?: string) {
     if (url) URL.revokeObjectURL(url);
@@ -163,10 +153,7 @@ export function MessageInput(props: Props) {
     addFiles(event.dataTransfer.files);
   }
 
-  // ── Input events ────────────────────────────────────────────────────────────
-
   function onKeydown(event: KeyboardEvent) {
-    // The editor may already have handled this key; do not act on it twice.
     if (event.defaultPrevented) return;
 
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
@@ -257,7 +244,6 @@ export function MessageInput(props: Props) {
         />
       </Show>
 
-      {/* Pending attachment previews */}
       <Show when={merged.attachments && pendingAttachments.length > 0}>
         <div class="mb-2 flex flex-wrap gap-1.5">
           <For each={pendingAttachments}>
@@ -298,7 +284,6 @@ export function MessageInput(props: Props) {
         </div>
       </Show>
 
-      {/* Input row */}
       <div class="relative flex items-start gap-2 pr-7">
         {merged.left}
 
@@ -358,7 +343,6 @@ export function MessageInput(props: Props) {
         </div>
       </div>
 
-      {/* Upload status (controlled by parent) */}
       <Show when={merged.attachments}>
         <Show when={merged.isUploading}>
           <p class="mt-2 text-neutral-500 text-size-small">Uploading files...</p>

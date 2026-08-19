@@ -17,9 +17,6 @@ export function UserProfile() {
   const { appearance } = useCosmetics();
   applyThemePreference(getStoredThemePreference());
 
-  // No `isMounted` guard: `useUserProfile` already returns an empty accessor on
-  // the server, so there is nothing to withhold — the value simply arrives
-  // after the session lookup resolves.
   const user = createMemo(() => {
     const resolved = profileUser();
     return resolved ? { ...resolved, appearance: appearance() } : undefined;
@@ -71,8 +68,6 @@ export function UserProfile() {
           class={`overflow-hidden rounded-lg bg-background opacity-0 shadow-xl transition-[width,opacity] duration-150 ease-out group-[[enabled]]:opacity-100 ${width()}`}
         >
           <div
-            // `relative`: the preferences panel positions itself against this
-            // box while it animates out.
             class={`relative origin-bottom-left scale-95 rounded-lg border border-neutral-100 transition-all duration-150 group-[[enabled]]:scale-100 ${width()}`}
           >
             <Show when={!isPreferencesOpen()}>
@@ -124,19 +119,9 @@ export function UserProfile() {
             </Show>
 
             <div
-              // A real element, so Solid handles the boolean correctly; the
-              // `attr:` form is only needed on custom elements, which take the
-              // value verbatim and would render `hidden="false"`.
               hidden={!isPreferencesOpen()}
               class="preferences-panel w-[620px] max-w-[calc(100vw-2rem)]"
             >
-              {/* Mounted on first open, not with the profile button. The panel
-                  loads the space's integrations and notification preference on
-                  mount, and it lives inside a popover nobody has opened yet — so
-                  every page load paid two requests for a panel that was hidden.
-                  The flag latches rather than tracking `isPreferencesOpen` so
-                  closing keeps the loaded panel instead of refetching on every
-                  reopen, and so the exit animation still has something to play. */}
               <Show when={hasOpenedPreferences()}>
                 <UserPreferencesPanel onClose={() => setPreferencesOpen(false)} />
               </Show>

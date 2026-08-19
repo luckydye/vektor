@@ -17,8 +17,6 @@ interface AvailableWorkflow {
   title: string;
 }
 
-// Extension jobs, for the "Recent Extension Job Runs" name lookup only
-// (scheduling now targets workflows, not extension jobs directly).
 interface AvailableJob {
   id: string;
   name: string;
@@ -58,7 +56,6 @@ export function JobsSettings() {
   const { currentSpace, currentSpaceId } = useSpace();
   const navigate = useNavigate();
 
-  // Schedules state
   const [schedules, setSchedules] = createSignal<WorkflowSchedule[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = createSignal(false);
   const [scheduleError, setScheduleError] = createSignal<string | null>(null);
@@ -68,7 +65,6 @@ export function JobsSettings() {
   const [newScheduleCron, setNewScheduleCron] = createSignal("");
   const [newScheduleTimezone, setNewScheduleTimezone] = createSignal("");
 
-  // Workflow documents in the space, for the create form and name lookup
   const [availableWorkflows, setAvailableWorkflows] = createSignal<AvailableWorkflow[]>(
     [],
   );
@@ -270,7 +266,6 @@ export function JobsSettings() {
 
   return (
     <div>
-      {/* Scheduled Workflows */}
       <div class="mb-4 flex items-center justify-between">
         <h2 class="font-semibold text-neutral-900 text-size-medium">
           Scheduled Workflows
@@ -292,7 +287,6 @@ export function JobsSettings() {
         </div>
       </Show>
 
-      {/* Create Schedule Form */}
       <Show when={isCreatingSchedule()}>
         <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
           <form
@@ -479,7 +473,6 @@ export function JobsSettings() {
         </div>
       </Show>
 
-      {/* Recent Workflow Runs */}
       <div class="mt-8 border-neutral-100 border-t pt-6">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-medium">
@@ -574,7 +567,6 @@ export function JobsSettings() {
         </Show>
       </div>
 
-      {/* Recent Extension Job Runs */}
       <div class="mt-8 border-neutral-100 border-t pt-6">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-medium">

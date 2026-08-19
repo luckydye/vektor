@@ -1,47 +1,22 @@
 ---
 import { FirstSpacePrompt } from "#components/FirstSpacePrompt.tsx";
-import { config } from "#config";
-import { getUserGroups, hasPermission, ResourceType } from "#db/acl.ts";
-import { getSpaceBySlug, listUserSpaces } from "#db/spaces.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
+import {
+  LAST_VISITED_SPACE_KEY,
+  resolveActiveSpaceSlug,
+} from "#utils/activeSpace.server.ts";
 
 if (!Astro.locals.session) {
   return Astro.redirect("/login");
 }
 
-const appConfig = config();
-const userId = Astro.locals.user?.id;
+const activeSpaceSlug = await resolveActiveSpaceSlug(
+  Astro.locals.user?.id,
+  Astro.cookies.get(LAST_VISITED_SPACE_KEY)?.value,
+);
 
-const defaultSpace = appConfig.DEFAULT_SPACE
-  ? await getSpaceBySlug(appConfig.DEFAULT_SPACE)
-  : null;
-
-if (defaultSpace) {
-  const userGroups = await getUserGroups(userId);
-  const canAccess = await hasPermission(
-    defaultSpace.id,
-    ResourceType.SPACE,
-    defaultSpace.id,
-    userId,
-    "viewer",
-    userGroups,
-  );
-  if (canAccess) {
-    return Astro.redirect(`/${defaultSpace.slug}`);
-  }
-}
-
-const userSpaces = await listUserSpaces(userId);
-
-if (userSpaces.length !== 0) {
-  const lastVisitedSlug = Astro.cookies.get("lastVisitedSpace")?.value;
-  if (lastVisitedSlug) {
-    const lastVisited = userSpaces.find((s) => s.slug === lastVisitedSlug);
-    if (lastVisited) {
-      return Astro.redirect(`/${lastVisited.slug}`);
-    }
-  }
-  return Astro.redirect(`/${userSpaces[0].slug}`);
+if (activeSpaceSlug) {
+  return Astro.redirect(`/${activeSpaceSlug}`);
 }
 ---
 

@@ -51,7 +51,7 @@ tasks:
       - licenses/**/*.txt
       - models/**/*
     generates:
-      - ../../src/embeddings/native/embedding-*.node
+      - ../../src/search/native/embedding-*.node
     cmds:
       - bun i
       - bun run build

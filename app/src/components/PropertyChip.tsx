@@ -12,7 +12,6 @@ interface Props {
   nameLabel?: string;
   valueLabels?: string[];
   icon?: IconName;
-  /** Generated artwork — a category's colour badge — rather than a set icon. */
   iconSvg?: string;
   variant?: "default" | "special";
   readonly?: boolean;
@@ -52,14 +51,12 @@ export function PropertyChip(props: Props) {
     setPropertyName(property.name);
     setSelectedValue(property.value);
 
-    // For date properties, set the date value
     if (property.type === "date" && property.value && !Array.isArray(property.value)) {
       setDateValue(property.value);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    // Only fetch options for non-date properties
     if (property.type !== "date") {
       inputElement?.focus();
 
@@ -241,7 +238,6 @@ export function PropertyChip(props: Props) {
         )}
       </Show>
 
-      {/* Edit Property Popover */}
       <Show when={isEditPopoverOpen() && props.property}>
         {(property) => (
           <a-blur
@@ -249,7 +245,6 @@ export function PropertyChip(props: Props) {
             on:exit={handleExit}
             class="absolute -top-4xs -left-4xs z-50 flex flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
           >
-            {/* Property name input with delete button */}
             <div class="flex w-full items-center gap-4xs px-3xs">
               <Show when={props.icon}>
                 <Icon

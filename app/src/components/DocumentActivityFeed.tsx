@@ -9,9 +9,9 @@ import {
   groupActivityEntries,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
 import type { DisplayUser } from "#utils/userDisplay.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import "./AvatarElement.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
@@ -74,7 +74,6 @@ function getDocumentBatchKey(entry: AuditLog | undefined, userId: string | null)
   ].join(":");
 }
 
-/** Document entries batch by revision, falling back to the minute. */
 function isSameDocumentBatch(entry: AuditLog, group: ActivityGroup): boolean {
   return (
     getDocumentBatchKey(group.items[0], group.userId) ===

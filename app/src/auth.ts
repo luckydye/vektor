@@ -2,9 +2,9 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { genericOAuth } from "better-auth/plugins";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
+import { GROUP_NAME_PATTERN } from "#acl/permissions.ts";
 import { config } from "./config.ts";
-import { GROUP_NAME_PATTERN } from "./db/acl.ts";
-import { getAuthDb } from "./db/db.ts";
+import { getAuthDb } from "./db/client/db.ts";
 import * as schema from "./db/schema/auth.ts";
 
 const appConfig = config();

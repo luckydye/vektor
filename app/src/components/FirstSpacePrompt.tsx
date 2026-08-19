@@ -24,8 +24,6 @@ export function FirstSpacePrompt() {
       return;
     }
 
-    // The logo is stored inline in the space preferences, which every space
-    // request carries — keep it small.
     if (file.size > 300 * 1024) {
       setError("Logo file must be smaller than 300 KB");
       return;
@@ -34,7 +32,6 @@ export function FirstSpacePrompt() {
     try {
       let text = await file.text();
 
-      // Basic sanitization: remove script tags and event handlers
       text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
       text = text.replace(/on\w+="[^"]*"/g, "");
       text = text.replace(/on\w+='[^']*'/g, "");
@@ -71,10 +68,6 @@ export function FirstSpacePrompt() {
           logoSvg: logoSvg(),
         },
       });
-      // Space pages are separate Astro-rendered routes, and this prompt is a
-      // standalone island with no router, so navigate with a full page load
-      // rather than a client-side push (which would throw and leave a blank
-      // page after the dialog is hidden).
       window.location.href = `/${newSpace.slug}/`;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error occurred");

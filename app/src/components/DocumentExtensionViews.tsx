@@ -11,7 +11,7 @@ interface Props {
 export function DocumentExtensionViews(props: Props) {
   return (
     <Show when={props.views.length > 0}>
-      <aside class="hidden min-w-0 space-y-4 lg:block">
+      <aside class="hidden min-w-0 space-y-4 lg:sticky lg:top-20 lg:block">
         <For each={props.views}>
           {({ extensionId, route }) => (
             <ExtensionView

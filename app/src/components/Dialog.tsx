@@ -8,22 +8,10 @@ import { Icon } from "./Icon.tsx";
 interface Props {
   show?: boolean;
   title?: string;
-  /** Allow dismissing via backdrop click or Escape. */
   closeOnBackdrop?: boolean;
-  /** Desktop max-width utility class (mobile is always full-width). */
   maxWidth?: string;
-  /** Optional fixed panel height. Content still scrolls within the body. */
   panelHeight?: string;
-  /**
-   * Override body classes (padding + overflow). Pass e.g. "p-0" for full-bleed
-   * content, or your own overflow for self-scrolling content.
-   */
   bodyClass?: string;
-  /**
-   * Fill to a fixed tall height instead of fitting content. Needed for content
-   * that manages its own internal scroll (e.g. docked panels): a definite
-   * height lets a child's `h-full`/`flex-1` scroll region resolve.
-   */
   expand?: boolean;
   header?: JSX.Element;
   footer?: JSX.Element;
@@ -51,14 +39,10 @@ export function Dialog(props: Props) {
     merged.onClose?.();
   }
 
-  // Backdrop click and <a-blur>'s exit event (Escape / focus-out) are the
-  // dismissal paths; both respect closeOnBackdrop. The header ✕ always closes.
   function onDismiss() {
     if (merged.closeOnBackdrop) close();
   }
 
-  // Ref-counted body scroll lock so a closing dialog cannot unlock the page
-  // while another overlay (e.g. the mobile sidebar) is still open.
   let holdsLock = false;
   function applyScrollLock(shouldLock: boolean) {
     if (shouldLock && !holdsLock) {
@@ -77,9 +61,6 @@ export function Dialog(props: Props) {
     <Portal>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. */}
       <a-blur
-        // `undefined`, not `false`: on a custom element Solid writes the
-        // attribute verbatim, so `hidden={false}` renders `hidden="false"` —
-        // present, and therefore hiding the dialog it was meant to reveal.
         attr:hidden={merged.show ? undefined : ""}
         attr:enabled={merged.show ? "" : undefined}
         class="dialog-layer fixed inset-0 z-100 flex items-end justify-center md:items-center"
@@ -102,7 +83,6 @@ export function Dialog(props: Props) {
           }`}
           onClick={(event) => event.stopPropagation()}
         >
-          {/* Mobile grab handle */}
           <div class="flex flex-none justify-center pt-2 pb-1 md:hidden">
             <div class="h-1 w-9 rounded-full bg-neutral-300" />
           </div>

@@ -1,20 +1,29 @@
 ---
-import { SpaceApp } from "#components/SpaceApp.tsx";
-import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
-import { getDocument, getDocumentBySlug } from "#db/documents.ts";
-import { resolvePublishedDocumentContent } from "#db/revisions.ts";
 import {
-  requireSpaceViewer,
-  resolveSpacePage,
-  resolveUserSpaceRole,
-} from "#db/spacePage.ts";
-import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
+  verifyDocumentRole,
+  verifyResourceAccess,
+  verifySpaceRole,
+} from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
+import { SpaceApp } from "#components/SpaceApp.tsx";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getDocument, getDocumentBySlug } from "#db/space/documents.ts";
+import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
+import { getSpaceBySlug, getUserSpaceRole } from "#db/space/spaces.ts";
+import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
+import { LAST_VISITED_SPACE_KEY } from "#utils/activeSpace.server.ts";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 
-const result = await resolveSpacePage(Astro);
-if (result.response) return result.response;
-const { space } = result;
+const { spaceSlug } = Astro.params;
+if (!spaceSlug) return Astro.redirect("/");
+
+// Unauthenticated callers are not redirected to /login here: a space that
+// grants viewer to the `public` group must render without a session.
+const space = await getSpaceBySlug(spaceSlug);
+if (!space) return new Response(null, { status: 404, statusText: "Space not found" });
+
+const store = await openSpaceStore(space.id);
 
 const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
 const settingsPath =
@@ -30,7 +39,7 @@ if (settingsPath) {
   }
 
   try {
-    await verifySpaceRole(space.id, Astro.locals.user?.id ?? "", "owner");
+    await verifySpaceRole(space.id, Astro.locals.user?.id ?? "", Permission.OWNER);
   } catch (error) {
     if (error instanceof Response) return error;
     throw error;
@@ -38,14 +47,14 @@ if (settingsPath) {
 }
 
 const storedDocumentRecord = docSlugMatch
-  ? await getDocumentBySlug(space.id, docSlugMatch[1])
+  ? await getDocumentBySlug(store, docSlugMatch[1])
   : null;
 
 if (docSlugMatch && !storedDocumentRecord) {
   // A document addressed by its ID redirects to its canonical slug URL, matching
   // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
   // rendering the shell for a document whose slug the URL never resolved.
-  const documentById = await getDocument(space.id, docSlugMatch[1]);
+  const documentById = await getDocument(store, docSlugMatch[1]);
   if (documentById) {
     return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
   }
@@ -58,7 +67,7 @@ if (storedDocumentRecord) {
       space.id,
       storedDocumentRecord.id,
       Astro.locals.user?.id ?? null,
-      "viewer",
+      Permission.VIEWER,
     );
     hasDirectDocumentAccess = true;
   } catch (error) {
@@ -72,26 +81,38 @@ if (storedDocumentRecord) {
 }
 
 if (!hasDirectDocumentAccess) {
-  const accessDenied = await requireSpaceViewer(Astro, space);
-  if (accessDenied) return accessDenied;
+  // Space-wide viewer, or any document/tree/category grant inside the space —
+  // a resource-scoped grantee still has to reach the container it lives in.
+  try {
+    await verifyResourceAccess(space.id, Astro.locals.user?.id ?? "");
+  } catch (error) {
+    if (!(error instanceof Response)) throw error;
+    if (!Astro.locals.session) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/login" },
+      });
+    }
+    return new Response(null, { status: 403, statusText: "Forbidden" });
+  }
 }
 
 const documentRecord = storedDocumentRecord
-  ? await resolvePublishedDocumentContent(space.id, storedDocumentRecord)
+  ? await resolvePublishedDocumentContent(store, storedDocumentRecord)
   : null;
 let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))
   : undefined;
 
 if (initialDocument) {
-  initialDocument.headerImageAspectRatio = await getHeaderImageAspectRatio(
+  initialDocument.headerImageAspectRatio = await getUploadImageAspectRatio(
     space.id,
     initialDocument.properties.headerImage,
   );
 }
 
 if (Astro.locals.session) {
-  Astro.cookies.set("lastVisitedSpace", space.slug, {
+  Astro.cookies.set(LAST_VISITED_SPACE_KEY, space.slug, {
     path: "/",
     maxAge: 60 * 60 * 24 * 90, // 90 days
     sameSite: "lax",
@@ -99,14 +120,14 @@ if (Astro.locals.session) {
   });
 }
 
-const userRole = await resolveUserSpaceRole(Astro, space);
+const userRole = Astro.locals.user
+  ? await getUserSpaceRole(space, Astro.locals.user.id)
+  : undefined;
 // Serialize Date fields to ISO strings so the server-rendered HTML matches the
 // client props (Astro serializes props via JSON.stringify, which converts Date
 // objects to strings). Without this, data-updated-at / data-created-at
 // attributes differ between server and client, triggering hydration mismatches.
-const initialSpace = JSON.parse(
-  JSON.stringify({ ...space, userRole: userRole ?? undefined }),
-);
+const initialSpace = JSON.parse(JSON.stringify({ ...space, userRole }));
 
 const initialSidebarWidth = parseSidebarWidth(
   Astro.cookies.get(SIDEBAR_WIDTH_KEY)?.value,

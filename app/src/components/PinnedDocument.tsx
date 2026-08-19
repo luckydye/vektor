@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onMount, Show } from "solid-js";
+import { canEdit } from "#acl/permissions.ts";
 import { api, type DocumentWithProperties } from "#api/client.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
@@ -32,8 +32,6 @@ export function PinnedDocument(props: Props) {
     if (!viewEl) return;
     const root = viewEl.shadowRoot;
     if (!root) {
-      // `document-view` upgrades with the lazily-loaded editor chunk; retry on
-      // the next frame rather than dropping the content.
       requestAnimationFrame(() => renderContent(html));
       return;
     }

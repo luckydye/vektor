@@ -1022,6 +1022,16 @@ if (
               align-items: center;
             }
 
+            /* The shadow root misses the global .svg-icon utility, so without
+               this the inlined SVG renders at its own width/height attributes
+               and overflows the button box. */
+            .icon svg,
+            .svg-icon svg {
+              display: block;
+              width: 100%;
+              height: 100%;
+            }
+
             .icon-overlay,
             .icon-overlay-danger {
               position: absolute;
@@ -1081,11 +1091,6 @@ if (
               position: relative;
               width: 38px;
               padding: 0;
-            }
-
-            .color-main .svg-icon {
-              width: 1.45rem;
-              height: 1.45rem;
             }
 
             .color-trigger {

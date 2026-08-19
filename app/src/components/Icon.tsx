@@ -279,10 +279,6 @@ function iconNode(svg: string): Node {
 function stamp(element: Element, svg: string): void {
   if (stamped.get(element) === svg) return;
 
-  // A hydrated element already holds what the server wrote, and re-stamping it
-  // would throw that markup away to rebuild the same thing. This matches what
-  // `innerHTML` did here before — dom-expressions skips property writes on
-  // hydrated nodes, so the server's markup was already the one that stood.
   if (!stamped.has(element) && element.firstChild) {
     stamped.set(element, svg);
     return;
@@ -292,7 +288,6 @@ function stamp(element: Element, svg: string): void {
   stamped.set(element, svg);
 }
 
-/** An icon's markup, for callers that build DOM without Solid. */
 export function iconMarkup(name: IconName): string {
   return icons[name] ?? FALLBACK;
 }

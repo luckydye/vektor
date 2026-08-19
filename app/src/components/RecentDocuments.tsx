@@ -16,15 +16,6 @@ export function RecentDocuments(props: Props) {
   const { currentSpace } = useSpace();
   const count = props.limit ?? 5;
 
-  // The shell's document listing, not a listing of its own: both are ordered
-  // `updatedAt desc`, so the newest N here are the first N there. A second
-  // request also cost a second full ACL pass over every document in the space —
-  // `listDocuments` filters before it paginates, so a `limit=10` read is as
-  // expensive as the unlimited one.
-  //
-  // Taking the slice *after* the type filter is also what the row wants: the
-  // old query filtered the 10 rows it had fetched, so a space whose newest
-  // documents were files showed fewer than `count` teasers.
   const { documents, isLoading: loading } = useDocuments();
 
   const docs = createMemo(() =>
@@ -68,7 +59,6 @@ export function RecentDocuments(props: Props) {
             <a-track snap class="flex h-full w-full overflow-visible">
               <For each={docs()}>{(doc) => <DocumentTeaser doc={doc} />}</For>
 
-              {/* Trailing "view all" card */}
               <a
                 href={spacePath(currentSpace()?.slug, "/search")}
                 class="group block w-60 flex-none pr-4"

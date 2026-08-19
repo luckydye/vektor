@@ -6,13 +6,11 @@ export interface SelectMenuItem {
   id: string;
   label: string;
   icon?: IconName;
-  /** Generated artwork — a category's colour badge — rather than a set icon. */
   iconSvg?: string;
 }
 
 interface Props {
   items?: SelectMenuItem[];
-  /** Two-way bound value. */
   value?: string | string[] | null;
   onInput?: (value: string) => void;
   onSelect?: (item: SelectMenuItem) => void;

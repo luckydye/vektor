@@ -3,7 +3,6 @@ import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
   icon?: IconName;
-  /** Generated artwork — a category's colour badge — rather than a set icon. */
   iconSvg?: string;
   label?: string;
   selected?: boolean;

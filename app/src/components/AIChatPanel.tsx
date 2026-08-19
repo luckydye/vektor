@@ -52,8 +52,6 @@ function buildAttachmentContext(attachments: UploadedAttachment[]): string {
 export function AIChatPanel(props: Props) {
   const documentId = () => props.documentId ?? "";
 
-  // ── State ───────────────────────────────────────────────────────────────────
-
   const { currentSpace, currentSpaceId } = useSpace();
   const {
     toggle: toggleWindow,
@@ -123,8 +121,6 @@ export function AIChatPanel(props: Props) {
   });
   reconnectSession = reconnectChatSession;
 
-  // ── Send message ────────────────────────────────────────────────────────────
-
   async function sendMessage() {
     if (!canSend()) return;
 
@@ -149,8 +145,6 @@ export function AIChatPanel(props: Props) {
       }
       setIsUploadingFiles(true);
       try {
-        // The upload manager shows an aggregated progress toast; this panel
-        // keeps its own busy flag and inline error, so errorToast is disabled.
         const results = await uploadFiles(
           attachmentsToUpload.map((attachment) => attachment.file),
           {
@@ -173,8 +167,6 @@ export function AIChatPanel(props: Props) {
           };
         });
       } catch (error) {
-        // A cancellation is reported by the toast the user cancelled from;
-        // repeating it as an inline error would read as something going wrong.
         if (!isUploadAborted(error)) {
           setUploadError(
             error instanceof Error ? error.message : "Failed to upload attachments",
@@ -232,13 +224,6 @@ export function AIChatPanel(props: Props) {
     );
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────
-
-  // The agent only works when the space has an AI provider configured, so the
-  // action stays unregistered (and out of the command palette) until it is. The
-  // provider lives in the space preferences the space payload already carries, so
-  // this works for every role that may use the agent — viewer included. The
-  // preference keys are owned by `db/aiConfig.ts`, which the client cannot import.
   const isAgentConfigured = createMemo(() => {
     const preferences = currentSpace()?.preferences;
     return !!preferences?.["ai:provider"] && !!preferences?.["ai:model"];
@@ -247,12 +232,9 @@ export function AIChatPanel(props: Props) {
   createEffect(
     on(isAgentConfigured, (configured) => {
       if (!configured) {
-        // Persisted UI state can restore the panel in a space with no provider.
         if (isOpen()) closeWindow("ai-chat");
         return;
       }
-      // Scoped to the effect: switching to an unconfigured space, or leaving the
-      // space app, takes the action with it.
       registerScopedAction("ai-chat:toggle", {
         title: t("AI Chat"),
         icon: () => "agent-chat",
@@ -280,7 +262,6 @@ export function AIChatPanel(props: Props) {
           onRemove={(session) => void removeSession(session.id)}
         />
 
-        {/* Messages */}
         <Show when={!showSessionPicker()}>
           <AIChatMessages
             ref={setMessagesRef}
@@ -290,7 +271,6 @@ export function AIChatPanel(props: Props) {
           />
         </Show>
 
-        {/* Input bar */}
         <div class="shrink-0 px-3 pt-2 pb-2">
           <div class="rounded-md border border-neutral-100 bg-neutral-10 px-3 py-2">
             <MessageInput

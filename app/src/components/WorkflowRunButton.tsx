@@ -26,7 +26,6 @@ export function WorkflowRunButton(props: Props) {
   const [cancelling, setCancelling] = createSignal(false);
   const [latestRunId, setLatestRunId] = createSignal<string | null>(null);
   const [latestRunStatus, setLatestRunStatus] = createSignal<string | null>(null);
-  // Non-null while the input prompt is open; holds the fields to ask for.
   const [promptFields, setPromptFields] = createSignal<WorkflowInputField[] | null>(null);
   const [promptError, setPromptError] = createSignal<string | null>(null);
 
@@ -36,8 +35,6 @@ export function WorkflowRunButton(props: Props) {
 
   async function refreshLatestRun(documentId: string) {
     const latest = await api.workflows.getLatestRun(props.spaceId, documentId);
-    // Navigation between two workflows keeps this component mounted, so a
-    // response for the document we just left must not paint over the new one.
     if (props.documentId !== documentId) return;
     setLatestRunId(latest?.runId ?? null);
     setLatestRunStatus(latest?.status ?? null);
@@ -55,8 +52,6 @@ export function WorkflowRunButton(props: Props) {
       setLatestRunId(runId);
       setLatestRunStatus("running");
       setPromptFields(null);
-      // The workflow view follows the `run` query param, so pointing the URL at
-      // the new run switches the view over to it.
       const query = new URLSearchParams(
         searchParams as unknown as Record<string, string>,
       );
@@ -71,14 +66,6 @@ export function WorkflowRunButton(props: Props) {
     }
   }
 
-  /**
-   * A workflow script takes its arguments from `input`, and a missing one only
-   * surfaces as a failed run — so ask for them first. Scripts that read nothing
-   * start straight away.
-   *
-   * `live` because that is what a run executes: the draft as the collaboration
-   * room holds it, edits included, rather than the last persisted revision.
-   */
   async function requestRun() {
     setStarting(true);
     try {
@@ -109,9 +96,6 @@ export function WorkflowRunButton(props: Props) {
     }
   }
 
-  // Re-runs on navigation to another workflow: the header keeps this component
-  // mounted, so the previous document's run state would otherwise stay on the
-  // button (and its subscription keep refreshing it).
   createEffect(
     on(
       () => props.documentId,
@@ -122,7 +106,6 @@ export function WorkflowRunButton(props: Props) {
         setPromptError(null);
         void refreshLatestRun(documentId);
 
-        // Keep the run/cancel state in sync without polling.
         const unsubscribe = api.subscribeToTopics(
           props.spaceId,
           [realtimeTopics.workflowRuns],

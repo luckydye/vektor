@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, onMount, Show } from "solid-js";
+import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { type AccessToken, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { formatAbsoluteDate } from "#utils/datetime.ts";
@@ -10,12 +11,12 @@ function resourceLabel(resource: {
   permission: string;
 }): string {
   if (
-    resource.resourceType === "feature" &&
-    resource.resourceId === "manage_extensions"
+    resource.resourceType === ResourceType.FEATURE &&
+    resource.resourceId === Feature.MANAGE_EXTENSIONS
   ) {
     return "Extensions (install/update)";
   }
-  if (resource.resourceType === "feature") {
+  if (resource.resourceType === ResourceType.FEATURE) {
     return `Feature: ${resource.resourceId}`;
   }
   return `${resource.resourceType}: ${resource.resourceId} (${resource.permission})`;
@@ -30,7 +31,9 @@ export function SpaceAccessTokensSettings() {
   const [isCreatingToken, setIsCreatingToken] = createSignal(false);
   const [isSubmittingToken, setIsSubmittingToken] = createSignal(false);
   const [newTokenName, setNewTokenName] = createSignal("");
-  const [newTokenPermission, setNewTokenPermission] = createSignal("editor");
+  const [newTokenPermission, setNewTokenPermission] = createSignal<string>(
+    Permission.EDITOR,
+  );
   const [newTokenResourceType, setNewTokenResourceType] = createSignal("space");
   const [newTokenResourceId, setNewTokenResourceId] = createSignal("");
   const [newTokenExpiresInDays, setNewTokenExpiresInDays] = createSignal<number | null>(
@@ -87,7 +90,7 @@ export function SpaceAccessTokensSettings() {
   function handleStartCreateToken() {
     setIsCreatingToken(true);
     setNewTokenName("");
-    setNewTokenPermission("editor");
+    setNewTokenPermission(Permission.EDITOR);
     setNewTokenResourceType("space");
     setNewTokenResourceId(currentSpace()?.id ?? "");
     setNewTokenExpiresInDays(null);
@@ -105,7 +108,6 @@ export function SpaceAccessTokensSettings() {
       const result = await api.accessTokens.create(spaceId, {
         name: newTokenName().trim(),
         permission: newTokenPermission(),
-        // The "extensions" capability is space-wide and has no resource target.
         ...(isExtensionsCapability
           ? {}
           : {
@@ -181,7 +183,6 @@ export function SpaceAccessTokensSettings() {
           </div>
         </Show>
 
-        {/* Create Token Form */}
         <Show when={isCreatingToken()}>
           <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
             <form
@@ -222,8 +223,8 @@ export function SpaceAccessTokensSettings() {
                     onChange={(e) => setNewTokenPermission(e.currentTarget.value)}
                     class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
                   >
-                    <option value="viewer">Viewer</option>
-                    <option value="editor">Editor</option>
+                    <option value={Permission.VIEWER}>Viewer</option>
+                    <option value={Permission.EDITOR}>Editor</option>
                     <option value="extensions">Extensions (install/update)</option>
                   </select>
                 </div>
@@ -318,7 +319,6 @@ export function SpaceAccessTokensSettings() {
           </div>
         </Show>
 
-        {/* Created Token Display (shown once after creation) */}
         <Show when={createdTokenValue()}>
           {(value) => (
             <div class="mb-4 rounded-md border border-green-200 bg-green-50 p-3">

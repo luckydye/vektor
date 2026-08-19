@@ -68,8 +68,6 @@ export function SpaceGeneralSettings(props: Props) {
       return;
     }
 
-    // The logo is stored inline in the space preferences, which every space
-    // request carries — keep it small.
     if (file.size > 300 * 1024) {
       setError("Logo file must be smaller than 300 KB");
       return;
@@ -165,9 +163,7 @@ export function SpaceGeneralSettings(props: Props) {
   return (
     <>
       <div>
-        {/* Profile: preview + form */}
         <div class="flex flex-col items-start gap-8 sm:flex-row sm:gap-10">
-          {/* Interactive preview card — sticky */}
           <div class="top-4 w-full shrink-0 sm:sticky sm:w-72">
             <SpaceProfileCard
               name={localName()}
@@ -181,7 +177,6 @@ export function SpaceGeneralSettings(props: Props) {
             />
           </div>
 
-          {/* Form */}
           <form
             class="w-full min-w-0 flex-1"
             onSubmit={(event) => {
@@ -238,7 +233,6 @@ export function SpaceGeneralSettings(props: Props) {
           </form>
         </div>
 
-        {/* Features */}
         <section class="mt-10">
           <h2 class="font-semibold text-neutral-900 text-size-large">Features</h2>
           <div class="mt-3 flex items-center justify-between gap-4">
@@ -256,12 +250,10 @@ export function SpaceGeneralSettings(props: Props) {
           </div>
         </section>
 
-        {/* Members */}
         <div class="mt-10">
           <SpaceMembers />
         </div>
 
-        {/* Danger Zone */}
         <div class="mt-10 pt-6">
           <h2 class="mb-3 font-semibold text-red-700 text-size-medium">Danger Zone</h2>
           <div class="flex items-center justify-between gap-4 rounded-lg border border-primary-200 p-4">

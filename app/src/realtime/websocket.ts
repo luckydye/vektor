@@ -1,9 +1,15 @@
 import type { IncomingMessage, Server } from "node:http";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
+import {
+  verifyDocumentRole,
+  verifyExtensionAccess,
+  verifySpaceRole,
+} from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
 import { auth } from "#auth";
-import { verifyDocumentRole, verifyExtensionAccess, verifySpaceRole } from "#db/api.ts";
-import { getExtension } from "#db/extensions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getExtension } from "#db/space/extensions.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import {
@@ -59,7 +65,7 @@ async function authorizeRealtimeTopic(
         spaceId,
         topic.slice("document:".length),
         userId,
-        "viewer",
+        Permission.VIEWER,
       );
     } catch {
       // Missing document or insufficient access: treat as a forbidden topic so
@@ -99,7 +105,7 @@ async function handleRealtimeWebSocket(
     }
 
     try {
-      await verifySpaceRole(spaceId, session.user.id, "viewer");
+      await verifySpaceRole(spaceId, session.user.id, Permission.VIEWER);
     } catch {
       websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
       websocket.close();
@@ -119,7 +125,7 @@ async function handleRealtimeWebSocket(
     if (extensionId !== null) {
       // A malformed extension room must not fall through to document ACLs.
       if (!extensionId) return false;
-      if (!(await getExtension(spaceId, extensionId))) return false;
+      if (!(await getExtension(await openSpaceStore(spaceId), extensionId))) return false;
       if (isNoAuthMode()) return true;
       try {
         await verifyExtensionAccess(spaceId, extensionId, userId);
@@ -130,7 +136,7 @@ async function handleRealtimeWebSocket(
     }
 
     try {
-      await verifyDocumentRole(spaceId, room, userId, "viewer");
+      await verifyDocumentRole(spaceId, room, userId, Permission.VIEWER);
       return true;
     } catch {
       return false;
@@ -193,11 +199,11 @@ async function handleRealtimeWebSocket(
         // without view access is rejected.
         let canEdit = false;
         try {
-          await verifyDocumentRole(spaceId, documentId, userId, "editor");
+          await verifyDocumentRole(spaceId, documentId, userId, Permission.EDITOR);
           canEdit = true;
         } catch {
           try {
-            await verifyDocumentRole(spaceId, documentId, userId, "viewer");
+            await verifyDocumentRole(spaceId, documentId, userId, Permission.VIEWER);
           } catch {
             websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
             return;

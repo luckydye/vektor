@@ -97,8 +97,6 @@ export function PropertyPopover(props: Props) {
 
   createEffect(() => {
     if (props.isOpen === true && mode() === "create") {
-      // The input mounts with the create panel; a tick lets <a-blur> settle
-      // its own focus before we take it.
       const handle = setTimeout(() => inputElement?.focus(), 25);
       onCleanup(() => clearTimeout(handle));
     }
@@ -126,7 +124,6 @@ export function PropertyPopover(props: Props) {
         class="absolute -top-4xs -left-5xs z-50 flex min-w-[200px] flex-col gap-4xs rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
       >
         <Switch>
-          {/* Select Mode: Choose existing property or create new */}
           <Match when={mode() === "select"}>
             <div class="mt-4xs px-4xs font-medium text-neutral-600 text-size-small">
               {t("Add Property")}
@@ -138,7 +135,6 @@ export function PropertyPopover(props: Props) {
             />
           </Match>
 
-          {/* Create Mode: Property name input and type selection */}
           <Match when={mode() === "create"}>
             <div class="mt-4xs flex items-center justify-between px-4xs">
               <div class="font-medium text-neutral-600 text-size-small">

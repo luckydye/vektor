@@ -78,7 +78,6 @@ export function UserPreferencesPanel(props: Props) {
     appearance: cosmeticAppearance,
     equip: equipCosmetic,
   } = useCosmetics();
-  // `null` means "automatic" — the presence color follows the user's avatar.
   const { cursorColorOverride, setCursorColor, clearCursorColor } =
     useCanvasCursorColor();
   const automaticCursorColor = createMemo(() => getAvatarColor(currentUser()?.id));
@@ -281,7 +280,6 @@ export function UserPreferencesPanel(props: Props) {
 
   return (
     <>
-      {/* Header */}
       <div class="flex items-center gap-2 border-neutral-100 border-b px-4 py-3">
         <button
           type="button"
@@ -294,7 +292,6 @@ export function UserPreferencesPanel(props: Props) {
         <p class="font-medium text-base text-foreground">{t("Preferences")}</p>
       </div>
 
-      {/* Tabbed settings layout */}
       <SettingsLayout
         tabs={tabs}
         class="min-h-[200px] w-[620px] max-w-[calc(100vw-2rem)]"

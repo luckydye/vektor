@@ -1,16 +1,18 @@
 import type { WebSocket } from "ws";
 import * as Y from "yjs";
-import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
-import { createRevision, getLatestRevisionCreatedAt } from "#db/revisions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getDocument, getDocumentContent, updateDocument } from "#db/space/documents.ts";
+import { createRevision, getLatestRevisionCreatedAt } from "#db/space/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";
 import type { DocNode } from "#documents/schema/specs.ts";
 import { fragmentToNodes } from "#documents/schema/yDecode.ts";
-import { docNodesToY } from "#documents/schema/yEncode.ts";
+import { applyDocToFragment, docNodesToY } from "#documents/schema/yEncode.ts";
 import {
   canvasSnapshotFromDoc,
   contentFromDoc,
+  docNodeFromContent,
   toCleanHtml,
 } from "#documents/serialization.ts";
 import {
@@ -55,9 +57,9 @@ function splitRoomKey(key: string): { spaceId: string; documentId: string } | nu
 }
 
 export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
-  const meta = await getDocument(spaceId, documentId);
+  const meta = await getDocument(await openSpaceStore(spaceId), documentId);
   if (!meta) return new Y.Doc();
-  const content = await getDocumentContent(spaceId, documentId);
+  const content = await getDocumentContent(await openSpaceStore(spaceId), documentId);
   if (!content) return new Y.Doc();
   // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
   // event loop and spikes memory; the pool falls back to in-process on failure.
@@ -176,6 +178,60 @@ export function getLiveDocumentContent(
   return normalizeHtmlContent(persisted);
 }
 
+/**
+ * The write counterpart of `getLiveDocumentContent`: overwrites an open room
+ * with `content` and broadcasts the change, so connected editors converge on it
+ * instead of keeping — and later persisting — the state it replaced.
+ *
+ * Unlike the agent edit path this replaces wholesale rather than splicing the
+ * changed blocks: the callers are deliberate resets (publishing an older
+ * revision), where concurrent edits to the content being reset are what should
+ * lose. Returns false when no room is open, leaving the stored content as the
+ * only state.
+ */
+export function replaceLiveDocumentContent(
+  spaceId: string,
+  documentId: string,
+  type: string | null | undefined,
+  content: string,
+): boolean {
+  const room = yRooms.get(roomKey(spaceId, documentId));
+  if (!room?.doc) return false;
+
+  const doc = room.doc;
+  const updates: Uint8Array[] = [];
+  const captureUpdate = (update: Uint8Array) => updates.push(update);
+
+  doc.on("update", captureUpdate);
+  try {
+    doc.transact(() => {
+      if (type === "canvas") {
+        const snapshot = JSON.parse(content) as { shapes?: unknown; strokes?: unknown };
+        syncCanvasCollection(
+          doc.getMap<Y.Map<unknown>>("canvas.shapes"),
+          snapshot.shapes,
+        );
+        syncCanvasCollection(
+          doc.getMap<Y.Map<unknown>>("canvas.strokes"),
+          snapshot.strokes,
+        );
+        return;
+      }
+      applyDocToFragment(
+        doc.getXmlFragment("default"),
+        docNodeFromContent(type, content),
+      );
+    }, "server-edit");
+  } finally {
+    doc.off("update", captureUpdate);
+  }
+
+  for (const update of updates) {
+    broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+  }
+  return true;
+}
+
 function broadcastToRoom(room: YRoom, frame: Uint8Array): void {
   for (const client of room.clients) {
     if (client.readyState === 1) {
@@ -212,7 +268,7 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   // pulled the whole content column, tens of MB, on every debounce tick).
   // Persist only ever schedules after a real Yjs update and is throttled, so we
   // just write; no dedup read/hash needed.
-  const meta = await getDocument(ids.spaceId, ids.documentId);
+  const meta = await getDocument(await openSpaceStore(ids.spaceId), ids.documentId);
   if (!meta) return;
 
   const doc = room.doc;
@@ -221,8 +277,9 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   );
   const content = contentIsHtml(meta.type) ? stripScriptTags(serialized) : serialized;
 
+  const store = await openSpaceStore(ids.spaceId);
   await traced("persist.write", () =>
-    updateDocument(ids.spaceId, ids.documentId, content, meta.type),
+    updateDocument(store, ids.documentId, content, meta.type),
   );
 
   // The live draft is persisted on every edit, but revisions are periodic
@@ -231,7 +288,7 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   if (!contentIsHtml(meta.type) || !room.lastEditorId) return;
 
   const latestRevisionCreatedAt = await getLatestRevisionCreatedAt(
-    ids.spaceId,
+    await openSpaceStore(ids.spaceId),
     ids.documentId,
   );
   const revisionIsDue =
@@ -239,9 +296,15 @@ export async function persistYRoomDraft(key: string): Promise<void> {
     Date.now() - latestRevisionCreatedAt.getTime() >= COLLABORATION_REVISION_INTERVAL_MS;
   if (!revisionIsDue) return;
 
-  await createRevision(ids.spaceId, ids.documentId, content, room.lastEditorId, {
-    message: "Collaboration checkpoint",
-  });
+  await createRevision(
+    await openSpaceStore(ids.spaceId),
+    ids.documentId,
+    content,
+    room.lastEditorId,
+    {
+      message: "Collaboration checkpoint",
+    },
+  );
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
@@ -558,14 +621,15 @@ export async function transformDocumentContent(
   transform: (content: string) => string,
   operations?: EditOperation[],
 ): Promise<{ content: string; live: boolean } | null> {
-  const dbDoc = await getDocument(spaceId, documentId);
+  const dbDoc = await getDocument(await openSpaceStore(spaceId), documentId);
   if (!dbDoc) {
     return null;
   }
 
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
-    const persisted = (await getDocumentContent(spaceId, documentId)) ?? "";
+    const persisted =
+      (await getDocumentContent(await openSpaceStore(spaceId), documentId)) ?? "";
     // Append/prepend splice at the very end/start, so they don't need the
     // content re-flowed to one-block-per-line — skip the normalize pass, which
     // is O(doc) and is what OOMs the process on large append-only logs edited

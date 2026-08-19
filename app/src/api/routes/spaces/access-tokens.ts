@@ -1,0 +1,161 @@
+import { verifyCanGrantTokenAccess, verifySpaceRole } from "#acl/guards.ts";
+import {
+  Feature,
+  Permission,
+  ResourceType,
+  type ResourceType as ResourceTypeValue,
+} from "#acl/permissions.ts";
+import { grantFeature } from "#acl/store.ts";
+import {
+  badRequestResponse,
+  createdResponse,
+  jsonResponse,
+  parseJsonBody,
+  requireParam,
+  requireUser,
+  withApiErrorHandling,
+} from "#api/http.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import {
+  createAccessToken,
+  getTokenUserId,
+  grantTokenAccess,
+  listAccessTokens,
+  listTokenResources,
+} from "#db/space/accessTokens.ts";
+
+/**
+ * GET /api/v1/spaces/:spaceId/access-tokens
+ * List all access tokens and their permissions in this space
+ */
+export const GET: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.var.params, "spaceId");
+
+    await verifySpaceRole(spaceId, user.id, Permission.EDITOR);
+
+    // Get all tokens for this space
+    const tokens = await listAccessTokens(await openSpaceStore(spaceId));
+
+    // For each token, get its resources
+    const tokensWithResources = await Promise.all(
+      tokens.map(async (token) => {
+        const resources = await listTokenResources(
+          await openSpaceStore(spaceId),
+          token.id,
+        );
+        return {
+          ...token,
+          resources,
+        };
+      }),
+    );
+
+    return jsonResponse({ tokens: tokensWithResources });
+  }, "Failed to list access tokens");
+
+/**
+ * POST /api/v1/spaces/:spaceId/access-tokens
+ * Create a new access token and assign it to a resource
+ * Body:
+ *   - name: Token name/description
+ *   - resourceType: "space" | "document" | "category"
+ *   - resourceId: ID of the resource (use spaceId for space-level access)
+ *   - permission: "viewer" | "editor" | "owner"
+ *   - expiresInDays: Optional expiration in days
+ */
+export const POST: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.var.params, "spaceId");
+
+    // Token creation is a privileged delegation; restrict to space owners.
+    await verifySpaceRole(spaceId, user.id, Permission.OWNER);
+
+    const body = await parseJsonBody(context.req.raw);
+    const { name, resourceType, resourceId, permission, expiresInDays } = body;
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      throw badRequestResponse("Token name is required");
+    }
+
+    if (!permission || typeof permission !== "string") {
+      throw badRequestResponse("Permission is required");
+    }
+
+    // "extensions" is a space-wide capability, not a resource grant: it has no
+    // resource id and lets the token install/update any extension (including
+    // new ones). The caller is already verified as a space owner above, which
+    // is the level that holds `manage_extensions` by default — so delegating it
+    // to a token does not escalate beyond what the caller has.
+    const isExtensionsCapability = permission === "extensions";
+
+    if (!isExtensionsCapability) {
+      if (
+        !resourceType ||
+        typeof resourceType !== "string" ||
+        !Object.values(ResourceType).includes(resourceType as ResourceType)
+      ) {
+        throw badRequestResponse(
+          `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
+        );
+      }
+
+      if (!resourceId || typeof resourceId !== "string") {
+        throw badRequestResponse("Resource ID is required");
+      }
+
+      // Validate the grant and ensure the caller cannot delegate more than they hold.
+      await verifyCanGrantTokenAccess(
+        spaceId,
+        user.id,
+        resourceType as ResourceTypeValue,
+        resourceId,
+        permission,
+      );
+    }
+
+    let expiresAt: Date | undefined;
+    if (expiresInDays !== undefined) {
+      if (typeof expiresInDays !== "number" || expiresInDays <= 0) {
+        throw badRequestResponse("expiresInDays must be a positive number");
+      }
+      expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+    }
+
+    // Create the token
+    const result = await createAccessToken(await openSpaceStore(spaceId), {
+      spaceId,
+      name: name.trim(),
+      expiresAt,
+      createdBy: user.id,
+    });
+
+    // Grant the capability or resource access to the new token.
+    if (isExtensionsCapability) {
+      await grantFeature(spaceId, Feature.MANAGE_EXTENSIONS, getTokenUserId(result.id));
+    } else {
+      await grantTokenAccess({
+        tokenId: result.id,
+        spaceId,
+        // Validated above: resourceType/resourceId are required and checked
+        // when !isExtensionsCapability.
+        resourceType: resourceType as ResourceType,
+        resourceId: resourceId as string,
+        permission,
+      });
+    }
+
+    // Get the resources to return
+    const resources = await listTokenResources(await openSpaceStore(spaceId), result.id);
+
+    return createdResponse({
+      id: result.id,
+      token: result.token,
+      resources,
+      message:
+        "Token created successfully. Make sure to save it - you won't be able to see it again!",
+    });
+  }, "Failed to create access token");

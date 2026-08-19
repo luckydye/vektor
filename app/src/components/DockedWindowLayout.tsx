@@ -9,10 +9,6 @@ export function DockedWindowLayout() {
   const { leftWindows, rightWindows } = useDockedWindows();
   const isDesktop = useIsDesktop();
 
-  // Docked panels reserve edge space through the inset system (not flex
-  // placeholders): the totals here flow into `--inset-left`/`--inset-right`, and
-  // content + panels both offset from the same numbers. On mobile the panels
-  // render as overlay drawers instead of reserving space, so the insets are 0.
   const leftDock = createMemo(() =>
     isDesktop() ? leftWindows().reduce((sum, w) => sum + w.width, 0) : 0,
   );
@@ -22,8 +18,6 @@ export function DockedWindowLayout() {
       : 0,
   );
 
-  // `createEffect` rather than `on(...)`: the insets have to be written on the
-  // first run too.
   createEffect(() => setDockInsets(leftDock(), rightDock()));
 
   return <div class="hidden" aria-hidden="true" />;

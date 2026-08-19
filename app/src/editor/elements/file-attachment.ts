@@ -9,7 +9,7 @@
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
 import { iconMarkup } from "#components/Icon.tsx";
-import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
+import { MODEL_VIEWER_TAG } from "#components/model-viewer/ModelViewerElement.ts";
 import { escapeHtml } from "#utils/html.ts";
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];

@@ -230,3 +230,44 @@ describe("command palette list size", () => {
     ]);
   });
 });
+
+/**
+ * `page-target` reads the document off its attributes, and a spread through
+ * `Dynamic` lands on a custom element as properties instead — so the assertion
+ * is on `getAttribute`, not on the props being passed.
+ */
+describe("command palette drag source", () => {
+  const seedOne = () =>
+    setDocuments([
+      { id: "doc_1", slug: "notes", type: "page", properties: { title: "Notes" } },
+    ]);
+
+  it("gives each document row the attributes page-target drags with", () => {
+    seedOne();
+    const container = mountPalette();
+
+    const row = container.querySelector("page-target");
+    expect(row?.getAttribute("data-document-id")).toBe("doc_1");
+    expect(row?.getAttribute("data-document-type")).toBe("page");
+    expect(row?.getAttribute("data-space-id")).toBe("space_1");
+    expect(row?.getAttribute("data-document-url")).toBe("/first/doc/notes");
+  });
+
+  /**
+   * Hiding the drag source from within `dragstart` cancels the drag before the
+   * browser has taken it over, so the palette waits for the first `drag` — by
+   * which point the drag survives losing its source.
+   */
+  it("stays open through dragstart and closes once the drag runs", () => {
+    seedOne();
+    const container = mountPalette();
+    const row = container.querySelector("page-target") as HTMLElement;
+    const isOpen = () => !container.querySelector("a-blur")?.hasAttribute("hidden");
+
+    row.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    expect(isOpen()).toBe(true);
+
+    row.dispatchEvent(new Event("drag", { bubbles: true }));
+    expect(isOpen()).toBe(false);
+  });
+});

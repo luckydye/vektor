@@ -1,10 +1,10 @@
-import { initializeDatabases } from "#db/db.ts";
 import {
   attachExistingSpaceDatabase,
   enableSpaceDatabase,
   listSpaceDatabaseRecords,
   registerAvailableSpaceDatabase,
-} from "#db/spaceIndex.ts";
+} from "#db/auth/spaceIndex.ts";
+import { initializeDatabases } from "#db/client/db.ts";
 
 export async function commandSpaceRegister(databaseUrl: string): Promise<void> {
   await initializeDatabases();

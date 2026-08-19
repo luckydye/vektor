@@ -70,7 +70,6 @@ export function ExtensionSettings() {
   return (
     <div class="flex flex-1 flex-col">
       <div class="space-y-4 pt-6">
-        {/* Upload Error */}
         <Show when={uploadError()}>
           <div class="rounded-md border border-red-200 bg-red-50 p-3">
             <p class="text-red-600 text-size-medium">{uploadError()}</p>
@@ -86,7 +85,6 @@ export function ExtensionSettings() {
           }
         >
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {/* Valid extensions */}
             <For each={extensions()}>
               {(ext) => (
                 <div class="group relative flex flex-col rounded-lg border border-neutral-100 p-4 transition-all hover:border-neutral-200 hover:shadow-sm">
@@ -157,7 +155,6 @@ export function ExtensionSettings() {
               )}
             </For>
 
-            {/* Broken extensions */}
             <For each={extensionErrors()}>
               {(item) => (
                 <div class="flex flex-col rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -218,7 +215,6 @@ export function ExtensionSettings() {
               )}
             </For>
 
-            {/* Upload Card (trailing) */}
             <Show when={uploadAllowed()}>
               <FileDrop
                 accept=".zip,application/zip"
@@ -271,7 +267,6 @@ export function ExtensionSettings() {
           </div>
         </Show>
 
-        {/* Upload Not Allowed */}
         <Show when={!isLoading() && !uploadAllowed()}>
           <div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
             <p class="text-neutral-500 text-size-medium">

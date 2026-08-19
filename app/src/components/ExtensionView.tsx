@@ -5,7 +5,6 @@ interface Props {
   extensionId: string;
   routePath: string;
   spaceId: string;
-  /** Document this embedded view belongs to, or null for a standalone route. */
   documentId: string | null;
   fill?: boolean;
 }
@@ -22,15 +21,8 @@ export function ExtensionView(props: Props) {
   const [error, setError] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(true);
   let cleanup: (() => void) | null = null;
-  // Bumped per render so a slow renderer from a previous route cannot install
-  // itself after navigation.
   let renderVersion = 0;
 
-  // A document prop can be backed by a live query whose object changes when an
-  // extension reads or writes replica data. Compare the values that actually
-  // determine a view instance so those cache refreshes do not remount it.
-  // `Init` spelled out as `undefined`: there is no initial value, and it is only
-  // passed at all because `equals` is the third argument.
   const renderTarget = createMemo<RenderTarget, undefined>(
     () => ({
       extensionId: props.extensionId,
@@ -77,8 +69,6 @@ export function ExtensionView(props: Props) {
       const root = containerRef?.root;
       if (!root) throw new Error("Extension view element is missing root");
 
-      // Each render gets its own mount point, so an async renderer from a
-      // previous route can only mutate a detached node.
       const mount = document.createElement("div");
       mount.style.height = "100%";
       mount.style.width = "100%";

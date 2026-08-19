@@ -138,7 +138,7 @@ Env vars:
 async function verifyNativeAddons(): Promise<void> {
   const [{ getNativeEmbedding }, { getNativeImage }, { getNativeExec }] =
     await Promise.all([
-      import("./src/embeddings/native.ts"),
+      import("./src/search/embeddingRuntime.ts"),
       import("./src/files/native.ts"),
       import("./src/exec/native.ts"),
     ]);

@@ -1,10 +1,10 @@
 import { createMemo, Show } from "solid-js";
+import { canEdit } from "#acl/permissions.ts";
 import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
 import { PinnedDocument } from "#components/PinnedDocument.tsx";
 import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
@@ -33,9 +33,7 @@ export function SpaceHomeView() {
           }),
         },
       });
-    } catch {
-      // The shared upload manager reports the failure through the progress toast.
-    }
+    } catch {}
   }
 
   return (

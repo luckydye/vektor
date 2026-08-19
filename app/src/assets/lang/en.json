@@ -397,10 +397,8 @@
   "Deselect all": "Deselect all",
   "No documents": "No documents",
   "No documents in the selected date range": "No documents in the selected date range",
-  "Choose a format to get started.": "Choose a format to get started.",
+  "Choose a format to get started.": "Or choose a format to get started.",
   "Select document type": "Select document type",
-  "Doc": "Doc",
-  "Write, organize, and collaborate in a structured document.": "Write, organize, and collaborate in a structured document.",
   "Canvas": "Canvas",
   "Visualize ideas and connect things on a flexible canvas.": "Visualize ideas and connect things on a flexible canvas.",
   "Workflow": "Workflow",
@@ -408,5 +406,8 @@
   "Database": "Database",
   "Organize and manage data in structured tables.": "Organize and manage data in structured tables.",
   "Spreadsheet": "Spreadsheet",
-  "Lay out numbers and records in rows and columns.": "Lay out numbers and records in rows and columns."
+  "Lay out numbers and records in rows and columns.": "Lay out numbers and records in rows and columns.",
+  "Start from a template": "Start from a template",
+  "Failed to insert the template": "Failed to insert the template",
+  "Template": "Template"
 }

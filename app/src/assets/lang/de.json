@@ -393,10 +393,8 @@
   "Deselect all": "Auswahl aufheben",
   "No documents": "Keine Dokumente",
   "No documents in the selected date range": "Keine Dokumente im ausgewählten Zeitraum",
-  "Choose a format to get started.": "Wählen Sie ein Format, um zu beginnen.",
+  "Choose a format to get started.": "Oder wählen Sie ein Format, um zu beginnen.",
   "Select document type": "Dokumenttyp auswählen",
-  "Doc": "Dokument",
-  "Write, organize, and collaborate in a structured document.": "Schreiben, strukturieren und gemeinsam an einem Dokument arbeiten.",
   "Canvas": "Canvas",
   "Visualize ideas and connect things on a flexible canvas.": "Ideen visualisieren und Inhalte auf einer flexiblen Fläche verbinden.",
   "Workflow": "Workflow",
@@ -404,5 +402,8 @@
   "Database": "Datenbank",
   "Organize and manage data in structured tables.": "Daten in strukturierten Tabellen organisieren und verwalten.",
   "Spreadsheet": "Tabelle",
-  "Lay out numbers and records in rows and columns.": "Zahlen und Datensätze in Zeilen und Spalten anordnen."
+  "Lay out numbers and records in rows and columns.": "Zahlen und Datensätze in Zeilen und Spalten anordnen.",
+  "Start from a template": "Mit einer Vorlage beginnen",
+  "Failed to insert the template": "Vorlage konnte nicht eingefügt werden",
+  "Template": "Vorlage"
 }

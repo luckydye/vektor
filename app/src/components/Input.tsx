@@ -2,7 +2,6 @@ import { createSignal, mergeProps } from "solid-js";
 
 interface Props {
   placeholder?: string;
-  /** Two-way bound value. */
   value?: string;
   type?: string;
   disabled?: boolean;

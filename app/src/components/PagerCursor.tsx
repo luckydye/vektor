@@ -4,7 +4,6 @@ interface Props {
   hasPrevPage: boolean;
   hasNextPage: boolean;
   disabled?: boolean;
-  /** Keep the (disabled) buttons visible when there is only one page. */
   alwaysVisible?: boolean;
   class?: string;
   onPrev?: () => void;

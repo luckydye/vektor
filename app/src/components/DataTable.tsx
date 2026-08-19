@@ -61,7 +61,6 @@ function exportSummaryRow(column: string, value: unknown): ExcelCell[] {
 }
 
 function parseBoldSection(text: string): Record<string, string> | null {
-  // Match **Heading** followed by its content up to the next **Heading** or end
   const regex = /\*\*([^*\n]+)\*\*\s*\n?([\s\S]*?)(?=\n\*\*[^*\n]+\*\*|$)/g;
   const result: Record<string, string> = {};
   let found = false;
@@ -75,7 +74,6 @@ function parseBoldSection(text: string): Record<string, string> | null {
 function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][] {
   if (!parseBold) return sections.map((s) => exportRow([s]));
 
-  // The 0th section is an intro/summary block (e.g. "Notiz"), not a record — skip it.
   const recordSections = sections.slice(1);
 
   const parsed = recordSections
@@ -83,7 +81,6 @@ function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][
     .filter((r): r is Record<string, string> => r !== null);
   if (parsed.length === 0) return recordSections.map((s) => exportRow([s]));
 
-  // Union of all keys in order of first appearance
   const keyOrder: string[] = [];
   const keySet = new Set<string>();
   for (const record of parsed) {
@@ -216,13 +213,6 @@ export function DataTable(props: Props) {
     return spacePath(currentSpace()?.slug, `/doc/${encodeURIComponent(text)}`);
   }
 
-  /**
-   * Column widths, for this tab only.
-   *
-   * `session` rather than `local` on purpose: a width dragged out to read one long
-   * value is a fix for the moment, not a preference to be met again on the user's
-   * next visit or in every other tab.
-   */
   const {
     value: columnWidths,
     commit: commitColumnWidths,
@@ -251,7 +241,6 @@ export function DataTable(props: Props) {
     resizeCol = null;
     document.removeEventListener("mousemove", onResizeMouseMove);
     document.removeEventListener("mouseup", onResizeMouseUp);
-    // Remembered on release rather than on every mousemove: one write per drag.
     commitColumnWidths(columnWidths());
   }
 
@@ -326,7 +315,6 @@ export function DataTable(props: Props) {
                         {sortCol() === col ? (sortAsc() ? "↑" : "↓") : "↕"}
                       </span>
                     </span>
-                    {/* Resize handle */}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: a pointer-only resize affordance; keyboard resizing has no equivalent here. */}
                     <div
                       class="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-neutral-300 active:bg-neutral-400"

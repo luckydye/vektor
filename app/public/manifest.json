@@ -6,7 +6,17 @@
   "theme_color": "#f5f5f5",
   "start_url": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": ["tabbed", "window-controls-overlay"],
+  "tab_strip": {
+    "home_tab": {
+      "scope_patterns": [
+        { "pathname": "/" },
+        { "pathname": "/:space" },
+        { "pathname": "/:space/" }
+      ]
+    },
+    "new_tab_button": { "url": "/new/document" }
+  },
   "icons": [
     {
       "src": "/180x180.png",

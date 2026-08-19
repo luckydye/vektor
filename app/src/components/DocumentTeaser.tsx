@@ -21,7 +21,6 @@ function docTitle(doc: DocumentWithProperties) {
   return title ? propertyValueToText(title) : "Untitled";
 }
 
-/** Every property except the ones already shown, flattened to display strings. */
 function docTags(doc: DocumentWithProperties): string[] {
   if (!doc.properties) return [];
   const excluded = new Set(["title", "name", "headerImage"]);
@@ -32,7 +31,6 @@ function docTags(doc: DocumentWithProperties): string[] {
 
 export function DocumentTeaser(props: Props) {
   const { currentSpace } = useSpace();
-  // Computed once per doc rather than the five times the template asked for it.
   const tags = createMemo(() => docTags(props.doc));
   const headerImage = createMemo(() => docHeaderImage(props.doc));
 

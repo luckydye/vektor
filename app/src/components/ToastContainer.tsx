@@ -22,13 +22,6 @@ export function ToastContainer() {
     else elements.delete(id);
   }
 
-  /**
-   * Play a toast out and then remove it.
-   *
-   * The removal must happen whatever the animation does, so it is raced against
-   * a timer: a background tab throttles rAF, and `animateOut` would then resolve
-   * far too late (or not until the tab is focused again), pinning the toast.
-   */
   async function playOutAndDrop(id: number) {
     if (exiting.has(id)) return;
     exiting.add(id);
@@ -50,8 +43,6 @@ export function ToastContainer() {
     }
   });
 
-  // Drop completion marks for toasts that have gone, so a recycled id cannot
-  // inherit a previous toast's "done" state.
   createEffect(() => {
     const currentIds = new Set(toasts().map((toast) => toast.id));
     setCompletedActions(
@@ -77,16 +68,6 @@ export function ToastContainer() {
       >
         <For each={toasts()}>
           {(toast) => {
-            /**
-             * Played on mount, not from `ref`.
-             *
-             * `ref` runs before the node is in the document, and an animation
-             * started on a detached element never gets a start time — it holds
-             * the element at its first keyframe, which for the enter is
-             * `opacity: 0`. The toast then sat there invisible until it
-             * expired, and only flickered on the way out, when the leave
-             * animation ran on a node that was by then attached.
-             */
             onMount(() => {
               const el = elements.get(toast.id);
               if (el) animateIn(el);
@@ -100,18 +81,12 @@ export function ToastContainer() {
                   "bg-red-600 text-white": toast.type === "error",
                   "bg-neutral-900 text-white": toast.type === "info",
                   "bg-green-600 text-white": toast.type === "success",
-                  // Room for the repeat badge in the corner.
                   "pr-9": (toast.count ?? 1) > 1,
                 }}
               >
                 <Icon class="h-4 w-4 shrink-0" name={icons[toast.type]} />
                 <span class="relative z-10">{toast.message}</span>
-                {/* Repeats of the same message merge into this row; the badge
-                    counts them so a flood stays one toast. */}
                 <Show when={(toast.count ?? 1) > 1}>
-                  {/* The numeral is hidden and restated in full for assistive
-                      tech: a bare "3" says nothing, and a span cannot carry an
-                      `aria-label` of its own — nothing names a generic role. */}
                   <span
                     aria-hidden="true"
                     class="absolute top-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 font-semibold text-[11px] tabular-nums leading-none"
@@ -134,8 +109,6 @@ export function ToastContainer() {
                     </button>
                   )}
                 </Show>
-                {/* Cancel sits after the action so a row that somehow has both
-                    keeps the destructive one on the outside. */}
                 <Show when={toast.cancel}>
                   <button
                     type="button"

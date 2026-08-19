@@ -1,13 +1,44 @@
 import { currentLang } from "#utils/lang.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 
 /**
- * Localized date/time rendering. Kept out of `utils.ts` because `currentLang()`
- * reaches the language catalogues (and, through them, the locale-scope seam),
- * while `utils.ts` is imported by server code on the document/serialization
- * path — see `test/server-frontend-imports.spec.ts`. Timestamp *parsing*
- * (`normalizeTimestamp`) stays in `utils.ts`: it needs no locale.
+ * Timestamp parsing and localized date/time rendering. Kept out of `utils.ts`
+ * because `currentLang()` reaches the language catalogues (and, through them,
+ * the locale-scope seam), while `utils.ts` is imported by server code on the
+ * document/serialization path — see `test/server-frontend-imports.spec.ts`.
+ * Importing this module for `normalizeTimestamp` alone still pulls the
+ * catalogues in, so server callers on that path want their own parsing.
  */
+
+/**
+ * Every timestamp shape the API and DB hand out, as a `Date`: epoch seconds and
+ * milliseconds are told apart by magnitude, numeric strings included. Throws on
+ * anything unparseable — the formatters below all catch and degrade to the raw
+ * value, since most call sites render straight into a template.
+ */
+export function normalizeTimestamp(value: string | number | Date): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return new Date(value < 1e12 ? value * 1000 : value);
+  }
+
+  const trimmed = value.trim();
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) {
+      throw new Error(`Invalid numeric timestamp: ${value}`);
+    }
+    return new Date(numeric < 1e12 ? numeric * 1000 : numeric);
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid timestamp: ${value}`);
+  }
+  return parsed;
+}
 
 export type RelativeTimeOptions = {
   /**

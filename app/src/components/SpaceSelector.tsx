@@ -26,12 +26,10 @@ interface Props {
   onCreateDoc?: () => void;
 }
 
-/** Closes the popover the click came from — it listens for a bubbling `exit`. */
 function dismissPopover(target: EventTarget | null) {
   (target as Element | null)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
-/** A space's logo: inline SVG markup, an image URL, or the house fallback. */
 function SpaceLogo(props: { logoSvg?: string; class?: string; fallbackClass?: string }) {
   return (
     <Show
@@ -112,15 +110,6 @@ export function SpaceSelector(props: Props) {
             <div class="w-max min-w-(--trigger-width) opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
               <div class="max-h-[500px] origin-top scale-95 overflow-y-auto rounded-lg border border-neutral-100 bg-neutral-50 shadow-xl transition-all duration-150 group-[[enabled]]:scale-100">
                 <div class="flex flex-col gap-[4px] p-[4px]">
-                  {/*
-                    `Index`, not `For`: the space list arrives rebuilt from the
-                    replica cache, so every row object is new by identity even
-                    when nothing about it changed. `For` keys on that identity
-                    and would tear down and re-create every row — logo icon and
-                    all — on each cache write. Rows here are positional and
-                    interchangeable, so keying on position reuses them and lets
-                    the fields update in place.
-                  */}
                   <Index each={props.spaces}>
                     {(space) => (
                       <button

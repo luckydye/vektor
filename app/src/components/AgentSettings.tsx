@@ -65,7 +65,6 @@ export function AgentSettings() {
       if (provider === "ollama") {
         body = { provider: "ollama", model, baseUrl };
       } else {
-        // Keep existing key if blank and one already exists
         const current = meta();
         const existingKeyOk =
           !apiKey && current?.configured && (current as { hasApiKey: boolean }).hasApiKey;
@@ -74,8 +73,6 @@ export function AgentSettings() {
           return;
         }
         if (existingKeyOk) {
-          // Re-fetching the existing key isn't possible, and the backend
-          // requires apiKey for these providers — ask for it again.
           setSaveError("Enter the API key to save changes.");
           return;
         }
@@ -133,7 +130,6 @@ export function AgentSettings() {
         fallback={<div class="py-4 text-neutral-500 text-size-medium">Loading…</div>}
       >
         <div>
-          {/* Current config status */}
           <Show
             when={configured()}
             fallback={
@@ -167,7 +163,6 @@ export function AgentSettings() {
             )}
           </Show>
 
-          {/* Configuration form */}
           <form
             onSubmit={(event) => {
               event.preventDefault();

@@ -8,6 +8,7 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/tabs";
+import { isOwner, Permission } from "#acl/permissions.ts";
 import type {
   Category,
   DocumentAccessEntry,
@@ -15,7 +16,6 @@ import type {
   User,
 } from "#api/client.ts";
 import { api } from "#api/client.ts";
-import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Dialog } from "./Dialog.tsx";
@@ -64,7 +64,7 @@ export function DocumentShareDialog(props: Props) {
   const [isLoading, setIsLoading] = createSignal(false);
 
   const [newMemberEmail, setNewMemberEmail] = createSignal("");
-  const [newMemberRole, setNewMemberRole] = createSignal("viewer");
+  const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
   const [addingMember, setAddingMember] = createSignal(false);
   const [addMemberError, setAddMemberError] = createSignal<string | null>(null);
 
@@ -73,13 +73,13 @@ export function DocumentShareDialog(props: Props) {
   const roleOptions = createMemo(() =>
     userIsOwner()
       ? [
-          { value: "viewer", label: "Viewer" },
-          { value: "editor", label: "Editor" },
-          { value: "owner", label: "Owner" },
+          { value: Permission.VIEWER, label: "Viewer" },
+          { value: Permission.EDITOR, label: "Editor" },
+          { value: Permission.OWNER, label: "Owner" },
         ]
       : [
-          { value: "viewer", label: "Viewer" },
-          { value: "editor", label: "Editor" },
+          { value: Permission.VIEWER, label: "Viewer" },
+          { value: Permission.EDITOR, label: "Editor" },
         ],
   );
 
@@ -147,7 +147,7 @@ export function DocumentShareDialog(props: Props) {
         if (!open) return;
         setScope("document");
         setNewMemberEmail("");
-        setNewMemberRole("viewer");
+        setNewMemberRole(Permission.VIEWER);
         setIncludeChildPages(false);
         setSelectedCategoryId("");
         setAddMemberError(null);
@@ -194,7 +194,6 @@ export function DocumentShareDialog(props: Props) {
     }
   }
 
-  /** The grants sitting on this document itself — the only ones this tab owns. */
   function directGrants(entry: DocumentAccessEntry) {
     return entry.grants.filter((grant) => !grant.inherited);
   }
@@ -285,7 +284,6 @@ export function DocumentShareDialog(props: Props) {
     return (userId && usersMap().get(userId)?.email) || "";
   }
 
-  /** How a grantee reaches this document, in the words of the source grant. */
   function accessSourceLabel(entry: DocumentAccessEntry): string {
     const { resourceType, resourceLabel, inherited } = entry.via;
     const source =
@@ -301,7 +299,6 @@ export function DocumentShareDialog(props: Props) {
     return entry.groupId ? `Group · ${source}` : source;
   }
 
-  /** Direct grants first, then trees, categories, and space members. */
   const sourceRank: Record<string, number> = {
     document: 0,
     document_tree: 1,
@@ -327,9 +324,8 @@ export function DocumentShareDialog(props: Props) {
   function canRemoveSpaceMember(perm: PermissionEntry): boolean {
     if (!userIsOwner()) return false;
     if (isSelf(perm)) return false;
-    // The space owner is `createdBy`.
     if (
-      perm.permission.permission === "owner" &&
+      isOwner(perm.permission.permission) &&
       currentSpace()?.createdBy === perm.permission.userId
     ) {
       return false;
@@ -337,7 +333,6 @@ export function DocumentShareDialog(props: Props) {
     return true;
   }
 
-  /** One person's row — identical in all three panels apart from the trailing controls. */
   const PermissionRow = (rowProps: {
     userId?: string;
     groupId?: string;
@@ -446,7 +441,6 @@ export function DocumentShareDialog(props: Props) {
           </a-tabs-tab>
         </a-tabs-list>
 
-        {/* Document panel */}
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
             <form class="space-y-2" onSubmit={(e) => void handleInvite(e)}>
@@ -521,7 +515,6 @@ export function DocumentShareDialog(props: Props) {
           </div>
         </a-tabs-panel>
 
-        {/* Category panel */}
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
             <select
@@ -592,7 +585,6 @@ export function DocumentShareDialog(props: Props) {
           </div>
         </a-tabs-panel>
 
-        {/* Space panel */}
         <a-tabs-panel class="block">
           <div class="space-y-3 px-5 py-3">
             <form onSubmit={(e) => void handleInvite(e)}>
@@ -635,9 +627,9 @@ export function DocumentShareDialog(props: Props) {
                                 }
                                 class="rounded-md border border-neutral-200 bg-background px-2 py-0.5 text-neutral-700 text-size-small focus:outline-none focus:ring-1 focus:ring-neutral-400"
                               >
-                                <option value="viewer">Viewer</option>
-                                <option value="editor">Editor</option>
-                                <option value="owner">Owner</option>
+                                <option value={Permission.VIEWER}>Viewer</option>
+                                <option value={Permission.EDITOR}>Editor</option>
+                                <option value={Permission.OWNER}>Owner</option>
                               </select>
                             </Show>
                             <Show when={canRemoveSpaceMember(perm)}>

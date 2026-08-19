@@ -9,12 +9,12 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/popover";
+import { canEdit, Permission } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { setCancelCount, setEditing, useEditor } from "#composeables/useEditor.ts";
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -119,13 +119,12 @@ export function DocumentActions(props: Props) {
         const docId = documentId();
         if (!docId) return;
 
-        // Create a 30-day access token for this document
         const documentName = props.title || docId;
         const tokenResult = await api.accessTokens.create(spaceId, {
           name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
           resourceType: "document",
           resourceId: docId,
-          permission: "editor",
+          permission: Permission.EDITOR,
           expiresInDays: 30,
         });
 
@@ -196,6 +195,13 @@ export function DocumentActions(props: Props) {
 
   async function saveAsSuggestion(e: MouseEvent) {
     const action = Actions.get("document:save:suggestion");
+    if (!action) return;
+    await action.run();
+    (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
+  }
+
+  async function publishAsTemplate(e: MouseEvent) {
+    const action = Actions.get("document:save:template");
     if (!action) return;
     await action.run();
     (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
@@ -450,8 +456,6 @@ export function DocumentActions(props: Props) {
     }
   });
 
-  // Extensions name their own icons, and an unknown name draws nothing rather
-  // than a stand-in glyph that means something else.
   const actionIcon = (options: ActionOptions): IconName | undefined =>
     options.icon?.() as IconName | undefined;
 
@@ -477,8 +481,6 @@ export function DocumentActions(props: Props) {
           spaceId={currentSpaceId() as string}
         />
       </Show>
-
-      {/* Workflows have no dedicated edit button; the context menu carries it. */}
 
       <Show when={canUseDocumentEditor() && !editing()}>
         <button
@@ -538,6 +540,18 @@ export function DocumentActions(props: Props) {
                         <div class="font-medium text-size-small">Save as suggestion</div>
                         <div class="text-neutral-500 text-size-small">
                           Create an open suggestion instead of publishing
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
+                        disabled={isSaving()}
+                        onClick={(e) => void publishAsTemplate(e)}
+                      >
+                        <div class="font-medium text-size-small">Publish as template</div>
+                        <div class="text-neutral-500 text-size-small">
+                          Publish and offer this document when creating a new one
                         </div>
                       </button>
                     </div>

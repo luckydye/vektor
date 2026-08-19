@@ -39,8 +39,6 @@ export function RevisionView(props: Props) {
   const [diffContent, setDiffContent] = createSignal("");
   const [diffBaseNumber, setDiffBaseNumber] = createSignal<number | null>(null);
 
-  // When viewing a diff the document element renders the inline redline instead
-  // of the plain revision content; otherwise it renders the revision as-is.
   const renderedHtml = createMemo(() =>
     showingDiff() ? diffContent() : revisionContent(),
   );
@@ -48,10 +46,6 @@ export function RevisionView(props: Props) {
   const [docViewEl, setDocViewEl] = createSignal<DocumentViewElement | null>(null);
 
   createEffect(() => {
-    // Read both reactive deps synchronously: reads after an `await` are not
-    // tracked, so the effect must depend on `renderedHtml` here to re-run when
-    // the content changes (e.g. switching from a revision view to its diff)
-    // and not only when the element mounts.
     const el = docViewEl();
     const html = renderedHtml();
     if (!el) return;
@@ -60,19 +54,11 @@ export function RevisionView(props: Props) {
     });
   });
 
-  /**
-   * `data-revision` hides the live document (`body[data-revision] main`), so it
-   * must not outlive the revision on screen: left behind it blanks whatever
-   * document comes next. Derived from the signal rather than toggled by hand at
-   * each call site, and cleared on unmount — navigating away tears this
-   * component down without any of the handlers below running.
-   */
   createEffect(() => {
     if (viewingRevision()) document.body.dataset.revision = "true";
     else document.body.removeAttribute("data-revision");
   });
   onCleanup(() => {
-    // Cleanups also run when SSR tears the tree down, where there is no DOM.
     if (isServer) return;
     document.body.removeAttribute("data-revision");
   });
@@ -87,14 +73,6 @@ export function RevisionView(props: Props) {
     setDiffBaseNumber(null);
   }
 
-  /**
-   * A revision of the previous document has nothing to say about this one.
-   *
-   * On the id changing, not merely on the effect re-running: the document query
-   * hands back a fresh object on every refetch and cache push, so this fires
-   * repeatedly for the same document — and closed a revision opened from its
-   * URL a moment earlier, before the reader ever saw it.
-   */
   createEffect(
     on(
       () => props.documentId,
@@ -125,8 +103,6 @@ export function RevisionView(props: Props) {
     query.delete("revision");
     query.delete("base");
     const search = query.toString();
-    // `location.pathname` already carries the router base ("/{space}/"), so the
-    // target must not be resolved against it again — that yields "/space/space/…".
     navigate(`${location.pathname}${search ? `?${search}` : ""}`, {
       replace: true,
       resolve: false,
@@ -134,16 +110,9 @@ export function RevisionView(props: Props) {
   }
 
   function closeRevisionView() {
-    // Dispatch the event so DocumentContent also clears its viewingRevision flag
     window.dispatchEvent(new CustomEvent("revision:close"));
   }
 
-  /**
-   * The base revision is only known once the server has resolved it (the
-   * request may omit it and take the document's published revision), so this
-   * writes the URL itself instead of leaving it to the sidebar: both sides of
-   * the comparison belong in the link.
-   */
   async function handleRevisionDiff(event: Event) {
     const detail = (event as CustomEvent).detail;
     const spaceId = currentSpaceId();
@@ -197,7 +166,6 @@ export function RevisionView(props: Props) {
   return (
     <Show when={viewingRevision()}>
       <div>
-        {/* Revision Disclaimer Banner */}
         <BottomBanner>
           <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
             <div class="flex min-w-0 flex-1 items-center gap-3">
@@ -249,11 +217,9 @@ export function RevisionView(props: Props) {
           </div>
         </BottomBanner>
 
-        {/* App Revision View (diffs render as an inline redline via document-view) */}
         <Show
           when={props.documentType === "app" && !showingDiff()}
           fallback={
-            // Document / other type Revision View and inline diff
             <div>
               <document-view ref={setDocViewEl as never} />
             </div>
