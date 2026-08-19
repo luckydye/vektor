@@ -67,6 +67,20 @@ describe("UsersOverview", () => {
     expect(queryByText(document.body, "No accounts have signed in yet.")).toBeTruthy();
   });
 
+  // The register is one page of accounts, so a full page must not read as the
+  // whole instance — the endpoint's `offset` is how the rest is reached.
+  it("says so when it is showing one page of the register", async () => {
+    const note = "Only the most recent accounts are listed.";
+
+    mount({ users: [user()] });
+    await settle();
+    expect(queryByText(document.body, note)).toBeNull();
+
+    mount({ users: [user()], capped: true });
+    await settle();
+    expect(queryByText(document.body, note)).toBeTruthy();
+  });
+
   // The register comes back empty for a caller who may not see it, so a request
   // that failed outright has to say so — an empty table would otherwise read as
   // an instance with nobody in it.

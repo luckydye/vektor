@@ -180,6 +180,7 @@ function UsersOverviewContainer(props: {
   users?: InstanceUser[];
   loading: boolean;
   error: string | null;
+  capped: boolean;
 }) {
   const overviewUsers = createMemo(() =>
     (props.users ?? []).map((user) => ({
@@ -201,6 +202,7 @@ function UsersOverviewContainer(props: {
         // not an instance without a single account.
         loading={props.loading || (props.users === undefined && !props.error)}
         error={props.error}
+        capped={props.capped}
       />
     </main>
   );
@@ -213,14 +215,15 @@ function UsersOverviewContainer(props: {
  */
 function SpacesShell(props: { initialTab?: SpacesTab }) {
   const [activeTab, setActiveTab] = createSignal<SpacesTab>(props.initialTab ?? "spaces");
-  const { isInstanceAdmin, users, isLoading, error } = useInstanceUsers(
+  const { isInstanceAdmin, users, isLoading, error, capped } = useInstanceUsers(
     () => activeTab() === "users",
   );
 
   const tabs = createMemo<RailTab[]>(() => [
     { id: "spaces", label: t("Spaces"), icon: "grid-grid" },
-    // The register is admin-only on the server, so offering it to anyone else
-    // would only ever open a page that 403s.
+    // The server answers the register to an admin and an empty list to everyone
+    // else, so offering the tab to anyone else would only ever open a page that
+    // reports the instance has nobody in it.
     ...(isInstanceAdmin() === true
       ? [{ id: "users", label: t("Users"), icon: "users" } as const]
       : []),
@@ -245,7 +248,12 @@ function SpacesShell(props: { initialTab?: SpacesTab }) {
     <div class="flex min-h-screen">
       <SpacesRail tabs={tabs()} activeTab={resolvedTab()} onSelect={selectTab} />
       <Show when={resolvedTab() === "users"} fallback={<SpacesOverviewContainer />}>
-        <UsersOverviewContainer users={users()} loading={isLoading()} error={error()} />
+        <UsersOverviewContainer
+          users={users()}
+          loading={isLoading()}
+          error={error()}
+          capped={capped()}
+        />
       </Show>
       <ToastContainer />
     </div>

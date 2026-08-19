@@ -402,17 +402,22 @@ curl -sS -H "Content-Type: application/json" \
 ### `GET /users`
 
 - **Auth**: session (`requireUser`). Unscoped, what comes back depends on whether the
-  caller administers the instance (`VEKTOR_ADMIN_GROUPS`).
+  caller administers the instance (`VEKTOR_ADMIN_GROUPS`, or no-auth's local account).
 - **Query**: `id` (single user), `spaceId` (space members), or neither (the register).
+  The register also takes `limit` (1–1000, default 500) and `offset` (default 0), which
+  the scoped forms reject. Any other parameter is `400`, so a misspelled scope is named
+  rather than silently answered as a different one.
 - **Behavior (`id`)**: returns `{ id, name, image }` for that user, `404` if none.
 - **Behavior (`spaceId`)**: `viewer` on the space, returns an array of
   `{ id, name, image }` for all space members (ACL member ids + the caller).
-- **Behavior (unscoped)**: the user register — every account, newest first, as
+- **Behavior (unscoped)**: the user register — one page of accounts, newest first, as
   `{ id, name, email, image, groups, createdAt }`, where `groups` is the stored IdP
   claim without the synthetic `public`. An admin is already owner on every space that
   exists, so the register exposes nothing they could not read a space at a time. Anyone
   else gets `200 []`, not a refusal: like `/spaces` and `/search`, this lists what the
-  caller may see, and for them that is nothing.
+  caller may see, and for them that is nothing. One answer is capped whatever `limit`
+  says, so reading every account means walking `offset`; the order is total (join date,
+  then id), so paging it neither repeats nor skips a row.
 - The scoped forms never include email (PII), which is what keeps them answerable to any
   signed-in account. `image` is the provider's picture, a derived Gravatar URL when one
   is configured, or `null` for a client-drawn avatar.
@@ -430,8 +435,8 @@ curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
 ```
 
 ```bash
-# The register, as an instance admin
-curl -sS -b "$COOKIE" "$VEKTOR/users"
+# The register, as an instance admin — the second page of fifty
+curl -sS -b "$COOKIE" "$VEKTOR/users?limit=50&offset=50"
 ```
 
 ```json
@@ -468,7 +473,9 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/me"
   "name": "Ada Lovelace",
   "email": "ada@acme.test",
   "image": null,
-  "canCreateSpace": true
+  "canCreateSpace": true,
+  "adminGroups": [],
+  "isAdmin": false
 }
 ```
 

@@ -17,6 +17,8 @@ interface Props {
   users: OverviewUser[];
   loading?: boolean;
   error?: string | null;
+  /** Whether these rows are one page of the register rather than all of it. */
+  capped?: boolean;
 }
 
 /**
@@ -119,6 +121,15 @@ export function UsersOverview(props: Props) {
             </tbody>
           </table>
         </div>
+
+        {/* Said under the table rather than in place of rows: one page is what
+            the register asks for, and an admin who needs the rest reads it
+            through the endpoint's own `offset`. */}
+        <Show when={props.capped}>
+          <p class="mt-3xs text-neutral-500 text-size-small">
+            {t("Only the most recent accounts are listed.")}
+          </p>
+        </Show>
       </Show>
     </div>
   );

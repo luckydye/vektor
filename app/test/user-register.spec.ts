@@ -16,8 +16,9 @@ import {
  * group claim of people the caller shares nothing with. The route's scoped forms
  * are covered by the access matrix, which pins them to `?spaceId=` — so this is
  * the spec for the form that matrix cannot reach, and what it proves is that an
- * instance admin reads the register and that the empty list everyone else gets
- * is empty of other people rather than merely status-checked.
+ * instance admin reads the register, that the empty list everyone else gets is
+ * empty of other people rather than merely status-checked, and that the route
+ * says which questions it will not answer instead of answering another one.
  */
 
 const PORT = 7531;
@@ -106,6 +107,59 @@ describe("GET /api/v1/users (unscoped: the register)", () => {
     expect(JSON.parse(body)).toEqual([]);
     expect(body).not.toContain(admin.email);
     expect(body).not.toContain(member.email);
+  });
+
+  // One page, and a total order across pages: the register is bounded like every
+  // other listing here, so an instance with ten thousand accounts cannot be asked
+  // for all of them in one request.
+  it("pages the register, a page at a time", async () => {
+    const first = await apiRequest("/api/v1/users?limit=1", admin.token);
+    expect(first.status).toBe(200);
+    const firstPage: RegisterEntry[] = await first.json();
+    expect(firstPage).toHaveLength(1);
+
+    const second = await apiRequest("/api/v1/users?limit=1&offset=1", admin.token);
+    expect(second.status).toBe(200);
+    const secondPage: RegisterEntry[] = await second.json();
+    expect(secondPage).toHaveLength(1);
+    // The order is total (join date, then id), so the second page is a different
+    // account rather than the first one again.
+    expect(secondPage[0].id).not.toBe(firstPage[0].id);
+  });
+
+  it("refuses a page it cannot answer", async () => {
+    for (const query of ["?limit=0", "?limit=1001", "?limit=all", "?offset=-1"]) {
+      const res = await apiRequest(`/api/v1/users${query}`, admin.token);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  // A misspelled scope must not read as the register: `?userId=` used to be a 400
+  // and would otherwise be answered with every account, or with an empty list a
+  // client draws as an instance with nobody in it.
+  it("names an unknown parameter instead of answering a different question", async () => {
+    for (const token of [admin.token, member.token]) {
+      const res = await apiRequest("/api/v1/users?userId=someone", token);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  // An empty scope is the same mistake with the right spelling.
+  it("refuses a scope with nothing in it", async () => {
+    for (const query of ["?id=", "?spaceId=", "?id=%20"]) {
+      const res = await apiRequest(`/api/v1/users${query}`, admin.token);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  // Paging belongs to the unscoped form; the scoped ones answer one profile or one
+  // space's members, so honouring neither and ignoring it silently is not an option.
+  it("refuses paging on a scoped form", async () => {
+    const res = await apiRequest(
+      `/api/v1/users?spaceId=${memberSpaceId}&limit=1`,
+      member.token,
+    );
+    expect(res.status).toBe(400);
   });
 
   it("refuses a caller with no session at all", async () => {

@@ -9,8 +9,10 @@ import {
 } from "#acl/permissions.ts";
 import { getSpaceMemberIds } from "#acl/store.ts";
 import {
+  badRequestResponse,
   jsonResponse,
   notFoundResponse,
+  parseQueryInt,
   requireUser,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -19,6 +21,24 @@ import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { user } from "#db/schema/auth.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
+
+/**
+ * Every parameter this route understands. An unrecognized one is a `400` rather
+ * than the unscoped form: `?userId=` is a misspelling of `?id=`, and answering it
+ * with the register — or, for anyone else, with the empty list a client draws as
+ * an instance with nobody in it — hides the mistake instead of naming it.
+ */
+const KNOWN_PARAMS = new Set(["id", "spaceId", "limit", "offset"]);
+
+/**
+ * How many accounts one register answer carries, and the most it will carry when
+ * asked for more. A register is a listing like any other here, so it is bounded
+ * like one: `/users/suggestions` caps at 20, and an instance with ten thousand
+ * accounts must not turn one request into the whole table, or one page into ten
+ * thousand rows. `offset` walks past the cap for whoever needs the rest.
+ */
+const REGISTER_DEFAULT_LIMIT = 500;
+const REGISTER_MAX_LIMIT = 1000;
 
 /**
  * The stored group claim as a list, without the freshness bound and the
@@ -51,9 +71,10 @@ function storedGroups(raw: string | null): string[] {
  *   - `?id=<userId>`     → single minimal profile (id, name, image)
  *   - `?spaceId=<id>`    → members of a space the caller belongs to, the same
  *                          minimal profiles
- *   - unscoped           → the register: every account with its email, group
- *                          claim and join date, for an instance admin — and an
- *                          empty list for anyone else.
+ *   - unscoped           → the register: accounts with their email, group claim
+ *                          and join date, for an instance admin — and an empty
+ *                          list for anyone else. `?limit=` / `?offset=` page it,
+ *                          newest first, bounded whether or not they are given.
  *
  * The scoped forms are deliberately narrow, and stay so: they are what any
  * signed-in account may ask, and an unscoped listing there would dump the table
@@ -63,14 +84,42 @@ function storedGroups(raw: string | null): string[] {
  * empty array, not a refusal: this is a listing of what the caller may see, and
  * for them that is nothing. Inviting people is still done by email through the
  * permissions endpoint; nobody needs the register for that.
+ *
+ * A parameter this route does not know is a `400`, whichever form it would
+ * otherwise have selected: the scopes are how a caller says what it wants, and a
+ * misspelled one must not silently become a different question.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const caller = requireUser(context);
     const db = getAuthDb();
 
-    const id = new URL(context.req.url).searchParams.get("id");
-    const spaceId = new URL(context.req.url).searchParams.get("spaceId");
+    const params = new URL(context.req.url).searchParams;
+    for (const name of params.keys()) {
+      if (!KNOWN_PARAMS.has(name)) {
+        throw badRequestResponse(`Unknown query parameter '${name}'`);
+      }
+    }
+
+    // An empty value is not a scope: `?id=` is a caller that meant to name
+    // somebody, and letting it fall through would answer the register instead.
+    for (const name of ["id", "spaceId"]) {
+      if (params.has(name) && !params.get(name)?.trim()) {
+        throw badRequestResponse(`'${name}' must not be empty`);
+      }
+    }
+
+    const id = params.get("id");
+    const spaceId = params.get("spaceId");
+
+    // Paging belongs to the register: the scoped forms answer one profile or one
+    // space's members, so a limit there is a request this route cannot honour and
+    // ignoring it would be the same silence as answering a misspelled scope.
+    if ((id || spaceId) && (params.has("limit") || params.has("offset"))) {
+      throw badRequestResponse(
+        "'limit' and 'offset' apply only to the unscoped register",
+      );
+    }
 
     // Email is selected only so resolveProfileImage can derive a Gravatar URL
     // from it; toPublicProfile drops it again, so it never leaves the server.
@@ -127,6 +176,15 @@ export const GET: ApiRouteHandler = (context) =>
       return jsonResponse(members.map(toPublicProfile));
     }
 
+    // Read before the caller's standing is, so a malformed page is the same 400
+    // for everyone: what a route accepts is not a thing to learn from who asks.
+    const limit = parseQueryInt(params, "limit", {
+      defaultValue: REGISTER_DEFAULT_LIMIT,
+      min: 1,
+      max: REGISTER_MAX_LIMIT,
+    });
+    const offset = parseQueryInt(params, "offset", { defaultValue: 0, min: 0 });
+
     // Everything the caller may see, which is every account for an instance admin
     // and none for anyone else — the same shape of answer as `/spaces` and
     // `/search`, rather than a refusal. `isInstanceAdmin` filters here, it does
@@ -146,7 +204,12 @@ export const GET: ApiRouteHandler = (context) =>
         createdAt: user.createdAt,
       })
       .from(user)
-      .orderBy(desc(user.createdAt));
+      // `id` breaks ties rather than decorating the order: accounts seeded in one
+      // transaction share a timestamp, and without a total order two pages of the
+      // same register can show the same row twice and never show another.
+      .orderBy(desc(user.createdAt), desc(user.id))
+      .limit(limit)
+      .offset(offset);
 
     return jsonResponse(
       accounts.map((row) => ({
