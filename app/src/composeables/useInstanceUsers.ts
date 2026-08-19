@@ -27,7 +27,7 @@ export function useInstanceUsers(active: Accessor<boolean>) {
     error,
   } = useQuery<InstanceUser[]>({
     queryKey: ["instance_users"],
-    queryFn: () => api.users.directory(),
+    queryFn: () => api.users.all(),
     enabled: createMemo(() => isInstanceAdmin() === true && active()),
   });
 

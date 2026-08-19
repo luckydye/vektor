@@ -102,6 +102,9 @@ interface Fixture {
 const ROUTE_QUERY: Record<string, (fixture: Fixture) => string> = {
   "/api/v1/spaces/[spaceId]/comments": (f) => `?documentId=${f.documentId}`,
   "/api/v1/spaces/[spaceId]/documents/[documentId]/diff": () => "?rev=1",
+  // The scoped form, which is the one every signed-in account may ask. Unscoped
+  // it is the instance register, admin-only, and no identity here administers
+  // the instance — `user-register.spec.ts` probes that form against all three.
   "/api/v1/users": (f) => `?spaceId=${f.spaceId}`,
   // `url-metadata` and `proxy-media` are deliberately absent: satisfying them
   // means handing the server a URL it will actually fetch, and this suite has

@@ -199,9 +199,8 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | POST | `/chat/completions` | OpenAI/Anthropic/Ollama-compatible chat completions proxy |
 | GET/POST | `/auth/cli` | CLI login approval page / approve and mint a one-time code |
 | POST | `/auth/cli/token` | Exchange that code for a space access token |
-| GET | `/users` | Minimal public profile lookup (`?id=` or `?spaceId=`) |
+| GET | `/users` | Profile lookup (`?id=` / `?spaceId=`), or unscoped the instance register (admins) |
 | GET | `/users/me` | Current user profile |
-| GET | `/users/directory` | Every account on the instance (instance admins only) |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
 | GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space |
@@ -402,14 +401,22 @@ curl -sS -H "Content-Type: application/json" \
 
 ### `GET /users`
 
-- **Auth**: session (`requireUser`).
-- **Query**: exactly one of `id` (single user) or `spaceId` (space members). Neither
-  → `400`. A bare listing of all users is intentionally not supported.
+- **Auth**: session (`requireUser`); unscoped also requires administering the instance
+  (`VEKTOR_ADMIN_GROUPS`).
+- **Query**: `id` (single user), `spaceId` (space members), or neither (the register).
 - **Behavior (`id`)**: returns `{ id, name, image }` for that user, `404` if none.
 - **Behavior (`spaceId`)**: `viewer` on the space, returns an array of
   `{ id, name, image }` for all space members (ACL member ids + the caller).
-- Email is never included (PII); `image` is the provider's picture, a derived Gravatar
-  URL when one is configured, or `null` for a client-drawn avatar.
+- **Behavior (unscoped)**: the user register — every account, newest first, as
+  `{ id, name, email, image, groups, createdAt }`, where `groups` is the stored IdP
+  claim without the synthetic `public`. Instance admins only; everyone else gets `403`.
+  An admin is already owner on every space that exists, so the register exposes nothing
+  they could not read a space at a time.
+- The scoped forms never include email (PII), which is what keeps them answerable to any
+  signed-in account. `image` is the provider's picture, a derived Gravatar URL when one
+  is configured, or `null` for a client-drawn avatar.
+- Inviting people is done by email through the permissions endpoint, so nobody needs the
+  register to add a member.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
@@ -418,6 +425,24 @@ curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
 ```json
 [
   { "id": "KJ8vQ2mNpR4tL6wX9yZ1aB3cD5eF7gH0", "name": "Ada Lovelace", "image": null }
+]
+```
+
+```bash
+# The register, as an instance admin
+curl -sS -b "$COOKIE" "$VEKTOR/users"
+```
+
+```json
+[
+  {
+    "id": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE",
+    "name": "Grace Hopper",
+    "email": "grace@acme.test",
+    "image": null,
+    "groups": ["vektor-admins"],
+    "createdAt": "2026-02-11T09:14:00.000Z"
+  }
 ]
 ```
 
@@ -444,34 +469,6 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/me"
   "image": null,
   "canCreateSpace": true
 }
-```
-
-### `GET /users/directory`
-
-- **Auth**: session (`requireUser`), and the caller must administer the instance
-  (`VEKTOR_ADMIN_GROUPS`); everyone else gets `403`.
-- **Behavior**: the user register — every account, newest first. This is the listing
-  `/users` refuses to serve, because it carries the email and group claim of people the
-  caller shares no space with. An instance admin is already owner on every space that
-  exists, so it exposes nothing they could not read a space at a time.
-- **Returns**: `200` array of `{ id, name, email, image, groups, createdAt }`, where
-  `groups` is the stored IdP claim without the synthetic `public`.
-
-```bash
-curl -sS -b "$COOKIE" "$VEKTOR/users/directory"
-```
-
-```json
-[
-  {
-    "id": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE",
-    "name": "Grace Hopper",
-    "email": "grace@acme.test",
-    "image": null,
-    "groups": ["vektor-admins"],
-    "createdAt": "2026-02-11T09:14:00.000Z"
-  }
-]
 ```
 
 ### `GET /users/suggestions`

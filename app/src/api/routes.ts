@@ -59,7 +59,6 @@ import * as workflowRuns from "./routes/spaces/workflow-runs.ts";
 import * as workflowSchedule from "./routes/spaces/workflow-schedule.ts";
 import * as workflowSchedules from "./routes/spaces/workflow-schedules.ts";
 import * as urlMetadata from "./routes/url-metadata.ts";
-import * as usersDirectory from "./routes/users/directory.ts";
 import * as usersMe from "./routes/users/me.ts";
 import * as usersSuggestions from "./routes/users/suggestions.ts";
 import * as users from "./routes/users/users.ts";
@@ -214,7 +213,6 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/search", module: crossSpaceSearch },
   { pattern: "/api/v1/url-metadata", module: urlMetadata },
   { pattern: "/api/v1/users", module: users },
-  { pattern: "/api/v1/users/directory", module: usersDirectory },
   { pattern: "/api/v1/users/me", module: usersMe },
   { pattern: "/api/v1/users/suggestions", module: usersSuggestions },
 ];

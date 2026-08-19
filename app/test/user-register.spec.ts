@@ -12,17 +12,19 @@ import {
 } from "./helpers/server.ts";
 
 /**
- * The user register is the one listing that hands over the email and group claim
- * of people the caller shares nothing with, so the two things worth proving are
- * that an instance admin can read it and that nobody else can.
+ * `GET /api/v1/users` unscoped: the register, which hands over the email and
+ * group claim of people the caller shares nothing with. The route's scoped forms
+ * are covered by the access matrix, which pins them to `?spaceId=` — so this is
+ * the spec for the form that matrix cannot reach, and the two things worth
+ * proving are that an instance admin reads it and that nobody else does.
  */
 
 const PORT = 7531;
 const BASE_URL = testBaseUrl(PORT);
-const ADMIN_GROUP = "user-directory-admins";
+const ADMIN_GROUP = "user-register-admins";
 const apiRequest = createSessionApiRequest(BASE_URL);
 const createTestUser = (name: string) =>
-  createSharedTestUser(BASE_URL, name, "test-user-directory");
+  createSharedTestUser(BASE_URL, name, "test-user-register");
 
 interface RegisterEntry {
   id: string;
@@ -36,6 +38,7 @@ interface RegisterEntry {
 let serverProcess: TestServerProcess;
 let admin: { id: string; email: string; token: string };
 let member: { id: string; email: string; token: string };
+let memberSpaceId: string;
 
 beforeAll(async () => {
   // A file-backed auth DB (not VEKTOR_IN_MEMORY_DB) is required: the group write
@@ -44,7 +47,7 @@ beforeAll(async () => {
   serverProcess = startTestServer(PORT, {
     VEKTOR_EMAIL_AUTH: "1",
     VEKTOR_ADMIN_GROUPS: ADMIN_GROUP,
-    AUTH_SECRET: process.env.AUTH_SECRET ?? "user-directory-test-secret",
+    AUTH_SECRET: process.env.AUTH_SECRET ?? "user-register-test-secret",
   });
   await waitForServer(BASE_URL, 25_000, 200);
 
@@ -52,6 +55,15 @@ beforeAll(async () => {
   admin = { id: a.userId, email: a.email, token: a.token };
   const m = await createTestUser("Mia Member");
   member = { id: m.userId, email: m.email, token: m.token };
+
+  const space = await apiRequest("/api/v1/spaces", member.token, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Register Spec Space",
+      slug: `register-spec-${Date.now()}`,
+    }),
+  });
+  memberSpaceId = (await space.json()).space.id;
 
   const authDb = getAuthDb();
   if (!authDb) throw new Error("Auth database not available");
@@ -66,9 +78,9 @@ afterAll(() => {
   serverProcess?.kill();
 });
 
-describe("GET /api/v1/users/directory", () => {
+describe("GET /api/v1/users (unscoped: the register)", () => {
   it("gives an instance admin every account, with the email and groups", async () => {
-    const res = await apiRequest("/api/v1/users/directory", admin.token);
+    const res = await apiRequest("/api/v1/users", admin.token);
     expect(res.status).toBe(200);
 
     const entries: RegisterEntry[] = await res.json();
@@ -83,13 +95,28 @@ describe("GET /api/v1/users/directory", () => {
   });
 
   it("refuses a signed-in user who does not administer the instance", async () => {
-    const res = await apiRequest("/api/v1/users/directory", member.token);
+    const res = await apiRequest("/api/v1/users", member.token);
     expect(res.status).toBe(403);
     expect(await res.text()).not.toContain(admin.email);
   });
 
   it("refuses a caller with no session at all", async () => {
-    const res = await fetch(`${BASE_URL}/api/v1/users/directory`);
+    const res = await fetch(`${BASE_URL}/api/v1/users`);
     expect(res.status).toBe(401);
+  });
+
+  // The scoped form is what every signed-in account may ask, and folding the
+  // register into the same route must not have widened it.
+  it("still answers the space-scoped form with no email in it", async () => {
+    const res = await apiRequest(`/api/v1/users?spaceId=${memberSpaceId}`, member.token);
+    expect(res.status).toBe(200);
+
+    const members = await res.json();
+    expect(members.length).toBeGreaterThan(0);
+    expect(members[0]).toHaveProperty("name");
+    for (const profile of members) {
+      expect(profile).not.toHaveProperty("email");
+      expect(profile).not.toHaveProperty("groups");
+    }
   });
 });

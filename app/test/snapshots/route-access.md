@@ -122,6 +122,5 @@
 | `/api/v1/spaces/[spaceId]/workflows/schedules/[scheduleId]` | PATCH | 401 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/url-metadata` | GET | 401 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/users` | GET | 401 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/users/directory` | GET | 401 | 403 | 403 | 403 | 403 |  |
 | `/api/v1/users/me` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — the caller's own profile |
 | `/api/v1/users/suggestions` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — invite suggestions from the caller's own groups |

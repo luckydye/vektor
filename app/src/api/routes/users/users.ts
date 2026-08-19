@@ -1,9 +1,15 @@
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { verifyAccess } from "#acl/guards.ts";
-import { Permission, ResourceType } from "#acl/permissions.ts";
+import { isInstanceAdmin } from "#acl/instanceGroups.ts";
+import {
+  GROUP_NAME_PATTERN,
+  Permission,
+  PUBLIC_GROUP,
+  ResourceType,
+} from "#acl/permissions.ts";
 import { getSpaceMemberIds } from "#acl/store.ts";
 import {
-  badRequestResponse,
+  forbiddenResponse,
   jsonResponse,
   notFoundResponse,
   requireUser,
@@ -16,14 +22,47 @@ import { user } from "#db/schema/auth.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 /**
+ * The stored group claim as a list, without the freshness bound and the
+ * synthetic `public` that {@link import("#acl/userGroups.ts").getUserGroups}
+ * adds: the register prints what the IdP last said, it does not authorize
+ * anything. Malformed names are dropped for the same reason as there — nothing
+ * the IdP wrote is trusted to be a group name.
+ */
+function storedGroups(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (group): group is string =>
+        typeof group === "string" &&
+        group !== PUBLIC_GROUP &&
+        GROUP_NAME_PATTERN.test(group),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
  * GET /api/v1/users
  *
- * Returns minimal public profiles. To prevent a full user-directory dump and
- * PII (email) leak to any logged-in account, callers must scope the request:
+ * How much of the user table a caller may see, which is a different answer for
+ * an ordinary member than for whoever administers the instance:
  *   - `?id=<userId>`     → single minimal profile (id, name, image)
- *   - `?spaceId=<id>`    → members of a space the caller belongs to
- * A bare listing of all users is not permitted. Inviting people is done by
- * email via the permissions endpoint, so no user-directory endpoint is needed.
+ *   - `?spaceId=<id>`    → members of a space the caller belongs to, the same
+ *                          minimal profiles
+ *   - unscoped           → the register: every account with its email, group
+ *                          claim and join date. Instance admins only.
+ *
+ * The scoped forms are deliberately narrow, and stay so: they are what any
+ * signed-in account may ask, and an unscoped listing there would dump the table
+ * and every address in it. The register is the same listing behind the one gate
+ * that makes it answerable — an instance admin is owner on every space that
+ * exists, so it shows them nothing they could not read a space at a time —
+ * which is why a caller who does not administer the instance gets 403 rather
+ * than a 400 telling them to scope the request. Inviting people is still done
+ * by email through the permissions endpoint; nobody needs the register for that.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -88,5 +127,31 @@ export const GET: ApiRouteHandler = (context) =>
       return jsonResponse(members.map(toPublicProfile));
     }
 
-    throw badRequestResponse("Either 'id' or 'spaceId' query parameter is required");
+    if (!(await isInstanceAdmin(caller.id))) {
+      throw forbiddenResponse("You are not allowed to list the instance's users");
+    }
+
+    const accounts = await db
+      .select({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        groups: user.groups,
+        createdAt: user.createdAt,
+      })
+      .from(user)
+      .orderBy(desc(user.createdAt));
+
+    return jsonResponse(
+      accounts.map((row) => ({
+        id: row.id,
+        name: row.name,
+        // The register's reason for existing, unlike toPublicProfile above.
+        email: row.email,
+        image: resolveProfileImage(row),
+        groups: storedGroups(row.groups),
+        createdAt: row.createdAt,
+      })),
+    );
   }, "Failed to list users");

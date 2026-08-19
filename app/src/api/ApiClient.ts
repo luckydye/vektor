@@ -54,8 +54,8 @@ export interface CurrentUser extends User {
 
 /**
  * A register entry: an account as an instance admin sees it, which is more than
- * the {@link User} anyone else may read — the email of someone they share no
- * space with, and the group claim their access is decided by.
+ * the {@link User} the scoped forms of `/users` return — the email of someone
+ * they share no space with, and the group claim their access is decided by.
  */
 export interface InstanceUser {
   id: string;
@@ -922,11 +922,12 @@ export class ApiClient {
       return await this.apiGet<CurrentUser>(this.baseUrl, "/api/v1/users/me");
     },
     /**
-     * Every account on the instance. Admins only; 403 for everyone else, which
-     * is why the users tab is not offered to them.
+     * The register: every account on the instance, which is what the same
+     * collection answers unscoped. Admins only — 403 for everyone else, which is
+     * why the users tab is not offered to them.
      */
-    directory: async () => {
-      return await this.apiGet<InstanceUser[]>(this.baseUrl, "/api/v1/users/directory");
+    all: async () => {
+      return await this.apiGet<InstanceUser[]>(this.baseUrl, "/api/v1/users");
     },
     /**
      * People the caller shares an OAuth group with — invite suggestions.
