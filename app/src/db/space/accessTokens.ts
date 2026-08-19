@@ -9,7 +9,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { AclKind, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasPermission, logAclChange } from "#acl/store.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
@@ -352,6 +352,24 @@ export async function getAccessToken(
 ): Promise<AccessTokenSummary | null> {
   const [row] = await s.db.select().from(acl).where(tokenRow(tokenId)).limit(1);
   return row ? toSummary(row) : null;
+}
+
+/**
+ * Whether a credential holds a grant under this id. Any kind of credential, and
+ * revoked ones included: the question is what the principal is, not what it may
+ * currently do — asked to tell a caller apart, never to decide access.
+ */
+export async function hasCredentialGrant(
+  s: SpaceStore,
+  principalId: string,
+): Promise<boolean> {
+  const [row] = await s.db
+    .select({ kind: acl.kind })
+    .from(acl)
+    .where(and(eq(acl.userId, principalId), isNotNull(acl.kind)))
+    .limit(1);
+
+  return row !== undefined;
 }
 
 /**

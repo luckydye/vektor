@@ -546,26 +546,6 @@ export async function getPermission(
   return bestAclEntry(await capRowsToIssuer(spaceId, resourceType, allPermissions));
 }
 
-/**
- * Whether a credential holds a row under this id in this space. For telling a
- * caller apart when it costs nothing to ask — a refusal, a log line — not for
- * deciding access, which reads `kind` off the row it already has.
- */
-export async function isCredentialGrantee(
-  spaceId: string,
-  principalId: string,
-): Promise<boolean> {
-  const { db } = await openSpaceStore(spaceId);
-  const row = await one(
-    db
-      .select({ kind: acl.kind })
-      .from(acl)
-      .where(and(eq(acl.userId, principalId), isNotNull(acl.kind))),
-  );
-
-  return row !== null && row !== undefined;
-}
-
 /** The strongest of these ACL rows, as an entry. Null when there are none. */
 function bestAclEntry(rows: Array<AclRow | AclEntry>): AclEntry | null {
   const result = strongestGrant(rows, (row) => row.permission);

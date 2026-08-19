@@ -28,7 +28,6 @@ import {
   hasAnyResourceScopedAccess,
   hasFeature,
   hasPermission,
-  isCredentialGrantee,
   listAccessibleResources,
 } from "#acl/store.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
@@ -44,7 +43,7 @@ import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
-import { validateAccessToken } from "#db/space/accessTokens.ts";
+import { hasCredentialGrant, validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
@@ -198,7 +197,7 @@ async function denialResponse(
   // A credential hears which role it lacked, since whoever integrated it owns
   // both ends of the call. Only asked on the refusal path, where a query costs
   // nothing, so this needs no guess about what the id looks like.
-  if (await isCredentialGrantee(spaceId, userId)) {
+  if (await hasCredentialGrant(await openSpaceStore(spaceId), userId)) {
     return forbiddenResponse(
       `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
     );
