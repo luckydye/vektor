@@ -19,35 +19,26 @@
  * anything unresolved is counted and reported at the end.
  */
 
-import { Database as SqliteDatabase } from "bun:sqlite";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { sql } from "drizzle-orm";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { unzipSync } from "fflate";
-import {
-  closeDatabase,
-  createDatabase,
-  getAuthDatabaseUrl,
-  getDatabaseFilePath,
-} from "#db/connection.ts";
-import { createId } from "#db/ids.ts";
-import { initSpaceDbSchema } from "#db/init.ts";
-import {
-  acl,
-  category,
-  document,
-  file,
-  preference,
-  property,
-  spaceMetadata,
-} from "#db/schema/space.ts";
-import { buildDocumentSearchText } from "#db/search.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml } from "#documents/schema/render.ts";
-import { decodeHtmlEntities, escapeHtml, htmlToPlainText } from "#utils/html.ts";
-import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
-import { slugify } from "#utils/utils.ts";
+import { decodeHtmlEntities, escapeHtml } from "#utils/html.ts";
+import { slugify } from "#utils/slug.ts";
+import {
+  assertSlugAvailable,
+  newSpaceId,
+  pathKey,
+  planSpace,
+  printSummary,
+  Report,
+  type SourcePage,
+  type SpacePlan,
+  transliterate,
+  writeSpace,
+} from "./lib/space-writer.ts";
+import { UploadStore } from "./lib/uploads.ts";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -135,15 +126,10 @@ interface Attachment {
   content: string;
 }
 
-interface Page {
+interface Page extends SourcePage {
   /** Full XWiki reference, e.g. `Technik.Knowledge base.CORS & CSP.WebHome`. */
   ref: string;
-  /** Nesting path of the reference, e.g. `["Technik", "Knowledge base", "CORS & CSP"]`. */
-  path: string[];
-  title: string;
   content: string;
-  createdAt: Date;
-  updatedAt: Date;
   attachments: Attachment[];
 }
 
@@ -173,6 +159,7 @@ function parsePage(xml: string): Page | null {
   const ref = `${web}.${name}`;
   return {
     ref,
+    key: ref,
     path: referencePath(ref),
     // Velocity in a title renders to nothing useful outside XWiki.
     title: (tagValue(xml, "title") ?? "").replace(/\$\{?[\w.()]+\}?/g, "").trim(),
@@ -224,39 +211,9 @@ function splitReference(ref: string): string[] {
   return segments;
 }
 
-/** Path as a map key; a NUL cannot occur in a reference segment. */
-function pathKey(path: string[]): string {
-  return path.join("\u0000");
-}
-
 // ---------------------------------------------------------------------------
 // XWiki 2.1 syntax -> HTML
 // ---------------------------------------------------------------------------
-
-/**
- * What the conversion could not carry over. Reported rather than dropped
- * quietly: unresolved pages are expected (links into wikis outside this export)
- * but unresolved attachments would mean a lost image.
- */
-class Report {
-  readonly unresolvedAttachments = new Set<string>();
-  readonly unresolvedPages = new Set<string>();
-  readonly residue: string[] = [];
-  /** Macros thrown away, by name — the only trace that content went missing. */
-  readonly droppedMacros = new Map<string, number>();
-  /** Macros whose body was kept but whose meaning (layout, framing) was not. */
-  readonly flattenedMacros = new Map<string, number>();
-  suffixedSlugs = 0;
-  keptSections = 0;
-
-  dropMacro(name: string): void {
-    this.droppedMacros.set(name, (this.droppedMacros.get(name) ?? 0) + 1);
-  }
-
-  flattenMacro(name: string): void {
-    this.flattenedMacros.set(name, (this.flattenedMacros.get(name) ?? 0) + 1);
-  }
-}
 
 /**
  * XWiki status badge colours as a foreground/background pair. Fixed on both
@@ -367,7 +324,7 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
   text = text.replace(
     /\{\{(velocity|groovy|python|toc|children|include)[^}]*\}\}[\s\S]*?\{\{\/\1\}\}/g,
     (_, name: string) => {
-      report.dropMacro(name);
+      report.drop(name);
       return "";
     },
   );
@@ -392,7 +349,7 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
     const filename = /att--filename="([^"]*)"/.exec(params)?.[1];
     const src = filename ? links.attachment(filename) : null;
     if (!src) {
-      report.dropMacro("view-file");
+      report.drop("view-file");
       return "";
     }
     return held.block(
@@ -402,7 +359,7 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
   text = text.replace(/\{\{embed([^}]*)\/\}\}/g, (_, params: string) => {
     const url = /url="([^"]*)"/.exec(params)?.[1];
     if (!url) {
-      report.dropMacro("embed");
+      report.drop("embed");
       return "";
     }
     return held.inline(`<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`);
@@ -422,7 +379,7 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
     (_, params: string) => {
       const url = /url="([^"]*)"/.exec(params)?.[1];
       if (!url) {
-        report.dropMacro("iframe");
+        report.drop("iframe");
         return "";
       }
       const name = /name="([^"]*)"/.exec(params)?.[1] || url;
@@ -434,13 +391,13 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
   text = text.replace(/\{\{date([^}]*)\/\}\}/g, (_, params: string) => {
     const value = /value="([^"]*)"/.exec(params)?.[1];
     if (!value) {
-      report.dropMacro("date");
+      report.drop("date");
       return "";
     }
     return escapeHtml(value);
   });
   text = text.replace(/\{\{([\w-]+)[^}]*\/\}\}/g, (_, name: string) => {
-    report.dropMacro(name);
+    report.drop(name);
     return "";
   });
   // Container macros (info, box, the Confluence layout grid, …) keep their body
@@ -450,7 +407,7 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
     /\{\{(\/?)([\w-]+)([^}]*)\}\}/g,
     (_, closing: string, name: string, params: string) => {
       if (closing) return "";
-      report.flattenMacro(name);
+      report.flatten(name);
       const title = /title="([^"]*)"/.exec(params)?.[1];
       return title ? `**${title}**\n` : "";
     },
@@ -841,101 +798,6 @@ function inline(text: string): string {
     .replace(/\\\\/g, "<br>");
 }
 
-// ---------------------------------------------------------------------------
-// Naming
-// ---------------------------------------------------------------------------
-
-/**
- * `slugify` maps anything non-ASCII to a separator, which turns German page
- * titles into holes ("Aufräumtag" -> "aufr-umtag"). Folding the diacritics off
- * first keeps the URL readable.
- */
-function transliterate(value: string): string {
-  return value
-    .replace(/ß/g, "ss")
-    .replace(/æ/gi, "ae")
-    .replace(/ø/gi, "o")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "");
-}
-
-/**
- * Wiki page titles repeat across branches ("Dokumentation", "Tasks"), so a
- * collision is normal rather than an error, and is resolved the same way
- * `createDocument` resolves one: by suffixing.
- */
-function uniqueSlug(title: string, taken: Set<string>, report: Report): string {
-  const base = slugify(transliterate(title)) || "page";
-  let slug = base;
-  for (let counter = 1; taken.has(slug); counter++) slug = `${base}-${counter}`;
-  if (slug !== base) report.suffixedSlugs++;
-  taken.add(slug);
-  return slug;
-}
-
-// ---------------------------------------------------------------------------
-// Conversion
-// ---------------------------------------------------------------------------
-
-/**
- * `space_index` holds a unique index over active slugs, and local databases are
- * indexed before missing ones are pruned — so a duplicate slug does not degrade
- * to "this space fails to load", it aborts startup for the whole server. Far
- * better to refuse here than to hand over a database that bricks the install.
- */
-function assertSlugAvailable(slug: string): void {
-  const authPath = getDatabaseFilePath(getAuthDatabaseUrl());
-  // A remote auth database is not ours to inspect; the check simply does not run.
-  if (!authPath || !existsSync(authPath)) return;
-
-  const auth = new SqliteDatabase(authPath, { readonly: true });
-  try {
-    const taken = auth
-      .query("select space_id from space_index where slug = ? and status = 'active'")
-      .get(slug) as { space_id: string } | null;
-    if (taken) {
-      throw new Error(
-        `Space slug "${slug}" is already used by ${taken.space_id} in ${authPath}. ` +
-          "Pass a different --slug.",
-      );
-    }
-  } finally {
-    auth.close();
-  }
-}
-
-/**
- * Reads the finished file back through a separate connection and counts what is
- * actually in it. Catches the failure this script is most exposed to: content
- * still sitting in a journal sidecar rather than in the file being handed over.
- */
-function verifyWritten(path: string, expected: Record<string, number>): void {
-  const check = new SqliteDatabase(path, { readonly: true });
-  try {
-    for (const [table, want] of Object.entries(expected)) {
-      const { n } = check.query(`select count(*) as n from ${table}`).get() as {
-        n: number;
-      };
-      if (n !== want) {
-        throw new Error(`Wrote ${want} ${table} rows but the database holds ${n}`);
-      }
-    }
-  } finally {
-    check.close();
-  }
-}
-
-/**
- * Whether a converted body holds nothing a reader would miss. Normalisation
- * gives an empty document one empty paragraph, and a page can also be nothing
- * but blank paragraphs and breaks — but a table or an image with no text at all
- * is still content.
- */
-function isBlank(html: string): boolean {
-  if (/<(img|table|pre|video|file-attachment|hr)\b/.test(html)) return false;
-  return htmlToPlainText(html).trim() === "";
-}
-
 /**
  * Wiki syntax that should have been consumed. Only a hint, not proof: a page
  * documenting XWiki quotes `{{task}}` as prose, and that is not a defect.
@@ -966,19 +828,14 @@ function checkConverted(html: string, slug: string, report: Report): void {
     if (pattern.test(html)) report.residue.push(`${slug}: possible XWiki ${what}`);
   }
 }
-
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
   const report = new Report();
   // Writing into an existing database would append a second space's worth of
   // rows to it rather than replace them.
-  if (existsSync(resolve(options.out))) {
-    throw new Error(`Output database already exists: ${resolve(options.out)}`);
-  }
+  const out = resolve(options.out);
+  if (existsSync(out)) throw new Error(`Output database already exists: ${out}`);
   assertSlugAvailable(options.slug);
-
-  const spaceId = createId("space");
-  const now = new Date();
 
   console.log(`Reading ${options.xarPath}`);
   const archive = new Uint8Array(await Bun.file(options.xarPath).arrayBuffer());
@@ -986,15 +843,12 @@ async function main(): Promise<void> {
   // Pass 1: pages and attachments. Attachment bodies are written straight to
   // disk so the base64 never accumulates across pages.
   const pages: Page[] = [];
+  const spaceId = newSpaceId();
   const uploadsRoot = join(resolve(options.uploads), spaceId);
-  const uploads = new Map<
-    string,
-    { key: string; url: string; name: string; mimeType: string | null }
-  >();
+  const uploads = new UploadStore(uploadsRoot, spaceId, options.maxAttachmentBytes);
   const attachmentUrls = new Map<string, Map<string, string>>();
   /** Fallback for `attach:Other Page@file.png`, which names another page's file. */
   const attachmentsByName = new Map<string, string>();
-  let skipped = 0;
 
   for (const xml of readPageEntries(archive)) {
     const page = parsePage(xml);
@@ -1002,29 +856,11 @@ async function main(): Promise<void> {
 
     const forPage = new Map<string, string>();
     for (const attachment of page.attachments) {
-      const buffer = Buffer.from(attachment.content, "base64");
-      if (buffer.byteLength > options.maxAttachmentBytes) {
-        console.warn(
-          `  skipping ${attachment.filename} (${(buffer.byteLength / 1e6).toFixed(1)} MB)`,
-        );
-        skipped++;
-        continue;
-      }
-      const hash = createHash("sha256").update(buffer).digest("hex");
-      const extension = attachment.filename.split(".").pop()?.toLowerCase() ?? "bin";
-      const key = `${hash.slice(0, 2)}/${hash}.${extension}`;
-      const target = join(uploadsRoot, key);
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, buffer);
-      const url = `/api/v1/spaces/${spaceId}/uploads/${key}`;
-      uploads.set(key, {
-        key,
-        url,
-        name: attachment.filename,
-        // The export records no mimetype for most attachments; Bun derives one
-        // from the extension, as the upload route does from the browser's.
-        mimeType: Bun.file(attachment.filename).type || null,
-      });
+      const url = uploads.add(
+        Buffer.from(attachment.content, "base64"),
+        attachment.filename,
+      );
+      if (!url) continue;
       forPage.set(attachment.filename, url);
       if (!attachmentsByName.has(attachment.filename)) {
         attachmentsByName.set(attachment.filename, url);
@@ -1038,110 +874,14 @@ async function main(): Promise<void> {
   console.log(`Parsed ${pages.length} pages, ${uploads.size} attachments`);
 
   // Pass 2: identity and hierarchy, resolved before any content is converted so
-  // that cross-page links can point at their target's final slug. Pages are
-  // ordered shallowest first so a parent always has its slug before its
-  // children, and so slug collisions resolve in favour of the higher page.
-  pages.sort((a, b) => a.path.length - b.path.length || a.ref.localeCompare(b.ref));
-
-  interface Entry {
-    id: string;
-    slug: string;
-    page: Page;
-  }
-
-  const taken = new Set<string>();
-  const byPath = new Map<string, Entry>();
-  for (const page of pages) {
-    page.title = page.title || page.path.at(-1) || "Untitled";
-    byPath.set(pathKey(page.path), {
-      id: createId("document"),
-      slug: uniqueSlug(page.title, taken, report),
-      page,
-    });
-  }
-
-  /**
-   * Links are written against the *source* wiki's root ("SVTECH.Knowledge
-   * base.…") which is not the root this subtree was exported under, so the path
-   * below the root is what actually identifies a page. Ambiguous suffixes map to
-   * null rather than to an arbitrary one of their candidates.
-   */
-  const bySuffix = new Map<string, Entry | null>();
-  for (const entry of byPath.values()) {
-    const suffix = pathKey(entry.page.path.slice(1));
-    if (suffix) bySuffix.set(suffix, bySuffix.has(suffix) ? null : entry);
-  }
-
-  /**
-   * Nearest ancestor still being written; top-level pages get no parent.
-   * `skip` holds the pages replaced by a category, so the tree can be asked
-   * both as the export describes it and as it is actually stored.
-   */
-  const parentOf = (page: Page, skip?: Set<string>): string | null => {
-    for (let path = page.path.slice(0, -1); path.length > 0; path = path.slice(0, -1)) {
-      const ancestor = byPath.get(pathKey(path));
-      if (ancestor && !skip?.has(ancestor.id)) return ancestor.id;
-    }
-    return null;
-  };
-
-  /**
-   * The sidebar is built from categories, not from the raw tree: it lists
-   * categories and asks for each one's documents, and a document with no
-   * categorised ancestor never appears. So the branches of the tree become the
-   * categories.
-   *
-   * One level below the root, not the root itself — a XAR hangs its whole
-   * export off a single wrapper page, which would make one category holding
-   * everything. An export with several top-level pages uses those instead.
-   *
-   * Only the branch page carries the property: `listAllDocumentsByCategories`
-   * seeds on the documents that name a category and then walks their children,
-   * so the entire subtree comes along on its own.
-   */
-  const entries = [...byPath.values()];
-  const roots = entries.filter((entry) => parentOf(entry.page) === null);
-  const sections =
-    roots.length === 1
-      ? entries.filter((entry) => parentOf(entry.page) === roots[0].id)
-      : roots;
-  sections.sort((a, b) => a.page.title.localeCompare(b.page.title));
-
-  const db = createDatabase(`file:${resolve(options.out)}`);
-  await initSpaceDbSchema(db, { local: true });
-
-  await db.insert(spaceMetadata).values({
-    id: spaceId,
-    name: options.name,
-    slug: options.slug,
-    createdBy: options.owner,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  for (const [key, value] of Object.entries({
-    brandColor: "#1e293b",
-    [spacePreferenceKeys.workflowCreationEnabled]: "true",
-  })) {
-    await db
-      .insert(preference)
-      .values({ id: createId("preference"), key, value, createdAt: now, updatedAt: now });
-  }
-
-  await db.insert(acl).values({
-    resourceType: "space",
-    resourceId: spaceId,
-    userId: options.owner,
-    permission: "owner",
-    createdAt: now,
-    updatedAt: now,
-  });
+  // that cross-page links can point at their target's final slug.
+  const plan: SpacePlan<Page> = planSpace(pages, options.slug, report, spaceId);
 
   // Bodies are converted before anything is written: whether a section page is
-  // worth keeping depends on what it converts to, and that decides both the
-  // tree the documents are stored with and where the categories are pinned.
-  const html = new Map<string, string>();
-  for (const { id, slug, page } of byPath.values()) {
+  // worth keeping depends on what it converts to, and that decides both the tree
+  // the documents are stored with and where the categories are pinned.
+  const bodies = new Map<string, string>();
+  for (const { id, slug, page } of plan.byPath.values()) {
     const attachments = attachmentUrls.get(page.ref) ?? new Map<string, string>();
     const resolver: LinkResolver = {
       attachment: (target) => {
@@ -1163,186 +903,25 @@ async function main(): Promise<void> {
         if (path.length === 0) return null;
 
         const target =
-          byPath.get(pathKey(path)) ??
-          byPath.get(pathKey([...page.path, ...path])) ??
-          bySuffix.get(pathKey(path.slice(1)));
+          plan.byPath.get(pathKey(path)) ??
+          plan.byPath.get(pathKey([...page.path, ...path])) ??
+          plan.bySuffix.get(pathKey(path.slice(1)));
         if (!target) report.unresolvedPages.add(ref);
-        return target ? `/${options.slug}/doc/${target.slug}` : null;
+        return target ? plan.docPath(target.slug) : null;
       },
     };
 
     const body = docToHtml(htmlToDoc(xwikiToHtml(page.content, resolver, report)));
     checkConverted(body, slug, report);
-    html.set(id, body);
+    bodies.set(id, body);
   }
 
-  /**
-   * A branch page that only ever existed to hold its children is replaced by
-   * its category rather than stored beside it — otherwise the sidebar shows
-   * "Dienstleister" nested inside the "Dienstleister" category. A branch page
-   * that carries text of its own is kept: the category cannot hold a body, and
-   * dropping the page would delete content.
-   */
-  const replaced = new Set(
-    sections.filter((section) => isBlank(html.get(section.id) ?? "")).map((s) => s.id),
-  );
-  report.keptSections = sections.length - replaced.size;
-
-  for (const [order, section] of sections.entries()) {
-    await db.insert(category).values({
-      id: createId("category"),
-      name: section.page.title,
-      slug: section.slug,
-      description: null,
-      color: null,
-      icon: null,
-      order,
-      createdAt: now,
-      updatedAt: now,
-    });
+  const write = { out, name: options.name, owner: options.owner };
+  const result = await writeSpace(plan, bodies, uploads, write, report);
+  printSummary(plan, result, uploads, { ...write, uploadsRoot }, report);
+  if (uploadsRoot !== join(resolve("./data/uploads"), plan.spaceId)) {
+    console.log(`  mv ${uploadsRoot} data/uploads/${plan.spaceId}`);
   }
-
-  /**
-   * Which document names each category. For a kept branch page that is the page
-   * itself; for a replaced one it is each of its former children, which is as
-   * high as the category can now be pinned.
-   */
-  const categoryOf = new Map<string, string>();
-  for (const section of sections) {
-    if (!replaced.has(section.id)) {
-      categoryOf.set(section.id, section.slug);
-      continue;
-    }
-    for (const entry of byPath.values()) {
-      if (parentOf(entry.page) === section.id) categoryOf.set(entry.id, section.slug);
-    }
-  }
-
-  for (const { id, slug, page } of byPath.values()) {
-    if (replaced.has(id)) continue;
-
-    const body = html.get(id) ?? "";
-    const properties: Record<string, string> = { title: page.title };
-    const sectionSlug = categoryOf.get(id);
-    if (sectionSlug) properties.category = sectionSlug;
-
-    await db.insert(document).values({
-      id,
-      slug,
-      type: null,
-      content: body,
-      searchText: buildDocumentSearchText(body, properties),
-      currentRev: 0,
-      publishedRev: null,
-      parentId: parentOf(page, replaced),
-      archived: false,
-      readonly: false,
-      createdBy: options.owner,
-      createdAt: page.createdAt,
-      updatedAt: page.updatedAt,
-    });
-
-    for (const [key, value] of Object.entries(properties)) {
-      await db.insert(property).values({
-        id: createId("property"),
-        documentId: id,
-        key,
-        value,
-        type: null,
-        createdAt: page.createdAt,
-        updatedAt: page.updatedAt,
-      });
-    }
-  }
-
-  for (const upload of uploads.values()) {
-    await db.insert(file).values({
-      path: upload.key,
-      documentId: null,
-      originalName: upload.name,
-      mimeType: upload.mimeType,
-      url: upload.url,
-      updatedAt: now,
-      extractedText: null,
-    });
-  }
-
-  // `initSpaceDbSchema` puts the database in WAL mode, which parks recent
-  // writes in a `-wal` sidecar. The whole point of this script is a file you
-  // move somewhere else, and moving the `.db` alone would silently leave the
-  // tail of the import behind. Fold it back in and leave a single file; the
-  // server re-enables WAL when it opens the database.
-  await db.run(sql.raw("PRAGMA wal_checkpoint(TRUNCATE)"));
-  await db.run(sql.raw("PRAGMA journal_mode = DELETE"));
-  closeDatabase(db);
-
-  verifyWritten(resolve(options.out), {
-    document: byPath.size - replaced.size,
-    category: sections.length,
-    file: uploads.size,
-  });
-
-  console.log(`\nWrote ${resolve(options.out)}`);
-  console.log(`  space     ${options.name} (${options.slug}), id ${spaceId}`);
-  console.log(`  owner     ${options.owner}`);
-  console.log(
-    `  documents ${byPath.size - replaced.size} in ${sections.length} categories` +
-      ` (${replaced.size} empty branch pages replaced by their category)`,
-  );
-  console.log(
-    `  uploads   ${uploads.size} in ${uploadsRoot}` +
-      (skipped ? ` (${skipped} skipped as too large)` : ""),
-  );
-
-  if (report.keptSections) {
-    console.log(
-      `  ${report.keptSections} branch pages kept as documents because they have their own text`,
-    );
-  }
-  if (report.suffixedSlugs) {
-    console.log(`  ${report.suffixedSlugs} duplicate titles got a numbered slug`);
-  }
-  if (report.unresolvedPages.size) {
-    // Overwhelmingly links into sibling wikis that were never in this export.
-    console.log(
-      `  ${report.unresolvedPages.size} page links point outside the export and became plain text:`,
-    );
-    for (const ref of [...report.unresolvedPages].slice(0, 5))
-      console.log(`      ${ref}`);
-  }
-  if (report.flattenedMacros.size) {
-    const flat = [...report.flattenedMacros].sort((a, b) => b[1] - a[1]);
-    console.log(
-      `  macros flattened (body kept, framing lost): ${flat
-        .map(([name, n]) => `${name} (${n})`)
-        .join(", ")}`,
-    );
-  }
-  if (report.droppedMacros.size) {
-    const dropped = [...report.droppedMacros].sort((a, b) => b[1] - a[1]);
-    console.log(
-      `  macros dropped: ${dropped.map(([name, n]) => `${name} (${n})`).join(", ")}`,
-    );
-  }
-  if (report.residue.length) {
-    console.log(
-      `  ${report.residue.length} bodies still look like they hold wiki syntax:`,
-    );
-    for (const note of report.residue.slice(0, 5)) console.log(`      ${note}`);
-  }
-  if (report.unresolvedAttachments.size) {
-    console.log(
-      `  WARNING: ${report.unresolvedAttachments.size} attachment references did not resolve:`,
-    );
-    for (const name of report.unresolvedAttachments) console.log(`      ${name}`);
-  }
-
-  console.log("\nInstall with:");
-  console.log(`  mv ${resolve(options.out)} data/spaces/${spaceId}.db`);
-  if (resolve(options.uploads) !== resolve("./data/uploads")) {
-    console.log(`  mv ${uploadsRoot} data/uploads/${spaceId}`);
-  }
-  console.log("  # restart the server — local space databases are indexed on startup");
 }
 
 await main();
