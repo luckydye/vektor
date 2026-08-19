@@ -1,9 +1,9 @@
 import type { Next } from "hono";
+import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
-import { resolveRequestIdentity } from "#authSession";
 import { getPublicEnv } from "#config";
 import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";

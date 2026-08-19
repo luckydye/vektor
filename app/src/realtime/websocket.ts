@@ -3,7 +3,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { resolveRequestIdentity } from "#authSession";
+import { resolveRequestIdentity } from "#acl/session.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
 import { isNoAuthMode } from "#noAuth";

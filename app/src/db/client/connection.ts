@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { config } from "#config";
-import { isInMemoryDb } from "#inMemoryDb";
+import { isInMemoryDb } from "#config";
 
 const DEFAULT_AUTH_DATABASE_PATH = path.resolve("data", "auth.db");
 const LOCAL_SPACES_DIRECTORY = path.resolve("data", "spaces");

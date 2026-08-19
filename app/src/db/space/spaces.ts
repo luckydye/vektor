@@ -34,7 +34,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { getUserPreferences } from "#db/space/userPreferences.ts";
-import { isInMemoryDb } from "#inMemoryDb";
+import { isInMemoryDb } from "#config";
 import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 

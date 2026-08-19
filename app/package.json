@@ -45,9 +45,7 @@
   "imports": {
     "#config": "./src/config.ts",
     "#auth": "./src/auth.ts",
-    "#authSession": "./src/authSession.ts",
     "#noAuth": "./src/noAuth.ts",
-    "#inMemoryDb": "./src/inMemoryDb.ts",
     "#acl/*": "./src/acl/*",
     "#agent/*": "./src/agent/*",
     "#api/*": "./src/api/*",

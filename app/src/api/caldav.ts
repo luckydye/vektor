@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { personPrincipal } from "#acl/session.ts";
 import type { ApiContext } from "#api/server/types.ts";
-import { personPrincipal } from "#authSession";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";

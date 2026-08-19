@@ -253,6 +253,10 @@ export function getLocalOrigin(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+export function isInMemoryDb(): boolean {
+  return config().IN_MEMORY_DB === "1";
+}
+
 declare global {
   // Exposed for ad-hoc inspection from the browser/server console.
   // biome-ignore lint: globalThis augmentation requires var

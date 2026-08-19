@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { personPrincipal } from "#authSession";
+import { personPrincipal } from "#acl/session.ts";
 import { createId } from "#db/ids.ts";
 
 // The one place that decides whether an identity is a person, for all four

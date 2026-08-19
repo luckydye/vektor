@@ -1,5 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
-import { resolveRequestIdentity } from "./authSession.ts";
+import { resolveRequestIdentity } from "./acl/session.ts";
 import { getPublicEnv } from "./config.ts";
 import { appLogger } from "./observability/logger.ts";
 import { runWithLang } from "./utils/langScope.server.ts";

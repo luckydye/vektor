@@ -15,7 +15,7 @@ import {
 import { many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
-import { isInMemoryDb } from "#inMemoryDb";
+import { isInMemoryDb } from "#config";
 import { appLogger } from "#observability/logger.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
