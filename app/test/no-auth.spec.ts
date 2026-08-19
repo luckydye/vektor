@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { Feature, ResourceType } from "#acl/permissions.ts";
 import { hasFeature, listAccessibleResources } from "#acl/store.ts";
+import { LOCAL_USER_ID } from "#config";
 import { createSpace, deleteSpace } from "#db/space/spaces.ts";
-import { LOCAL_USER_ID } from "#noAuth";
 
 const createdSpaceIds: string[] = [];
 

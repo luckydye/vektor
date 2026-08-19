@@ -6,7 +6,7 @@
  * ordering surprises from a leftover database, and the same pixels on any
  * machine.
  *
- * Dates follow `noAuth.ts`'s `LOCAL_USER`, which uses `new Date(0)`. Anything
+ * Dates follow `config.ts`'s `LOCAL_USER`, which uses `new Date(0)`. Anything
  * the API stamps itself (audit log timestamps, `updatedAt`) is *not* fixed, so
  * the clock is frozen browser-side instead — see `fixture.ts`.
  */

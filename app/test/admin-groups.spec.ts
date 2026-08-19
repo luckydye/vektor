@@ -5,8 +5,8 @@ import {
   isInstanceAdmin,
   userAdminGroups,
 } from "#acl/instanceGroups.ts";
+import { LOCAL_USER_ID } from "#config";
 import { createId } from "#db/ids.ts";
-import { LOCAL_USER_ID } from "#noAuth";
 
 function setAdmins(value: string | undefined) {
   if (value === undefined) {

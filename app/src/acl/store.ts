@@ -16,6 +16,7 @@ import {
   weakerPermission,
 } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "#config";
 import { getAuthDb } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -23,7 +24,6 @@ import { user } from "#db/schema/auth.ts";
 import { acl, category, document, property } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { parseStoredPropertyValue, propertyValueToText } from "#documents/properties.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
 export interface AclEntry {

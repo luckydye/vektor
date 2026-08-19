@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import type { ApiContext } from "#api/server/types.ts";
+import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -10,7 +11,6 @@ import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessT
 import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 
 /**
  * The access token a Basic-auth CalDAV client authenticated with.

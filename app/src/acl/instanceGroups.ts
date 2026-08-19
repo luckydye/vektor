@@ -10,8 +10,7 @@
 import { GROUP_NAME_PATTERN, PUBLIC_GROUP } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
 import { forbiddenResponse } from "#api/http.ts";
-import { config } from "#config";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { config, isNoAuthMode, LOCAL_USER_ID } from "#config";
 
 /**
  * The group ids a raw setting names, or `null` when it names nothing. An empty

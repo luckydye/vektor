@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { LOCAL_USER_ID } from "#config";
 import { createJobToken } from "#jobs/jobToken.ts";
-import { LOCAL_USER_ID } from "#noAuth";
 import { createZipBuffer } from "#utils/zip.ts";
 import {
   createApiRequest,
