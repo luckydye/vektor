@@ -328,6 +328,36 @@ describe("the cookie a shared page hands back", () => {
     expect((await open(`${pageOnly.path}/${child}`)).status).toBe(404);
   });
 
+  it("reaches them for a visitor who happens to be signed in elsewhere", async () => {
+    const url = await attach(documentId);
+    const link = await createLinkPath(owner);
+    const cookie = await carriedCookie(link.path);
+
+    // Someone with an account on the instance but no access to this space. Their
+    // session answers "no" for this document; the link they are holding answers
+    // "yes", and being signed in is not a reason to see less than a stranger.
+    const stranger = await createTestUser(BASE_URL, "Signed In Stranger", "test-share");
+    const both = `${cookie}; vektor.session_token=${stranger.token}`;
+    expect((await attachment(url, both)).status).toBe(200);
+
+    // Without the link, that same session still reaches nothing here — and is
+    // refused as itself, 403, rather than being asked to authenticate.
+    expect((await attachment(url, `vektor.session_token=${stranger.token}`)).status).toBe(
+      403,
+    );
+  });
+
+  it("treats a malformed cookie as carrying no links", async () => {
+    const url = await attach(documentId);
+
+    // `%` is not a valid escape: decoding it throws, and a guard is no place to
+    // raise. The answer is the anonymous one, not a 500.
+    for (const value of ["%", "%zz", `${(await createLinkPath(owner)).id}~%E0%A4%A`]) {
+      const response = await attachment(url, `vektor.share_links=${value}`);
+      expect(response.status).toBe(401);
+    }
+  });
+
   it("reaches the page's attachments and nothing else about it", async () => {
     const link = await createLinkPath(owner);
     const cookie = await carriedCookie(link.path);
@@ -349,6 +379,35 @@ describe("the cookie a shared page hands back", () => {
 });
 
 describe("who may mint a link", () => {
+  // A tree link reaches every descendant. An editor on one page holds nothing
+  // over its children, so minting one there would hand out access the minter
+  // does not have — through a URL, to anyone.
+  it("refuses a tree link to an editor of the page alone", async () => {
+    const scoped = await createTestUser(BASE_URL, "Page Editor", "test-share-link");
+    const granted = await apiRequest(
+      `/api/v1/spaces/${spaceId}/permissions`,
+      owner.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "editor",
+          action: "grant",
+          userId: scoped.userId,
+          resourceType: "document",
+          resourceId: documentId,
+        }),
+      },
+    );
+    expect(granted.status).toBe(200);
+
+    // The page itself is theirs to share: that reaches no further than they do.
+    expect((await createLink(scoped)).status).toBe(201);
+    expect((await createLink(scoped, { resourceType: "document_tree" })).status).toBe(
+      403,
+    );
+  });
+
   it("admits an editor and refuses a viewer", async () => {
     expect((await createLink(editor)).status).toBe(201);
     expect((await createLink(viewer)).status).toBe(403);

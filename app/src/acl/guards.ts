@@ -344,18 +344,17 @@ export async function authenticateDocumentAccess(
     return { aclUserId: auth.token.tokenId };
   }
   if (auth?.type === "user") {
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.DOCUMENT, id: documentId },
-      auth.user.id,
-      requiredRole,
-    );
-    return { aclUserId: auth.user.id };
+    const target = { type: ResourceType.DOCUMENT, id: documentId } as const;
+    if (await canAccess(spaceId, target, auth.user.id, requiredRole)) {
+      return { aclUserId: auth.user.id };
+    }
   }
 
-  // Below a session and a token: a link never downgrades a caller who is
-  // already someone. Every link carried is tried, not just the newest — a
-  // visitor holding two pages of one space reaches both.
+  // A caller reaches what their session grants *or* what the links they carry
+  // do — asked after the session, because a link never downgrades someone who
+  // is already admitted, and asked even when a session was refused: being
+  // signed in to the instance is not a reason to see less of a shared page than
+  // a stranger does. Every link carried is tried, not just the newest.
   if (options.shareLinks) {
     for (const principal of await shareLinkPrincipals(context, spaceId)) {
       const target = { type: ResourceType.DOCUMENT, id: documentId } as const;
@@ -363,6 +362,17 @@ export async function authenticateDocumentAccess(
         return { aclUserId: principal };
       }
     }
+  }
+
+  // A refused session is told no as itself, rather than falling through to the
+  // anonymous check and being told to authenticate.
+  if (auth?.type === "user") {
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      auth.user.id,
+      requiredRole,
+    );
   }
 
   // Unauthenticated — the document check handles the `public` group.
@@ -880,7 +890,17 @@ export function shareLinksFromCookie(
     ?.slice(SHARE_COOKIE.length + 1);
   if (!value) return [];
 
-  return decodeURIComponent(value)
+  // A cookie is whatever the client sent, so a truncated or hand-written one is
+  // a caller carrying no links — not a 500 out of the middle of a guard, which
+  // is what `decodeURIComponent` raises on an invalid escape.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    return [];
+  }
+
+  return decoded
     .split(",")
     .map((entry) => {
       const [id, proof] = entry.split("~");

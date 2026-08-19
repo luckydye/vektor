@@ -86,14 +86,28 @@ export const POST: ApiRouteHandler = (context) =>
     // Asked about the document either scope names, never about the
     // `document_tree` pseudo-resource: a tree grant is somewhere access is
     // written to, not something anyone holds a role on, so asking about one
-    // refuses every caller — a space owner included. Sharing the page and
-    // sharing its children are the same decision, and it is the page's.
+    // refuses every caller — a space owner included.
     await verifyAccess(
       spaceId,
       { type: ResourceType.DOCUMENT, id: resource.resourceId },
       user.id,
       Permission.EDITOR,
     );
+
+    // A tree link reaches every descendant, including pages the caller cannot
+    // open: a document-scoped grant stops at the page it names, so holding
+    // editor on this one says nothing about its children. The resolver does not
+    // report which grant answered, so the rule is reach over the space — the
+    // floor every descendant sits above. It costs a category-scoped editor the
+    // tree scope, which is the safe direction to be wrong in.
+    if (resource.resourceType === ResourceType.DOCUMENT_TREE) {
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.EDITOR,
+      );
+    }
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       throw badRequestResponse("Link name is required");
