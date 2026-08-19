@@ -6,7 +6,6 @@
  * so anything that has to hold for all three only held where it was remembered.
  */
 
-import { auth } from "#auth";
 import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
 
 export interface RequestIdentity {
@@ -23,6 +22,10 @@ export async function resolveRequestIdentity(headers: Headers): Promise<RequestI
     return { user: LOCAL_USER, session: LOCAL_SESSION };
   }
 
+  // Dynamic for the reason `idpSync.ts` gives: `#auth` builds itself from the
+  // same database module this side reaches through, and a static edge has it
+  // run its body against a half-initialized `#db/client/db.ts`.
+  const { auth } = await import("#auth");
   const authenticated = await auth.api.getSession({ headers });
   if (!authenticated) return { user: null, session: null };
 
