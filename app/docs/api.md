@@ -199,7 +199,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | POST | `/chat/completions` | OpenAI/Anthropic/Ollama-compatible chat completions proxy |
 | GET/POST | `/auth/cli` | CLI login approval page / approve and mint a one-time code |
 | POST | `/auth/cli/token` | Exchange that code for a space access token |
-| GET | `/users` | Minimal public profile lookup (`?id=` or `?spaceId=`) |
+| GET | `/users` | Profile lookup (`?id=` / `?spaceId=`), or unscoped the paged register an admin may see |
 | GET | `/users/me` | Current user profile |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
@@ -401,14 +401,29 @@ curl -sS -H "Content-Type: application/json" \
 
 ### `GET /users`
 
-- **Auth**: session (`requireUser`).
-- **Query**: exactly one of `id` (single user) or `spaceId` (space members). Neither
-  → `400`. A bare listing of all users is intentionally not supported.
+- **Auth**: session (`requireUser`). Unscoped, what comes back depends on whether the
+  caller administers the instance (`VEKTOR_ADMIN_GROUPS`, or no-auth's local account).
+- **Query**: `id` (single user), `spaceId` (space members), or neither (the register).
+  The register also takes `limit`/`cursor?` (default 50/max 500), which the scoped forms
+  reject. Any other parameter is `400`, so a misspelled scope is named rather than
+  silently answered as a different one; an unusable `cursor` is the first page, as
+  everywhere else.
 - **Behavior (`id`)**: returns `{ id, name, image }` for that user, `404` if none.
 - **Behavior (`spaceId`)**: `viewer` on the space, returns an array of
   `{ id, name, image }` for all space members (ACL member ids + the caller).
-- Email is never included (PII); `image` is the provider's picture, a derived Gravatar
-  URL when one is configured, or `null` for a client-drawn avatar.
+- **Behavior (unscoped)**: the user register — `{ users, limit, nextCursor }`, newest
+  first, each account as `{ id, name, email, image, groups, createdAt }`, where `groups`
+  is the stored IdP claim without the synthetic `public`. An admin is already owner on
+  every space that exists, so the register exposes nothing they could not read a space at
+  a time. Anyone else gets `200 { users: [], … }`, not a refusal: like `/spaces` and
+  `/search`, this lists what the caller may see, and for them that is nothing.
+  Cursor-paginated at the DB level, keyset on `(createdAt, id)` — total, so walking
+  `nextCursor` visits every account once even while accounts are being created.
+- The scoped forms never include email (PII), which is what keeps them answerable to any
+  signed-in account. `image` is the provider's picture, a derived Gravatar URL when one
+  is configured, or `null` for a client-drawn avatar.
+- Inviting people is done by email through the permissions endpoint, so nobody needs the
+  register to add a member.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
@@ -420,14 +435,39 @@ curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
 ]
 ```
 
+```bash
+# The register, as an instance admin — a page, then the one after it
+curl -sS -b "$COOKIE" "$VEKTOR/users?limit=50"
+curl -sS -b "$COOKIE" "$VEKTOR/users?limit=50&cursor=$NEXT_CURSOR"
+```
+
+```json
+{
+  "users": [
+    {
+      "id": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE",
+      "name": "Grace Hopper",
+      "email": "grace@acme.test",
+      "image": null,
+      "groups": ["vektor-admins"],
+      "createdAt": "2026-02-11T09:14:00.000Z"
+    }
+  ],
+  "limit": 50,
+  "nextCursor": "eyJ0IjoxNzcwODAyMDQwMDAwLCJpZCI6IkxtNHBROHJUMnZYNnpCMGRGM2hKN2tOOXNXMXlBNWNFIn0"
+}
+```
+
 ### `GET /users/me`
 
 - **Auth**: session (`requireUser`).
-- **Returns**: `200 { id, name, email, image, canCreateSpace, adminGroups }` —
+- **Returns**: `200 { id, name, email, image, canCreateSpace, adminGroups, isAdmin }` —
   `canCreateSpace` is the instance-level gate (`VEKTOR_SPACE_CREATION_GROUPS`), which no
   space-scoped `permissions/me` can carry. `adminGroups` lists the caller's own
   `VEKTOR_ADMIN_GROUPS` memberships — empty unless they administer the instance — and is
-  what the client names when it grants itself standing access to a space.
+  what the client names when it grants itself standing access to a space. `isAdmin` is
+  whether they administer it at all, which no-auth's local account does without being in
+  any group.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/users/me"
@@ -439,7 +479,9 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/me"
   "name": "Ada Lovelace",
   "email": "ada@acme.test",
   "image": null,
-  "canCreateSpace": true
+  "canCreateSpace": true,
+  "adminGroups": [],
+  "isAdmin": false
 }
 ```
 
@@ -448,7 +490,7 @@ curl -sS -b "$COOKIE" "$VEKTOR/users/me"
 - **Auth**: session (`requireUser`).
 - **Query**: `q?` — case-insensitive substring of name or email.
 - **Behavior**: everyone who shares at least one OAuth group with the caller, capped at
-  20. There is no global directory: a caller with no OAuth groups gets `[]`.
+  20. Not a listing of everyone: a caller with no OAuth groups gets `[]`.
 - **Returns**: `200` array of `{ id, name, email, image }`.
 
 ```bash

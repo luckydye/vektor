@@ -155,6 +155,12 @@ standing access is an ordinary `POST /spaces/:spaceId/permissions` grant — no 
 endpoint — written to the admin group rather than to the person, so it survives whoever
 administers the instance next and shows up in the members list like any other grant.
 
+An admin also reads the user register — `GET /users` unscoped, the `/spaces?tab=users`
+page — which is every account with its email and group claim. An admin already owns every
+space, so it tells them nothing they could not read a space at a time. The same route
+answers everyone else an empty list, and its scoped forms (`?id=`, `?spaceId=`) carry no
+email at all; emptiness rather than a refusal is what every other listing here does.
+
 Only a user identity can be an admin. An access token's authority stays the grants its
 own principal holds, so a token minted by an admin is not a skeleton key for the
 instance.

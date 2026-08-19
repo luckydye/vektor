@@ -7,6 +7,9 @@ if (!Astro.locals.session) {
 }
 
 const lang = Astro.preferredLocale || "en";
+// Server-side so a linked `?tab=users` renders that page rather than flashing
+// the space overview first. Which tabs exist is still the island's call.
+const initialTab = Astro.url.searchParams.get("tab") === "users" ? "users" : "spaces";
 ---
 
 <BaseLayout title="Spaces">
@@ -14,5 +17,6 @@ const lang = Astro.preferredLocale || "en";
     client:load
     replicaScope={Astro.locals.user?.id ? `user:${Astro.locals.user.id}` : "public"}
     lang={lang}
+    initialTab={initialTab}
   />
 </BaseLayout>
