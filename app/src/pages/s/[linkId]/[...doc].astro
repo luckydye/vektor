@@ -7,6 +7,7 @@ import {
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
+import { isHttpsSite } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   getDocument,
@@ -24,8 +25,26 @@ const linkId = Astro.params.linkId ?? "";
 const requestedDocumentId = Astro.params.doc;
 
 // The URL is the credential: never cache it, never index it.
-Astro.response.headers.set("Cache-Control", "private, no-store");
-Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+const privateHeaders = {
+  "Cache-Control": "private, no-store",
+  "X-Robots-Tag": "noindex, nofollow",
+};
+for (const [name, value] of Object.entries(privateHeaders)) {
+  Astro.response.headers.set(name, value);
+}
+
+/**
+ * A refusal carries the same headers as the page. `Astro.response` covers only
+ * what this file renders, and a challenge or a 404 is a Response of its own —
+ * each still holding the URL the headers exist to keep out of caches and
+ * indexes.
+ */
+function withPrivateHeaders(response: Response): Response {
+  for (const [name, value] of Object.entries(privateHeaders)) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
 
 // A refusal is already the page's answer: a 404, a Basic challenge, or a 429.
 const link = await authenticateShareLink(
@@ -36,13 +55,15 @@ const link = await authenticateShareLink(
   if (error instanceof Response) return error;
   throw error;
 });
-if (link instanceof Response) return link;
+if (link instanceof Response) return withPrivateHeaders(link);
 
 const store = await openSpaceStore(link.spaceId);
 const documentId = requestedDocumentId || link.resourceId;
 
 /** Refusal and absence alike: a link holder learns nothing about the rest. */
-const notFound = new Response(null, { status: 404, statusText: "Not found" });
+const notFound = withPrivateHeaders(
+  new Response(null, { status: 404, statusText: "Not found" }),
+);
 
 try {
   await verifyAccess(
@@ -82,7 +103,12 @@ Astro.cookies.set(
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: Astro.url.protocol === "https:",
+    // The same signal `auth.ts` gives better-auth for the session cookie.
+    // `Astro.url.protocol` cannot answer this: the Astro fallback is handed the
+    // raw Node request, so behind a TLS-terminating proxy it reads `http:` and
+    // this cookie — which authorizes the attachments, and on a protected link
+    // carries the proof its password was accepted — would go out unprotected.
+    secure: isHttpsSite(),
   },
 );
 
