@@ -88,13 +88,18 @@ export async function requireSpace(spaceId: string): Promise<void> {
 }
 
 /**
- * The groups an ACL question resolves against: the `public` group for an
- * unauthenticated caller, none for a credential — its own id carries its grants
- * — and the user's own groups otherwise.
+ * The groups an ACL question resolves against: `public` for an unauthenticated
+ * caller, and a user's own groups otherwise — which for a credential is `public`
+ * alone, since its id has no row in the user table.
+ *
+ * There is deliberately no test for a credential here. An empty group set is
+ * read as `[public]` by every query that takes one (see `getPermission`), so a
+ * credential resolves against `public` whichever way this answers, and a
+ * `token_` test would only claim otherwise. Everything beyond world-readable is
+ * the grants written for the credential's own id.
  */
 async function aclGroups(userId: string | null): Promise<string[] | undefined> {
   if (!userId) return [PUBLIC_GROUP];
-  if (isCredentialPrincipal(userId)) return undefined;
   return await getUserGroups(userId);
 }
 

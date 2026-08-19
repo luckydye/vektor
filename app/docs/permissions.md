@@ -82,8 +82,8 @@ override a document-level `editor`.
   is the only way an anonymous request gets past a guard. Write paths still require a
   real user, so `public: editor` reads as public *read* plus nothing.
 - **A credential** — an access token, named by its own id (`token_…`), never by a role
-  of its own. An account id from the IdP carries no underscore, so a credential
-  principal is never mistaken for a person's.
+  of its own. It has no groups but resolves against `public` like anyone else, so its
+  reach is its own grants plus whatever is world-readable.
 
 ## Granting and revoking
 
@@ -114,9 +114,14 @@ grant is always evaluated against the privilege the caller already held.
 
 ## Access tokens
 
-A token authenticates as its own id and carries exactly the grants written for
-that identity — a token is scoped by ACL entries, not by the role of the person who
-created it. Creating and scoping tokens is owner-only.
+A token authenticates as its own id and carries the grants written for that identity
+— a token is scoped by ACL entries, not by the role of the person who created it.
+Creating and scoping tokens is owner-only.
+
+It also reaches whatever the `public` group reaches, exactly as an anonymous caller
+does: a token's id has no groups of its own, and an empty group set resolves against
+`public`. So a token sees its own grants plus what is world-readable, which is
+strictly less than the person who issued it.
 
 A token stops working when its creator stops belonging to the space, so offboarding a
 person also retires what they minted, without an owner having to find it.
