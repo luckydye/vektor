@@ -1,11 +1,8 @@
 /**
  * Document commands — thin fetch wrappers over the wiki REST API.
  *
- * Defaults to http://localhost:8080 and auto-discovers the first space
- * from a running vektor instance. Override with env vars:
- *   VEKTOR_HOST          e.g. http://localhost:3000
- *   VEKTOR_SPACE_ID      space identifier
- *   VEKTOR_ACCESS_TOKEN  API token (optional)
+ * Connection settings come from `vektor login` (see resolve.ts), overridable
+ * with VEKTOR_HOST, VEKTOR_SPACE_ID and VEKTOR_ACCESS_TOKEN.
  *
  * Commands:
  *   document cat <docId>                       print document content to stdout
@@ -15,8 +12,7 @@
  *   document search <query>                    full-text search, prints matching docs
  */
 
-import { config } from "#config";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
+import { resolveConfig } from "./resolve.ts";
 
 function apiUrl(host: string, path: string): string {
   return `${host.replace(/\/$/, "")}${path}`;
@@ -48,15 +44,8 @@ async function apiFetch(
   return res.json();
 }
 
-async function resolveConnection() {
-  const host = resolveHost();
-  const token = config().CLI_ACCESS_TOKEN;
-  const spaceId = await resolveSpaceId(host, token);
-  return { host, token, spaceId };
-}
-
 export async function commandCat(docId: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
 
   const res = await fetch(apiUrl(host, `/api/v1/spaces/${spaceId}/documents/${docId}`), {
     headers: {
@@ -128,7 +117,7 @@ export async function commandWrite(
   source?: string,
   contentType?: string,
 ): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const raw = await readSource(source);
   const { content } = parseFrontmatter(raw);
 
@@ -156,7 +145,7 @@ export async function commandCreate(flags: {
   contentType?: string;
   properties?: Record<string, string>;
 }): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const raw = await readSource(flags.source);
   const { meta, content } = parseFrontmatter(raw);
   const contentType = flags.contentType ?? inferContentType(flags.source);
@@ -198,7 +187,7 @@ export async function commandCreate(flags: {
 }
 
 export async function commandLs(flags: { limit?: string }): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
 
   const limit = flags.limit ? `?limit=${flags.limit}` : "";
   const data = (await apiFetch(
@@ -224,7 +213,7 @@ export async function commandSet(
   assignments: string[],
   opts: { parent?: string; title?: string; category?: string },
 ): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   const base = `/api/v1/spaces/${spaceId}/documents/${docId}`;
 
   // Merge --title/--category shorthands into property assignments.
@@ -268,7 +257,7 @@ export async function commandSet(
 }
 
 export async function commandSearch(query: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
 
   const data = (await apiFetch(
     host,

@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { escapeHtml } from "#utils/html.ts";
-import { resolveHost } from "./resolve.ts";
+import {
+  clearStoredConfig,
+  DEFAULT_HOST,
+  resolveHost,
+  writeStoredConfig,
+} from "./resolve.ts";
 
 function openBrowser(url: string): void {
   const cmd =
@@ -35,7 +40,7 @@ export function loginErrorMessage(code: string): string {
 }
 
 export async function commandLogin(): Promise<void> {
-  const host = resolveHost().replace(/\/$/, "");
+  const host = resolveHost();
 
   // Random port in a range unlikely to clash with common dev servers.
   const port = 51000 + Math.floor(Math.random() * 8999);
@@ -136,19 +141,25 @@ export async function commandLogin(): Promise<void> {
       expiresAt ? `expires ${expiresAt.slice(0, 10)}` : undefined,
     ].filter((part): part is string => part !== undefined);
 
+    const path = writeStoredConfig({ spaceId, accessToken: token });
+
     process.stdout.write(
       [
         "",
-        ...(scope.length > 0 ? [`Token scope: ${scope.join(", ")}`, ""] : []),
-        "Logged in. Add to your shell profile:",
-        "",
-        `  export VEKTOR_HOST=${host}`,
-        `  export VEKTOR_SPACE_ID=${spaceId}`,
-        `  export VEKTOR_ACCESS_TOKEN=${token}`,
-        "",
-        "Or for just this session:",
-        "",
-        `  export VEKTOR_ACCESS_TOKEN=${token}`,
+        `Logged in to ${host} (space ${spaceId}).`,
+        ...(scope.length > 0 ? [`Token scope: ${scope.join(", ")}`] : []),
+        `Credentials stored in ${path}`,
+        // The host is env-only, so without the export the next command hits localhost.
+        ...(host === DEFAULT_HOST
+          ? []
+          : ["", `Keep VEKTOR_HOST=${host} in your shell profile — it is not stored.`]),
+        // Env vars still win, so a stale export would silently shadow this token.
+        ...(process.env.VEKTOR_ACCESS_TOKEN
+          ? [
+              "",
+              "Note: VEKTOR_ACCESS_TOKEN is set and takes precedence — unset it to use the stored token.",
+            ]
+          : []),
         "",
       ].join("\n"),
     );
@@ -156,6 +167,13 @@ export async function commandLogin(): Promise<void> {
     clearTimeout(timeout);
     server.stop();
   }
+}
+
+export function commandLogout(): void {
+  const path = clearStoredConfig();
+  process.stdout.write(
+    path ? `Removed ${path}\n` : "Not logged in — nothing to remove.\n",
+  );
 }
 
 function htmlResponse(options: {

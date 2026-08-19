@@ -6,8 +6,7 @@ import {
   parseLooseObject,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
-import { config } from "#config";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
+import { resolveConfig } from "./resolve.ts";
 
 /**
  * JSON-RPC 2.0 / MCP protocol layer. Only the CLI speaks MCP over stdio, so the
@@ -158,13 +157,11 @@ async function handleLine(line: string, mcpConfig: VektorMcpConfig): Promise<voi
 }
 
 export async function commandMcp(): Promise<void> {
-  const apiUrl = resolveHost().replace(/\/+$/, "");
-  const accessToken = config().CLI_ACCESS_TOKEN;
-  const spaceId = await resolveSpaceId(apiUrl, accessToken);
+  const { host, token, spaceId } = await resolveConfig();
   const mcpConfig: VektorMcpConfig = {
-    apiUrl,
+    apiUrl: host,
     spaceId,
-    accessToken,
+    accessToken: token,
     connectedProviders: [],
   };
 

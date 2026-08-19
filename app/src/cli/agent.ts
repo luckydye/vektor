@@ -6,8 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import type { ChatMessage } from "#api/provider/types.ts";
-import { config } from "#config";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
+import { resolveConfig } from "./resolve.ts";
 
 const useColor = process.stdout.isTTY === true;
 const c = {
@@ -188,9 +187,7 @@ async function runTurn(
 }
 
 export async function commandAgent(options: AgentCliOptions): Promise<void> {
-  const host = resolveHost().replace(/\/$/, "");
-  const spaceId = await resolveSpaceId(host, undefined);
-  const token = config().CLI_ACCESS_TOKEN;
+  const { host, token, spaceId } = await resolveConfig();
   const authHeaders: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};

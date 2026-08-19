@@ -9,7 +9,8 @@ You need an access token and the id of the space you are working in.
 
 A space owner creates a token with `POST /spaces/:spaceId/access-tokens`. The raw string
 is returned on that response only and cannot be retrieved afterwards. `vektor login`
-performs the same exchange through the browser and stores the result.
+performs the same exchange through the browser and stores the token and space in
+`~/.config/vektor/config.json`.
 
 ```bash
 export VEKTOR="https://vektor.example.com/api/v1"

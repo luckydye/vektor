@@ -626,10 +626,11 @@ vektor extension package <extension-id>   # runs the build, bumps the version, z
 vektor extension upload  <extension-id>   # uploads the zip to a space
 ```
 
-`upload` reads its target from the environment — `VEKTOR_HOST` (defaults to
-localhost), `VEKTOR_ACCESS_TOKEN` (required), and `VEKTOR_SPACE_ID` (optional;
-otherwise the first space you can see). A zip can also be uploaded through the
-extensions management UI.
+`upload` takes its token and space from whatever `vektor login` stored in
+`~/.config/vektor/config.json`, both overridable per-run with `VEKTOR_ACCESS_TOKEN`
+(required) and `VEKTOR_SPACE_ID` (otherwise the first space you can see). The server
+comes from `VEKTOR_HOST` alone and defaults to localhost. A zip can also be uploaded
+through the extensions management UI.
 
 The build is one line in `package.json` and needs no bundler config:
 

@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -8,7 +8,15 @@ import {
   commandCategoryRm,
 } from "#cli/category.ts";
 import { commandCreate, commandSet } from "#cli/document.ts";
-import { loginErrorMessage } from "#cli/login.ts";
+import { commandLogout, loginErrorMessage } from "#cli/login.ts";
+import {
+  clearStoredConfig,
+  configPath,
+  readStoredConfig,
+  resolveConfig,
+  resolveHost,
+  writeStoredConfig,
+} from "#cli/resolve.ts";
 import { commandUploadFile, toAbsoluteUrl } from "#cli/upload.ts";
 
 const HOST = "https://vektor.example.com";
@@ -49,16 +57,20 @@ function makeTempFile(name: string, content = "hello"): string {
   return p;
 }
 
+const savedEnv = { ...process.env };
+
 beforeEach(() => {
   mkdirSync(TMP, { recursive: true });
   process.env.VEKTOR_HOST = HOST;
   process.env.VEKTOR_SPACE_ID = SPACE_ID;
+  // Keep the developer's real ~/.config/vektor/config.json out of the tests.
+  process.env.XDG_CONFIG_HOME = join(TMP, "config");
+  delete process.env.VEKTOR_ACCESS_TOKEN;
 });
 
 afterEach(() => {
   rmSync(TMP, { recursive: true, force: true });
-  delete process.env.VEKTOR_HOST;
-  delete process.env.VEKTOR_SPACE_ID;
+  process.env = { ...savedEnv };
   vi.restoreAllMocks();
 });
 
@@ -509,5 +521,118 @@ describe("loginErrorMessage", () => {
 
   test("falls back to the raw code for anything unrecognised", () => {
     expect(loginErrorMessage("server_exploded")).toContain("server_exploded");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stored config — ~/.config/vektor/config.json
+// ---------------------------------------------------------------------------
+
+describe("stored config", () => {
+  beforeEach(() => {
+    mkdirSync(join(TMP, "config", "vektor"), { recursive: true });
+  });
+
+  test("configPath lives under XDG_CONFIG_HOME", () => {
+    expect(configPath()).toBe(join(TMP, "config", "vektor", "config.json"));
+  });
+
+  test("resolves space and token from the file when no env vars are set", async () => {
+    delete process.env.VEKTOR_SPACE_ID;
+    writeStoredConfig({ spaceId: "space-stored", accessToken: "at_stored" });
+
+    await expect(resolveConfig()).resolves.toEqual({
+      host: HOST,
+      token: "at_stored",
+      spaceId: "space-stored",
+    });
+  });
+
+  test("env vars take precedence over the file", async () => {
+    process.env.VEKTOR_ACCESS_TOKEN = "at_from_env";
+    writeStoredConfig({ spaceId: "space-stored", accessToken: "at_stored" });
+
+    await expect(resolveConfig()).resolves.toEqual({
+      host: HOST,
+      token: "at_from_env",
+      spaceId: SPACE_ID,
+    });
+  });
+
+  test("discovers the first space from the server with nothing configured", async () => {
+    delete process.env.VEKTOR_SPACE_ID;
+    writeStoredConfig({ accessToken: "at_stored" });
+    let seenAuth: string | null = null;
+    mockFetch((_url, init) => {
+      seenAuth = new Headers(init?.headers).get("authorization");
+      return Response.json([{ id: "space-discovered" }]);
+    });
+
+    const { spaceId } = await resolveConfig();
+
+    expect(spaceId).toBe("space-discovered");
+    // Discovery has to carry the token, or it 401s on an auth-enabled server.
+    expect(seenAuth).toBe("Bearer at_stored");
+  });
+
+  test("the host comes from the env var only, never the file", () => {
+    writeFileSync(
+      configPath(),
+      JSON.stringify({ host: "https://stored.example.com", accessToken: "at_stored" }),
+    );
+    expect(resolveHost()).toBe(HOST);
+
+    delete process.env.VEKTOR_HOST;
+    expect(resolveHost()).toBe("http://localhost:8080");
+  });
+
+  test("a trailing slash on VEKTOR_HOST is stripped once, not at every call site", () => {
+    process.env.VEKTOR_HOST = `${HOST}/`;
+
+    expect(resolveHost()).toBe(HOST);
+  });
+
+  test("resolves no token with neither env var nor file", async () => {
+    expect(readStoredConfig()).toEqual({});
+    await expect(resolveConfig()).resolves.toEqual({
+      host: HOST,
+      token: undefined,
+      spaceId: SPACE_ID,
+    });
+  });
+
+  test("writes credentials owner-readable only", () => {
+    const path = writeStoredConfig({ accessToken: "at_secret" });
+
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
+  test("a second write merges instead of dropping earlier fields", () => {
+    writeStoredConfig({ spaceId: "space-stored" });
+    writeStoredConfig({ accessToken: "at_rotated" });
+
+    expect(readStoredConfig()).toEqual({
+      spaceId: "space-stored",
+      accessToken: "at_rotated",
+    });
+  });
+
+  test("a corrupt file is ignored rather than fatal", async () => {
+    writeFileSync(configPath(), "{not json");
+
+    expect(readStoredConfig()).toEqual({});
+    await expect(resolveConfig()).resolves.toMatchObject({ token: undefined });
+  });
+
+  test("logout removes the file, and says so only when there was one", async () => {
+    writeStoredConfig({ accessToken: "at_secret" });
+
+    const removed = await captureStdout(async () => commandLogout());
+    expect(removed).toContain(configPath());
+    expect(existsSync(configPath())).toBe(false);
+    expect(clearStoredConfig()).toBeUndefined();
+
+    const nothing = await captureStdout(async () => commandLogout());
+    expect(nothing).toContain("Not logged in");
   });
 });
