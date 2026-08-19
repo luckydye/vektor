@@ -65,25 +65,16 @@ would have to stay in TypeScript regardless, or be duplicated in Rust with the
 two copies kept in agreement, which is a security-relevant divergence risk in
 exchange for nothing (it is pure string comparison; it is not slow).
 
-**`#acl/guards.ts` is HTTP, not logic.** 896 lines that resolve a request's
-credential (job token, access token, session, none) and *throw `Response`
-objects* so a route that forgets the failure path fails closed. It reaches into
-`#api/http.ts`, `#api/server/types.ts`, `#auth` (better-auth), and `#jobs/jobToken.ts`.
-Constructing and throwing Web `Response` from Rust is not a boundary worth
-drawing; the guard layer belongs on the JS side of any split.
+**`#acl/guards.ts` mixes HTTP into the decision** — but only by co-location.
+See "Re-cutting the boundary" below: this one is accidental, not structural.
 
-**better-auth owns the auth database from JS.** `src/auth.ts` passes the same
-handle to `drizzleAdapter(authDb, { schema })`. Rust cannot take ownership of
-`auth.db` without either reimplementing better-auth's adapter or leaving two
-independent writers on one file — and `#acl/store.ts`, `#acl/idpSync.ts` and
-`#db/auth/spaceIndex.ts` all query the auth DB.
+**better-auth owns the auth database from JS.** `src/auth.ts` passes that handle
+to `drizzleAdapter(authDb, { schema })`, so `auth.db` cannot move. Whether this
+blocks anything depends on where identity ends and authorization begins — see
+below; under a correct cut it does not.
 
-**The transaction API passes JS callbacks into the driver.** `SpaceStore.tx(fn)`
-runs `fn` against a transaction-scoped store and buffers realtime events until
-the commit lands. Under a Rust-owned connection every such callback re-enters
-Rust from the JS thread while a transaction is open — re-entrancy plus threaded
-`ThreadsafeFunction` plumbing for the 10 current call sites, replacing something
-that is 40 lines of TypeScript today.
+**The transaction API passes JS callbacks into the driver** — under the current
+shape. Also largely accidental; see below.
 
 **`store.emit()` is a deliberate seam into `#realtime`.** `src/db/client/store.ts`
 calls `sendSyncEvent` — its comment names it "the one place the data layer
@@ -129,9 +120,103 @@ Being fair to the idea:
   natural Rust fit on its own merits, and it is also the one whose migration
   nobody would notice.
 
+## Re-cutting the boundary
+
+The blockers above are not equally real. Four of them are artefacts of where
+code currently sits, not of what it does. Separated honestly:
+
+### Accidental — a correct cut removes them
+
+**The `Response` coupling is already cut, just co-located.** `decideAccess`
+(`guards.ts:118`) returns `{ decision: "ok" | "no-space" | "no-document" |
+"denied", requiredRole }` — a tagged union, no HTTP. `denialResponse` (`:186`)
+translates it, and its own comment says why they are separate: "the 401/403
+split below is presentation, and reading it back off a thrown Response confuses
+'not allowed' with 'not authenticated'." The decision core is already portable;
+it just lives in the same file as its adapter.
+
+**The Hono coupling is six header reads.** `ApiContext` appears at six points in
+`guards.ts` and is used for exactly three things: `X-Job-Token`, `Authorization`,
+and `context.var.user`. A `{ jobToken?, bearer?, sessionUserId? }` struct
+replaces it, and the `authenticate*` family splits into a request-edge adapter
+(JS) over a credential-resolution core.
+
+**Transactions are already DB-only.** The 10 `tx()` blocks were the strongest
+structural objection, and they do not hold up. `deleteDocument` collects file
+paths inside the transaction and calls `getFileStorage().delete()` *after* it.
+`scheduleDocumentSearchRefresh` is fire-and-forget (`void … .catch`), outside the
+commit. Nothing inside a transaction calls embedding, storage, or Yjs. The one
+genuine violation is `api/routes/spaces/permissions.ts:320`, which throws
+`forbiddenResponse()` and returns `jsonResponse()` from inside `store.tx()` —
+fix that one and a transaction becomes a pure unit of work that fits entirely
+inside a native module. **No JS callbacks required.**
+
+**`store.emit()` already has the right shape.** It buffers `SpaceChange[]` and
+publishes only on commit. A native store returns the change list; JS publishes
+it. That is a cleaner seam than today's, not a worse one.
+
+**Identity vs. authorization is separable, and separating it is an improvement.**
+`decideAccess` already threads `groups` as a parameter into `hasPermission`.
+Only four functions in `acl/store.ts` touch the auth database —
+`getUsersInSharedGroups`, `resolveGranteeName`, `getSpaceMemberIds`,
+`getSpaceMembersWithGroups` — and all four are directory/presentation, not
+decisions. The decision core (`hasPermission`, `getPermission`,
+`getDocumentPermission`, `hasFeature`, `hasAnyResourceScopedAccess`,
+`listAccessibleResources`, `filterReadableResources`) reads only the space `acl`
+table plus a groups array handed to it. better-auth keeps `auth.db`; the core
+never touches it.
+
+That last split fixes a real latency bug on the way: `getUserGroups` calls
+`ensureFreshGroups`, which can make an IdP HTTP round-trip — and it is reached
+from inside `decideAccess`, and again from `isInstanceAdmin` within the same
+decision. Hoisting identity resolution to the request edge resolves groups once
+per request instead of twice-or-more per permission check.
+
+### Structural — a correct cut relocates them, it does not remove them
+
+**The permission hierarchy has to exist on both sides of the FFI.**
+`PERMISSION_HIERARCHY` and `DEFAULT_FEATURES` are read at 16+ points inside
+`acl/store.ts`, including `permissionsAtLeast` which builds SQL `WHERE`
+clauses — so a native decision core must own them. Fourteen browser components
+import the same table from `permissions.ts`, and a `.node` addon cannot be
+bundled for the browser. One of the two copies must be generated from the other
+(napi already emits `index.d.ts`; emitting the constants too is a small extra
+step) or served as data. Solvable, but it introduces a security-relevant
+invariant that is currently free.
+
+**The benchmark.** Unchanged, and it is the load-bearing argument. Cutting the
+boundary correctly makes a port *tractable*; it does not make it *worth* more
+than it was. ~100 µs per read of driver tax is the entire prize, and `bun:sqlite`
+collects it without an FFI.
+
+**Width.** ~400 exported symbols across ~220 files. Correct boundaries reduce the
+awkwardness of the crossing, not the number of crossings.
+
+### What this changes
+
+The verdict moves from "no" to **"the refactor is worth doing on its own merits;
+do it, and the port becomes a reversible decision instead of a big-bang one."**
+
+The refactor stands alone — guards split into decision core and HTTP adapter,
+identity resolution hoisted to the request edge, transactions as domain units
+with no HTTP inside, `emit` returning changes rather than calling realtime. Every
+one of those is a better design in TypeScript, today, with no Rust in the picture.
+
+And once it is done, the port stops being all-or-nothing. `acl/store.ts` alone —
+1 889 lines, the hottest read path, self-contained against the space database
+once the four directory functions move out — could go behind a napi module and be
+measured, without touching `#db` at all. That is the shape `native/exec` and
+`native/embedding` already have. If the numbers justify it there, `#db` follows;
+if they do not, nothing was lost.
+
+Note the ordering that implies: **port `#acl` first, not `#db`.** The original
+framing had it backwards. `#db` is IO-bound and wide; the ACL decision core is
+CPU-and-query-bound, narrow, and the one place where per-request latency
+compounds — every route passes through it, sometimes several times.
+
 ## Recommendation
 
-**Take the driver, not the rewrite.** Route local file-backed databases through
+**Take the driver first, and the refactor for its own sake.** Route local file-backed databases through
 `bun:sqlite` and keep `@libsql/client` for `libsql://`/`https://` URLs. The
 branch belongs in `resolveSpaceLocation`/`createDatabase`, which is where the
 dialect distinction is already documented to live, and `query.ts` absorbs the
@@ -140,7 +225,12 @@ result-shape difference — it exists for that. Expected: point reads ~104 µs �
 ~220, no FFI, no second toolchain on the read path, `#acl/permissions.ts` stays
 in the browser bundle where it has to be.
 
-If that lands and profiling still shows a data-layer bottleneck, the honest next
+Separately — and independently of any native work — make the cuts described in
+"Re-cutting the boundary". They are better TypeScript on their own, and they turn
+a possible future port from a big-bang migration into an incremental one whose
+first step is `acl/store.ts`, not `#db`.
+
+If both land and profiling still shows a data-layer bottleneck, the honest next
 targets are narrow, computational, and can be taken one at a time behind the
 existing `#native/*` pattern:
 
