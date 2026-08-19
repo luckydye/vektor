@@ -6,11 +6,7 @@ import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user } from "#db/schema/auth.ts";
-import {
-  getTokenUserId,
-  type ValidateTokenResult,
-  validateAccessToken,
-} from "#db/space/accessTokens.ts";
+import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -22,7 +18,7 @@ import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
  * `spaceId` is the space whose store holds the token row. Access tokens live in
  * exactly one space's database, so that space is the only one a token can ever
  * reach — every other space the user belongs to is out of the token's scope by
- * construction, and `result` carries the ACL identity (`token:<id>`) that says
+ * construction, and `result` carries the ACL identity — the token's id — that says
  * what it may do *within* that space.
  */
 export interface CalDAVToken {
@@ -389,7 +385,7 @@ async function authorizeCalDAVToken(
     await verifyAccess(
       targetSpaceId,
       { type: ResourceType.SPACE, id: targetSpaceId },
-      getTokenUserId(token.result.tokenId),
+      token.result.tokenId,
       requiredRole,
     );
   } catch {

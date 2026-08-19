@@ -3617,6 +3617,59 @@ describe("ACL API Tests - Document Access List", () => {
     expect(response.status).toBe(403);
   });
 
+  // A token scoped to a document holds a row in `acl` under its own id, in the
+  // same shape a person's grant has. Unfiltered, the sharing list reports the
+  // credential as one more person with editor access to the page.
+  it("omits a credential from the access list", async () => {
+    const created = await apiRequest(
+      `/api/v1/spaces/${spaceId}/access-tokens`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Access List Token",
+          resourceType: "document",
+          resourceId: childId,
+          permission: "editor",
+        }),
+      },
+    );
+    expect(created.status).toBe(201);
+    // The response is flat: `token` is the secret, `id` is the credential.
+    const tokenId = (await created.json()).id as string;
+
+    // The row has to be one this list would otherwise pick up, or the filter is
+    // not what is keeping the credential out of the response: same document
+    // scope, same editor role, and marked a credential only by `kind`.
+    const rows = await apiRequest(
+      `/api/v1/spaces/${spaceId}/permissions?type=role&resourceType=document&resourceId=${childId}`,
+      session1Token,
+    );
+    expect(rows.status).toBe(200);
+    expect(
+      (await rows.json()).permissions.map((p: { permission: unknown }) => p.permission),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: tokenId, permission: "editor", kind: "token" }),
+      ]),
+    );
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${childId}/access`,
+      session1Token,
+    );
+    expect(response.status).toBe(200);
+
+    const { access } = await response.json();
+    expect(access.map((entry: { userId?: string }) => entry.userId)).not.toContain(
+      tokenId,
+    );
+    // The people sharing the page are untouched by the filter.
+    expect(access.map((entry: { userId?: string }) => entry.userId)).toContain(
+      pageUser.userId,
+    );
+  });
+
   // Sharing a document as viewer with someone who already outranks that — the
   // space owner most of all — used to lock them out of their own document,
   // including out of the sharing screen needed to take the grant back.

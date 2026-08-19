@@ -12,8 +12,16 @@ import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { user } from "#db/schema/auth.ts";
 
+/**
+ * The groups this id belongs to, or none at all when no user carries it — a
+ * credential's id, an account since deleted. Callers that need a group set for
+ * an ACL query read empty as `[public]`; saying `[public]` from here instead
+ * would claim a person exists, which is what let a non-person be told apart by
+ * the shape of its id.
+ */
 export async function getUserGroups(userId: string): Promise<string[]> {
   const authDb = getAuthDb();
+  // No auth database at all: nobody has groups, so everyone is just the public.
   if (!authDb) {
     return [PUBLIC_GROUP];
   }
@@ -23,10 +31,11 @@ export async function getUserGroups(userId: string): Promise<string[]> {
   await ensureFreshGroups(userId);
 
   const userRecord = await one(authDb.select().from(user).where(eq(user.id, userId)));
+  if (!userRecord) return [];
 
   const groups = [PUBLIC_GROUP];
 
-  if (userRecord?.groups) {
+  if (userRecord.groups) {
     try {
       const userGroups = JSON.parse(userRecord.groups);
       if (Array.isArray(userGroups)) {

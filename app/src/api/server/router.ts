@@ -1,8 +1,10 @@
 import type { Next } from "hono";
+import { resolveRequestIdentity } from "#acl/session.ts";
+import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
-import { auth, authTrustedOrigins } from "#auth";
-import { getPublicEnv, isTrustProxyEnabled } from "#config";
+import { authTrustedOrigins } from "#auth";
+import { getPublicEnv } from "#config";
 import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
@@ -49,10 +51,10 @@ function isCrossSiteForgery(c: ApiContext, method: string): boolean {
 }
 
 function clientIp(c: ApiContext): string {
-  const socketIp = c.env.incoming.socket?.remoteAddress ?? "";
-  if (!isTrustProxyEnabled()) return socketIp;
-  const forwardedFor = c.req.header("x-forwarded-for");
-  return forwardedFor?.split(",").at(-1)?.trim() || socketIp;
+  return resolveClientIp(
+    c.env.incoming.socket?.remoteAddress,
+    c.req.header("x-forwarded-for"),
+  );
 }
 
 async function hydrateRequestContext(c: ApiContext): Promise<void> {
@@ -64,18 +66,7 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
     headers.delete("x-forwarded-for");
   }
 
-  let user: App.Locals["user"] = null;
-  let session: App.Locals["session"] = null;
-  if (isNoAuthMode()) {
-    user = LOCAL_USER;
-    session = LOCAL_SESSION;
-  } else {
-    const authenticated = await auth.api.getSession({ headers });
-    if (authenticated) {
-      user = authenticated.user;
-      session = authenticated.session;
-    }
-  }
+  const { user, session } = await resolveRequestIdentity(headers);
 
   c.set("publicEnv", getPublicEnv());
   c.set("requestHeaders", headers);

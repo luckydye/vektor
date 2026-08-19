@@ -1,7 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
-import { auth } from "./auth.ts";
+import { resolveRequestIdentity } from "./acl/session.ts";
 import { getPublicEnv } from "./config.ts";
-import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "./noAuth.ts";
 import { appLogger } from "./observability/logger.ts";
 import { runWithLang } from "./utils/langScope.server.ts";
 
@@ -20,21 +19,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     time: requestTime,
   });
 
-  if (isNoAuthMode()) {
-    context.locals.user = LOCAL_USER as typeof context.locals.user;
-    context.locals.session = LOCAL_SESSION as typeof context.locals.session;
-  } else {
-    const isAuthed = await auth.api.getSession({
-      headers: request.headers,
-    });
-    if (isAuthed) {
-      context.locals.user = isAuthed.user;
-      context.locals.session = isAuthed.session;
-    } else {
-      context.locals.user = null;
-      context.locals.session = null;
-    }
-  }
+  const { user, session } = await resolveRequestIdentity(request.headers);
+  context.locals.user = user;
+  context.locals.session = session;
   try {
     // Everything the render awaits sees this request's locale, and only this
     // request's — see `langScope.server.ts` for why a plain variable is not

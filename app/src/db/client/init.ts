@@ -136,12 +136,14 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
   const commentsSQL = generateCreateTableSQL(spaceSchema.comment);
   await exec(spaceDb, sql.raw(commentsSQL));
 
+  // Access tokens live in `acl`: a token is a grant that carries a credential.
   const aclSQL = generateCreateTableSQL(spaceSchema.acl);
   await exec(spaceDb, sql.raw(aclSQL));
-  // Access tokens moved into `acl`: a token is a grant that carries a credential.
+  await renameColumnIfNeeded(spaceDb, spaceSchema.acl.secret, "token");
   for (const column of [
     spaceSchema.acl.name,
-    spaceSchema.acl.token,
+    spaceSchema.acl.secret,
+    spaceSchema.acl.kind,
     spaceSchema.acl.expiresAt,
     spaceSchema.acl.lastUsedAt,
     spaceSchema.acl.createdBy,
@@ -149,9 +151,21 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
   ]) {
     await addColumnIfMissing(spaceDb, column);
   }
+  // Every credential row predating `kind` is an access token, and the principal
+  // is now the credential's own id rather than a `token:`-prefixed one.
   await exec(
     spaceDb,
-    sql.raw("CREATE UNIQUE INDEX IF NOT EXISTS acl_token_unique ON acl (token)"),
+    sql.raw("UPDATE acl SET kind = 'token' WHERE kind IS NULL AND secret IS NOT NULL"),
+  );
+  await exec(
+    spaceDb,
+    sql.raw("UPDATE acl SET user_id = substr(user_id, 7) WHERE user_id LIKE 'token:%'"),
+  );
+  // SQLite carries an index across a rename, so the old one still guards it.
+  await exec(spaceDb, sql.raw("DROP INDEX IF EXISTS acl_token_unique"));
+  await exec(
+    spaceDb,
+    sql.raw("CREATE UNIQUE INDEX IF NOT EXISTS acl_secret_unique ON acl (secret)"),
   );
   await exec(spaceDb, sql.raw("DROP TABLE IF EXISTS access_token"));
 

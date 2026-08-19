@@ -127,13 +127,10 @@ export const category = sqliteTable("category", {
 });
 
 /**
- * Every permission grant in the space — and every access token, because a token
- * *is* a grant that carries a credential.
- *
- * Folding the two together means a token cannot outlive its grant or leave one
- * behind: the row is both. It also puts the issuer (`createdBy`) on the row
- * being resolved, which is what caps a token at what its issuer still holds. A
- * token is scoped to exactly one resource; two scopes means two tokens.
+ * Every permission grant in the space — and every credential, because an access
+ * token *is* a grant that carries one. Folding them together means a credential
+ * cannot outlive its grant or leave one behind: the row is both, scoped to
+ * exactly one resource.
  *
  * The trailing columns are null on an ordinary grant.
  */
@@ -148,17 +145,25 @@ export const acl = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 
-    /** Human label for a token, shown in space settings. */
+    /** Human label for a credential, shown in space settings. */
     name: text("name"),
     /**
-     * SHA-256 of the `at_…` secret. Its presence is what makes a row a token.
-     * Uniqueness is the `acl_token_unique` index, not a column constraint —
-     * SQLite cannot ADD COLUMN with UNIQUE, and this one arrives that way.
+     * The credential this row is opened with, read according to `kind`: an
+     * access token's SHA-256 today, null on the ordinary grants that carry none.
+     * Unique — on the column for a table created from this schema, and the
+     * `acl_secret_unique` index for one migrated into it, because SQLite cannot
+     * ADD COLUMN with UNIQUE.
      */
-    token: text("token"),
+    secret: text("secret").unique(),
+    /**
+     * Which credential `secret` holds, or null on a grant carrying none. Named
+     * rather than inferred from `secret` being set, so a row states what it is
+     * instead of every read guessing.
+     */
+    kind: text("kind"),
     expiresAt: integer("expires_at", { mode: "timestamp" }),
     lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
-    /** The user a token delegates. Its grant never outranks what they hold. */
+    /** The user an access token delegates; it never outranks what they hold. */
     createdBy: text("created_by"),
     /** Soft revoke: the row keeps its grant but stops authenticating. */
     revokedAt: integer("revoked_at", { mode: "timestamp" }),
@@ -174,7 +179,7 @@ export type AclEntry = typeof acl.$inferSelect;
 export type AclInsert = typeof acl.$inferInsert;
 
 /** An `acl` row that carries a credential. */
-export type AccessToken = AclEntry & { token: string; createdBy: string };
+export type AccessToken = AclEntry & { secret: string; createdBy: string };
 
 export const spaceSecret = sqliteTable(
   "space_secret",

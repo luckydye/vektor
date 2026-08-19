@@ -5,7 +5,7 @@ import {
   isInstanceAdmin,
   userAdminGroups,
 } from "#acl/instanceGroups.ts";
-import { TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
+import { createId } from "#db/ids.ts";
 import { LOCAL_USER_ID } from "#noAuth";
 
 function setAdmins(value: string | undefined) {
@@ -64,11 +64,12 @@ describe("isInstanceAdmin", () => {
     await expect(isInstanceAdmin("")).resolves.toBe(false);
   });
 
-  // A token's authority is the grants its own principal holds, so an admin's
-  // token must not inherit the instance.
+  // A credential's id belongs to no user, so it carries no groups and cannot
+  // intersect the admin set — which is what keeps an admin's token from being a
+  // skeleton key, with nothing having to recognise the id's shape.
   it("never admits an access token principal", async () => {
     setAdmins("vektor-admins");
-    await expect(isInstanceAdmin(`${TOKEN_PRINCIPAL_PREFIX}tok-1`)).resolves.toBe(false);
+    await expect(isInstanceAdmin(createId("accessToken"))).resolves.toBe(false);
   });
 
   it("admits the local user in no-auth mode", async () => {

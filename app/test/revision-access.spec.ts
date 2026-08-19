@@ -61,7 +61,7 @@ let suggestionRev: number;
 /** A workflow run — a type this route refuses whole, by any parameter. */
 let workflowRunDocumentId: string;
 
-/** Access tokens, whose ACL identity is `token:<id>` rather than a user. */
+/** Access tokens, whose ACL identity is their own id rather than a user's. */
 let viewerAccessToken: string;
 let editorAccessToken: string;
 
@@ -523,7 +523,7 @@ describe("a caller shared the document directly", () => {
   });
 });
 
-/** A token's ACL identity is `token:<id>`, so it holds no role by inheritance. */
+/** A token's ACL identity is its own id, so it holds no role by inheritance. */
 describe("access token", () => {
   it("reads the published revision on a viewer grant", async () => {
     const response = await tokenRequest(

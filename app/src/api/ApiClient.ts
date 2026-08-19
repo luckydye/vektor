@@ -346,6 +346,8 @@ export interface PermissionEntry {
     permission: string;
     createdAt?: string | Date;
     updatedAt?: string | Date;
+    /** Set when the grant is a credential's rather than a person's or a group's. */
+    kind?: string | null;
   };
 }
 

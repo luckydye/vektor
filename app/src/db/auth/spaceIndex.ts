@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { isInMemoryDb } from "#config";
 import {
   closeDatabase,
   createDatabase,
@@ -15,7 +16,6 @@ import {
 import { many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
-import { isInMemoryDb } from "#inMemoryDb";
 import { appLogger } from "#observability/logger.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
