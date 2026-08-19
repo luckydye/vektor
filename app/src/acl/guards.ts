@@ -18,7 +18,6 @@ import {
   type AclViewer,
   allPermissions,
   Feature,
-  isCredentialPrincipal,
   isPermission,
   meetsPermissionLevel,
   Permission,
@@ -29,6 +28,7 @@ import {
   hasAnyResourceScopedAccess,
   hasFeature,
   hasPermission,
+  isCredentialGrantee,
   listAccessibleResources,
 } from "#acl/store.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
@@ -175,7 +175,7 @@ export async function verifyAccess(
 ): Promise<void> {
   const decided = await decideAccess(spaceId, target, userId, requiredRole);
   if (decided.decision === "ok") return;
-  throw denialResponse(decided, target, userId);
+  throw await denialResponse(spaceId, decided, target, userId);
 }
 
 /**
@@ -184,17 +184,21 @@ export async function verifyAccess(
  * 401/403 split below is presentation, and reading it back off a thrown
  * Response confuses "not allowed" with "not authenticated".
  */
-function denialResponse(
+async function denialResponse(
+  spaceId: string,
   decided: { decision: AccessDecision; requiredRole: Permission },
   target: AclTarget,
   userId: string | null,
-): Response {
+): Promise<Response> {
   if (decided.decision === "no-space") return notFoundResponse("Space");
   if (decided.decision === "no-document") return notFoundResponse("Document");
 
   // An unauthenticated caller is told to authenticate; anyone else is told no.
   if (!userId) return unauthorizedResponse();
-  if (isCredentialPrincipal(userId)) {
+  // A credential hears which role it lacked, since whoever integrated it owns
+  // both ends of the call. Only asked on the refusal path, where a query costs
+  // nothing, so this needs no guess about what the id looks like.
+  if (await isCredentialGrantee(spaceId, userId)) {
     return forbiddenResponse(
       `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
     );

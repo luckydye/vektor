@@ -64,8 +64,9 @@ describe("isInstanceAdmin", () => {
     await expect(isInstanceAdmin("")).resolves.toBe(false);
   });
 
-  // A token's authority is the grants its own principal holds, so an admin's
-  // token must not inherit the instance.
+  // A credential's id belongs to no user, so it carries no groups and cannot
+  // intersect the admin set — which is what keeps an admin's token from being a
+  // skeleton key, with nothing having to recognise the id's shape.
   it("never admits an access token principal", async () => {
     setAdmins("vektor-admins");
     await expect(isInstanceAdmin(createId("accessToken"))).resolves.toBe(false);

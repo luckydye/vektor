@@ -9,14 +9,11 @@ import {
   canViewHistory,
   Feature,
   highestPermission,
-  isCredentialPrincipal,
   isOwner,
   meetsPermissionLevel,
   Permission,
   resolveFeature,
 } from "#acl/permissions.ts";
-import { createId } from "#db/ids.ts";
-import { LOCAL_USER_ID } from "#noAuth";
 
 describe("Permission Utilities", () => {
   describe("meetsPermissionLevel", () => {
@@ -294,30 +291,6 @@ describe("Permission Utilities", () => {
       expect(canViewHistory("viewer")).toBe(false);
       expect(canViewAudit("viewer")).toBe(false);
       expect(canManageExtensions("viewer")).toBe(false);
-    });
-  });
-
-  // `isCredentialPrincipal` spells the prefix out rather than importing it, so
-  // this is what keeps it agreeing with the ids `createId` actually mints.
-  describe("isCredentialPrincipal", () => {
-    it("recognises the id an access token is minted with", () => {
-      expect(isCredentialPrincipal(createId("accessToken"))).toBe(true);
-    });
-
-    it("takes no other id for a credential", () => {
-      // Nothing else in `db/ids.ts` names an ACL principal, but a collision
-      // there would hand a person a credential's authority.
-      expect(isCredentialPrincipal(createId("document"))).toBe(false);
-      expect(isCredentialPrincipal(createId("space"))).toBe(false);
-    });
-
-    it("reads a person's id as a person", () => {
-      // What better-auth mints (no custom `generateId`) and what no-auth uses.
-      expect(isCredentialPrincipal("SPWkchDrqfDdMPxDU2QRuoJGyPmVhCRt")).toBe(false);
-      expect(isCredentialPrincipal(LOCAL_USER_ID)).toBe(false);
-      expect(isCredentialPrincipal(null)).toBe(false);
-      expect(isCredentialPrincipal(undefined)).toBe(false);
-      expect(isCredentialPrincipal("")).toBe(false);
     });
   });
 });

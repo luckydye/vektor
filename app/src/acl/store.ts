@@ -4,7 +4,6 @@ import {
   type AclViewer,
   type Feature,
   GROUP_NAME_PATTERN,
-  isCredentialPrincipal,
   isPermission,
   meetsPermissionLevel,
   Permission,
@@ -192,20 +191,23 @@ export async function logAclChange(
     permission?: string;
     previousPermission?: string;
     actorUserId?: string;
+    /** The row's {@link AclKind}, when the grant carries a credential. */
+    kind?: string | null;
   },
 ): Promise<void> {
   const isDocumentScoped =
     params.resourceType === ResourceType.DOCUMENT ||
     params.resourceType === ResourceType.DOCUMENT_TREE;
-  // A credential has no row in the user table, so don't look one up — and don't
-  // call it a user in the log either. By the id, not by `kind`: this names the
-  // grantee, and a grant written to a credential carries none of its own.
-  const isCredential = isCredentialPrincipal(params.userId);
-  const targetName = isCredential ? undefined : await resolveGranteeName(params.userId);
-  const target = isCredential
+  // A credential has no row in the user table, so don't look one up. Nor has a
+  // principal whose account is gone: an id that resolves to no name is printed
+  // bare rather than called a user on the strength of its shape.
+  const targetName = params.kind ? undefined : await resolveGranteeName(params.userId);
+  const target = params.kind
     ? `credential ${params.userId}`
     : params.userId
-      ? `user ${targetName ?? params.userId}`
+      ? targetName
+        ? `user ${targetName}`
+        : params.userId
       : `group ${params.groupId}`;
   const scope =
     params.resourceType === ResourceType.SPACE
@@ -294,6 +296,7 @@ export async function grantPermission(
   if (existing?.permission !== permission) {
     await logAclChange(store, spaceId, {
       event: "acl_grant",
+      kind: existing?.kind,
       resourceType,
       resourceId,
       userId,
@@ -348,6 +351,7 @@ export async function revokePermission(
   for (const entry of removed) {
     await logAclChange(store, spaceId, {
       event: "acl_revoke",
+      kind: entry.kind,
       resourceType,
       resourceId,
       userId: entry.userId ?? undefined,
@@ -377,17 +381,14 @@ interface TokenIssuer {
 }
 
 /**
- * The user a token principal acts for, or null for a plain user id. Reads the
- * `createdBy` of the row that carries the credential.
+ * The user a credential acts for, or null when this principal is not one. Asks
+ * for the row that carries a credential under this id — `kind` is what makes it
+ * one, and a person's id simply matches nothing.
  */
 async function tokenIssuer(
   spaceId: string,
   principalId: string,
 ): Promise<TokenIssuer | null> {
-  // The query below is the one that decides this, by `kind`; the id is only
-  // consulted to keep an ordinary user's every ACL read from paying for it.
-  if (!isCredentialPrincipal(principalId)) return null;
-
   const { db } = await openSpaceStore(spaceId);
   const row = await one(
     db
@@ -543,6 +544,26 @@ export async function getPermission(
 
   allPermissions.push(...groupResults);
   return bestAclEntry(await capRowsToIssuer(spaceId, resourceType, allPermissions));
+}
+
+/**
+ * Whether a credential holds a row under this id in this space. For telling a
+ * caller apart when it costs nothing to ask — a refusal, a log line — not for
+ * deciding access, which reads `kind` off the row it already has.
+ */
+export async function isCredentialGrantee(
+  spaceId: string,
+  principalId: string,
+): Promise<boolean> {
+  const { db } = await openSpaceStore(spaceId);
+  const row = await one(
+    db
+      .select({ kind: acl.kind })
+      .from(acl)
+      .where(and(eq(acl.userId, principalId), isNotNull(acl.kind))),
+  );
+
+  return row !== null && row !== undefined;
 }
 
 /** The strongest of these ACL rows, as an entry. Null when there are none. */
@@ -1348,8 +1369,12 @@ async function resolveAccessibleResources(
   }
 
   const { db } = await openSpaceStore(spaceId);
-  const effectiveGroups =
+  const resolvedGroups =
     userGroups && userGroups.length > 0 ? userGroups : await getUserGroups(userId);
+  // Same rule as every other group query here: no groups resolves against the
+  // public group, so a credential reaches world-readable resources in a listing
+  // exactly as it does in a direct read.
+  const effectiveGroups = resolvedGroups.length > 0 ? resolvedGroups : [PUBLIC_GROUP];
   const validPermissions = minPermission ? permissionsAtLeast(minPermission) : null;
 
   // Space-level permission implies access to all resources in the space that

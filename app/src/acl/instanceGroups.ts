@@ -7,11 +7,7 @@
  * every other authorization decision.
  */
 
-import {
-  GROUP_NAME_PATTERN,
-  isCredentialPrincipal,
-  PUBLIC_GROUP,
-} from "#acl/permissions.ts";
+import { GROUP_NAME_PATTERN, PUBLIC_GROUP } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
 import { forbiddenResponse } from "#api/http.ts";
 import { config } from "#config";
@@ -70,13 +66,13 @@ export async function userAdminGroups(userId: string): Promise<string[]> {
 /**
  * Whether `userId` administers the instance, which is owner on every space that
  * exists — see {@link import("#acl/guards.ts").canAccess}. Only a user identity
- * can be one: a credential's authority stays the grants its own principal
- * holds, so a token minted by an admin is not a skeleton key.
+ * can be one: a credential's id belongs to no user and so carries no groups,
+ * which is why a token minted by an admin is not a skeleton key.
  */
 export async function isInstanceAdmin(
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!userId || isCredentialPrincipal(userId)) return false;
+  if (!userId) return false;
   if (isNoAuthMode() && userId === LOCAL_USER_ID) return true;
 
   return (await userAdminGroups(userId)).length > 0;

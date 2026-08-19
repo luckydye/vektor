@@ -298,7 +298,11 @@ export function AccessTokensPanel(props: Props) {
                           <tr class="hover:bg-neutral-50">
                             <td class="px-4 py-2.5">
                               <div class="flex items-center gap-3">
-                                <vektor-avatar size="28" attr:user-id={token.id} />
+                                <vektor-avatar
+                                  size="28"
+                                  attr:user-id={token.id}
+                                  attr:credential=""
+                                />
                                 <div>
                                   <div class="flex items-center gap-2">
                                     <span class="font-medium text-neutral-900">

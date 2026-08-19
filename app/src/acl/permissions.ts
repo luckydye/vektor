@@ -64,22 +64,6 @@ export type FeatureOverrides = Partial<Record<FeatureName, boolean>>;
 export const PUBLIC_GROUP = "public";
 
 /**
- * An `acl.user_id` naming a credential rather than a person, told apart by the
- * type prefix its id carries (`db/ids.ts`) — spelled out rather than imported,
- * because this module stays import-free, and pinned to `createId` by a test.
- */
-const CREDENTIAL_ID_PREFIXES = ["token_"];
-
-/**
- * For the paths that hold an id and nothing else: authentication, the guards it
- * feeds, and rendering someone else's authorship. Where the `acl` row itself is
- * in hand, its {@link AclKind} column is the answer and this is a guess.
- */
-export function isCredentialPrincipal(userId: string | null | undefined): boolean {
-  return CREDENTIAL_ID_PREFIXES.some((prefix) => userId?.startsWith(prefix) ?? false);
-}
-
-/**
  * What credential a row carries, and so how its `secret` reads; null on an
  * ordinary grant. One kind today, named rather than inferred from `secret`
  * being set, so a second one is a row's own statement about itself and not a

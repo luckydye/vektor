@@ -137,6 +137,7 @@ export async function createAccessToken(
 
   await logAclChange(s, s.spaceId, {
     event: "acl_grant",
+    kind: AclKind.TOKEN,
     resourceType: options.resourceType,
     resourceId: options.resourceId,
     userId: id,
@@ -180,6 +181,7 @@ export async function grantTokenAccess(
   if (rescoped) {
     await logAclChange(s, s.spaceId, {
       event: "acl_revoke",
+      kind: AclKind.TOKEN,
       resourceType: previous.resourceType as ResourceType,
       resourceId: previous.resourceId,
       userId: tokenId,
@@ -191,6 +193,7 @@ export async function grantTokenAccess(
   if (rescoped || previous.permission !== permission) {
     await logAclChange(s, s.spaceId, {
       event: "acl_grant",
+      kind: AclKind.TOKEN,
       resourceType,
       resourceId,
       userId: tokenId,
@@ -318,6 +321,7 @@ export async function revokeAccessToken(
   if (!previous.revokedAt) {
     await logAclChange(s, s.spaceId, {
       event: "acl_revoke",
+      kind: AclKind.TOKEN,
       resourceType: previous.resourceType as ResourceType,
       resourceId: previous.resourceId,
       userId: tokenId,
@@ -441,6 +445,7 @@ export async function deleteAccessToken(
   if (!deleted.revokedAt) {
     await logAclChange(s, s.spaceId, {
       event: "acl_revoke",
+      kind: AclKind.TOKEN,
       resourceType: deleted.resourceType as ResourceType,
       resourceId: deleted.resourceId,
       userId: tokenId,

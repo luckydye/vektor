@@ -1,4 +1,3 @@
-import { isCredentialPrincipal } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import eyesOne from "#assets/avatars/parts/eyes/eyes-1.svg?raw";
 import eyesTwo from "#assets/avatars/parts/eyes/eyes-2.svg?raw";
@@ -49,7 +48,7 @@ const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
 const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
-const userCache = new Map<string, { expiresAt: number; user: AvatarUser }>();
+const userCache = new Map<string, { expiresAt: number; user: AvatarUser | undefined }>();
 const userRequests = new Map<string, Promise<AvatarUser | undefined>>();
 const userCacheDuration = 5 * 60 * 1000;
 const avatarStyles = `
@@ -117,14 +116,16 @@ function composeAvatar(eyes: string, mouth: string): string {
   return `<svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">${uniquePaths.join("")}</svg>`;
 }
 
-function getGeneratedAvatar(seed: string): { color: string; src: string } {
+function getGeneratedAvatar(
+  seed: string,
+  kind: "person" | "credential",
+): { color: string; src: string } {
   const hash = hashAvatarSeed(seed);
   const color = avatarColorFromHash(hash);
 
-  // A revision or activity entry authored through an access token carries the
-  // credential's id, and no caller up the tree knows that: machines get a robot
-  // face rather than the hash-selected human features.
-  if (isCredentialPrincipal(seed)) {
+  // Machines get a robot face rather than hash-selected human features, on the
+  // say-so of the caller listing them — never inferred from the id.
+  if (kind === "credential") {
     return { color, src: robotAvatar };
   }
 
@@ -172,7 +173,16 @@ function loadUser(userId: string): Promise<AvatarUser | undefined> {
       userCache.set(userId, { expiresAt: Date.now() + userCacheDuration, user });
       return user;
     })
-    .catch(() => undefined)
+    // A miss is cached like a hit: plenty of ids in an activity list belong to
+    // nobody — a credential that wrote a revision, an account since deleted —
+    // and each would otherwise 404 once per row that mentions it.
+    .catch(() => {
+      userCache.set(userId, {
+        expiresAt: Date.now() + userCacheDuration,
+        user: undefined,
+      });
+      return undefined;
+    })
     .finally(() => {
       userRequests.delete(userId);
     });
@@ -184,10 +194,12 @@ const AvatarElement =
   typeof HTMLElement === "undefined"
     ? undefined
     : class AvatarElement extends HTMLElement {
-        static observedAttributes = ["size", "user-id"];
+        static observedAttributes = ["size", "user-id", "credential"];
 
         private readonly avatarContainer: HTMLDivElement;
         private fetchedUser: AvatarUser | undefined;
+        /** Set once a lookup has come back with nobody behind the id. */
+        private noSuchUser = false;
         private loadVersion = 0;
         private providedUser: AvatarUser | null | undefined;
         private providedSize: string | number | null = null;
@@ -241,8 +253,14 @@ const AvatarElement =
           }
 
           this.fetchedUser = undefined;
+          this.noSuchUser = false;
           this.render();
           void this.resolveUser();
+        }
+
+        /** A machine's avatar, said so by whoever is listing it. */
+        private get isCredential(): boolean {
+          return this.hasAttribute("credential");
         }
 
         private async resolveUser() {
@@ -252,13 +270,14 @@ const AvatarElement =
           // image here so every avatar also gets a server-derived Gravatar URL.
           const userId = (this.providedUser?.id || this.getAttribute("user-id"))?.trim();
           // A credential has no user row, so there is no profile to resolve.
-          if (!userId || isCredentialPrincipal(userId)) return;
+          if (!userId || this.isCredential) return;
 
           const version = ++this.loadVersion;
           const user = await loadUser(userId);
           if (!this.isConnected || version !== this.loadVersion) return;
 
           this.fetchedUser = user;
+          this.noSuchUser = !user;
           this.render();
         }
 
@@ -284,13 +303,20 @@ const AvatarElement =
           // caller has their (PII-gated) email.
           const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
           const drawGeneratedAvatar = () => {
-            if (seed) {
-              const generatedAvatar = getGeneratedAvatar(seed);
-              avatar.style.background = generatedAvatar.color;
-              image.src = generatedAvatar.src;
-            } else {
+            // An id nobody could resolve gets the neutral face rather than a
+            // person's features: it may be a credential, or an account since
+            // deleted, and inventing a face for either claims a person.
+            if (!seed || (this.noSuchUser && !this.isCredential)) {
               image.src = defaultAvatar;
+              return;
             }
+
+            const generatedAvatar = getGeneratedAvatar(
+              seed,
+              this.isCredential ? "credential" : "person",
+            );
+            avatar.style.background = generatedAvatar.color;
+            image.src = generatedAvatar.src;
           };
 
           if (user?.image) {
