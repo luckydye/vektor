@@ -199,7 +199,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | POST | `/chat/completions` | OpenAI/Anthropic/Ollama-compatible chat completions proxy |
 | GET/POST | `/auth/cli` | CLI login approval page / approve and mint a one-time code |
 | POST | `/auth/cli/token` | Exchange that code for a space access token |
-| GET | `/users` | Profile lookup (`?id=` / `?spaceId=`), or unscoped the register an admin may see |
+| GET | `/users` | Profile lookup (`?id=` / `?spaceId=`), or unscoped the paged register an admin may see |
 | GET | `/users/me` | Current user profile |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
@@ -404,20 +404,21 @@ curl -sS -H "Content-Type: application/json" \
 - **Auth**: session (`requireUser`). Unscoped, what comes back depends on whether the
   caller administers the instance (`VEKTOR_ADMIN_GROUPS`, or no-auth's local account).
 - **Query**: `id` (single user), `spaceId` (space members), or neither (the register).
-  The register also takes `limit` (1–1000, default 500) and `offset` (default 0), which
-  the scoped forms reject. Any other parameter is `400`, so a misspelled scope is named
-  rather than silently answered as a different one.
+  The register also takes `limit`/`cursor?` (default 50/max 500), which the scoped forms
+  reject. Any other parameter is `400`, so a misspelled scope is named rather than
+  silently answered as a different one; an unusable `cursor` is the first page, as
+  everywhere else.
 - **Behavior (`id`)**: returns `{ id, name, image }` for that user, `404` if none.
 - **Behavior (`spaceId`)**: `viewer` on the space, returns an array of
   `{ id, name, image }` for all space members (ACL member ids + the caller).
-- **Behavior (unscoped)**: the user register — one page of accounts, newest first, as
-  `{ id, name, email, image, groups, createdAt }`, where `groups` is the stored IdP
-  claim without the synthetic `public`. An admin is already owner on every space that
-  exists, so the register exposes nothing they could not read a space at a time. Anyone
-  else gets `200 []`, not a refusal: like `/spaces` and `/search`, this lists what the
-  caller may see, and for them that is nothing. One answer is capped whatever `limit`
-  says, so reading every account means walking `offset`; the order is total (join date,
-  then id), so paging it neither repeats nor skips a row.
+- **Behavior (unscoped)**: the user register — `{ users, limit, nextCursor }`, newest
+  first, each account as `{ id, name, email, image, groups, createdAt }`, where `groups`
+  is the stored IdP claim without the synthetic `public`. An admin is already owner on
+  every space that exists, so the register exposes nothing they could not read a space at
+  a time. Anyone else gets `200 { users: [], … }`, not a refusal: like `/spaces` and
+  `/search`, this lists what the caller may see, and for them that is nothing.
+  Cursor-paginated at the DB level, keyset on `(createdAt, id)` — total, so walking
+  `nextCursor` visits every account once even while accounts are being created.
 - The scoped forms never include email (PII), which is what keeps them answerable to any
   signed-in account. `image` is the provider's picture, a derived Gravatar URL when one
   is configured, or `null` for a client-drawn avatar.
@@ -435,21 +436,26 @@ curl -sS -b "$COOKIE" "$VEKTOR/users?spaceId=$SPACE"
 ```
 
 ```bash
-# The register, as an instance admin — the second page of fifty
-curl -sS -b "$COOKIE" "$VEKTOR/users?limit=50&offset=50"
+# The register, as an instance admin — a page, then the one after it
+curl -sS -b "$COOKIE" "$VEKTOR/users?limit=50"
+curl -sS -b "$COOKIE" "$VEKTOR/users?limit=50&cursor=$NEXT_CURSOR"
 ```
 
 ```json
-[
-  {
-    "id": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE",
-    "name": "Grace Hopper",
-    "email": "grace@acme.test",
-    "image": null,
-    "groups": ["vektor-admins"],
-    "createdAt": "2026-02-11T09:14:00.000Z"
-  }
-]
+{
+  "users": [
+    {
+      "id": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE",
+      "name": "Grace Hopper",
+      "email": "grace@acme.test",
+      "image": null,
+      "groups": ["vektor-admins"],
+      "createdAt": "2026-02-11T09:14:00.000Z"
+    }
+  ],
+  "limit": 50,
+  "nextCursor": "eyJ0IjoxNzcwODAyMDQwMDAwLCJpZCI6IkxtNHBROHJUMnZYNnpCMGRGM2hKN2tOOXNXMXlBNWNFIn0"
+}
 ```
 
 ### `GET /users/me`

@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { t } from "#utils/lang.ts";
 import "./AvatarElement.ts";
+import { PagerCursor } from "./PagerCursor.tsx";
 
 export interface OverviewUser {
   id: string;
@@ -17,8 +18,12 @@ interface Props {
   users: OverviewUser[];
   loading?: boolean;
   error?: string | null;
-  /** Whether these rows are one page of the register rather than all of it. */
-  capped?: boolean;
+  /** True while a page other than the first one is in flight. */
+  paging?: boolean;
+  hasPrevPage?: boolean;
+  hasNextPage?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
 }
 
 /**
@@ -30,7 +35,11 @@ export function UsersOverview(props: Props) {
     <div class="space-y-8 px-xs pt-m pb-20 lg:px-xl">
       <div class="flex items-center justify-between gap-3xs">
         <h1 class="font-semibold text-foreground text-size-title">{t("Users")}</h1>
-        <Show when={!props.loading && !props.error}>
+        <Show
+          when={
+            !props.loading && !props.error && !props.hasPrevPage && !props.hasNextPage
+          }
+        >
           <span class="text-neutral-500 text-size-small">
             {props.users.length === 1
               ? t("1 user")
@@ -122,14 +131,14 @@ export function UsersOverview(props: Props) {
           </table>
         </div>
 
-        {/* Said under the table rather than in place of rows: one page is what
-            the register asks for, and an admin who needs the rest reads it
-            through the endpoint's own `offset`. */}
-        <Show when={props.capped}>
-          <p class="mt-3xs text-neutral-500 text-size-small">
-            {t("Only the most recent accounts are listed.")}
-          </p>
-        </Show>
+        <PagerCursor
+          class="mt-3xs"
+          hasPrevPage={props.hasPrevPage ?? false}
+          hasNextPage={props.hasNextPage ?? false}
+          disabled={props.paging}
+          onPrev={props.onPrev}
+          onNext={props.onNext}
+        />
       </Show>
     </div>
   );

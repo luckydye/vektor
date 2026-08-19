@@ -177,13 +177,17 @@ function SpacesOverviewContainer() {
 }
 
 function UsersOverviewContainer(props: {
-  users?: InstanceUser[];
+  users: InstanceUser[];
   loading: boolean;
+  paging: boolean;
   error: string | null;
-  capped: boolean;
+  hasPrevPage: boolean;
+  hasNextPage: boolean;
+  onPrev: () => void;
+  onNext: () => void;
 }) {
   const overviewUsers = createMemo(() =>
-    (props.users ?? []).map((user) => ({
+    props.users.map((user) => ({
       id: user.id,
       name: user.name,
       email: user.email,
@@ -197,12 +201,13 @@ function UsersOverviewContainer(props: {
     <main class="min-w-0 flex-1">
       <UsersOverview
         users={overviewUsers()}
-        // No register yet and nothing to report is the window before the caller
-        // is known to be an admin, when the query has not run: still loading,
-        // not an instance without a single account.
-        loading={props.loading || (props.users === undefined && !props.error)}
+        loading={props.loading}
+        paging={props.paging}
         error={props.error}
-        capped={props.capped}
+        hasPrevPage={props.hasPrevPage}
+        hasNextPage={props.hasNextPage}
+        onPrev={props.onPrev}
+        onNext={props.onNext}
       />
     </main>
   );
@@ -215,9 +220,17 @@ function UsersOverviewContainer(props: {
  */
 function SpacesShell(props: { initialTab?: SpacesTab }) {
   const [activeTab, setActiveTab] = createSignal<SpacesTab>(props.initialTab ?? "spaces");
-  const { isInstanceAdmin, users, isLoading, error, capped } = useInstanceUsers(
-    () => activeTab() === "users",
-  );
+  const {
+    isInstanceAdmin,
+    users,
+    isLoading,
+    isFetching,
+    error,
+    hasPrevPage,
+    hasNextPage,
+    nextPage,
+    prevPage,
+  } = useInstanceUsers(() => activeTab() === "users");
 
   const tabs = createMemo<RailTab[]>(() => [
     { id: "spaces", label: t("Spaces"), icon: "grid-grid" },
@@ -251,8 +264,14 @@ function SpacesShell(props: { initialTab?: SpacesTab }) {
         <UsersOverviewContainer
           users={users()}
           loading={isLoading()}
+          // A page already on screen stays there while the next one loads, so
+          // only the pager reports the wait — see `useCursorPagedList`.
+          paging={isFetching() && !isLoading()}
           error={error()}
-          capped={capped()}
+          hasPrevPage={hasPrevPage()}
+          hasNextPage={hasNextPage()}
+          onPrev={prevPage}
+          onNext={nextPage}
         />
       </Show>
       <ToastContainer />

@@ -67,18 +67,28 @@ describe("UsersOverview", () => {
     expect(queryByText(document.body, "No accounts have signed in yet.")).toBeTruthy();
   });
 
-  // The register is one page of accounts, so a full page must not read as the
-  // whole instance — the endpoint's `offset` is how the rest is reached.
-  it("says so when it is showing one page of the register", async () => {
-    const note = "Only the most recent accounts are listed.";
-
+  // One page of the register is not the instance, so a page with another behind
+  // it offers the walk rather than counting what it happens to hold.
+  it("offers the pager only when there is another page", async () => {
     mount({ users: [user()] });
     await settle();
-    expect(queryByText(document.body, note)).toBeNull();
+    expect(queryByText(document.body, "Next")).toBeNull();
+    expect(queryByText(document.body, "1 user")).toBeTruthy();
 
-    mount({ users: [user()], capped: true });
+    mount({ users: [user()], hasNextPage: true });
     await settle();
-    expect(queryByText(document.body, note)).toBeTruthy();
+    expect(queryByText(document.body, "Next")).toBeTruthy();
+  });
+
+  it("advances a page when asked", async () => {
+    let advanced = 0;
+    mount({ users: [user()], hasNextPage: true, onNext: () => advanced++ });
+    await settle();
+
+    const next = queryByText(document.body, "Next");
+    (next as HTMLButtonElement).click();
+    await settle();
+    expect(advanced).toBe(1);
   });
 
   // The register comes back empty for a caller who may not see it, so a request

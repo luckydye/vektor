@@ -922,19 +922,16 @@ export class ApiClient {
       return await this.apiGet<CurrentUser>(this.baseUrl, "/api/v1/users/me");
     },
     /**
-     * The register: the accounts on the instance, newest first, which is what the
-     * same collection answers unscoped. Admins only — everyone else gets an empty
-     * list, which is also why the users tab is not offered to them.
-     *
-     * One answer is capped server-side whether or not `limit` names a smaller
-     * page, so a caller that means to see every account walks `offset` rather
-     * than assuming one request holds the instance.
+     * The register: one page of the accounts on the instance, newest first, which
+     * is what the same collection answers unscoped. Admins only — everyone else
+     * gets an empty page, which is also why the users tab is not offered to them.
      */
-    all: async (options?: { limit?: number; offset?: number }) => {
-      return await this.apiGet<InstanceUser[]>(this.baseUrl, "/api/v1/users", {
-        limit: options?.limit,
-        offset: options?.offset,
-      });
+    all: async (query?: { limit?: number; cursor?: string }) => {
+      return await this.apiGet<{
+        users: InstanceUser[];
+        limit: number;
+        nextCursor: string | null;
+      }>(this.baseUrl, "/api/v1/users", query);
     },
     /**
      * People the caller shares an OAuth group with — invite suggestions.

@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { verifyAccess } from "#acl/guards.ts";
 import { isInstanceAdmin } from "#acl/instanceGroups.ts";
 import {
@@ -12,13 +12,14 @@ import {
   badRequestResponse,
   jsonResponse,
   notFoundResponse,
-  parseQueryInt,
+  parsePaginationParams,
   requireUser,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
+import { decodeSeekCursor, encodeSeekCursor } from "#db/cursor.ts";
 import { user } from "#db/schema/auth.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
@@ -28,17 +29,32 @@ import { resolveProfileImage } from "#utils/gravatar.ts";
  * with the register — or, for anyone else, with the empty list a client draws as
  * an instance with nobody in it — hides the mistake instead of naming it.
  */
-const KNOWN_PARAMS = new Set(["id", "spaceId", "limit", "offset"]);
+const KNOWN_PARAMS = new Set(["id", "spaceId", "limit", "cursor"]);
 
 /**
- * How many accounts one register answer carries, and the most it will carry when
- * asked for more. A register is a listing like any other here, so it is bounded
- * like one: `/users/suggestions` caps at 20, and an instance with ten thousand
- * accounts must not turn one request into the whole table, or one page into ten
- * thousand rows. `offset` walks past the cap for whoever needs the rest.
+ * The register's page, in the sizes every other listing here uses. A register is
+ * a listing like any of them, so it is bounded like one — an instance with ten
+ * thousand accounts must not turn one request into the whole table, or one page
+ * into ten thousand rows.
  */
-const REGISTER_DEFAULT_LIMIT = 500;
-const REGISTER_MAX_LIMIT = 1000;
+const REGISTER_DEFAULT_LIMIT = 50;
+const REGISTER_MAX_LIMIT = 500;
+
+/**
+ * The cursor is the `(createdAt, id)` position of the last row handed out, which
+ * is what {@link encodeSeekCursor} is for and why the order carries `id`: seeking
+ * needs a position no two rows share. An undecodable one reads as the first page,
+ * as everywhere else here — unlike a misspelled scope, a cursor is not something
+ * a caller composes, so there is no mistake of theirs to name.
+ */
+function encodeRegisterCursor(createdAt: Date, id: string): string {
+  return encodeSeekCursor(createdAt.getTime(), id);
+}
+
+function decodeRegisterCursor(cursor: string): { createdAt: Date; id: string } | null {
+  const pos = decodeSeekCursor(cursor, "string");
+  return pos ? { createdAt: new Date(pos.t), id: pos.id as string } : null;
+}
 
 /**
  * The stored group claim as a list, without the freshness bound and the
@@ -73,8 +89,8 @@ function storedGroups(raw: string | null): string[] {
  *                          minimal profiles
  *   - unscoped           → the register: accounts with their email, group claim
  *                          and join date, for an instance admin — and an empty
- *                          list for anyone else. `?limit=` / `?offset=` page it,
- *                          newest first, bounded whether or not they are given.
+ *                          one for anyone else. `{ users, limit, nextCursor }`,
+ *                          newest first, cursor-paged like every other listing.
  *
  * The scoped forms are deliberately narrow, and stay so: they are what any
  * signed-in account may ask, and an unscoped listing there would dump the table
@@ -113,11 +129,11 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = params.get("spaceId");
 
     // Paging belongs to the register: the scoped forms answer one profile or one
-    // space's members, so a limit there is a request this route cannot honour and
+    // space's members, so a page there is a request this route cannot honour and
     // ignoring it would be the same silence as answering a misspelled scope.
-    if ((id || spaceId) && (params.has("limit") || params.has("offset"))) {
+    if ((id || spaceId) && (params.has("limit") || params.has("cursor"))) {
       throw badRequestResponse(
-        "'limit' and 'offset' apply only to the unscoped register",
+        "'limit' and 'cursor' apply only to the unscoped register",
       );
     }
 
@@ -178,12 +194,10 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Read before the caller's standing is, so a malformed page is the same 400
     // for everyone: what a route accepts is not a thing to learn from who asks.
-    const limit = parseQueryInt(params, "limit", {
-      defaultValue: REGISTER_DEFAULT_LIMIT,
-      min: 1,
-      max: REGISTER_MAX_LIMIT,
+    const { limit, cursor } = parsePaginationParams(params, {
+      defaultLimit: REGISTER_DEFAULT_LIMIT,
+      maxLimit: REGISTER_MAX_LIMIT,
     });
-    const offset = parseQueryInt(params, "offset", { defaultValue: 0, min: 0 });
 
     // Everything the caller may see, which is every account for an instance admin
     // and none for anyone else — the same shape of answer as `/spaces` and
@@ -191,10 +205,14 @@ export const GET: ApiRouteHandler = (context) =>
     // not gate: nothing is withheld from a caller who could name it, because
     // there is nothing to name.
     if (!(await isInstanceAdmin(caller.id))) {
-      return jsonResponse([]);
+      return jsonResponse({ users: [], limit, nextCursor: null });
     }
 
-    const accounts = await db
+    // Keyset, not offset: the seek is on the same `(createdAt, id)` the order is
+    // by, so a page is found by position rather than counted to, and an account
+    // that signs in mid-walk cannot shift a row onto a page already read.
+    const pos = cursor ? decodeRegisterCursor(cursor) : null;
+    const rows = await db
       .select({
         id: user.id,
         name: user.name,
@@ -204,15 +222,27 @@ export const GET: ApiRouteHandler = (context) =>
         createdAt: user.createdAt,
       })
       .from(user)
+      .where(
+        pos
+          ? or(
+              lt(user.createdAt, pos.createdAt),
+              and(eq(user.createdAt, pos.createdAt), lt(user.id, pos.id)),
+            )
+          : undefined,
+      )
       // `id` breaks ties rather than decorating the order: accounts seeded in one
-      // transaction share a timestamp, and without a total order two pages of the
-      // same register can show the same row twice and never show another.
+      // transaction share a timestamp, and without a total order the seek above
+      // can hand out the same row twice and never hand out another.
       .orderBy(desc(user.createdAt), desc(user.id))
-      .limit(limit)
-      .offset(offset);
+      // One more than the page, which is how the next cursor is known to exist
+      // without counting the table.
+      .limit(limit + 1);
 
-    return jsonResponse(
-      accounts.map((row) => ({
+    const accounts = rows.length > limit ? rows.slice(0, -1) : rows;
+    const last = rows.length > limit ? accounts[accounts.length - 1] : undefined;
+
+    return jsonResponse({
+      users: accounts.map((row) => ({
         id: row.id,
         name: row.name,
         // The register's reason for existing, unlike toPublicProfile above.
@@ -221,5 +251,7 @@ export const GET: ApiRouteHandler = (context) =>
         groups: storedGroups(row.groups),
         createdAt: row.createdAt,
       })),
-    );
+      limit,
+      nextCursor: last ? encodeRegisterCursor(last.createdAt, last.id) : null,
+    });
   }, "Failed to list users");

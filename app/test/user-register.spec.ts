@@ -37,6 +37,12 @@ interface RegisterEntry {
   createdAt: string;
 }
 
+interface RegisterPage {
+  users: RegisterEntry[];
+  limit: number;
+  nextCursor: string | null;
+}
+
 let serverProcess: TestServerProcess;
 let admin: { id: string; email: string; token: string };
 let member: { id: string; email: string; token: string };
@@ -85,8 +91,8 @@ describe("GET /api/v1/users (unscoped: the register)", () => {
     const res = await apiRequest("/api/v1/users", admin.token);
     expect(res.status).toBe(200);
 
-    const entries: RegisterEntry[] = await res.json();
-    const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    const page: RegisterPage = await res.json();
+    const byId = new Map(page.users.map((entry) => [entry.id, entry]));
 
     // Someone the admin shares no space with is still in the register — that is
     // what makes it a register rather than another view of their memberships.
@@ -104,31 +110,59 @@ describe("GET /api/v1/users (unscoped: the register)", () => {
     expect(res.status).toBe(200);
 
     const body = await res.text();
-    expect(JSON.parse(body)).toEqual([]);
+    expect(JSON.parse(body)).toEqual({ users: [], limit: 50, nextCursor: null });
     expect(body).not.toContain(admin.email);
     expect(body).not.toContain(member.email);
   });
 
-  // One page, and a total order across pages: the register is bounded like every
-  // other listing here, so an instance with ten thousand accounts cannot be asked
-  // for all of them in one request.
-  it("pages the register, a page at a time", async () => {
-    const first = await apiRequest("/api/v1/users?limit=1", admin.token);
-    expect(first.status).toBe(200);
-    const firstPage: RegisterEntry[] = await first.json();
-    expect(firstPage).toHaveLength(1);
+  // The register is bounded like every other listing here, so an instance with
+  // ten thousand accounts cannot be asked for all of them in one request. What
+  // the cursor has to prove is that walking it visits each account once.
+  it("walks the register a page at a time, without repeating or skipping a row", async () => {
+    const seen: string[] = [];
+    let cursor: string | null = null;
 
-    const second = await apiRequest("/api/v1/users?limit=1&offset=1", admin.token);
-    expect(second.status).toBe(200);
-    const secondPage: RegisterEntry[] = await second.json();
-    expect(secondPage).toHaveLength(1);
-    // The order is total (join date, then id), so the second page is a different
-    // account rather than the first one again.
-    expect(secondPage[0].id).not.toBe(firstPage[0].id);
+    for (let page = 0; page < 50; page++) {
+      const query = cursor ? `?limit=1&cursor=${encodeURIComponent(cursor)}` : "?limit=1";
+      const res = await apiRequest(`/api/v1/users${query}`, admin.token);
+      expect(res.status).toBe(200);
+
+      const body: RegisterPage = await res.json();
+      expect(body.limit).toBe(1);
+      expect(body.users.length).toBeLessThanOrEqual(1);
+      for (const entry of body.users) seen.push(entry.id);
+
+      cursor = body.nextCursor;
+      if (!cursor) break;
+    }
+
+    // No cursor left means the walk reached the end rather than the loop's bound.
+    expect(cursor).toBeNull();
+    expect(new Set(seen).size).toBe(seen.length);
+    // Both accounts this spec created are somewhere in that walk, so the pages
+    // together are the register and not a prefix of it.
+    expect(seen).toContain(admin.id);
+    expect(seen).toContain(member.id);
   });
 
-  it("refuses a page it cannot answer", async () => {
-    for (const query of ["?limit=0", "?limit=1001", "?limit=all", "?offset=-1"]) {
+  // A cursor is opaque and machine-made, so an undecodable one reads as the first
+  // page — the same as everywhere else here — rather than as a 400.
+  it("reads an unusable cursor as the first page", async () => {
+    const first: RegisterPage = await (
+      await apiRequest("/api/v1/users?limit=1", admin.token)
+    ).json();
+    const res = await apiRequest(
+      "/api/v1/users?limit=1&cursor=not-a-cursor",
+      admin.token,
+    );
+    expect(res.status).toBe(200);
+
+    const body: RegisterPage = await res.json();
+    expect(body.users[0]?.id).toBe(first.users[0]?.id);
+  });
+
+  it("refuses a page size it cannot answer", async () => {
+    for (const query of ["?limit=0", "?limit=501", "?limit=all"]) {
       const res = await apiRequest(`/api/v1/users${query}`, admin.token);
       expect(res.status).toBe(400);
     }
@@ -154,7 +188,7 @@ describe("GET /api/v1/users (unscoped: the register)", () => {
 
   // Paging belongs to the unscoped form; the scoped ones answer one profile or one
   // space's members, so honouring neither and ignoring it silently is not an option.
-  it("refuses paging on a scoped form", async () => {
+  it("refuses a page on a scoped form", async () => {
     const res = await apiRequest(
       `/api/v1/users?spaceId=${memberSpaceId}&limit=1`,
       member.token,
