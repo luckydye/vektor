@@ -45,7 +45,6 @@
   "imports": {
     "#config": "./src/config.ts",
     "#auth": "./src/auth.ts",
-    "#noAuth": "./src/noAuth.ts",
     "#acl/*": "./src/acl/*",
     "#agent/*": "./src/agent/*",
     "#api/*": "./src/api/*",

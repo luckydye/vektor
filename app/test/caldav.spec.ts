@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { LOCAL_USER_ID } from "#noAuth";
+import { LOCAL_USER_ID } from "#config";
 import { CalDAVSource } from "./caldav/caldav-client.ts";
 import {
   createApiRequest,
