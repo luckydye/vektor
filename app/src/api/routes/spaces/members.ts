@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
 import { canAccess, verifyAccess } from "#acl/guards.ts";
-import { isCredentialPrincipal, Permission, ResourceType } from "#acl/permissions.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   getResourceScopedGranteeUserIds,
   getSpaceMembersWithGroups,
@@ -66,7 +66,7 @@ export const GET: ApiRouteHandler = (context) =>
       const members = permissions
         // A token holds a space grant but is a credential a member issued, not
         // a member — and it is listed with the rest of the access elsewhere.
-        .filter((p) => p.userId && !p.groupId && !isCredentialPrincipal(p.userId))
+        .filter((p) => p.userId && !p.groupId && !p.kind)
         .map((p) => {
           const userData = p.userId ? userMap.get(p.userId) : undefined;
 

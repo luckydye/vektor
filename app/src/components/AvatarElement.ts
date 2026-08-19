@@ -49,12 +49,6 @@ const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
 const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
-// A credential id in place of a user id: machines and links, not people, so
-// they get a robot face instead of the hash-selected human features.
-function isTokenSeed(seed: string): boolean {
-  return isCredentialPrincipal(seed);
-}
-
 const userCache = new Map<string, { expiresAt: number; user: AvatarUser }>();
 const userRequests = new Map<string, Promise<AvatarUser | undefined>>();
 const userCacheDuration = 5 * 60 * 1000;
@@ -127,7 +121,10 @@ function getGeneratedAvatar(seed: string): { color: string; src: string } {
   const hash = hashAvatarSeed(seed);
   const color = avatarColorFromHash(hash);
 
-  if (isTokenSeed(seed)) {
+  // A revision or activity entry authored through an access token carries the
+  // credential's id, and no caller up the tree knows that: machines get a robot
+  // face rather than the hash-selected human features.
+  if (isCredentialPrincipal(seed)) {
     return { color, src: robotAvatar };
   }
 
@@ -254,7 +251,8 @@ const AvatarElement =
           // Session profiles contain the stored image only. Resolve any missing
           // image here so every avatar also gets a server-derived Gravatar URL.
           const userId = (this.providedUser?.id || this.getAttribute("user-id"))?.trim();
-          if (!userId || isTokenSeed(userId)) return;
+          // A credential has no user row, so there is no profile to resolve.
+          if (!userId || isCredentialPrincipal(userId)) return;
 
           const version = ++this.loadVersion;
           const user = await loadUser(userId);

@@ -151,7 +151,7 @@ endpoint — written to the admin group rather than to the person, so it survive
 administers the instance next and shows up in the members list like any other grant.
 
 Only a user identity can be an admin. An access token's authority stays the grants its
-`token:<id>` principal holds, so a token minted by an admin is not a skeleton key for the
+own principal holds, so a token minted by an admin is not a skeleton key for the
 instance.
 
 ## What the client knows

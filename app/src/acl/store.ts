@@ -35,6 +35,11 @@ export interface AclEntry {
   permission: string;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Which credential the grant carries, null on an ordinary one. Carried out to
+   * every caller so telling a credential from a person never needs its id.
+   */
+  kind?: string | null;
 }
 
 type AclRow = {
@@ -50,6 +55,20 @@ type AclRow = {
   /** Set only on a credential row: which credential it carries. */
   kind?: string | null;
 };
+
+/** An `acl` row as every caller outside the store sees it. */
+function toAclEntry(row: AclRow): AclEntry {
+  return {
+    resourceType: row.resourceType,
+    resourceId: row.resourceId,
+    userId: row.userId || undefined,
+    groupId: row.groupId || undefined,
+    permission: row.permission,
+    createdAt: new Date(row.createdAt),
+    updatedAt: new Date(row.updatedAt),
+    kind: row.kind ?? null,
+  };
+}
 
 /**
  * Minimal profile of a user who shares an OAuth group with the caller. Email is
@@ -179,7 +198,8 @@ export async function logAclChange(
     params.resourceType === ResourceType.DOCUMENT ||
     params.resourceType === ResourceType.DOCUMENT_TREE;
   // A credential has no row in the user table, so don't look one up — and don't
-  // call it a user in the log either.
+  // call it a user in the log either. By the id, not by `kind`: this names the
+  // grantee, and a grant written to a credential carries none of its own.
   const isCredential = isCredentialPrincipal(params.userId);
   const targetName = isCredential ? undefined : await resolveGranteeName(params.userId);
   const target = isCredential
@@ -364,6 +384,8 @@ async function tokenIssuer(
   spaceId: string,
   principalId: string,
 ): Promise<TokenIssuer | null> {
+  // The query below is the one that decides this, by `kind`; the id is only
+  // consulted to keep an ordinary user's every ACL read from paying for it.
   if (!isCredentialPrincipal(principalId)) return null;
 
   const { db } = await openSpaceStore(spaceId);
@@ -726,15 +748,7 @@ export async function listPermissions(
       .where(and(eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId))),
   );
 
-  return results.map((r) => ({
-    resourceType: r.resourceType,
-    resourceId: r.resourceId,
-    userId: r.userId || undefined,
-    groupId: r.groupId || undefined,
-    permission: r.permission,
-    createdAt: new Date(r.createdAt),
-    updatedAt: new Date(r.updatedAt),
-  }));
+  return results.map(toAclEntry);
 }
 
 /** One grant that reaches a document, and how it gets there. */
@@ -811,7 +825,7 @@ export async function listDocumentAccess(
     // this table under its own id and would read as a person, and a feature —
     // or the legacy "extensions" pseudo-permission — is not a level of access
     // to report as one.
-    if (isCredentialPrincipal(row.userId) || !isPermission(row.permission)) continue;
+    if (row.kind || !isPermission(row.permission)) continue;
 
     const grantee = row.userId
       ? { key: `user:${row.userId}`, userId: row.userId }
@@ -916,15 +930,7 @@ export async function listAllRolePermissions(store: SpaceStore): Promise<AclEntr
 
   return results
     .filter((row) => row.resourceType !== ResourceType.FEATURE)
-    .map((row) => ({
-      resourceType: row.resourceType,
-      resourceId: row.resourceId,
-      userId: row.userId || undefined,
-      groupId: row.groupId || undefined,
-      permission: row.permission,
-      createdAt: new Date(row.createdAt),
-      updatedAt: new Date(row.updatedAt),
-    }));
+    .map(toAclEntry);
 }
 
 export async function listUserPermissions(
@@ -964,15 +970,7 @@ export async function listUserPermissions(
     results.push(...groupResults);
   }
 
-  return results.map((r) => ({
-    resourceType: r.resourceType,
-    resourceId: r.resourceId,
-    userId: r.userId || undefined,
-    groupId: r.groupId || undefined,
-    permission: r.permission,
-    createdAt: new Date(r.createdAt),
-    updatedAt: new Date(r.updatedAt),
-  }));
+  return results.map(toAclEntry);
 }
 
 /**
@@ -1332,15 +1330,7 @@ export async function listFeaturePermissions(store: SpaceStore): Promise<AclEntr
     db.select().from(acl).where(eq(acl.resourceType, ResourceType.FEATURE)),
   );
 
-  return results.map((r) => ({
-    resourceType: r.resourceType,
-    resourceId: r.resourceId,
-    userId: r.userId || undefined,
-    groupId: r.groupId || undefined,
-    permission: r.permission,
-    createdAt: new Date(r.createdAt),
-    updatedAt: new Date(r.updatedAt),
-  }));
+  return results.map(toAclEntry);
 }
 
 /** As below, before a token's issuer is applied. */
@@ -1765,7 +1755,7 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
   for (const entry of results) {
     // A token holds a grant but is not a member — it is a credential one of
     // them issued, and counting it would inflate the space's membership.
-    if (entry.userId && !isCredentialPrincipal(entry.userId)) {
+    if (entry.userId && !entry.kind) {
       memberIds.add(entry.userId);
     }
     if (entry.groupId) {

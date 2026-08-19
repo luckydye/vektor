@@ -1,4 +1,5 @@
 import type { Next } from "hono";
+import { isCredentialPrincipal } from "#acl/permissions.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
@@ -75,6 +76,16 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
     if (authenticated) {
       user = authenticated.user;
       session = authenticated.session;
+    }
+    // Every guard reads a credential-shaped id as a credential, so a person
+    // carrying one would silently lose their groups and their place in the
+    // member lists. Refuse the session instead of guessing which they are.
+    if (user && isCredentialPrincipal(user.id)) {
+      appLogger.error("Refusing a session whose user id is credential-shaped", {
+        userId: user.id,
+      });
+      user = null;
+      session = null;
     }
   }
 

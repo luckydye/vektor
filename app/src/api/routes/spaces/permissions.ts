@@ -4,7 +4,6 @@ import {
   allFeatures,
   allPermissions,
   highestPermission,
-  isCredentialPrincipal,
   isFeature,
   isPermission,
   isResourceType,
@@ -194,8 +193,7 @@ async function refuseLastOwnerRemoval(
   }
 
   const ownerEntries = (await listPermissions(store, ResourceType.SPACE, spaceId)).filter(
-    (entry) =>
-      entry.permission === Permission.OWNER && !isCredentialPrincipal(entry.userId),
+    (entry) => entry.permission === Permission.OWNER && !entry.kind,
   );
   const targetsOwner = (entry: (typeof ownerEntries)[number]) => {
     if (resultingRole === undefined) {

@@ -2,7 +2,6 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import {
   Feature,
   highestPermission,
-  isCredentialPrincipal,
   isOwner,
   Permission,
   permissionLevel,
@@ -463,7 +462,7 @@ export function SpaceMembers() {
       if (!memberId) continue;
       // Tokens are grants too, but they are listed from the token endpoint
       // below, which knows their name and whether they still work.
-      if (isCredentialPrincipal(perm.permission.userId)) continue;
+      if (perm.permission.kind) continue;
 
       const key = `${perm.permission.userId ? "user" : "group"}:${memberId}`;
       const existing = accessByMember.get(key);

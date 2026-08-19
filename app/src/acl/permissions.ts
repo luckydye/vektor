@@ -64,13 +64,17 @@ export type FeatureOverrides = Partial<Record<FeatureName, boolean>>;
 export const PUBLIC_GROUP = "public";
 
 /**
- * An `acl.user_id` that is a credential's id rather than a person's. Ids carry
- * their type (`db/ids.ts`), and an account id from the IdP carries no underscore
- * at all, so the id alone says which it is — which is why a credential no longer
- * needs a synthetic `token:` prefix to be told from a person.
+ * An `acl.user_id` naming a credential rather than a person, told apart by the
+ * type prefix its id carries (`db/ids.ts`) — spelled out rather than imported,
+ * because this module stays import-free, and pinned to `createId` by a test.
  */
 const CREDENTIAL_ID_PREFIXES = ["token_"];
 
+/**
+ * For the paths that hold an id and nothing else: authentication, the guards it
+ * feeds, and rendering someone else's authorship. Where the `acl` row itself is
+ * in hand, its {@link AclKind} column is the answer and this is a guess.
+ */
 export function isCredentialPrincipal(userId: string | null | undefined): boolean {
   return CREDENTIAL_ID_PREFIXES.some((prefix) => userId?.startsWith(prefix) ?? false);
 }

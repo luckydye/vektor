@@ -5,7 +5,7 @@ import {
   isInstanceAdmin,
   userAdminGroups,
 } from "#acl/instanceGroups.ts";
-import { TOKEN_PRINCIPAL_PREFIX } from "#acl/permissions.ts";
+import { createId } from "#db/ids.ts";
 import { LOCAL_USER_ID } from "#noAuth";
 
 function setAdmins(value: string | undefined) {
@@ -68,7 +68,7 @@ describe("isInstanceAdmin", () => {
   // token must not inherit the instance.
   it("never admits an access token principal", async () => {
     setAdmins("vektor-admins");
-    await expect(isInstanceAdmin(`${TOKEN_PRINCIPAL_PREFIX}tok-1`)).resolves.toBe(false);
+    await expect(isInstanceAdmin(createId("accessToken"))).resolves.toBe(false);
   });
 
   it("admits the local user in no-auth mode", async () => {
