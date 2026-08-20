@@ -117,6 +117,7 @@ if (
       // route around it — it no longer follows from the table's own top edge.
       private tableToolbarBand: { top: number; bottom: number } | null = null;
       private tableToolbarStuck = false;
+      private tableMenuHeight = 0;
       private dismissedSelectionKey: string | null = null;
       private _editor?: Editor;
 
@@ -513,7 +514,7 @@ if (
 
         const padding = 12;
         const gap = 12;
-        const height = Math.max(this.tableMenu?.offsetHeight ?? 0, 48);
+        const height = this.tableMenu?.offsetHeight || this.tableMenuHeight || 48;
 
         // Sits above the table, but sticks to the top of the viewport once the
         // table's own top has scrolled past it — the buttons act on the cell the
@@ -881,6 +882,15 @@ if (
 
       private paint() {
         render(this.template(), this.root);
+
+        // The table bar is only in the DOM while a table is active, so its real
+        // height is unknown the first time it is placed — reposition against the
+        // measured one instead of leaving the fallback's phantom gap in place.
+        const height = this.tableMenu?.offsetHeight ?? 0;
+        if (height > 0 && height !== this.tableMenuHeight) {
+          this.tableMenuHeight = height;
+          if (this.tableActive) this.updatePosition();
+        }
       }
 
       private template() {

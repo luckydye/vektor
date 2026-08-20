@@ -5,7 +5,6 @@ import "./elements/expression.ts";
 import "./elements/file-attachment.ts";
 import "./elements/document-attachment.ts";
 import type { Editor } from "@tiptap/core";
-import Collaboration from "@tiptap/extension-collaboration";
 import type { EditorState } from "@tiptap/pm/state";
 import { dropPoint } from "@tiptap/pm/transform";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
@@ -18,6 +17,7 @@ import {
   type DocumentPresenceProfile,
   findYSyncState,
 } from "./collaboration.ts";
+import { Collaboration } from "./extensions/Collaboration.ts";
 import { DragHandle } from "./extensions/DragHandle.ts";
 import { Dropcursor } from "./extensions/Dropcursor.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
@@ -341,10 +341,6 @@ function createEditor(
   editor = createBaseEditor({
     element: editorElement,
     enableCoreExtensions: true,
-    onContentError: ({ error, disableCollaboration }) => {
-      console.error(error);
-      disableCollaboration();
-    },
     onCreate: async ({ editor: currentEditor }) => {
       currentEditor.commands.focus(undefined, { scrollIntoView: false });
     },

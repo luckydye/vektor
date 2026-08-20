@@ -627,7 +627,7 @@ export function DocumentPageView(props: Props) {
 
                   <inset-view
                     id="document-properties"
-                    class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-l"}`}
+                    class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-xl"}`}
                   >
                     {documentPropertiesBlock()}
                   </inset-view>

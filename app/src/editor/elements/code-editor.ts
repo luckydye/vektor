@@ -1,11 +1,11 @@
 import { Editor, getSchema } from "@tiptap/core";
-import Collaboration from "@tiptap/extension-collaboration";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { prosemirrorToYDoc, relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
 import { appendCaretDecoration } from "#cosmetics/render.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
+import { Collaboration } from "#editor/extensions/Collaboration.ts";
 import {
   colorForPresenceProfile,
   type DocumentPresenceProfile,
