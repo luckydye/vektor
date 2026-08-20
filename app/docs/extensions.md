@@ -713,7 +713,10 @@ JavaScript parser to be run by an interpreter.
 
 `exec` accepts only a fixed set of conversion tools (`pandoc`, `htmlq`,
 `rsvg-convert`, `qpdf`, `gs`, `libreoffice`), never a path, and runs without a
-shell, with the scratch directory as the working directory.
+shell, with the scratch directory as the working directory. Arguments are
+confined to that directory too: an absolute path, a `..` escape or anything the
+URL parser reads as a location (`file:///etc/passwd`, `smb://host/share`) is
+refused, so inputs and outputs must be named relative to the working directory.
 
 ### Bundling
 

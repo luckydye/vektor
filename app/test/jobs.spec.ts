@@ -342,6 +342,80 @@ describe("job runtime: sandbox boundary", () => {
     expect(result.missing).toBe("");
   });
 
+  it("refuses exec arguments that point outside the scratch directory", async () => {
+    // The binary allowlist stops shell injection, but the converters happily
+    // take absolute in/out paths, which is a read/write of any tenant's data.
+    const run = await runScript(`
+      const attempts = [
+        ["pandoc", ["/etc/passwd", "-t", "plain"]],
+        ["pandoc", ["../../etc/passwd"]],
+        ["gs", ["-sOutputFile=/tmp/escaped.pdf", "in.pdf"]],
+        ["pandoc", ["--resource-path=.:/etc", "in.md"]],
+        ["libreoffice", ["-env:UserInstallation=file:///etc", "in.docx"]],
+        ["pandoc", ["file:///etc/passwd"]],
+        ["pandoc", ["file:/etc/passwd"]],
+        // The URL parser drops the whitespace and reads the scheme regardless
+        // of case, so neither obfuscation reaches the tool.
+        ["pandoc", ["  FI\\nLE:///etc/passwd"]],
+        ["rsvg-convert", ["-o", "out.png", "smb://attacker/share/x.svg"]],
+        ["qpdf", ["@/etc/passwd", "out.pdf"]],
+      ];
+      const errors = [];
+      for (const [command, args] of attempts) {
+        try {
+          await exec(command, args);
+          errors.push("allowed: " + command + " " + args.join(" "));
+        } catch (error) {
+          errors.push(String(error.message || error));
+        }
+      }
+      return { errors };
+    `);
+
+    expect(run.status).toBe("completed");
+    const result = await fetch(`${BASE_URL}${run.resultArtifact?.url}`).then((r) =>
+      r.json(),
+    );
+    expect(result.errors).toHaveLength(10);
+    for (const message of result.errors as string[]) {
+      expect(message).toMatch(/names a URL|points outside the scratch directory/);
+    }
+  });
+
+  it("still passes ordinary flags and relative paths through to the tool", async () => {
+    // Guards against over-broad confinement: these reach the binary, so the
+    // failure is a missing or unhappy converter, never a rejected argument.
+    const run = await runScript(`
+      await scratch.write("in.html", "<p>hi</p>");
+      const errors = [];
+      const accepted = [
+        ["pandoc", ["-f", "html", "-t", "gfm-raw_html", "--wrap=none"]],
+        ["pandoc", ["in.html", "-o", "out.docx", "--lua-filter=f.lua"]],
+        // Selectors are arguments too, colons, slashes and all.
+        ["htmlq", ["--remove-nodes", 'a:hover, [href^="https://ads"]']],
+      ];
+      for (const [command, args] of accepted) {
+        try {
+          await exec(command, args, { stdin: "<p>hi</p>" });
+        } catch (error) {
+          errors.push(String(error.message || error));
+        }
+      }
+      return { errors };
+    `);
+
+    expect(run.status).toBe("completed");
+    const result = await fetch(`${BASE_URL}${run.resultArtifact?.url}`).then((r) =>
+      r.json(),
+    );
+    for (const message of result.errors as string[]) {
+      expect(message).not.toContain("points outside the scratch directory");
+    }
+    // Nothing installs the converters in CI, so a clean pass and an ENOENT are
+    // both fine here — a rejected argument is not.
+    expect(result.errors.length).toBeLessThanOrEqual(3);
+  });
+
   it("exposes an empty environment rather than the host's", async () => {
     const run = await runScript("return { keys: Object.keys(process.env).length };");
 

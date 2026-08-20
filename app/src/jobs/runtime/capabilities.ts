@@ -202,6 +202,12 @@ async function describeResponse(
 // Scratch directory
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** True when an already-resolved path is the scratch root or sits under it. */
+function isInside(root: string, resolved: string): boolean {
+  const rel = relative(root, resolved);
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
 /** A private directory per run, created on first use and removed at dispose. */
 class Scratch {
   private root: string | null = null;
@@ -219,11 +225,45 @@ class Scratch {
       throw new Error(`scratch: "${requested}" must be a relative path`);
     }
     const resolved = normalize(join(root, requested));
-    const rel = relative(root, resolved);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+    if (!isInside(root, resolved)) {
       throw new Error(`scratch: "${requested}" escapes the scratch directory`);
     }
     return resolved;
+  }
+
+  /**
+   * Vet one `exec` argument. Allowlisting the binary keeps guest input from
+   * becoming a command, but the converters take input and output paths, so an
+   * unchecked argument would read or write anywhere the server process can —
+   * every argument is treated as a candidate location and has to resolve inside
+   * the scratch tree, which ordinary flags and values do unchanged.
+   */
+  async assertArgAllowed(cwd: string, arg: string): Promise<void> {
+    const root = await this.dir();
+    // Unwrapping only, and only ever narrowing: `--flag=value` and `@argfile`
+    // hide a path one level in, and a flag's value may be a `:`-separated
+    // search path. An argument that matches neither shape is checked whole,
+    // which is the stricter reading, so a missed shape cannot pass a path.
+    const flag = /^-{1,2}[^=]*=/.exec(arg);
+    const candidates = flag
+      ? arg.slice(flag[0].length).split(":")
+      : [arg.replace(/^@/, "")];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      // Both decisions are a parser's, not a pattern's. A URL names a location
+      // no path check would see — `file:///etc/passwd`, and gio and libreoffice
+      // answer to schemes not worth enumerating — and the URL parser sees
+      // through the tabs, newlines and leading spaces a pattern trips over. The
+      // slash keeps CSS selectors out of it: `a:hover` parses as a URL, and
+      // htmlq takes selectors as arguments.
+      if (candidate.includes("/") && URL.canParse(candidate)) {
+        throw new Error(`exec: argument "${arg}" names a URL, not a scratch path`);
+      }
+      if (isAbsolute(candidate) || !isInside(root, normalize(join(cwd, candidate)))) {
+        throw new Error(`exec: argument "${arg}" points outside the scratch directory`);
+      }
+    }
   }
 
   async destroy(): Promise<void> {
@@ -514,8 +554,9 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     // ── tools ────────────────────────────────────────────────────────────────
     /**
      * Run one of a fixed set of conversion tools. The command must be an
-     * allowlisted name, the working directory is always the scratch root, and no
-     * shell is involved, so guest input cannot become a command.
+     * allowlisted name and no shell is involved, so guest input cannot become a
+     * command; every argument is confined to the scratch tree, so it cannot
+     * become a path to another tenant's data either.
      */
     exec: (async (rawCommand: unknown, rawArgs: unknown, rawOptions: unknown) => {
       const command = String(rawCommand ?? "");
@@ -525,6 +566,7 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       const args = (Array.isArray(rawArgs) ? rawArgs : []).map(String);
       const options = asRecord(rawOptions);
       const cwd = options.cwd ? await scratch.resolve(options.cwd) : await scratch.dir();
+      for (const arg of args) await scratch.assertArgAllowed(cwd, arg);
 
       onLog(`exec ${command} ${args.join(" ")}`);
       return await new Promise((resolve, reject) => {
