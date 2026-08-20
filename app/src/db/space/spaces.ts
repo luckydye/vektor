@@ -154,11 +154,9 @@ export async function createSpace(
     await openSpaceStore(id),
     ResourceType.SPACE,
     id,
-    createdBy,
+    { userId: createdBy, targetName: await resolveGranteeName(createdBy) },
     Permission.OWNER,
-    undefined,
     createdBy,
-    await resolveGranteeName(createdBy),
   );
 
   return {

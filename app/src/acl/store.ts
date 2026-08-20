@@ -141,17 +141,26 @@ export async function logAclChange(
   });
 }
 
+/**
+ * Who a grant is written for: a user or a group, never both. Both unset names
+ * every grantee on the resource, which only a revoke may ask for.
+ */
+export interface AclGrantee {
+  userId?: string;
+  groupId?: string;
+  /** See {@link logAclChange}: the audit trail's display name for `userId`. */
+  targetName?: string;
+}
+
 export async function grantPermission(
   store: SpaceStore,
   resourceType: ResourceType,
   resourceId: string,
-  userId: string | undefined,
+  grantee: AclGrantee,
   permission: string,
-  groupId?: string,
   actorUserId?: string,
-  /** See {@link logAclChange}: the audit trail's display name for `userId`. */
-  targetName?: string,
 ): Promise<AclEntry> {
+  const { userId, groupId, targetName } = grantee;
   if (!userId && !groupId) {
     throw new Error("Either userId or groupId must be provided");
   }
@@ -227,16 +236,15 @@ export async function grantPermission(
   };
 }
 
+/** An empty `grantee` revokes every grant on the resource. */
 export async function revokePermission(
   store: SpaceStore,
   resourceType: ResourceType,
   resourceId: string,
-  userId?: string,
-  groupId?: string,
+  grantee: AclGrantee,
   actorUserId?: string,
-  /** See {@link logAclChange}: the audit trail's display name for `userId`. */
-  targetName?: string,
 ): Promise<boolean> {
+  const { userId, groupId, targetName } = grantee;
   const { db, spaceId } = store;
 
   const conditions = [eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId)];
@@ -1068,7 +1076,7 @@ export async function hasPermission(
  * const canComment = await hasFeature(spaceId, Feature.COMMENT, identity);
  *
  * // Grant commenting to a specific group
- * await grantFeature(spaceId, Feature.COMMENT, undefined, "viewers");
+ * await grantFeature(spaceId, Feature.COMMENT, { groupId: "viewers" });
  */
 export async function hasFeature(
   spaceId: string,
@@ -1151,16 +1159,15 @@ export async function hasFeature(
  *
  * @example
  * // Grant commenting to a specific user
- * await grantFeature(spaceId, Feature.COMMENT, userId);
+ * await grantFeature(spaceId, Feature.COMMENT, { userId });
  *
  * // Grant history viewing to all viewers
- * await grantFeature(spaceId, Feature.VIEW_HISTORY, undefined, "viewers");
+ * await grantFeature(spaceId, Feature.VIEW_HISTORY, { groupId: "viewers" });
  */
 export async function grantFeature(
   spaceId: string,
   feature: Feature,
-  userId?: string,
-  groupId?: string,
+  grantee: AclGrantee,
   actorUserId?: string,
 ): Promise<AclEntry> {
   const store = await openSpaceStore(spaceId);
@@ -1168,9 +1175,8 @@ export async function grantFeature(
     store,
     ResourceType.FEATURE,
     feature,
-    userId,
+    grantee,
     Permission.VIEWER,
-    groupId,
     actorUserId,
   );
 }
@@ -1180,13 +1186,12 @@ export async function grantFeature(
  *
  * @example
  * // Deny commenting for a specific user
- * await denyFeature(spaceId, Feature.COMMENT, userId);
+ * await denyFeature(spaceId, Feature.COMMENT, { userId });
  */
 export async function denyFeature(
   spaceId: string,
   feature: Feature,
-  userId?: string,
-  groupId?: string,
+  grantee: AclGrantee,
   actorUserId?: string,
 ): Promise<AclEntry> {
   const store = await openSpaceStore(spaceId);
@@ -1194,9 +1199,8 @@ export async function denyFeature(
     store,
     ResourceType.FEATURE,
     feature,
-    userId,
+    grantee,
     "denied",
-    groupId,
     actorUserId,
   );
 }
@@ -1205,24 +1209,16 @@ export async function denyFeature(
  * Remove explicit feature grant/deny (reverts to default behaviour).
  *
  * @example
- * await revokeFeature(spaceId, Feature.COMMENT, userId);
+ * await revokeFeature(spaceId, Feature.COMMENT, { userId });
  */
 export async function revokeFeature(
   spaceId: string,
   feature: Feature,
-  userId?: string,
-  groupId?: string,
+  grantee: AclGrantee,
   actorUserId?: string,
 ): Promise<boolean> {
   const store = await openSpaceStore(spaceId);
-  return revokePermission(
-    store,
-    ResourceType.FEATURE,
-    feature,
-    userId,
-    groupId,
-    actorUserId,
-  );
+  return revokePermission(store, ResourceType.FEATURE, feature, grantee, actorUserId);
 }
 
 /**

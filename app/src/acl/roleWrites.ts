@@ -164,6 +164,9 @@ async function removesLastOwner(
  */
 export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteResult> {
   const store = await openSpaceStore(write.spaceId);
+  // Ahead of the transaction: a display name for the audit trail decides
+  // nothing, and it reads the auth database rather than this space.
+  const targetName = await resolveGranteeName(write.grantee.userId);
 
   return store.tx(async (transaction) => {
     const requiredRole = await requiredRoleForRoleWrite(
@@ -195,11 +198,9 @@ export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteRe
         transaction,
         write.resourceType,
         write.resourceId,
-        write.grantee.userId,
+        { ...write.grantee, targetName },
         write.role,
-        write.grantee.groupId,
         write.actorUserId,
-        await resolveGranteeName(write.grantee.userId),
       );
       return { outcome: "granted", entry };
     }
@@ -208,10 +209,8 @@ export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteRe
       transaction,
       write.resourceType,
       write.resourceId,
-      write.grantee.userId,
-      write.grantee.groupId,
+      { ...write.grantee, targetName },
       write.actorUserId,
-      await resolveGranteeName(write.grantee.userId),
     );
     return { outcome: "revoked" };
   });
