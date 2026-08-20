@@ -86,7 +86,22 @@ export function config() {
       EMAIL_FROM: process.env.VEKTOR_EMAIL_FROM,
       SMTP_HOST: process.env.VEKTOR_SMTP_HOST,
       SMTP_PORT: process.env.VEKTOR_SMTP_PORT,
-      SMTP_SECURE: process.env.VEKTOR_SMTP_SECURE,
+      /**
+       * How the SMTP connection is encrypted: "starttls" (default) connects in
+       * the clear and requires an upgrade, "implicit" starts the handshake at
+       * the first byte, "off" never encrypts.
+       */
+      SMTP_TLS: process.env.VEKTOR_SMTP_TLS,
+      /** Set to "0"/"false" to accept any SMTP server certificate. */
+      SMTP_TLS_VERIFY: process.env.VEKTOR_SMTP_TLS_VERIFY,
+      /** Name to verify the certificate against when it differs from SMTP_HOST. */
+      SMTP_TLS_SERVERNAME: process.env.VEKTOR_SMTP_TLS_SERVERNAME,
+      /**
+       * CA bundle file and/or directory of CA certificates trusted for SMTP.
+       * Setting either replaces the built-in root store for this connection.
+       */
+      SMTP_CA_FILE: process.env.VEKTOR_SMTP_CA_FILE,
+      SMTP_CA_DIR: process.env.VEKTOR_SMTP_CA_DIR,
       SMTP_USER: process.env.VEKTOR_SMTP_USER,
       SMTP_PASSWORD: process.env.VEKTOR_SMTP_PASSWORD,
 
