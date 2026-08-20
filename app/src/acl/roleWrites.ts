@@ -1,10 +1,8 @@
 /**
- * Writing a role grant, as a domain operation.
- *
- * Who may hand out which role has to be decided inside the same transaction as
- * the write it gates, or the role the caller is checked against is not the one
- * the write displaces. So the rules answer with a {@link RoleWriteResult}, and
- * the route turns that into a status code.
+ * Writing a role grant, as a domain operation: who may hand out which role has
+ * to be decided in the same transaction as the write it gates, or the role the
+ * caller is checked against is not the one the write displaces. So the rules
+ * answer with a {@link RoleWriteResult} and the route turns it into a status.
  */
 
 import { resolveGranteeName } from "#acl/directory.ts";

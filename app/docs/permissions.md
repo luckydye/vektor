@@ -17,9 +17,10 @@ their groups, and whether they administer the instance — once per request, mem
 the length of it, so a route gating four resources resolves each caller once instead of
 four times and the identity provider is consulted at the request edge rather than inside
 a permission check. `src/acl/roleWrites.ts` holds the rules for who may hand out which
-role, which have to run inside the transaction that writes the grant. `src/api/acl.ts`
-turns a request into the credentials a guard reads, and the crossing goes one way only:
-`#acl` imports nothing from `#api` but the Response builders in `src/api/http.ts`.
+role, which have to run inside the transaction that writes the grant. The API router
+builds the credentials a guard reads once per request and hands them over on the context,
+and the crossing goes one way only: `#acl` imports nothing from `#api` but the Response
+builders in `src/api/http.ts`.
 
 What the decision reads is the space's `acl` table plus the identity it was handed. Two
 lookups remain inside it and are worth knowing about: whether the space exists, and — for

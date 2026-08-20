@@ -1,9 +1,7 @@
 /**
- * A memo that lasts exactly one request.
- *
- * For work whose cost belongs to the request rather than to each caller inside
- * it, and whose answer must not outlive it — a group claim bounded against an
- * identity provider, above all. Outside a scope nothing is cached.
+ * A memo that lasts exactly one request, for work whose cost belongs to the
+ * request rather than to each caller inside it — a group claim bounded against
+ * an identity provider, above all. Outside a scope nothing is cached.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";

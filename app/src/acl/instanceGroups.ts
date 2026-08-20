@@ -4,10 +4,9 @@
  * every space at once. Both are operator configuration — a comma-separated
  * allow list of OAuth group ids.
  *
- * Configuration only. Whether a given caller is in one of these lists is a
- * question about an identity, and lives with the identity it is asked of, in
- * `#acl/identity.ts` — so this module can be read from the resolution path
- * without depending on it in turn.
+ * Configuration only: whether a caller is in one of these lists is asked in
+ * `#acl/identity.ts`, so the resolution path can read this without it depending
+ * on the resolution path in turn.
  */
 
 import { GROUP_NAME_PATTERN, PUBLIC_GROUP } from "#acl/permissions.ts";

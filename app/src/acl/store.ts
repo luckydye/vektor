@@ -1056,10 +1056,9 @@ export async function hasPermission(
 }
 
 /**
- * Check if a user has access to a specific feature.
- *
- * Features can be explicitly granted/denied via ACL entries with resourceType "feature".
- * If no explicit entry exists, falls back to defaults based on the user's space permission level.
+ * Whether this identity holds a feature. An ACL entry of resourceType
+ * `feature` grants or denies it outright; with none, the space role's defaults
+ * decide.
  *
  * @param documentId Resolve the fallback against this document's role instead of
  *   the space role, since a document- or tree-level share carries no space role.
@@ -1371,14 +1370,10 @@ async function resolveAccessibleResources(
 }
 
 /**
- * Resources this identity can reach at `minPermission`. Null means unrestricted.
- * A token reaches the intersection of its own scope and its issuer's.
- *
- * The intersection carries the level cap as well as the scope: a token's stored
- * permission is a ceiling, and its effective one is the weaker of that and the
- * issuer's. Since both passes filter at `minPermission`, a resource survives
- * only when token and issuer each reach it at that level — which is exactly
- * when the weaker of the two does.
+ * Resources this identity can reach at `minPermission`, `null` for unrestricted.
+ * A token reaches the intersection of its own scope and its issuer's, which caps
+ * the level too: both passes filter at `minPermission`, so a resource survives
+ * only where the weaker of the two reaches it.
  */
 export async function listAccessibleResources(
   spaceId: string,

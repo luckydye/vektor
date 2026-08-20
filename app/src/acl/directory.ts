@@ -33,12 +33,10 @@ export interface GroupPeer {
 /**
  * Users who share at least one real OAuth group with `userId`.
  *
- * This is the "same OAuth group ⇒ visible to each other" rule: membership in a
- * common IdP group is treated as an organizational boundary within which people
- * may see one another (name + email) for invite suggestions. Users only ever
- * appear to peers in their own groups — there is deliberately no global user
- * directory. The synthetic `public` group is excluded (everyone is in it, so it
- * would leak the whole instance), and a user with no real groups sees nobody.
+ * A shared IdP group is the boundary within which people may see one another
+ * (name + email) for invite suggestions; there is deliberately no global user
+ * directory. The synthetic `public` group is excluded — everyone is in it, so it
+ * would leak the instance — and a user with no real groups sees nobody.
  */
 export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[]> {
   const authDb = getAuthDb();
