@@ -349,16 +349,16 @@ describe("job runtime: sandbox boundary", () => {
       const attempts = [
         ["pandoc", ["/etc/passwd", "-t", "plain"]],
         ["pandoc", ["../../etc/passwd"]],
-        ["gs", ["-sOutputFile=/tmp/escaped.pdf", "in.pdf"]],
+        ["pandoc", ["-o", "/tmp/escaped.docx", "in.md"]],
         ["pandoc", ["--resource-path=.:/etc", "in.md"]],
-        ["libreoffice", ["-env:UserInstallation=file:///etc", "in.docx"]],
+        ["pandoc", ["--lua-filter=/etc/passwd", "in.md"]],
         ["pandoc", ["file:///etc/passwd"]],
         ["pandoc", ["file:/etc/passwd"]],
         // The URL parser drops the whitespace and reads the scheme regardless
         // of case, so neither obfuscation reaches the tool.
         ["pandoc", ["  FI\\nLE:///etc/passwd"]],
         ["rsvg-convert", ["-o", "out.png", "smb://attacker/share/x.svg"]],
-        ["qpdf", ["@/etc/passwd", "out.pdf"]],
+        ["htmlq", ["@/etc/passwd"]],
       ];
       const errors = [];
       for (const [command, args] of attempts) {
@@ -379,6 +379,32 @@ describe("job runtime: sandbox boundary", () => {
     expect(result.errors).toHaveLength(10);
     for (const message of result.errors as string[]) {
       expect(message).toMatch(/names a URL|points outside the scratch directory/);
+    }
+  });
+
+  it("runs no tool the image does not install", async () => {
+    // gs, qpdf and libreoffice were allowlisted but never shipped: surface for
+    // nothing, and the worst CVE record of the set.
+    const run = await runScript(`
+      const errors = [];
+      for (const command of ["gs", "qpdf", "libreoffice", "soffice", "sh", "bash"]) {
+        try {
+          await exec(command, ["--version"]);
+          errors.push("allowed: " + command);
+        } catch (error) {
+          errors.push(String(error.message || error));
+        }
+      }
+      return { errors };
+    `);
+
+    expect(run.status).toBe("completed");
+    const result = await fetch(`${BASE_URL}${run.resultArtifact?.url}`).then((r) =>
+      r.json(),
+    );
+    expect(result.errors).toHaveLength(6);
+    for (const message of result.errors as string[]) {
+      expect(message).toContain("is not an allowed tool");
     }
   });
 

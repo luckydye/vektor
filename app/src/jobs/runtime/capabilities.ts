@@ -48,20 +48,13 @@ const MAX_SLEEP_MS = 5 * 60 * 1000;
 const EXEC_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
- * Binaries a job may run. These are document-conversion tools that jobs have
- * always needed and cannot reasonably be reimplemented in-process. The list is
- * deliberately a fixed set of names — never a path, never guest-supplied — so
- * `exec` is a door to specific tools rather than to the shell.
+ * Binaries a job may run: the document-conversion tools jobs need and cannot
+ * reasonably reimplement in-process. Fixed names, never a path and never
+ * guest-supplied, so `exec` is a door to specific tools rather than to the
+ * shell — and only to the three the image installs, since allowlisting a tool
+ * that does not ship buys nothing and would admit it the day it does.
  */
-const EXEC_ALLOWLIST = new Set([
-  "htmlq",
-  "pandoc",
-  "rsvg-convert",
-  "qpdf",
-  "gs",
-  "libreoffice",
-  "soffice",
-]);
+const EXEC_ALLOWLIST = new Set(["htmlq", "pandoc", "rsvg-convert"]);
 
 export interface CapabilityContext {
   spaceId: string;
