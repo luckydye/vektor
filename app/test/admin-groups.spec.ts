@@ -1,3 +1,4 @@
+import { inArray } from "drizzle-orm";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { canCreateSpace, isInstanceAdmin, userAdminGroups } from "#acl/identity.ts";
 import { adminGroups } from "#acl/instanceGroups.ts";
@@ -18,11 +19,27 @@ function setAdmins(value: string | undefined) {
 // whole run shares; whichever spec runs first has to create it.
 beforeAll(() => initializeDatabases());
 
-afterEach(() => {
+// Rows this file writes to the auth database, which the whole run shares with
+// the specs that boot a server against it — so they are removed again.
+const writtenUsers: string[] = [];
+const writtenSpaceRecords: string[] = [];
+
+afterEach(async () => {
   setAdmins(undefined);
   delete process.env.VEKTOR_SPACE_CREATION_GROUPS;
   delete process.env.VEKTOR_NO_AUTH;
   delete process.env.VEKTOR_MAX_SPACES_PER_USER;
+
+  if (writtenSpaceRecords.length > 0) {
+    await getAuthDb()
+      .delete(spaceIndex)
+      .where(inArray(spaceIndex.id, writtenSpaceRecords.splice(0)));
+  }
+  if (writtenUsers.length > 0) {
+    await getAuthDb()
+      .delete(user)
+      .where(inArray(user.id, writtenUsers.splice(0)));
+  }
 });
 
 /** A signed-up account carrying `groups`, which only the IdP claim ever sets. */
@@ -39,17 +56,19 @@ async function createUserInGroups(groups: string[]): Promise<string> {
       createdAt: now,
       updatedAt: now,
     });
+  writtenUsers.push(id);
   return id;
 }
 
 /** A space this user created, as the quota counts them. */
 async function recordSpaceCreatedBy(createdBy: string): Promise<void> {
   const spaceId = createId("space");
+  const recordId = createId("database");
   const now = new Date();
   await getAuthDb()
     .insert(spaceIndex)
     .values({
-      id: createId("database"),
+      id: recordId,
       location: `memory:${spaceId}`,
       status: "active",
       spaceId,
@@ -59,6 +78,7 @@ async function recordSpaceCreatedBy(createdBy: string): Promise<void> {
       createdAt: now,
       updatedAt: now,
     });
+  writtenSpaceRecords.push(recordId);
 }
 
 describe("adminGroups", () => {

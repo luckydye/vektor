@@ -125,8 +125,9 @@ export async function userAdminGroups(userId: string): Promise<string[]> {
 }
 
 /**
- * Whether `userId` may create a space. An instance admin always may: they can
- * already delete and re-own every space that exists.
+ * Whether `userId` may create another space — the allow list and the per-user
+ * cap together. An instance admin always may: they can already delete and
+ * re-own every space that exists.
  */
 export async function canCreateSpace(userId: string): Promise<boolean> {
   return (await spaceCreationRejection(userId)) === null;
