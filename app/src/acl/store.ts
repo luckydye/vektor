@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { principalOf, type ResolvedIdentity, resolveIdentity } from "#acl/identity.ts";
 import {
   type AclViewer,
@@ -521,60 +521,75 @@ async function getBestPermissionForResourceIds(
   return bestAclEntry(await capRowsToIssuer(spaceId, resourceType, allPermissions));
 }
 
+/**
+ * Walk the `parent_id` chain in SQLite rather than in this process.
+ *
+ * Every document decision needs the tree above the document, and reading the
+ * table to find four rows is the whole cost of one on a large space: at 30k
+ * documents the scan this replaces measured ~51ms, against ~0.15ms here. The
+ * recursion seeks `document.id`, which is the primary key, so depth is what it
+ * costs rather than size.
+ *
+ * `UNION` rather than `UNION ALL`: it drops rows already seen, which is what
+ * terminates the walk if `parent_id` ever forms a cycle. Foreign keys do not
+ * rule one out — `A -> B -> A` satisfies them both — and the walk this replaced
+ * carried its own `seen` set for the same reason.
+ */
 async function getDocumentAncestorIds(
   spaceId: string,
   documentId: string,
 ): Promise<string[]> {
   const { db } = await openSpaceStore(spaceId);
-  const rows = await many(
-    db.select({ id: document.id, parentId: document.parentId }).from(document),
+  const rows = await many<{ id: string }>(
+    db,
+    sql`
+      WITH RECURSIVE ancestor(id, parent_id) AS (
+        SELECT ${document.id}, ${document.parentId}
+          FROM ${document} WHERE ${eq(document.id, documentId)}
+        UNION
+        SELECT d.id, d.parent_id
+          FROM ${document} d JOIN ancestor a ON d.id = a.parent_id
+      )
+      SELECT id FROM ancestor WHERE id <> ${documentId}
+    `,
   );
 
-  const parentById = new Map(rows.map((row) => [row.id, row.parentId]));
-  const ancestors: string[] = [];
-  const seen = new Set<string>([documentId]);
-  let current = parentById.get(documentId);
-
-  while (current && !seen.has(current)) {
-    ancestors.push(current);
-    seen.add(current);
-    current = parentById.get(current);
-  }
-
-  return ancestors;
+  return rows.map((row) => row.id);
 }
 
+/**
+ * The other direction, and the same trade: `document_parent_id_idx` carries the
+ * recursion, so a subtree costs its own size rather than the space's.
+ *
+ * The roots are returned whether or not they exist, which is what the walk this
+ * replaced did — they arrive from `acl` rows, and a grant on a since-deleted
+ * document must not quietly widen to nothing.
+ */
 async function getDocumentDescendantIds(
   spaceId: string,
   rootIds: string[],
 ): Promise<Set<string>> {
-  const { db } = await openSpaceStore(spaceId);
-  const roots = new Set(rootIds);
   const descendants = new Set(rootIds);
   if (rootIds.length === 0) return descendants;
 
-  const rows = await many(
-    db.select({ id: document.id, parentId: document.parentId }).from(document),
+  const { db } = await openSpaceStore(spaceId);
+  const roots = sql.join(
+    rootIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await many<{ id: string }>(
+    db,
+    sql`
+      WITH RECURSIVE descendant(id) AS (
+        SELECT ${document.id} FROM ${document} WHERE ${document.id} IN (${roots})
+        UNION
+        SELECT d.id FROM ${document} d JOIN descendant ON d.parent_id = descendant.id
+      )
+      SELECT id FROM descendant
+    `,
   );
 
-  const childrenByParent = new Map<string, string[]>();
-  for (const row of rows) {
-    if (!row.parentId) continue;
-    const children = childrenByParent.get(row.parentId) ?? [];
-    children.push(row.id);
-    childrenByParent.set(row.parentId, children);
-  }
-
-  const stack = Array.from(roots);
-  while (stack.length > 0) {
-    const parentId = stack.pop()!;
-    for (const childId of childrenByParent.get(parentId) ?? []) {
-      if (descendants.has(childId)) continue;
-      descendants.add(childId);
-      stack.push(childId);
-    }
-  }
-
+  for (const row of rows) descendants.add(row.id);
   return descendants;
 }
 
