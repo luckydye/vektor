@@ -1,4 +1,5 @@
 import { authenticateSpaceAccess } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
 import { requestCredentials } from "#api/acl.ts";
@@ -51,7 +52,11 @@ export const GET: ApiRouteHandler = (context) =>
       const docIds =
         userId === null
           ? null
-          : await listAccessibleResources(spaceId, userId, ResourceType.DOCUMENT);
+          : await listAccessibleResources(
+              spaceId,
+              await resolveIdentity(userId),
+              ResourceType.DOCUMENT,
+            );
 
       // Catch up stale indexes before the query reads them — but not for a
       // caller who can read nothing, since the search returns empty regardless.

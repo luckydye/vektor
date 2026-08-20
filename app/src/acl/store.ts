@@ -1,11 +1,5 @@
 import { and, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
-import {
-  type AccessIdentity,
-  principalOf,
-  type ResolvedIdentity,
-  resolveIdentity,
-  toIdentity,
-} from "#acl/identity.ts";
+import { principalOf, type ResolvedIdentity, resolveIdentity } from "#acl/identity.ts";
 import {
   type AclViewer,
   type Feature,
@@ -1081,10 +1075,9 @@ export async function hasPermission(
 export async function hasFeature(
   spaceId: string,
   feature: Feature,
-  who: AccessIdentity,
+  identity: ResolvedIdentity,
   documentId?: string,
 ): Promise<boolean> {
-  const identity = await toIdentity(who);
   const userId = principalOf(identity);
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
     return true;
@@ -1389,11 +1382,10 @@ async function resolveAccessibleResources(
  */
 export async function listAccessibleResources(
   spaceId: string,
-  who: AccessIdentity,
+  identity: ResolvedIdentity,
   resourceType: ResourceType,
   minPermission?: Permission,
 ): Promise<string[] | null> {
-  const identity = await toIdentity(who);
   const own = await resolveAccessibleResources(
     spaceId,
     identity,

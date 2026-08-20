@@ -5,6 +5,7 @@ import {
   verifyFeatureAccess,
   verifyTokenFeature,
 } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasFeature } from "#acl/store.ts";
 import { requestCredentials } from "#api/acl.ts";
@@ -120,7 +121,7 @@ export const POST: ApiRouteHandler = (context) =>
         const canManage = await hasFeature(
           spaceId,
           Feature.MANAGE_EXTENSIONS,
-          parsed.userId,
+          await resolveIdentity(parsed.userId),
         );
         if (!canManage) {
           throw forbiddenResponse(

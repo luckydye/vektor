@@ -3,9 +3,12 @@
  *
  * {@link decideAccess} decides and {@link verifyAccess}/{@link canAccess} are
  * the only two ways to ask it. Nothing here takes a request: guards read a plain
- * {@link CallerCredentials} that `#api/acl.ts` builds, and a decision is handed
- * a {@link ResolvedIdentity} it cannot look up — so the IdP round-trip stays at
- * the request edge.
+ * {@link CallerCredentials} that `#api/acl.ts` builds.
+ *
+ * A guard may take an id and resolve it; the decisions in `#acl/store.ts` require
+ * a {@link ResolvedIdentity} and so cannot, which is what keeps the IdP
+ * round-trip out of a permission check. A credential's issuer is the exception,
+ * because the `acl` table has to be read to find it.
  *
  * Features are the exception: {@link verifyFeatureAccess} and
  * {@link verifyRevisionAccess} ask about a capability rather than a resource.
@@ -634,7 +637,7 @@ export async function verifyFeatureAccess(
   who: AccessIdentity,
   documentId?: string,
 ): Promise<void> {
-  const hasAccess = await hasFeature(spaceId, feature, who, documentId);
+  const hasAccess = await hasFeature(spaceId, feature, await toIdentity(who), documentId);
   if (!hasAccess) {
     throw forbiddenResponse(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
@@ -689,7 +692,12 @@ export async function verifyRevisionAccess(
     publishedRev = document.publishedRev;
   }
 
-  const history = await hasFeature(spaceId, Feature.VIEW_HISTORY, userId, documentId);
+  const history = await hasFeature(
+    spaceId,
+    Feature.VIEW_HISTORY,
+    await resolveIdentity(userId),
+    documentId,
+  );
 
   // Plain read access already buys the published snapshot's content.
   const snapshotOnly =
@@ -805,7 +813,11 @@ export async function verifyTokenFeature(
   spaceId: string,
   feature: Feature,
 ): Promise<void> {
-  const hasIt = await hasFeature(spaceId, feature, tokenResult.tokenId);
+  const hasIt = await hasFeature(
+    spaceId,
+    feature,
+    await resolveIdentity(tokenResult.tokenId),
+  );
   if (!hasIt) {
     throw forbiddenResponse(
       `Token does not have the ${feature} capability for this space`,
