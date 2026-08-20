@@ -2,7 +2,6 @@ import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
 import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -810,7 +809,7 @@ export const POST: ApiRouteHandler = (context) =>
         } else {
           // Session cookie or Bearer token: server mints the job token.
           const auth = await authenticateJobTokenOrSpaceRole(
-            requestCredentials(context),
+            context.var.credentials,
             spaceId,
             Permission.VIEWER,
           );
@@ -946,7 +945,7 @@ export const POST: ApiRouteHandler = (context) =>
           }
         } else {
           const auth = await authenticateJobTokenOrSpaceRole(
-            requestCredentials(context),
+            context.var.credentials,
             spaceId,
             Permission.VIEWER,
           );

@@ -17,7 +17,6 @@
 
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -39,7 +38,7 @@ export const POST: ApiRouteHandler = (context) =>
 
       // Auth: job token OR user session
       const auth = await authenticateJobTokenOrSpaceRole(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
       );

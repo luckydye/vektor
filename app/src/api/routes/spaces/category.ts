@@ -5,7 +5,6 @@ import {
   verifyAccess,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -31,15 +30,11 @@ async function verifyCategoryRead(
   id: string,
 ) {
   if (context.req.raw.headers.get("X-Job-Token")) {
-    await authenticateSpaceAccess(
-      requestCredentials(context),
-      spaceId,
-      Permission.VIEWER,
-    );
+    await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
     return;
   }
 
-  const auth = await tryAuthenticateRequest(requestCredentials(context), spaceId);
+  const auth = await tryAuthenticateRequest(context.var.credentials, spaceId);
   if (auth?.type === "user") {
     await verifyAccess(
       spaceId,
@@ -88,7 +83,7 @@ export const PUT: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
       const id = requireParam(context.var.params, "id");
       await authenticateJobTokenOrSpaceRole(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
         {
@@ -143,7 +138,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "id");
     await authenticateJobTokenOrSpaceRole(
-      requestCredentials(context),
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
       {

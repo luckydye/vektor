@@ -6,7 +6,6 @@ import {
   spaceAccessToViewer,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -35,7 +34,7 @@ export const GET: ApiRouteHandler = (context) =>
       // Admitted on a resource grant alone, since every row is then filtered
       // against the documents it reaches.
       const access = await authenticateSpaceAccess(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.VIEWER,
         {
@@ -83,14 +82,9 @@ export const POST: ApiRouteHandler = (context) =>
       // The real gate is below, on the document the body names. This one runs
       // first so a caller with no editor reach into the space at all cannot
       // stream a gigabyte into the parser.
-      await authenticateSpaceAccess(
-        requestCredentials(context),
-        spaceId,
-        Permission.EDITOR,
-        {
-          allowResourceGrants: true,
-        },
-      );
+      await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.EDITOR, {
+        allowResourceGrants: true,
+      });
 
       // Parse the form data
       const formData = await parseFormBody(context.req.raw);
@@ -112,7 +106,7 @@ export const POST: ApiRouteHandler = (context) =>
       // Editor on the document being attached to, or on the space itself for
       // an upload that belongs to no document.
       const auth = await authenticateJobTokenOrSpaceRole(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,

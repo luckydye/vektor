@@ -4,7 +4,6 @@ import {
   verifyFeatureAccess,
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -32,7 +31,7 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
     const auth = await authenticateJobTokenOrSpaceRole(
-      requestCredentials(context),
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
     );

@@ -1,6 +1,5 @@
 import { extractAccessToken } from "#acl/guards.ts";
 import { canCreateSpace } from "#acl/identity.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -31,7 +30,7 @@ import {
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const rawToken = extractAccessToken(requestCredentials(context));
+    const rawToken = extractAccessToken(context.var.credentials);
     if (rawToken) {
       const spaceId = await findSpaceForToken(rawToken);
       if (!spaceId) return jsonResponse([]);

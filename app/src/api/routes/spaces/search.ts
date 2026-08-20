@@ -2,7 +2,6 @@ import { authenticateSpaceAccess } from "#acl/guards.ts";
 import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -23,7 +22,7 @@ export const GET: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
 
       const access = await authenticateSpaceAccess(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.VIEWER,
       );

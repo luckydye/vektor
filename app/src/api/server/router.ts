@@ -72,6 +72,12 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("requestHeaders", headers);
   c.set("session", session);
   c.set("user", user);
+  // The seam with `#acl`: guards read this struct and never the context itself.
+  c.set("credentials", {
+    jobToken: headers.get("X-Job-Token"),
+    authorization: headers.get("Authorization"),
+    user,
+  });
 }
 
 function isApiPath(pathname: string): boolean {

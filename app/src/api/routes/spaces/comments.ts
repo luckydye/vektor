@@ -6,7 +6,6 @@ import {
   verifyFeatureAccess,
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -48,7 +47,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Whoever may read the document may read its comments — a public reader
     // and a job or access token included.
     await authenticateDocumentAccess(
-      requestCredentials(context),
+      context.var.credentials,
       spaceId,
       documentId,
       Permission.VIEWER,

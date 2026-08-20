@@ -6,7 +6,7 @@
  *
  * Two rules hold throughout:
  *  - Nothing here takes a request. Guards read a {@link CallerCredentials}
- *    struct that `#api/acl.ts` builds from one.
+ *    struct, which the API router builds once per request.
  *  - A guard may resolve an id, a decision may not. That is what keeps the IdP
  *    round-trip out of a permission check.
  *

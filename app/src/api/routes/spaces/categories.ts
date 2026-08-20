@@ -1,6 +1,5 @@
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -29,7 +28,7 @@ async function visibleCategoryIds(
   spaceId: string,
 ) {
   const access = await authenticateSpaceAccess(
-    requestCredentials(context),
+    context.var.credentials,
     spaceId,
     Permission.VIEWER,
     {
@@ -73,7 +72,7 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       await authenticateJobTokenOrSpaceRole(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
       );
@@ -118,7 +117,7 @@ export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     await authenticateJobTokenOrSpaceRole(
-      requestCredentials(context),
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
     );

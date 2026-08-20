@@ -1,6 +1,5 @@
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
-import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -33,7 +32,7 @@ export const POST: ApiRouteHandler = (context) =>
       // guard also scopes user-carrying job tokens to that user's real access,
       // which a signature-only check cannot do.
       await authenticateJobTokenOrSpaceRole(
-        requestCredentials(context),
+        context.var.credentials,
         spaceId,
         Permission.VIEWER,
       );
