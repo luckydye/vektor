@@ -133,6 +133,18 @@ function uniqueSlug(title: string, taken: Set<string>, report: Report): string {
 // Planning
 // ---------------------------------------------------------------------------
 
+/**
+ * A branch that becomes a category. Usually a page, but not always: a wiki lets
+ * a nested space hold pages without being one itself, and that level still has
+ * to become a category.
+ */
+export interface Section {
+  id: string;
+  slug: string;
+  title: string;
+  path: string[];
+}
+
 export interface SpacePlan<T extends SourcePage = SourcePage> {
   spaceId: string;
   spaceSlug: string;
@@ -153,9 +165,9 @@ export interface SpacePlan<T extends SourcePage = SourcePage> {
    */
   parentOf(page: T, skip?: Set<string>, minDepth?: number): string | null;
   /** The branches that become categories. */
-  sections: PlannedPage<T>[];
+  sections: Section[];
   /** The section whose subtree holds this page, if any. */
-  sectionOf(page: T): PlannedPage<T> | null;
+  sectionOf(page: T): Section | null;
   docPath(slug: string): string;
 }
 
@@ -217,16 +229,53 @@ export function planSpace<T extends SourcePage>(
    */
   const entries = [...byPath.values()];
   const roots = entries.filter((entry) => parentOf(entry.page) === null);
-  const sections =
-    roots.length === 1
-      ? entries.filter((entry) => parentOf(entry.page) === roots[0].id)
-      : roots;
-  sections.sort((a, b) => a.page.title.localeCompare(b.page.title));
+  const asSection = (entry: PlannedPage<T>): Section => ({
+    id: entry.id,
+    slug: entry.slug,
+    title: entry.page.title,
+    path: entry.page.path,
+  });
+
+  /**
+   * The level below the root, taken from the paths rather than from parentage:
+   * `See-Camp17` holds five pages in a real export and is not a page itself, and
+   * `parentOf` walks straight past such a level — which made each of those five
+   * a section of its own, sitting beside the sections they belong under.
+   */
+  const sections: Section[] = [];
+  if (roots.length === 1) {
+    const depth = roots[0].page.path.length + 1;
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (entry.page.path.length < depth) continue;
+      const path = entry.page.path.slice(0, depth);
+      const key = pathKey(path);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const occupant = byPath.get(key);
+      const title = path.at(-1) ?? "";
+      sections.push(
+        occupant
+          ? asSection(occupant)
+          : // No page to take an id from; it only keys this section in the maps
+            // that decide what the category holds.
+            {
+              id: createId("document"),
+              slug: uniqueSlug(title, taken, report),
+              title,
+              path,
+            },
+      );
+    }
+  } else {
+    sections.push(...roots.map(asSection));
+  }
+  sections.sort((a, b) => a.title.localeCompare(b.title));
 
   const sectionPaths = new Map(
-    sections.map((section) => [pathKey(section.page.path), section]),
+    sections.map((section) => [pathKey(section.path), section]),
   );
-  const sectionOf = (page: T): PlannedPage<T> | null => {
+  const sectionOf = (page: T): Section | null => {
     for (let path = page.path; path.length > 0; path = path.slice(0, -1)) {
       const section = sectionPaths.get(pathKey(path));
       if (section) return section;
@@ -396,8 +445,8 @@ export async function writeSpace<T extends SourcePage>(
   // `planSpace` only makes the sections the root's children when there is exactly
   // one root; with several roots the sections *are* the roots and none is a wrapper.
   const wrapper =
-    roots.length === 1 && !plan.sections.includes(roots[0] as PlannedPage<T>)
-      ? (roots[0] as PlannedPage<T>)
+    roots.length === 1 && !plan.sections.some((section) => section.id === roots[0].id)
+      ? roots[0]
       : null;
   if (wrapper) {
     const empty = isBlank(bodies.get(wrapper.id) ?? "");
@@ -411,7 +460,7 @@ export async function writeSpace<T extends SourcePage>(
   for (const [order, section] of plan.sections.entries()) {
     await db.insert(category).values({
       id: createId("category"),
-      name: section.page.title,
+      name: section.title,
       slug: section.slug,
       description: null,
       color: null,
@@ -424,18 +473,20 @@ export async function writeSpace<T extends SourcePage>(
 
   /**
    * Which document names each category. For a kept branch page that is the page
-   * itself; for a replaced one it is each of its former children, which is as
-   * high as the category can now be pinned.
+   * itself; for a section standing in for a page — replaced because it was
+   * empty, or never exported at all — it is every document left highest under
+   * it, which is as high as the category can now be pinned.
    */
   const categoryOf = new Map<string, string>();
-  for (const section of plan.sections) {
+  for (const { id, page } of plan.byPath.values()) {
+    const section = plan.sectionOf(page);
+    if (!section) continue;
     if (!replaced.has(section.id)) {
-      categoryOf.set(section.id, section.slug);
+      if (id === section.id) categoryOf.set(id, section.slug);
       continue;
     }
-    for (const entry of plan.byPath.values()) {
-      if (plan.parentOf(entry.page) === section.id)
-        categoryOf.set(entry.id, section.slug);
+    if (plan.parentOf(page, replaced, section.path.length) === null) {
+      categoryOf.set(id, section.slug);
     }
   }
 
@@ -454,7 +505,7 @@ export async function writeSpace<T extends SourcePage>(
      * node inside every single category.
      */
     const section = plan.sectionOf(page);
-    const parentId = plan.parentOf(page, replaced, section?.page.path.length ?? 1);
+    const parentId = plan.parentOf(page, replaced, section?.path.length ?? 1);
 
     await db.insert(document).values({
       id,
@@ -506,14 +557,21 @@ export async function writeSpace<T extends SourcePage>(
   await db.run(sql.raw("PRAGMA journal_mode = DELETE"));
   closeDatabase(db);
 
-  const documents = plan.byPath.size - replaced.size;
+  // Counted rather than subtracted from `replaced`: a section standing in for a
+  // page the export never carried is in that set too, and no document row was
+  // skipped for it.
+  const documents = [...plan.byPath.values()].filter(({ id }) => !replaced.has(id)).length;
   verifyWritten(options.out, {
     document: documents,
     category: plan.sections.length,
     file: uploads.size,
   });
 
-  return { documents, categories: plan.sections.length, replaced: replaced.size };
+  return {
+    documents,
+    categories: plan.sections.length,
+    replaced: plan.byPath.size - documents,
+  };
 }
 
 // ---------------------------------------------------------------------------
