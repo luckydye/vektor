@@ -5,6 +5,7 @@
  */
 
 import { publishAuthorizationChange } from "#acl/events.ts";
+import { appendSyncEnvelope, syncEpoch } from "./changeLog.ts";
 import { documentLockChangedKind } from "./changes.ts";
 import {
   type RealtimeEventInput,
@@ -19,14 +20,20 @@ export interface RealtimeEventEnvelope {
   topics: RealtimeTopic[];
   events: RealtimeTopicEvent[];
   timestamp: string;
+  /** Position in the space's history; see `changeLog.ts`. */
+  seq: number;
+  epoch: string;
 }
+
+/** An envelope before the change log gives it a position. */
+type UnnumberedEnvelope = Omit<RealtimeEventEnvelope, "seq" | "epoch">;
 
 const listeners = new Set<(event: RealtimeEventEnvelope) => void>();
 const pendingEvents = new Map<string, Map<RealtimeTopic, RealtimeTopicEvent>>();
 let debounceTimer: NodeJS.Timeout | null = null;
 const DEBOUNCE_DELAY = 100;
 
-function drainPendingEvents(): RealtimeEventEnvelope[] {
+function drainPendingEvents(): UnnumberedEnvelope[] {
   if (pendingEvents.size === 0) {
     return [];
   }
@@ -43,10 +50,17 @@ function drainPendingEvents(): RealtimeEventEnvelope[] {
   return events;
 }
 
-export function publishSyncEvents(events: RealtimeEventEnvelope[]) {
+export function publishSyncEvents(events: UnnumberedEnvelope[]) {
   for (const event of events) {
+    // Numbered here so every route reaching `sendSyncEvent` is recorded without
+    // having to know about the log.
+    const envelope: RealtimeEventEnvelope = {
+      ...event,
+      seq: appendSyncEnvelope(event.spaceId, event.events),
+      epoch: syncEpoch,
+    };
     for (const listener of listeners) {
-      listener(event);
+      listener(envelope);
     }
   }
 }

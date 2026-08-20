@@ -7,11 +7,19 @@ import type { WebSocket } from "ws";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { appLogger } from "#observability/logger.ts";
+import {
+  catchUpSince,
+  headSyncSeq,
+  type SyncCatchUp,
+  syncEpoch,
+} from "./changeLog.ts";
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
 import {
   isDocumentRealtimeTopic,
   isWorkflowRunRealtimeTopic,
+  type RealtimeSubscribePayload,
   realtimeTopics,
+  type SyncCursor,
   WsMsgType,
   wsDecodeJson,
   wsEncode,
@@ -53,7 +61,7 @@ export class TopicSubscriptions {
       return false;
     }
 
-    const { topics } = wsDecodeJson<{ topics: string[] }>(payload);
+    const { topics, cursor } = wsDecodeJson<RealtimeSubscribePayload>(payload);
 
     // Dropping a subscription can leak nothing, so it is never authorized: a
     // caller whose role was revoked mid-connection has to stay able to stop the
@@ -80,7 +88,50 @@ export class TopicSubscriptions {
     }
 
     for (const topic of authorized) this.topics.add(topic);
+    this.answerCursor(cursor);
     return true;
+  }
+
+  /**
+   * Tell a subscribing client what changed while it was away, or that the
+   * history no longer reaches its cursor and it has to refetch. A client with
+   * no cursor yet is given the current head, so its next reconnect has a
+   * position to catch up from.
+   */
+  private answerCursor(cursor: SyncCursor | undefined): void {
+    const catchUp: SyncCatchUp = cursor
+      ? catchUpSince(this.spaceId, cursor, (topic) => this.topics.has(topic))
+      : { kind: "events", seq: headSyncSeq(this.spaceId), events: [] };
+    const timestamp = new Date().toISOString();
+
+    if (catchUp.kind === "resync") {
+      // No topics: the client synthesises one event per subscription from the
+      // topics it holds, which is narrower than anything this side knows. The
+      // head travels with it so the client does not keep the dead position.
+      this.websocket.send(
+        wsEncode(WsMsgType.Event, {
+          resync: true,
+          topics: [],
+          events: [],
+          timestamp,
+          seq: headSyncSeq(this.spaceId),
+          epoch: syncEpoch,
+        }),
+      );
+      return;
+    }
+
+    // Sent even when nothing matched: the cursor still has to advance past
+    // envelopes this connection had no interest in.
+    this.websocket.send(
+      wsEncode(WsMsgType.Event, {
+        topics: catchUp.events.map(({ topic }) => topic),
+        events: catchUp.events,
+        timestamp,
+        seq: catchUp.seq,
+        epoch: syncEpoch,
+      }),
+    );
   }
 
   close(): void {
@@ -110,6 +161,8 @@ export class TopicSubscriptions {
         topics: matchedEvents.map(({ topic }) => topic),
         events: matchedEvents,
         timestamp: event.timestamp,
+        seq: event.seq,
+        epoch: event.epoch,
       }),
     );
   }

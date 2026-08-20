@@ -21,6 +21,7 @@ import {
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
+  type SyncCursor,
   WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
@@ -664,8 +665,11 @@ interface RealtimeConnection {
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
-  /** True once a socket has opened; every later open is a reconnect. */
-  hasConnected: boolean;
+  /**
+   * How far through this space's event history the client has read. Outlives
+   * the socket, which is what lets a reconnect ask for only what it missed.
+   */
+  syncCursor: SyncCursor | null;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   /** Pending idle teardown; see `REALTIME_IDLE_GRACE_MS`. */
@@ -2505,7 +2509,7 @@ export class ApiClient {
       yjsRooms: new Map(),
       presenceJoinPayloads: new Map(),
       closed: false,
-      hasConnected: false,
+      syncCursor: null,
       reconnectAttempts: 0,
       reconnectTimer: null,
       idleTimer: null,
@@ -2543,11 +2547,10 @@ export class ApiClient {
       setTimeout(() => {
         if (connection.socket === socket) connection.reconnectAttempts = 0;
       }, RECONNECT_SETTLED_MS);
-      const isReconnect = connection.hasConnected;
-      connection.hasConnected = true;
+      // No blanket resync on reconnect: the `Subscribe` replayed below carries
+      // the cursor, and the server answers with what actually changed.
       this.resyncRealtimeConnection(connection);
       this.startRealtimeHeartbeat(connection);
-      if (isReconnect) this.notifyRealtimeResync(connection);
     });
 
     socket.addEventListener("message", (event) => {
@@ -2596,6 +2599,22 @@ export class ApiClient {
 
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
+
+      // Advanced on a resync too, or every later reconnect would resync again.
+      // Only ever forwards: a catch-up answer computed before a live event can
+      // arrive after it.
+      if (msg.epoch !== undefined && msg.seq !== undefined) {
+        const held = connection.syncCursor;
+        if (!held || held.epoch !== msg.epoch || msg.seq > held.seq) {
+          connection.syncCursor = { epoch: msg.epoch, seq: msg.seq };
+        }
+      }
+
+      if (msg.resync) {
+        this.notifyRealtimeResync(connection);
+        return;
+      }
+
       for (const subscription of connection.subscriptions) {
         if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
         subscription.callback({ type: "event", ...msg });
@@ -2668,9 +2687,8 @@ export class ApiClient {
   }
 
   /**
-   * Replace the events that happened while the socket was down. The server
-   * keeps no per-connection backlog, so a subscriber's only way back to the
-   * truth is to refetch everything it holds for the topics it subscribes to.
+   * Refetch everything, for when the server cannot say what was missed. Per
+   * subscription, whose topics are narrower than the connection's.
    */
   private notifyRealtimeResync(connection: RealtimeConnection): void {
     for (const subscription of connection.subscriptions) {
@@ -2799,7 +2817,7 @@ export class ApiClient {
 
     const topics = [...connection.topicRefCounts.keys()];
     if (topics.length > 0) {
-      socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
+      socket.send(this.subscribeFrame(connection, topics));
     }
 
     for (const [documentId, entries] of connection.yjsRooms) {
@@ -2901,13 +2919,33 @@ export class ApiClient {
     });
   }
 
+  /**
+   * A `Subscribe` frame carrying the connection's cursor. Every subscribe sends
+   * it, not just the one after a reconnect, so an incremental one cannot
+   * advance the position past envelopes the client has yet to hear about.
+   */
+  private subscribeFrame(
+    connection: RealtimeConnection,
+    topics: RealtimeTopic[],
+  ): Uint8Array<ArrayBuffer> {
+    return wsEncode(WsMsgType.Subscribe, {
+      topics,
+      ...(connection.syncCursor ? { cursor: connection.syncCursor } : {}),
+    });
+  }
+
   private sendRealtimeMessage(
     connection: RealtimeConnection,
     type: typeof WsMsgType.Subscribe | typeof WsMsgType.Unsubscribe,
     topics: RealtimeTopic[],
   ) {
     if (topics.length === 0) return;
-    this.sendRealtimeState(connection, wsEncode(type, { topics }));
+    this.sendRealtimeState(
+      connection,
+      type === WsMsgType.Subscribe
+        ? this.subscribeFrame(connection, topics)
+        : wsEncode(type, { topics }),
+    );
   }
 
   subscribeToTopics(
