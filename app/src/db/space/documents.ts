@@ -469,15 +469,8 @@ async function revokeDocumentGrants(
   id: string,
   actorUserId?: string,
 ): Promise<void> {
-  await revokePermission(s, ResourceType.DOCUMENT, id, undefined, undefined, actorUserId);
-  await revokePermission(
-    s,
-    ResourceType.DOCUMENT_TREE,
-    id,
-    undefined,
-    undefined,
-    actorUserId,
-  );
+  await revokePermission(s, ResourceType.DOCUMENT, id, {}, actorUserId);
+  await revokePermission(s, ResourceType.DOCUMENT_TREE, id, {}, actorUserId);
 }
 
 export async function archiveDocument(
@@ -1187,11 +1180,14 @@ export async function setDocumentParent(
         }
         visited.add(ancestorId);
 
+        // Annotated: inferring the row from a query keyed on `ancestorId`, which
+        // the next line reassigns from that same row, is circular to TypeScript.
+        const currentId: string = ancestorId;
         const ancestor = await one(
           tx.db
             .select({ parentId: document.parentId })
             .from(document)
-            .where(eq(document.id, ancestorId)),
+            .where(eq(document.id, currentId)),
         );
         if (!ancestor) break;
         ancestorId = ancestor.parentId;

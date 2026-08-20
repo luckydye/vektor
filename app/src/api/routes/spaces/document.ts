@@ -26,7 +26,6 @@ import { getSpaceDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import {
   archiveDocument,
@@ -100,6 +99,11 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
   const unknownFields = keys.filter(
     (key) => !documentPatchFields.has(key as keyof DocumentPatchBody),
   );
+  if (unknownFields.includes("restore")) {
+    throw badRequestResponse(
+      "restore cannot be patched; use PUT to restore an archived document",
+    );
+  }
   if (unknownFields.includes("archived")) {
     throw badRequestResponse(
       "archived cannot be patched; use DELETE to archive a document",
@@ -291,7 +295,7 @@ export const GET: ApiRouteHandler = (context) =>
     // `aclUserId` is carried past the gate for the revision guard: `null` is
     // the trusted system caller, `""` public. See verifyRevisionAccess.
     const { aclUserId } = await authenticateDocumentAccess(
-      context,
+      context.var.credentials,
       spaceId,
       id,
       requiredRole,
@@ -420,15 +424,15 @@ export const PUT: ApiRouteHandler = (context) =>
       userId = parsed.userId ?? undefined;
     } else {
       // Authenticate with either user session or access token
-      const auth = await authenticateRequest(context, spaceId);
+      const auth = await authenticateRequest(context.var.credentials, spaceId);
       if (auth.type === "token") {
         await verifyAccess(
           spaceId,
           { type: ResourceType.DOCUMENT, id: id },
-          getTokenUserId(auth.token.tokenId),
+          auth.token.tokenId,
           Permission.EDITOR,
         );
-        userId = getTokenUserId(auth.token.tokenId);
+        userId = auth.token.tokenId;
       } else {
         await verifyAccess(
           spaceId,
@@ -556,7 +560,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       }
 
       const auth = await authenticateJobTokenOrSpaceRole(
-        context,
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
         {
@@ -674,7 +678,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const id = requireParam(context.var.params, "documentId");
     const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
       {

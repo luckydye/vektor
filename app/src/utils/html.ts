@@ -354,8 +354,11 @@ interface SanitizePolicy {
   readonly localUrlsOnly?: boolean;
   /** `<html-block data-html>` payloads are sanitized with the same policy. */
   readonly sanitizesHtmlBlocks?: boolean;
-  /** Links keeping an `href` get a `rel` when they carry none. */
-  readonly hardensLinks?: boolean;
+  /**
+   * Links keeping an `href` get a `rel` when they carry none — `"all"` for
+   * every link, `"newTab"` only for those that also keep a `target`.
+   */
+  readonly hardensLinks?: "all" | "newTab";
   /** `width` / `height` / `colspan` / `rowspan` must be plain integers. */
   readonly numericSizesOnly?: boolean;
 }
@@ -653,7 +656,7 @@ const SIZE_ATTRIBUTES = new Set(["colspan", "height", "rowspan", "width"]);
 
 const PREVIEW_POLICY: SanitizePolicy = {
   drop: PREVIEW_DROP_TAGS,
-  hardensLinks: true,
+  hardensLinks: "all",
   numericSizesOnly: true,
   keeps: (tag) => PREVIEW_TAGS.has(tag),
   keepsAttribute: (tag, attribute) => {
@@ -815,6 +818,11 @@ function isCustomElementTag(tag: string): boolean {
 const DOCUMENT_POLICY: SanitizePolicy = {
   drop: DOCUMENT_DROP_TAGS,
   sanitizesHtmlBlocks: true,
+  // Pasted markup can carry `target="_blank"` without a `rel`, which renders
+  // with `window.opener` intact and leaks the document URL as a referrer. Only
+  // those links are rewritten: documents are stored, so a plain in-document
+  // link has to come back out of the sanitizer byte for byte.
+  hardensLinks: "newTab",
   keeps: (tag) => DOCUMENT_TAGS.has(tag) || isCustomElementTag(tag),
   // A deny-list, unlike the preview policy: a document carries the schema's
   // `data-` attributes on its own elements and arbitrary attributes inside an
@@ -946,6 +954,7 @@ function sanitizedAttributes(
   const attrs: string[] = [];
   let keptHref = false;
   let keptRel = false;
+  let keptTarget = false;
 
   for (const attribute of tag.attributes ?? []) {
     const attributeKey = attributeName(attribute);
@@ -984,10 +993,16 @@ function sanitizedAttributes(
 
     if (attributeKey === "href") keptHref = true;
     if (attributeKey === "rel") keptRel = true;
+    if (attributeKey === "target") keptTarget = true;
     attrs.push(`${attributeKey}="${escapeSanitizedAttributeValue(value)}"`);
   }
 
-  if (policy.hardensLinks && name === "a" && keptHref && !keptRel) {
+  if (
+    name === "a" &&
+    keptHref &&
+    !keptRel &&
+    (policy.hardensLinks === "all" || (policy.hardensLinks === "newTab" && keptTarget))
+  ) {
     attrs.push('rel="noopener noreferrer"');
   }
 

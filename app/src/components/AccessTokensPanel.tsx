@@ -77,7 +77,7 @@ export function AccessTokensPanel(props: Props) {
   }
 
   async function copyToken() {
-    const value = props.createdToken;
+    const value = props.createdToken; // solid-reactivity-ok: click handler, reads per click
     if (!value) return;
     await navigator.clipboard.writeText(value);
     setCopied(true);
@@ -300,7 +300,8 @@ export function AccessTokensPanel(props: Props) {
                               <div class="flex items-center gap-3">
                                 <vektor-avatar
                                   size="28"
-                                  attr:user-id={`token:${token.id}`}
+                                  attr:user-id={token.id}
+                                  kind="credential"
                                 />
                                 <div>
                                   <div class="flex items-center gap-2">

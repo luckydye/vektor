@@ -250,16 +250,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
 
       const editor = extension.editor;
       if (editor) {
-        // Focus the last empty paragraph first
-        const { doc } = editor.state;
-        const lastNode = doc.lastChild;
-        const lastNodePos = doc.content.size - (lastNode?.nodeSize || 0);
-        editor
-          .chain()
-          .focus(lastNodePos + 1)
-          .run();
-
-        // Execute the command
+        focusTrailingParagraph();
         item.command(editor);
       }
 
@@ -540,6 +531,24 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       }, 0);
     }
 
+    /**
+     * The trailing line is a decoration, so writing after the last block needs a
+     * paragraph to write into. Adding it here keeps it a change the user asked
+     * for — the document is shared, and anything else records as their edit.
+     */
+    function focusTrailingParagraph() {
+      const editor = extension.editor;
+      const { doc } = editor.state;
+      const lastNode = doc.lastChild;
+      const chain = editor.chain();
+
+      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
+        chain.insertContentAt(doc.content.size, { type: "paragraph" });
+      }
+
+      chain.focus("end").run();
+    }
+
     function syncTrailingButtonVisibility(view: EditorView) {
       const button = view.dom.querySelector<HTMLElement>(".trailing-node-plus-button");
       if (!button) return;
@@ -561,46 +570,31 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         props: {
           decorations(state) {
             const { doc } = state;
-            const decorations: Decoration[] = [];
+            const widget = document.createElement("button");
+            widget.type = "button";
+            widget.className = "trailing-node-plus-button";
+            widget.contentEditable = "false";
+            widget.innerHTML = `
+              ${iconMarkup("add")}
+              <span>Add content</span>
+            `;
 
-            // Check if the document ends with an empty paragraph
-            const lastNode = doc.lastChild;
+            widget.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
 
-            // Render the button if:
-            // 1. Last node is a paragraph
-            // 2. It's empty
+              const rect = widget.getBoundingClientRect();
+              focusTrailingParagraph();
+              openPopup(rect);
+            });
+
             // Visibility is row-aware and is updated from the plugin view below.
-            if (
-              lastNode &&
-              lastNode.type.name === "paragraph" &&
-              lastNode.content.size === 0
-            ) {
-              const widget = document.createElement("button");
-              widget.type = "button";
-              widget.className = "trailing-node-plus-button";
-              widget.contentEditable = "false";
-              widget.innerHTML = `
-                  ${iconMarkup("add")}
-                  <span>Add content</span>
-                `;
-
-              widget.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const rect = widget.getBoundingClientRect();
-                openPopup(rect);
-              });
-
-              decorations.push(
-                Decoration.widget(doc.content.size, widget, {
-                  side: 1,
-                  key: "trailing-plus-button",
-                }),
-              );
-            }
-
-            return DecorationSet.create(doc, decorations);
+            return DecorationSet.create(doc, [
+              Decoration.widget(doc.content.size, widget, {
+                side: 1,
+                key: "trailing-plus-button",
+              }),
+            ]);
           },
         },
         view(view) {
@@ -690,34 +684,5 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         },
       }),
     ];
-  },
-
-  // Ensure there's always a trailing empty paragraph
-  onCreate() {
-    this.editor.commands.command(({ tr, state }) => {
-      const { doc } = state;
-      const lastNode = doc.lastChild;
-
-      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
-        tr.insert(doc.content.size, state.schema.nodes.paragraph.create());
-        return true;
-      }
-
-      return false;
-    });
-  },
-
-  onUpdate() {
-    this.editor.commands.command(({ tr, state }) => {
-      const { doc } = state;
-      const lastNode = doc.lastChild;
-
-      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
-        tr.insert(doc.content.size, state.schema.nodes.paragraph.create());
-        return true;
-      }
-
-      return false;
-    });
   },
 });

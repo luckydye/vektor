@@ -352,7 +352,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   const { brotliCompress, constants: zlibConstants } = await import("node:zlib");
   const { createHash } = await import("node:crypto");
   const { eq } = await import("drizzle-orm");
-  const { LOCAL_USER, LOCAL_USER_ID, isNoAuthMode } = await import("#noAuth");
+  const { LOCAL_USER, LOCAL_USER_ID, isNoAuthMode } = await import("#config");
   const { Permission, ResourceType } = await import("#acl/permissions.ts");
   const { getAuthDb, getSpaceDb, initializeDatabases } = await import("#db/client/db.ts");
   const { createSpace } = await import("#db/space/spaces.ts");

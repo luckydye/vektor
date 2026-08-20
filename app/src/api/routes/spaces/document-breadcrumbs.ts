@@ -10,7 +10,7 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "documentId");
 
-    const auth = await tryAuthenticateRequest(context, spaceId);
+    const auth = await tryAuthenticateRequest(context.var.credentials, spaceId);
     if (auth?.type === "user") {
       await verifyAccess(
         spaceId,

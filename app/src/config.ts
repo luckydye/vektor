@@ -46,6 +46,12 @@ export function config() {
        * Remote credentials may be supplied with the authToken query parameter.
        */
       DATABASE_URL: process.env.VEKTOR_DATABASE_URL,
+      /**
+       * Where the local auth database and space databases live, `./data` by
+       * default. Set per test run so a suite never reads the accounts and spaces
+       * a developer accumulated in the working copy.
+       */
+      DATA_DIR: process.env.VEKTOR_DATA_DIR,
       NODE_ENV: process.env.NODE_ENV,
 
       /**
@@ -67,6 +73,20 @@ export function config() {
        * appear in the 429 log line (`ip:<addr>`, `token:<hash>`).
        */
       RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
+      /**
+       * How many spaces one user may have created and still own, `50` when
+       * unset and unlimited at `0`. Each space allocates its own database, so
+       * an unbounded count is a disk and file-descriptor budget handed to
+       * whoever signs up.
+       */
+      MAX_SPACES_PER_USER: process.env.VEKTOR_MAX_SPACES_PER_USER,
+      /**
+       * How many space databases stay open at once, `128` when unset and
+       * unlimited at `0`. Reached, the least recently used idle connections are
+       * closed; the next request for one reopens it.
+       */
+      MAX_OPEN_SPACE_DBS: process.env.VEKTOR_MAX_OPEN_SPACE_DBS,
+
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */
@@ -86,7 +106,22 @@ export function config() {
       EMAIL_FROM: process.env.VEKTOR_EMAIL_FROM,
       SMTP_HOST: process.env.VEKTOR_SMTP_HOST,
       SMTP_PORT: process.env.VEKTOR_SMTP_PORT,
-      SMTP_SECURE: process.env.VEKTOR_SMTP_SECURE,
+      /**
+       * How the SMTP connection is encrypted: "starttls" (default) connects in
+       * the clear and requires an upgrade, "implicit" starts the handshake at
+       * the first byte, "off" never encrypts.
+       */
+      SMTP_TLS: process.env.VEKTOR_SMTP_TLS,
+      /** Set to "0"/"false" to accept any SMTP server certificate. */
+      SMTP_TLS_VERIFY: process.env.VEKTOR_SMTP_TLS_VERIFY,
+      /** Name to verify the certificate against when it differs from SMTP_HOST. */
+      SMTP_TLS_SERVERNAME: process.env.VEKTOR_SMTP_TLS_SERVERNAME,
+      /**
+       * CA bundle file and/or directory of CA certificates trusted for SMTP.
+       * Setting either replaces the built-in root store for this connection.
+       */
+      SMTP_CA_FILE: process.env.VEKTOR_SMTP_CA_FILE,
+      SMTP_CA_DIR: process.env.VEKTOR_SMTP_CA_DIR,
       SMTP_USER: process.env.VEKTOR_SMTP_USER,
       SMTP_PASSWORD: process.env.VEKTOR_SMTP_PASSWORD,
 
@@ -251,6 +286,73 @@ export function getLocalOrigin(): string {
       : argv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
   const port = portArg ?? "8080";
   return `http://127.0.0.1:${port}`;
+}
+
+export function isInMemoryDb(): boolean {
+  return config().IN_MEMORY_DB === "1";
+}
+
+export const LOCAL_USER_ID = "local";
+
+export const LOCAL_USER = {
+  id: LOCAL_USER_ID,
+  name: "Local User",
+  email: "local@localhost",
+  emailVerified: true,
+  image: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+export const LOCAL_SESSION = {
+  id: "local-session",
+  userId: LOCAL_USER_ID,
+  token: "local",
+  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+  ipAddress: null,
+  userAgent: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+export function isNoAuthMode(): boolean {
+  return config().NO_AUTH === "1";
+}
+
+// No-auth mode makes LOCAL_USER an unauthenticated super-user that bypasses
+// every permission check. It must never be enabled in production — fail fast at
+// startup rather than silently exposing all data. NODE_ENV alone is not a
+// reliable signal (deployments may forget to set it), so also treat any
+// non-local public origin as production-like.
+// Server only: in the browser the runtime env script is not guaranteed to be in
+// the document at module evaluation, and a client-side check guards nothing the
+// server has not already refused to start with.
+if (typeof document === "undefined" && isNoAuthMode()) {
+  if (config().NODE_ENV === "production") {
+    throw new Error(
+      "VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with NODE_ENV=production",
+    );
+  }
+
+  const siteUrl = config().SITE_URL;
+  if (siteUrl) {
+    let hostname = "";
+    try {
+      hostname = new URL(siteUrl).hostname;
+    } catch {
+      // Unparseable SITE_URL: be conservative and treat it as non-local.
+    }
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".localhost");
+    if (!isLocalHost) {
+      throw new Error(
+        `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local VEKTOR_SITE_URL (${siteUrl})`,
+      );
+    }
+  }
 }
 
 declare global {

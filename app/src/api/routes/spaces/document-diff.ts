@@ -10,7 +10,6 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import { getDocument } from "#db/space/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/space/revisions.ts";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
@@ -54,7 +53,7 @@ export const GET: ApiRouteHandler = (context) =>
         : parseQueryInt(searchParams, "base", { min: 1 });
 
     const { aclUserId } = await authenticateDocumentAccess(
-      context,
+      context.var.credentials,
       spaceId,
       id,
       Permission.VIEWER,

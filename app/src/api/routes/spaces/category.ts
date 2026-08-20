@@ -16,7 +16,6 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getTokenUserId } from "#db/space/accessTokens.ts";
 import {
   CategorySlugTakenError,
   deleteCategory,
@@ -31,11 +30,11 @@ async function verifyCategoryRead(
   id: string,
 ) {
   if (context.req.raw.headers.get("X-Job-Token")) {
-    await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+    await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
     return;
   }
 
-  const auth = await tryAuthenticateRequest(context, spaceId);
+  const auth = await tryAuthenticateRequest(context.var.credentials, spaceId);
   if (auth?.type === "user") {
     await verifyAccess(
       spaceId,
@@ -49,7 +48,7 @@ async function verifyCategoryRead(
     await verifyAccess(
       spaceId,
       { type: ResourceType.CATEGORY, id: id },
-      getTokenUserId(auth.token.tokenId),
+      auth.token.tokenId,
       Permission.VIEWER,
     );
     return;
@@ -83,10 +82,15 @@ export const PUT: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const id = requireParam(context.var.params, "id");
-      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR, {
-        type: ResourceType.CATEGORY,
-        id,
-      });
+      await authenticateJobTokenOrSpaceRole(
+        context.var.credentials,
+        spaceId,
+        Permission.EDITOR,
+        {
+          type: ResourceType.CATEGORY,
+          id,
+        },
+      );
 
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
       const name = typeof body.name === "string" ? body.name : undefined;
@@ -133,10 +137,15 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "id");
-    await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR, {
-      type: ResourceType.CATEGORY,
-      id,
-    });
+    await authenticateJobTokenOrSpaceRole(
+      context.var.credentials,
+      spaceId,
+      Permission.EDITOR,
+      {
+        type: ResourceType.CATEGORY,
+        id,
+      },
+    );
 
     const store = await openSpaceStore(spaceId);
     await deleteCategory(store, id);

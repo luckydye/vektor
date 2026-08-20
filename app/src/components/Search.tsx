@@ -562,7 +562,7 @@ export function Search(props: Props) {
                 class="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-neutral hover:bg-neutral-100 hover:text-neutral-800"
                 title={t("Clear search")}
               >
-                <Icon class="h-4 w-4" name="cancel" />
+                <Icon class="block h-4 w-4" name="cancel" />
               </button>
             </Show>
           </div>
