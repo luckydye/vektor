@@ -12,7 +12,10 @@ import type { Category, DocumentAccessEntry, User } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { roleBadgeClass, roleLabel } from "#utils/accessToken.ts";
+import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
+import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
 
 interface Props {
@@ -25,25 +28,6 @@ interface Props {
 type DocumentPermissionResource = "document" | "document_tree";
 
 const CATEGORY_SCOPE_PREFIX = "category:";
-
-function roleBadgeClass(role: string) {
-  const map: Record<string, string> = {
-    owner: "bg-purple-100 text-purple-700",
-    editor: "bg-primary-50 text-primary-700",
-    viewer: "bg-neutral-100 text-neutral-600",
-  };
-  return map[role] ?? map.viewer;
-}
-
-/** Phrased as what the person may do, not as a role name. */
-function roleLabel(role: string) {
-  const map: Record<string, string> = {
-    owner: "Owner",
-    editor: "Can edit",
-    viewer: "Can view",
-  };
-  return map[role] ?? role;
-}
 
 export function DocumentShareDialog(props: Props) {
   const { currentSpaceId, currentSpace } = useSpace();
@@ -64,6 +48,16 @@ export function DocumentShareDialog(props: Props) {
   const [addMemberError, setAddMemberError] = createSignal<string | null>(null);
 
   const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
+
+  const scopeOptions = createMemo<FilterSelectOption[]>(() => [
+    { value: "document", label: t("This document") },
+    { value: "document_tree", label: t("This document and child documents") },
+    ...categories().map((category) => ({
+      value: `${CATEGORY_SCOPE_PREFIX}${category.id}`,
+      label: category.name,
+      group: t("Category"),
+    })),
+  ]);
 
   // No owner: this dialog shares a document or a category, and owner is only
   // grantable on the space itself.
@@ -196,11 +190,11 @@ export function DocumentShareDialog(props: Props) {
     const { resourceType, resourceLabel, inherited } = entry.via;
     const source =
       resourceType === "document"
-        ? "Granted on this page"
+        ? "Granted on this document"
         : resourceType === "document_tree"
           ? inherited
-            ? `Via page tree: ${resourceLabel || "parent page"}`
-            : "Granted on this page and child pages"
+            ? `Via document tree: ${resourceLabel || "parent document"}`
+            : "Granted on this document and child documents"
           : resourceType === "category"
             ? `Via category: ${resourceLabel || "category"}`
             : "Via space membership";
@@ -367,26 +361,13 @@ export function DocumentShareDialog(props: Props) {
               <label class="flex-none text-neutral-600 text-size-small" for="share-scope">
                 Scope
               </label>
-              <select
+              <FilterSelect
                 id="share-scope"
                 value={scope()}
-                onChange={(e) => setScope(e.currentTarget.value)}
-                class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-              >
-                <option value="document">This page</option>
-                <option value="document_tree">This page and child pages</option>
-                <Show when={categories().length > 0}>
-                  <optgroup label="Category">
-                    <For each={categories()}>
-                      {(category) => (
-                        <option value={`${CATEGORY_SCOPE_PREFIX}${category.id}`}>
-                          {category.name}
-                        </option>
-                      )}
-                    </For>
-                  </optgroup>
-                </Show>
-              </select>
+                options={scopeOptions()}
+                filterPlaceholder={t("Search categories…")}
+                onChange={setScope}
+              />
             </div>
           </div>
 
