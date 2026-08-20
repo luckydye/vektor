@@ -70,9 +70,18 @@ export const GET: ApiRouteHandler = (context) =>
       // artifact, say — keeps the space check.
       const documentId = await getFileDocumentId(spaceId, path);
       if (documentId) {
-        await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
+        await authenticateDocumentAccess(
+          context.var.credentials,
+          spaceId,
+          documentId,
+          Permission.VIEWER,
+        );
       } else {
-        await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+        await authenticateSpaceAccess(
+          context.var.credentials,
+          spaceId,
+          Permission.VIEWER,
+        );
       }
 
       // Get file extension from the path
@@ -199,7 +208,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
       const documentId = await getFileDocumentId(spaceId, path);
       await authenticateJobTokenOrSpaceRole(
-        context,
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,

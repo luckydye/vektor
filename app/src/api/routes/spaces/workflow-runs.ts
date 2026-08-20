@@ -36,7 +36,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      context.var.credentials,
       spaceId,
       Permission.VIEWER,
     );
@@ -134,7 +134,7 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const auth = await authenticateJobTokenOrSpaceRole(
-        context,
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
       );

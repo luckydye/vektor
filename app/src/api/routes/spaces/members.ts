@@ -1,11 +1,8 @@
 import { inArray } from "drizzle-orm";
+import { getSpaceMembersWithGroups } from "#acl/directory.ts";
 import { canAccess, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import {
-  getResourceScopedGranteeUserIds,
-  getSpaceMembersWithGroups,
-  listPermissions,
-} from "#acl/store.ts";
+import { getResourceScopedGranteeUserIds, listPermissions } from "#acl/store.ts";
 import {
   jsonResponse,
   requireParam,

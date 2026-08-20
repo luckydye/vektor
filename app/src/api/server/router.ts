@@ -1,10 +1,11 @@
 import type { Next } from "hono";
+import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
-import { getPublicEnv, isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#config";
+import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
@@ -71,6 +72,12 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("requestHeaders", headers);
   c.set("session", session);
   c.set("user", user);
+  // The seam with `#acl`: guards read this struct and never the context itself.
+  c.set("credentials", {
+    jobToken: headers.get("X-Job-Token"),
+    authorization: headers.get("Authorization"),
+    user,
+  });
 }
 
 function isApiPath(pathname: string): boolean {
@@ -178,8 +185,12 @@ export async function apiRouter(
   }
 
   try {
-    await hydrateRequestContext(c);
-    const result = await handler(c);
+    // One identity cache for the length of this request, so the IdP staleness
+    // bound stays a per-request bound rather than a per-check one.
+    const result = await withIdentityScope(async () => {
+      await hydrateRequestContext(c);
+      return await handler(c);
+    });
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });

@@ -1,4 +1,4 @@
-import { canCreateSpace, isInstanceAdmin, userAdminGroups } from "#acl/instanceGroups.ts";
+import { canCreateSpace, isInstanceAdmin, userAdminGroups } from "#acl/identity.ts";
 import { jsonResponse, requireUser, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
