@@ -654,5 +654,7 @@
   "Start the conversation!": "Beginne die Unterhaltung!",
   "Delete comment": "Kommentar löschen",
   "Are you sure you want to delete this comment?": "Diesen Kommentar wirklich löschen?",
-  "Reply…": "Antworten…"
+  "Reply…": "Antworten…",
+  "Add a column at the end": "Spalte am Ende einfügen",
+  "Add a row at the end": "Zeile am Ende einfügen"
 }

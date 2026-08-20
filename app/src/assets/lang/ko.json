@@ -654,5 +654,7 @@
   "Start the conversation!": "대화를 시작해 보세요!",
   "Delete comment": "댓글 삭제",
   "Are you sure you want to delete this comment?": "이 댓글을 삭제할까요?",
-  "Reply…": "답글…"
+  "Reply…": "답글…",
+  "Add a column at the end": "끝에 열 추가",
+  "Add a row at the end": "끝에 행 추가"
 }

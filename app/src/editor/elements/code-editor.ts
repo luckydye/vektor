@@ -5,13 +5,13 @@ import * as Y from "yjs";
 import { appendCaretDecoration } from "#cosmetics/render.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { codeEditorContent, codeEditorExtensions } from "#editor/codeEditor.ts";
-import { Collaboration } from "#editor/extensions/Collaboration.ts";
 import {
   colorForPresenceProfile,
   type DocumentPresenceProfile,
   findYSyncState,
 } from "#editor/collaboration.ts";
 import codeStyles from "#editor/css/code.css?inline";
+import { Collaboration } from "#editor/extensions/Collaboration.ts";
 
 export interface CodeEditorElementApi extends HTMLElement {
   value: string;
