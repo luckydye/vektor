@@ -27,7 +27,9 @@ import { registerScopedAction } from "#utils/scopedAction.ts";
 import { slugify } from "#utils/slug.ts";
 import { spacePath } from "#utils/utils.ts";
 import { CategoryBadge } from "./CategoryBadge.tsx";
+import { CategoryAppearance } from "./CategoryAppearance.tsx";
 import { Dialog } from "./Dialog.tsx";
+import { DialogFooter } from "./DialogFooter.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -738,20 +740,6 @@ export function DocumentTree(props: Props) {
                     <button
                       type="button"
                       onClick={() => {
-                        closeContextMenu();
-                        window.location.href = spacePath(
-                          currentSpace()?.slug,
-                          `/new?category=${menu().category.slug}`,
-                        );
-                      }}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
-                    >
-                      <Icon class="h-4 w-4 flex-none" name="document" />
-                      <span>{t("New document")}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
                         const category = menu().category;
                         closeContextMenu();
                         startEditing(category);
@@ -817,24 +805,13 @@ export function DocumentTree(props: Props) {
             if (!v) cancelEdit();
           }}
           footer={
-            <div class="flex gap-2">
-              <button
-                type="button"
-                onClick={cancelEdit}
-                disabled={isSaving()}
-                class="flex-1 rounded-md border border-neutral-100 bg-background px-4 py-2 font-medium text-neutral-900 text-size-medium transition-colors hover:bg-neutral-100 disabled:opacity-50"
-              >
-                {t("Cancel")}
-              </button>
-              <button
-                type="submit"
-                form="category-form"
-                disabled={isSaving()}
-                class="flex-1 rounded-md bg-blue-600 px-4 py-2 font-medium text-size-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSaving() ? t("Saving...") : editingId() ? t("Update") : t("Create")}
-              </button>
-            </div>
+            <DialogFooter
+              form="category-form"
+              confirmLabel={editingId() ? t("Update") : t("Create")}
+              pendingLabel={t("Saving...")}
+              pending={isSaving()}
+              onCancel={cancelEdit}
+            />
           }
         >
           <form
@@ -845,6 +822,14 @@ export function DocumentTree(props: Props) {
             }}
             class="space-y-4"
           >
+            <CategoryAppearance
+              name={formData().name}
+              color={formData().color || "#4ECDC4"}
+              icon={formData().icon || ""}
+              onUpdateColor={(color) => patchForm({ color })}
+              onUpdateIcon={(icon) => patchForm({ icon })}
+            />
+
             <div>
               <label
                 for="category-name"
@@ -880,50 +865,6 @@ export function DocumentTree(props: Props) {
               />
             </div>
 
-            <div>
-              <label
-                for="category-color"
-                class="mb-2 block font-medium text-neutral-900 text-size-small"
-              >
-                {t("Color")}
-              </label>
-              <div class="flex items-center gap-2">
-                <input
-                  id="category-color"
-                  value={formData().color}
-                  onInput={(e) => patchForm({ color: e.currentTarget.value })}
-                  type="color"
-                  class="h-8 w-16 cursor-pointer rounded-sm border border-neutral-100"
-                />
-                <input
-                  value={formData().color}
-                  onInput={(e) => patchForm({ color: e.currentTarget.value })}
-                  type="text"
-                  placeholder="#4ECDC4"
-                  pattern="^#[0-9A-Fa-f]{6}$"
-                  class="focus-ring flex-1 rounded-md border border-neutral-100 px-3 py-1.5 text-size-medium"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label
-                for="category-icon"
-                class="mb-1 block font-medium text-neutral-900 text-size-small"
-              >
-                {t("Icon")}
-              </label>
-              <input
-                id="category-icon"
-                value={formData().icon}
-                onInput={(e) => patchForm({ icon: e.currentTarget.value })}
-                type="text"
-                maxlength="10"
-                class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2 text-size-medium"
-                placeholder={t("Icon (emoji or text)")}
-              />
-            </div>
-
             <Show when={formError()}>
               <div class="rounded-md border border-red-200 bg-red-50 p-3">
                 <p class="text-red-600 text-size-small">{formError()}</p>
@@ -940,24 +881,14 @@ export function DocumentTree(props: Props) {
             if (!v) cancelDelete();
           }}
           footer={
-            <div class="flex gap-2">
-              <button
-                type="button"
-                onClick={cancelDelete}
-                disabled={isDeleting()}
-                class="flex-1 rounded-md border border-neutral-100 bg-background px-4 py-2 font-medium text-neutral-900 text-size-medium transition-colors hover:bg-neutral-100 disabled:opacity-50"
-              >
-                {t("Cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmDelete()}
-                disabled={isDeleting()}
-                class="flex-1 rounded-md bg-red-600 px-4 py-2 font-medium text-size-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isDeleting() ? t("Deleting...") : t("Delete")}
-              </button>
-            </div>
+            <DialogFooter
+              tone="danger"
+              confirmLabel={t("Delete")}
+              pendingLabel={t("Deleting...")}
+              pending={isDeleting()}
+              onConfirm={() => void confirmDelete()}
+              onCancel={cancelDelete}
+            />
           }
         >
           <p class="text-neutral-700 text-size-medium">

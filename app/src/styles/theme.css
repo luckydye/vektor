@@ -367,6 +367,14 @@
   @apply button-with-icon;
 }
 
+/* Icon-only buttons. Only the properties no caller overrides live here; the box
+ * and the colours are Tailwind classes in IconButton, where twMerge can resolve
+ * them against a caller's own. */
+@utility button-icon {
+  @apply inline-flex flex-none cursor-pointer items-center justify-center rounded-md transition-colors;
+  @apply disabled:button-disabled;
+}
+
 /* Tone and size modifiers. Declared after the variants so they win on source order. */
 @utility button-danger {
   @apply !border-red-600 !bg-red-600 enabled:hover:!bg-red-700 enabled:active:!bg-red-800;

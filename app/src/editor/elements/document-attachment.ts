@@ -5,6 +5,7 @@
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { escapeHtml } from "#utils/html.ts";
+import { t } from "#utils/lang.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
@@ -559,7 +560,7 @@ if (
               <span class="title">${escapeHtml(title)}</span>
               <span class="type">${escapeHtml(documentTypeLabel(type))}</span>
             </span>
-            <button type="button" class="open" draggable="false" aria-label="Open document">
+            <button type="button" class="open" draggable="false" aria-label=${t("Open document")}>
               <span class="open-icon">${iconMarkup("chevron-right-thin")}</span>
             </button>
           </div>

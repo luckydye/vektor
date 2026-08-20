@@ -4,6 +4,7 @@ import { type Toast, useToast } from "#composeables/useToast.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
 import { t } from "#utils/lang.ts";
 import { Icon, type IconName } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 
 const icons: Record<Toast["type"], IconName> = {
   error: "alert-circle",
@@ -112,15 +113,12 @@ export function ToastContainer() {
                   )}
                 </Show>
                 <Show when={toast.cancel}>
-                  <button
-                    type="button"
-                    aria-label={t("Cancel")}
-                    title={t("Cancel")}
-                    class="relative z-10 ml-auto rounded-md p-1 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+                  <IconButton
+                    class="relative z-10 ml-auto text-white/70 enabled:active:bg-white/30 enabled:hover:bg-white/20 enabled:hover:text-white"
+                    icon="cancel"
+                    label={t("Cancel")}
                     onClick={() => toast.cancel?.()}
-                  >
-                    <Icon class="h-4 w-4" name="cancel" />
-                  </button>
+                  />
                 </Show>
                 <Show when={toast.progress !== undefined}>
                   <div class="absolute inset-x-0 bottom-0 h-1 bg-white/15">

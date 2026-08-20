@@ -1,7 +1,6 @@
 import { type Accessor, createSignal } from "solid-js";
 import { getSession } from "#composeables/auth-client.ts";
-import { config } from "#config";
-import { LOCAL_USER } from "#noAuth";
+import { config, LOCAL_USER } from "#config";
 
 type UserProfile = {
   id: string;

@@ -8,7 +8,7 @@ import { getAllPropertiesWithValues } from "#db/space/properties.ts";
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+    await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
 
     const store = await openSpaceStore(spaceId);
     const properties = await getAllPropertiesWithValues(store);

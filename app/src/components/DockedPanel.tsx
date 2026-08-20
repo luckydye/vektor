@@ -14,8 +14,10 @@ import {
 } from "#composeables/useDockedWindows.ts";
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
+import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 
 interface Props {
   id: string;
@@ -285,13 +287,7 @@ export function DockedPanel(props: Props) {
               {props.title}
             </span>
             <div class="panel-close flex items-center gap-0.5">
-              <button
-                type="button"
-                class="rounded-sm p-1 text-neutral-500 transition-colors hover:text-neutral-800"
-                onClick={onClose}
-              >
-                <Icon class="h-3.5 w-3.5" name="cancel" />
-              </button>
+              <IconButton icon="cancel" label={t("Close")} onClick={onClose} />
             </div>
           </div>
 

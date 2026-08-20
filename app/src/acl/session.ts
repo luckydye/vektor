@@ -6,7 +6,7 @@
  * so anything that has to hold for all three only held where it was remembered.
  */
 
-import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
+import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#config";
 
 export interface RequestIdentity {
   user: App.Locals["user"];

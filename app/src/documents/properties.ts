@@ -207,6 +207,19 @@ export function normalizeDocumentPropertyPatch(
             .map((item) => String(item))
         : String(rawValue);
 
+      // A stored date is read back by serializers that construct a Date from
+      // it, so an unparseable one is a persistent failure for every consumer of
+      // the document (the CalDAV feed above all), not just this write.
+      if (type === "date") {
+        for (const item of Array.isArray(value) ? value : [value]) {
+          if (item !== "" && Number.isNaN(new Date(item).getTime())) {
+            throw new InvalidDocumentPropertyPatchError(
+              `Property "${key}" is not a valid date`,
+            );
+          }
+        }
+      }
+
       return { kind: "update", key, value, type };
     },
   );

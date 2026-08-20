@@ -362,7 +362,6 @@ function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOptions) {
     beginEdit: options.beginEdit,
     createCollaboration: options.createCollaboration,
     openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
-    dispatch: (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail })),
     service: <T>(key: symbol) => {
       if (!services.has(key))
         throw new Error("Canvas extension service is not registered");

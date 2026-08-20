@@ -4,9 +4,9 @@ import { subscribeToAuthorizationChanges } from "#acl/events.ts";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
+import { isNoAuthMode } from "#config";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension } from "#db/space/extensions.ts";
-import { isNoAuthMode } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import {
   decrementWebSocketConnections,

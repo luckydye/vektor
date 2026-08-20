@@ -50,6 +50,13 @@ interface RouteRule extends RateLimitRule {
    * would throttle a fan-out job against its own sub-jobs.
    */
   boundsJobs?: boolean;
+  /**
+   * Whether every caller counts against one shared window. Set where the route
+   * costs the instance rather than the caller — the ceiling then bounds what the
+   * host has to absorb, which is what a per-caller window cannot do once anyone
+   * can sign up for another identity.
+   */
+  instance?: boolean;
 }
 
 /**
@@ -76,6 +83,16 @@ const ROUTE_RULES: readonly RouteRule[] = [
   // Proxied inference, billed to whoever runs the instance.
   { pattern: "/api/v1/chat/completions", max: 30, windowMs: MINUTE, boundsJobs: true },
   { pattern: "/api/v1/chat/acp", max: 30, windowMs: MINUTE, boundsJobs: true },
+  // Allocates a database file of its own per call, so the ceiling is the
+  // instance's: a per-caller one is spent by signing up again.
+  {
+    pattern: "/api/v1/spaces",
+    methods: ["POST"],
+    max: 10,
+    windowMs: MINUTE,
+    instance: true,
+    boundsJobs: true,
+  },
   // Arbitrary user-defined execution.
   { pattern: "/api/v1/spaces/[spaceId]/jobs/run", max: 30, windowMs: MINUTE },
   {
@@ -139,10 +156,21 @@ export function ruleForRoute(
  * Which window a request counts against. A rule only counts its own route:
  * sharing one window per caller would spend a tight ceiling on ordinary
  * browsing, and let a long window hold every later request to that ceiling.
+ *
+ * `callerKey` is dropped for an instance-scoped rule, which is the whole point
+ * of one: every caller lands in the same window.
  */
-export function bucketForRoute(pattern: string, method: string, job = false): string {
+export function windowKey(
+  callerKey: string,
+  pattern: string,
+  method: string,
+  job = false,
+): string {
   const rule = matchRule(pattern, method, job);
-  return rule ? `${rule.pattern}|${rule.methods?.join(",") ?? "*"}` : "default";
+  if (!rule) return `${callerKey}|default`;
+
+  const bucket = `${rule.pattern}|${rule.methods?.join(",") ?? "*"}`;
+  return rule.instance ? `instance|${bucket}` : `${callerKey}|${bucket}`;
 }
 
 const BEARER_PREFIX = "bearer ";
@@ -334,7 +362,7 @@ export function checkRateLimit(
 
   const job = jobToken !== null;
   const decision = limiter.check(
-    `${key}|${bucketForRoute(request.pattern, request.method, job)}`,
+    windowKey(key, request.pattern, request.method, job),
     ruleForRoute(request.pattern, request.method, job),
   );
   return { key, ...decision };

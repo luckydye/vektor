@@ -14,12 +14,11 @@ import { and, eq } from "drizzle-orm";
 import { publishAuthorizationChange } from "#acl/events.ts";
 import { sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import type { auth } from "#auth";
-import { config } from "#config";
+import { config, isNoAuthMode } from "#config";
 import type { Database } from "#db/client/connection.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { account, user } from "#db/schema/auth.ts";
-import { isNoAuthMode } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 
 const GROUPS_CLAIM = "wiki_groups";

@@ -4,6 +4,8 @@ import type { Category, DocumentAccessEntry, ShareLink, User } from "#api/client
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { roleBadgeClass, roleLabel } from "#utils/accessToken.ts";
+import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
 import "./AvatarElement.ts";
@@ -24,11 +26,13 @@ interface SelectOption {
 
 const CATEGORY_SCOPE_PREFIX = "category:";
 
-/** The two page scopes, worded identically for an invite and for a link. */
-const PAGE_SCOPE_OPTIONS: SelectOption[] = [
-  { value: "document", label: "This page" },
-  { value: "document_tree", label: "This page and child pages" },
-];
+/** The two document scopes, worded identically for an invite and for a link. */
+function documentScopeOptions(): SelectOption[] {
+  return [
+    { value: "document", label: t("This document") },
+    { value: "document_tree", label: t("This document and child documents") },
+  ];
+}
 
 /** Presets rather than a number field: the API requires an expiry and caps it at a year. */
 const LINK_EXPIRY_OPTIONS: SelectOption[] = [
@@ -42,31 +46,11 @@ const LINK_EXPIRY_OPTIONS: SelectOption[] = [
 /** The API's floor, so a password it would refuse is caught before the request. */
 const MIN_LINK_PASSWORD_LENGTH = 8;
 
-/** Only `primary` and `neutral` follow the theme, so the roles separate by weight. */
-function roleBadgeClass(role: string) {
-  const map: Record<string, string> = {
-    owner: "border-primary-300 bg-primary-100 text-primary-800",
-    editor: "border-primary-200 bg-primary-50 text-primary-700",
-    viewer: "border-neutral-200 bg-neutral-50 text-neutral-600",
-  };
-  return map[role] ?? map.viewer;
-}
-
-/** Phrased as what the person may do, not as a role name. */
-function roleLabel(role: string) {
-  const map: Record<string, string> = {
-    owner: "Owner",
-    editor: "Can edit",
-    viewer: "Can view",
-  };
-  return map[role] ?? role;
-}
-
 /** What a link opens, in the same words as the scope select above it. */
 function linkScopeLabel(resourceType: string) {
   return (
-    PAGE_SCOPE_OPTIONS.find((option) => option.value === resourceType)?.label ??
-    "This page"
+    documentScopeOptions().find((option) => option.value === resourceType)?.label ??
+    t("This document")
   );
 }
 
@@ -368,17 +352,17 @@ export function DocumentShareDialog(props: Props) {
   function accessSourceLabel(entry: DocumentAccessEntry): string {
     const { resourceType, resourceLabel, inherited } = entry.via;
     return resourceType === "document"
-      ? "Granted on this page"
+      ? "Granted on this document"
       : resourceType === "document_tree"
         ? inherited
-          ? `Via page tree: ${resourceLabel || "parent page"}`
-          : "Granted on this page and child pages"
+          ? `Via document tree: ${resourceLabel || "parent document"}`
+          : "Granted on this document and child documents"
         : resourceType === "category"
           ? `Via category: ${resourceLabel || "category"}`
           : "Via space membership";
   }
 
-  /** Left off when the group heading already says it: a plain grant on this page. */
+  /** Left off when the group heading already says it: a plain grant on this document. */
   function accessDetail(entry: DocumentAccessEntry): string | undefined {
     if (!entry.via.inherited && entry.via.resourceType === "document") return undefined;
     return accessSourceLabel(entry);
@@ -424,7 +408,7 @@ export function DocumentShareDialog(props: Props) {
       ? undefined
       : [
           {
-            label: "Category",
+            label: t("Category"),
             options: categories().map((category) => ({
               value: `${CATEGORY_SCOPE_PREFIX}${category.id}`,
               label: category.name,
@@ -660,7 +644,7 @@ export function DocumentShareDialog(props: Props) {
             <QuietSelect
               value={scope()}
               ariaLabel="What the invite applies to"
-              options={PAGE_SCOPE_OPTIONS}
+              options={documentScopeOptions()}
               groups={categoryScopeGroups()}
               onChange={setScope}
             />
@@ -691,7 +675,7 @@ export function DocumentShareDialog(props: Props) {
                 when={sortedDocumentAccess().length > 0}
                 fallback={
                   <p class="mt-4xs text-neutral-400 text-size-small">
-                    No one has access to this page yet.
+                    No one has access to this document yet.
                   </p>
                 }
               >
@@ -700,7 +684,7 @@ export function DocumentShareDialog(props: Props) {
                     {(entry) => <PermissionRow entry={entry} />}
                   </For>
 
-                  {/* Folded away by default: access this page did not grant, and
+                  {/* Folded away by default: access this document did not grant, and
                       that this dialog cannot take back. */}
                   <Show when={inheritedAccess().length > 0}>
                     <GroupToggle
@@ -756,7 +740,7 @@ export function DocumentShareDialog(props: Props) {
                 <QuietSelect
                   value={linkScope()}
                   ariaLabel="What the link opens"
-                  options={PAGE_SCOPE_OPTIONS}
+                  options={documentScopeOptions()}
                   onChange={(value) => setLinkScope(value as DocumentPermissionResource)}
                 />
                 <RowDivider />

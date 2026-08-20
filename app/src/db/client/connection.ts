@@ -5,8 +5,10 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { config, isInMemoryDb } from "#config";
 
-const DEFAULT_AUTH_DATABASE_PATH = path.resolve("data", "auth.db");
-const LOCAL_SPACES_DIRECTORY = path.resolve("data", "spaces");
+/** Resolved per call rather than at import, so `DATA_DIR` is read after config. */
+function dataDirectory(): string {
+  return path.resolve(config().DATA_DIR?.trim() || "data");
+}
 
 export type Database = ReturnType<typeof drizzle>;
 
@@ -46,7 +48,10 @@ function authTokenFromUrl(databaseUrl: string): string | undefined {
 
 export function getAuthDatabaseUrl(): string {
   if (isInMemoryDb()) return "file::memory:";
-  return config().DATABASE_URL?.trim() || pathToFileURL(DEFAULT_AUTH_DATABASE_PATH).href;
+  return (
+    config().DATABASE_URL?.trim() ||
+    pathToFileURL(path.join(dataDirectory(), "auth.db")).href
+  );
 }
 
 export function isLocalDatabaseMode(): boolean {
@@ -54,7 +59,7 @@ export function isLocalDatabaseMode(): boolean {
 }
 
 export function getLocalSpacesDirectory(): string {
-  return LOCAL_SPACES_DIRECTORY;
+  return path.join(dataDirectory(), "spaces");
 }
 
 export function getLocalSpaceDatabaseUrl(spaceId: string): string {
@@ -130,7 +135,12 @@ export function createDatabase(databaseUrl: string): Database {
  * which are dev- and test-only — `IN_MEMORY_DB` is refused under NODE_ENV=production.
  */
 export function supportsTransactions(database: object): boolean {
-  return !memoryBacked.has(database);
+  return !isMemoryBackedDatabase(database);
+}
+
+/** Whether this connection *is* the data: closing it drops the database. */
+export function isMemoryBackedDatabase(database: object): boolean {
+  return memoryBacked.has(database);
 }
 
 export function closeDatabase(database: Database): void {

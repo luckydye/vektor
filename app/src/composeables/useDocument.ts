@@ -204,9 +204,13 @@ export function useDocument(
         // user actually edits, so an untouched seeded title never arrives there.
         const title = pendingTitle || params.get("title")?.trim() || defaultTitle;
         const category = params.get("category");
+        // `?parent=` is how the command palette files a draft under the document
+        // the user was reading when they created it.
+        const parentId = params.get("parent");
         const response = await api.documents.post(spaceId, {
           content,
           type: documentType(),
+          ...(parentId ? { parentId } : {}),
           properties: {
             title,
             ...(category ? { category } : {}),

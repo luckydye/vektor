@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import type { ApiContext } from "#api/server/types.ts";
+import { withApiErrorHandling } from "#api/http.ts";
+import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
+import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -10,7 +12,6 @@ import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessT
 import type { DocumentWithProperties } from "#db/space/documents.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 
 /**
  * The access token a Basic-auth CalDAV client authenticated with.
@@ -144,28 +145,37 @@ export function parseICalEvent(icalText: string): ParsedICalEvent | null {
     const value = trimmed.slice(colonIdx + 1);
     const key = keyPart.split(";")[0];
 
-    if (key === "SUMMARY") summary = value.replace(/\\([\\;,])/g, "$1");
-    else if (key === "DTSTART") start = icalDateToISO(value, keyPart);
-    else if (key === "DTEND") end = icalDateToISO(value, keyPart);
+    if (key === "SUMMARY") summary = unescapeICalText(value);
+    else if (key === "DTSTART" || key === "DTEND") {
+      const parsed = icalDateToISO(value, keyPart);
+      if (!parsed) return null;
+      if (key === "DTSTART") start = parsed;
+      else end = parsed;
+    }
   }
 
   if (!summary || !start) return null;
   return { summary, start, end: end ?? start };
 }
 
-function icalDateToISO(dateStr: string, keyPart: string): string {
+/** Returns null for anything that is not a well-formed iCal date or date-time. */
+function icalDateToISO(dateStr: string, keyPart: string): string | null {
   if (keyPart.includes("VALUE=DATE")) {
     const c = dateStr.replace(/\D/g, "");
+    if (!/^\d{8}/.test(c)) return null;
     return `${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6, 8)}T00:00:00.000Z`;
   }
 
-  const c = dateStr.replace(/[^0-9T]/g, "");
-  const y = +c.slice(0, 4),
-    mo = +c.slice(4, 6) - 1,
-    d = +c.slice(6, 8);
-  const h = +c.slice(9, 11),
-    mi = +c.slice(11, 13),
-    s = +c.slice(13, 15) || 0;
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?$/.exec(
+    dateStr.replace(/[^0-9T]/g, ""),
+  );
+  if (!match) return null;
+  const y = +match[1],
+    mo = +match[2] - 1,
+    d = +match[3];
+  const h = +match[4],
+    mi = +match[5],
+    s = +(match[6] ?? 0);
 
   if (dateStr.endsWith("Z")) {
     return new Date(Date.UTC(y, mo, d, h, mi, s)).toISOString();
@@ -204,6 +214,51 @@ function icalDateToISO(dateStr: string, keyPart: string): string {
   // Floating time — preserve wall-clock without timezone conversion
   const p = (n: number) => n.toString().padStart(2, "0");
   return `${y}-${p(mo + 1)}-${p(d)}T${p(h)}:${p(mi)}:${p(s)}.000`;
+}
+
+/** RFC 5545 TEXT escaping — without it a title's newline injects arbitrary ICS. */
+function escapeICalText(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/[;,]/g, "\\$&")
+    .replace(/\r\n|[\r\n]/g, "\\n");
+}
+
+function unescapeICalText(value: string): string {
+  return value.replace(/\\([\\;,nN])/g, (_, c) => (c === "n" || c === "N" ? "\n" : c));
+}
+
+/** Fold a content line at 75 octets, never splitting a multi-byte character. */
+function foldICalLine(line: string): string {
+  const bytes = Buffer.from(line, "utf8");
+  if (bytes.length <= 75) return line;
+
+  const chunks: string[] = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    const prefix = chunks.length ? " " : "";
+    let size = Math.min(75 - prefix.length, bytes.length - offset);
+    while (size > 1 && (bytes[offset + size] & 0xc0) === 0x80) size--;
+    chunks.push(prefix + bytes.toString("utf8", offset, offset + size));
+    offset += size;
+  }
+  return chunks.join("\r\n");
+}
+
+/**
+ * Whether a stored date property can be serialized at all. Property values are
+ * user-controlled strings, and one that is not an ISO date used to throw a
+ * RangeError that 500'd the whole feed. `Date` alone is too lenient a test — it
+ * happily reads `"5"` as a year and emits `DTSTART:5`.
+ */
+function isValidDateString(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(
+      value,
+    ) &&
+    !Number.isNaN(new Date(value).getTime()) &&
+    !Number.isNaN(new Date(value.endsWith("Z") ? value : `${value}Z`).getTime())
+  );
 }
 
 function formatICalDateOnly(date: Date): string {
@@ -263,17 +318,18 @@ function defaultEndISO(startISO: string): string {
  */
 export function documentToICal(doc: DocumentWithProperties): string | null {
   const titleValue = doc.properties.title;
-  const title = (titleValue ? propertyValueToText(titleValue) : doc.slug).replace(
-    /[\\;,]/g,
-    "\\$&",
-  );
+  const title = escapeICalText(titleValue ? propertyValueToText(titleValue) : doc.slug);
 
   if (!doc.properties.eventStart) return null;
 
   const startISO = propertyValueToText(doc.properties.eventStart);
-  const endISO = doc.properties.eventEnd
+  if (!isValidDateString(startISO)) return null;
+
+  const storedEnd = doc.properties.eventEnd
     ? propertyValueToText(doc.properties.eventEnd)
-    : defaultEndISO(startISO);
+    : null;
+  const endISO =
+    storedEnd && isValidDateString(storedEnd) ? storedEnd : defaultEndISO(startISO);
   const dtstamp = formatICalDateTime(doc.updatedAt);
 
   const lines = [
@@ -295,12 +351,12 @@ export function documentToICal(doc: DocumentWithProperties): string | null {
       .trim()
       .slice(0, 500);
     if (plainText) {
-      lines.push(`DESCRIPTION:${plainText.replace(/\n/g, "\\n")}`);
+      lines.push(`DESCRIPTION:${escapeICalText(plainText)}`);
     }
   }
 
   lines.push("END:VEVENT", "END:VCALENDAR");
-  return lines.join("\r\n");
+  return lines.map(foldICalLine).join("\r\n");
 }
 
 export const CORS_HEADERS = {
@@ -438,4 +494,44 @@ export async function requireCalDAVUserAndAccess(
   }
 
   return caldavUser;
+}
+
+/**
+ * Authorize the caller for one document inside a space they already passed the
+ * space-level check for. Space access is not document access: without this the
+ * route hands out documents a per-document ACL withholds, and misses the
+ * archived-document rule the guard layer raises. Token callers are authorized
+ * against the token's grants, matching {@link authorizeCalDAVToken}.
+ *
+ * @returns The refusal to return, or null when the caller may proceed.
+ */
+export async function authorizeCalDAVDocument(
+  caldavUser: CalDAVUser,
+  spaceId: string,
+  documentId: string,
+  requiredRole: Permission,
+): Promise<Response | null> {
+  try {
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      caldavUser.token?.result.tokenId ?? caldavUser.id,
+      requiredRole,
+    );
+  } catch (error) {
+    if (error instanceof Response && error.status === 404) {
+      return new Response("Not Found", { status: 404, headers: CORS_HEADERS });
+    }
+    return calDavForbidden();
+  }
+  return null;
+}
+
+/**
+ * Answer an unexpected throw with the standard error handler instead of a bare
+ * 500, so one malformed stored value cannot take a polling calendar client's
+ * whole sync down.
+ */
+export function caldavRoute(handler: ApiRouteHandler): ApiRouteHandler {
+  return (context) => withApiErrorHandling(() => handler(context));
 }

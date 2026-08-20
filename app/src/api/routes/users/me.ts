@@ -1,4 +1,4 @@
-import { canCreateSpace, userAdminGroups } from "#acl/instanceGroups.ts";
+import { canCreateSpace, isInstanceAdmin, userAdminGroups } from "#acl/identity.ts";
 import { jsonResponse, requireUser, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
@@ -17,5 +17,9 @@ export const GET: ApiRouteHandler = (context) =>
       // The groups a "gain access" grant is written to, so the client names one
       // it is already in rather than learning the operator's whole list.
       adminGroups: await userAdminGroups(user.id),
+      // Not `adminGroups.length > 0`: no-auth's local account administers the
+      // instance without being in any group, and the client must not have to
+      // know that.
+      isAdmin: await isInstanceAdmin(user.id),
     });
   }, "Failed to get current user");

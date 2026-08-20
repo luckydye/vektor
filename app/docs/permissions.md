@@ -189,6 +189,12 @@ group ids. Unset, creation is open to every signed-in user. `public` is dropped 
 list rather than honoured — accepting it would make a configured allow list behave as if
 it were absent.
 
+How many is a second gate, because a space is not only a grant: each one allocates a
+database of its own, so an uncapped count is the instance's disk and file descriptors
+handed to whoever can sign up. `VEKTOR_MAX_SPACES_PER_USER` caps the spaces one user
+created and still holds — 50 unless set, and uncapped at `0`. Deleting a space frees its
+slot; instance admins are exempt, since they already own every space that exists.
+
 ## Administering the instance
 
 `ADMIN_GROUPS` names the groups whose members are owner on every space that exists.
@@ -202,6 +208,12 @@ an admin reaches this way with `adminAccess`, and the overview shows them locked
 standing access is an ordinary `POST /spaces/:spaceId/permissions` grant — no separate
 endpoint — written to the admin group rather than to the person, so it survives whoever
 administers the instance next and shows up in the members list like any other grant.
+
+An admin also reads the user register — `GET /users` unscoped, the `/spaces?tab=users`
+page — which is every account with its email and group claim. An admin already owns every
+space, so it tells them nothing they could not read a space at a time. The same route
+answers everyone else an empty list, and its scoped forms (`?id=`, `?spaceId=`) carry no
+email at all; emptiness rather than a refusal is what every other listing here does.
 
 Only a user identity can be an admin. An access token's authority stays the grants its
 own principal holds, so a token minted by an admin is not a skeleton key for the

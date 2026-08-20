@@ -73,14 +73,18 @@ export const GET: ApiRouteHandler = (context) =>
         // The one place a share link counts: a shared page's images and
         // attachments are requested from here, by the cookie it handed back.
         await authenticateDocumentAccess(
-          context,
+          context.var.credentials,
           spaceId,
           documentId,
           Permission.VIEWER,
           { shareLinks: true },
         );
       } else {
-        await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+        await authenticateSpaceAccess(
+          context.var.credentials,
+          spaceId,
+          Permission.VIEWER,
+        );
       }
 
       // Get file extension from the path
@@ -206,7 +210,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
       const documentId = await getFileDocumentId(spaceId, path);
       await authenticateJobTokenOrSpaceRole(
-        context,
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,

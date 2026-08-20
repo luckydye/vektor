@@ -312,7 +312,6 @@ export interface CanvasExtensionHost {
   createCollaboration?: CanvasCollaborationFactory;
   beginEdit: (session: CanvasEditSession) => void;
   openUrl: (url: string) => void;
-  dispatch: (name: string, detail: unknown) => void;
   service: <T>(key: symbol) => T;
 }
 

@@ -286,6 +286,24 @@ describe("checkRateLimit", () => {
     expect(checkRateLimit(run, limiter)).toMatchObject({ allowed: true, remaining: 29 });
   });
 
+  it("counts space creation against one window for the whole instance", () => {
+    const limiter = new RateLimiter();
+    const create = { ...request, pattern: "/api/v1/spaces", method: "POST" };
+    // A fresh account is a caller key away, so the ceiling has to be shared.
+    const other = { ...create, ip: "9.9.9.9", cookie: "vektor.session_token=someone" };
+
+    for (let i = 0; i < 10; i++) {
+      expect(checkRateLimit(i % 2 ? create : other, limiter)?.allowed).toBe(true);
+    }
+    expect(checkRateLimit(create, limiter)).toMatchObject({ allowed: false });
+    expect(checkRateLimit(other, limiter)).toMatchObject({ allowed: false });
+
+    // Only that route: listing spaces is untouched by a full creation window.
+    expect(checkRateLimit({ ...create, method: "GET" }, limiter)).toMatchObject({
+      allowed: true,
+    });
+  });
+
   it("counts each rule against its own window", () => {
     const limiter = new RateLimiter();
     const completions = {
