@@ -13,7 +13,7 @@
  * a thrown Response confuses "not allowed" with "not authenticated".
  */
 
-import type { AccessDecision, AclTarget } from "#acl/guards.ts";
+import type { AccessDecision, AclTarget, RequestCredentials } from "#acl/guards.ts";
 import type { ResolvedIdentity } from "#acl/identity.ts";
 import type { Permission } from "#acl/permissions.ts";
 import { forbiddenResponse, notFoundResponse, unauthorizedResponse } from "#api/http.ts";
@@ -22,7 +22,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { hasCredentialGrant } from "#db/space/accessTokens.ts";
 
 /** The three things a guard reads off a request, and nothing more. */
-export function requestCredentials(context: ApiContext) {
+export function requestCredentials(context: ApiContext): RequestCredentials {
   return {
     jobToken: context.req.raw.headers.get("X-Job-Token"),
     authorization: context.req.raw.headers.get("Authorization"),

@@ -24,7 +24,6 @@
  * {@link verifyRevisionAccess} ask about a capability rather than a resource.
  */
 
-import type { RequestCredentials } from "#acl/credentials.ts";
 import {
   type AccessIdentity,
   principalOf,
@@ -66,6 +65,24 @@ import { parseJobToken } from "#jobs/jobToken.ts";
 /** Distinguishes an access decision from a failure to read the ACL. */
 export function isAccessDenied(error: unknown): boolean {
   return error instanceof Response;
+}
+
+/**
+ * What a request carries that a guard may authenticate, as plain data.
+ *
+ * The `authenticate*` family used to take a Hono context, which welded the
+ * credential-resolution core to the HTTP layer it answers to for the sake of
+ * three reads. This is those three reads, so the core can be called — and
+ * tested — without constructing a request, and `#api/acl.ts` is the only place
+ * that knows a request is where they came from.
+ */
+export interface RequestCredentials {
+  /** `X-Job-Token`: a server-minted HMAC credential. */
+  jobToken?: string | null;
+  /** The raw `Authorization` header, which may carry a space access token. */
+  authorization?: string | null;
+  /** The session user, when the request edge resolved one. */
+  user?: NonNullable<App.Locals["user"]> | null;
 }
 
 /** A resource to gate a request on. */
