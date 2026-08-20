@@ -135,7 +135,12 @@ export function createDatabase(databaseUrl: string): Database {
  * which are dev- and test-only — `IN_MEMORY_DB` is refused under NODE_ENV=production.
  */
 export function supportsTransactions(database: object): boolean {
-  return !memoryBacked.has(database);
+  return !isMemoryBackedDatabase(database);
+}
+
+/** Whether this connection *is* the data: closing it drops the database. */
+export function isMemoryBackedDatabase(database: object): boolean {
+  return memoryBacked.has(database);
 }
 
 export function closeDatabase(database: Database): void {

@@ -141,6 +141,12 @@ group ids. Unset, creation is open to every signed-in user. `public` is dropped 
 list rather than honoured — accepting it would make a configured allow list behave as if
 it were absent.
 
+How many is a second gate, because a space is not only a grant: each one allocates a
+database of its own, so an uncapped count is the instance's disk and file descriptors
+handed to whoever can sign up. `VEKTOR_MAX_SPACES_PER_USER` caps the spaces one user
+created and still holds — 50 unless set, and uncapped at `0`. Deleting a space frees its
+slot; instance admins are exempt, since they already own every space that exists.
+
 ## Administering the instance
 
 `ADMIN_GROUPS` names the groups whose members are owner on every space that exists.

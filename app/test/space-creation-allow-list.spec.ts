@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { canCreateSpace } from "#acl/identity.ts";
 import { spaceCreationGroups } from "#acl/instanceGroups.ts";
 import { LOCAL_USER_ID } from "#config";
+import { initializeDatabases } from "#db/client/db.ts";
 
 function setAllowList(value: string | undefined) {
   if (value === undefined) {
@@ -10,6 +11,10 @@ function setAllowList(value: string | undefined) {
   }
   process.env.VEKTOR_SPACE_CREATION_GROUPS = value;
 }
+
+// Every decision below resolves an identity, which reads the auth database the
+// whole run shares; whichever spec runs first has to create it.
+beforeAll(() => initializeDatabases());
 
 afterEach(() => {
   setAllowList(undefined);

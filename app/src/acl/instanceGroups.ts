@@ -1,8 +1,8 @@
 /**
- * The two gates that cannot be ACL grants, because neither has a resource to
- * hang off: who may create a space that does not exist yet, and who administers
- * every space at once. Both are operator configuration — a comma-separated
- * allow list of OAuth group ids.
+ * The gates that cannot be ACL grants, because none has a resource to hang off:
+ * who may create a space that does not exist yet, how many they may end up
+ * owning, and who administers every space at once. All three are operator
+ * configuration — a comma-separated allow list of OAuth group ids, or a count.
  *
  * Configuration only: whether a caller is in one of these lists is asked in
  * `#acl/identity.ts`, so the resolution path can read this without it depending
@@ -38,6 +38,21 @@ function configuredGroups(raw: string | undefined): string[] | null {
  */
 export function spaceCreationGroups(): string[] | null {
   return configuredGroups(config().SPACE_CREATION_GROUPS);
+}
+
+/** Spaces one user may have created, when the operator configured no other. */
+const DEFAULT_MAX_SPACES_PER_USER = 50;
+
+/**
+ * How many spaces one user may have created and still own; `0` lifts the cap.
+ * Unset cannot mean "unlimited" the way it does above: every space allocates a
+ * database of its own, so no ceiling is a disk and file-descriptor budget
+ * handed to whoever can sign up.
+ */
+export function maxSpacesPerUser(): number {
+  const configured = config().MAX_SPACES_PER_USER?.trim();
+  if (!configured || !/^\d+$/.test(configured)) return DEFAULT_MAX_SPACES_PER_USER;
+  return Number.parseInt(configured, 10);
 }
 
 /**

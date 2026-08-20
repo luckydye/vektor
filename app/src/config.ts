@@ -73,6 +73,20 @@ export function config() {
        * appear in the 429 log line (`ip:<addr>`, `token:<hash>`).
        */
       RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
+      /**
+       * How many spaces one user may have created and still own, `50` when
+       * unset and unlimited at `0`. Each space allocates its own database, so
+       * an unbounded count is a disk and file-descriptor budget handed to
+       * whoever signs up.
+       */
+      MAX_SPACES_PER_USER: process.env.VEKTOR_MAX_SPACES_PER_USER,
+      /**
+       * How many space databases stay open at once, `128` when unset and
+       * unlimited at `0`. Reached, the least recently used idle connections are
+       * closed; the next request for one reopens it.
+       */
+      MAX_OPEN_SPACE_DBS: process.env.VEKTOR_MAX_OPEN_SPACE_DBS,
+
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */

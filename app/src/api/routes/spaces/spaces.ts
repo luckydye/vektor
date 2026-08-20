@@ -1,5 +1,5 @@
 import { extractAccessToken } from "#acl/guards.ts";
-import { canCreateSpace } from "#acl/identity.ts";
+import { spaceCreationRejection } from "#acl/identity.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -51,9 +51,8 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const user = requireUser(context);
-      if (!(await canCreateSpace(user.id))) {
-        throw forbiddenResponse("You are not allowed to create spaces");
-      }
+      const rejection = await spaceCreationRejection(user.id);
+      if (rejection) throw forbiddenResponse(rejection);
 
       const body = await parseJsonBody(context.req.raw);
       const { name, slug, preferences } = body;

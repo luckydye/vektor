@@ -506,6 +506,27 @@ export async function listIndexedSpaces(): Promise<ActiveSpaceIndexRecord[]> {
     .filter((record): record is ActiveSpaceIndexRecord => record !== null);
 }
 
+/**
+ * How many spaces this user created that still hold a database. Counted from
+ * the index rather than from owner grants: those live one per space database,
+ * and this gates creation on a path that must not open every space to answer.
+ * A deleted space frees its slot; a disabled one still occupies its storage.
+ */
+export async function countSpacesCreatedBy(userId: string): Promise<number> {
+  const counted = await one(
+    getAuthDb()
+      .select({ spaces: sql<number>`count(*)` })
+      .from(spaceIndex)
+      .where(
+        and(
+          eq(spaceIndex.createdBy, userId),
+          inArray(spaceIndex.status, ["active", "disabled"]),
+        ),
+      ),
+  );
+  return counted?.spaces ?? 0;
+}
+
 export async function listActiveSpaceIds(): Promise<string[]> {
   return (await listIndexedSpaces()).map(({ spaceId }) => spaceId);
 }

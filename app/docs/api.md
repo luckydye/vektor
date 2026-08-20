@@ -176,9 +176,15 @@ have tighter limits that those settings cannot raise:
 |---|---|
 | `POST /spaces/:spaceId/search/rebuild` | 5/hour |
 | `POST /chat/completions`, `POST /chat/acp` | 30/min |
+| `POST /spaces` | 10/min, instance-wide |
 | `POST /spaces/:spaceId/jobs/run` | 30/min |
 | `POST /spaces/:spaceId/workflows/runs` | 30/min |
 | `GET /spaces/:spaceId/uploads/*path` | 300/min |
+
+`POST /spaces` is the exception to the keying above: every caller counts against one
+shared window, because each space allocates a database file on the host and a per-caller
+ceiling is spent by registering again. How many spaces one account may hold is a separate
+cap — see `VEKTOR_MAX_SPACES_PER_USER` in `permissions.md`.
 
 Windows are held in memory per process, so a restart clears outstanding ones: this is
 load-shedding rather than quota accounting. `VEKTOR_RATE_LIMIT=0` disables it entirely,

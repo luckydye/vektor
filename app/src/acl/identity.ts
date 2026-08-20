@@ -7,10 +7,16 @@
  * not to each check inside it.
  */
 
-import { adminGroups, adminGroupsIn, spaceCreationGroups } from "#acl/instanceGroups.ts";
+import {
+  adminGroups,
+  adminGroupsIn,
+  maxSpacesPerUser,
+  spaceCreationGroups,
+} from "#acl/instanceGroups.ts";
 import { PUBLIC_GROUP } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#config";
+import { countSpacesCreatedBy } from "#db/auth/spaceIndex.ts";
 import { createRequestScope } from "#utils/requestScope.ts";
 
 /** An identity a decision can be made against, with nothing left to look up. */
@@ -123,15 +129,37 @@ export async function userAdminGroups(userId: string): Promise<string[]> {
  * already delete and re-own every space that exists.
  */
 export async function canCreateSpace(userId: string): Promise<boolean> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) return true;
+  return (await spaceCreationRejection(userId)) === null;
+}
 
-  const allowed = spaceCreationGroups();
-  if (allowed === null) return true;
+/**
+ * Why this user may not create a space, phrased for the caller, or `null` when
+ * they may. Two gates rather than one: the allow list says who, the quota says
+ * how many, and a user who reaches the second is told so instead of being read
+ * as unauthorized.
+ */
+export async function spaceCreationRejection(userId: string): Promise<string | null> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) return null;
 
   const identity = await resolveIdentity(userId);
-  if (allowed.length > 0 && identity.groups.some((group) => allowed.includes(group))) {
-    return true;
+  // An admin owns every space that exists; a cap on the ones they created would
+  // bound nothing.
+  if (identity.isInstanceAdmin) return null;
+
+  if (!allowedToCreateSpaces(identity)) {
+    return "You are not allowed to create spaces";
   }
 
-  return identity.isInstanceAdmin;
+  const limit = maxSpacesPerUser();
+  if (limit > 0 && (await countSpacesCreatedBy(userId)) >= limit) {
+    return `You have reached the limit of ${limit} spaces; delete one to create another`;
+  }
+
+  return null;
+}
+
+function allowedToCreateSpaces(identity: ResolvedIdentity): boolean {
+  const allowed = spaceCreationGroups();
+  if (allowed === null) return true;
+  return allowed.length > 0 && identity.groups.some((group) => allowed.includes(group));
 }

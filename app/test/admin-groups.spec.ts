@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { canCreateSpace, isInstanceAdmin, userAdminGroups } from "#acl/identity.ts";
 import { adminGroups } from "#acl/instanceGroups.ts";
 import { LOCAL_USER_ID } from "#config";
+import { getAuthDb, initializeDatabases } from "#db/client/db.ts";
 import { createId } from "#db/ids.ts";
+import { spaceIndex, user } from "#db/schema/auth.ts";
 
 function setAdmins(value: string | undefined) {
   if (value === undefined) {
@@ -12,11 +14,52 @@ function setAdmins(value: string | undefined) {
   process.env.VEKTOR_ADMIN_GROUPS = value;
 }
 
+// Every decision below resolves an identity, which reads the auth database the
+// whole run shares; whichever spec runs first has to create it.
+beforeAll(() => initializeDatabases());
+
 afterEach(() => {
   setAdmins(undefined);
   delete process.env.VEKTOR_SPACE_CREATION_GROUPS;
   delete process.env.VEKTOR_NO_AUTH;
+  delete process.env.VEKTOR_MAX_SPACES_PER_USER;
 });
+
+/** A signed-up account carrying `groups`, which only the IdP claim ever sets. */
+async function createUserInGroups(groups: string[]): Promise<string> {
+  const id = createId("user");
+  const now = new Date();
+  await getAuthDb()
+    .insert(user)
+    .values({
+      id,
+      name: id,
+      email: `${id}@example.com`,
+      groups: JSON.stringify(groups),
+      createdAt: now,
+      updatedAt: now,
+    });
+  return id;
+}
+
+/** A space this user created, as the quota counts them. */
+async function recordSpaceCreatedBy(createdBy: string): Promise<void> {
+  const spaceId = createId("space");
+  const now = new Date();
+  await getAuthDb()
+    .insert(spaceIndex)
+    .values({
+      id: createId("database"),
+      location: `memory:${spaceId}`,
+      status: "active",
+      spaceId,
+      name: spaceId,
+      slug: spaceId,
+      createdBy,
+      createdAt: now,
+      updatedAt: now,
+    });
+}
 
 describe("adminGroups", () => {
   // The opposite default to the creation allow list: an absent setting there
@@ -109,6 +152,21 @@ describe("canCreateSpace with an admin group", () => {
     process.env.VEKTOR_SPACE_CREATION_GROUPS = "space-admins";
     setAdmins("vektor-admins");
     await expect(canCreateSpace(LOCAL_USER_ID)).resolves.toBe(true);
+  });
+
+  // The cap bounds what one account can allocate; an admin already owns every
+  // space that exists, so it would bound nothing.
+  it("lets an admin past the per-user space cap", async () => {
+    setAdmins("vektor-admins");
+    process.env.VEKTOR_MAX_SPACES_PER_USER = "1";
+
+    const admin = await createUserInGroups(["vektor-admins"]);
+    const member = await createUserInGroups([]);
+    await recordSpaceCreatedBy(admin);
+    await recordSpaceCreatedBy(member);
+
+    await expect(canCreateSpace(admin)).resolves.toBe(true);
+    await expect(canCreateSpace(member)).resolves.toBe(false);
   });
 
   it("still denies a non-admin outside the allow list", async () => {
