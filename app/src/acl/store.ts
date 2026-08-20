@@ -1610,35 +1610,36 @@ export async function filterReadableResources(
 }
 
 /**
- * Direct (non-group) userIds granted access to a document, document tree, or
- * category in this space. Used to resolve display names for members-table
- * rows that only hold a resource-scoped grant — they wouldn't otherwise
- * appear anywhere `getSpaceMembersWithGroups` (space-level only) looks.
+ * Everyone granted access to a document, document tree, or category in this
+ * space, as ids to resolve elsewhere: userIds directly, groupIds for the
+ * grants that name a group. Used to resolve display names for people who hold
+ * only a resource-scoped grant — they appear nowhere
+ * `getSpaceMembersWithGroups` (space-level only) looks, and a whole team can
+ * reach a space through one group grant on a category.
  */
-export async function getResourceScopedGranteeUserIds(
+export async function getResourceScopedGrantees(
   spaceId: string,
-): Promise<Set<string>> {
+): Promise<{ userIds: Set<string>; groupIds: Set<string> }> {
   const { db } = await openSpaceStore(spaceId);
 
   const rows = await many(
     db
-      .selectDistinct({ userId: acl.userId })
+      .selectDistinct({ userId: acl.userId, groupId: acl.groupId })
       .from(acl)
       .where(
-        and(
-          inArray(acl.resourceType, [
-            ResourceType.DOCUMENT,
-            ResourceType.DOCUMENT_TREE,
-            ResourceType.CATEGORY,
-          ]),
-          isNull(acl.groupId),
-        ),
+        inArray(acl.resourceType, [
+          ResourceType.DOCUMENT,
+          ResourceType.DOCUMENT_TREE,
+          ResourceType.CATEGORY,
+        ]),
       ),
   );
 
   const userIds = new Set<string>();
+  const groupIds = new Set<string>();
   for (const row of rows) {
-    if (row.userId) userIds.add(row.userId);
+    if (row.groupId) groupIds.add(row.groupId);
+    else if (row.userId) userIds.add(row.userId);
   }
-  return userIds;
+  return { userIds, groupIds };
 }

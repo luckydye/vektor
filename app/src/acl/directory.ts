@@ -30,26 +30,32 @@ export interface GroupPeer {
   image: string | null;
 }
 
-/**
- * Users who share at least one real OAuth group with `userId`.
- *
- * A shared IdP group is the boundary within which people may see one another
- * (name + email) for invite suggestions; there is deliberately no global user
- * directory. The synthetic `public` group is excluded — everyone is in it, so it
- * would leak the instance — and a user with no real groups sees nobody.
- */
-export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[]> {
-  const authDb = getAuthDb();
-  if (!authDb) return [];
+/** A user row as the group expansion below hands it out. */
+interface GroupMemberRow {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  /** The queried groups this user genuinely carries. */
+  groups: string[];
+}
 
-  const groups = (await getUserGroups(userId)).filter((g) => g !== PUBLIC_GROUP);
-  if (groups.length === 0) return [];
+/**
+ * Everyone whose stored group claim names at least one of `groupIds`.
+ *
+ * The single place a group id becomes people: an ACL grant to a group only says
+ * which claim opens the door, so every caller that needs the people behind such
+ * a grant — a space's members, a document's, the invite typeahead — resolves it
+ * here. Nothing is found for the synthetic `public` group, which no stored claim
+ * carries.
+ */
+async function usersInGroups(groupIds: readonly string[]): Promise<GroupMemberRow[]> {
+  const authDb = getAuthDb();
+  if (!authDb || groupIds.length === 0) return [];
 
   // Group names are sanitized to GROUP_NAME_PATTERN (no `"`), so the JSON-quoted
   // token match below is exact per group and cannot be fooled by a name that is
   // a prefix of another (`"dev"` never matches inside `"developers"`).
-  const conditions = groups.map((groupId) => like(user.groups, `%"${groupId}"%`));
-
   const rows = await many(
     authDb
       .select({
@@ -60,38 +66,59 @@ export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[
         groups: user.groups,
       })
       .from(user)
-      .where(or(...conditions)),
+      .where(or(...groupIds.map((groupId) => like(user.groups, `%"${groupId}"%`)))),
   );
 
-  const groupSet = new Set(groups);
+  const wanted = new Set(groupIds);
 
-  return (
-    rows
-      .filter((row) => row.id !== userId)
-      // Defense in depth: confirm a genuinely shared, well-formed group rather
-      // than trusting the coarse LIKE prefilter alone.
-      .filter((row) => {
-        if (!row.groups) return false;
-        try {
-          const parsed = JSON.parse(row.groups);
-          return (
-            Array.isArray(parsed) &&
-            parsed.some(
-              (g): g is string =>
-                typeof g === "string" && GROUP_NAME_PATTERN.test(g) && groupSet.has(g),
-            )
-          );
-        } catch {
-          return false;
-        }
-      })
-      .map(({ id, name, email, image }) => ({
-        id,
-        name,
-        email,
-        image: resolveProfileImage({ email, image }),
-      }))
-  );
+  return rows.flatMap((row) => {
+    // Defense in depth: confirm genuinely carried, well-formed groups rather
+    // than trusting the coarse LIKE prefilter alone.
+    let carried: string[] = [];
+    try {
+      const parsed = row.groups ? JSON.parse(row.groups) : [];
+      if (Array.isArray(parsed)) {
+        carried = parsed.filter(
+          (g): g is string =>
+            typeof g === "string" && GROUP_NAME_PATTERN.test(g) && wanted.has(g),
+        );
+      }
+    } catch {
+      return [];
+    }
+    if (carried.length === 0) return [];
+    return [{ ...row, groups: carried }];
+  });
+}
+
+/** Ids of everyone who reaches a resource through one of `groupIds`. */
+export async function getGroupMemberIds(
+  groupIds: readonly string[],
+): Promise<Set<string>> {
+  const rows = await usersInGroups(groupIds);
+  return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Users who share at least one real OAuth group with `userId`.
+ *
+ * A shared IdP group is the boundary within which people may see one another
+ * (name + email) for invite suggestions; there is deliberately no global user
+ * directory. The synthetic `public` group is excluded — everyone is in it, so it
+ * would leak the instance — and a user with no real groups sees nobody.
+ */
+export async function getUsersInSharedGroups(userId: string): Promise<GroupPeer[]> {
+  const groups = (await getUserGroups(userId)).filter((g) => g !== PUBLIC_GROUP);
+  const peers = await usersInGroups(groups);
+
+  return peers
+    .filter((row) => row.id !== userId)
+    .map(({ id, name, email, image }) => ({
+      id,
+      name,
+      email,
+      image: resolveProfileImage({ email, image }),
+    }));
 }
 
 /**
@@ -129,7 +156,6 @@ export async function countSpaceMembers(spaceId: string): Promise<number> {
  */
 export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
   const { db } = await openSpaceStore(spaceId);
-  const authDb = getAuthDb();
 
   const results = await many(
     db
@@ -152,21 +178,8 @@ export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
     }
   }
 
-  if (groupsToCheck.length > 0) {
-    const conditions = groupsToCheck.map((groupId) =>
-      like(user.groups, `%"${groupId}"%`),
-    );
-
-    const groupMembers = await many(
-      authDb
-        .select({ id: user.id })
-        .from(user)
-        .where(or(...conditions)),
-    );
-
-    for (const member of groupMembers) {
-      memberIds.add(member.id);
-    }
+  for (const memberId of await getGroupMemberIds(groupsToCheck)) {
+    memberIds.add(memberId);
   }
 
   return memberIds;
@@ -185,7 +198,6 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
   groupsToCheck: string[];
 }> {
   const { db } = await openSpaceStore(spaceId);
-  const authDb = getAuthDb();
 
   const results = await many(
     db
@@ -208,30 +220,9 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
 
   const groupMembers = new Map<string, string[]>();
 
-  if (groupsToCheck.length > 0) {
-    const conditions = groupsToCheck.map((groupId) =>
-      like(user.groups, `%"${groupId}"%`),
-    );
-
-    const members = await many(
-      authDb
-        .select({ id: user.id, groups: user.groups })
-        .from(user)
-        .where(or(...conditions)),
-    );
-
-    for (const member of members) {
-      if (!directUserIds.has(member.id)) {
-        const memberGroupIds: string[] = [];
-        for (const groupId of groupsToCheck) {
-          if (member.groups?.includes(`"${groupId}"`)) {
-            memberGroupIds.push(groupId);
-          }
-        }
-        if (memberGroupIds.length > 0) {
-          groupMembers.set(member.id, memberGroupIds);
-        }
-      }
+  for (const member of await usersInGroups(groupsToCheck)) {
+    if (!directUserIds.has(member.id)) {
+      groupMembers.set(member.id, member.groups);
     }
   }
 
