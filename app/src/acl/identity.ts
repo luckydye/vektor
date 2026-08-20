@@ -10,7 +10,6 @@
 import { adminGroups, adminGroupsIn, spaceCreationGroups } from "#acl/instanceGroups.ts";
 import { PUBLIC_GROUP } from "#acl/permissions.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
-import { forbiddenResponse } from "#api/http.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#config";
 import { createRequestScope } from "#utils/requestScope.ts";
 
@@ -135,10 +134,4 @@ export async function canCreateSpace(userId: string): Promise<boolean> {
   }
 
   return identity.isInstanceAdmin;
-}
-
-/** The enforcement form of {@link canCreateSpace}; throws 403 like the guards. */
-export async function verifyCanCreateSpace(userId: string): Promise<void> {
-  if (await canCreateSpace(userId)) return;
-  throw forbiddenResponse("You are not allowed to create spaces");
 }
