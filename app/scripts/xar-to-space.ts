@@ -1,7 +1,7 @@
 /**
  * XWiki XAR export -> Vektor space database.
  *
- *   bun run scripts/xar-to-space.ts <export.xar> [options]
+ *   bun run scripts/xar-to-space.ts <export.xar|extracted-dir> [options]
  *
  * Produces a standalone space `.db` (plus an uploads directory for the page
  * attachments) that the server picks up by dropping it into `data/spaces/`.
@@ -19,7 +19,7 @@
  * anything unresolved is counted and reported at the end.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { unzipSync } from "fflate";
 import { htmlToDoc } from "#documents/schema/parse.ts";
@@ -66,7 +66,7 @@ function parseOptions(argv: string[]): Options {
   const xarPath = positional[0];
   if (!xarPath) {
     throw new Error(
-      "Usage: bun run scripts/xar-to-space.ts <export.xar> " +
+      "Usage: bun run scripts/xar-to-space.ts <export.xar|extracted-dir> " +
         "[--name <space name>] [--slug <space slug>] [--out <file.db>] " +
         "[--owner <user id>] [--uploads <dir>] [--max-attachment-mb <n>]",
     );
@@ -92,21 +92,40 @@ function parseOptions(argv: string[]): Options {
 // XAR reading
 // ---------------------------------------------------------------------------
 
+function isPageEntry(name: string): boolean {
+  // `package.xml` is the manifest, `WebPreferences.xml` holds space rights and
+  // objects — neither is a page.
+  return (
+    name.endsWith(".xml") && name !== "package.xml" && !name.endsWith("WebPreferences.xml")
+  );
+}
+
 /**
- * Reads page entries one at a time. Two conference pages in a real export carry
- * a quarter of a gigabyte of base64 attachments each, so the archive is scanned
+ * Reads page entries one at a time, from a `.xar` or from a directory of
+ * entry XMLs extracted from one. Two conference pages in a real export carry a
+ * quarter of a gigabyte of base64 attachments each, so the archive is scanned
  * for names first and every entry is inflated on its own — unzipping the whole
  * thing at once would hold every attachment in memory simultaneously.
+ *
+ * That still reads the whole `.xar` into one buffer, which an export past a few
+ * gigabytes cannot be. Extract it first (`unzip`, or Python's `zipfile` where
+ * the entry names are not valid UTF-8 and the filesystem refuses them) and pass
+ * the directory instead — page identity comes from `<web>`/`<name>` inside each
+ * XML, so the extracted filenames do not matter.
  */
-function* readPageEntries(archive: Uint8Array): Generator<string> {
+function* readPageEntries(source: string): Generator<string> {
+  if (statSync(source).isDirectory()) {
+    for (const name of readdirSync(source).sort()) {
+      if (isPageEntry(name)) yield readFileSync(join(source, name), "utf8");
+    }
+    return;
+  }
+
+  const archive = new Uint8Array(readFileSync(source));
   const names: string[] = [];
   unzipSync(archive, {
     filter: (entry) => {
-      // `package.xml` is the manifest, `WebPreferences.xml` holds space rights
-      // and objects — neither is a page.
-      if (entry.name.endsWith(".xml") && !entry.name.endsWith("WebPreferences.xml")) {
-        if (entry.name !== "package.xml") names.push(entry.name);
-      }
+      if (isPageEntry(entry.name)) names.push(entry.name);
       return false;
     },
   });
@@ -294,8 +313,45 @@ function blocksFromInline(html: string): string {
   return html
     .split(new RegExp(`(${BLOCK_MARK}\\d+${BLOCK_MARK})`))
     .filter((part) => part && part !== "<br>")
-    .map((part) => (IS_BLOCK_HOLD.test(part) ? part : `<p>${part}</p>`))
+    .map((part) => (IS_BLOCK_HOLD.test(part) ? part : paragraphs(part)))
     .join("");
+}
+
+/**
+ * Wraps inline HTML in a paragraph, lifting any `{{task}}` in it into a task
+ * list of its own. A task inside a table cell arrives here rather than at the
+ * block reader, and the schema has no inline task item — left where it is, its
+ * marker would stay in the text as a control character.
+ */
+function paragraphs(html: string): string {
+  if (!html.includes(TASK_MARK)) return `<p>${html}</p>`;
+
+  const out: string[] = [];
+  let tasks: string[] = [];
+  const flush = () => {
+    if (tasks.length) out.push(`<ul data-type="taskList">${tasks.join("")}</ul>`);
+    tasks = [];
+  };
+
+  for (const segment of html.split("<br>")) {
+    // `[text, status, body, status, body, …]`, one pair per task in the line.
+    const parts = segment.split(new RegExp(`${TASK_MARK}([01])${TASK_MARK}`));
+    const text = parts[0].trim();
+    if (text) {
+      flush();
+      out.push(`<p>${text}</p>`);
+    }
+    for (let index = 1; index < parts.length; index += 2) {
+      const done = parts[index] === "1";
+      tasks.push(
+        `<li data-type="taskItem" data-checked="${done}">` +
+          `<p>${parts[index + 1].trim()}</p></li>`,
+      );
+    }
+  }
+
+  flush();
+  return out.join("");
 }
 
 function xwikiToHtml(source: string, links: LinkResolver, report: Report): string {
@@ -821,8 +877,11 @@ const UNRESTORED_HOLD = new RegExp(
  * text only gets counted — see `RESIDUE`.
  */
 function checkConverted(html: string, slug: string, report: Report): void {
-  if (UNRESTORED_HOLD.test(html)) {
-    throw new Error(`Unrestored placeholder in "${slug}"`);
+  const leftover = UNRESTORED_HOLD.exec(html);
+  if (leftover) {
+    const at = leftover.index;
+    const context = html.slice(Math.max(0, at - 160), at + 160);
+    throw new Error(`Unrestored placeholder in "${slug}": ${JSON.stringify(context)}`);
   }
   for (const [pattern, what] of RESIDUE) {
     if (pattern.test(html)) report.residue.push(`${slug}: possible XWiki ${what}`);
@@ -838,7 +897,6 @@ async function main(): Promise<void> {
   assertSlugAvailable(options.slug);
 
   console.log(`Reading ${options.xarPath}`);
-  const archive = new Uint8Array(await Bun.file(options.xarPath).arrayBuffer());
 
   // Pass 1: pages and attachments. Attachment bodies are written straight to
   // disk so the base64 never accumulates across pages.
@@ -850,7 +908,7 @@ async function main(): Promise<void> {
   /** Fallback for `attach:Other Page@file.png`, which names another page's file. */
   const attachmentsByName = new Map<string, string>();
 
-  for (const xml of readPageEntries(archive)) {
+  for (const xml of readPageEntries(options.xarPath)) {
     const page = parsePage(xml);
     if (!page) continue;
 
