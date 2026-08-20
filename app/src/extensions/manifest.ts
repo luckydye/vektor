@@ -1,4 +1,4 @@
-import { unzipSync } from "#utils/zip.ts";
+import { unzipExtensionPackage } from "#extensions/packageCache.ts";
 
 export interface ExtensionRouteMenuItem {
   title: string;
@@ -70,12 +70,13 @@ function findZipEntry(files: ZipFiles, filePath: string): Uint8Array | undefined
 
 /**
  * Unpack a package. Anything fflate cannot read (truncated upload, not a ZIP)
- * throws; the upload route turns that into a "Invalid extension package: …"
- * bad-request, so the message here is the bare cause.
+ * and anything past the decompressed-size limits throws; the upload route turns
+ * that into a "Invalid extension package: …" bad-request, so the message here is
+ * the bare cause.
  */
 function unzipPackage(buffer: Buffer): ZipFiles {
   try {
-    return unzipSync(new Uint8Array(buffer));
+    return unzipExtensionPackage(buffer);
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : String(error));
   }
