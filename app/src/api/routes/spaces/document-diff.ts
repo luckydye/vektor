@@ -1,6 +1,7 @@
 import { createPatch } from "diff";
 import { authenticateDocumentAccess, verifyRevisionAccess } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   notFoundResponse,
@@ -53,7 +54,7 @@ export const GET: ApiRouteHandler = (context) =>
         : parseQueryInt(searchParams, "base", { min: 1 });
 
     const { aclUserId } = await authenticateDocumentAccess(
-      context,
+      requestCredentials(context),
       spaceId,
       id,
       Permission.VIEWER,

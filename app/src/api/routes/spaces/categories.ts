@@ -1,5 +1,6 @@
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -27,10 +28,15 @@ async function visibleCategoryIds(
   context: Parameters<ApiRouteHandler>[0],
   spaceId: string,
 ) {
-  const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
-    allowResourceGrants: true,
-    scopeType: ResourceType.CATEGORY,
-  });
+  const access = await authenticateSpaceAccess(
+    requestCredentials(context),
+    spaceId,
+    Permission.VIEWER,
+    {
+      allowResourceGrants: true,
+      scopeType: ResourceType.CATEGORY,
+    },
+  );
   return access.resourceScope ? new Set(access.resourceScope) : null;
 }
 
@@ -66,7 +72,11 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
-      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
+      await authenticateJobTokenOrSpaceRole(
+        requestCredentials(context),
+        spaceId,
+        Permission.EDITOR,
+      );
 
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
       const name = typeof body.name === "string" ? body.name : undefined;
@@ -107,7 +117,11 @@ export const POST: ApiRouteHandler = (context) =>
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
-    await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR);
+    await authenticateJobTokenOrSpaceRole(
+      requestCredentials(context),
+      spaceId,
+      Permission.EDITOR,
+    );
 
     const body = await parseJsonBody(context.req.raw);
     const { categoryIds } = body;

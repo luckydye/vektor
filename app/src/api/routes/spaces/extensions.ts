@@ -8,6 +8,7 @@ import {
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasFeature } from "#acl/store.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -40,7 +41,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      requestCredentials(context),
       spaceId,
       Permission.EDITOR,
     );
@@ -131,7 +132,7 @@ export const POST: ApiRouteHandler = (context) =>
         }
         createdBy = parsed.userId;
       } else {
-        const auth = await authenticateRequest(context, spaceId);
+        const auth = await authenticateRequest(requestCredentials(context), spaceId);
         if (auth.type === "user") {
           // Installing an extension runs its code in every member's browser, so
           // it is gated on the space-wide `manage_extensions` capability rather

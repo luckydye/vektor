@@ -2,6 +2,7 @@ import { authenticateJobTokenOrSpaceRole, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources } from "#acl/store.ts";
 import { getUserGroups } from "#acl/userGroups.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -31,7 +32,7 @@ export const GET: ApiRouteHandler = (context) =>
     const runId = requireParam(context.var.params, "runId");
 
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      requestCredentials(context),
       spaceId,
       Permission.VIEWER,
     );

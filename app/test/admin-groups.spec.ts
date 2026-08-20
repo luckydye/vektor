@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  adminGroups,
-  canCreateSpace,
-  isInstanceAdmin,
-  userAdminGroups,
-} from "#acl/instanceGroups.ts";
+import { canCreateSpace, isInstanceAdmin, userAdminGroups } from "#acl/identity.ts";
+import { adminGroups } from "#acl/instanceGroups.ts";
 import { LOCAL_USER_ID } from "#config";
 import { createId } from "#db/ids.ts";
 

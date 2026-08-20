@@ -5,12 +5,24 @@ in that list says: *this identity* holds *this role* on *this resource*. Nothing
 confers access — there is no admin flag, no ambient superuser, and no role that is
 implied by having created something.
 
-Three files carry the model. `src/acl/permissions.ts` holds the vocabulary and every
+A few files carry the model. `src/acl/permissions.ts` holds the vocabulary and every
 decision that can be made from a role alone, and is the one piece the browser also
 imports, so the UI reaches the same verdict for the role the server handed it.
 `src/acl/store.ts` resolves a grant out of the ACL table. `src/acl/guards.ts` enforces
 it at the edge of a route, throwing a `401`/`403`/`404` response rather than returning a
 verdict, so a route that forgets the failure path fails closed.
+
+Two more sit either side of the decision. `src/acl/identity.ts` answers who the caller
+is — their groups, and whether they administer the instance — once per request, at the
+request edge, so no permission check has to; a decision is handed the answer and cannot
+go looking for it, which is what keeps an identity-provider round-trip off the inside of
+every check. `src/api/acl.ts` is the seam with HTTP in the other direction: it turns a
+request into the credentials a guard reads, and a verdict back into a response.
+
+What the decision itself reads is only the space's `acl` table plus that resolved
+identity. The reads that answer with people rather than verdicts — invite suggestions, a
+member list, an audit entry's display name — live in `src/acl/directory.ts`, so the
+directory and the decision stay separable.
 
 ## Roles
 

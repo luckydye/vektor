@@ -8,6 +8,7 @@ import {
   verifyRevisionAccess,
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -290,7 +291,7 @@ export const GET: ApiRouteHandler = (context) =>
     // `aclUserId` is carried past the gate for the revision guard: `null` is
     // the trusted system caller, `""` public. See verifyRevisionAccess.
     const { aclUserId } = await authenticateDocumentAccess(
-      context,
+      requestCredentials(context),
       spaceId,
       id,
       requiredRole,
@@ -419,7 +420,7 @@ export const PUT: ApiRouteHandler = (context) =>
       userId = parsed.userId ?? undefined;
     } else {
       // Authenticate with either user session or access token
-      const auth = await authenticateRequest(context, spaceId);
+      const auth = await authenticateRequest(requestCredentials(context), spaceId);
       if (auth.type === "token") {
         await verifyAccess(
           spaceId,
@@ -555,7 +556,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       }
 
       const auth = await authenticateJobTokenOrSpaceRole(
-        context,
+        requestCredentials(context),
         spaceId,
         Permission.EDITOR,
         {
@@ -673,7 +674,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     const id = requireParam(context.var.params, "documentId");
     const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      requestCredentials(context),
       spaceId,
       Permission.EDITOR,
       {

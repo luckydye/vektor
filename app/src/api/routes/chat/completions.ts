@@ -1,5 +1,6 @@
 import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -31,7 +32,11 @@ export const POST: ApiRouteHandler = (context) =>
       // someone else's space and spend its provider credentials. The shared
       // guard also scopes user-carrying job tokens to that user's real access,
       // which a signature-only check cannot do.
-      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.VIEWER);
+      await authenticateJobTokenOrSpaceRole(
+        requestCredentials(context),
+        spaceId,
+        Permission.VIEWER,
+      );
 
       const provider = await getAIProvider(await openSpaceStore(spaceId));
       const bodyJson = await parseJsonBody(context.req.raw);

@@ -1,6 +1,7 @@
 import { authenticateSpaceAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -20,7 +21,11 @@ export const GET: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+      const access = await authenticateSpaceAccess(
+        requestCredentials(context),
+        spaceId,
+        Permission.VIEWER,
+      );
       // null means "no per-document filtering". Public access is trusted within
       // the space, so documents inheriting space-level access are searchable.
       const userId = access.isPublic ? null : access.aclUserId;

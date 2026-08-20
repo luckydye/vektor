@@ -9,6 +9,7 @@ import {
   authenticateSpaceAccess,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceDb } from "#db/client/db.ts";
@@ -70,9 +71,18 @@ export const GET: ApiRouteHandler = (context) =>
       // artifact, say — keeps the space check.
       const documentId = await getFileDocumentId(spaceId, path);
       if (documentId) {
-        await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
+        await authenticateDocumentAccess(
+          requestCredentials(context),
+          spaceId,
+          documentId,
+          Permission.VIEWER,
+        );
       } else {
-        await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+        await authenticateSpaceAccess(
+          requestCredentials(context),
+          spaceId,
+          Permission.VIEWER,
+        );
       }
 
       // Get file extension from the path
@@ -199,7 +209,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
       const documentId = await getFileDocumentId(spaceId, path);
       await authenticateJobTokenOrSpaceRole(
-        context,
+        requestCredentials(context),
         spaceId,
         Permission.EDITOR,
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,

@@ -9,11 +9,29 @@
  * Guards throw a 401/403/404 Response rather than returning a decision, so a
  * route that forgets the failure path fails closed.
  *
+ * {@link decideAccess} takes a {@link ResolvedIdentity} and does no resolving
+ * of its own: the groups, and whether the caller administers the instance, are
+ * settled once at the request edge (see `#acl/identity.ts`). A decision reads
+ * the space's `acl` table and nothing else — in particular it cannot reach the
+ * IdP, which is what used to put a third-party round-trip on the inside of
+ * every permission check.
+ *
+ * Nothing here takes a request. Guards read the plain
+ * {@link RequestCredentials} struct, and `#api/acl.ts` is what turns a Hono
+ * context into one and a decision back into a Response.
+ *
  * Features are the exception: {@link verifyFeatureAccess} and
  * {@link verifyRevisionAccess} ask about a capability rather than a resource.
  */
 
-import { isInstanceAdmin } from "#acl/instanceGroups.ts";
+import type { RequestCredentials } from "#acl/credentials.ts";
+import {
+  type AccessIdentity,
+  principalOf,
+  type ResolvedIdentity,
+  resolveIdentity,
+  toIdentity,
+} from "#acl/identity.ts";
 import {
   type AclViewer,
   allPermissions,
@@ -30,20 +48,18 @@ import {
   hasPermission,
   listAccessibleResources,
 } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
+import { accessDenialResponse } from "#api/acl.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
   notFoundResponse,
-  requireUser,
   unauthorizedResponse,
 } from "#api/http.ts";
-import type { ApiContext } from "#api/server/types.ts";
 import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
-import { hasCredentialGrant, validateAccessToken } from "#db/space/accessTokens.ts";
+import { validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
@@ -53,7 +69,7 @@ export function isAccessDenied(error: unknown): boolean {
 }
 
 /** A resource to gate a request on. */
-interface AclTarget {
+export interface AclTarget {
   type: ResourceType;
   id: string;
   /**
@@ -86,39 +102,26 @@ export async function requireSpace(spaceId: string): Promise<void> {
   }
 }
 
-/**
- * The groups an ACL question resolves against: `public` for an unauthenticated
- * caller, and a user's own groups otherwise — which for a credential is `public`
- * alone, since its id has no row in the user table.
- *
- * There is deliberately no test for a credential here. An empty group set is
- * read as `[public]` by every query that takes one (see `getPermission`), so a
- * credential resolves against `public` whichever way this answers, and a
- * `token_` test would only claim otherwise. Everything beyond world-readable is
- * the grants written for the credential's own id.
- */
-async function aclGroups(userId: string | null): Promise<string[] | undefined> {
-  if (!userId) return [PUBLIC_GROUP];
-  return await getUserGroups(userId);
-}
-
 /** Why {@link decideAccess} answered the way it did. */
-type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
+export type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
 
 /**
- * **The** access question: may `userId` act on `target` at `requiredRole`?
+ * **The** access question: may `identity` act on `target` at `requiredRole`?
  * Every guard in this file is a caller of it, so a rule added here holds for
  * sessions, access tokens, job tokens and public callers alike.
  *
- * @param userId The {@link SpaceAccess.aclUserId} convention: `null` or `""` is
- *   unauthenticated, a `token_` id a credential, anything else a user.
+ * Takes an identity that is already resolved and looks nothing up about the
+ * caller: no group read, no IdP round-trip, no second question about whether
+ * they administer the instance. Exported so the decision can be asked — and
+ * tested — without a request behind it.
+ *
  * @returns The decision, and the role it was actually decided at — which an
  *   archived document raises above the one that was asked for.
  */
-async function decideAccess(
+export async function decideAccess(
   spaceId: string,
   target: AclTarget,
-  userId: string | null,
+  identity: ResolvedIdentity,
   requiredRole: Permission,
 ): Promise<{ decision: AccessDecision; requiredRole: Permission }> {
   if (!(await spaceExists(spaceId))) {
@@ -136,8 +139,8 @@ async function decideAccess(
     effectiveRole = document.requiredRole;
   }
 
-  const principal = userId || "";
-  const groups = await aclGroups(userId);
+  const principal = principalOf(identity);
+  const groups = identity.groups;
   let granted = await hasPermission(
     spaceId,
     target.type,
@@ -156,7 +159,7 @@ async function decideAccess(
   // rather than in the routes that care: it has to hold for a delete as much as
   // for a read, and asking it last leaves the ordinary path untouched.
   if (!granted) {
-    granted = await isInstanceAdmin(principal);
+    granted = identity.isInstanceAdmin;
   }
   return { decision: granted ? "ok" : "denied", requiredRole: effectiveRole };
 }
@@ -169,40 +172,13 @@ async function decideAccess(
 export async function verifyAccess(
   spaceId: string,
   target: AclTarget,
-  userId: string | null,
+  who: AccessIdentity,
   requiredRole: Permission,
 ): Promise<void> {
-  const decided = await decideAccess(spaceId, target, userId, requiredRole);
+  const identity = await toIdentity(who);
+  const decided = await decideAccess(spaceId, target, identity, requiredRole);
   if (decided.decision === "ok") return;
-  throw await denialResponse(spaceId, decided, target, userId);
-}
-
-/**
- * The Response a non-`ok` decision answers with. Split from {@link verifyAccess}
- * so a guard that widens a refusal can branch on the decision itself: the
- * 401/403 split below is presentation, and reading it back off a thrown
- * Response confuses "not allowed" with "not authenticated".
- */
-async function denialResponse(
-  spaceId: string,
-  decided: { decision: AccessDecision; requiredRole: Permission },
-  target: AclTarget,
-  userId: string | null,
-): Promise<Response> {
-  if (decided.decision === "no-space") return notFoundResponse("Space");
-  if (decided.decision === "no-document") return notFoundResponse("Document");
-
-  // An unauthenticated caller is told to authenticate; anyone else is told no.
-  if (!userId) return unauthorizedResponse();
-  // A credential hears which role it lacked, since whoever integrated it owns
-  // both ends of the call. Only asked on the refusal path, where a query costs
-  // nothing, so this needs no guess about what the id looks like.
-  if (await hasCredentialGrant(await openSpaceStore(spaceId), userId)) {
-    return forbiddenResponse(
-      `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
-    );
-  }
-  return forbiddenResponse();
+  throw await accessDenialResponse(spaceId, decided, target, identity);
 }
 
 /**
@@ -212,10 +188,13 @@ async function denialResponse(
 export async function canAccess(
   spaceId: string,
   target: AclTarget,
-  userId: string | null,
+  who: AccessIdentity,
   requiredRole: Permission,
 ): Promise<boolean> {
-  return (await decideAccess(spaceId, target, userId, requiredRole)).decision === "ok";
+  return (
+    (await decideAccess(spaceId, target, await toIdentity(who), requiredRole))
+      .decision === "ok"
+  );
 }
 
 /**
@@ -238,7 +217,7 @@ export async function canAccess(
  * so resource-scoped credentials are neither over- nor under-privileged.
  */
 export async function authenticateJobTokenOrSpaceRole(
-  context: ApiContext,
+  credentials: RequestCredentials,
   spaceId: string,
   requiredRole: Permission,
   resource?: { type: ResourceType; id: string },
@@ -248,7 +227,7 @@ export async function authenticateJobTokenOrSpaceRole(
 > {
   const target = resource ?? { type: ResourceType.SPACE, id: spaceId };
 
-  const jobToken = context.req.raw.headers.get("X-Job-Token");
+  const jobToken = credentials.jobToken;
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");
@@ -260,7 +239,7 @@ export async function authenticateJobTokenOrSpaceRole(
     return { type: "job", userId: parsed.userId };
   }
 
-  const tokenResult = await authenticateWithToken(context, spaceId);
+  const tokenResult = await authenticateWithToken(credentials, spaceId);
   if (tokenResult) {
     // Access tokens are NOT trusted job tokens: their authority is whatever the
     // ACL grants that token's id. Enforce the required role before proceeding,
@@ -274,7 +253,8 @@ export async function authenticateJobTokenOrSpaceRole(
     return { type: "job", userId: tokenResult.tokenId };
   }
 
-  const user = requireUser(context);
+  const user = credentials.user;
+  if (!user) throw unauthorizedResponse();
   await verifyAccess(spaceId, target, user.id, requiredRole);
   return { type: "user", user };
 }
@@ -289,7 +269,7 @@ export async function authenticateJobTokenOrSpaceRole(
  * convention: `null` is a trusted system caller, `""` is public.
  */
 export async function authenticateDocumentAccess(
-  context: ApiContext,
+  credentials: RequestCredentials,
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
@@ -299,7 +279,7 @@ export async function authenticateDocumentAccess(
   // exist must be a decision rather than the error opening its database.
   await requireSpace(spaceId);
 
-  const jobToken = context.req.raw.headers.get("X-Job-Token");
+  const jobToken = credentials.jobToken;
   if (jobToken) {
     // A token that does not parse is a bad credential, not an insufficient
     // one — 401, as the document routes have always answered a forged one.
@@ -317,7 +297,7 @@ export async function authenticateDocumentAccess(
     return { aclUserId: parsed.userId };
   }
 
-  const auth = await tryAuthenticateRequest(context, spaceId);
+  const auth = await tryAuthenticateRequest(credentials, spaceId);
   if (auth?.type === "token") {
     await verifyAccess(
       spaceId,
@@ -426,14 +406,17 @@ function scopeType(options: SpaceAccessOptions | undefined): ResourceType {
  */
 async function spaceRoleOrResourceScope(
   spaceId: string,
-  userId: string,
+  identity: ResolvedIdentity,
   requiredRole: Permission,
-  userGroups: string[] | undefined,
   options: SpaceAccessOptions | undefined,
-  verifyRole: () => Promise<void>,
 ): Promise<string[] | null> {
   try {
-    await verifyRole();
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.SPACE, id: spaceId },
+      identity,
+      requiredRole,
+    );
     return null;
   } catch (error) {
     if (!options?.allowResourceGrants) throw error;
@@ -443,9 +426,9 @@ async function spaceRoleOrResourceScope(
 
     const scopedIds = await listAccessibleResources(
       spaceId,
-      userId,
+      principalOf(identity),
       scopeType(options),
-      userGroups,
+      identity.groups,
       requiredRole,
     );
     if (!scopedIds || scopedIds.length === 0) throw error;
@@ -479,13 +462,13 @@ async function spaceRoleOrResourceScope(
  * ```
  */
 export async function authenticateSpaceAccess(
-  context: ApiContext,
+  credentials: RequestCredentials,
   spaceId: string,
   requiredRole: Permission,
   options?: SpaceAccessOptions,
 ): Promise<SpaceAccess> {
   // 1. Job token
-  const jobToken = context.req.raw.headers.get("X-Job-Token");
+  const jobToken = credentials.jobToken;
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");
@@ -494,24 +477,16 @@ export async function authenticateSpaceAccess(
       // A job token is the user's own access, resource grants included: work
       // they can start from the browser must not be refused because it went
       // through an agent or a workflow.
-      const aclGroups = await getUserGroups(userId);
+      const identity = await resolveIdentity(userId);
       const resourceScope = await spaceRoleOrResourceScope(
         spaceId,
-        userId,
+        identity,
         requiredRole,
-        aclGroups,
         options,
-        () =>
-          verifyAccess(
-            spaceId,
-            { type: ResourceType.SPACE, id: spaceId },
-            userId,
-            requiredRole,
-          ),
       );
       return {
         aclUserId: userId,
-        aclGroups,
+        aclGroups: identity.groups,
         isPublic: false,
         resourceScope,
         scopeType: scopeType(options),
@@ -522,50 +497,35 @@ export async function authenticateSpaceAccess(
   }
 
   // 2. Session or access token
-  const auth = await tryAuthenticateRequest(context, spaceId);
+  const auth = await tryAuthenticateRequest(credentials, spaceId);
   if (auth?.type === "user") {
-    const aclGroups = await getUserGroups(auth.user.id);
+    const identity = await resolveIdentity(auth.user.id);
     const resourceScope = await spaceRoleOrResourceScope(
       spaceId,
-      auth.user.id,
+      identity,
       requiredRole,
-      aclGroups,
       options,
-      () =>
-        verifyAccess(
-          spaceId,
-          { type: ResourceType.SPACE, id: spaceId },
-          auth.user.id,
-          requiredRole,
-        ),
     );
     return {
       user: auth.user,
       aclUserId: auth.user.id,
-      aclGroups,
+      aclGroups: identity.groups,
       isPublic: false,
       resourceScope,
       scopeType: scopeType(options),
     };
   }
   if (auth?.type === "token") {
-    const tokenUserId = auth.token.tokenId;
+    const identity = await resolveIdentity(auth.token.tokenId);
     const resourceScope = await spaceRoleOrResourceScope(
       spaceId,
-      tokenUserId,
+      identity,
       requiredRole,
-      undefined,
       options,
-      () =>
-        verifyAccess(
-          spaceId,
-          { type: ResourceType.SPACE, id: spaceId },
-          auth.token.tokenId,
-          requiredRole,
-        ),
     );
     return {
-      aclUserId: tokenUserId,
+      aclUserId: auth.token.tokenId,
+      aclGroups: identity.groups,
       isPublic: false,
       resourceScope,
       scopeType: scopeType(options),
@@ -576,7 +536,7 @@ export async function authenticateSpaceAccess(
   const { decision } = await decideAccess(
     spaceId,
     { type: ResourceType.SPACE, id: spaceId },
-    "",
+    await resolveIdentity(null),
     requiredRole,
   );
   // A space that does not exist is a 401 like any other refusal: its existence
@@ -654,8 +614,8 @@ export async function verifyFeatureAccess(
   userId: string,
   documentId?: string,
 ): Promise<void> {
-  const userGroups = await getUserGroups(userId);
-  const hasAccess = await hasFeature(spaceId, feature, userId, userGroups, documentId);
+  const { groups } = await resolveIdentity(userId);
+  const hasAccess = await hasFeature(spaceId, feature, userId, groups, documentId);
   if (!hasAccess) {
     throw forbiddenResponse(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
@@ -710,12 +670,12 @@ export async function verifyRevisionAccess(
     publishedRev = document.publishedRev;
   }
 
-  const userGroups = userId === "" ? [PUBLIC_GROUP] : await getUserGroups(userId);
+  const { groups } = await resolveIdentity(userId);
   const history = await hasFeature(
     spaceId,
     Feature.VIEW_HISTORY,
     userId,
-    userGroups,
+    groups,
     documentId,
   );
 
@@ -773,8 +733,8 @@ export function validateTokenGrant(
  * Extract access token from Authorization header
  * Supports: "Bearer at_xxxxx" or "at_xxxxx"
  */
-export function extractAccessToken(context: ApiContext): string | null {
-  const authHeader = context.req.raw.headers.get("Authorization");
+export function extractAccessToken(credentials: RequestCredentials): string | null {
+  const authHeader = credentials.authorization;
   if (!authHeader) {
     return null;
   }
@@ -807,10 +767,10 @@ export function extractAccessToken(context: ApiContext): string | null {
  * ```
  */
 export async function authenticateWithToken(
-  context: ApiContext,
+  credentials: RequestCredentials,
   spaceId: string,
 ): Promise<ValidateTokenResult | null> {
-  const token = extractAccessToken(context);
+  const token = extractAccessToken(credentials);
   if (!token) {
     return null;
   }
@@ -847,20 +807,20 @@ export async function verifyTokenFeature(
  * Returns { type: "user", user } or { type: "token", token }
  */
 export async function authenticateRequest(
-  context: ApiContext,
+  credentials: RequestCredentials,
   spaceId: string,
 ): Promise<
   | { type: "user"; user: NonNullable<App.Locals["user"]> }
   | { type: "token"; token: ValidateTokenResult }
 > {
   // Try user session first
-  const user = context.var.user;
+  const user = credentials.user;
   if (user) {
     return { type: "user", user };
   }
 
   // Try access token
-  const tokenResult = await authenticateWithToken(context, spaceId);
+  const tokenResult = await authenticateWithToken(credentials, spaceId);
   if (tokenResult) {
     return { type: "token", token: tokenResult };
   }
@@ -875,19 +835,19 @@ export async function authenticateRequest(
  * the request must be rejected with unauthorizedResponse().
  */
 export async function tryAuthenticateRequest(
-  context: ApiContext,
+  credentials: RequestCredentials,
   spaceId: string,
 ): Promise<
   | { type: "user"; user: NonNullable<App.Locals["user"]> }
   | { type: "token"; token: ValidateTokenResult }
   | null
 > {
-  const user = context.var.user;
+  const user = credentials.user;
   if (user) {
     return { type: "user", user };
   }
 
-  const tokenResult = await authenticateWithToken(context, spaceId);
+  const tokenResult = await authenticateWithToken(credentials, spaceId);
   if (tokenResult) {
     return { type: "token", token: tokenResult };
   }

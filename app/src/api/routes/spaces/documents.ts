@@ -4,6 +4,7 @@ import {
   spaceAccessToViewer,
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -73,9 +74,14 @@ export const GET: ApiRouteHandler = (context) =>
     // Resource-scoped grantees browse here too: a user shared into a single
     // category or document tree has no space-wide role, and the sidebar reads
     // its documents from this endpoint. `viewer` confines them to their grants.
-    const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
-      allowResourceGrants: true,
-    });
+    const access = await authenticateSpaceAccess(
+      requestCredentials(context),
+      spaceId,
+      Permission.VIEWER,
+      {
+        allowResourceGrants: true,
+      },
+    );
     const viewer = spaceAccessToViewer(access);
 
     const limitParam = new URL(context.req.url).searchParams.get("limit");
@@ -178,7 +184,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      requestCredentials(context),
       spaceId,
       Permission.EDITOR,
     );

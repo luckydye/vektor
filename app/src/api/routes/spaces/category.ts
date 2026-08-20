@@ -5,6 +5,7 @@ import {
   verifyAccess,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -30,11 +31,15 @@ async function verifyCategoryRead(
   id: string,
 ) {
   if (context.req.raw.headers.get("X-Job-Token")) {
-    await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+    await authenticateSpaceAccess(
+      requestCredentials(context),
+      spaceId,
+      Permission.VIEWER,
+    );
     return;
   }
 
-  const auth = await tryAuthenticateRequest(context, spaceId);
+  const auth = await tryAuthenticateRequest(requestCredentials(context), spaceId);
   if (auth?.type === "user") {
     await verifyAccess(
       spaceId,
@@ -82,10 +87,15 @@ export const PUT: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const id = requireParam(context.var.params, "id");
-      await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR, {
-        type: ResourceType.CATEGORY,
-        id,
-      });
+      await authenticateJobTokenOrSpaceRole(
+        requestCredentials(context),
+        spaceId,
+        Permission.EDITOR,
+        {
+          type: ResourceType.CATEGORY,
+          id,
+        },
+      );
 
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
       const name = typeof body.name === "string" ? body.name : undefined;
@@ -132,10 +142,15 @@ export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const id = requireParam(context.var.params, "id");
-    await authenticateJobTokenOrSpaceRole(context, spaceId, Permission.EDITOR, {
-      type: ResourceType.CATEGORY,
-      id,
-    });
+    await authenticateJobTokenOrSpaceRole(
+      requestCredentials(context),
+      spaceId,
+      Permission.EDITOR,
+      {
+        type: ResourceType.CATEGORY,
+        id,
+      },
+    );
 
     const store = await openSpaceStore(spaceId);
     await deleteCategory(store, id);

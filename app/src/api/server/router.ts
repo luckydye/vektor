@@ -1,10 +1,11 @@
 import type { Next } from "hono";
+import { resolveIdentity, withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
-import { getPublicEnv, isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#config";
+import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
@@ -71,6 +72,13 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("requestHeaders", headers);
   c.set("session", session);
   c.set("user", user);
+
+  // The request edge, and the only place group resolution is meant to happen:
+  // this is what may go to the IdP, so no permission check downstream has to.
+  // Every decision in this request then reads the answer out of the scope.
+  if (user) {
+    await resolveIdentity(user.id);
+  }
 }
 
 function isApiPath(pathname: string): boolean {
@@ -178,8 +186,13 @@ export async function apiRouter(
   }
 
   try {
-    await hydrateRequestContext(c);
-    const result = await handler(c);
+    // One identity cache for the length of this request: a route that gates
+    // several resources resolves each caller once, and the staleness bound the
+    // IdP sync exists for stays a per-request bound rather than a per-check one.
+    const result = await withIdentityScope(async () => {
+      await hydrateRequestContext(c);
+      return await handler(c);
+    });
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });

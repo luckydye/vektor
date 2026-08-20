@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
+import { countSpaceMembers } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
-import { isInstanceAdmin } from "#acl/instanceGroups.ts";
+import { isInstanceAdmin } from "#acl/identity.ts";
 import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
-  countSpaceMembers,
   grantPermission,
   hasAnyResourceScopedAccess,
   listUserPermissions,
