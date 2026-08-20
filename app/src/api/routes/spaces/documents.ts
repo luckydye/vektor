@@ -10,6 +10,7 @@ import {
   forbiddenResponse,
   jsonResponse,
   parseJsonBody,
+  parsePaginationParams,
   requireParam,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -83,11 +84,10 @@ export const GET: ApiRouteHandler = (context) =>
     );
     const viewer = spaceAccessToViewer(access);
 
-    const limitParam = new URL(context.req.url).searchParams.get("limit");
-    const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
-    const limit =
-      Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50;
-    const cursor = new URL(context.req.url).searchParams.get("cursor") || undefined;
+    const { limit, cursor } = parsePaginationParams(
+      new URL(context.req.url).searchParams,
+      { defaultLimit: 50, maxLimit: 500 },
+    );
     const typeParam =
       new URL(context.req.url).searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = new URL(context.req.url).searchParams.get("categorySlugs");
@@ -151,21 +151,15 @@ export const GET: ApiRouteHandler = (context) =>
         }
       }
 
-      return jsonResponse({
-        documents,
-        total: documents.length,
-        limit: documents.length,
-      });
+      // The full filtered set ships in one response: `total` is its real count
+      // and there is no page size to report.
+      return jsonResponse({ documents, total: documents.length, nextCursor: null });
     }
 
     if (parentIdParam) {
       const documents = await getDocumentChildren(store, parentIdParam, viewer);
-      return jsonResponse({
-        documents,
-        total: documents.length,
-        limit: documents.length,
-        nextCursor: null,
-      });
+      // Unpaginated, as above: every child is returned regardless of `limit`.
+      return jsonResponse({ documents, total: documents.length, nextCursor: null });
     }
 
     // Always return documents without content (content fetched separately when viewing)

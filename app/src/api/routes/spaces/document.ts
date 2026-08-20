@@ -99,6 +99,11 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
   const unknownFields = keys.filter(
     (key) => !documentPatchFields.has(key as keyof DocumentPatchBody),
   );
+  if (unknownFields.includes("restore")) {
+    throw badRequestResponse(
+      "restore cannot be patched; use PUT to restore an archived document",
+    );
+  }
   if (unknownFields.includes("archived")) {
     throw badRequestResponse(
       "archived cannot be patched; use DELETE to archive a document",

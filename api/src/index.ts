@@ -96,9 +96,10 @@ export interface Category {
 export interface Page<T> {
   documents: T[];
   total: number;
-  limit: number;
+  /** The page size that was applied. Absent when the response is unpaginated. */
+  limit?: number;
   /** Null on the last page. Pass it back as `cursor` to read the next one. */
-  nextCursor?: string | null;
+  nextCursor: string | null;
 }
 
 export interface ListDocumentsOptions {

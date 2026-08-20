@@ -2039,7 +2039,8 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_202
 - **Auth**: session / access token / job token / public; `viewer`, or a
   document/tree/category grant alone — the sidebar of a caller shared into one subtree
   reads its documents here.
-- **Query**: `limit` (≤500, default 50), `cursor?`, `type?` (filter),
+- **Query**: `limit` (≤500, default 50 — must be an integer in range, else `400`),
+  `cursor?`, `type?` (filter),
   `categorySlugs?` (comma-separated), `grouped` (`"true"` groups results by
   category), `parentId?` (list direct children of a parent instead of top-level
   listing), `includeFiles` (`"true"` — uploaded files are unpaginated, so a listing
@@ -2047,9 +2048,12 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_202
 - **Behavior**: content is never included in list responses (fetched separately per
   document). `record`-type documents are excluded when filtering by category.
 - **Returns**: shape depends on query — `{ documentsByCategory, categorySlugs }`
-  (grouped), `{ documents, total, limit }` (category/flat — returns the full
-  filtered result set, unpaginated), or `{ documents, total, limit, nextCursor }`
-  (`parentId` or default cursor-paginated listing).
+  (grouped), `{ documents, total, nextCursor: null }` (`categorySlugs` or `parentId`
+  — the full filtered result set in one response, so no `limit` applies and there is
+  no page 2), or
+  `{ documents, total, limit, nextCursor }` (default cursor-paginated listing).
+  `total` is always the full count of matching documents and `limit`, when present,
+  the page size that was applied.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/documents?limit=1"
@@ -2282,7 +2286,7 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
   renames — the one exception is a slug still derived from the placeholder title a
   document was created with ("Untitled Canvas", …), which the first real title replaces.
   Empty bodies, multiple operations, and unknown fields return `400`; archiving uses
-  `DELETE`, not `PATCH`.
+  `DELETE`, not `PATCH`, and restoring uses `PUT`.
 
 ```bash
 curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
