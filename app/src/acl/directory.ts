@@ -2,13 +2,10 @@
  * Who the people behind the grants are: the reads that answer with names,
  * emails and memberships rather than with a verdict.
  *
- * Its own module rather than part of `#acl/store.ts`, because none of it is a
- * decision. The store answers "may this principal do this", from a space's
- * `acl` table and a group set handed to it; everything here reaches into the
- * auth database for the directory behind those ids — invite suggestions, an
- * audit entry's display name, a space's member list. Keeping them apart leaves
- * `auth.db` to better-auth and this module, and makes the decision core's
- * independence from it structural rather than a convention.
+ * Its own module because none of it is a decision — the store answers "may this
+ * principal do this" from a space's `acl` table and a group set handed to it,
+ * while everything here reaches into the auth database for the directory behind
+ * those ids.
  */
 
 import { and, eq, like, or } from "drizzle-orm";

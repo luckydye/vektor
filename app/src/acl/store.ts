@@ -1,6 +1,11 @@
 import { and, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
-import { resolveGranteeName } from "#acl/directory.ts";
-import { isInstanceAdmin } from "#acl/identity.ts";
+import {
+  type AccessIdentity,
+  principalOf,
+  type ResolvedIdentity,
+  resolveIdentity,
+  toIdentity,
+} from "#acl/identity.ts";
 import {
   type AclViewer,
   type Feature,
@@ -16,7 +21,6 @@ import {
   strongestGrant,
   weakerPermission,
 } from "#acl/permissions.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#config";
 import { many, one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -92,15 +96,18 @@ export async function logAclChange(
     actorUserId?: string;
     /** The row's {@link AclKind}, when the grant carries a credential. */
     kind?: string | null;
+    /**
+     * Display name for `userId`, resolved by the caller from the directory. Left
+     * out for a credential and for an id whose account is gone, either of which
+     * is printed bare rather than called a user on the strength of its shape.
+     */
+    targetName?: string;
   },
 ): Promise<void> {
   const isDocumentScoped =
     params.resourceType === ResourceType.DOCUMENT ||
     params.resourceType === ResourceType.DOCUMENT_TREE;
-  // A credential has no row in the user table, so don't look one up. Nor has a
-  // principal whose account is gone: an id that resolves to no name is printed
-  // bare rather than called a user on the strength of its shape.
-  const targetName = params.kind ? undefined : await resolveGranteeName(params.userId);
+  const targetName = params.kind ? undefined : params.targetName;
   const target = params.kind
     ? `credential ${params.userId}`
     : params.userId
@@ -142,6 +149,8 @@ export async function grantPermission(
   permission: string,
   groupId?: string,
   actorUserId?: string,
+  /** See {@link logAclChange}: the audit trail's display name for `userId`. */
+  targetName?: string,
 ): Promise<AclEntry> {
   if (!userId && !groupId) {
     throw new Error("Either userId or groupId must be provided");
@@ -203,6 +212,7 @@ export async function grantPermission(
       permission,
       previousPermission: existing?.permission,
       actorUserId,
+      targetName,
     });
   }
 
@@ -224,6 +234,8 @@ export async function revokePermission(
   userId?: string,
   groupId?: string,
   actorUserId?: string,
+  /** See {@link logAclChange}: the audit trail's display name for `userId`. */
+  targetName?: string,
 ): Promise<boolean> {
   const { db, spaceId } = store;
 
@@ -257,6 +269,7 @@ export async function revokePermission(
       groupId: entry.groupId ?? undefined,
       previousPermission: entry.permission,
       actorUserId,
+      targetName,
     });
   }
 
@@ -274,20 +287,18 @@ function live() {
   );
 }
 
-interface TokenIssuer {
-  id: string;
-  groups: string[];
-}
-
 /**
- * The user a credential acts for, or null when this principal is not one. Asks
- * for the row that carries a credential under this id — `kind` is what makes it
- * one, and a person's id simply matches nothing.
+ * The user a credential acts for, or null when this principal is not one —
+ * `kind` is what marks the row, and a person's id matches nothing.
+ *
+ * The one identity a decision cannot be handed, since which row carries the
+ * credential is only known once `acl` has been read; {@link resolveIdentity}
+ * keeps it to one resolution per request.
  */
 async function tokenIssuer(
   spaceId: string,
   principalId: string,
-): Promise<TokenIssuer | null> {
+): Promise<ResolvedIdentity | null> {
   const { db } = await openSpaceStore(spaceId);
   const row = await one(
     db
@@ -297,7 +308,7 @@ async function tokenIssuer(
   );
 
   if (!row?.createdBy) return null;
-  return { id: row.createdBy, groups: await getUserGroups(row.createdBy) };
+  return await resolveIdentity(row.createdBy);
 }
 
 /**
@@ -306,18 +317,23 @@ async function tokenIssuer(
  */
 async function issuerRole(
   spaceId: string,
-  issuer: TokenIssuer,
+  issuer: ResolvedIdentity,
   resourceType: ResourceType,
   resourceId: string,
 ): Promise<string | undefined> {
   const entry =
     resourceType === ResourceType.DOCUMENT
-      ? await getDocumentPermission(spaceId, resourceId, issuer.id, issuer.groups)
+      ? await getDocumentPermission(
+          spaceId,
+          resourceId,
+          principalOf(issuer),
+          issuer.groups,
+        )
       : await getPermission(
           spaceId,
           ResourceType.SPACE,
           spaceId,
-          issuer.id,
+          principalOf(issuer),
           issuer.groups,
         );
 
@@ -336,11 +352,9 @@ async function capRowsToIssuer<T extends AclRow>(
 ): Promise<T[]> {
   if (!rows.some((row) => row.createdBy)) return rows;
 
-  // Resolving an issuer is expensive — group lookup plus, for a document, a full
-  // permission resolution over its ancestors. Rows commonly share an issuer, and
-  // outside DOCUMENT the answer does not depend on the resource at all, so hold
-  // both for the length of the call.
-  const groupsByIssuer = new Map<string, string[]>();
+  // Resolving an issuer's role is expensive — a full permission resolution over
+  // a document's ancestors. Rows commonly share an issuer, and outside DOCUMENT
+  // the answer does not depend on the resource at all, so hold it for the call.
   const roleByKey = new Map<string, string | undefined>();
 
   const capped: T[] = [];
@@ -348,12 +362,6 @@ async function capRowsToIssuer<T extends AclRow>(
     if (!row.createdBy || !isPermission(row.permission)) {
       capped.push(row);
       continue;
-    }
-
-    let groups = groupsByIssuer.get(row.createdBy);
-    if (!groups) {
-      groups = await getUserGroups(row.createdBy);
-      groupsByIssuer.set(row.createdBy, groups);
     }
 
     const key =
@@ -366,7 +374,7 @@ async function capRowsToIssuer<T extends AclRow>(
     } else {
       cap = await issuerRole(
         spaceId,
-        { id: row.createdBy, groups },
+        await resolveIdentity(row.createdBy),
         resourceType,
         row.resourceId,
       );
@@ -1057,7 +1065,7 @@ export async function hasPermission(
  *
  * @example
  * // Check if user can comment
- * const canComment = await hasFeature(spaceId, Feature.COMMENT, userId, userGroups);
+ * const canComment = await hasFeature(spaceId, Feature.COMMENT, identity);
  *
  * // Grant commenting to a specific group
  * await grantFeature(spaceId, Feature.COMMENT, undefined, "viewers");
@@ -1065,10 +1073,11 @@ export async function hasPermission(
 export async function hasFeature(
   spaceId: string,
   feature: Feature,
-  userId: string,
-  userGroups?: string[],
+  who: AccessIdentity,
   documentId?: string,
 ): Promise<boolean> {
+  const identity = await toIdentity(who);
+  const userId = principalOf(identity);
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
     return true;
   }
@@ -1077,16 +1086,13 @@ export async function hasFeature(
   // to be repeated here: an admin who can read a document but not its history
   // would only have to click "gain access" to get it, which makes the refusal
   // inconsistent rather than protective.
-  if (await isInstanceAdmin(userId)) {
+  if (identity.isInstanceAdmin) {
     return true;
   }
 
   // A token holds a feature only for as long as its issuer does.
   const issuer = await tokenIssuer(spaceId, userId);
-  if (
-    issuer &&
-    !(await hasFeature(spaceId, feature, issuer.id, issuer.groups, documentId))
-  ) {
+  if (issuer && !(await hasFeature(spaceId, feature, issuer, documentId))) {
     return false;
   }
 
@@ -1113,8 +1119,7 @@ export async function hasFeature(
   }
 
   // Check for explicit feature ACL entry (group-based)
-  const effectiveGroups =
-    userGroups && userGroups.length > 0 ? userGroups : [PUBLIC_GROUP];
+  const effectiveGroups = identity.groups.length > 0 ? identity.groups : [PUBLIC_GROUP];
   const groupEntry = await one(
     db
       .select()
@@ -1136,8 +1141,8 @@ export async function hasFeature(
 
   // Fall back to defaults based on permission level
   const role = documentId
-    ? await getDocumentPermission(spaceId, documentId, userId, userGroups)
-    : await getPermission(spaceId, ResourceType.SPACE, spaceId, userId, userGroups);
+    ? await getDocumentPermission(spaceId, documentId, userId, identity.groups)
+    : await getPermission(spaceId, ResourceType.SPACE, spaceId, userId, identity.groups);
   return resolveFeature(role?.permission, feature);
 }
 
@@ -1236,11 +1241,11 @@ export async function listFeaturePermissions(store: SpaceStore): Promise<AclEntr
 /** As below, before a token's issuer is applied. */
 async function resolveAccessibleResources(
   spaceId: string,
-  userId: string,
+  identity: ResolvedIdentity,
   resourceType: ResourceType,
-  userGroups?: string[],
   minPermission?: Permission,
 ): Promise<string[] | null> {
+  const userId = principalOf(identity);
   // Same bypass as hasPermission(): the local user holds no ACL rows in a space
   // it did not create, and without this every such space reads as empty.
   if (isNoAuthMode() && userId === LOCAL_USER_ID) {
@@ -1248,12 +1253,10 @@ async function resolveAccessibleResources(
   }
 
   const { db } = await openSpaceStore(spaceId);
-  const resolvedGroups =
-    userGroups && userGroups.length > 0 ? userGroups : await getUserGroups(userId);
   // Same rule as every other group query here: no groups resolves against the
   // public group, so a credential reaches world-readable resources in a listing
   // exactly as it does in a direct read.
-  const effectiveGroups = resolvedGroups.length > 0 ? resolvedGroups : [PUBLIC_GROUP];
+  const effectiveGroups = identity.groups.length > 0 ? identity.groups : [PUBLIC_GROUP];
   const validPermissions = minPermission ? permissionsAtLeast(minPermission) : null;
 
   // Space-level permission implies access to all resources in the space that
@@ -1390,31 +1393,24 @@ async function resolveAccessibleResources(
  */
 export async function listAccessibleResources(
   spaceId: string,
-  userId: string,
+  who: AccessIdentity,
   resourceType: ResourceType,
-  userGroups?: string[],
   minPermission?: Permission,
 ): Promise<string[] | null> {
+  const identity = await toIdentity(who);
   const own = await resolveAccessibleResources(
     spaceId,
-    userId,
+    identity,
     resourceType,
-    userGroups,
     minPermission,
   );
 
-  const issuer = await tokenIssuer(spaceId, userId);
+  const issuer = await tokenIssuer(spaceId, principalOf(identity));
   if (!issuer) return own;
 
   return intersectScopes(
     own,
-    await resolveAccessibleResources(
-      spaceId,
-      issuer.id,
-      resourceType,
-      issuer.groups,
-      minPermission,
-    ),
+    await resolveAccessibleResources(spaceId, issuer, resourceType, minPermission),
   );
 }
 
@@ -1615,7 +1611,7 @@ export async function filterReadableResources(
     spaceId,
     ResourceType.SPACE,
     spaceId,
-    issuer.id,
+    principalOf(issuer),
     issuer.groups,
   );
 
@@ -1624,7 +1620,7 @@ export async function filterReadableResources(
     spaceId,
     resourceType,
     [...own],
-    { userId: issuer.id, userGroups: issuer.groups },
+    { userId: principalOf(issuer), userGroups: issuer.groups },
     minPermission,
     meetsPermissionLevel(issuerSpaceRole?.permission, minPermission),
   );

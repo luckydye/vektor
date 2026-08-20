@@ -1,5 +1,5 @@
 import type { Next } from "hono";
-import { resolveIdentity, withIdentityScope } from "#acl/identity.ts";
+import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
@@ -72,13 +72,6 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("requestHeaders", headers);
   c.set("session", session);
   c.set("user", user);
-
-  // The request edge, and the only place group resolution is meant to happen:
-  // this is what may go to the IdP, so no permission check downstream has to.
-  // Every decision in this request then reads the answer out of the scope.
-  if (user) {
-    await resolveIdentity(user.id);
-  }
 }
 
 function isApiPath(pathname: string): boolean {
@@ -186,9 +179,8 @@ export async function apiRouter(
   }
 
   try {
-    // One identity cache for the length of this request: a route that gates
-    // several resources resolves each caller once, and the staleness bound the
-    // IdP sync exists for stays a per-request bound rather than a per-check one.
+    // One identity cache for the length of this request, so the IdP staleness
+    // bound stays a per-request bound rather than a per-check one.
     const result = await withIdentityScope(async () => {
       await hydrateRequestContext(c);
       return await handler(c);

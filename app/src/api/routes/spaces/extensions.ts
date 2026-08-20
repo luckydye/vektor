@@ -7,7 +7,6 @@ import {
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasFeature } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import { requestCredentials } from "#api/acl.ts";
 import {
   badRequestResponse,
@@ -118,12 +117,10 @@ export const POST: ApiRouteHandler = (context) =>
             "Anonymous job tokens are not allowed to install extensions",
           );
         }
-        const groups = await getUserGroups(parsed.userId);
         const canManage = await hasFeature(
           spaceId,
           Feature.MANAGE_EXTENSIONS,
           parsed.userId,
-          groups,
         );
         if (!canManage) {
           throw forbiddenResponse(

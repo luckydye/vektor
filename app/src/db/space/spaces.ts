@@ -1,16 +1,15 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
-import { countSpaceMembers } from "#acl/directory.ts";
+import { countSpaceMembers, resolveGranteeName } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
-import { isInstanceAdmin } from "#acl/identity.ts";
+import { isInstanceAdmin, resolveIdentity } from "#acl/identity.ts";
 import { highestPermission, Permission, ResourceType } from "#acl/permissions.ts";
 import {
   grantPermission,
   hasAnyResourceScopedAccess,
   listUserPermissions,
 } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import { isInMemoryDb } from "#config";
 import {
   allocateSpaceDatabase,
@@ -159,6 +158,7 @@ export async function createSpace(
     Permission.OWNER,
     undefined,
     createdBy,
+    await resolveGranteeName(createdBy),
   );
 
   return {
@@ -272,11 +272,11 @@ export async function getUserSpaceRole(
 ): Promise<Permission | undefined> {
   // Instance admins included, so a space they administer without belonging to
   // still hands the client the role the guards will decide the request at.
-  if (await isInstanceAdmin(userId)) return Permission.OWNER;
+  const identity = await resolveIdentity(userId);
+  if (identity.isInstanceAdmin) return Permission.OWNER;
 
   try {
-    const userGroups = await getUserGroups(userId);
-    return highestPermission(await spaceGrants(space, userId, userGroups));
+    return highestPermission(await spaceGrants(space, userId, identity.groups));
   } catch {
     return undefined;
   }
@@ -310,10 +310,10 @@ async function spaceMembership(
   userId: string,
 ): Promise<{ role?: Permission; reachable: boolean }> {
   try {
-    const userGroups = await getUserGroups(userId);
-    const role = highestPermission(await spaceGrants(space, userId, userGroups));
+    const { groups } = await resolveIdentity(userId);
+    const role = highestPermission(await spaceGrants(space, userId, groups));
     if (role) return { role, reachable: true };
-    return { reachable: await hasAnyResourceScopedAccess(space.id, userId, userGroups) };
+    return { reachable: await hasAnyResourceScopedAccess(space.id, userId, groups) };
   } catch {
     return { reachable: false };
   }

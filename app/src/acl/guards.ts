@@ -1,24 +1,11 @@
 /**
  * The enforcement layer: everything a route calls to gate a request.
  *
- * One access question, asked in one place. {@link decideAccess} decides whether
- * an identity may act on a resource; {@link verifyAccess} throws that decision
- * and {@link canAccess} returns it as a boolean, and there is no third way to
- * ask. `authenticate*` sits on top, resolving whichever credential the request
- * carries (job token, access token, session, or none) to an identity first.
- * Guards throw a 401/403/404 Response rather than returning a decision, so a
- * route that forgets the failure path fails closed.
- *
- * {@link decideAccess} takes a {@link ResolvedIdentity} and does no resolving
- * of its own: the groups, and whether the caller administers the instance, are
- * settled once at the request edge (see `#acl/identity.ts`). A decision reads
- * the space's `acl` table and nothing else — in particular it cannot reach the
- * IdP, which is what used to put a third-party round-trip on the inside of
- * every permission check.
- *
- * Nothing here takes a request. Guards read the plain
- * {@link RequestCredentials} struct, and `#api/acl.ts` is what turns a Hono
- * context into one and a decision back into a Response.
+ * {@link decideAccess} decides and {@link verifyAccess}/{@link canAccess} are
+ * the only two ways to ask it. Nothing here takes a request: guards read a plain
+ * {@link CallerCredentials} that `#api/acl.ts` builds, and a decision is handed
+ * a {@link ResolvedIdentity} it cannot look up — so the IdP round-trip stays at
+ * the request edge.
  *
  * Features are the exception: {@link verifyFeatureAccess} and
  * {@link verifyRevisionAccess} ask about a capability rather than a resource.
@@ -47,7 +34,6 @@ import {
   hasPermission,
   listAccessibleResources,
 } from "#acl/store.ts";
-import { accessDenialResponse } from "#api/acl.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -58,7 +44,7 @@ import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
-import { validateAccessToken } from "#db/space/accessTokens.ts";
+import { hasCredentialGrant, validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
@@ -68,15 +54,10 @@ export function isAccessDenied(error: unknown): boolean {
 }
 
 /**
- * What a request carries that a guard may authenticate, as plain data.
- *
- * The `authenticate*` family used to take a Hono context, which welded the
- * credential-resolution core to the HTTP layer it answers to for the sake of
- * three reads. This is those three reads, so the core can be called — and
- * tested — without constructing a request, and `#api/acl.ts` is the only place
- * that knows a request is where they came from.
+ * What a request carries that a guard may authenticate, as plain data — the
+ * three reads the `authenticate*` family used to take a Hono context for.
  */
-export interface RequestCredentials {
+export interface CallerCredentials {
   /** `X-Job-Token`: a server-minted HMAC credential. */
   jobToken?: string | null;
   /** The raw `Authorization` header, which may carry a space access token. */
@@ -124,13 +105,8 @@ export type AccessDecision = "ok" | "no-space" | "no-document" | "denied";
 
 /**
  * **The** access question: may `identity` act on `target` at `requiredRole`?
- * Every guard in this file is a caller of it, so a rule added here holds for
- * sessions, access tokens, job tokens and public callers alike.
- *
- * Takes an identity that is already resolved and looks nothing up about the
- * caller: no group read, no IdP round-trip, no second question about whether
- * they administer the instance. Exported so the decision can be asked — and
- * tested — without a request behind it.
+ * Every guard here calls it, so a rule added here holds for sessions, access
+ * tokens, job tokens and public callers alike.
  *
  * @returns The decision, and the role it was actually decided at — which an
  *   archived document raises above the one that was asked for.
@@ -182,6 +158,34 @@ export async function decideAccess(
 }
 
 /**
+ * The Response a non-`ok` decision is answered with.
+ *
+ * Separate from {@link decideAccess} because only this end knows a denied caller
+ * who never authenticated hears 401 rather than 403 — reading that back off a
+ * thrown Response would confuse "not allowed" with "not authenticated".
+ */
+async function denialResponse(
+  spaceId: string,
+  decided: { decision: AccessDecision; requiredRole: Permission },
+  target: AclTarget,
+  identity: ResolvedIdentity,
+): Promise<Response> {
+  if (decided.decision === "no-space") return notFoundResponse("Space");
+  if (decided.decision === "no-document") return notFoundResponse("Document");
+
+  // An unauthenticated caller is told to authenticate; anyone else is told no.
+  if (!identity.userId) return unauthorizedResponse();
+  // A credential hears which role it lacked, since whoever integrated it owns
+  // both ends of the call. Only asked on the refusal path, so the query is free.
+  if (await hasCredentialGrant(await openSpaceStore(spaceId), identity.userId)) {
+    return forbiddenResponse(
+      `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
+    );
+  }
+  return forbiddenResponse();
+}
+
+/**
  * Answer {@link decideAccess} with a thrown 401/403/404 Response, so a route
  * that forgets the failure path fails closed. The single gate every route
  * passes through, whatever resource it is protecting.
@@ -195,7 +199,7 @@ export async function verifyAccess(
   const identity = await toIdentity(who);
   const decided = await decideAccess(spaceId, target, identity, requiredRole);
   if (decided.decision === "ok") return;
-  throw await accessDenialResponse(spaceId, decided, target, identity);
+  throw await denialResponse(spaceId, decided, target, identity);
 }
 
 /**
@@ -234,7 +238,7 @@ export async function canAccess(
  * so resource-scoped credentials are neither over- nor under-privileged.
  */
 export async function authenticateJobTokenOrSpaceRole(
-  credentials: RequestCredentials,
+  credentials: CallerCredentials,
   spaceId: string,
   requiredRole: Permission,
   resource?: { type: ResourceType; id: string },
@@ -286,7 +290,7 @@ export async function authenticateJobTokenOrSpaceRole(
  * convention: `null` is a trusted system caller, `""` is public.
  */
 export async function authenticateDocumentAccess(
-  credentials: RequestCredentials,
+  credentials: CallerCredentials,
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
@@ -443,9 +447,8 @@ async function spaceRoleOrResourceScope(
 
     const scopedIds = await listAccessibleResources(
       spaceId,
-      principalOf(identity),
+      identity,
       scopeType(options),
-      identity.groups,
       requiredRole,
     );
     if (!scopedIds || scopedIds.length === 0) throw error;
@@ -470,16 +473,16 @@ async function spaceRoleOrResourceScope(
  * @example
  * ```ts
  * // Simple gate (throws if unauthorized):
- * await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+ * await authenticateSpaceAccess(requestCredentials(context), spaceId, Permission.VIEWER);
  *
  * // Gate + identity for ACL filtering:
- * const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+ * const access = await authenticateSpaceAccess(credentials, spaceId, Permission.VIEWER);
  * const viewer = spaceAccessToViewer(access);
  * const docs = await listDocuments(spaceId, { limit: 50, viewer });
  * ```
  */
 export async function authenticateSpaceAccess(
-  credentials: RequestCredentials,
+  credentials: CallerCredentials,
   spaceId: string,
   requiredRole: Permission,
   options?: SpaceAccessOptions,
@@ -550,10 +553,11 @@ export async function authenticateSpaceAccess(
   }
 
   // 3. Unauthenticated — admitted by the `public` group.
+  const anonymous = await resolveIdentity(null);
   const { decision } = await decideAccess(
     spaceId,
     { type: ResourceType.SPACE, id: spaceId },
-    await resolveIdentity(null),
+    anonymous,
     requiredRole,
   );
   // A space that does not exist is a 401 like any other refusal: its existence
@@ -565,9 +569,8 @@ export async function authenticateSpaceAccess(
     const resourceScope = options?.allowResourceGrants
       ? await listAccessibleResources(
           spaceId,
-          "",
+          anonymous,
           scopeType(options),
-          [PUBLIC_GROUP],
           requiredRole,
         )
       : null;
@@ -628,11 +631,10 @@ async function requiredRoleForDocument(
 export async function verifyFeatureAccess(
   spaceId: string,
   feature: Feature,
-  userId: string,
+  who: AccessIdentity,
   documentId?: string,
 ): Promise<void> {
-  const { groups } = await resolveIdentity(userId);
-  const hasAccess = await hasFeature(spaceId, feature, userId, groups, documentId);
+  const hasAccess = await hasFeature(spaceId, feature, who, documentId);
   if (!hasAccess) {
     throw forbiddenResponse(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
@@ -687,14 +689,7 @@ export async function verifyRevisionAccess(
     publishedRev = document.publishedRev;
   }
 
-  const { groups } = await resolveIdentity(userId);
-  const history = await hasFeature(
-    spaceId,
-    Feature.VIEW_HISTORY,
-    userId,
-    groups,
-    documentId,
-  );
+  const history = await hasFeature(spaceId, Feature.VIEW_HISTORY, userId, documentId);
 
   // Plain read access already buys the published snapshot's content.
   const snapshotOnly =
@@ -750,7 +745,7 @@ export function validateTokenGrant(
  * Extract access token from Authorization header
  * Supports: "Bearer at_xxxxx" or "at_xxxxx"
  */
-export function extractAccessToken(credentials: RequestCredentials): string | null {
+export function extractAccessToken(credentials: CallerCredentials): string | null {
   const authHeader = credentials.authorization;
   if (!authHeader) {
     return null;
@@ -772,7 +767,7 @@ export function extractAccessToken(credentials: RequestCredentials): string | nu
  *
  * @example
  * ```ts
- * const tokenAuth = await authenticateWithToken(context, spaceId);
+ * const tokenAuth = await authenticateWithToken(credentials, spaceId);
  * if (tokenAuth) {
  *   const canEdit = await canAccess(
  *     spaceId,
@@ -784,7 +779,7 @@ export function extractAccessToken(credentials: RequestCredentials): string | nu
  * ```
  */
 export async function authenticateWithToken(
-  credentials: RequestCredentials,
+  credentials: CallerCredentials,
   spaceId: string,
 ): Promise<ValidateTokenResult | null> {
   const token = extractAccessToken(credentials);
@@ -810,8 +805,7 @@ export async function verifyTokenFeature(
   spaceId: string,
   feature: Feature,
 ): Promise<void> {
-  const tokenUserId = tokenResult.tokenId;
-  const hasIt = await hasFeature(spaceId, feature, tokenUserId);
+  const hasIt = await hasFeature(spaceId, feature, tokenResult.tokenId);
   if (!hasIt) {
     throw forbiddenResponse(
       `Token does not have the ${feature} capability for this space`,
@@ -824,7 +818,7 @@ export async function verifyTokenFeature(
  * Returns { type: "user", user } or { type: "token", token }
  */
 export async function authenticateRequest(
-  credentials: RequestCredentials,
+  credentials: CallerCredentials,
   spaceId: string,
 ): Promise<
   | { type: "user"; user: NonNullable<App.Locals["user"]> }
@@ -852,7 +846,7 @@ export async function authenticateRequest(
  * the request must be rejected with unauthorizedResponse().
  */
 export async function tryAuthenticateRequest(
-  credentials: RequestCredentials,
+  credentials: CallerCredentials,
   spaceId: string,
 ): Promise<
   | { type: "user"; user: NonNullable<App.Locals["user"]> }

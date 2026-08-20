@@ -1,7 +1,7 @@
 import { verifyAccess } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { getPermission, hasFeature } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import {
   jsonResponse,
   requireParam,
@@ -22,7 +22,8 @@ export const GET: ApiRouteHandler = (context) =>
       Permission.VIEWER,
     );
 
-    const userGroups = await getUserGroups(user.id);
+    const identity = await resolveIdentity(user.id);
+    const userGroups = identity.groups;
 
     // Get user's space role
     const spacePermission = await getPermission(
@@ -37,7 +38,7 @@ export const GET: ApiRouteHandler = (context) =>
     // Check each feature
     const features: Record<string, boolean> = {};
     for (const feature of Object.values(Feature)) {
-      features[feature] = await hasFeature(spaceId, feature, user.id, userGroups);
+      features[feature] = await hasFeature(spaceId, feature, identity);
     }
 
     return jsonResponse({

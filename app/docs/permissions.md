@@ -12,17 +12,22 @@ imports, so the UI reaches the same verdict for the role the server handed it.
 it at the edge of a route, throwing a `401`/`403`/`404` response rather than returning a
 verdict, so a route that forgets the failure path fails closed.
 
-Two more sit either side of the decision. `src/acl/identity.ts` answers who the caller
-is — their groups, and whether they administer the instance — once per request, at the
-request edge, so no permission check has to; a decision is handed the answer and cannot
-go looking for it, which is what keeps an identity-provider round-trip off the inside of
-every check. `src/api/acl.ts` is the seam with HTTP in the other direction: it turns a
-request into the credentials a guard reads, and a verdict back into a response.
+Three more sit around the decision. `src/acl/identity.ts` answers who the caller is —
+their groups, and whether they administer the instance — once per request, memoized for
+the length of it, so a route gating four resources resolves each caller once instead of
+four times and the identity provider is consulted at the request edge rather than inside
+a permission check. `src/acl/roleWrites.ts` holds the rules for who may hand out which
+role, which have to run inside the transaction that writes the grant. `src/api/acl.ts`
+turns a request into the credentials a guard reads, and the crossing goes one way only:
+`#acl` imports nothing from `#api` but the Response builders in `src/api/http.ts`.
 
-What the decision itself reads is only the space's `acl` table plus that resolved
-identity. The reads that answer with people rather than verdicts — invite suggestions, a
-member list, an audit entry's display name — live in `src/acl/directory.ts`, so the
-directory and the decision stay separable.
+What the decision reads is the space's `acl` table plus the identity it was handed. Two
+lookups remain inside it and are worth knowing about: whether the space exists, and — for
+a principal that turns out to be a credential — its issuer's identity, which cannot be
+resolved at the edge because which row carries the credential is only known once the
+`acl` table has been read. Both go through the request memo. The reads that answer with
+people rather than verdicts — invite suggestions, a member list, an audit entry's display
+name — live in `src/acl/directory.ts`.
 
 ## Roles
 

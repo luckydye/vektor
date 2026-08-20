@@ -1,18 +1,13 @@
 /**
  * Writing a role grant, as a domain operation.
  *
- * Who may hand out which role is a rule about the ACL, not about HTTP, and it
- * has to be decided inside the same transaction as the write it gates —
- * otherwise the role a caller is checked against is not the one the write
- * displaces. That used to mean the transaction block threw a `Response` to roll
- * back and returned a `jsonResponse` to commit, which made it the one `tx()`
- * block in the codebase that was not purely a database operation.
- *
- * So {@link writeRolePermission} answers with a {@link RoleWriteResult} instead:
- * a refusal is a value that rolls the transaction back on the way out, and the
- * route turns it into a 400 or a 403. Every `tx()` block now has one shape.
+ * Who may hand out which role has to be decided inside the same transaction as
+ * the write it gates, or the role the caller is checked against is not the one
+ * the write displaces. So the rules answer with a {@link RoleWriteResult}, and
+ * the route turns that into a status code.
  */
 
+import { resolveGranteeName } from "#acl/directory.ts";
 import {
   highestPermission,
   meetsPermissionLevel,
@@ -163,13 +158,9 @@ async function removesLastOwner(
 }
 
 /**
- * Grant or revoke a role, deciding inside the transaction whether the actor may.
- *
- * The two checks have to run against the rows the write is about to displace,
- * which is why they are here and not at the request edge: an editor may reshare
- * a document, but not touch a grant that outranks their own, and a space must
- * keep an owner. A refusal returns without writing, so the transaction commits
- * nothing.
+ * Grant or revoke a role, deciding inside the transaction whether the actor may:
+ * an editor may reshare a document but not touch a grant that outranks their
+ * own, and a space must keep an owner. A refusal returns before any write.
  */
 export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteResult> {
   const store = await openSpaceStore(write.spaceId);
@@ -208,6 +199,7 @@ export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteRe
         write.role,
         write.grantee.groupId,
         write.actorUserId,
+        await resolveGranteeName(write.grantee.userId),
       );
       return { outcome: "granted", entry };
     }
@@ -219,6 +211,7 @@ export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteRe
       write.grantee.userId,
       write.grantee.groupId,
       write.actorUserId,
+      await resolveGranteeName(write.grantee.userId),
     );
     return { outcome: "revoked" };
   });
