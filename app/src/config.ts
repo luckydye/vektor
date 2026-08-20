@@ -46,6 +46,12 @@ export function config() {
        * Remote credentials may be supplied with the authToken query parameter.
        */
       DATABASE_URL: process.env.VEKTOR_DATABASE_URL,
+      /**
+       * Where the local auth database and space databases live, `./data` by
+       * default. Set per test run so a suite never reads the accounts and spaces
+       * a developer accumulated in the working copy.
+       */
+      DATA_DIR: process.env.VEKTOR_DATA_DIR,
       NODE_ENV: process.env.NODE_ENV,
 
       /**
