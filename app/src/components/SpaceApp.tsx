@@ -33,7 +33,6 @@ import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
 import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
-import { DocumentOverlay } from "./DocumentOverlay.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
 import { DocumentPageView } from "./views/DocumentPageView.tsx";
@@ -155,7 +154,6 @@ export function SpaceApp(props: Props) {
       import("#editor/elements/category-target.ts"),
       import("#editor/elements/page-target.ts"),
       import("#editor/elements/shortcut.ts"),
-      import("#editor/elements/drawer.ts"),
     ]).catch(console.error);
 
   const registerDocumentElements = () =>
@@ -310,7 +308,6 @@ export function SpaceApp(props: Props) {
         />
         <CalDAVSetupDialog />
         <ToastContainer />
-        <DocumentOverlay />
         <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />
         <CommandPalatte />
       </Show>

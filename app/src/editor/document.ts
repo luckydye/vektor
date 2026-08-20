@@ -1115,57 +1115,6 @@ export class DocumentView extends HTMLElement {
         capture: true,
       },
     );
-
-    // Handle clicks on internal document links - open in overlay
-    // Hold Shift to navigate normally instead
-    this.root?.addEventListener(
-      "click",
-      ((e: MouseEvent) => {
-        if (e.shiftKey || e.ctrlKey || e.metaKey) return;
-
-        const target = e.target as HTMLElement;
-        const anchor = target.closest("a");
-        if (!anchor) return;
-
-        const href = anchor.getAttribute("href");
-        if (!href) return;
-
-        // Check if this is an internal document link
-        const documentId = this.parseDocumentId(href);
-        if (!documentId) return;
-
-        // Prevent default navigation
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Get spaceId from body dataset and dispatch event for overlay
-        const spaceId = document.body.dataset.spaceId;
-        if (!spaceId) return;
-
-        window.dispatchEvent(
-          new CustomEvent("view-document", {
-            detail: { spaceId, documentId },
-          }),
-        );
-      }) as EventListener,
-      { capture: true },
-    );
-  }
-
-  parseDocumentId(url: string): string | null {
-    try {
-      const urlObj = new URL(url, window.location.origin);
-      if (urlObj.origin !== window.location.origin) return null;
-
-      const parts = urlObj.pathname.split("/").filter(Boolean);
-      // Expected: [spaceSlug, "doc", documentId]
-      if (parts.length >= 3 && parts[1] === "doc") {
-        return parts[2];
-      }
-      return null;
-    } catch {
-      return null;
-    }
   }
 }
 

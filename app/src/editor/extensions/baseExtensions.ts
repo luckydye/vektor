@@ -15,9 +15,10 @@ import {
   wrapInList as pmWrapInList,
 } from "@tiptap/pm/schema-list";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
-import { TextSelection } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { canJoin } from "@tiptap/pm/transform";
 import { HEADING_LEVELS, nodesWithAttr } from "#documents/schema/specs.ts";
+import { isSafeUrlValue } from "#utils/html.ts";
 import { markFromSpec, nodeFromSpec } from "./specSchema.ts";
 
 /**
@@ -612,6 +613,41 @@ export const Link = Mark.create({
         find: URL_RE,
         type: this.type,
         getAttributes: (match) => ({ href: match[0] }),
+      }),
+    ];
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("linkClick"),
+        props: {
+          handleDOMEvents: {
+            // contenteditable follows no link, so an editable document opens
+            // one itself. A plain click still places the caret, which is what
+            // the toolbar's link button needs to edit or unset the mark.
+            click(view, event) {
+              if (!view.editable || event.button !== 0) return false;
+              if (!event.metaKey && !event.ctrlKey) return false;
+
+              const anchor = (event.target as HTMLElement | null)?.closest?.("a");
+              const href = anchor?.getAttribute("href");
+              if (!href || !isSafeUrlValue(href)) return false;
+
+              let target: URL;
+              try {
+                target = new URL(href, window.location.href);
+              } catch {
+                return false;
+              }
+
+              event.preventDefault();
+              // Links render with `target="_blank"`, and a new tab keeps the
+              // document being edited open either way.
+              window.open(target.href, anchor?.target || "_blank", "noopener");
+              return true;
+            },
+          },
+        },
       }),
     ];
   },
