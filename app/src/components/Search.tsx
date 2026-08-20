@@ -20,6 +20,7 @@ import { brandTextColor } from "#utils/color.ts";
 import { t } from "#utils/lang.ts";
 import { DocumentGroupedList, type DocumentListItem } from "./DocumentGroupedList.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 import { SearchFilters } from "./SearchFilters.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
@@ -556,14 +557,12 @@ export function Search(props: Props) {
                 reason to stop the reader typing the next one or clearing this
                 one. */}
             <Show when={searchQuery()}>
-              <button
-                type="button"
+              <IconButton
+                class="absolute top-1/2 right-3 -translate-y-1/2"
+                icon="cancel"
+                label={t("Clear search")}
                 onClick={clear}
-                class="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm p-1 text-neutral hover:bg-neutral-100 hover:text-neutral-800"
-                title={t("Clear search")}
-              >
-                <Icon class="block h-4 w-4" name="cancel" />
-              </button>
+              />
             </Show>
           </div>
 

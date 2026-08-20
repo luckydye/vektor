@@ -1,13 +1,22 @@
 import {
   Extension,
+  escapeForRegEx,
   getMarkAttributes,
+  getMarksBetween,
+  InputRule,
   Mark,
   markPasteRule,
   Node,
   textblockTypeInputRule,
   wrappingInputRule,
 } from "@tiptap/core";
-import { Fragment, type NodeType, type Node as PMNode } from "@tiptap/pm/model";
+import {
+  Fragment,
+  type MarkType,
+  type NodeType,
+  type Node as PMNode,
+  type Schema,
+} from "@tiptap/pm/model";
 import {
   liftListItem as pmLiftListItem,
   sinkListItem as pmSinkListItem,
@@ -182,6 +191,61 @@ export const HardBreak = Node.create({
 
 // ---- Marks ----
 
+/**
+ * A markdown emphasis rule: on the closing delimiter, drop both delimiters and
+ * mark the text between them. Every type in `types` is applied, so one rule can
+ * set more than one mark — `***text***` is bold and italic at once.
+ */
+function emphasisInputRule(find: RegExp, types: MarkType[]) {
+  return new InputRule({
+    find,
+    handler: ({ state, range, match }) => {
+      const text = match[match.length - 1];
+      if (!text) return null;
+      const fullMatch = match[0];
+      const leading = fullMatch.search(/\S/);
+      const textStart = range.from + fullMatch.indexOf(text);
+      const textEnd = textStart + text.length;
+
+      // Inline code excludes every other mark, so leave its text alone.
+      const excluded = getMarksBetween(range.from, range.to, state.doc).some(
+        (item) =>
+          item.to > textStart &&
+          types.some((type) => item.mark.type !== type && item.mark.type.excludes(type)),
+      );
+      if (excluded) return null;
+
+      const { tr } = state;
+      if (textEnd < range.to) tr.delete(textEnd, range.to);
+      if (textStart > range.from) tr.delete(range.from + leading, textStart);
+      const from = range.from + leading;
+      for (const type of types) {
+        tr.addMark(from, from + text.length, type.create());
+        tr.removeStoredMark(type);
+      }
+    },
+  });
+}
+
+/**
+ * One emphasis rule per spelling of the same emphasis — `**` and `__` both mean
+ * bold. The delimiter has to be preceded by the start of the block or a space,
+ * or `snake_case_names` would turn italic halfway through being typed.
+ */
+function emphasisRules(schema: Schema, delimiters: string[], markNames: string[]) {
+  const types = markNames.map((name) => schema.marks[name]);
+  return delimiters.map((delimiter) => {
+    const pattern = escapeForRegEx(delimiter);
+    const inner = `[^${escapeForRegEx(delimiter[0])}]+`;
+    return emphasisInputRule(
+      new RegExp(
+        `(?:^|\\s)(${pattern}(?!\\s+${pattern})(${inner})${pattern}(?!\\s+${pattern}))$`,
+      ),
+      types,
+    );
+  });
+}
+
 export const Bold = Mark.create({
   name: "bold",
   addOptions: htmlAttributeOptions,
@@ -210,6 +274,14 @@ export const Bold = Mark.create({
       "Mod-b": () => this.editor.commands.toggleBold(),
     };
   },
+  addInputRules() {
+    return [
+      // The triple form lives here so it is tried before the `**` and `*`
+      // rules, neither of which matches a delimiter longer than its own.
+      ...emphasisRules(this.type.schema, ["***", "___"], ["bold", "italic"]),
+      ...emphasisRules(this.type.schema, ["**", "__"], ["bold"]),
+    ];
+  },
 });
 
 export const Italic = Mark.create({
@@ -237,6 +309,9 @@ export const Italic = Mark.create({
       "Mod-i": () => this.editor.commands.toggleItalic(),
     };
   },
+  addInputRules() {
+    return emphasisRules(this.type.schema, ["*", "_"], ["italic"]);
+  },
 });
 
 export const Strike = Mark.create({
@@ -258,6 +333,9 @@ export const Strike = Mark.create({
         ({ commands }) =>
           commands.unsetMark(this.name),
     };
+  },
+  addInputRules() {
+    return emphasisRules(this.type.schema, ["~~", "~"], ["strike"]);
   },
 });
 

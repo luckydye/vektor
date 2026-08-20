@@ -3,7 +3,7 @@ import { Portal } from "solid-js/web";
 import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import "@atrium-ui/elements/blur";
-import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 
 interface Props {
   show?: boolean;
@@ -99,14 +99,12 @@ export function Dialog(props: Props) {
               >
                 {merged.header}
               </Show>
-              <button
-                type="button"
-                class="-mr-1 flex-none rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                aria-label={t("Close")}
+              <IconButton
+                class="-mr-1"
+                icon="cancel"
+                label={t("Close")}
                 onClick={close}
-              >
-                <Icon class="block h-4 w-4" name="cancel" />
-              </button>
+              />
             </div>
           </Show>
 

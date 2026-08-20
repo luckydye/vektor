@@ -22,6 +22,7 @@ import { spacePath } from "#utils/utils.ts";
 import { BottomBanner } from "./BottomBanner.tsx";
 import { type FilePreviewItem, FilePreviews } from "./FilePreviews.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
 
 export type DocumentListItem = DocumentWithProperties & {
@@ -304,14 +305,12 @@ export function DocumentGroupedList(props: Props) {
       </span>
       {props.batchActions?.(selectedIds(), deselectAll)}
       <span class="mx-0.5 h-6 w-px bg-neutral-200" />
-      <button
-        type="button"
+      <IconButton
+        class="h-8 w-8"
+        icon="cancel"
+        label={t("Deselect all")}
         onClick={deselectAll}
-        class="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800"
-        title={t("Deselect all")}
-      >
-        <Icon class="h-4 w-4" name="cancel" />
-      </button>
+      />
     </Show>
   );
 

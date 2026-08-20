@@ -740,20 +740,6 @@ export function DocumentTree(props: Props) {
                     <button
                       type="button"
                       onClick={() => {
-                        closeContextMenu();
-                        window.location.href = spacePath(
-                          currentSpace()?.slug,
-                          `/new?category=${menu().category.slug}`,
-                        );
-                      }}
-                      class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
-                    >
-                      <Icon class="h-4 w-4 flex-none" name="document" />
-                      <span>{t("New document")}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
                         const category = menu().category;
                         closeContextMenu();
                         startEditing(category);

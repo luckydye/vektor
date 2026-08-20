@@ -9,6 +9,7 @@ import "#editor/css/mentions.css";
 import "./AvatarElement.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 import { MessageInput } from "./MessageInput.tsx";
 
 export interface Comment {
@@ -98,23 +99,19 @@ export function CommentThread(props: Props) {
         </div>
         <div class="flex items-center gap-1">
           <Show when={props.comments.length > 0}>
-            <Button
-              variant="ghost"
+            <IconButton
+              class="enabled:active:bg-green-600/20 enabled:hover:bg-green-600/10 enabled:hover:text-green-600"
+              icon="confirmation"
+              label={t("Resolve thread")}
               onClick={() => props.onResolve?.()}
-              class="h-6 w-6 p-1 text-neutral-400 hover:text-green-600"
-              ariaLabel={t("Resolve thread")}
-            >
-              <Icon class="h-4 w-4" name="confirmation" />
-            </Button>
+            />
           </Show>
-          <Button
-            variant="ghost"
+          <IconButton
+            class="-mr-1"
+            icon="cancel"
+            label={t("Close thread")}
             onClick={() => props.onClose?.()}
-            class="-mr-1 h-6 w-6 p-1 text-neutral-400 hover:text-neutral-700"
-            ariaLabel={t("Close thread")}
-          >
-            <Icon class="h-4 w-4" name="cancel" />
-          </Button>
+          />
         </div>
       </div>
 
