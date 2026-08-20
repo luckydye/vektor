@@ -9,6 +9,7 @@ import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { history } from "#utils/history.ts";
+import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
@@ -21,12 +22,12 @@ type Result =
   | { type: "search"; title: string; space: string; id?: undefined }
   | { type: "create"; title: string; id?: undefined };
 
-const SECTION_LABELS: Record<Result["type"], string> = {
-  document: "Documents",
-  action: "Actions",
-  search: "Search",
-  create: "Create",
-};
+function sectionLabel(type: Result["type"]): string {
+  if (type === "document") return t("Documents");
+  if (type === "action") return t("Actions");
+  if (type === "search") return t("Search");
+  return t("Create");
+}
 
 const RESULT_ICONS: Record<Result["type"], IconName> = {
   document: "document",
@@ -40,14 +41,17 @@ const MAX_DOCUMENT_RESULTS = 50;
 function resultLabel(result: Result): string {
   if (result.type === "document") return documentTitle(result.data);
   if (result.type === "action") return result.data.title || result.id;
-  if (result.type === "search") return `Search "${result.title}" in ${result.space}`;
-  return `Create Document with title "${result.title}"`;
+  if (result.type === "search")
+    return t('Search "{query}" in {space}')
+      .replace("{query}", result.title)
+      .replace("{space}", result.space);
+  return t('Create Document with title "{title}"').replace("{title}", result.title);
 }
 
 function resultDescription(result: Result): string | undefined {
   if (result.type === "action") return result.data.description;
-  if (result.type === "search") return "Search the full text of every document";
-  if (result.type === "create") return "Open a new document with this title";
+  if (result.type === "search") return t("Search the full text of every document");
+  if (result.type === "create") return t("Open a new document with this title");
   return undefined;
 }
 
@@ -221,8 +225,8 @@ export function CommandPalatte() {
   createEffect(on(searchQuery, () => setSelectedIndex(0), { defer: true }));
 
   Actions.register("ui:toggle:palatte", {
-    title: "Toggle Command Palatte",
-    description: "Open or close the command menu",
+    title: t("Toggle Command Palatte"),
+    description: t("Open or close the command menu"),
     group: "navigation",
     run: async () => togglePalette(),
   });
@@ -247,7 +251,7 @@ export function CommandPalatte() {
             <input
               ref={searchInput}
               type="text"
-              placeholder="Search documents and actions…"
+              placeholder={t("Search documents and actions…")}
               class="flex-1 bg-transparent text-neutral-900 text-size-medium outline-none placeholder:text-neutral"
               value={searchQuery()}
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
@@ -257,9 +261,9 @@ export function CommandPalatte() {
               type="button"
               onClick={() => searchSpace(searchQuery())}
               class="flex flex-none items-center gap-1 rounded-md px-2 py-1 font-medium text-neutral text-size-small transition-colors hover:bg-neutral-100 hover:text-neutral-800"
-              title="Open the full search page"
+              title={t("Open the full search page")}
             >
-              Full search
+              {t("Full search")}
               <Icon class="h-3 w-3" name="chevron-right-small" />
             </button>
 
@@ -269,7 +273,7 @@ export function CommandPalatte() {
           <div ref={resultsContainer} class="max-h-[400px] overflow-y-auto py-1">
             <Show when={isOpen() && filteredResults().length === 0}>
               <div class="px-4 py-10 text-center">
-                <p class="text-neutral text-size-medium">No results found</p>
+                <p class="text-neutral text-size-medium">{t("No results found")}</p>
               </div>
             </Show>
 
@@ -279,7 +283,7 @@ export function CommandPalatte() {
                   <Show when={sectionStarts().get(result.type) === index()}>
                     <div class="px-3 pt-2 pb-0.5">
                       <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
-                        {SECTION_LABELS[result.type]}
+                        {sectionLabel(result.type)}
                       </span>
                     </div>
                   </Show>
@@ -373,11 +377,11 @@ export function CommandPalatte() {
             <div class="flex items-center gap-3">
               <span class="flex pointer-coarse:hidden items-center gap-1">
                 <a-shortcut attr:data-shortcut="↑-↓" />
-                Navigate
+                {t("Navigate")}
               </span>
               <span class="flex pointer-coarse:hidden items-center gap-1">
                 <a-shortcut attr:data-shortcut="↵" />
-                Select
+                {t("Select")}
               </span>
             </div>
             <span class="flex pointer-coarse:hidden items-center gap-1">
@@ -387,7 +391,7 @@ export function CommandPalatte() {
                     .value
                 }
               />
-              Toggle
+              {t("Toggle")}
             </span>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { html, render } from "lit-html";
+import { t } from "#utils/lang.ts";
 import { HtmlBlock } from "./HtmlBlock.ts";
 
 /**
@@ -116,7 +117,7 @@ export const HtmlBlockNodeView = HtmlBlock.extend({
                 class="html-block-toggle-btn"
                 @click=${toggleView}
                 aria-pressed=${isPreview ? "true" : "false"}
-                aria-label=${isPreview ? "Edit HTML source" : "Show HTML preview"}
+                aria-label=${isPreview ? t("Edit HTML source") : t("Show HTML preview")}
               >
                 ${
                   isPreview

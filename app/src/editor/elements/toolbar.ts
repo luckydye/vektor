@@ -3,6 +3,7 @@ import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import { iconMarkup } from "#components/Icon.tsx";
+import { t } from "#utils/lang.ts";
 
 const TEXT_COLOR_PRESETS = [
   { label: "Charcoal", value: "#111827" },
@@ -626,7 +627,7 @@ if (
         if (!editorReady(editor)) return;
 
         const previousUrl = editor.getAttributes("link").href;
-        const url = window.prompt("Enter URL:", previousUrl);
+        const url = window.prompt(t("Enter URL:"), previousUrl);
         if (url === null) return;
         if (url === "") {
           editor.chain().focus().extendMarkRange("link").unsetLink().run();
@@ -790,7 +791,7 @@ if (
         onChange: (value: string) => void;
         triggerAttr?: string;
       }) {
-        const clearTitle = `Clear ${options.label}`;
+        const clearTitle = t("Clear {label}").replace("{label}", options.label);
         const paletteStr = options.palette.map((p) => p.value).join(",");
 
         return html`
@@ -1164,7 +1165,7 @@ if (
                   <button
                     slot="trigger"
                     class="menu-btn heading-trigger"
-                    title="Heading Level"
+                    title=${t("Heading Level")}
                     type="button"
                     @mousedown=${(event: MouseEvent) => {
                       event.preventDefault();
@@ -1182,19 +1183,19 @@ if (
               <div class="menu-group">
                 ${this.button(
                   this.icon(iconMarkup("bold")),
-                  "Bold",
+                  t("Bold"),
                   () => this.chain()?.toggleBold().run(),
                   { active: this.isActive("bold") },
                 )}
                 ${this.button(
                   this.icon(iconMarkup("italic")),
-                  "Italic",
+                  t("Italic"),
                   () => this.chain()?.toggleItalic().run(),
                   { active: this.isActive("italic") },
                 )}
                 ${this.button(
                   this.icon(iconMarkup("link")),
-                  "Link",
+                  t("Link"),
                   () => this.setLink(),
                   {
                     active: this.isActive("link"),
@@ -1205,13 +1206,13 @@ if (
               <div class="menu-group">
                 ${this.button(
                   this.icon(iconMarkup("list")),
-                  "Bullet List",
+                  t("Bullet List"),
                   () => this.chain()?.toggleBulletList().run(),
                   { active: this.isActive("bulletList") },
                 )}
                 ${this.button(
                   this.icon(iconMarkup("numbered-list")),
-                  "Numbered List",
+                  t("Numbered List"),
                   () => this.chain()?.toggleOrderedList().run(),
                   { active: this.isActive("orderedList") },
                 )}
@@ -1242,7 +1243,7 @@ if (
                   <button
                     slot="trigger"
                     class="menu-btn heading-trigger"
-                    title="Heading Level"
+                    title=${t("Heading Level")}
                     type="button"
                     @mousedown=${(event: MouseEvent) => {
                       event.preventDefault();
@@ -1261,7 +1262,7 @@ if (
               <div class="menu-group">
                 ${this.button(
                   this.icon(iconMarkup("bold")),
-                  "Bold",
+                  t("Bold"),
                   () => this.chain()?.toggleBold().run(),
                   {
                     active: this.isActive("bold"),
@@ -1269,7 +1270,7 @@ if (
                 )}
                 ${this.button(
                   this.icon(iconMarkup("italic")),
-                  "Italic",
+                  t("Italic"),
                   () => this.chain()?.toggleItalic().run(),
                   {
                     active: this.isActive("italic"),
@@ -1277,7 +1278,7 @@ if (
                 )}
                 ${this.button(
                   this.icon(iconMarkup("underline")),
-                  "Underline",
+                  t("Underline"),
                   () => this.chain()?.toggleUnderline().run(),
                   {
                     active: this.isActive("underline"),
@@ -1285,7 +1286,7 @@ if (
                 )}
                 ${this.button(
                   this.icon(iconMarkup("link")),
-                  "Link",
+                  t("Link"),
                   () => this.setLink(),
                   {
                     active: this.isActive("link"),
@@ -1297,7 +1298,7 @@ if (
               <div class="menu-group">
                 ${this.button(
                   this.icon(iconMarkup("list")),
-                  "Bullet List",
+                  t("Bullet List"),
                   () => this.chain()?.toggleBulletList().run(),
                   {
                     active: this.isActive("bulletList"),
@@ -1305,7 +1306,7 @@ if (
                 )}
                 ${this.button(
                   this.icon(iconMarkup("numbered-list")),
-                  "Numbered List",
+                  t("Numbered List"),
                   () => this.chain()?.toggleOrderedList().run(),
                   {
                     active: this.isActive("orderedList"),
@@ -1313,7 +1314,7 @@ if (
                 )}
                 ${this.button(
                   this.icon(iconMarkup("task-list")),
-                  "Task List",
+                  t("Task List"),
                   () => this.chain()?.toggleTaskList().run(),
                   {
                     active: this.isActive("taskList"),
@@ -1328,8 +1329,10 @@ if (
                   ? html`
                     <div class="menu-divider"></div>
                     <div class="menu-group">
-                      ${this.button(this.icon(iconMarkup("comment")), "Add comment", () =>
-                        this.addInlineComment(),
+                      ${this.button(
+                        this.icon(iconMarkup("comment")),
+                        t("Add comment"),
+                        () => this.addInlineComment(),
                       )}
                     </div>
                   `
@@ -1340,7 +1343,7 @@ if (
               <div class="menu-group">
                 ${this.button(
                   this.icon(iconMarkup("context-menu-more")),
-                  "More Formatting",
+                  t("More Formatting"),
                   () => this.toggleSecondaryToolbar(),
                   { active: this.secondaryOpen },
                 )}
@@ -1357,7 +1360,7 @@ if (
                           <div class="menu-group">
                             ${this.button(
                               this.icon(iconMarkup("image-full-width")),
-                              "Toggle Full Width",
+                              t("Toggle Full Width"),
                               () => {
                                 toggleImageFullWidth(editor);
                               },
@@ -1365,7 +1368,7 @@ if (
                             )}
                             ${this.button(
                               this.icon(iconMarkup("restore")),
-                              "Reset Image Size",
+                              t("Reset Image Size"),
                               () => {
                                 resetImageSize(editor);
                               },
@@ -1379,7 +1382,7 @@ if (
                     <div class="menu-group">
                       ${this.button(
                         this.icon(iconMarkup("strike-through")),
-                        "Strikethrough",
+                        t("Strikethrough"),
                         () => this.chain()?.toggleStrike().run(),
                         {
                           active: this.isActive("strike"),
@@ -1391,7 +1394,7 @@ if (
                     <div class="menu-group">
                       ${this.button(
                         this.icon(iconMarkup("justify-left")),
-                        "Align Left",
+                        t("Align Left"),
                         () => this.chain()?.setTextAlign("left").run(),
                         {
                           active: this.isActive({ textAlign: "left" }),
@@ -1399,7 +1402,7 @@ if (
                       )}
                       ${this.button(
                         this.icon(iconMarkup("justify-center")),
-                        "Align Center",
+                        t("Align Center"),
                         () => this.chain()?.setTextAlign("center").run(),
                         {
                           active: this.isActive({ textAlign: "center" }),
@@ -1407,7 +1410,7 @@ if (
                       )}
                       ${this.button(
                         this.icon(iconMarkup("justify-right")),
-                        "Align Right",
+                        t("Align Right"),
                         () => this.chain()?.setTextAlign("right").run(),
                         {
                           active: this.isActive({ textAlign: "right" }),
@@ -1415,7 +1418,7 @@ if (
                       )}
                       ${this.button(
                         this.icon(iconMarkup("justify-block")),
-                        "Justify",
+                        t("Justify"),
                         () => this.chain()?.setTextAlign("justify").run(),
                         {
                           active: this.isActive({ textAlign: "justify" }),
@@ -1427,7 +1430,7 @@ if (
                     <div class="menu-group">
                       ${this.button(
                         this.icon(iconMarkup("indent")),
-                        "Indent List Item",
+                        t("Indent List Item"),
                         () => this.indentListItem(),
                         {
                           disabled: !this.canIndent(),
@@ -1435,7 +1438,7 @@ if (
                       )}
                       ${this.button(
                         this.icon(iconMarkup("outdent")),
-                        "Outdent List Item",
+                        t("Outdent List Item"),
                         () => this.outdentListItem(),
                         {
                           disabled: !this.canOutdent(),
@@ -1448,7 +1451,7 @@ if (
                       <div class="color-picker-wrapper">
                         ${this.colorControl({
                           icon: iconMarkup("text-color"),
-                          label: "Text Color",
+                          label: t("Text Color"),
                           value: this.textColor,
                           active: this.textColorActive,
                           onClear: () => this.chain()?.unsetColor().run(),
@@ -1460,7 +1463,7 @@ if (
                       <div class="color-picker-wrapper">
                         ${this.colorControl({
                           icon: iconMarkup("cell-fill"),
-                          label: "Background Color",
+                          label: t("Background Color"),
                           value:
                             this.bgColor === "transparent" ? "#ffff00" : this.bgColor,
                           active: this.bgColorActive,
@@ -1485,7 +1488,7 @@ if (
                             ].map(([count, icon]) =>
                               this.button(
                                 this.icon(icon as string),
-                                `${count} Columns`,
+                                t("{count} Columns").replace("{count}", String(count)),
                                 () => this.setColumnCount(count as number),
                                 {
                                   active: this.columnCount === count,
@@ -1494,7 +1497,7 @@ if (
                             )}
                             ${this.button(
                               this.icon(iconMarkup("delete-element")),
-                              "Delete Column Layout",
+                              t("Delete Column Layout"),
                               () => this.deleteColumnLayout(),
                               { danger: true },
                             )}
@@ -1523,7 +1526,7 @@ if (
                 }}
                 @click=${(event: Event) => this.setHeading(level, event)}
               >
-                ${level === 0 ? "Paragraph" : `Heading ${level}`}
+                ${level === 0 ? t("Paragraph") : t(`Heading ${level}`)}
               </button>
             `,
             )}
@@ -1544,17 +1547,17 @@ if (
             <div class="menu-group">
               ${this.button(
                 this.icon(iconMarkup("add-column-left")),
-                "Add Column Before",
+                t("Add Column Before"),
                 () => this.chain()?.addColumnBefore().run(),
               )}
               ${this.button(
                 this.icon(iconMarkup("add-column-right")),
-                "Add Column After",
+                t("Add Column After"),
                 () => this.chain()?.addColumnAfter().run(),
               )}
               ${this.button(
                 this.icon(iconMarkup("delete-column")),
-                "Delete Column",
+                t("Delete Column"),
                 () => this.chain()?.deleteColumn().run(),
                 { danger: true },
               )}
@@ -1562,24 +1565,26 @@ if (
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(this.icon(iconMarkup("add-row-top")), "Add Row Before", () =>
-                this.chain()?.addRowBefore().run(),
+              ${this.button(
+                this.icon(iconMarkup("add-row-top")),
+                t("Add Row Before"),
+                () => this.chain()?.addRowBefore().run(),
               )}
               ${this.button(
                 this.icon(iconMarkup("add-row-bottom")),
-                "Add Row After",
+                t("Add Row After"),
                 () => this.chain()?.addRowAfter().run(),
               )}
               ${this.button(
                 this.icon(iconMarkup("delete-row")),
-                "Delete Row",
+                t("Delete Row"),
                 () => this.chain()?.deleteRow().run(),
                 { danger: true },
               )}
-              ${this.button(this.icon(iconMarkup("cut")), "Cut Row", () => this.cutRow())}
+              ${this.button(this.icon(iconMarkup("cut")), t("Cut Row"), () => this.cutRow())}
               ${this.button(
                 this.icon(iconMarkup("paste")),
-                "Paste Row",
+                t("Paste Row"),
                 () => this.pasteRow(),
                 {
                   disabled: !this.copiedRow,
@@ -1591,14 +1596,14 @@ if (
             <div class="menu-group">
               ${this.button(
                 this.icon(iconMarkup("table")),
-                "Toggle Header Cell",
+                t("Toggle Header Cell"),
                 () => this.chain()?.toggleHeaderCell().run(),
                 { active: this.isActive("tableHeader") },
               )}
-              ${this.button(this.icon(iconMarkup("merge-cells")), "Merge Cells", () =>
+              ${this.button(this.icon(iconMarkup("merge-cells")), t("Merge Cells"), () =>
                 this.chain()?.mergeCells().run(),
               )}
-              ${this.button(this.icon(iconMarkup("split-cells")), "Split Cell", () =>
+              ${this.button(this.icon(iconMarkup("split-cells")), t("Split Cell"), () =>
                 this.chain()?.splitCell().run(),
               )}
             </div>
@@ -1607,7 +1612,7 @@ if (
             <div class="menu-group">
               ${this.button(
                 this.icon(iconMarkup("function")),
-                "Insert Expression Cell",
+                t("Insert Expression Cell"),
                 () => this.chain()?.insertExpressionCell({ formula: "=" }).run(),
               )}
             </div>
@@ -1617,7 +1622,7 @@ if (
               <div class="color-picker-wrapper">
                 ${this.colorControl({
                   icon: iconMarkup("cell-fill"),
-                  label: "Cell Background",
+                  label: t("Cell Background"),
                   value:
                     this.cellBackgroundColor === "transparent"
                       ? "#ffffff"
@@ -1636,7 +1641,7 @@ if (
             <div class="menu-group">
               ${this.button(
                 this.icon(iconMarkup("delete-element")),
-                "Delete Table",
+                t("Delete Table"),
                 () => this.chain()?.deleteTable().run(),
                 { danger: true },
               )}
