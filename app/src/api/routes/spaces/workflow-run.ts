@@ -31,7 +31,7 @@ export const GET: ApiRouteHandler = (context) =>
     const runId = requireParam(context.var.params, "runId");
 
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      context.var.credentials,
       spaceId,
       Permission.VIEWER,
     );

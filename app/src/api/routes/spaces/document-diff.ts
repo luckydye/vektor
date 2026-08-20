@@ -53,7 +53,7 @@ export const GET: ApiRouteHandler = (context) =>
         : parseQueryInt(searchParams, "base", { min: 1 });
 
     const { aclUserId } = await authenticateDocumentAccess(
-      context,
+      context.var.credentials,
       spaceId,
       id,
       Permission.VIEWER,

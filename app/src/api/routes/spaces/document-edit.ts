@@ -35,7 +35,7 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
       {

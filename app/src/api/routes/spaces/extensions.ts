@@ -5,9 +5,9 @@ import {
   verifyFeatureAccess,
   verifyTokenFeature,
 } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import { hasFeature } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -40,7 +40,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
     );
@@ -117,12 +117,10 @@ export const POST: ApiRouteHandler = (context) =>
             "Anonymous job tokens are not allowed to install extensions",
           );
         }
-        const groups = await getUserGroups(parsed.userId);
         const canManage = await hasFeature(
           spaceId,
           Feature.MANAGE_EXTENSIONS,
-          parsed.userId,
-          groups,
+          await resolveIdentity(parsed.userId),
         );
         if (!canManage) {
           throw forbiddenResponse(
@@ -131,7 +129,7 @@ export const POST: ApiRouteHandler = (context) =>
         }
         createdBy = parsed.userId;
       } else {
-        const auth = await authenticateRequest(context, spaceId);
+        const auth = await authenticateRequest(context.var.credentials, spaceId);
         if (auth.type === "user") {
           // Installing an extension runs its code in every member's browser, so
           // it is gated on the space-wide `manage_extensions` capability rather

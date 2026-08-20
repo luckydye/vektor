@@ -1,7 +1,7 @@
 import { verifyAccess } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -31,18 +31,17 @@ export const GET: ApiRouteHandler = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const userGroups = await getUserGroups(user.id);
+    const identity = await resolveIdentity(user.id);
     const children = await getDocumentChildren(store, id, {
       userId: user.id,
-      userGroups,
+      userGroups: identity.groups,
       // Access to this parent can come from a grant on the parent alone. Without
       // the scope, children with no ACL entry of their own would fall back to a
       // space role the caller does not hold and be enumerable.
       documentScope: await listAccessibleResources(
         spaceId,
-        user.id,
+        identity,
         ResourceType.DOCUMENT,
-        userGroups,
         Permission.VIEWER,
       ),
     });

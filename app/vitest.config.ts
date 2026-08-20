@@ -85,6 +85,7 @@ export default defineConfig({
           // test anything — worth 7 tests that otherwise silently skip.
           fileParallelism: false,
           isolate: false,
+          globalSetup: ["./test/helpers/dataDir.ts"],
         },
       },
     ],

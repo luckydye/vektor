@@ -46,7 +46,12 @@ export const GET: ApiRouteHandler = (context) =>
 
     // Whoever may read the document may read its comments — a public reader
     // and a job or access token included.
-    await authenticateDocumentAccess(context, spaceId, documentId, Permission.VIEWER);
+    await authenticateDocumentAccess(
+      context.var.credentials,
+      spaceId,
+      documentId,
+      Permission.VIEWER,
+    );
 
     const store = await openSpaceStore(spaceId);
     const comments = await listComments(store, ResourceType.DOCUMENT, documentId);

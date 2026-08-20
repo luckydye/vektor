@@ -4,6 +4,8 @@
  * token panel so the two look like the same system.
  */
 
+import { t } from "#utils/lang.ts";
+
 export type AccessTokenStatus = "Active" | "Expired" | "Revoked";
 
 /** Whether a token can still be used, and why not when it cannot. */
@@ -29,6 +31,14 @@ export function tokenRole(token: {
   const grant = token.resources?.[0];
   if (!grant) return "none";
   return grant.resourceType === "feature" ? "capability" : grant.permission;
+}
+
+/** Phrased as what the person may do, not as a role name. */
+export function roleLabel(role: string): string {
+  if (role === "owner") return t("Owner");
+  if (role === "editor") return t("Can edit");
+  if (role === "viewer") return t("Can view");
+  return role;
 }
 
 /** Alpha tones rather than flat palettes, so the pill follows the theme. */

@@ -1,4 +1,5 @@
 import { authenticateSpaceAccess } from "#acl/guards.ts";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { listAccessibleResources } from "#acl/store.ts";
 import {
@@ -20,7 +21,11 @@ export const GET: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER);
+      const access = await authenticateSpaceAccess(
+        context.var.credentials,
+        spaceId,
+        Permission.VIEWER,
+      );
       // null means "no per-document filtering". Public access is trusted within
       // the space, so documents inheriting space-level access are searchable.
       const userId = access.isPublic ? null : access.aclUserId;
@@ -46,7 +51,11 @@ export const GET: ApiRouteHandler = (context) =>
       const docIds =
         userId === null
           ? null
-          : await listAccessibleResources(spaceId, userId, ResourceType.DOCUMENT);
+          : await listAccessibleResources(
+              spaceId,
+              await resolveIdentity(userId),
+              ResourceType.DOCUMENT,
+            );
 
       // Catch up stale indexes before the query reads them — but not for a
       // caller who can read nothing, since the search returns empty regardless.
