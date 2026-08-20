@@ -1,17 +1,17 @@
 /**
  * The enforcement layer: everything a route calls to gate a request.
  *
- * {@link decideAccess} decides and {@link verifyAccess}/{@link canAccess} are
- * the only two ways to ask it. Nothing here takes a request: guards read a plain
- * {@link CallerCredentials} that `#api/acl.ts` builds.
+ * {@link decideAccess} decides; {@link verifyAccess} and {@link canAccess} are
+ * the only two ways to ask it.
  *
- * A guard may take an id and resolve it; the decisions in `#acl/store.ts` require
- * a {@link ResolvedIdentity} and so cannot, which is what keeps the IdP
- * round-trip out of a permission check. A credential's issuer is the exception,
- * because the `acl` table has to be read to find it.
+ * Two rules hold throughout:
+ *  - Nothing here takes a request. Guards read a {@link CallerCredentials}
+ *    struct that `#api/acl.ts` builds from one.
+ *  - A guard may resolve an id, a decision may not. That is what keeps the IdP
+ *    round-trip out of a permission check.
  *
- * Features are the exception: {@link verifyFeatureAccess} and
- * {@link verifyRevisionAccess} ask about a capability rather than a resource.
+ * {@link verifyFeatureAccess} and {@link verifyRevisionAccess} are the odd pair:
+ * they ask about a capability rather than a resource.
  */
 
 import {
@@ -222,23 +222,17 @@ export async function canAccess(
 }
 
 /**
- * Authenticate a request that may originate from:
- *  - an HMAC job token (`X-Job-Token`) — a server-minted credential that
- *    carries the initiating user's id. When a user id is present the token is
- *    NOT trusted blindly: it is scoped to exactly what that user may do on the
- *    target (a token minted at space-viewer level must not become a skeleton
- *    key for documents the user cannot access).
- *    A user-less token (`userId === null`) is a system/background credential
- *    and remains fully trusted within its space;
- *  - a space access token (`Authorization: Bearer at_...`) — a long-lived
- *    credential that remains valid while its creator belongs to the space and
- *    whose authority is defined by the ACL entries under its id; or
- *  - a logged-in user session.
+ * Authenticate whichever credential the request carries, and verify it holds
+ * `requiredRole` on the target:
+ *  - HMAC job token (`X-Job-Token`): scoped to what its user may do, so a
+ *    viewer-level token is no skeleton key. A user-less one is the space's own
+ *    background work and stays trusted.
+ *  - Access token (`Authorization: Bearer at_...`): its authority is the ACL
+ *    entries under its own id.
+ *  - User session: their space role.
  *
- * For every credential that carries a user identity we MUST verify it actually
- * holds `requiredRole` on the target resource. By default the target is the
- * space itself; pass `resource` to check a more specific node (e.g. a document)
- * so resource-scoped credentials are neither over- nor under-privileged.
+ * @param resource A more specific node than the space, so a resource-scoped
+ *   credential is neither over- nor under-privileged.
  */
 export async function authenticateJobTokenOrSpaceRole(
   credentials: CallerCredentials,
@@ -284,13 +278,12 @@ export async function authenticateJobTokenOrSpaceRole(
 }
 
 /**
- * Authorize a request against one document, whichever credential it carries —
- * the document-scoped sibling of {@link authenticateJobTokenOrSpaceRole},
- * extended with the unauthenticated case. For a resource that belongs to a
- * document rather than to the space, an attachment above all.
+ * The document-scoped sibling of {@link authenticateJobTokenOrSpaceRole},
+ * extended with the unauthenticated case. For a resource belonging to a document
+ * rather than to the space — an attachment above all.
  *
- * Returns the caller's ACL identity in the {@link SpaceAccess.aclUserId}
- * convention: `null` is a trusted system caller, `""` is public.
+ * @returns The caller in the {@link SpaceAccess.aclUserId} convention: `null` is
+ *   a trusted system caller, `""` is public.
  */
 export async function authenticateDocumentAccess(
   credentials: CallerCredentials,
@@ -402,11 +395,10 @@ export function spaceAccessToViewer(access: SpaceAccess): AclViewer | null {
 export interface SpaceAccessOptions {
   /**
    * Admit a caller who holds no space-wide role but does hold a
-   * document/tree/category grant in the space, confining them to the documents
-   * those grants reach (`documentScope` on the result). Only for endpoints that
-   * list documents, or things owned by documents, and then filter every row
-   * against that scope. Endpoints exposing space-wide collections that cannot
-   * be filtered per document (members, integrations) must leave it off.
+   * document/tree/category grant, confined to what it reaches (`documentScope`
+   * on the result). Only for endpoints that then filter every row against that
+   * scope — a space-wide collection that cannot (members, integrations) must
+   * leave it off.
    */
   allowResourceGrants?: boolean;
   /**
@@ -423,10 +415,11 @@ function scopeType(options: SpaceAccessOptions | undefined): ResourceType {
 
 /**
  * The space-role check behind {@link authenticateSpaceAccess}, widened for
- * `allowResourceGrants` callers. Returns the caller's `resourceScope`: `null`
- * when a space-wide role carries the whole space, or the allowlist a
- * resource-scoped grantee is confined to. Throws the original 403 when the
- * caller holds neither.
+ * `allowResourceGrants` callers. Throws the original 403 when the caller holds
+ * neither.
+ *
+ * @returns `null` when a space-wide role carries the whole space, otherwise the
+ *   allowlist a resource-scoped grantee is confined to.
  */
 async function spaceRoleOrResourceScope(
   spaceId: string,
@@ -470,19 +463,8 @@ async function spaceRoleOrResourceScope(
  *  - **Unauthenticated**: admitted when the `public` group holds
  *    `requiredRole` on the space; otherwise throws 401.
  *
- * Throws a 401/403 Response on failure. On success returns the identity
- * information callers need for downstream per-document ACL filtering.
- *
- * @example
- * ```ts
- * // Simple gate (throws if unauthorized):
- * await authenticateSpaceAccess(requestCredentials(context), spaceId, Permission.VIEWER);
- *
- * // Gate + identity for ACL filtering:
- * const access = await authenticateSpaceAccess(credentials, spaceId, Permission.VIEWER);
- * const viewer = spaceAccessToViewer(access);
- * const docs = await listDocuments(spaceId, { limit: 50, viewer });
- * ```
+ * Throws a 401/403 Response on failure. On success returns what a caller needs
+ * to filter rows per document, via {@link spaceAccessToViewer}.
  */
 export async function authenticateSpaceAccess(
   credentials: CallerCredentials,
@@ -622,14 +604,10 @@ async function requiredRoleForDocument(
 }
 
 /**
- * Verify user has access to a specific feature, throws 403 if not.
+ * Verify the caller holds a feature, throwing 403 if not.
  *
  * @param documentId Resolve against this document's role rather than the space
  *   role, for a feature exercised on one document. See {@link hasFeature}.
- *
- * @example
- * await verifyFeatureAccess(spaceId, Feature.COMMENT, userId);
- * await verifyFeatureAccess(spaceId, Feature.VIEW_HISTORY, userId);
  */
 export async function verifyFeatureAccess(
   spaceId: string,
@@ -723,10 +701,9 @@ const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
 ];
 
 /**
- * Validate a token grant and return the role it names. Shape only — authority is
- * bounded at use. Keeps values that name nothing (a typo'd role, the old
- * "extensions" pseudo-permission) out of the ACL, where they would sit as a
- * grant that silently does nothing. Throws a 400 Response.
+ * Validate a token grant and return the role it names, throwing a 400 if it
+ * names none. Shape only, since authority is bounded at use — this is what keeps
+ * a typo'd role out of the ACL, where it would sit as a grant that does nothing.
  */
 export function validateTokenGrant(
   resourceType: ResourceType,
