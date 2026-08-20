@@ -214,6 +214,81 @@ framing had it backwards. `#db` is IO-bound and wide; the ACL decision core is
 CPU-and-query-bound, narrow, and the one place where per-request latency
 compounds — every route passes through it, sometimes several times.
 
+## Post-merge update (#194)
+
+The refactor landed as `a6f5af9`. It changes the feasibility answer in both
+directions at once, and turned up a number that settles it.
+
+### The port is now genuinely easy
+
+`decideAccess` takes a `ResolvedIdentity` and can no longer look anything up —
+the type enforces it. Its whole signature is now values:
+
+```ts
+decideAccess(spaceId: string, target: { type, id, anyGrantInSpace? },
+             identity: { userId, groups, isInstanceAdmin },
+             requiredRole: Permission) -> { decision, requiredRole }
+```
+
+Strings, a string array, two booleans, a tagged enum out. No `Date`, no row
+objects, no callbacks — the marshaling problem that made `#db` unattractive does
+not exist here. `store.ts` lost ~409 lines to `directory.ts`, so the decision
+core reads only the space `acl` table. `identity.ts` keeps better-auth and the
+IdP sync on the JS side of the line. This is the `native/exec` shape exactly.
+
+### And most of the reason to do it is gone
+
+The refactor banked the win: group resolution — with a possible outbound IdP call
+— happened twice per decision and now happens once per request, memoized through
+`AsyncLocalStorage`. That is worth far more than the ~100 µs/query driver tax the
+port was aiming at, and it is already collected.
+
+### The number that settles it
+
+`getDocumentAncestorIds` (`acl/store.ts:524`) walks the document tree in
+application code, and to do it reads the whole table:
+
+```sql
+SELECT id, parent_id FROM document      -- no WHERE clause
+```
+
+It is called on every document access decision, from three sites. Measured on a
+30 000-document space — the size `bench/seed-space.ts` produces by default:
+
+| ancestor walk, per decision | |
+|---|---|
+| today: full scan via `@libsql/client` | **61.2 ms** (p50 50.7, p99 212) |
+| same query, native marshaling (`bun:sqlite`) | 15.5 ms (p50 12.5) |
+| `WITH RECURSIVE` via the driver already in use | **0.16 ms** (p50 0.15) |
+
+The recursive CTE returns 4 rows instead of 30 000.
+
+So on the hottest path in the module, the entire prize a native rewrite could
+win is ~45 ms, and fixing the query wins ~61 ms — through the existing driver,
+in one function, with no FFI and no toolchain. The language was never the cost.
+
+**Verdict after the refactor: the same answer, held more firmly, and for a better
+reason.** The port is now cheap to attempt and cheap to reverse, which is the
+right place for it to sit — but the ACL path has a 380× query fix in it, and the
+data layer has a 25× driver swap. Both are ordinary TypeScript. Exhaust those
+before spending a Rust boundary on a 4× that is measured against the wrong
+baseline.
+
+### Loose ends from the merge
+
+- `#api/acl.ts`, which the commit message names as the seam that turns a decision
+  into a 401/403/404, does not exist. `denialResponse` is still in `guards.ts`
+  (`:172`) and `guards.ts` still imports `#api/http.ts` (`:45`). The valuable half
+  landed — nothing in `guards.ts` takes a Hono context, and `CallerCredentials`
+  is built once per request — but the Response translation did not move.
+- The `anyGrantInSpace` branch gained `&& effectiveRole === requiredRole`, so
+  presence in a space no longer satisfies a bar an archived document raised.
+  That is a tightening and a good one, but it is a permission-model change and the
+  commit says there was none. It wants a regression test naming it.
+- The root `*credentials*` ignore rule that swallowed `acl/credentials.ts` is
+  still on `main`; the merge worked around it by folding the struct into
+  `guards.ts`. The next file named for the concept hits the same trap.
+
 ## Recommendation
 
 **Take the driver first, and the refactor for its own sake.** Route local file-backed databases through
