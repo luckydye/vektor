@@ -256,7 +256,7 @@ interface LinkResolver {
 const INLINE_MARK = "\u0000";
 const LITERAL_MARK = "\u0001";
 const BLOCK_MARK = "\u0002";
-const WIDTH_MARK = "\u0003";
+const CELL_MARK = "\u0003";
 const TASK_MARK = "\u0004";
 
 const IS_BLOCK_HOLD = new RegExp(`^${BLOCK_MARK}\\d+${BLOCK_MARK}$`);
@@ -289,19 +289,30 @@ class Held {
     return `${LITERAL_MARK}${this.literals.push(char) - 1}${LITERAL_MARK}`;
   }
 
+  /**
+   * Restored text is scanned again: a hold can sit inside another — a coloured
+   * run inside a link label — and a single pass would leave the inner marker
+   * behind as a control character in the document.
+   */
   restore(html: string): string {
-    return html
-      .replace(
-        new RegExp(`${INLINE_MARK}(\\d+)${INLINE_MARK}`, "g"),
-        (_, i) => this.inlines[i],
-      )
-      .replace(
-        new RegExp(`${BLOCK_MARK}(\\d+)${BLOCK_MARK}`, "g"),
-        (_, i) => this.blocks[i],
-      )
-      .replace(new RegExp(`${LITERAL_MARK}(\\d+)${LITERAL_MARK}`, "g"), (_, i) =>
-        escapeHtml(this.literals[i]),
-      );
+    let out = html;
+    for (let pass = 0; pass < 10; pass++) {
+      const before = out;
+      out = out
+        .replace(
+          new RegExp(`${INLINE_MARK}(\\d+)${INLINE_MARK}`, "g"),
+          (_, i) => this.inlines[i],
+        )
+        .replace(
+          new RegExp(`${BLOCK_MARK}(\\d+)${BLOCK_MARK}`, "g"),
+          (_, i) => this.blocks[i],
+        )
+        .replace(new RegExp(`${LITERAL_MARK}(\\d+)${LITERAL_MARK}`, "g"), (_, i) =>
+          escapeHtml(this.literals[i]),
+        );
+      if (out === before) return out;
+    }
+    return out;
   }
 }
 
@@ -470,11 +481,19 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
   );
 
   text = text.replace(/~([\s\S])/g, (_, char) => held.literal(char));
-  // Rows are rejoined before widths are read, so a cell that opens on one line
-  // and closes on the next is a single row by the time it is measured.
+  // Rows are rejoined before their cells are read, so a cell that opens on one
+  // line and closes on the next is a single row by the time it is measured.
   text = joinTableRows(text);
-  text = extractCellWidths(text);
-  // Styling parameters: `(% style="…" %)` before a block, `(%%)` to reset.
+  text = extractCellAttrs(text);
+  // A colour on a run of text is content rather than framing — these pages use
+  // it to mark a date or a state — so a `(% … %)…(%%)` pair carrying one becomes
+  // a span. The tags are held separately so the text between them still gets
+  // read as wiki syntax. Everything else is framing and goes.
+  text = text.replace(/\(%(.*?)%\)([^\n]*?)\(%%\)/g, (match, params: string, body: string) => {
+    const style = colourStyle(params);
+    if (!style) return match;
+    return `${held.inline(`<span style="${style}">`)}${body}${held.inline("</span>")}`;
+  });
   text = text.replace(/\(%.*?%\)/gs, "");
   // Group delimiters wrap a block and render as nothing. They are not always on
   // a line of their own — a table cell holding a multi-line group opens with
@@ -494,25 +513,49 @@ function xwikiToHtml(source: string, links: LinkResolver, report: Report): strin
 const TASK_LINE = new RegExp(`^${TASK_MARK}([01])${TASK_MARK}(.*)$`);
 
 /** A table row, allowing for the row-level parameter group that may precede it. */
-const TABLE_ROW = /^(?:\(%[^)]*%\))?\|/;
+const TABLE_ROW = /^(?:\(%.*?%\))?\|/;
+
+/** The `color` and `background-color` of a parameter group, as a style value. */
+function colourStyle(params: string): string {
+  const declarations: string[] = [];
+  for (const property of ["color", "background-color"]) {
+    // The leading delimiter keeps `color` from matching `background-color`.
+    const pattern = new RegExp(
+      `(?:^|[;"'\\s])${property}\\s*:\\s*(#[0-9a-fA-F]{3,8}|rgba?\\([\\d\\s,.%]+\\))`,
+    );
+    const value = pattern.exec(params)?.[1];
+    if (value) declarations.push(`${property}: ${value}`);
+  }
+  return declarations.join("; ");
+}
 
 /**
- * Moves each cell's width out of its styling parameters and in front of the
- * cell, where `renderTable` turns it into `colwidth`. Left alone, every column
- * lands on the same default width and a wide table reads wrongly.
+ * Moves each cell's attributes out of its styling parameters and in front of the
+ * cell, where `renderTable` puts them on the tag. Left alone a column lands on
+ * the default width, and the colour a row is marked with — "kommt", "abgesagt" —
+ * goes with it; in these pages that colour is most of what the table says.
  *
  * Per line, and only for real rows: a paragraph is allowed to contain a pipe
  * ("CMS Systeme, die wir einsetzen|…"), and treating one as a cell would leave
  * the marker sitting in prose.
  */
-function extractCellWidths(text: string): string {
+function extractCellAttrs(text: string): string {
   return text
     .split("\n")
     .map((line) =>
       TABLE_ROW.test(line)
-        ? line.replace(/\|(=?)\(%([^)]*)%\)/g, (_, header: string, params: string) => {
+        ? line.replace(/\|(=?)\(%(.*?)%\)/g, (_, header: string, params: string) => {
+            const attrs: string[] = [];
             const width = /width\s*:\s*(\d+)/.exec(params)?.[1];
-            return `|${header}${width ? `${WIDTH_MARK}${width}${WIDTH_MARK}` : ""}`;
+            if (width) attrs.push(`colwidth="${width}"`);
+            for (const span of ["colspan", "rowspan"]) {
+              const value = new RegExp(`${span}="(\\d+)"`).exec(params)?.[1];
+              if (value) attrs.push(`${span}="${value}"`);
+            }
+            // A header has no background in the schema, so it keeps none here.
+            const colour = header ? "" : colourStyle(params);
+            if (colour) attrs.push(`style="${colour}"`);
+            return `|${header}${attrs.length ? `${CELL_MARK}${attrs.join(" ")}${CELL_MARK}` : ""}`;
           })
         : line,
     )
@@ -558,29 +601,25 @@ function joinTableRows(text: string): string {
       continue;
     }
 
-    const body: string[] = [];
+    let row = line;
     let depth = groupDepth(line);
-    let tail = "";
-
-    while (depth > 0 && index + 1 < lines.length) {
-      const next = lines[++index];
-      depth += groupDepth(next);
-      if (depth > 0) {
-        const content = next.replace(/\(\(\(|\)\)\)/g, "").trim();
-        if (content) body.push(content);
-        continue;
-      }
-      // The closing line: whatever precedes `)))` is still part of the cell,
-      // and whatever follows it is the rest of the row.
-      const [last, ...rest] = next.split(")))");
-      if (last.trim()) body.push(last.trim());
-      tail = rest.join(")))");
-    }
-
-    // `\\` is the wiki's own hard break, so the cell keeps its line structure.
-    let row = line.replace(/\(\(\(/g, "") + body.join("\\\\") + tail;
-    while (index + 1 < lines.length && isCellContinuation(lines[index + 1])) {
-      row += `\\\\${lines[++index].trim()}`;
+    while (index + 1 < lines.length) {
+      const next = lines[index + 1];
+      // Inside a group every line belongs to the cell, blank ones included —
+      // a cell of three empty paragraphs is how these tables spell "empty".
+      // Outside one, only a line that starts nothing of its own does.
+      if (depth === 0 && !isCellContinuation(next)) break;
+      index++;
+      // A group opened on a continuation line counts too: a row whose first
+      // line stays outside one still runs on for as long as a later cell does.
+      depth = Math.max(0, depth + groupDepth(next));
+      const content = next.replace(/\(\(\(|\)\)\)/g, "").trim();
+      if (!content) continue;
+      // `)))|(% … %)text` closes one cell and opens the next on the same line,
+      // so that `|` stays a cell boundary. Anything else continues the cell it
+      // is in, separated by `\\` — the wiki's own hard break — so the cell keeps
+      // its line structure.
+      row += content.startsWith("|") ? content : `\\\\${content}`;
     }
     out.push(row);
   }
@@ -818,7 +857,7 @@ function renderList(items: ListItem[]): string {
   return html;
 }
 
-const CELL_WIDTH = new RegExp(`^${WIDTH_MARK}(\\d+)${WIDTH_MARK}`);
+const CELL_ATTRS = new RegExp(`^${CELL_MARK}(.*?)${CELL_MARK}`);
 
 function renderTable(rows: string[][]): string {
   const body = rows
@@ -828,10 +867,10 @@ function renderTable(rows: string[][]): string {
           const header = cell.startsWith("=");
           const tag = header ? "th" : "td";
           const rest = header ? cell.slice(1) : cell;
-          const width = CELL_WIDTH.exec(rest);
-          const attrs = width ? ` colwidth="${width[1]}"` : "";
+          const parsed = CELL_ATTRS.exec(rest);
+          const attrs = parsed ? ` ${parsed[1]}` : "";
           const content = blocksFromInline(
-            inline(width ? rest.slice(width[0].length) : rest),
+            inline(parsed ? rest.slice(parsed[0].length) : rest),
           );
           return `<${tag}${attrs}>${content || "<p></p>"}</${tag}>`;
         })
@@ -868,7 +907,7 @@ const RESIDUE: [RegExp, string][] = [
 
 /** Built from the marks rather than written out, so the two cannot drift. */
 const UNRESTORED_HOLD = new RegExp(
-  `[${INLINE_MARK}${LITERAL_MARK}${BLOCK_MARK}${WIDTH_MARK}${TASK_MARK}]`,
+  `[${INLINE_MARK}${LITERAL_MARK}${BLOCK_MARK}${CELL_MARK}${TASK_MARK}]`,
 );
 
 /**
