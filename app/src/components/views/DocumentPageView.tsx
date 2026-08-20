@@ -54,6 +54,7 @@ interface Props {
   draftType?: string;
   draftCategory?: string;
   draftTitle?: string;
+  draftParent?: string;
   ssrNow?: number;
 }
 
@@ -94,6 +95,9 @@ export function DocumentPageView(props: Props) {
   );
   const draftTitle = createMemo(() =>
     isDraft() ? props.draftTitle?.trim() || undefined : undefined,
+  );
+  const draftParent = createMemo(() =>
+    isDraft() ? props.draftParent || undefined : undefined,
   );
 
   const docQuery = useQuery({
@@ -325,6 +329,7 @@ export function DocumentPageView(props: Props) {
       const newDoc = await api.documents.post(space.id, {
         type: documentType(),
         content: autoCreate.content,
+        ...(draftParent() ? { parentId: draftParent() } : {}),
         properties: {
           title: draftTitle() ?? autoCreate.title,
           ...(draftCategory() ? { category: draftCategory() } : {}),

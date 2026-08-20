@@ -73,12 +73,14 @@ function NewDocumentRoute() {
     type?: string;
     category?: string;
     title?: string;
+    parent?: string;
   }>();
   return (
     <DocumentPageView
       draftType={searchParams.type}
       draftCategory={searchParams.category}
       draftTitle={searchParams.title}
+      draftParent={searchParams.parent}
     />
   );
 }

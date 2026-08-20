@@ -2,6 +2,7 @@ import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
+import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -58,6 +59,7 @@ function resultDescription(result: Result): string | undefined {
 export function CommandPalatte() {
   const navigate = useNavigate();
   const { documents } = useDocuments();
+  const { documentContext } = useDocumentContext();
   const { currentSpace } = useSpace();
 
   const [isOpen, setIsOpen] = createSignal(false);
@@ -186,7 +188,12 @@ export function CommandPalatte() {
 
   function createDocumentWithTitle(title: string) {
     closePalette();
-    navigate(`/new?title=${encodeURIComponent(title)}`);
+    const query = new URLSearchParams({ title });
+    // The draft lands where the user already is: under the open document, or in
+    // the space root from anywhere without one.
+    const parentId = documentContext().documentId;
+    if (parentId) query.set("parent", parentId);
+    navigate(`/new?${query.toString()}`);
   }
 
   function searchSpace(query: string) {
