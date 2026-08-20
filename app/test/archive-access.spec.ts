@@ -80,6 +80,9 @@ async function documentGrants(documentId: string): Promise<Grant[]> {
 const readDocument = (documentId: string, token: string) =>
   apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`, token);
 
+const breadcrumbs = (documentId: string, token: string) =>
+  apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}/breadcrumbs`, token);
+
 const archive = (documentId: string, token = ownerToken) =>
   apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`, token, {
     method: "DELETE",
@@ -289,6 +292,28 @@ describe("archiving locks out space viewers", () => {
     // Restoring hands it back, so this is a withdrawal and not a lost document.
     await restore(documentId);
     expect((await readDocument(documentId, viewerToken)).status).toBe(200);
+  });
+
+  it("withholds an archived document's title and path from a space viewer", async () => {
+    const parentId = await createDocument("Archived Parent", "<p>parent</p>");
+    const documentId = await createDocument("Archived Title Secret", "<p>child</p>");
+    await apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`, ownerToken, {
+      method: "PATCH",
+      body: JSON.stringify({ parentId }),
+    });
+
+    const beforeArchive = await breadcrumbs(documentId, viewerToken);
+    expect(beforeArchive.status).toBe(200);
+
+    await archive(documentId);
+
+    const afterArchive = await breadcrumbs(documentId, viewerToken);
+    expect(afterArchive.status).toBe(403);
+    // The titles are the disclosure: a viewer may see them in the space at
+    // large, but the archive withdraws this document from them.
+    expect(await afterArchive.text()).not.toContain("Archived Title Secret");
+
+    expect((await breadcrumbs(documentId, editorToken)).status).toBe(200);
   });
 
   it("keeps the trash listing to editors", async () => {

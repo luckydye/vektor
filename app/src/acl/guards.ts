@@ -74,11 +74,12 @@ export interface AclTarget {
   type: ResourceType;
   id: string;
   /**
-   * Space targets only: also admit a caller who holds any resource-scoped grant
-   * inside the space, who must reach the container their resource lives in.
-   * Only for endpoints exposing bare space metadata — one that lists a
-   * space-wide collection (members, integrations) would hand a resource-scoped
-   * grantee unrelated data.
+   * Also admit a caller who holds any resource-scoped grant inside the space,
+   * who must reach the container their resource lives in. Only for endpoints
+   * exposing metadata the whole space may see — one that lists a space-wide
+   * collection (members, integrations) would hand a resource-scoped grantee
+   * unrelated data. It answers presence in the space, not rank, so it never
+   * satisfies a bar a resource's own state raised.
    */
   anyGrantInSpace?: boolean;
 }
@@ -147,8 +148,9 @@ export async function decideAccess(
   );
   // A resource-scoped grantee holds no row on the space itself. Widening here
   // rather than in a caller keeps the anonymous case on the same path: `""` is
-  // refused like anyone else, not short-circuited into a 401.
-  if (!granted && target.anyGrantInSpace) {
+  // refused like anyone else, not short-circuited into a 401. Never applied to a
+  // bar the target's own state raised: presence in the space is not that rank.
+  if (!granted && target.anyGrantInSpace && effectiveRole === requiredRole) {
     granted = await hasAnyResourceScopedAccess(spaceId, principal, groups);
   }
   // An instance admin holds every role in every space, so the check sits here
@@ -290,11 +292,18 @@ export async function authenticateDocumentAccess(
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
+  options?: Pick<AclTarget, "anyGrantInSpace">,
 ): Promise<{ aclUserId: string | null }> {
   // Ahead of the credential, not delegated to the guards below: authenticating
   // an access token opens the space store first, and a space that does not
   // exist must be a decision rather than the error opening its database.
   await requireSpace(spaceId);
+
+  const target: AclTarget = {
+    type: ResourceType.DOCUMENT,
+    id: documentId,
+    ...options,
+  };
 
   const jobToken = credentials.jobToken;
   if (jobToken) {
@@ -304,43 +313,23 @@ export async function authenticateDocumentAccess(
     if (!parsed) throw unauthorizedResponse();
     // Only user-less system tokens read without a per-document check.
     if (parsed.userId) {
-      await verifyAccess(
-        spaceId,
-        { type: ResourceType.DOCUMENT, id: documentId },
-        parsed.userId,
-        requiredRole,
-      );
+      await verifyAccess(spaceId, target, parsed.userId, requiredRole);
     }
     return { aclUserId: parsed.userId };
   }
 
   const auth = await tryAuthenticateRequest(credentials, spaceId);
   if (auth?.type === "token") {
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.DOCUMENT, id: documentId },
-      auth.token.tokenId,
-      requiredRole,
-    );
+    await verifyAccess(spaceId, target, auth.token.tokenId, requiredRole);
     return { aclUserId: auth.token.tokenId };
   }
   if (auth?.type === "user") {
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.DOCUMENT, id: documentId },
-      auth.user.id,
-      requiredRole,
-    );
+    await verifyAccess(spaceId, target, auth.user.id, requiredRole);
     return { aclUserId: auth.user.id };
   }
 
   // Unauthenticated — the document check handles the `public` group.
-  await verifyAccess(
-    spaceId,
-    { type: ResourceType.DOCUMENT, id: documentId },
-    null,
-    requiredRole,
-  );
+  await verifyAccess(spaceId, target, null, requiredRole);
   return { aclUserId: "" };
 }
 
