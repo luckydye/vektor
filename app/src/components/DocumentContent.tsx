@@ -36,7 +36,7 @@ import {
   type DocumentPresenceProfile,
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
-import docStyles from "#editor/css/document.css?inline";
+import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
@@ -44,7 +44,6 @@ import {
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { CommentBubble, type CommentBubbleHandle } from "./CommentBubble.tsx";
 import { CommentOverlays } from "./CommentOverlays.tsx";
 import "#editor/elements/toolbar.ts";
@@ -76,10 +75,6 @@ type DocumentToolbarElement = HTMLElement & {
   openTextColorPicker?: () => void;
   openBackgroundColorPicker?: () => void;
 };
-
-function escapeRawTextElement(value: string) {
-  return value.replace(/<\/(script|style)/gi, "<\\/$1");
-}
 
 export function DocumentContent(props: Props) {
   const t = useTranslation();
@@ -476,16 +471,9 @@ export function DocumentContent(props: Props) {
 
   const ssrDeclarativeShadowDom = createMemo(() => {
     if (!isServer) return "";
-    return [
-      '<template shadowrootmode="open">',
-      `<style data-document-styles>${escapeRawTextElement(docStyles)}</style>`,
-      '<div part="content"><div>',
-      // The declarative shadow root ships stored HTML in the server response,
-      // so it is the server-side twin of `renderReadHtml`'s sanitize.
-      sanitizeDocumentHtml(renderedHtml()),
-      "</div></div>",
-      "</template>",
-    ].join("");
+    return renderDocumentReadShadowHtml(renderedHtml(), {
+      readonly: documentReadonly(),
+    });
   });
 
   useSync(
@@ -514,6 +502,7 @@ export function DocumentContent(props: Props) {
               prop:html={renderedHtml()}
               attr:space-id={props.spaceId}
               attr:document-id={documentId()}
+              attr:readonly={documentReadonly() ? "" : undefined}
               data-allow-mismatch="children"
               on:task-toggle-request={requestTaskToggle}
               innerHTML={ssrDeclarativeShadowDom()}

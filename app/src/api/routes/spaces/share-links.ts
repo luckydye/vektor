@@ -11,7 +11,9 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
+import { getDocumentsByIds } from "#db/space/documents.ts";
 import { createShareLink, listShareLinks } from "#db/space/shareLinks.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 const MAX_SHARE_LINK_EXPIRY_DAYS = 365;
@@ -45,28 +47,55 @@ export const GET: ApiRouteHandler = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = new URL(context.req.url).searchParams.get("documentId");
-    if (!documentId) {
-      throw badRequestResponse("documentId is required");
-    }
 
     await verifyAccess(
       spaceId,
       { type: ResourceType.SPACE, id: spaceId },
       user.id,
-      Permission.EDITOR,
+      documentId ? Permission.EDITOR : Permission.OWNER,
     );
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.DOCUMENT, id: documentId },
-      user.id,
-      Permission.EDITOR,
-    );
+    if (documentId) {
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        user.id,
+        Permission.EDITOR,
+      );
+    }
 
-    const links = await listShareLinks(await openSpaceStore(spaceId), {
-      resourceId: documentId,
-      resourceTypes: [ResourceType.DOCUMENT, ResourceType.DOCUMENT_TREE],
+    const store = await openSpaceStore(spaceId);
+    const links = await listShareLinks(
+      store,
+      documentId
+        ? {
+            resourceId: documentId,
+            resourceTypes: [ResourceType.DOCUMENT, ResourceType.DOCUMENT_TREE],
+          }
+        : undefined,
+    );
+    if (documentId) return jsonResponse({ links });
+
+    const documents = await getDocumentsByIds(
+      store,
+      links.map((link) => link.resourceId),
+    );
+    return jsonResponse({
+      links: links.map((link) => {
+        const document = documents.get(link.resourceId);
+        return {
+          ...link,
+          resource: document
+            ? {
+                title: document.properties.title
+                  ? propertyValueToText(document.properties.title)
+                  : "Untitled",
+                slug: document.slug,
+                archived: document.archived,
+              }
+            : null,
+        };
+      }),
     });
-    return jsonResponse({ links });
   }, "Failed to list share links");
 
 export const POST: ApiRouteHandler = (context) =>

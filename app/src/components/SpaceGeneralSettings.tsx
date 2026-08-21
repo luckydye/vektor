@@ -11,6 +11,7 @@ import { Button } from "./Button.tsx";
 import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
 import { SpaceMembers } from "./SpaceMembers.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
+import { SpaceShareLinks } from "./SpaceShareLinks.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
 interface Props {
@@ -202,6 +203,10 @@ export function SpaceGeneralSettings(props: Props) {
 
         <div class="mt-10">
           <SpaceMembers />
+        </div>
+
+        <div class="mt-10">
+          <SpaceShareLinks />
         </div>
 
         <div class="mt-10 pt-6">

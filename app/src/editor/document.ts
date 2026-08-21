@@ -1,4 +1,5 @@
 import { setEditing } from "#composeables/useEditor.ts";
+import { renderDocumentReadHtml } from "#editor/readView.ts";
 import docStyles from "./css/document.css?inline";
 import "./elements/textarea.ts";
 import "./elements/expression.ts";
@@ -11,7 +12,6 @@ import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
 import { appendCaretDecoration } from "#cosmetics/render.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   colorForPresenceProfile,
   type DocumentPresenceProfile,
@@ -462,7 +462,7 @@ export class DocumentView extends HTMLElement {
   private startingEditor = false;
 
   static get observedAttributes() {
-    return ["editor"];
+    return ["editor", "readonly"];
   }
 
   get root() {
@@ -498,14 +498,14 @@ export class DocumentView extends HTMLElement {
     }
 
     if (enabled) {
-      if (!this.hasEditorConfig()) {
+      if (!this.hasAttribute("editor")) {
         this.setAttribute("editor", "");
       }
       this.queueMaybeStartEditor();
       return;
     }
 
-    if (this.hasEditorConfig()) {
+    if (this.hasAttribute("editor")) {
       this.removeAttribute("editor");
     } else {
       this.destroyEditor();
@@ -536,11 +536,12 @@ export class DocumentView extends HTMLElement {
     const inner = document.createElement("div");
     // Read mode renders stored HTML. It is sanitized on write, and again here:
     // content stored before that boundary existed still has to render safely.
-    inner.innerHTML = sanitizeDocumentHtml(html);
+    inner.innerHTML = renderDocumentReadHtml(html, { readonly: this.isReadOnly() });
     content.appendChild(inner);
 
     shadow.querySelector('[part="content"]')?.replaceWith(content) ??
       shadow.appendChild(content);
+    this.syncReadOnlyControls(shadow);
 
     // Read mode renders stored HTML, so code blocks are highlighted in place.
     // Grammars load lazily; the call bails out if this tree is replaced first.
@@ -872,6 +873,10 @@ export class DocumentView extends HTMLElement {
     this.upgradeProperty("collaborationDocument");
     const shadow = this.ensureShadowRoot();
     this.ensureDocumentStyles(shadow);
+    this.syncReadOnlyControls(shadow);
+
+    const readContent = shadow.querySelector<HTMLElement>('[part="content"]');
+    if (readContent) void highlightStaticCodeBlocks(readContent);
 
     this.attachPresenceLayoutListeners();
     this.attachListeners();
@@ -901,7 +906,15 @@ export class DocumentView extends HTMLElement {
     self[name] = own.value;
   }
 
-  attributeChangedCallback() {
+  attributeChangedCallback(name: string) {
+    if (name === "readonly") {
+      const shadow = this.root;
+      if (shadow) this.syncReadOnlyControls(shadow);
+      if (this.isReadOnly()) this.destroyEditor();
+      else this.queueMaybeStartEditor();
+      return;
+    }
+
     if (!this.hasEditorConfig()) {
       this.destroyEditor();
     } else {
@@ -1042,7 +1055,27 @@ export class DocumentView extends HTMLElement {
   }
 
   private hasEditorConfig() {
-    return this.hasAttribute("editor");
+    return this.hasAttribute("editor") && !this.isReadOnly();
+  }
+
+  private isReadOnly() {
+    return this.hasAttribute("readonly");
+  }
+
+  private syncReadOnlyControls(shadow: ShadowRoot) {
+    for (const checkbox of shadow.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"]',
+    )) {
+      if (this.isReadOnly()) {
+        if (!checkbox.disabled) {
+          checkbox.dataset.documentReadonlyDisabled = "";
+          checkbox.disabled = true;
+        }
+      } else if (checkbox.hasAttribute("data-document-readonly-disabled")) {
+        checkbox.removeAttribute("data-document-readonly-disabled");
+        checkbox.disabled = false;
+      }
+    }
   }
 
   attachListeners() {
@@ -1062,6 +1095,10 @@ export class DocumentView extends HTMLElement {
     this.root?.addEventListener(
       "input",
       (event) => {
+        if (this.isReadOnly()) {
+          event.preventDefault();
+          return;
+        }
         if (this.tiptapEditor) return;
 
         const checkbox = event.target;

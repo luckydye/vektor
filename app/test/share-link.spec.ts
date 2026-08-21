@@ -107,6 +107,16 @@ beforeAll(async () => {
   expect(documentResponse.status).toBe(201);
   documentId = (await documentResponse.json()).document.id;
 
+  const published = await apiRequest(
+    `/api/v1/spaces/${spaceId}/documents/${documentId}?publish=true`,
+    owner.token,
+    {
+      method: "PUT",
+      body: JSON.stringify({ content: "<p>Shared paragraph</p>" }),
+    },
+  );
+  expect(published.status).toBe(200);
+
   await setSpaceRole(editor, "editor", "grant");
   await setSpaceRole(viewer, "viewer", "grant");
 }, 60_000);
@@ -121,7 +131,51 @@ describe("opening a share link", () => {
 
     const response = await open(link.path);
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Shared Fixture");
+    const html = await response.text();
+    expect(html).toContain("Shared Fixture");
+    expect(html).toContain("Shared paragraph");
+    expect(html).toContain("<document-view");
+    expect(html).toMatch(/<document-view[^>]*\sreadonly(?:=""|\s|>)/);
+    expect(html).toContain('part="content"');
+    expect(html).toContain("max-w-(--document-width)");
+  });
+
+  it("keeps an in-progress draft out of the shared page", async () => {
+    const saved = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+      owner.token,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "<p>Private in-progress draft</p>" }),
+      },
+    );
+    expect(saved.status).toBe(200);
+
+    const link = await createLinkPath(owner);
+    const html = await (await open(link.path)).text();
+    expect(html).toContain("Shared paragraph");
+    expect(html).not.toContain("Private in-progress draft");
+  });
+
+  it("renders task checkboxes as disabled controls", async () => {
+    const saved = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${documentId}?publish=true`,
+      owner.token,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          content:
+            '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked></label><div><p>Done</p></div></li></ul>',
+        }),
+      },
+    );
+    expect(saved.status).toBe(200);
+
+    const link = await createLinkPath(owner);
+    const html = await (await open(link.path)).text();
+    expect(html).toContain(
+      '<input type="checkbox" checked data-document-readonly-disabled disabled>',
+    );
   });
 
   it("challenges for a password, and renders once it is given", async () => {
@@ -182,10 +236,8 @@ describe("the attachments of a shared page", () => {
   it("are read from the ordinary URL, by the cookie the page hands back", async () => {
     const url = await ownerUpload();
     const saved = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+      `/api/v1/spaces/${spaceId}/documents/${documentId}?publish=true`,
       owner.token,
-      // PUT, not POST: the shared page renders the document's live content, and
-      // POST only files a revision behind it.
       { method: "PUT", body: JSON.stringify({ content: `<p><img src="${url}"></p>` }) },
     );
     expect(saved.status).toBe(200);
@@ -248,7 +300,7 @@ describe("the cookie a shared page hands back", () => {
     const url = (await uploaded.json()).url as string;
 
     const saved = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/${document}`,
+      `/api/v1/spaces/${spaceId}/documents/${document}?publish=true`,
       owner.token,
       { method: "PUT", body: JSON.stringify({ content: `<p><img src="${url}"></p>` }) },
     );
@@ -364,6 +416,105 @@ describe("the cookie a shared page hands back", () => {
 });
 
 describe("who may manage shares", () => {
+  it("serves a link only while its document has a published revision", async () => {
+    const unpublishedDocument = (
+      await (
+        await apiRequest(`/api/v1/spaces/${spaceId}/documents`, owner.token, {
+          method: "POST",
+          body: JSON.stringify({
+            content: "<p>Not published</p>",
+            properties: { title: "Publication Boundary" },
+          }),
+        })
+      ).json()
+    ).document;
+
+    const link = await createLinkPath(owner, {
+      resourceId: unpublishedDocument.id,
+      name: "Publication Boundary",
+    });
+    expect((await open(link.path)).status).toBe(404);
+
+    const published = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${unpublishedDocument.id}?publish=true`,
+      owner.token,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "<p>Published boundary</p>" }),
+      },
+    );
+    expect(published.status).toBe(200);
+    expect((await open(link.path)).status).toBe(200);
+
+    const unpublished = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${unpublishedDocument.id}`,
+      owner.token,
+      { method: "PATCH", body: JSON.stringify({ publishedRev: null }) },
+    );
+    expect(unpublished.status).toBe(200);
+    expect((await open(link.path)).status).toBe(404);
+  });
+
+  it("lets an owner list every link in the space", async () => {
+    const first = await createLinkPath(owner);
+    const secondDocument = (
+      await (
+        await apiRequest(`/api/v1/spaces/${spaceId}/documents`, owner.token, {
+          method: "POST",
+          body: JSON.stringify({
+            content: "<p>Settings link</p>",
+            properties: { title: "Settings Link Fixture" },
+          }),
+        })
+      ).json()
+    ).document;
+    const publishedSecondDocument = await apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${secondDocument.id}?publish=true`,
+      owner.token,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "<p>Settings link</p>" }),
+      },
+    );
+    expect(publishedSecondDocument.status).toBe(200);
+    const second = await createLinkPath(owner, {
+      resourceId: secondDocument.id,
+      name: "Settings Link Fixture",
+    });
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${spaceId}/shares`,
+      owner.token,
+    );
+    expect(response.status).toBe(200);
+    const allLinks = (await response.json()).links as Array<{
+      id: string;
+      resource?: { title: string; slug: string };
+    }>;
+    const ids = allLinks.map((link) => link.id);
+    expect(ids).toEqual(expect.arrayContaining([first.id, second.id]));
+    expect(allLinks.find((link) => link.id === second.id)?.resource).toEqual(
+      expect.objectContaining({
+        title: "Settings Link Fixture",
+        slug: secondDocument.slug,
+      }),
+    );
+
+    const documentLinks = await apiRequest(
+      `/api/v1/spaces/${spaceId}/shares?documentId=${documentId}`,
+      owner.token,
+    );
+    expect(
+      (await documentLinks.json()).links.some(
+        (link: { id: string }) => link.id === second.id,
+      ),
+    ).toBe(false);
+
+    expect(
+      (await apiRequest(`/api/v1/spaces/${spaceId}/shares`, editor.token)).status,
+    ).toBe(403);
+  });
+
   it("refuses every share operation to an editor of the page alone", async () => {
     const scoped = await createTestUser(BASE_URL, "Page Editor", "test-share-link");
     const granted = await apiRequest(

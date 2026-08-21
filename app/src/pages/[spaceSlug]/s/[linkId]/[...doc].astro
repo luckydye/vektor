@@ -18,15 +18,13 @@ import { openSpaceStore } from "#db/client/store.ts";
 import {
   getDocument,
   getDocumentChildren,
-  getDocumentContent,
 } from "#db/space/documents.ts";
-import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
+import { getRevisionContent } from "#db/space/revisions.ts";
 import { documentTitle } from "#documents/title.ts";
 import { contentIsHtml } from "#documents/types.ts";
-import docStyles from "#editor/css/document.css?inline";
+import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { appLogger } from "#observability/logger.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 const spaceSlug = Astro.params.spaceSlug ?? "";
 const linkId = Astro.params.linkId ?? "";
@@ -135,16 +133,20 @@ try {
 
 const record = await getDocument(store, documentId);
 if (!record) return notFound;
+const publishedRev = record.publishedRev;
+if (publishedRev === null) return notFound;
 
 const rendersAsHtml = contentIsHtml(record.type);
-const stored = rendersAsHtml ? ((await getDocumentContent(store, documentId)) ?? "") : "";
-const published = await resolvePublishedDocumentContent(store, {
-  id: documentId,
-  content: stored,
-  publishedRev: record.publishedRev,
-});
+const publishedContent = await getRevisionContent(
+  store,
+  documentId,
+  publishedRev,
+);
+if (publishedContent === null) return notFound;
 
-const content = sanitizeDocumentHtml(published.content ?? "");
+const readShadowHtml = renderDocumentReadShadowHtml(publishedContent, {
+  readonly: true,
+});
 
 // Attachment requests need the link and, when protected, proof of its password.
 Astro.cookies.set(
@@ -167,19 +169,21 @@ const children =
     : [];
 
 const title = documentTitle(record, lang);
+// `max-w-3xl` resolves to this theme's 80px spacing token. The app-wide
+// document width is the canonical readable-page constraint.
 ---
 
 <BaseLayout title={title}>
-  <main class="mx-auto max-w-3xl px-6 py-10">
-    <h1 class="mb-6 font-semibold text-neutral-900 text-size-title">{title}</h1>
+  <main class="mx-auto w-full max-w-(--document-width) px-xs py-10 md:px-m">
+    <h1 class="mb-xl font-bold text-neutral-900 text-size-display">{title}</h1>
 
     {rendersAsHtml ? (
-        <div>
-          <template shadowrootmode="open">
-            <style is:inline set:html={docStyles} />
-            <div set:html={content} />
-          </template>
-        </div>
+        <document-view
+          space-id={link.spaceId}
+          document-id={documentId}
+          readonly
+          set:html={readShadowHtml}
+        />
       ) : (
         <p class="rounded-md border border-neutral-200 bg-neutral-50 p-4 text-neutral-600 text-size-medium">
           This page is a {record.type}, which only opens in Vektor. Sign in to view it.
@@ -210,4 +214,13 @@ const title = documentTitle(record, lang);
       Shared read-only through a link.
     </footer>
   </main>
+
+  <script>
+    import "#editor/document.ts";
+    import "#editor/elements/cake.ts";
+    import "#editor/elements/figma-embed.ts";
+    import "#editor/elements/html-block.ts";
+    import "#editor/elements/ticket-link.ts";
+    import "#editor/elements/user-mention.ts";
+  </script>
 </BaseLayout>

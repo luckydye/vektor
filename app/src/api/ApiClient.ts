@@ -359,6 +359,11 @@ export interface ShareLink {
   createdAt: Date | string;
   createdBy: string | null;
   revokedAt: Date | string | null;
+  resource?: {
+    title: string;
+    slug: string;
+    archived: boolean;
+  } | null;
 }
 
 /**
@@ -1864,10 +1869,10 @@ export class ApiClient {
   };
 
   shares = {
-    get: async (spaceId: string, documentId: string) => {
+    get: async (spaceId: string, documentId?: string) => {
       return await this.apiGet<{ links: ShareLink[] }>(
         this.baseUrl,
-        `/api/v1/spaces/${spaceId}/shares?documentId=${encodeURIComponent(documentId)}`,
+        `/api/v1/spaces/${spaceId}/shares${documentId ? `?documentId=${encodeURIComponent(documentId)}` : ""}`,
       );
     },
 

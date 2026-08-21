@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { AclKind, Permission, type ResourceType } from "#acl/permissions.ts";
 import { logAclChange } from "#acl/store.ts";
 import { config } from "#config";
@@ -150,18 +150,21 @@ export async function markShareLinkUsed(s: SpaceStore, linkId: string): Promise<
 
 export async function listShareLinks(
   s: SpaceStore,
-  resource: { resourceId: string; resourceTypes: ResourceType[] },
+  resource?: { resourceId: string; resourceTypes: ResourceType[] },
 ): Promise<ShareLinkSummary[]> {
   const rows = await s.db
     .select()
     .from(acl)
     .where(
-      and(
-        eq(acl.kind, AclKind.LINK),
-        eq(acl.resourceId, resource.resourceId),
-        inArray(acl.resourceType, resource.resourceTypes),
-      ),
-    );
+      resource
+        ? and(
+            eq(acl.kind, AclKind.LINK),
+            eq(acl.resourceId, resource.resourceId),
+            inArray(acl.resourceType, resource.resourceTypes),
+          )
+        : eq(acl.kind, AclKind.LINK),
+    )
+    .orderBy(desc(acl.createdAt));
 
   return rows.map(toSummary);
 }
