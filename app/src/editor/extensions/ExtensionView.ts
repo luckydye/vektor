@@ -44,10 +44,8 @@ export const ExtensionView = Node.create({
 
       if (extensionId && routePath) {
         // Loaded on demand: the extension manager fetches and evaluates
-        // extension frontend bundles, which only makes sense in the browser.
-        // This node is part of `contentExtensions`, which the server builds to
-        // (de)serialize documents — a static import would drag the manager (and
-        // its framework dependencies) into the server for no reason.
+        // extension frontend bundles, which is only needed when an extension
+        // node view is actually mounted in the browser.
         import("#extensions/manager.ts")
           .then(({ extensions }) =>
             extensions.renderInlineView(extensionId, routePath, dom),

@@ -1,13 +1,9 @@
 /**
  * Framework-free seam between the editor's keymap and the edit-session state.
  *
- * `contentExtensions` — and therefore every extension reachable from it — is
- * built on the server to (de)serialize documents. Importing the composables
- * directly from an extension would pull the whole framework runtime into the
- * server process (and into each serialization worker) purely to construct a
- * ProseMirror schema. The keymap only needs to *call* into the session, so the
- * client registers the implementation here at editor construction and the
- * extension stays dependency-free.
+ * The generic editor keymap only needs to call into the UI-owned edit session,
+ * so the client registers the implementation here at editor construction. This
+ * keeps the base editor independent from the document editing composable.
  */
 
 let cancelHandler: (() => boolean) | null = null;
