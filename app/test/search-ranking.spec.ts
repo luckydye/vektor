@@ -73,14 +73,16 @@ describe("ranking search candidates", () => {
   ) => ({
     id,
     title,
-    content,
-    searchText: `${title}\n\n${content}`,
+    scoringText: `${title}\n\n${content}`,
     searchEmbedding: embeddingFor(similarity),
     searchEmbeddingModel,
   });
 
-  const ids = (candidates: Parameters<typeof rankSearchCandidates>[2], query: string) =>
-    rankSearchCandidates(query, queryEmbedding, candidates).map(
+  const ids = async (
+    candidates: Parameters<typeof rankSearchCandidates>[2],
+    query: string,
+  ) =>
+    (await rankSearchCandidates(query, queryEmbedding, candidates)).map(
       (result) => (result.candidate as { id: string }).id,
     );
 
@@ -91,43 +93,43 @@ describe("ranking search candidates", () => {
     candidate("cherry", "Cherry", "small stone pit", 0.6),
   ];
 
-  it("returns nothing when the query matches no document", () => {
-    expect(ids(fruits, "qwertyuiop")).toEqual([]);
+  it("returns nothing when the query matches no document", async () => {
+    expect(await ids(fruits, "qwertyuiop")).toEqual([]);
   });
 
-  it("returns only the document the query names", () => {
+  it("returns only the document the query names", async () => {
     const standout = [
       candidate("apple", "Apple", "red fruit orchard", 0.66),
       candidate("banana", "Banana", "yellow tropical", 0.63),
       candidate("cherry", "Cherry", "small stone pit", 0.85),
     ];
 
-    expect(ids(standout, "cherry")).toEqual(["cherry"]);
+    expect(await ids(standout, "cherry")).toEqual(["cherry"]);
   });
 
-  it("keeps lexical matches when the embedding runtime is unavailable", () => {
-    const ranked = rankSearchCandidates("tropical", null, fruits);
+  it("keeps lexical matches when the embedding runtime is unavailable", async () => {
+    const ranked = await rankSearchCandidates("tropical", null, fruits);
 
     expect(ranked.map((result) => result.candidate.id)).toEqual(["banana"]);
     expect(ranked[0].snippet).toContain("<mark>tropical</mark>");
   });
 
-  it("ignores embeddings written by a different model", () => {
+  it("ignores embeddings written by a different model", async () => {
     const stale = [
       candidate("apple", "Apple", "red fruit orchard", 0.99, "some-older-model"),
       ...fruits.slice(1),
     ];
 
-    expect(ids(stale, "qwertyuiop")).toEqual([]);
+    expect(await ids(stale, "qwertyuiop")).toEqual([]);
   });
 
-  it("ranks a lexical match above a semantic-only one", () => {
+  it("ranks a lexical match above a semantic-only one", async () => {
     const mixed = [
       candidate("apple", "Apple", "red fruit orchard", 0.92),
       candidate("cherry", "Cherry", "small stone pit", 0.6),
     ];
 
-    expect(ids(mixed, "cherry")).toEqual(["cherry", "apple"]);
+    expect(await ids(mixed, "cherry")).toEqual(["cherry", "apple"]);
   });
 });
 
