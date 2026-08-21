@@ -2,7 +2,9 @@
  * The enforcement layer: everything a route calls to gate a request.
  *
  * {@link decideAccess} decides; {@link verifyAccess} and {@link canAccess} are
- * the only two ways to ask it.
+ * the only two ways to ask it. `authenticate*` sits on top, resolving whichever
+ * credential the request carries — job token, access token, session, share link,
+ * or none — to an identity first.
  *
  * Two rules hold throughout:
  *  - Nothing here takes a request. Guards read a {@link CallerCredentials}
@@ -21,6 +23,7 @@ import {
   InvalidAclRequestError,
   PermissionDeniedError,
   ResourceUnavailableError,
+  ShareLinkPasswordRequiredError,
 } from "#acl/errors.ts";
 import {
   type AccessIdentity,
@@ -51,6 +54,13 @@ import { openSpaceStore } from "#db/client/store.ts";
 import type { ValidateTokenResult } from "#db/space/accessTokens.ts";
 import { hasCredentialGrant, validateAccessToken } from "#db/space/accessTokens.ts";
 import { getDocument, getDocumentAuthState } from "#db/space/documents.ts";
+import {
+  findShareLink,
+  markShareLinkUsed,
+  shareLinkProof,
+  validateShareLink,
+  verifyShareLinkProof,
+} from "#db/space/shareLinks.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
 export { isAccessDenied } from "#acl/errors.ts";
@@ -66,6 +76,8 @@ export interface CallerCredentials {
   authorization?: string | null;
   /** The session user, when the request edge resolved one. */
   user?: NonNullable<App.Locals["user"]> | null;
+  /** The raw `Cookie` header, which may carry share links; see {@link SHARE_COOKIE}. */
+  cookie?: string | null;
 }
 
 /** A resource to gate a request on. */
@@ -296,6 +308,10 @@ export async function authenticateJobTokenOrSpaceRole(
  * extended with the unauthenticated case. For a resource belonging to a document
  * rather than to the space — an attachment above all.
  *
+ * @param options.shareLinks Whether the share cookie counts here. Off by
+ *   default: a link serves a rendered page, not the application, so it reaches
+ *   only what that page itself loads — turn it on there and nowhere else, or a
+ *   link quietly grants everything a viewer may read about the document.
  * @returns The caller in the {@link SpaceAccess.aclUserId} convention: `null` is
  *   a trusted system caller, `""` is public.
  */
@@ -304,17 +320,18 @@ export async function authenticateDocumentAccess(
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
-  options?: Pick<AclTarget, "anyGrantInSpace">,
+  options: Pick<AclTarget, "anyGrantInSpace"> & { shareLinks?: boolean } = {},
 ): Promise<{ aclUserId: string | null }> {
   // Ahead of the credential, not delegated to the guards below: authenticating
   // an access token opens the space store first, and a space that does not
   // exist must be a decision rather than the error opening its database.
   await requireSpace(spaceId);
 
+  const { shareLinks, ...targetOptions } = options;
   const target: AclTarget = {
     type: ResourceType.DOCUMENT,
     id: documentId,
-    ...options,
+    ...targetOptions,
   };
 
   const jobToken = credentials.jobToken;
@@ -335,9 +352,32 @@ export async function authenticateDocumentAccess(
     await verifyAccess(spaceId, target, auth.token.tokenId, requiredRole);
     return { aclUserId: auth.token.tokenId };
   }
+  // Asked as a boolean, not as a gate: a session that is refused may still be
+  // carrying a link that admits it, and only the checks below know that.
+  if (
+    auth?.type === "user" &&
+    (await canAccess(spaceId, target, auth.user.id, requiredRole))
+  ) {
+    return { aclUserId: auth.user.id };
+  }
+
+  // A caller reaches what their session grants *or* what the links they carry
+  // do — asked after the session, because a link never downgrades someone who
+  // is already admitted, and asked even when a session was refused: being
+  // signed in to the instance is not a reason to see less of a shared page than
+  // a stranger does. Every link carried is tried, not just the newest.
+  if (shareLinks) {
+    for (const principal of await shareLinkPrincipals(credentials, spaceId)) {
+      if (await canAccess(spaceId, target, principal, requiredRole)) {
+        return { aclUserId: principal };
+      }
+    }
+  }
+
+  // A refused session is told no as itself, rather than falling through to the
+  // anonymous check and being told to authenticate.
   if (auth?.type === "user") {
     await verifyAccess(spaceId, target, auth.user.id, requiredRole);
-    return { aclUserId: auth.user.id };
   }
 
   // Unauthenticated — the document check handles the `public` group.
@@ -793,6 +833,104 @@ export async function authenticateWithToken(
   }
 
   return result;
+}
+
+export const SHARE_COOKIE = "vektor.share_links";
+
+const MAX_CARRIED_SHARE_LINKS = 5;
+
+interface CarriedShareLink {
+  id: string;
+  proof: string | null;
+}
+
+function shareLinksFromCookie(
+  cookie: string | null | undefined,
+): CarriedShareLink[] {
+  const value = cookie
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${SHARE_COOKIE}=`))
+    ?.slice(SHARE_COOKIE.length + 1);
+  if (!value) return [];
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    return [];
+  }
+
+  return decoded
+    .split(",")
+    .map((entry) => {
+      const [id, proof] = entry.split("~");
+      return { id, proof: proof ?? null };
+    })
+    .filter(({ id, proof }) => {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return false;
+      return proof === null || /^[a-f0-9]{64}$/.test(proof);
+    })
+    .slice(0, MAX_CARRIED_SHARE_LINKS);
+}
+
+export function withShareLink(cookie: string | null | undefined, link: CarriedShareLink) {
+  const carried = shareLinksFromCookie(cookie).filter((held) => held.id !== link.id);
+  return [link, ...carried]
+    .slice(0, MAX_CARRIED_SHARE_LINKS)
+    .map((held) => (held.proof ? `${held.id}~${held.proof}` : held.id))
+    .join(",");
+}
+
+/** Revalidate every carried link and password proof so revocation applies immediately. */
+async function shareLinkPrincipals(
+  credentials: CallerCredentials,
+  spaceId: string,
+): Promise<string[]> {
+  const carried = shareLinksFromCookie(credentials.cookie);
+  if (carried.length === 0) return [];
+
+  const store = await openSpaceStore(spaceId);
+  const principals: string[] = [];
+  for (const { id, proof } of carried) {
+    const link = await validateShareLink(store, id);
+    if (link && verifyShareLinkProof(link, proof)) principals.push(id);
+  }
+  return principals;
+}
+
+interface ShareLinkAccess {
+  spaceId: string;
+  aclUserId: string;
+  resourceType: ResourceType;
+  resourceId: string;
+  carried: CarriedShareLink;
+}
+
+/** Unknown, revoked and expired links fail identically. */
+export async function authenticateShareLink(
+  spaceSlug: string,
+  linkId: string,
+  password: string | null,
+): Promise<ShareLinkAccess> {
+  const found = await findShareLink(spaceSlug, linkId);
+  if (!found) throw new ResourceUnavailableError("Share link");
+
+  if (found.link.secret) {
+    if (password === null || !(await Bun.password.verify(password, found.link.secret))) {
+      throw new ShareLinkPasswordRequiredError(found.link.name);
+    }
+  }
+
+  await markShareLinkUsed(await openSpaceStore(found.spaceId), found.link.userId);
+
+  return {
+    spaceId: found.spaceId,
+    aclUserId: found.link.userId,
+    resourceType: found.link.resourceType as ResourceType,
+    resourceId: found.link.resourceId,
+    carried: { id: found.link.userId, proof: shareLinkProof(found.link) },
+  };
 }
 
 /**

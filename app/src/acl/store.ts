@@ -1,6 +1,7 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { principalOf, type ResolvedIdentity, resolveIdentity } from "#acl/identity.ts";
 import {
+  AclKind,
   type AclViewer,
   type Feature,
   GROUP_NAME_PATTERN,
@@ -47,7 +48,6 @@ type AclRow = {
   updatedAt: Date;
   /** Set only on a credential row: the issuer whose access bounds this grant. */
   createdBy?: string | null;
-  /** Set only on a credential row: which credential it carries. */
   kind?: string | null;
 };
 
@@ -290,12 +290,14 @@ function live() {
 }
 
 /**
- * The user a credential acts for, or null when this principal is not one —
- * `kind` is what marks the row, and a person's id matches nothing.
+ * The user a token acts for, or null for any other principal — `kind` is what
+ * marks the row, and a person's id matches nothing. A share link answers null
+ * by not being a token: it outlives whoever minted it, so its issuer bounds
+ * nothing.
  *
  * The one identity a decision cannot be handed, since which row carries the
- * credential is only known once `acl` has been read; {@link resolveIdentity}
- * keeps it to one resolution per request.
+ * token is only known once `acl` has been read; {@link resolveIdentity} keeps it
+ * to one resolution per request.
  */
 async function tokenIssuer(
   spaceId: string,
@@ -304,9 +306,9 @@ async function tokenIssuer(
   const { db } = await openSpaceStore(spaceId);
   const row = await one(
     db
-      .select({ createdBy: acl.createdBy, kind: acl.kind })
+      .select({ createdBy: acl.createdBy })
       .from(acl)
-      .where(and(eq(acl.userId, principalId), isNotNull(acl.kind))),
+      .where(and(eq(acl.userId, principalId), eq(acl.kind, AclKind.TOKEN))),
   );
 
   if (!row?.createdBy) return null;
@@ -345,7 +347,8 @@ async function issuerRole(
 /**
  * Cap a token row at what its issuer holds today, so a demotion takes the tokens
  * that issuer minted down with it. `createdBy` is what marks a row as delegated;
- * an ordinary grant, including one reached through a group, passes untouched.
+ * an ordinary grant, including one reached through a group, passes untouched, as
+ * does a share link — see {@link tokenIssuer}.
  */
 async function capRowsToIssuer<T extends AclRow>(
   spaceId: string,
@@ -361,7 +364,7 @@ async function capRowsToIssuer<T extends AclRow>(
 
   const capped: T[] = [];
   for (const row of rows) {
-    if (!row.createdBy || !isPermission(row.permission)) {
+    if (!row.createdBy || row.kind === AclKind.LINK || !isPermission(row.permission)) {
       capped.push(row);
       continue;
     }
@@ -731,10 +734,10 @@ export async function listDocumentAccess(
     { userId?: string; groupId?: string; grants: DocumentAccessGrant[] }
   >();
   for (const row of rows) {
-    // People and groups holding a role, and nothing else. A credential sits in
-    // this table under its own id and would read as a person, and a feature —
-    // or the legacy "extensions" pseudo-permission — is not a level of access
-    // to report as one.
+    // People and groups holding a role, and nothing else. A token or share link
+    // sits in this table under its own id and would read as a person, and a
+    // feature — or the legacy "extensions" pseudo-permission — is not a level of
+    // access to report as one.
     if (row.kind || !isPermission(row.permission)) continue;
 
     const grantee = row.userId

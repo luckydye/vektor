@@ -142,6 +142,9 @@ describe("validateSpacePreferences", () => {
     expect(validated({ logoSvg: "https://example.com/logo.png" }).logoSvg).toBe(
       "https://example.com/logo.png",
     );
+    expect(validated({ logoSvg: "/uploads/logo.png" }).logoSvg).toBe(
+      "/uploads/logo.png",
+    );
   });
 
   it("accepts an empty value, which is how a preference is cleared", () => {

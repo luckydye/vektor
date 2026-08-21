@@ -1137,7 +1137,18 @@ export function isSafeImageUrl(value: string): boolean {
 /** A logo/icon image source; uploaded SVG is sanitized before it is encoded. */
 export function isSafeUploadedImageUrl(value: string): boolean {
   const normalized = normalizeUrlWhitespace(value);
-  return INLINE_SVG_IMAGE_DATA_URL.test(normalized) || isSafeImageUrl(normalized);
+  if (!normalized) return true;
+  if (INLINE_SVG_IMAGE_DATA_URL.test(normalized)) return true;
+
+  const isImageLocation =
+    normalized.startsWith("//") ||
+    normalized.startsWith("./") ||
+    normalized.startsWith("../") ||
+    normalized.startsWith("/") ||
+    /^(?:https?|blob):/i.test(normalized) ||
+    INLINE_IMAGE_DATA_URL.test(normalized);
+
+  return isImageLocation && isSafeImageUrl(normalized);
 }
 
 /** Someone else's HTML, reduced to the prose a preview card shows. */

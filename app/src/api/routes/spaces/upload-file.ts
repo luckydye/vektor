@@ -75,6 +75,7 @@ export const GET: ApiRouteHandler = (context) =>
           spaceId,
           documentId,
           Permission.VIEWER,
+          { shareLinks: true },
         );
       } else {
         await authenticateSpaceAccess(
@@ -91,7 +92,6 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const mimeType = MIME_TYPES[extension] || "application/octet-stream";
-
       const storage = getFileStorage();
 
       // If transform params are present, serve via the transform+cache path.
@@ -108,7 +108,13 @@ export const GET: ApiRouteHandler = (context) =>
       // Object storage adapters can redirect to their own CDN URL
       const redirect = await storage.redirectUrl?.(spaceId, path);
       if (redirect) {
-        return Response.redirect(redirect, 302);
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: redirect,
+            "Cache-Control": "private, max-age=3600",
+          },
+        });
       }
 
       // Read file from data/uploads/{spaceId}/{path}
@@ -134,7 +140,7 @@ export const GET: ApiRouteHandler = (context) =>
 
       const baseHeaders: Record<string, string> = {
         "Content-Type": mimeType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "private, max-age=3600",
         // Range support is required for video playback (Safari probes with
         // a byte-range request and refuses to play without a 206 response).
         "Accept-Ranges": "bytes",
@@ -159,7 +165,10 @@ export const GET: ApiRouteHandler = (context) =>
         if (!match || Number.isNaN(start) || start >= fileSize || start > end) {
           return new Response("Range not satisfiable", {
             status: 416,
-            headers: { "Content-Range": `bytes */${fileSize}` },
+            headers: {
+              "Content-Range": `bytes */${fileSize}`,
+              "Cache-Control": "private, max-age=3600",
+            },
           });
         }
 

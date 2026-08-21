@@ -78,6 +78,7 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("credentials", {
     jobToken: headers.get("X-Job-Token"),
     authorization: headers.get("Authorization"),
+    cookie: headers.get("Cookie"),
     user,
   });
 }

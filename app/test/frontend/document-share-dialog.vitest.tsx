@@ -1,12 +1,7 @@
+import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentShareDialog } from "#components/DocumentShareDialog.tsx";
-
-/**
- * The share dialog's lists are access-control statements, so a failed load must
- * never render as "no one has access" — that is the opposite of the truth, and
- * it used to be what a single rejected request produced.
- */
 
 vi.mock("#composeables/useSpace.ts", () => ({
   useSpace: () => ({
@@ -20,10 +15,12 @@ vi.mock("#composeables/useUserProfile.ts", () => ({
 }));
 
 const documentAccessGet = vi.fn();
+const shareLinksGet = vi.fn(async () => ({ links: [] }));
 
 vi.mock("#api/client.ts", () => ({
   api: {
     documentAccess: { get: (...args: unknown[]) => documentAccessGet(...args) },
+    shares: { get: (...args: unknown[]) => shareLinksGet(...args) },
     permissions: { list: async () => ({ permissions: [] }) },
     spaceMembers: { get: async () => [] },
     categories: { get: async () => ({ categories: [] }) },
@@ -46,7 +43,15 @@ function mount() {
   dispose = render(() => <DocumentShareDialog show={true} documentId="doc_1" />, host);
 }
 
-/** The dialog runs its three loads in parallel when it opens. */
+function mountControlled(documentId: string) {
+  const [show, setShow] = createSignal(true);
+  const [id, setId] = createSignal(documentId);
+  host = document.createElement("div");
+  document.body.append(host);
+  dispose = render(() => <DocumentShareDialog show={show()} documentId={id()} />, host);
+  return { setShow, setId };
+}
+
 async function settle() {
   for (let i = 0; i < 5; i++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -63,7 +68,7 @@ describe("DocumentShareDialog", () => {
     mount();
     await settle();
 
-    expect(bodyText()).not.toContain("No one has access to this document yet.");
+    expect(bodyText()).not.toContain("No one has access to this page yet.");
     expect(bodyText()).toContain("Forbidden");
     expect(document.body.querySelector('[role="alert"]')).toBeTruthy();
   });
@@ -82,7 +87,7 @@ describe("DocumentShareDialog", () => {
     await settle();
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
-    expect(bodyText()).toContain("No one has access to this document yet.");
+    expect(bodyText()).toContain("No one has access to this page yet.");
   });
 
   it("still shows the empty state when the load succeeds with no grants", async () => {
@@ -91,6 +96,59 @@ describe("DocumentShareDialog", () => {
     await settle();
 
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
-    expect(bodyText()).toContain("No one has access to this document yet.");
+    expect(bodyText()).toContain("No one has access to this page yet.");
+  });
+
+  it("counts neither expired nor revoked links among the active ones", async () => {
+    documentAccessGet.mockResolvedValue([]);
+    const day = 24 * 60 * 60 * 1000;
+    shareLinksGet.mockResolvedValue({
+      links: [
+        { id: "share_live", resourceType: "document", hasPassword: false },
+        {
+          id: "share_expired",
+          resourceType: "document",
+          hasPassword: false,
+          expiresAt: new Date(Date.now() - day).toISOString(),
+        },
+        {
+          id: "share_revoked",
+          resourceType: "document",
+          hasPassword: false,
+          revokedAt: new Date(Date.now() - day).toISOString(),
+        },
+      ],
+    });
+
+    mount();
+    await settle();
+
+    expect(bodyText()).toContain("1 active link");
+  });
+
+  it("does not show the previous page's links when reopened on another", async () => {
+    documentAccessGet.mockResolvedValue([]);
+    shareLinksGet.mockResolvedValue({
+      links: [{ id: "share_first", resourceType: "document", hasPassword: false }],
+    });
+
+    const { setShow, setId } = mountControlled("doc_1");
+    await settle();
+    expect(bodyText()).toContain("1 active link");
+
+    setShow(false);
+    let release: (() => void) | undefined;
+    shareLinksGet.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ links: [] });
+        }),
+    );
+    setId("doc_2");
+    setShow(true);
+    await settle();
+
+    expect(bodyText()).not.toContain("active link");
+    release?.();
   });
 });

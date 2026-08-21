@@ -20,6 +20,16 @@ export class CredentialRejectedError extends AclFailure {
   }
 }
 
+/** A share exists but its password was absent or rejected. */
+export class ShareLinkPasswordRequiredError extends CredentialRejectedError {
+  readonly linkName: string | null;
+
+  constructor(linkName: string | null) {
+    super("Share link password required");
+    this.linkName = linkName;
+  }
+}
+
 /** The known identity does not hold the permission an operation requires. */
 export class PermissionDeniedError extends AclFailure {
   readonly detail: string | undefined;

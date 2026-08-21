@@ -65,12 +65,12 @@ export const PUBLIC_GROUP = "public";
 
 /**
  * What credential a row carries, and so how its `secret` reads; null on an
- * ordinary grant. One kind today, named rather than inferred from `secret`
- * being set, so a second one is a row's own statement about itself and not a
- * guess every read has to repeat.
+ * ordinary grant. Editors mint links and owners mint tokens, so the two are told
+ * apart on every read and write either side makes.
  */
 export const AclKind = {
   TOKEN: "token",
+  LINK: "link",
 } as const;
 
 export type AclKind = (typeof AclKind)[keyof typeof AclKind];
