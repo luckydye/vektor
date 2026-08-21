@@ -1,5 +1,7 @@
 import de from "#assets/lang/de.json";
 import en from "#assets/lang/en.json";
+import es from "#assets/lang/es.json";
+import ja from "#assets/lang/ja.json";
 import ko from "#assets/lang/ko.json";
 
 const FALLBACK_LANG = "en";
@@ -11,7 +13,7 @@ export type TranslationKey = keyof typeof en;
 // Every language file under assets/lang. Add a new <lang>.json file and
 // register it here to make that language available. Static imports (rather
 // than Vite's `import.meta.glob`) keep this working under plain runtimes.
-const translations: Record<string, Record<string, string>> = { de, en, ko };
+const translations: Record<string, Record<string, string>> = { de, en, es, ja, ko };
 
 function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;

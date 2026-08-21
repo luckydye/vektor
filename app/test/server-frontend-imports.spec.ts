@@ -13,17 +13,9 @@ import { subpathImports } from "./helpers/subpathImports.ts";
  * the entire client editor tree back into the server process, node views and
  * all, which is what the table exists to avoid.
  *
- * The frontend-library half of the guard predates that: editor extensions are
- * shared with the client, so it is very easy for one to statically import a
- * browser-only rendering library (a lit node view, a composable) and drag the
- * whole framework in. That has happened with lit-html (via `HtmlBlock`) and
- * with the component runtime (via `useUploads`, the extension manager, the
- * editor keymap's `useEditor`, and `lang.ts`'s injected locale).
- *
- * Client behaviour belongs in a separate module that the client injects — see
- * `HtmlBlockNodeView.ts` and `editSession.ts` — or behind a dynamic `import()`
- * inside a browser-only code path. Both keep the module out of the server's
- * *static* graph, which is what this test walks.
+ * The guard walks only the current server document graph. Client editor modules
+ * may use frontend libraries directly because server serialization no longer
+ * reaches them.
  *
  * Scope is deliberately the document/serialization path, not the whole server:
  * Astro server-renders components, so `server.ts` legitimately loads Solid.
