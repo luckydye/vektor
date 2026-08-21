@@ -5,6 +5,7 @@ import {
   getMarksBetween,
   InputRule,
   Mark,
+  markInputRule,
   markPasteRule,
   Node,
   textblockTypeInputRule,
@@ -385,6 +386,14 @@ export const Code = Mark.create({
         ({ commands }) =>
           commands.unsetMark(this.name),
     };
+  },
+  addInputRules() {
+    return [
+      markInputRule({
+        find: /(?:^|\s)(`(?!\s+`)([^`]+)`(?!\s+`))$/,
+        type: this.type,
+      }),
+    ];
   },
 });
 

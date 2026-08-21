@@ -8,6 +8,7 @@ import { roleBadgeClass, roleLabel } from "#utils/accessToken.ts";
 import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
+import { SwitchToggle } from "./SwitchToggle.tsx";
 import "./AvatarElement.ts";
 
 interface Props {
@@ -26,20 +27,26 @@ interface SelectOption {
 
 const CATEGORY_SCOPE_PREFIX = "category:";
 
-function documentScopeOptions(): SelectOption[] {
+function documentScopeOptions(documentTitle?: string): SelectOption[] {
+  const titleSuffix = documentTitle?.trim() ? ` — ${documentTitle.trim()}` : "";
   return [
-    { value: "document", label: t("This document") },
-    { value: "document_tree", label: t("This document and child documents") },
+    { value: "document", label: `${t("This document")}${titleSuffix}` },
+    {
+      value: "document_tree",
+      label: `${t("This document and child documents")}${titleSuffix}`,
+    },
   ];
 }
 
-const LINK_EXPIRY_OPTIONS: SelectOption[] = [
-  { value: "1", label: "1 day" },
-  { value: "7", label: "7 days" },
-  { value: "30", label: "30 days" },
-  { value: "90", label: "90 days" },
-  { value: "365", label: "1 year" },
-];
+function linkExpiryOptions(): SelectOption[] {
+  return [
+    { value: "1", label: t("1 day") },
+    { value: "7", label: t("7 days") },
+    { value: "30", label: t("30 days") },
+    { value: "90", label: t("90 days") },
+    { value: "365", label: t("1 year") },
+  ];
+}
 
 const MIN_LINK_PASSWORD_LENGTH = 8;
 
@@ -54,6 +61,7 @@ export function DocumentShareDialog(props: Props) {
   const { currentSpaceId, currentSpace } = useSpace();
   const user = useUserProfile();
 
+  const [shareMode, setShareMode] = createSignal<"people" | "link">("people");
   const [scope, setScope] = createSignal<string>("document");
 
   const [documentAccess, setDocumentAccess] = createSignal<DocumentAccessEntry[]>([]);
@@ -130,7 +138,7 @@ export function DocumentShareDialog(props: Props) {
     } catch (err) {
       // Do not present an authorization failure as an empty access list.
       setDocumentAccess([]);
-      setLoadError(err instanceof Error ? err.message : "Failed to load sharing data");
+      setLoadError(err instanceof Error ? err.message : t("Failed to load sharing data"));
     } finally {
       setIsLoading(false);
     }
@@ -141,6 +149,7 @@ export function DocumentShareDialog(props: Props) {
       () => props.show,
       (open) => {
         if (!open) return;
+        setShareMode("people");
         setScope("document");
         setNewMemberEmail("");
         setNewMemberRole(Permission.VIEWER);
@@ -198,7 +207,7 @@ export function DocumentShareDialog(props: Props) {
       setNewMemberEmail("");
       await load();
     } catch (err) {
-      setAddMemberError(err instanceof Error ? err.message : "Failed to invite");
+      setAddMemberError(err instanceof Error ? err.message : t("Failed to invite"));
     } finally {
       setAddingMember(false);
     }
@@ -211,7 +220,12 @@ export function DocumentShareDialog(props: Props) {
 
     const password = wantsLinkPassword() ? linkPassword().trim() : "";
     if (wantsLinkPassword() && password.length < MIN_LINK_PASSWORD_LENGTH) {
-      setLinkError(`A password needs at least ${MIN_LINK_PASSWORD_LENGTH} characters`);
+      setLinkError(
+        t("A password needs at least {count} characters").replace(
+          "{count}",
+          String(MIN_LINK_PASSWORD_LENGTH),
+        ),
+      );
       return;
     }
 
@@ -219,7 +233,7 @@ export function DocumentShareDialog(props: Props) {
     setLinkError(null);
     try {
       const created = await api.shares.create(spaceId, {
-        name: props.documentTitle || "Share link",
+        name: props.documentTitle || t("Share link"),
         resourceType: linkScope(),
         resourceId: props.documentId,
         expiresInDays: linkExpiryDays(),
@@ -230,7 +244,7 @@ export function DocumentShareDialog(props: Props) {
       setWantsLinkPassword(false);
       await loadLinks();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : "Failed to create link");
+      setLinkError(err instanceof Error ? err.message : t("Failed to create link"));
     } finally {
       setCreatingLink(false);
     }
@@ -238,7 +252,7 @@ export function DocumentShareDialog(props: Props) {
 
   async function revokeLink(link: ShareLink) {
     const spaceId = currentSpaceId();
-    if (!spaceId || !confirm("Revoke this link? Anyone holding it loses access.")) {
+    if (!spaceId || !confirm(t("Revoke this link? Anyone holding it loses access."))) {
       return;
     }
     try {
@@ -246,7 +260,7 @@ export function DocumentShareDialog(props: Props) {
       if (createdLinkId() === link.id) setCreatedLinkId(null);
       await loadLinks();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : "Failed to revoke link");
+      setLinkError(err instanceof Error ? err.message : t("Failed to revoke link"));
     }
   }
 
@@ -263,17 +277,23 @@ export function DocumentShareDialog(props: Props) {
         1_500,
       );
     } catch {
-      setLinkError("Could not copy the link — select and copy it manually");
+      setLinkError(t("Could not copy the link — select and copy it manually"));
     }
   }
 
   function linkHistoryLabel(link: ShareLink): string {
     const expires = link.expiresAt
-      ? `Expires ${new Date(link.expiresAt).toLocaleDateString()}`
-      : "No expiry";
+      ? t("Expires {date}").replace(
+          "{date}",
+          new Date(link.expiresAt).toLocaleDateString(),
+        )
+      : t("No expiry");
     const used = link.lastUsedAt
-      ? `opened ${new Date(link.lastUsedAt).toLocaleDateString()}`
-      : "never opened";
+      ? t("Opened {date}").replace(
+          "{date}",
+          new Date(link.lastUsedAt).toLocaleDateString(),
+        )
+      : t("Never opened");
     return `${expires} · ${used}`;
   }
 
@@ -285,7 +305,7 @@ export function DocumentShareDialog(props: Props) {
     const spaceId = currentSpaceId();
     const grants = directGrants(entry);
     if (!spaceId || grants.length === 0) return;
-    if (!confirm("Remove this person's document access?")) return;
+    if (!confirm(t("Remove this person's document access?"))) return;
     try {
       for (const grant of grants) {
         await api.permissions.revoke(spaceId, {
@@ -298,18 +318,18 @@ export function DocumentShareDialog(props: Props) {
       }
       await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove");
+      alert(err instanceof Error ? err.message : t("Failed to remove"));
     }
   }
 
   function getMemberName(userId?: string, groupId?: string): string {
     if (!userId) return groupId ?? "";
     const member = usersMap().get(userId);
-    return member?.name || member?.email || "Unknown user";
+    return member?.name || member?.email || t("Unknown user");
   }
 
   function getMemberSubtitle(entry: DocumentAccessEntry): string {
-    if (!entry.userId) return "Group";
+    if (!entry.userId) return t("Group");
     const member = usersMap().get(entry.userId);
     if (member?.email) return member.email;
     return member?.name ? "" : `id ${entry.userId.slice(0, 8)}`;
@@ -318,14 +338,20 @@ export function DocumentShareDialog(props: Props) {
   function accessSourceLabel(entry: DocumentAccessEntry): string {
     const { resourceType, resourceLabel, inherited } = entry.via;
     return resourceType === "document"
-      ? "Granted on this document"
+      ? t("Granted on this document")
       : resourceType === "document_tree"
         ? inherited
-          ? `Via document tree: ${resourceLabel || "parent document"}`
-          : "Granted on this document and child documents"
+          ? t("Via document tree: {document}").replace(
+              "{document}",
+              resourceLabel || t("parent document"),
+            )
+          : t("Granted on this document and child documents")
         : resourceType === "category"
-          ? `Via category: ${resourceLabel || "category"}`
-          : "Via space membership";
+          ? t("Via category: {category}").replace(
+              "{category}",
+              resourceLabel || t("category"),
+            )
+          : t("Via space membership");
   }
 
   function accessDetail(entry: DocumentAccessEntry): string | undefined {
@@ -360,8 +386,10 @@ export function DocumentShareDialog(props: Props) {
 
   const accessHeading = createMemo(() => {
     const total = sortedDocumentAccess().length;
-    if (total === 0) return "People with access";
-    return total === 1 ? "1 person with access" : `${total} people with access`;
+    if (total === 0) return t("People with access");
+    return total === 1
+      ? t("1 person with access")
+      : t("{count} people with access").replace("{count}", String(total));
   });
 
   const categoryScopeGroups = createMemo(() =>
@@ -377,6 +405,24 @@ export function DocumentShareDialog(props: Props) {
           },
         ],
   );
+
+  const activeScope = createMemo(() =>
+    shareMode() === "people" ? scope() : linkScope(),
+  );
+
+  function setActiveScope(value: string) {
+    if (shareMode() === "people") {
+      setScope(value);
+      if (value === "document" || value === "document_tree") {
+        setLinkScope(value);
+      }
+      return;
+    }
+
+    const documentScope = value as DocumentPermissionResource;
+    setLinkScope(documentScope);
+    setScope(documentScope);
+  }
 
   // The hidden label sizes the select to its current option rather than its widest one.
   const QuietSelect = (selectProps: {
@@ -446,15 +492,14 @@ export function DocumentShareDialog(props: Props) {
     <button
       type="button"
       aria-expanded={toggleProps.open}
-      class="mt-4xs mb-6xs flex w-full items-center gap-4xs text-neutral-400 transition-colors hover:text-neutral-600"
+      class="mt-2 grid w-full grid-cols-[28px_auto] items-center justify-start gap-4xs rounded-lg py-1 text-neutral-400 transition-colors hover:text-neutral-600"
       onClick={toggleProps.onToggle}
     >
       <Icon
-        class={`h-3 w-3 flex-none transition-transform ${toggleProps.open ? "" : "-rotate-90"}`}
+        class={`h-3 w-3 justify-self-center transition-transform ${toggleProps.open ? "" : "-rotate-90"}`}
         name="chevron-down"
       />
       <span class="flex-none text-size-small">{toggleProps.label}</span>
-      <span aria-hidden="true" class="h-px flex-1 bg-neutral-100" />
     </button>
   );
 
@@ -466,7 +511,7 @@ export function DocumentShareDialog(props: Props) {
       (userIsOwner() || !rowProps.entry.groupId);
 
     return (
-      <div class="flex items-center gap-4xs py-1">
+      <div class="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-4xs py-1">
         <Show
           when={rowProps.entry.userId}
           fallback={
@@ -494,15 +539,15 @@ export function DocumentShareDialog(props: Props) {
             <div class="truncate text-neutral-400 text-size-small">{detail()}</div>
           </Show>
         </div>
-        <RoleBadge role={rowProps.entry.permission} />
-        <div class="flex w-14 flex-none justify-end">
+        <div class="flex flex-none items-center justify-end gap-2">
+          <RoleBadge role={rowProps.entry.permission} />
           <Show when={removable()}>
             <button
               type="button"
               class="rounded-md px-1.5 py-0.5 text-neutral-400 text-size-small transition-colors hover:bg-red-500/10 hover:text-red-500"
               onClick={() => void removeDocumentAccess(rowProps.entry)}
             >
-              Remove
+              {t("Remove")}
             </button>
           </Show>
         </div>
@@ -532,7 +577,34 @@ export function DocumentShareDialog(props: Props) {
         class="mt-1 text-red-500 text-size-small underline"
         onClick={errorProps.onRetry}
       >
-        Try again
+        {t("Try again")}
+      </button>
+    </div>
+  );
+
+  const ShareModeSwitch = () => (
+    <div class="inline-flex rounded-lg bg-neutral-100 p-1">
+      <button
+        type="button"
+        class={`rounded-md px-3 py-1.5 font-medium text-size-small transition-colors ${
+          shareMode() === "people"
+            ? "bg-background text-neutral-900 shadow-xs"
+            : "text-neutral-500 hover:text-neutral-800"
+        }`}
+        onClick={() => setShareMode("people")}
+      >
+        {t("Invite people")}
+      </button>
+      <button
+        type="button"
+        class={`rounded-md px-3 py-1.5 font-medium text-size-small transition-colors ${
+          shareMode() === "link"
+            ? "bg-background text-neutral-900 shadow-xs"
+            : "text-neutral-500 hover:text-neutral-800"
+        }`}
+        onClick={() => setShareMode("link")}
+      >
+        {t("Share a link")}
       </button>
     </div>
   );
@@ -540,190 +612,157 @@ export function DocumentShareDialog(props: Props) {
   return (
     <Dialog
       show={props.show}
+      maxWidth="md:max-w-lg"
       bodyClass="p-0 overflow-y-auto"
       onUpdateShow={(value) => props.onUpdateShow?.(value)}
       header={
-        <div class="min-w-0">
-          <h2 class="font-semibold text-neutral-900 text-size-title leading-tight">
-            Share
-          </h2>
-          <Show when={props.documentTitle}>
-            <p class="mt-0.5 truncate text-neutral-400 text-size-small">
-              {props.documentTitle}
-            </p>
+        <div class="relative flex min-h-10 min-w-0 flex-1 items-center">
+          <div class="max-w-32 min-w-0">
+            <h2 class="font-semibold text-neutral-900 text-size-title leading-tight">
+              {t("Share")}
+            </h2>
+          </div>
+          <Show when={canManageLinks()}>
+            <div class="absolute top-1/2 left-[calc(50%+1.25rem)] hidden -translate-x-1/2 -translate-y-1/2 sm:block">
+              <ShareModeSwitch />
+            </div>
           </Show>
         </div>
       }
     >
       <div class="px-5 pt-2 pb-5">
-        <form onSubmit={(e) => void handleInvite(e)}>
-          <div class="flex items-center gap-4xs">
-            <div class="flex min-w-0 flex-1 items-center rounded-lg border border-neutral-200 bg-background transition-colors focus-within:border-primary-300">
+        <Show when={canManageLinks()}>
+          <div class="mb-3 flex justify-center sm:hidden">
+            <ShareModeSwitch />
+          </div>
+        </Show>
+        <div class="mb-3 flex justify-center">
+          <div class="flex items-center gap-1 text-neutral-500 text-size-small">
+            <span class="flex-none">{t("Applies to")}</span>
+            <QuietSelect
+              value={activeScope()}
+              ariaLabel={t("What this share applies to")}
+              options={documentScopeOptions(props.documentTitle)}
+              groups={shareMode() === "people" ? categoryScopeGroups() : undefined}
+              onChange={setActiveScope}
+            />
+          </div>
+        </div>
+
+        <Show when={shareMode() === "people"}>
+          <form onSubmit={(e) => void handleInvite(e)}>
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4xs">
+            <div class="flex min-w-0 items-center rounded-lg border border-neutral-200 bg-background shadow-xs transition-colors focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-100">
               <input
                 id="share-email"
                 value={newMemberEmail()}
                 onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
                 type="email"
                 required
-                placeholder="person@example.com"
+              placeholder={t("person@example.com")}
                 class="h-10 min-w-0 flex-1 bg-transparent px-3xs text-neutral-900 text-size-medium outline-none placeholder:text-neutral-400"
               />
               <RowDivider />
-              <QuietSelect
-                value={newMemberRole()}
-                ariaLabel="Access to grant"
-                options={roleOptions}
-                onChange={setNewMemberRole}
-              />
+              <div class="mr-1">
+                <QuietSelect
+                  value={newMemberRole()}
+                  ariaLabel={t("Access to grant")}
+                  options={roleOptions}
+                  onChange={setNewMemberRole}
+                />
+              </div>
             </div>
             <button
               type="submit"
               disabled={addingMember() || !newMemberEmail().trim()}
-              class="button-primary h-10"
+              class="button-primary h-10 px-4"
             >
-              {addingMember() ? "…" : "Invite"}
+              {addingMember() ? "…" : t("Invite")}
             </button>
-          </div>
-
-          <div class="mt-5xs flex items-center gap-5xs text-neutral-500 text-size-small">
-            <span class="flex-none">Applies to</span>
-            <QuietSelect
-              value={scope()}
-              ariaLabel="What the invite applies to"
-              options={documentScopeOptions()}
-              groups={categoryScopeGroups()}
-              onChange={setScope}
-            />
           </div>
 
           <Show when={addMemberError()}>
             <p class="mt-5xs text-red-500 text-size-small">{addMemberError()}</p>
           </Show>
-        </form>
+          </form>
+        </Show>
 
-        <section class="mt-2xs">
-          <h3 class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wider">
-            {accessHeading()}
-          </h3>
-
-          <Show when={!isLoading()} fallback={<Spinner />}>
-            <Show
-              when={!loadError()}
-              fallback={
-                <div class="mt-4xs">
-                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
-                </div>
-              }
-            >
-              <Show
-                when={sortedDocumentAccess().length > 0}
-                fallback={
-                  <p class="mt-4xs text-neutral-400 text-size-small">
-                    No one has access to this document yet.
-                  </p>
-                }
-              >
-                <div class="mt-5xs max-h-72 overflow-y-auto">
-                  <For each={directAccess()}>
-                    {(entry) => <PermissionRow entry={entry} />}
-                  </For>
-
-                  <Show when={inheritedAccess().length > 0}>
-                    <GroupToggle
-                      label={`Inherited (${inheritedAccess().length})`}
-                      open={showInherited()}
-                      onToggle={() => setShowInherited(!showInherited())}
-                    />
-                    <Show when={showInherited()}>
-                      <For each={inheritedAccess()}>
-                        {(entry) => <PermissionRow entry={entry} />}
-                      </For>
-                    </Show>
-                  </Show>
-                </div>
-              </Show>
-            </Show>
-          </Show>
-        </section>
-
-        <Show when={canManageLinks()}>
-          <section class="-mx-5 mt-2xs -mb-5 border-neutral-100 border-t bg-neutral-50 px-5 pt-3xs pb-5">
+        <Show when={canManageLinks() && shareMode() === "link"}>
+          <section>
             <form onSubmit={(e) => void handleCreateLink(e)}>
-              <div class="flex items-start gap-4xs">
-                <div class="min-w-0 flex-1">
-                  <h3 class="font-medium text-neutral-900 text-size-medium">
-                    Anyone with the link
-                  </h3>
-                  <p class="text-neutral-400 text-size-small">
-                    Read-only, and no account needed.
-                  </p>
+              <div class="grid sm:grid-cols-[3fr_5fr_auto]">
+                <div class="flex min-w-0 items-center gap-3 py-2 sm:pr-4">
+                  <Icon class="h-5 w-5 flex-none text-neutral-500" name="date" />
+                  <div class="min-w-0 flex-1">
+                    <div class="text-neutral-500 text-size-extra-small">
+                      {t("Expires in")}
+                    </div>
+                    <div class="-ml-1.5">
+                      <QuietSelect
+                        value={String(linkExpiryDays())}
+                        ariaLabel={t("When the link expires")}
+                        options={linkExpiryOptions()}
+                        onChange={(value) => setLinkExpiryDays(Number(value))}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <button
-                  type="submit"
-                  disabled={creatingLink()}
-                  class="button-secondary bg-background"
-                >
-                  {creatingLink() ? "…" : "Create link"}
-                </button>
+
+                <div class="flex min-w-0 items-center gap-3 border-neutral-100 border-t py-2 sm:border-t-0 sm:border-l sm:px-4">
+                  <Icon class="h-5 w-5 flex-none text-neutral-500" name="lock-element" />
+                  <div class="min-w-0 flex-1">
+                    <div class="text-neutral-500 text-size-extra-small">
+                      {t("Password")}
+                    </div>
+                    <div class="font-medium text-neutral-800 text-size-small">
+                      {wantsLinkPassword() ? t("Enabled") : t("Add password")}
+                    </div>
+                  </div>
+                  <SwitchToggle
+                    value={wantsLinkPassword()}
+                    ariaLabel={t("Add a password to the link")}
+                    onInput={(enabled) => {
+                      setWantsLinkPassword(enabled);
+                      if (!enabled) setLinkPassword("");
+                    }}
+                  />
+                </div>
+
+                <div class="flex items-center justify-center border-neutral-100 border-t py-2 sm:border-t-0 sm:border-l sm:pl-4">
+                  <button
+                    type="submit"
+                    disabled={creatingLink()}
+                    class="button-primary whitespace-nowrap"
+                  >
+                    {creatingLink() ? "…" : t("Create link")}
+                  </button>
+                </div>
               </div>
 
-              <div class="mt-4xs flex flex-wrap items-center gap-5xs text-neutral-500 text-size-small">
-                <span class="flex-none">Expires in</span>
-                <QuietSelect
-                  value={String(linkExpiryDays())}
-                  ariaLabel="When the link expires"
-                  options={LINK_EXPIRY_OPTIONS}
-                  onChange={(value) => setLinkExpiryDays(Number(value))}
+              <Show when={wantsLinkPassword()}>
+                <input
+                  value={linkPassword()}
+                  onInput={(e) => setLinkPassword(e.currentTarget.value)}
+                  type="password"
+                  autocomplete="new-password"
+                  minLength={MIN_LINK_PASSWORD_LENGTH}
+                  aria-label={t("Link password")}
+                  placeholder={t("Password, {count}+ characters").replace(
+                    "{count}",
+                    String(MIN_LINK_PASSWORD_LENGTH),
+                  )}
+                  class="mt-3 h-9 w-full rounded-lg border border-neutral-200 bg-background px-3 text-neutral-900 text-size-small outline-none transition-colors placeholder:text-neutral-400 focus-visible:border-primary-300 focus-visible:ring-2 focus-visible:ring-primary-100"
                 />
-                <RowDivider />
-                <QuietSelect
-                  value={linkScope()}
-                  ariaLabel="What the link opens"
-                  options={documentScopeOptions()}
-                  onChange={(value) => setLinkScope(value as DocumentPermissionResource)}
-                />
-                <RowDivider />
-                <Show
-                  when={wantsLinkPassword()}
-                  fallback={
-                    <button
-                      type="button"
-                      class="flex-none rounded-md px-1.5 py-1 font-medium text-neutral-600 text-size-small transition-colors hover:bg-neutral-100"
-                      onClick={() => setWantsLinkPassword(true)}
-                    >
-                      Add password
-                    </button>
-                  }
-                >
-                  <span class="relative flex min-w-40 flex-1 items-center">
-                    <input
-                      value={linkPassword()}
-                      onInput={(e) => setLinkPassword(e.currentTarget.value)}
-                      type="password"
-                      autocomplete="new-password"
-                      minLength={MIN_LINK_PASSWORD_LENGTH}
-                      aria-label="Link password"
-                      placeholder={`Password, ${MIN_LINK_PASSWORD_LENGTH}+ chars`}
-                      class="h-7 w-full rounded-md border border-neutral-200 bg-background pr-7 pl-2 text-neutral-900 text-size-small outline-none transition-colors placeholder:text-neutral-400 focus-visible:border-primary-300"
-                    />
-                    <button
-                      type="button"
-                      aria-label="Drop the password"
-                      class="absolute right-1 rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
-                      onClick={() => {
-                        setWantsLinkPassword(false);
-                        setLinkPassword("");
-                      }}
-                    >
-                      <Icon class="h-3 w-3" name="cancel" />
-                    </button>
-                  </span>
-                </Show>
-              </div>
+              </Show>
+
+              <p class="mt-3 text-left text-neutral-500 text-size-small">
+                {t("Anyone with the link gets read-only access without an account.")}
+              </p>
 
               <Show when={linkError()}>
                 <p class="mt-5xs text-red-500 text-size-small">{linkError()}</p>
               </Show>
+
             </form>
 
             <Show when={links().length > 0}>
@@ -731,8 +770,11 @@ export function DocumentShareDialog(props: Props) {
                 <GroupLabel
                   label={
                     links().length === 1
-                      ? "1 active link"
-                      : `${links().length} active links`
+                      ? t("1 active link")
+                      : t("{count} active links").replace(
+                          "{count}",
+                          String(links().length),
+                        )
                   }
                 />
                 <For each={links()}>
@@ -761,14 +803,14 @@ export function DocumentShareDialog(props: Props) {
                         class="button-secondary button-small bg-background"
                         onClick={() => void copyLink(link)}
                       >
-                        {copiedLinkId() === link.id ? "Copied" : "Copy"}
+                        {copiedLinkId() === link.id ? t("Copied") : t("Copy")}
                       </button>
                       <button
                         type="button"
                         class="flex-none rounded-md px-1.5 py-0.5 text-neutral-400 text-size-small transition-colors hover:bg-red-500/10 hover:text-red-500"
                         onClick={() => void revokeLink(link)}
                       >
-                        Revoke
+                        {t("Revoke")}
                       </button>
                     </div>
                   )}
@@ -777,6 +819,54 @@ export function DocumentShareDialog(props: Props) {
             </Show>
           </section>
         </Show>
+
+        <section class="mt-5 border-neutral-100 border-t pt-4">
+          <h3 class="font-medium text-neutral-400 text-size-extra-small uppercase tracking-wider">
+            {accessHeading()}
+          </h3>
+
+          <Show when={!isLoading()} fallback={<Spinner />}>
+            <Show
+              when={!loadError()}
+              fallback={
+                <div class="mt-4xs">
+                  <LoadError message={loadError() ?? ""} onRetry={() => void load()} />
+                </div>
+              }
+            >
+              <Show
+                when={sortedDocumentAccess().length > 0}
+                fallback={
+                  <p class="mt-4xs text-neutral-400 text-size-small">
+                    {t("No one has access to this document yet.")}
+                  </p>
+                }
+              >
+                <div class="mt-2 max-h-72 overflow-y-auto pr-1">
+                  <For each={directAccess()}>
+                    {(entry) => <PermissionRow entry={entry} />}
+                  </For>
+
+                  <Show when={inheritedAccess().length > 0}>
+                    <GroupToggle
+                      label={t("Inherited ({count})").replace(
+                        "{count}",
+                        String(inheritedAccess().length),
+                      )}
+                      open={showInherited()}
+                      onToggle={() => setShowInherited(!showInherited())}
+                    />
+                    <Show when={showInherited()}>
+                      <For each={inheritedAccess()}>
+                        {(entry) => <PermissionRow entry={entry} />}
+                      </For>
+                    </Show>
+                  </Show>
+                </div>
+              </Show>
+            </Show>
+          </Show>
+        </section>
       </div>
     </Dialog>
   );

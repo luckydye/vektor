@@ -1,7 +1,6 @@
 import { Index, Show } from "solid-js";
 import { t } from "#utils/lang.ts";
 import { memberCountLabel } from "#utils/utils.ts";
-import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
 import "@atrium-ui/elements/popover";
@@ -24,12 +23,10 @@ interface Props {
   /** The space the trigger names, which need not be one of the listed ones. */
   current?: SelectorSpace | null;
   allSpacesHref?: string;
-  canCreateDocs?: boolean;
   canCreateSpaces?: boolean;
   loading?: boolean;
   onSelect?: (space: SelectorSpace) => void;
   onCreate?: () => void;
-  onCreateDoc?: () => void;
 }
 
 function dismissPopover(target: EventTarget | null) {
@@ -166,22 +163,6 @@ export function SpaceSelector(props: Props) {
           </a-popover>
         </a-popover-trigger>
       </Show>
-
-      <div class="flex @max-sm:hidden flex-none items-center gap-2xs py-5xs pr-4xs">
-        <Show when={props.canCreateDocs}>
-          <Button
-            variant="secondary"
-            ariaLabel={t("New document")}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onCreateDoc?.();
-            }}
-            class="px-4xs"
-          >
-            <Icon name="new-document" />
-          </Button>
-        </Show>
-      </div>
     </div>
   );
 }

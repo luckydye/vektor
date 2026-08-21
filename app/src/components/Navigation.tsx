@@ -1,6 +1,6 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { canAccessSettings, canEdit } from "#acl/permissions.ts";
+import { canAccessSettings } from "#acl/permissions.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
@@ -74,7 +74,6 @@ export function Navigation() {
   const userCanAccessSettings = createMemo(
     () => !isLoading() && canAccessSettings(currentSpace()?.userRole),
   );
-  const userCanEdit = createMemo(() => !isLoading() && canEdit(currentSpace()?.userRole));
 
   function updateExtensionMenuLinks() {
     setExtensionMenuLinks(extensions.getMenuLinks());
@@ -126,7 +125,6 @@ export function Navigation() {
           spaces={selectorSpaces()}
           current={currentUiSpace()}
           allSpacesHref="/spaces"
-          canCreateDocs={userCanEdit()}
           canCreateSpaces={canCreateSpace() === true}
           loading={isLoading()}
           onSelect={(space) => {
@@ -134,7 +132,6 @@ export function Navigation() {
             if (full) window.location.href = `/${full.slug}/`;
           }}
           onCreate={() => setShowCreateDialog(true)}
-          onCreateDoc={() => Actions.run("document:create")}
         />
       </div>
 
