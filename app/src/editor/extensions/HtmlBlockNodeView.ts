@@ -1,6 +1,8 @@
 import { html, render } from "lit-html";
-import { t } from "#utils/lang.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
 import { HtmlBlock } from "./HtmlBlock.ts";
+
+const t = createTranslator(browserLang());
 
 /**
  * `HtmlBlock` plus its lit-rendered editing UI.

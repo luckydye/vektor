@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { api, isUploadAborted } from "#api/client.ts";
-import { t } from "#utils/lang.ts";
 import { type ToastAction, useToast } from "./useToast.ts";
+import { useTranslation } from "./useTranslation.ts";
 
 // Generic upload manager. It owns the shared upload feedback — a progress
 // toast (reusing useToast), success/error notifications, and a reactive
@@ -52,6 +52,7 @@ const [activeUploads, setActiveUploads] = createSignal<ActiveUpload[]>([]);
 let nextUploadId = 0;
 
 export function useUploads() {
+  const t = useTranslation();
   const toast = useToast();
 
   function track(filename: string): ActiveUpload {

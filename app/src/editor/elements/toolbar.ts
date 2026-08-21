@@ -3,7 +3,8 @@ import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import { iconMarkup } from "#components/Icon.tsx";
-import { t } from "#utils/lang.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
+const t = createTranslator(browserLang());
 
 const TEXT_COLOR_PRESETS = [
   { label: "Charcoal", value: "#111827" },

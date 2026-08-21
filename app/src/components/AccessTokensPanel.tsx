@@ -9,10 +9,10 @@ import {
   tokenStatusClass,
 } from "#utils/accessToken.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
-import { t } from "#utils/lang.ts";
 import "./AvatarElement.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   tokens: PersonalAccessToken[];
@@ -31,7 +31,9 @@ interface Props {
 }
 
 export function AccessTokensPanel(props: Props) {
-  // Read at render: `t()` resolves the locale of the request it runs in.
+  const t = useTranslation();
+  const lang = useLocale();
+
   const expiryOptions = (): { days: number | null; label: string }[] => [
     { days: 30, label: t("30 days") },
     { days: 90, label: t("90 days") },
@@ -85,10 +87,13 @@ export function AccessTokensPanel(props: Props) {
 
   function tokenSubtitle(token: PersonalAccessToken): string {
     const used = token.lastUsedAt
-      ? t("Last used {date}").replace("{date}", formatAbsoluteDate(token.lastUsedAt))
+      ? t("Last used {date}").replace(
+          "{date}",
+          formatAbsoluteDate(token.lastUsedAt, lang),
+        )
       : t("Never used");
     const expiry = token.expiresAt
-      ? t("Expires {date}").replace("{date}", formatAbsoluteDate(token.expiresAt))
+      ? t("Expires {date}").replace("{date}", formatAbsoluteDate(token.expiresAt, lang))
       : t("No expiration");
     return `${used} · ${expiry}`;
   }

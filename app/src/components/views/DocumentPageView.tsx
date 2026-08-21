@@ -43,6 +43,7 @@ import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
@@ -77,6 +78,7 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
 };
 
 export function DocumentPageView(props: Props) {
+  const lang = useLocale();
   const navigate = useNavigate();
   const location = useLocation();
   const [now, setNow] = createSignal(props.ssrNow ?? Date.now());
@@ -295,7 +297,7 @@ export function DocumentPageView(props: Props) {
 
   const updatedAtStr = createMemo(() => {
     const updatedAt = doc()?.updatedAt;
-    return updatedAt ? formatRelativeTime(updatedAt, { now: now() }) : "";
+    return updatedAt ? formatRelativeTime(updatedAt, lang, { now: now() }) : "";
   });
 
   const [redirecting, setRedirecting] = createSignal(false);

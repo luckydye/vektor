@@ -27,13 +27,13 @@ import {
   tokenStatusClass,
 } from "#utils/accessToken.ts";
 import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 /** Scope select values that carry the id of the resource a grant lands on. */
 const CATEGORY_SCOPE_PREFIX = "category:";
@@ -122,6 +122,9 @@ function tokenResourceLabel(resource: {
 }
 
 export function SpaceMembers() {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
 
@@ -1150,7 +1153,7 @@ export function SpaceMembers() {
                                       <div class="text-neutral-500 text-size-small">
                                         Added{" "}
                                         {grant.permission.createdAt
-                                          ? formatDate(grant.permission.createdAt)
+                                          ? formatDate(grant.permission.createdAt, lang)
                                           : "—"}
                                       </div>
                                     </div>
@@ -1290,10 +1293,10 @@ export function SpaceMembers() {
                             </div>
                             <div class="text-neutral-500 text-size-small">
                               {token.lastUsedAt
-                                ? `Last used ${formatAbsoluteDate(token.lastUsedAt)}`
+                                ? `Last used ${formatAbsoluteDate(token.lastUsedAt, lang)}`
                                 : "Never used"}
                               {token.expiresAt
-                                ? ` · Expires ${formatAbsoluteDate(token.expiresAt)}`
+                                ? ` · Expires ${formatAbsoluteDate(token.expiresAt, lang)}`
                                 : ""}
                             </div>
                           </div>
@@ -1487,10 +1490,10 @@ export function SpaceMembers() {
             onChange={(e) => setNewMemberRole(e.currentTarget.value)}
             class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
           >
-            <option value={Permission.VIEWER}>{roleLabel("viewer")}</option>
-            <option value={Permission.EDITOR}>{roleLabel("editor")}</option>
+            <option value={Permission.VIEWER}>{roleLabel("viewer", lang)}</option>
+            <option value={Permission.EDITOR}>{roleLabel("editor", lang)}</option>
             <Show when={newMemberScope() === "space"}>
-              <option value={Permission.OWNER}>{roleLabel("owner")}</option>
+              <option value={Permission.OWNER}>{roleLabel("owner", lang)}</option>
             </Show>
           </select>
 

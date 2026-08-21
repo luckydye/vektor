@@ -2,7 +2,6 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
-import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import "#editor/css/mentions.css";
@@ -11,6 +10,7 @@ import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { MessageInput } from "./MessageInput.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface Comment {
   id: string;
@@ -41,6 +41,9 @@ interface Props {
 }
 
 export function CommentThread(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { members } = useMembers();
   const currentUser = useUserProfile();
 
@@ -51,10 +54,10 @@ export function CommentThread(props: Props) {
     comment.createdByUser ?? findMemberUser(members(), comment.createdBy);
 
   const getUserName = (comment: Comment): string =>
-    userDisplayName(getUser(comment), comment.createdBy);
+    userDisplayName(getUser(comment), comment.createdBy, lang);
 
   function getRelativeTime(dateString: string) {
-    return formatRelativeTime(dateString, { style: "narrow" });
+    return formatRelativeTime(dateString, lang, { style: "narrow" });
   }
 
   function handleSubmit() {

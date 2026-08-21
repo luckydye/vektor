@@ -6,7 +6,6 @@ import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
 import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Button } from "./Button.tsx";
@@ -16,8 +15,11 @@ import { Icon } from "./Icon.tsx";
 import { MenuLink } from "./MenuLink.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function Navigation() {
+  const t = useTranslation();
+
   const navigate = useNavigate();
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();

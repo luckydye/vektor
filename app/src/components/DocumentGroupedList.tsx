@@ -17,13 +17,13 @@ import { propertyValueToScalar, propertyValueToText } from "#documents/propertie
 import { isTransformableImageUrl } from "#files/transformUrl.ts";
 import { formatDate } from "#utils/dateFormat.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
-import { currentLang, t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { BottomBanner } from "./BottomBanner.tsx";
 import { type FilePreviewItem, FilePreviews } from "./FilePreviews.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export type DocumentListItem = DocumentWithProperties & {
   snippet?: string;
@@ -95,6 +95,9 @@ function isImageUpload(doc: DocumentListItem): boolean {
 }
 
 export function DocumentGroupedList(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace } = useSpace();
 
   onMount(() => {
@@ -115,7 +118,7 @@ export function DocumentGroupedList(props: Props) {
     const end = dateRangeEnd();
     if (!start && !end) return null;
     const fmt = (d: Date) =>
-      d.toLocaleDateString(currentLang(), {
+      d.toLocaleDateString(lang, {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -561,7 +564,7 @@ export function DocumentGroupedList(props: Props) {
                                       </Show>
 
                                       <span class="w-20 shrink-0 text-right text-neutral-400 text-size-extra-small tabular-nums">
-                                        {formatDate(doc.updatedAt)}
+                                        {formatDate(doc.updatedAt, lang)}
                                       </span>
                                     </a>
 

@@ -1,9 +1,9 @@
 import { type JSX, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 import "@atrium-ui/elements/popover";
 import "@atrium-ui/elements/list";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   children?: JSX.Element;
@@ -23,6 +23,8 @@ export function ContextMenuSeparator() {
 }
 
 export function ContextMenu(props: Props) {
+  const t = useTranslation();
+
   function handleSubmit(event: Event) {
     const detail = (event as CustomEvent<{ selected?: HTMLElement }>).detail;
     detail?.selected?.querySelector("button")?.click();

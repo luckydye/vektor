@@ -2,9 +2,9 @@ import "@atrium-ui/elements/track";
 import { createMemo, For, Index, Show } from "solid-js";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { DocumentTeaser } from "./DocumentTeaser.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   limit?: number;
@@ -13,6 +13,8 @@ interface Props {
 const TEASER_TYPES = new Set(["document", "canvas", "database"]);
 
 export function RecentDocuments(props: Props) {
+  const t = useTranslation();
+
   const { currentSpace } = useSpace();
   const count = props.limit ?? 5;
 

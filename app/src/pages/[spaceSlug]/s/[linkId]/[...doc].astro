@@ -31,6 +31,7 @@ import { sanitizeDocumentHtml } from "#utils/html.ts";
 const spaceSlug = Astro.params.spaceSlug ?? "";
 const linkId = Astro.params.linkId ?? "";
 const requestedDocumentId = Astro.params.doc;
+const lang = Astro.preferredLocale || "en";
 
 // The URL is the credential: never cache it, never index it.
 const privateHeaders = {
@@ -165,7 +166,7 @@ const children =
       })
     : [];
 
-const title = documentTitle(record);
+const title = documentTitle(record, lang);
 ---
 
 <BaseLayout title={title}>
@@ -195,7 +196,7 @@ const title = documentTitle(record);
                   class="text-neutral-900 text-size-medium underline"
                   href={`/${spaceSlug}/s/${linkId}/${child.id}`}
                 >
-                  {documentTitle(child)}
+                  {documentTitle(child, lang)}
                 </a>
               </li>
             ))}

@@ -8,9 +8,11 @@ import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
-import { t } from "#utils/lang.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function SpaceHomeView() {
+  const t = useTranslation();
+
   const { currentSpace } = useSpace();
   const { uploadFile } = useUploads();
   const userCanUpload = createMemo(() => canEdit(currentSpace()?.userRole));

@@ -3,7 +3,6 @@ import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { Actions } from "#utils/actions.ts";
 import { readStored, storedText, writeStored } from "#utils/clientStorage.ts";
-import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import {
   DEFAULT_SIDEBAR_WIDTH,
@@ -15,6 +14,7 @@ import {
 } from "#utils/sidebarState.ts";
 import { Icon } from "./Icon.tsx";
 import { Navigation } from "./Navigation.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   defaultWidth?: number;
@@ -31,6 +31,8 @@ const ANDROID_BACK_GESTURE_INSET = 24;
 const SNAP_THRESHOLD = 15;
 
 export function Sidebar(props: Props) {
+  const t = useTranslation();
+
   const defaultWidth = () => props.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH;
   const minWidth = () => props.minWidth ?? MIN_SIDEBAR_WIDTH;
   const maxWidth = () => props.maxWidth ?? MAX_SIDEBAR_WIDTH;

@@ -27,6 +27,7 @@ interface ActivityUser {
  */
 export function useSpaceActivity(
   spaceId: MaybeAccessor<string>,
+  lang: string,
   limit: MaybeAccessor<number> = 10,
 ) {
   const { currentSpace } = useSpace();
@@ -67,9 +68,9 @@ export function useSpaceActivity(
 
   /** Entries against the space itself are shown as its home page. */
   function getDocumentName(docId: string): string {
-    if (docId === access(spaceId)) return t("Home");
+    if (docId === access(spaceId)) return t("Home", lang);
     const document = documentsById().get(docId);
-    return document ? documentTitle(document) : t("Unknown document");
+    return document ? documentTitle(document, lang) : t("Unknown document", lang);
   }
 
   function getDocumentHref(docId: string): string {
@@ -85,7 +86,8 @@ export function useSpaceActivity(
     isLoading,
     error: createMemo(() => queryError()?.message ?? null),
     getUser,
-    getUserName: (userId?: string | null) => userDisplayName(getUser(userId), userId),
+    getUserName: (userId?: string | null) =>
+      userDisplayName(getUser(userId), userId, lang),
     getDocumentName,
     getDocumentHref,
   };

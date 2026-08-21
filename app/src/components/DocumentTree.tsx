@@ -22,7 +22,6 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
-import { currentLang, t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { slugify } from "#utils/slug.ts";
 import { spacePath } from "#utils/utils.ts";
@@ -32,6 +31,7 @@ import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 import { Icon } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface DocumentTreeHandle {
   readonly isEditMode: boolean;
@@ -53,6 +53,9 @@ const EXPANDED_ITEMS_CODEC = {
 };
 
 export function DocumentTree(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace } = useSpace();
   const { documentSlug: activeDocSlug } = useRoute();
   const toast = useToast();
@@ -86,14 +89,17 @@ export function DocumentTree(props: Props) {
 
   const { documentsBySlug, isSlugLoading } = useCategoryDocuments(expandedCategorySlugs);
 
-  const documentTitleCollator = new Intl.Collator(currentLang(), {
+  const documentTitleCollator = new Intl.Collator(lang, {
     numeric: true,
     sensitivity: "base",
   });
 
   function categoryDocuments(category: Category) {
     const docs = [...(documentsBySlug().get(category.slug) || [])].sort((left, right) =>
-      documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
+      documentTitleCollator.compare(
+        documentTitle(left, lang),
+        documentTitle(right, lang),
+      ),
     );
 
     const rootDocs = docs.filter((doc) => {

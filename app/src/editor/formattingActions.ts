@@ -1,12 +1,13 @@
 import type { Editor } from "@tiptap/core";
 import { Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
+import { createTranslator } from "#utils/lang.ts";
 import { indentEditor, outdentEditor } from "./indent.ts";
 
 /**
  * Register all formatting actions
  */
-export function registerFormattingActions(getEditor: () => Editor) {
+export function registerFormattingActions(getEditor: () => Editor, lang: string) {
+  const t = createTranslator(lang);
   const isEditorAvailable = () => {
     const editor = getEditor();
     return editor && !editor.isDestroyed;

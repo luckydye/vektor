@@ -1,5 +1,6 @@
 import { createMemo, For, Show } from "solid-js";
 import { useExtensions } from "#composeables/useExtensions.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { config } from "#config";
 import { formatDate } from "#utils/dateFormat.ts";
 import { FileDrop } from "./FileDrop.tsx";
@@ -34,6 +35,7 @@ function avatarColor(id: string) {
 }
 
 export function ExtensionSettings() {
+  const lang = useLocale();
   const uploadAllowed = createMemo(() => {
     const raw = config().EXTENSION_ALLOWED_SOURCES;
     if (!raw) return true;
@@ -131,7 +133,7 @@ export function ExtensionSettings() {
 
                   <div class="mt-3 flex items-center justify-between border-neutral-100 border-t pt-3">
                     <span class="text-neutral-400 text-size-small">
-                      {formatDate(ext.updatedAt)}
+                      {formatDate(ext.updatedAt, lang)}
                     </span>
                     <span class="flex items-center gap-3">
                       <button

@@ -1,9 +1,9 @@
 import { createEffect, type JSX, mergeProps, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import "@atrium-ui/elements/blur";
 import { IconButton } from "./IconButton.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   show?: boolean;
@@ -21,6 +21,8 @@ interface Props {
 }
 
 export function Dialog(props: Props) {
+  const t = useTranslation();
+
   const merged = mergeProps(
     {
       show: false,

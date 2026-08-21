@@ -2,9 +2,9 @@ import { createEffect, createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { type Toast, useToast } from "#composeables/useToast.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
-import { t } from "#utils/lang.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 const icons: Record<Toast["type"], IconName> = {
   error: "alert-circle",
@@ -13,6 +13,8 @@ const icons: Record<Toast["type"], IconName> = {
 };
 
 export function ToastContainer() {
+  const t = useTranslation();
+
   const { toasts, drop } = useToast();
   const elements = new Map<number, HTMLElement>();
   const exiting = new Set<number>();

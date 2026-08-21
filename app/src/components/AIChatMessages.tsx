@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import type { AIChatMessage } from "#api/client.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import { formatTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
@@ -23,8 +24,8 @@ function attachmentPreviewUrl(attachment: { url: string }): string {
   return withTransformParams(attachment.url, { w: 640, format: "webp" });
 }
 
-function formatSessionStartTime(timestamp: number | null): string {
-  return timestamp === null ? "" : formatTime(timestamp);
+function formatSessionStartTime(timestamp: number | null, lang: string): string {
+  return timestamp === null ? "" : formatTime(timestamp, lang);
 }
 
 /**
@@ -256,6 +257,7 @@ function getToolMessageKey(message: AIChatMessage, index: number): string {
 }
 
 export function AIChatMessages(props: Props) {
+  const lang = useLocale();
   let messagesContainer: HTMLDivElement | undefined;
   const [shouldFollowMessages, setShouldFollowMessages] = createSignal(true);
   const [expandedToolMessages, setExpandedToolMessages] = createSignal(new Set<string>());
@@ -402,7 +404,7 @@ export function AIChatMessages(props: Props) {
     >
       <Show when={props.sessionStartedAt}>
         <div class="text-center text-neutral-400 text-size-extra-small">
-          {formatSessionStartTime(props.sessionStartedAt)}
+          {formatSessionStartTime(props.sessionStartedAt, lang)}
         </div>
       </Show>
       <For each={props.messages}>

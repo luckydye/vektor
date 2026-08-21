@@ -13,6 +13,7 @@ import { history } from "#utils/history.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon, type IconName } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 type HistoryEntry = { url: string; lastVisited: number };
 // biome-ignore lint/suspicious/noExplicitAny: documents are untyped at this layer.
@@ -23,11 +24,11 @@ type Result =
   | { type: "search"; title: string; space: string; id?: undefined }
   | { type: "create"; title: string; id?: undefined };
 
-function sectionLabel(type: Result["type"]): string {
-  if (type === "document") return t("Documents");
-  if (type === "action") return t("Actions");
-  if (type === "search") return t("Search");
-  return t("Create");
+function sectionLabel(type: Result["type"], lang: string): string {
+  if (type === "document") return t("Documents", lang);
+  if (type === "action") return t("Actions", lang);
+  if (type === "search") return t("Search", lang);
+  return t("Create", lang);
 }
 
 const RESULT_ICONS: Record<Result["type"], IconName> = {
@@ -39,24 +40,27 @@ const RESULT_ICONS: Record<Result["type"], IconName> = {
 
 const MAX_DOCUMENT_RESULTS = 50;
 
-function resultLabel(result: Result): string {
-  if (result.type === "document") return documentTitle(result.data);
+function resultLabel(result: Result, lang: string): string {
+  if (result.type === "document") return documentTitle(result.data, lang);
   if (result.type === "action") return result.data.title || result.id;
   if (result.type === "search")
-    return t('Search "{query}" in {space}')
+    return t('Search "{query}" in {space}', lang)
       .replace("{query}", result.title)
       .replace("{space}", result.space);
-  return t('Create Document with title "{title}"').replace("{title}", result.title);
+  return t('Create Document with title "{title}"', lang).replace("{title}", result.title);
 }
 
-function resultDescription(result: Result): string | undefined {
+function resultDescription(result: Result, lang: string): string | undefined {
   if (result.type === "action") return result.data.description;
-  if (result.type === "search") return t("Search the full text of every document");
-  if (result.type === "create") return t("Open a new document with this title");
+  if (result.type === "search") return t("Search the full text of every document", lang);
+  if (result.type === "create") return t("Open a new document with this title", lang);
   return undefined;
 }
 
 export function CommandPalatte() {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const navigate = useNavigate();
   const { documents } = useDocuments();
   const { documentContext } = useDocumentContext();
@@ -171,7 +175,7 @@ export function CommandPalatte() {
     if (doc?.slug) {
       const url = `/doc/${doc.slug}`;
       try {
-        await history.log(url, documentTitle(doc));
+        await history.log(url, documentTitle(doc, lang));
       } catch (error) {
         console.error("Failed to log history:", error);
       }
@@ -290,7 +294,7 @@ export function CommandPalatte() {
                   <Show when={sectionStarts().get(result.type) === index()}>
                     <div class="px-3 pt-2 pb-0.5">
                       <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
-                        {sectionLabel(result.type)}
+                        {sectionLabel(result.type, lang)}
                       </span>
                     </div>
                   </Show>
@@ -334,18 +338,18 @@ export function CommandPalatte() {
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
                         <span class="truncate font-normal text-size-medium">
-                          {resultLabel(result)}
+                          {resultLabel(result, lang)}
                         </span>
                         <Show
                           when={result.type === "document" && getLastVisited(result.data)}
                         >
                           {(visited) => (
                             <span class="flex-none text-neutral text-size-small opacity-50">
-                              {formatRelativeTime(visited(), { style: "short" })}
+                              {formatRelativeTime(visited(), lang, { style: "short" })}
                             </span>
                           )}
                         </Show>
-                        <Show when={resultDescription(result)}>
+                        <Show when={resultDescription(result, lang)}>
                           {(description) => (
                             <span class="truncate text-neutral text-size-small opacity-50">
                               {description()}

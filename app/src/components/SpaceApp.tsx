@@ -13,6 +13,7 @@ import { api } from "#api/client.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
+import { LocaleContext } from "#composeables/useTranslation.ts";
 import {
   DocumentContextContext,
   provideDocumentContext,
@@ -25,7 +26,6 @@ import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
-import { setClientLang } from "#utils/lang.ts";
 import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
@@ -52,7 +52,7 @@ interface Props {
   initialDocument?: Record<string, unknown>;
   initialSidebarWidth?: number;
   replicaScope?: string;
-  lang?: string;
+  lang: string;
 }
 
 function stripRouterBase(url: string, base: string) {
@@ -87,7 +87,6 @@ function NewDocumentRoute() {
 
 export function SpaceApp(props: Props) {
   if (!isServer) {
-    setClientLang(props.lang);
     api.setReplicaScope(props.replicaScope);
   }
 
@@ -317,26 +316,28 @@ export function SpaceApp(props: Props) {
   );
 
   return (
-    <QueryClientContext.Provider value={queryClient}>
-      <ActiveSpaceIdContext.Provider value={activeSpaceId}>
-        <SsrUrlContext.Provider value={ssrRelativeUrl}>
-          <DocumentContextContext.Provider value={documentContext}>
-            <Router
-              url={props.url ?? "/"}
-              base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
-              root={Shell}
-            >
-              <Route path="/" component={SpaceHomeView} />
-              <Route path="/search" component={SpaceSearchView} />
-              <Route path="/new" component={NewDocumentRoute} />
-              <Route path="/settings" component={SpaceSettingsView} />
-              <Route path="/doc/*documentSlug" component={DocumentRoute} />
-              <Route path="/x/*extensionPath" component={ExtensionRouteView} />
-              <Route path="*" component={NotFoundView} />
-            </Router>
-          </DocumentContextContext.Provider>
-        </SsrUrlContext.Provider>
-      </ActiveSpaceIdContext.Provider>
-    </QueryClientContext.Provider>
+    <LocaleContext.Provider value={props.lang}>
+      <QueryClientContext.Provider value={queryClient}>
+        <ActiveSpaceIdContext.Provider value={activeSpaceId}>
+          <SsrUrlContext.Provider value={ssrRelativeUrl}>
+            <DocumentContextContext.Provider value={documentContext}>
+              <Router
+                url={props.url ?? "/"}
+                base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
+                root={Shell}
+              >
+                <Route path="/" component={SpaceHomeView} />
+                <Route path="/search" component={SpaceSearchView} />
+                <Route path="/new" component={NewDocumentRoute} />
+                <Route path="/settings" component={SpaceSettingsView} />
+                <Route path="/doc/*documentSlug" component={DocumentRoute} />
+                <Route path="/x/*extensionPath" component={ExtensionRouteView} />
+                <Route path="*" component={NotFoundView} />
+              </Router>
+            </DocumentContextContext.Provider>
+          </SsrUrlContext.Provider>
+        </ActiveSpaceIdContext.Provider>
+      </QueryClientContext.Provider>
+    </LocaleContext.Provider>
   );
 }

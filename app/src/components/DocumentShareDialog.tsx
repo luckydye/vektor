@@ -3,6 +3,7 @@ import { isOwner, Permission } from "#acl/permissions.ts";
 import type { Category, DocumentAccessEntry, ShareLink, User } from "#api/client.ts";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { roleBadgeClass, roleLabel } from "#utils/accessToken.ts";
 import { t } from "#utils/lang.ts";
@@ -27,37 +28,40 @@ interface SelectOption {
 
 const CATEGORY_SCOPE_PREFIX = "category:";
 
-function documentScopeOptions(documentTitle?: string): SelectOption[] {
+function documentScopeOptions(lang: string, documentTitle?: string): SelectOption[] {
   const titleSuffix = documentTitle?.trim() ? ` — ${documentTitle.trim()}` : "";
   return [
-    { value: "document", label: `${t("This document")}${titleSuffix}` },
+    { value: "document", label: `${t("This document", lang)}${titleSuffix}` },
     {
       value: "document_tree",
-      label: `${t("This document and child documents")}${titleSuffix}`,
+      label: `${t("This document and child documents", lang)}${titleSuffix}`,
     },
   ];
 }
 
-function linkExpiryOptions(): SelectOption[] {
+function linkExpiryOptions(lang: string): SelectOption[] {
   return [
-    { value: "1", label: t("1 day") },
-    { value: "7", label: t("7 days") },
-    { value: "30", label: t("30 days") },
-    { value: "90", label: t("90 days") },
-    { value: "365", label: t("1 year") },
+    { value: "1", label: t("1 day", lang) },
+    { value: "7", label: t("7 days", lang) },
+    { value: "30", label: t("30 days", lang) },
+    { value: "90", label: t("90 days", lang) },
+    { value: "365", label: t("1 year", lang) },
   ];
 }
 
 const MIN_LINK_PASSWORD_LENGTH = 8;
 
-function linkScopeLabel(resourceType: string) {
+function linkScopeLabel(lang: string, resourceType: string) {
   return (
-    documentScopeOptions().find((option) => option.value === resourceType)?.label ??
-    t("This document")
+    documentScopeOptions(lang).find((option) => option.value === resourceType)?.label ??
+    t("This document", lang)
   );
 }
 
 export function DocumentShareDialog(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpaceId, currentSpace } = useSpace();
   const user = useUserProfile();
 
@@ -90,8 +94,8 @@ export function DocumentShareDialog(props: Props) {
   const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
 
   const roleOptions = [
-    { value: Permission.VIEWER, label: roleLabel("viewer") },
-    { value: Permission.EDITOR, label: roleLabel("editor") },
+    { value: Permission.VIEWER, label: roleLabel("viewer", lang) },
+    { value: Permission.EDITOR, label: roleLabel("editor", lang) },
   ];
 
   async function loadLinks() {
@@ -559,7 +563,7 @@ export function DocumentShareDialog(props: Props) {
     <span
       class={`flex-none rounded-md border px-1.5 py-0.5 font-medium text-size-extra-small ${roleBadgeClass(badgeProps.role)}`}
     >
-      {roleLabel(badgeProps.role)}
+      {roleLabel(badgeProps.role, lang)}
     </span>
   );
 
@@ -642,7 +646,7 @@ export function DocumentShareDialog(props: Props) {
             <QuietSelect
               value={activeScope()}
               ariaLabel={t("What this share applies to")}
-              options={documentScopeOptions(props.documentTitle)}
+              options={documentScopeOptions(lang, props.documentTitle)}
               groups={shareMode() === "people" ? categoryScopeGroups() : undefined}
               onChange={setActiveScope}
             />
@@ -651,39 +655,39 @@ export function DocumentShareDialog(props: Props) {
 
         <Show when={shareMode() === "people"}>
           <form onSubmit={(e) => void handleInvite(e)}>
-          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4xs">
-            <div class="flex min-w-0 items-center rounded-lg border border-neutral-200 bg-background shadow-xs transition-colors focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-100">
-              <input
-                id="share-email"
-                value={newMemberEmail()}
-                onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
-                type="email"
-                required
-              placeholder={t("person@example.com")}
-                class="h-10 min-w-0 flex-1 bg-transparent px-3xs text-neutral-900 text-size-medium outline-none placeholder:text-neutral-400"
-              />
-              <RowDivider />
-              <div class="mr-1">
-                <QuietSelect
-                  value={newMemberRole()}
-                  ariaLabel={t("Access to grant")}
-                  options={roleOptions}
-                  onChange={setNewMemberRole}
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4xs">
+              <div class="flex min-w-0 items-center rounded-lg border border-neutral-200 bg-background shadow-xs transition-colors focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-100">
+                <input
+                  id="share-email"
+                  value={newMemberEmail()}
+                  onInput={(e) => setNewMemberEmail(e.currentTarget.value)}
+                  type="email"
+                  required
+                  placeholder={t("person@example.com")}
+                  class="h-10 min-w-0 flex-1 bg-transparent px-3xs text-neutral-900 text-size-medium outline-none placeholder:text-neutral-400"
                 />
+                <RowDivider />
+                <div class="mr-1">
+                  <QuietSelect
+                    value={newMemberRole()}
+                    ariaLabel={t("Access to grant")}
+                    options={roleOptions}
+                    onChange={setNewMemberRole}
+                  />
+                </div>
               </div>
+              <button
+                type="submit"
+                disabled={addingMember() || !newMemberEmail().trim()}
+                class="button-primary h-10 px-4"
+              >
+                {addingMember() ? "…" : t("Invite")}
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={addingMember() || !newMemberEmail().trim()}
-              class="button-primary h-10 px-4"
-            >
-              {addingMember() ? "…" : t("Invite")}
-            </button>
-          </div>
 
-          <Show when={addMemberError()}>
-            <p class="mt-5xs text-red-500 text-size-small">{addMemberError()}</p>
-          </Show>
+            <Show when={addMemberError()}>
+              <p class="mt-5xs text-red-500 text-size-small">{addMemberError()}</p>
+            </Show>
           </form>
         </Show>
 
@@ -701,7 +705,7 @@ export function DocumentShareDialog(props: Props) {
                       <QuietSelect
                         value={String(linkExpiryDays())}
                         ariaLabel={t("When the link expires")}
-                        options={linkExpiryOptions()}
+                        options={linkExpiryOptions(lang)}
                         onChange={(value) => setLinkExpiryDays(Number(value))}
                       />
                     </div>
@@ -762,7 +766,6 @@ export function DocumentShareDialog(props: Props) {
               <Show when={linkError()}>
                 <p class="mt-5xs text-red-500 text-size-small">{linkError()}</p>
               </Show>
-
             </form>
 
             <Show when={links().length > 0}>
@@ -792,7 +795,7 @@ export function DocumentShareDialog(props: Props) {
                       />
                       <div class="min-w-0 flex-1">
                         <div class="truncate font-medium text-neutral-900 text-size-normal">
-                          {linkScopeLabel(link.resourceType)}
+                          {linkScopeLabel(lang, link.resourceType)}
                         </div>
                         <div class="truncate text-neutral-400 text-size-small">
                           {linkHistoryLabel(link)}

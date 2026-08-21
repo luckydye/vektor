@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import type { AIChatSessionListEntry } from "#api/client.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Icon } from "./Icon.tsx";
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function AIChatSessions(props: Props) {
+  const lang = useLocale();
   return (
     <>
       <Show when={!props.showPicker}>
@@ -100,7 +102,7 @@ export function AIChatSessions(props: Props) {
                         </Show>
                         <Show when={status() !== "generating" && status() !== "awaiting"}>
                           <span class="text-neutral-400">
-                            {formatAbsoluteDate(session.updatedAt)}
+                            {formatAbsoluteDate(session.updatedAt, lang)}
                           </span>
                         </Show>
                       </p>

@@ -2,8 +2,8 @@ import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { createSignal, For, Show } from "solid-js";
 import { imageFileAsDataUrl } from "#utils/image.ts";
-import { t } from "#utils/lang.ts";
 import { CategoryBadge } from "./CategoryBadge.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 /** Chip colours that stay readable behind an emoji at 24px, in either theme. */
 const PRESET_COLORS = [
@@ -30,6 +30,8 @@ interface Props {
  * icon controls accept short text or the same image files as a space logo.
  */
 export function CategoryAppearance(props: Props) {
+  const t = useTranslation();
+
   const [iconError, setIconError] = createSignal("");
   const isImageIcon = () => props.icon.startsWith("data:image/");
 

@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, onMount, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { Dialog } from "./Dialog.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   show?: boolean;
@@ -33,6 +33,8 @@ const STEPS = [
 ] as const;
 
 export function DocumentOrganizationTour(props: Props) {
+  const t = useTranslation();
+
   const [index, setIndex] = createSignal(0);
   const step = createMemo(() => STEPS[index()]);
   const isLast = createMemo(() => index() === STEPS.length - 1);

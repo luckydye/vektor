@@ -19,7 +19,6 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { Button } from "./Button.tsx";
 import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
@@ -31,6 +30,7 @@ import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
@@ -69,6 +69,8 @@ interface Props {
 }
 
 export function DocumentActions(props: Props) {
+  const t = useTranslation();
+
   const navigate = useNavigate();
   const { currentSpaceId, currentSpace } = useSpace();
   const currentUser = useUserProfile();

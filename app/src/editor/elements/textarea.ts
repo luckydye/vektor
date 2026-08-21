@@ -1,5 +1,6 @@
 import { html, render } from "lit-html";
-import { t } from "#utils/lang.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
+const t = createTranslator(browserLang());
 
 interface LanguageModelSession {
   destroy?: () => void;

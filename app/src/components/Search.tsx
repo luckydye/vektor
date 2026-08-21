@@ -17,13 +17,14 @@ import { useInfiniteQuery, useQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { brandTextColor } from "#utils/color.ts";
-import { t } from "#utils/lang.ts";
+import { t as translate } from "#utils/lang.ts";
 import { DocumentGroupedList, type DocumentListItem } from "./DocumentGroupedList.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 import { SearchFilters } from "./SearchFilters.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   spaceId: string;
@@ -33,8 +34,8 @@ interface Props {
 const OTHER_SPACES_SPLIT = 5;
 
 /** The catalogue carries no plural rules, so each form is its own key. */
-function countLabel(count: number, one: string, many: string): string {
-  return t(count === 1 ? one : many).replace("{count}", String(count));
+function countLabel(lang: string, count: number, one: string, many: string): string {
+  return translate(count === 1 ? one : many, lang).replace("{count}", String(count));
 }
 
 /**
@@ -42,6 +43,8 @@ function countLabel(count: number, one: string, many: string): string {
  * sat instead of after a blank stretch of page.
  */
 function ListSkeleton(props: { rows: number }) {
+  const t = useTranslation();
+
   const widths = ["w-3/5", "w-4/5", "w-2/5", "w-3/4", "w-1/2"];
 
   return (
@@ -83,6 +86,9 @@ function OtherSpacesSkeleton() {
 }
 
 export function Search(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace, spaces } = useSpace();
   const navigate = useNavigate();
   const location = useLocation();
@@ -445,11 +451,12 @@ export function Search(props: Props) {
     // Whole sentences per case rather than clauses joined at runtime: the verb
     // does not sit where English puts it in every language.
     const documents = countLabel(
+      lang,
       documentIds.length,
       "{count} document",
       "{count} documents",
     );
-    const files = countLabel(fileIds.length, "{count} file", "{count} files");
+    const files = countLabel(lang, fileIds.length, "{count} file", "{count} files");
     const confirmation =
       documentIds.length === 0
         ? t("Permanently delete {files}?").replace("{files}", files)
@@ -494,7 +501,10 @@ export function Search(props: Props) {
       setBatchError(
         t("Failed to process {failed} of {items}.")
           .replace("{failed}", String(failed.length))
-          .replace("{items}", countLabel(ids.length, "{count} item", "{count} items")),
+          .replace(
+            "{items}",
+            countLabel(lang, ids.length, "{count} item", "{count} items"),
+          ),
       );
       return;
     }

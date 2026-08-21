@@ -1,7 +1,7 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 const FORM_ID = "delete-space-form";
 
@@ -20,6 +20,8 @@ interface Props {
  * either way: nothing in the app brings the space back.
  */
 export function DeleteSpaceDialog(props: Props) {
+  const t = useTranslation();
+
   const [typed, setTyped] = createSignal("");
   const [pending, setPending] = createSignal(false);
   const [error, setError] = createSignal("");

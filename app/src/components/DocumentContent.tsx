@@ -27,6 +27,7 @@ import {
 import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";
@@ -81,6 +82,8 @@ function escapeRawTextElement(value: string) {
 }
 
 export function DocumentContent(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
   const documentId = createMemo(() => props.documentId);
   const documentType = createMemo(() => props.documentType || "document");
   const documentReadonly = createMemo(() => props.readonly ?? false);
@@ -355,7 +358,7 @@ export function DocumentContent(props: Props) {
   function registerEditorActions() {
     if (formattingActionsRegistered) return;
 
-    registerFormattingActions(() => editor() as Editor);
+    registerFormattingActions(() => editor() as Editor, lang);
     formattingActionsRegistered = true;
   }
 

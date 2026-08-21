@@ -1,9 +1,9 @@
 import { Index, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { memberCountLabel } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
 import "@atrium-ui/elements/popover";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface SelectorSpace {
   id: string;
@@ -34,6 +34,9 @@ function dismissPopover(target: EventTarget | null) {
 }
 
 export function SpaceSelector(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   return (
     <div class="flex w-full gap-4">
       <Show
@@ -76,7 +79,7 @@ export function SpaceSelector(props: Props) {
                       {props.current?.name || t("Select Space")}
                     </div>
                     <div class="overflow-hidden text-ellipsis whitespace-nowrap text-neutral-600 text-size-normal leading-[1.35em]">
-                      {memberCountLabel(props.current?.members)}
+                      {memberCountLabel(props.current?.members, lang)}
                     </div>
                   </div>
                 </div>

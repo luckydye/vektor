@@ -1,11 +1,13 @@
 import { For } from "solid-js";
 import { SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
-import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/popover";
 import { type CanvasChrome, swallowPointer } from "#canvas/ui/Canvas.tsx";
 import { Icon } from "#components/Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function CanvasToolbar(props: { chrome: CanvasChrome }) {
+  const t = useTranslation();
+
   const { view, frame, run } = props.chrome; // solid-reactivity-ok: stable object
 
   const activeTool = frame(() => view()?.state.activeTool);

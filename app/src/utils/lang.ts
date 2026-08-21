@@ -15,60 +15,25 @@ export type TranslationKey = keyof typeof en;
 // than Vite's `import.meta.glob`) keep this working under plain runtimes.
 const translations: Record<string, Record<string, string>> = { de, en, es, ja, ko };
 
-function normalizeLang(lang: string): string {
+export function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;
 }
 
-/**
- * How the ambient locale is found, installed by whoever owns request scope.
- *
- * A plain module-level variable was tried and **measured wrong**: with sixty
- * concurrent renders in mixed locales, 26 came out in the wrong language,
- * because one request's locale lands in the middle of another's render. The
- * locale has to be request-scoped, and this module cannot import the machinery
- * that scopes it — `test/server-frontend-imports.spec.ts` polices this path.
- *
- * So the scoping mechanism is injected rather than assumed:
- *
- * - the server installs an `AsyncLocalStorage`-backed resolver
- *   (`langScope.server.ts`), which is request-scoped and framework-free;
- * - the browser installs a plain one (`setClientLang`), where a module-level
- *   value is correct — one document, one reader, one locale.
- *
- * With no resolver installed, `currentLang()` falls back to the environment,
- * which is what plain modules, custom elements and tests get today.
- */
-let resolveAmbientLang: (() => string | undefined) | null = null;
-
-export function setLangResolver(resolve: (() => string | undefined) | null): void {
-  resolveAmbientLang = resolve;
+/** The browser locale for non-Solid client code such as custom elements. */
+export function browserLang(): string {
+  const documentLang =
+    typeof document !== "undefined" ? document.documentElement.lang : "";
+  const navigatorLang = typeof navigator !== "undefined" ? navigator.language : "";
+  return normalizeLang(documentLang || navigatorLang || FALLBACK_LANG);
 }
 
-let clientLang: string | undefined;
-
-/**
- * Sets the locale for this document. Browser only — calling it on the server
- * would reintroduce exactly the cross-request bleed described above, so the
- * server path goes through `langScope.server.ts` instead.
- */
-export function setClientLang(lang: string | undefined): void {
-  clientLang = lang;
-}
-
-export function currentLang(): string {
-  const ambient = resolveAmbientLang?.() ?? clientLang;
-  if (ambient) return normalizeLang(ambient);
-
-  if (typeof navigator !== "undefined" && navigator.language) {
-    return normalizeLang(navigator.language);
-  }
-  return FALLBACK_LANG;
-}
-
-// `lang` lets callers pass a resolved locale explicitly, for the cases that
-// know better than the ambient one (a notification rendered for another user,
-// say). Otherwise the ambient locale is used.
-export function t(key: TranslationKey | string, lang?: string): string {
-  const code = lang ? normalizeLang(lang) : currentLang();
+/** Translate a catalogue key using an explicitly supplied locale. */
+export function t(key: TranslationKey | string, lang: string): string {
+  const code = normalizeLang(lang);
   return translations[code]?.[key] ?? translations[FALLBACK_LANG]?.[key] ?? key;
+}
+
+/** Close the canonical translator over a locale at an application boundary. */
+export function createTranslator(lang: string) {
+  return (key: TranslationKey | string) => t(key, lang);
 }

@@ -1,12 +1,12 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { Property } from "#documents/properties.ts";
-import { t } from "#utils/lang.ts";
 import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   label?: string;
@@ -26,6 +26,8 @@ interface Props {
 }
 
 export function PropertyChip(props: Props) {
+  const t = useTranslation();
+
   let inputElement: HTMLInputElement | undefined;
 
   const [valueOptions, setValueOptions] = createSignal<SelectMenuItem[]>([]);

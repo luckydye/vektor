@@ -31,7 +31,9 @@ import type {
 } from "#canvas/runtime/extensionApi.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import { t } from "#utils/lang.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
+const lang = browserLang();
+const t = createTranslator(lang);
 
 export const canvasHostTag = "vektor-canvas";
 
@@ -263,6 +265,7 @@ export class CanvasHostElement extends HostElement {
         requestRender: () => element.requestRender(),
       },
       this.dom,
+      lang,
     );
 
     // Idempotent on a restart: same type, listener and capture flag.

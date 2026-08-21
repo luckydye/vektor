@@ -6,10 +6,12 @@ import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { api } from "#api/client.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { extensions } from "#extensions/manager.ts";
-import { t } from "#utils/lang.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 import { handleVideoUpload } from "./VideoUpload.ts";
+
+const t = createTranslator(browserLang());
 
 export interface TrailingNodePlusOptions {
   spaceId: string;

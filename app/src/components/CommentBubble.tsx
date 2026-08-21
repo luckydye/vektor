@@ -16,9 +16,9 @@ import {
   resolveReferenceSelector,
   useComments,
 } from "#composeables/useComments.ts";
-import { t } from "#utils/lang.ts";
 import { CommentThread, type Comment as CommentThreadType } from "./CommentThread.tsx";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export interface CommentBubbleHandle {
   commentsForOverlays: () => Array<{
@@ -109,6 +109,8 @@ function toThreadComment(c: ApiComment): CommentThreadType {
 }
 
 export function CommentBubble(props: Props) {
+  const t = useTranslation();
+
   const {
     comments,
     activeReference,

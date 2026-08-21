@@ -3,7 +3,8 @@ import { Plugin } from "@tiptap/pm/state";
 import { addColumn, addRow, isInTable, selectedRect } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
 import { addIcon } from "#assets/icons.ts";
-import { t } from "#utils/lang.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
+const t = createTranslator(browserLang());
 
 // Append-a-column and append-a-row buttons pinned to the right and bottom edges
 // of the table holding the selection. Unlike the reorder handles these are not

@@ -13,6 +13,7 @@ import { normalizeTimestamp } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface CompactActivityBatch {
   id: string;
@@ -27,14 +28,17 @@ interface Props {
   limit?: number;
 }
 
-function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
+function getCompactActivityBatches(
+  items: AuditLog[],
+  lang: string,
+): CompactActivityBatch[] {
   const batches: CompactActivityBatch[] = [];
   const batchMap = new Map<string, CompactActivityBatch>();
 
   for (const entry of items) {
     if (entry.event === "view") continue;
 
-    const action = getAuditEventAction(entry.event);
+    const action = getAuditEventAction(entry.event, lang);
     const isPermission = isPermissionEvent(entry.event);
     const key = `${isPermission ? "permissions" : entry.docId}:${action}`;
     let batch = batchMap.get(key);
@@ -51,12 +55,12 @@ function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
   return batches;
 }
 
-function getBatchChanges(batch: CompactActivityBatch): string[] {
+function getBatchChanges(batch: CompactActivityBatch, lang: string): string[] {
   const labels: string[] = [];
   const seen = new Set<string>();
 
   for (const entry of batch.entries) {
-    const label = getEntryChangeLabel(entry);
+    const label = getEntryChangeLabel(entry, lang);
     if (!label || seen.has(label)) continue;
     seen.add(label);
     labels.push(label);
@@ -65,20 +69,20 @@ function getBatchChanges(batch: CompactActivityBatch): string[] {
   return labels;
 }
 
-function getBatchChangeCount(batch: CompactActivityBatch): number {
-  return Math.max(getBatchChanges(batch).length, batch.entries.length);
+function getBatchChangeCount(batch: CompactActivityBatch, lang: string): number {
+  return Math.max(getBatchChanges(batch, lang).length, batch.entries.length);
 }
 
-function getChangeCountLabel(count: number): string {
-  return `${count} ${count === 1 ? t("change") : t("changes")}`;
+function getChangeCountLabel(lang: string, count: number): string {
+  return `${count} ${count === 1 ? t("change", lang) : t("changes", lang)}`;
 }
 
-function getBatchSummary(batch: CompactActivityBatch): string {
+function getBatchSummary(batch: CompactActivityBatch, lang: string): string {
   if (batch.isPermission) {
-    const changes = getBatchChanges(batch);
+    const changes = getBatchChanges(batch, lang);
     if (changes.length) return changes.join(", ");
   }
-  return getChangeCountLabel(getBatchChangeCount(batch));
+  return getChangeCountLabel(lang, getBatchChangeCount(batch, lang));
 }
 
 function activityTimeMs(dateString: string | Date): number {
@@ -94,6 +98,9 @@ function withinActivityWindow(entry: AuditLog, group: ActivityGroup): boolean {
 }
 
 export function SpaceActivityFeed(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const merged = mergeProps({ limit: 10 }, props);
 
   const {
@@ -106,11 +113,12 @@ export function SpaceActivityFeed(props: Props) {
     getDocumentHref,
   } = useSpaceActivity(
     () => merged.spaceId,
+    lang,
     () => merged.limit,
   );
 
   const activityGroups = createMemo(() =>
-    groupActivityEntries(activities(), withinActivityWindow),
+    groupActivityEntries(activities(), withinActivityWindow, lang),
   );
 
   return (
@@ -186,7 +194,7 @@ export function SpaceActivityFeed(props: Props) {
                   </div>
                 </Show>
 
-                <For each={getCompactActivityBatches(group.items)}>
+                <For each={getCompactActivityBatches(group.items, lang)}>
                   {(batch) => (
                     <a
                       href={batch.isPermission ? undefined : getDocumentHref(batch.docId)}
@@ -210,7 +218,7 @@ export function SpaceActivityFeed(props: Props) {
                               </span>
                             </div>
                             <div class="mt-0.5 font-medium text-neutral-500 text-size-small">
-                              {getBatchSummary(batch)}
+                              {getBatchSummary(batch, lang)}
                             </div>
                           </div>
                         </div>

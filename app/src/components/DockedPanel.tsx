@@ -14,10 +14,10 @@ import {
 } from "#composeables/useDockedWindows.ts";
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
-import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   id: string;
@@ -34,6 +34,8 @@ const MIN_WIDTH = 280;
 const MIN_HEIGHT = 200;
 
 export function DockedPanel(props: Props) {
+  const t = useTranslation();
+
   const {
     register,
     deregister,
