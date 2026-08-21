@@ -187,7 +187,7 @@ describe("archiving a publicly shared document", () => {
     const afterArchive = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
-    expect(afterArchive.status).toBe(401);
+    expect(afterArchive.status).toBe(404);
     const body = await afterArchive.text();
     expect(body).not.toContain("archive must end this");
   });
@@ -213,7 +213,7 @@ describe("archiving a publicly shared document", () => {
     await archive(documentId);
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
-    ).toBe(401);
+    ).toBe(404);
 
     const restored = await restore(documentId);
     expect(restored.status).toBe(200);
@@ -243,7 +243,7 @@ describe("archiving a publicly shared document", () => {
     const afterArchive = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
-    expect(afterArchive.status).toBe(401);
+    expect(afterArchive.status).toBe(404);
   });
 
   it("honours a public grant at editor level, which clears the raised bar", async () => {
@@ -340,14 +340,14 @@ describe("archiving locks out space viewers", () => {
 
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
-    ).toBe(401);
+    ).toBe(404);
     expect(await documentGrants(documentId)).toHaveLength(0);
 
     expect((await archive(documentId)).status).toBe(200);
 
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
-    ).toBe(401);
+    ).toBe(404);
     expect(await documentGrants(documentId)).toHaveLength(0);
 
     const owner = await readDocument(documentId, ownerToken);

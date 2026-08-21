@@ -32,8 +32,7 @@ describe("validateSpacePreferences", () => {
       validated({
         brandColor: "#1e293b",
         description: "A space",
-        logoSvg:
-          '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>',
+        logoSvg: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
         pinnedDocumentId: "document_abc123",
         workflowCreationEnabled: "false",
       }),
@@ -131,17 +130,13 @@ describe("validateSpacePreferences", () => {
     expect(validated({ brandColor: "#ff5733" }).brandColor).toBe("#ff5733");
   });
 
-  it("stores logoSvg sanitized", () => {
-    const stored = validated({
-      logoSvg:
-        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><image href="x" onerror="window.__xss_fired=1" /></svg>',
-    }).logoSvg;
-
-    expect(stored).not.toContain("onerror");
-    expect(stored).toContain("<svg");
+  it("accepts SVG data URIs and refuses inline SVG markup", () => {
+    const dataUri = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+    expect(validated({ logoSvg: dataUri }).logoSvg).toBe(dataUri);
+    expect(refused({ logoSvg: "<svg></svg>" })).toContain("logoSvg");
   });
 
-  it("refuses a logoSvg that is neither an SVG document nor an image URL", () => {
+  it("refuses a logoSvg that is not an image URL or data URI", () => {
     expect(refused({ logoSvg: "<img src=x onerror=alert(1)>" })).toContain("logoSvg");
     expect(refused({ logoSvg: "javascript:alert(1)" })).toContain("logoSvg");
     expect(validated({ logoSvg: "https://example.com/logo.png" }).logoSvg).toBe(

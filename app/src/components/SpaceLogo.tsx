@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import { Icon } from "./Icon.tsx";
 
 interface Props {
-  /** Inline SVG markup or the URL of an uploaded image. */
+  /** The data URI or URL of an uploaded image. */
   logoSvg?: string;
   class?: string;
   fallbackClass?: string;
@@ -15,12 +15,7 @@ export function SpaceLogo(props: Props) {
       when={props.logoSvg}
       fallback={<Icon class={props.fallbackClass ?? "text-white"} name="home" />}
     >
-      <Show
-        when={props.logoSvg?.startsWith("<")}
-        fallback={<img src={props.logoSvg} alt="" class={props.class} />}
-      >
-        <Icon class="text-white" svg={props.logoSvg} />
-      </Show>
+      <img src={props.logoSvg} alt="" class={props.class} />
     </Show>
   );
 }

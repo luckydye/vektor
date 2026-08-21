@@ -121,6 +121,21 @@ describe("a credential's group grants", () => {
     expect((await readWithToken(privateDocumentId, scopedToken)).status).toBe(403);
   });
 
+  it("distinguishes anonymous denial from a rejected credential", async () => {
+    const anonymous = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/documents/${privateDocumentId}`,
+    );
+    expect(anonymous.status).toBe(404);
+
+    for (const authorization of ["Bearer invalid", "at_not-a-real-token"]) {
+      const rejected = await fetch(
+        `${BASE_URL}/api/v1/spaces/${spaceId}/documents/${privateDocumentId}`,
+        { headers: { Authorization: authorization } },
+      );
+      expect(rejected.status).toBe(401);
+    }
+  });
+
   it("lists exactly those two pages and no others", async () => {
     const response = await fetch(
       `${BASE_URL}/api/v1/spaces/${spaceId}/documents?limit=100`,

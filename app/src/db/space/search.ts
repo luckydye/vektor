@@ -224,6 +224,14 @@ export function decodeSearchCursor(cursor: string): { index: number } | null {
 }
 
 /**
+ * How much of a document's text ranking scores. Bodies are uncapped, and both
+ * scoring and snippetting are full passes over the text, so an editor could
+ * otherwise make one search read and scan tens of megabytes per document. A
+ * snippet comes from the first match, which for a real query is near the top.
+ */
+const SCORING_TEXT_LIMIT = 8000;
+
+/**
  * How many ids one `IN (…)` carries. Search filters run over every accessible
  * result, which can be the whole space, and SQLite binds one parameter per id.
  */
@@ -351,7 +359,6 @@ export async function searchDocuments(
   let allRawResults: {
     id: string;
     type: string | null;
-    content: string;
     userId: string;
     parentId: string | null;
     createdAt: Date;
@@ -368,9 +375,8 @@ export async function searchDocuments(
         id: string;
         slug: string;
         type: string | null;
-        content: string;
         title: string | null;
-        searchText: string | null;
+        scoringText: string;
         searchEmbedding: string | null;
         searchEmbeddingModel: string | null;
         userId: string;
@@ -386,9 +392,8 @@ export async function searchDocuments(
         d.id,
         d.slug,
         d.type,
-        d.content,
         title.value as title,
-        d.search_text as searchText,
+        substr(coalesce(d.search_text, d.content), 1, ${SCORING_TEXT_LIMIT}) as scoringText,
         d.search_embedding as searchEmbedding,
         d.search_embedding_model as searchEmbeddingModel,
         d.created_by as userId,
@@ -408,7 +413,7 @@ export async function searchDocuments(
         : options.queryEmbedding,
     ]);
 
-    const ranked = rankSearchCandidates(
+    const ranked = await rankSearchCandidates(
       query,
       queryEmbedding,
       candidates.map((candidate) => ({
@@ -423,7 +428,6 @@ export async function searchDocuments(
     allRawResults = ranked.map(({ candidate, rank, snippet }) => ({
       id: candidate.id,
       type: candidate.type,
-      content: candidate.content,
       userId: candidate.userId,
       parentId: candidate.parentId,
       createdAt: storedSecondsToDate(candidate.createdAt),
@@ -435,7 +439,6 @@ export async function searchDocuments(
     const rows = await s.db.all<{
       id: string;
       type: string | null;
-      content: string;
       userId: string;
       parentId: string | null;
       createdAt: string | number;
@@ -446,7 +449,6 @@ export async function searchDocuments(
       SELECT
         d.id,
         d.type,
-        d.content,
         d.created_by as userId,
         d.parent_id as parentId,
         d.created_at as createdAt,
@@ -467,7 +469,23 @@ export async function searchDocuments(
 
   const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
   if (!excludeFiles) {
-    const indexedFiles = await many(s.db.select().from(fileTable));
+    // Extracted text is as uncapped as a document body, and only ranking reads it.
+    const indexedFiles = await many(
+      s.db
+        .select({
+          path: fileTable.path,
+          documentId: fileTable.documentId,
+          originalName: fileTable.originalName,
+          mimeType: fileTable.mimeType,
+          size: fileTable.size,
+          url: fileTable.url,
+          updatedAt: fileTable.updatedAt,
+          extractedText: sql<
+            string | null
+          >`substr(${fileTable.extractedText}, 1, ${SCORING_TEXT_LIMIT})`,
+        })
+        .from(fileTable),
+    );
 
     for (const f of indexedFiles) {
       let rank = 0;
@@ -485,7 +503,6 @@ export async function searchDocuments(
       allRawResults.push({
         id: f.path,
         type: "file",
-        content: "",
         userId: "",
         parentId: null,
         createdAt: f.updatedAt ?? new Date(0),
@@ -608,7 +625,9 @@ export async function searchDocuments(
       id: row.id,
       slug: doc?.slug || "",
       type: doc?.type,
-      content: row.content,
+      // A result is a pointer plus its snippet: bodies run to megabytes, and
+      // shipping the page's would put that in the response.
+      content: "",
       currentRev: doc?.currentRev || 0,
       publishedRev: doc?.publishedRev || null,
       properties,

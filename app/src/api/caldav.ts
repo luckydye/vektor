@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { ResourceUnavailableError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { withApiErrorHandling } from "#api/http.ts";
@@ -519,7 +520,7 @@ export async function authorizeCalDAVDocument(
       requiredRole,
     );
   } catch (error) {
-    if (error instanceof Response && error.status === 404) {
+    if (error instanceof ResourceUnavailableError) {
       return new Response("Not Found", { status: 404, headers: CORS_HEADERS });
     }
     return calDavForbidden();

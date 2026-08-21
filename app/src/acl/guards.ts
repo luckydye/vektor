@@ -17,6 +17,14 @@
  */
 
 import {
+  AclFailure,
+  AuthenticationRequiredError,
+  CredentialRejectedError,
+  InvalidAclRequestError,
+  PermissionDeniedError,
+  ResourceUnavailableError,
+} from "#acl/errors.ts";
+import {
   type AccessIdentity,
   principalOf,
   type ResolvedIdentity,
@@ -39,12 +47,7 @@ import {
   hasPermission,
   listAccessibleResources,
 } from "#acl/store.ts";
-import {
-  badRequestResponse,
-  forbiddenResponse,
-  notFoundResponse,
-  unauthorizedResponse,
-} from "#api/http.ts";
+import { notFoundResponse } from "#api/http.ts";
 import { checkRateLimit, SHARE_LINK_ROUTE_PATTERN } from "#api/rateLimit.ts";
 import { getIndexedSpace } from "#db/auth/spaceIndex.ts";
 import { initializeDatabases } from "#db/client/db.ts";
@@ -63,10 +66,7 @@ import {
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 
-/** Distinguishes an access decision from a failure to read the ACL. */
-export function isAccessDenied(error: unknown): boolean {
-  return error instanceof Response;
-}
+export { isAccessDenied } from "#acl/errors.ts";
 
 /**
  * What a request carries that a guard may authenticate, as plain data — the
@@ -108,13 +108,13 @@ async function spaceExists(spaceId: string): Promise<boolean> {
 }
 
 /**
- * Throw 404 unless the space exists, ahead of anything that opens its database
- * — a space that is not there must surface as a decision, not as a read error.
+ * Fail with {@link ResourceUnavailableError} unless the space exists, ahead of
+ * anything that opens its database — absence is a decision, not a read error.
  * Exported for a route that reads the space before it can pick its guard.
  */
 export async function requireSpace(spaceId: string): Promise<void> {
   if (!(await spaceExists(spaceId))) {
-    throw notFoundResponse("Space");
+    throw new ResourceUnavailableError("Space");
   }
 }
 
@@ -162,8 +162,8 @@ export async function decideAccess(
   );
   // A resource-scoped grantee holds no row on the space itself. Widening here
   // rather than in a caller keeps the anonymous case on the same path: `""` is
-  // refused like anyone else, not short-circuited into a 401. Never applied to a
-  // bar the target's own state raised: presence in the space is not that rank.
+  // refused like anyone else, not short-circuited by its anonymity. Never
+  // applied to a bar the target's own state raised: presence is not that rank.
   if (!granted && target.anyGrantInSpace && effectiveRole === requiredRole) {
     granted = await hasAnyResourceScopedAccess(spaceId, principal, groups);
   }
@@ -177,37 +177,48 @@ export async function decideAccess(
 }
 
 /**
- * The Response a non-`ok` decision is answered with.
+ * The domain failure a non-`ok` decision is answered with.
  *
- * Separate from {@link decideAccess} because only this end knows a denied caller
- * who never authenticated hears 401 rather than 403 — reading that back off a
- * thrown Response would confuse "not allowed" with "not authenticated".
+ * Separate from {@link decideAccess} because only this end knows whether a
+ * denied caller authenticated. Anonymous denial uses
+ * {@link ResourceUnavailableError} so a private resource is indistinguishable
+ * from an absent one; authenticated denial uses {@link PermissionDeniedError}.
  */
-async function denialResponse(
+async function denialFailure(
   spaceId: string,
   decided: { decision: AccessDecision; requiredRole: Permission },
   target: AclTarget,
   identity: ResolvedIdentity,
-): Promise<Response> {
-  if (decided.decision === "no-space") return notFoundResponse("Space");
-  if (decided.decision === "no-document") return notFoundResponse("Document");
+): Promise<AclFailure> {
+  if (decided.decision === "no-space") {
+    return new ResourceUnavailableError("Space");
+  }
+  if (decided.decision === "no-document") {
+    return new ResourceUnavailableError("Document");
+  }
 
-  // An unauthenticated caller is told to authenticate; anyone else is told no.
-  if (!identity.userId) return unauthorizedResponse();
+  // Do not confirm a private resource exists to an anonymous caller.
+  if (!identity.userId) {
+    const resource =
+      target.type === ResourceType.DOCUMENT_TREE
+        ? "Document"
+        : `${target.type.charAt(0).toUpperCase()}${target.type.slice(1)}`;
+    return new ResourceUnavailableError(resource);
+  }
   // A credential hears which role it lacked, since whoever integrated it owns
   // both ends of the call. Only asked on the refusal path, so the query is free.
   if (await hasCredentialGrant(await openSpaceStore(spaceId), identity.userId)) {
-    return forbiddenResponse(
+    return new PermissionDeniedError(
       `This credential does not have ${decided.requiredRole} permission for this ${target.type}`,
     );
   }
-  return forbiddenResponse();
+  return new PermissionDeniedError();
 }
 
 /**
- * Answer {@link decideAccess} with a thrown 401/403/404 Response, so a route
- * that forgets the failure path fails closed. The single gate every route
- * passes through, whatever resource it is protecting.
+ * Answer {@link decideAccess} with a thrown {@link AclFailure}, so a caller that
+ * forgets the failure path fails closed. The single gate every protected
+ * operation passes through, whatever resource it is protecting.
  */
 export async function verifyAccess(
   spaceId: string,
@@ -218,7 +229,7 @@ export async function verifyAccess(
   const identity = await toIdentity(who);
   const decided = await decideAccess(spaceId, target, identity, requiredRole);
   if (decided.decision === "ok") return;
-  throw await denialResponse(spaceId, decided, target, identity);
+  throw await denialFailure(spaceId, decided, target, identity);
 }
 
 /**
@@ -264,7 +275,9 @@ export async function authenticateJobTokenOrSpaceRole(
   const jobToken = credentials.jobToken;
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
-    if (!parsed) throw forbiddenResponse("Invalid job token");
+    if (!parsed) {
+      throw new CredentialRejectedError("Invalid job token");
+    }
     // A token carrying a user id only grants that user's real access. Only
     // user-less system tokens keep the historical "fully trusted" behaviour.
     if (parsed.userId) {
@@ -288,7 +301,7 @@ export async function authenticateJobTokenOrSpaceRole(
   }
 
   const user = credentials.user;
-  if (!user) throw unauthorizedResponse();
+  if (!user) throw new AuthenticationRequiredError();
   await verifyAccess(spaceId, target, user.id, requiredRole);
   return { type: "user", user };
 }
@@ -326,10 +339,10 @@ export async function authenticateDocumentAccess(
 
   const jobToken = credentials.jobToken;
   if (jobToken) {
-    // A token that does not parse is a bad credential, not an insufficient
-    // one — 401, as the document routes have always answered a forged one.
+    // A token that does not parse is a rejected credential, not an identity
+    // that merely holds insufficient access.
     const parsed = parseJobToken(jobToken, spaceId);
-    if (!parsed) throw unauthorizedResponse();
+    if (!parsed) throw new CredentialRejectedError();
     // Only user-less system tokens read without a per-document check.
     if (parsed.userId) {
       await verifyAccess(spaceId, target, parsed.userId, requiredRole);
@@ -446,8 +459,8 @@ function scopeType(options: SpaceAccessOptions | undefined): ResourceType {
 
 /**
  * The space-role check behind {@link authenticateSpaceAccess}, widened for
- * `allowResourceGrants` callers. Throws the original 403 when the caller holds
- * neither.
+ * `allowResourceGrants` callers. Preserves permission denial when the caller
+ * holds neither.
  *
  * @returns `null` when a space-wide role carries the whole space, otherwise the
  *   allowlist a resource-scoped grantee is confined to.
@@ -468,9 +481,11 @@ async function spaceRoleOrResourceScope(
     return null;
   } catch (error) {
     if (!options?.allowResourceGrants) throw error;
-    // Only widen on "forbidden" (no space-wide grant) — a 401/404 means the
-    // credential or the space itself is the problem.
-    if (!(error instanceof Response) || error.status !== 403) throw error;
+    // Only widen permission denial (no space-wide grant); rejected credentials
+    // and unavailable spaces are not candidates for a resource-scoped grant.
+    if (!(error instanceof PermissionDeniedError)) {
+      throw error;
+    }
 
     const scopedIds = await listAccessibleResources(
       spaceId,
@@ -492,10 +507,11 @@ async function spaceRoleOrResourceScope(
  *    (the token's own id as the identity).
  *  - **User session**: verified against the space role.
  *  - **Unauthenticated**: admitted when the `public` group holds
- *    `requiredRole` on the space; otherwise throws 401.
+ *    `requiredRole` on the space; otherwise the space is unavailable to it.
  *
- * Throws a 401/403 Response on failure. On success returns what a caller needs
- * to filter rows per document, via {@link spaceAccessToViewer}.
+ * Failure distinguishes rejected credentials, insufficient permission, and a
+ * space unavailable to an anonymous caller. On success returns what a caller
+ * needs to filter rows per document, via {@link spaceAccessToViewer}.
  */
 export async function authenticateSpaceAccess(
   credentials: CallerCredentials,
@@ -507,7 +523,9 @@ export async function authenticateSpaceAccess(
   const jobToken = credentials.jobToken;
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
-    if (!parsed) throw forbiddenResponse("Invalid job token");
+    if (!parsed) {
+      throw new CredentialRejectedError("Invalid job token");
+    }
     const { userId } = parsed;
     if (userId) {
       // A job token is the user's own access, resource grants included: work
@@ -576,10 +594,10 @@ export async function authenticateSpaceAccess(
     anonymous,
     requiredRole,
   );
-  // A space that does not exist is a 401 like any other refusal: its existence
-  // is not something an anonymous caller gets to learn.
+  // Missing and private spaces are deliberately indistinguishable to an
+  // anonymous caller.
   if (decision === "no-space") {
-    throw unauthorizedResponse();
+    throw new ResourceUnavailableError("Space");
   }
   if (decision !== "ok") {
     const resourceScope = options?.allowResourceGrants
@@ -593,7 +611,7 @@ export async function authenticateSpaceAccess(
     // A document shared with the `public` group in an otherwise private space:
     // browsable, but only as far as that grant reaches.
     if (!resourceScope || resourceScope.length === 0) {
-      throw unauthorizedResponse();
+      throw new ResourceUnavailableError("Space");
     }
     return {
       aclUserId: "",
@@ -635,7 +653,8 @@ async function requiredRoleForDocument(
 }
 
 /**
- * Verify the caller holds a feature, throwing 403 if not.
+ * Verify the caller holds a feature, failing with
+ * {@link PermissionDeniedError} if not.
  *
  * @param documentId Resolve against this document's role rather than the space
  *   role, for a feature exercised on one document. See {@link hasFeature}.
@@ -648,7 +667,7 @@ export async function verifyFeatureAccess(
 ): Promise<void> {
   const hasAccess = await hasFeature(spaceId, feature, await toIdentity(who), documentId);
   if (!hasAccess) {
-    throw forbiddenResponse(
+    throw new PermissionDeniedError(
       `You don't have access to the ${feature.replace("_", " ")} feature`,
     );
   }
@@ -696,7 +715,7 @@ export async function verifyRevisionAccess(
   if (requested.length > 0) {
     const document = await getDocument(await openSpaceStore(spaceId), documentId);
     if (!document) {
-      throw notFoundResponse("Document");
+      throw new ResourceUnavailableError("Document");
     }
     publishedRev = document.publishedRev;
   }
@@ -716,7 +735,9 @@ export async function verifyRevisionAccess(
   }
 
   if (!history) {
-    throw forbiddenResponse("You don't have access to the view history feature");
+    throw new PermissionDeniedError(
+      "You don't have access to the view history feature",
+    );
   }
 
   return { metadata: true };
@@ -741,17 +762,19 @@ export function validateTokenGrant(
   permission: string,
 ): Permission {
   if (!isPermission(permission)) {
-    throw badRequestResponse(`Permission must be one of: ${allPermissions().join(", ")}`);
+    throw new InvalidAclRequestError(
+      `Permission must be one of: ${allPermissions().join(", ")}`,
+    );
   }
   if (!TOKEN_GRANTABLE_RESOURCE_TYPES.includes(resourceType)) {
-    throw badRequestResponse(
+    throw new InvalidAclRequestError(
       `Token access cannot be granted for resource type: ${resourceType}`,
     );
   }
   // Owner is authority over the space; below that scope it names nothing, so a
   // token cannot be handed it there either.
   if (permission === Permission.OWNER && resourceType !== ResourceType.SPACE) {
-    throw badRequestResponse("owner can only be granted on the space itself");
+    throw new InvalidAclRequestError("owner can only be granted on the space itself");
   }
 
   return permission;
@@ -778,8 +801,8 @@ export function extractAccessToken(credentials: CallerCredentials): string | nul
 }
 
 /**
- * Authenticate request using access token
- * Returns token validation result or throws unauthorized
+ * Authenticate a presented access token. Returns null only when there is no
+ * Authorization header; malformed and rejected credentials fail explicitly.
  *
  * @example
  * ```ts
@@ -798,14 +821,18 @@ export async function authenticateWithToken(
   credentials: CallerCredentials,
   spaceId: string,
 ): Promise<ValidateTokenResult | null> {
+  if (credentials.authorization == null) {
+    return null;
+  }
+
   const token = extractAccessToken(credentials);
   if (!token) {
-    return null;
+    throw new CredentialRejectedError();
   }
 
   const result = await validateAccessToken(await openSpaceStore(spaceId), token);
   if (!result) {
-    throw unauthorizedResponse();
+    throw new CredentialRejectedError();
   }
 
   return result;
@@ -996,7 +1023,7 @@ export async function verifyTokenFeature(
     await resolveIdentity(tokenResult.tokenId),
   );
   if (!hasIt) {
-    throw forbiddenResponse(
+    throw new PermissionDeniedError(
       `Token does not have the ${feature} capability for this space`,
     );
   }
@@ -1025,14 +1052,14 @@ export async function authenticateRequest(
     return { type: "token", token: tokenResult };
   }
 
-  throw unauthorizedResponse();
+  throw new AuthenticationRequiredError();
 }
 
 /**
- * Like authenticateRequest, but returns null instead of throwing when the
- * caller is unauthenticated. Callers must separately verify that the space
- * grants the `public` group the required role before proceeding, otherwise
- * the request must be rejected with unauthorizedResponse().
+ * Like authenticateRequest, but returns null when no credential was presented.
+ * A presented access token that is malformed, invalid, expired, or revoked
+ * still fails with {@link CredentialRejectedError}. Callers must separately
+ * verify public access before proceeding.
  */
 export async function tryAuthenticateRequest(
   credentials: CallerCredentials,

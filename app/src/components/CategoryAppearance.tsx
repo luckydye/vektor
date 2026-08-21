@@ -1,6 +1,7 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
-import { For } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
+import { imageFileAsDataUrl } from "#utils/image.ts";
 import { t } from "#utils/lang.ts";
 import { CategoryBadge } from "./CategoryBadge.tsx";
 
@@ -26,9 +27,29 @@ interface Props {
 
 /**
  * The category's colour and icon, shown as the sidebar row they produce. The
- * emoji field and the swatches replace the labelled colour and icon inputs.
+ * icon controls accept short text or the same image files as a space logo.
  */
 export function CategoryAppearance(props: Props) {
+  const [iconError, setIconError] = createSignal("");
+  const isImageIcon = () => props.icon.startsWith("data:image/");
+
+  async function handleIconUpload(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      props.onUpdateIcon?.(await imageFileAsDataUrl(file));
+      setIconError("");
+    } catch (error) {
+      setIconError(
+        error instanceof Error ? error.message : t("Failed to read image file"),
+      );
+    } finally {
+      input.value = "";
+    }
+  }
+
   return (
     <div class="space-y-2">
       <div class="rounded-lg border border-neutral-100 bg-neutral-50 px-2 py-2">
@@ -46,14 +67,37 @@ export function CategoryAppearance(props: Props) {
           {t("Icon")}
           <input
             title={t("Icon (emoji or text)")}
-            value={props.icon}
-            onInput={(event) => props.onUpdateIcon?.(event.currentTarget.value)}
+            value={isImageIcon() ? "" : props.icon}
+            onInput={(event) => {
+              setIconError("");
+              props.onUpdateIcon?.(event.currentTarget.value);
+            }}
             type="text"
             maxlength="10"
             placeholder={(props.name || "?")[0].toUpperCase()}
             class="focus-ring h-7 w-10 flex-none rounded-md border border-neutral-100 text-center text-size-medium"
           />
         </label>
+
+        <label class="focus-ring cursor-pointer rounded-md border border-neutral-100 px-2 py-1 text-neutral-700 text-size-small hover:bg-neutral-50">
+          <input
+            type="file"
+            accept="image/svg+xml,image/png,image/jpeg"
+            class="sr-only"
+            onChange={(event) => void handleIconUpload(event)}
+          />
+          {isImageIcon() ? t("Change image") : t("Upload image")}
+        </label>
+
+        <Show when={isImageIcon()}>
+          <button
+            type="button"
+            class="text-neutral-500 text-size-small hover:text-neutral-900"
+            onClick={() => props.onUpdateIcon?.("")}
+          >
+            {t("Remove")}
+          </button>
+        </Show>
 
         <div class="flex flex-wrap items-center gap-1">
           <span class="mr-0.5 text-neutral-500 text-size-small">{t("Color")}</span>
@@ -100,6 +144,10 @@ export function CategoryAppearance(props: Props) {
           </a-popover-trigger>
         </div>
       </div>
+
+      <Show when={iconError()}>
+        <p class="text-red-600 text-size-small">{iconError()}</p>
+      </Show>
     </div>
   );
 }
