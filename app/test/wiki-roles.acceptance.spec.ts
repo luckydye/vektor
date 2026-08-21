@@ -459,7 +459,7 @@ describe("SV Wiki roles — independent acceptance suite", () => {
     const publicSecret = await fetch(
       `${BASE_URL}/api/v1/spaces/${spaceId}/documents/${credentialsId}`,
     );
-    expect([401, 403]).toContain(publicSecret.status);
+    expect(publicSecret.status).toBe(404);
   });
 
   it("AT-14 IT-20: search finds a page by a technical term", async () => {

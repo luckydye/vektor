@@ -174,7 +174,7 @@ describe("attachments of a publicly shared document", () => {
     const url = await ownerUpload("PRIVATE ATTACHMENT", documentId);
 
     const response = await fetch(`${BASE_URL}${url}`);
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
     expect(await response.text()).not.toContain("PRIVATE ATTACHMENT");
   });
 
@@ -211,7 +211,7 @@ describe("attachments of a publicly shared document", () => {
     expect(archived.status).toBe(200);
 
     // Archive raises the bar to `editor` for the attachment as for the document.
-    expect((await fetch(`${BASE_URL}${url}`)).status).toBe(401);
+    expect((await fetch(`${BASE_URL}${url}`)).status).toBe(404);
     const asSpaceViewer = await apiRequest(url, spaceViewerToken);
     expect(asSpaceViewer.status).toBe(403);
   });

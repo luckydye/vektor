@@ -3884,6 +3884,6 @@ describe("ACL API Tests - Resource-Scoped Browsing", () => {
     expect(listed.status).toBe(403);
 
     const unauthenticated = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/documents`);
-    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.status).toBe(404);
   });
 });

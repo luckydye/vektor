@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { PermissionDeniedError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import {
   allFeatures,
@@ -99,7 +100,7 @@ async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
     );
     return true;
   } catch (error) {
-    if (error instanceof Response && error.status === 403) return false;
+    if (error instanceof PermissionDeniedError) return false;
     throw error;
   }
 }
