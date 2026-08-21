@@ -301,10 +301,10 @@ interface Props {
 
 export function Icon(props: Props) {
   const svg = () => {
-    // `svg` is untrusted: a space logo and an extension icon are both markup a
-    // user stored (`preferences.logoSvg`), and both end up in `innerHTML` here
-    // and in the SSR branch below. A value that is not an SVG document — a URL,
-    // or a payload dressed up as one — sanitizes to "" and shows the fallback.
+    // `svg` is untrusted extension-provided markup and ends up in `innerHTML`
+    // here and in the SSR branch below. A value that is not an SVG document —
+    // a URL, or a payload dressed up as one — sanitizes to "" and shows the
+    // fallback.
     if (props.svg) return sanitizeSvgMarkup(props.svg) || FALLBACK;
     if (props.name) return icons[props.name] ?? FALLBACK;
     return "";

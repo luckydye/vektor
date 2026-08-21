@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isSafeImageUrl,
+  isSafeUploadedImageUrl,
   sanitizeDocumentHtml,
   sanitizeSvgMarkup,
   sanitizeVektorDocumentPreviewHtml,
@@ -293,6 +294,12 @@ describe("isSafeImageUrl", () => {
     expect(isSafeImageUrl("java\nscript:alert(1)")).toBe(false);
     expect(isSafeImageUrl("&#106avascript:alert(1)")).toBe(false);
     expect(isSafeImageUrl("javascript&colon;alert(1)")).toBe(false);
+  });
+
+  it("allows SVG data URIs only for uploaded logos and icons", () => {
+    const svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+    expect(isSafeImageUrl(svg)).toBe(false);
+    expect(isSafeUploadedImageUrl(svg)).toBe(true);
   });
 });
 

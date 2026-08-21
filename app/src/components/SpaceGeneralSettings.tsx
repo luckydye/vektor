@@ -2,7 +2,7 @@ import { createEffect, createSignal, Show } from "solid-js";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
-import { sanitizeSvgMarkup } from "#utils/html.ts";
+import { imageFileAsDataUrl } from "#utils/image.ts";
 import {
   isWorkflowCreationEnabled,
   spacePreferenceKeys,
@@ -62,38 +62,11 @@ export function SpaceGeneralSettings(props: Props) {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    const validTypes = ["image/svg+xml", "image/png", "image/jpeg"];
-    if (!validTypes.includes(file.type)) {
-      setError("Only SVG, PNG, and JPG files are supported");
-      return;
-    }
-
-    if (file.size > 300 * 1024) {
-      setError("Logo file must be smaller than 300 KB");
-      return;
-    }
-
     try {
-      if (file.type === "image/svg+xml") {
-        const svg = sanitizeSvgMarkup(await file.text());
-        if (!svg) {
-          setError("That file is not an SVG image");
-          return;
-        }
-        setLocalLogoSvg(svg);
-      } else {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setLocalLogoSvg(e.target?.result as string);
-        };
-        reader.onerror = () => {
-          setError("Failed to read image file");
-        };
-        reader.readAsDataURL(file);
-      }
+      setLocalLogoSvg(await imageFileAsDataUrl(file));
       setError(null);
-    } catch {
-      setError("Failed to read image file");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to read image file");
     }
   }
 

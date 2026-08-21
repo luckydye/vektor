@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import { type JSX, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { getTextColor } from "#utils/color.ts";
 
@@ -16,10 +16,12 @@ interface Props {
 }
 
 /**
- * The category's color square with its icon — an emoji or short text, falling
- * back to the initial. Children render on top of it, for the tree's chevron.
+ * The category's color square with its uploaded image, emoji or short text,
+ * falling back to the initial. Children render on top, for the tree's chevron.
  */
 export function CategoryBadge(props: Props) {
+  const isImageIcon = () => props.category.icon?.startsWith("data:image/") ?? false;
+
   return (
     <div
       class={twMerge(
@@ -32,9 +34,20 @@ export function CategoryBadge(props: Props) {
       }}
     >
       {props.children}
-      <span class="block transition-opacity group-hover/category:opacity-0">
-        {props.category.icon || props.category.name.charAt(0).toUpperCase()}
-      </span>
+      <Show
+        when={isImageIcon()}
+        fallback={
+          <span class="block transition-opacity group-hover/category:opacity-0">
+            {props.category.icon || props.category.name.charAt(0).toUpperCase()}
+          </span>
+        }
+      >
+        <img
+          src={props.category.icon}
+          alt=""
+          class="h-full w-full rounded-[inherit] object-cover transition-opacity group-hover/category:opacity-0"
+        />
+      </Show>
     </div>
   );
 }

@@ -1,13 +1,12 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
 import { isHexColor } from "#utils/color.ts";
-import { sanitizeSvgMarkup } from "#utils/html.ts";
+import { imageFileAsDataUrl } from "#utils/image.ts";
 import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
 
 const DEFAULT_BRAND_COLOR = "#42516d";
-const MAX_LOGO_BYTES = 300 * 1024;
 
 interface Props {
   show?: boolean;
@@ -47,32 +46,11 @@ export function CreateSpaceDialog(props: Props) {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    if (!["image/svg+xml", "image/png", "image/jpeg"].includes(file.type)) {
-      setFormError("Only SVG, PNG, and JPG files are supported");
-      return;
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      setFormError("Logo file must be smaller than 300 KB");
-      return;
-    }
-
     try {
-      if (file.type === "image/svg+xml") {
-        const svg = sanitizeSvgMarkup(await file.text());
-        if (!svg) {
-          setFormError("That file is not an SVG image");
-          return;
-        }
-        setLogoSvg(svg);
-      } else {
-        const reader = new FileReader();
-        reader.onload = (loadEvent) => setLogoSvg(loadEvent.target?.result as string);
-        reader.onerror = () => setFormError("Failed to read image file");
-        reader.readAsDataURL(file);
-      }
+      setLogoSvg(await imageFileAsDataUrl(file));
       setFormError("");
-    } catch {
-      setFormError("Failed to read image file");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Failed to read image file");
     }
   }
 
