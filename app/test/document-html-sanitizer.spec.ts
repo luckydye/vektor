@@ -6,6 +6,7 @@ import {
   sanitizeSvgMarkup,
   sanitizeVektorDocumentPreviewHtml,
 } from "#utils/html.ts";
+import { renderMessageMarkdown } from "#utils/markdown.ts";
 
 /** The payload an `html-block` carries, in the encoding the schema renders. */
 function htmlBlock(payload: string): string {
@@ -328,5 +329,54 @@ describe("sanitizeVektorDocumentPreviewHtml", () => {
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("<iframe");
+  });
+});
+
+describe("renderMessageMarkdown", () => {
+  it("drops executable markup a comment or chat message carries", () => {
+    const html = renderMessageMarkdown(
+      [
+        "<img src=x onerror=alert(1)>",
+        "<iframe src='https://evil.example'></iframe>",
+        "<script>alert(1)</script>",
+        "[bad](javascript:alert(1))",
+        "<div onclick='alert(1)'>text</div>",
+      ].join("\n\n"),
+    );
+
+    // Inline HTML arrives escaped as text, so the payloads are visible in the
+    // output — as prose, not as tags with handlers on them.
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<div");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain('href="javascript:');
+  });
+
+  it("keeps the markdown vocabulary messages are written in", () => {
+    const html = renderMessageMarkdown(
+      "# Title\n\n**bold** and `code` and [link](https://example.com)\n\n- [x] done\n\n| a | b |\n| - | - |\n| 1 | 2 |",
+    );
+
+    expect(html).toContain("<h1>Title</h1>");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain("<code>code</code>");
+    expect(html).toContain(
+      '<a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a>',
+    );
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain("<table>");
+  });
+
+  it("keeps mentions and rejects a mention pointing somewhere else", () => {
+    expect(renderMessageMarkdown("[@Ada](mention:ada%40example.com)")).toContain(
+      '<user-mention email="ada@example.com">@Ada</user-mention>',
+    );
+
+    const document = renderMessageMarkdown("[@Spec](doc:abc123)");
+    expect(document).toContain('data-document-id="abc123"');
+    expect(document).toContain('data-href="doc:abc123"');
+
+    expect(renderMessageMarkdown("[x](vbscript:msgbox(1))")).not.toContain("vbscript");
   });
 });

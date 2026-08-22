@@ -332,17 +332,17 @@ describe("SV Wiki roles — independent acceptance suite", () => {
 
   it("AT-08 PM-17/IT-07: image/PDF uploads work and direct URLs reject outsiders", async () => {
     const attachmentDoc = await createDocument("Media", "<p>Media</p>");
-    const form = new FormData();
-    form.set(
-      "file",
-      new File(["%PDF-1.7\nacceptance"], "briefing.pdf", { type: "application/pdf" }),
+    const uploaded = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/uploads?filename=briefing.pdf&documentId=${attachmentDoc.id}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/pdf",
+          Cookie: `vektor.session_token=${owner.token}`,
+        },
+        body: "%PDF-1.7\nacceptance",
+      },
     );
-    form.set("documentId", attachmentDoc.id);
-    const uploaded = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
-      method: "POST",
-      headers: { Cookie: `vektor.session_token=${owner.token}` },
-      body: form,
-    });
     expect(uploaded.status).toBe(200);
     const url = (await uploaded.json()).url as string;
 

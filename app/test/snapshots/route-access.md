@@ -110,7 +110,7 @@
 | `/api/v1/spaces/[spaceId]/shares` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/shares/[linkId]` | DELETE | 401 | 403 | 403 | 404 | 404 | no fixture for linkId |
 | `/api/v1/spaces/[spaceId]/uploads` | GET | 404 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/uploads` | POST | 404 | 403 | 403 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/uploads` | POST | 404 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/uploads/[...path]` | DELETE | 401 | 403 | 403 | 204 | 204 |  |
 | `/api/v1/spaces/[spaceId]/uploads/[...path]` | GET | 404 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/workflows/runs` | GET | 401 | 403 | 200 | 200 | 200 |  |

@@ -671,6 +671,45 @@ const PREVIEW_POLICY: SanitizePolicy = {
 };
 
 // ---------------------------------------------------------------------------
+// Policy: rendered message markdown
+// ---------------------------------------------------------------------------
+
+/**
+ * A preview's vocabulary plus what `renderMessageMarkdown` itself emits: GFM
+ * task-list checkboxes, and the two mention elements the link renderer writes.
+ */
+const MESSAGE_TAGS = new Set([
+  ...PREVIEW_TAGS,
+  "document-mention",
+  "input",
+  "user-mention",
+]);
+
+/** The preview drop list without `input`, which a task list legitimately uses. */
+const MESSAGE_DROP_TAGS = new Set(
+  [...PREVIEW_DROP_TAGS].filter((tag) => tag !== "input"),
+);
+
+const CHECKBOX_ATTRIBUTES = new Set(["checked", "disabled", "type"]);
+const MENTION_ATTRIBUTES = new Set(["data-document-id", "data-href", "email"]);
+
+const MESSAGE_POLICY: SanitizePolicy = {
+  drop: MESSAGE_DROP_TAGS,
+  hardensLinks: "all",
+  numericSizesOnly: true,
+  keeps: (tag) => MESSAGE_TAGS.has(tag),
+  keepsAttribute: (tag, attribute) => {
+    if (GLOBAL_ATTRIBUTES.has(attribute)) return true;
+    if (tag === "a" && (LINK_ATTRIBUTES.has(attribute) || attribute === "target"))
+      return true;
+    if (tag === "img" && IMAGE_ATTRIBUTES.has(attribute)) return true;
+    if (tag === "input" && CHECKBOX_ATTRIBUTES.has(attribute)) return true;
+    if (tag.endsWith("-mention") && MENTION_ATTRIBUTES.has(attribute)) return true;
+    return (tag === "td" || tag === "th") && TABLE_CELL_ATTRIBUTES.has(attribute);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Policy: document content
 // ---------------------------------------------------------------------------
 
@@ -1149,6 +1188,18 @@ export function isSafeUploadedImageUrl(value: string): boolean {
     INLINE_IMAGE_DATA_URL.test(normalized);
 
   return isImageLocation && isSafeImageUrl(normalized);
+}
+
+/**
+ * Rendered message markdown, safe to hand `innerHTML`.
+ *
+ * Comments and chat messages are markdown, and markdown carries inline HTML —
+ * so the rendered output is sanitized like any other markup this app did not
+ * write, rather than trusted because the renderer escaped what it saw.
+ */
+export function sanitizeMessageHtml(html: string): string {
+  if (!html.trim()) return "";
+  return sanitizeNodes(parse(html), MESSAGE_POLICY, 0, 0);
 }
 
 /** Someone else's HTML, reduced to the prose a preview card shows. */

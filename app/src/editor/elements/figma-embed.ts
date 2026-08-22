@@ -8,6 +8,12 @@ function createFigmaEmbedUrl(figmaUrl: string): string | null {
   } catch {
     return null;
   }
+  // Rewriting the hostname is not a filter: on a non-special scheme the
+  // assignment is ignored, so `javascript:…` would survive it and reach the
+  // iframe as-is. The scheme and the host are checked instead.
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.hostname !== "figma.com" && !url.hostname.endsWith(".figma.com")) return null;
+  url.protocol = "https:";
   url.hostname = "embed.figma.com";
   url.searchParams.set("embed-host", "vektor");
   url.searchParams.set("page-selector", "false");

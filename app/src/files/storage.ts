@@ -1,10 +1,27 @@
-import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface StoredFileInfo {
   key: string;
   size: number;
   updatedAt: Date;
+}
+
+/** A file that has landed in storage under its content-addressed key. */
+export interface StoredUpload {
+  key: string;
+  url: string;
+  size: number;
 }
 
 /**
@@ -20,6 +37,18 @@ export interface FileStorageAdapter {
     buffer: Buffer,
     contentType?: string,
   ): Promise<string>;
+  /**
+   * Store a stream under the SHA-256 of its own bytes, never holding the whole
+   * file in memory. The key follows from the content, so it is only known once
+   * the last chunk has been read: an implementation stages the bytes somewhere
+   * of its own choosing and moves them into place afterwards.
+   */
+  putHashed(
+    spaceId: string,
+    extension: string,
+    body: ReadableStream<Uint8Array>,
+    contentType?: string,
+  ): Promise<StoredUpload>;
   /** Read a file by key. Returns null if not found. */
   read(spaceId: string, key: string): Promise<Buffer | null>;
   /** Delete a file by key. */
@@ -56,6 +85,41 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, buffer);
     return this.url(spaceId, key);
+  }
+
+  async putHashed(
+    spaceId: string,
+    extension: string,
+    body: ReadableStream<Uint8Array>,
+    _contentType?: string,
+  ): Promise<StoredUpload> {
+    const stagingPath = join(this.root, spaceId, ".staging", randomUUID());
+    await mkdir(dirname(stagingPath), { recursive: true });
+
+    const hash = createHash("sha256");
+    let size = 0;
+    try {
+      const handle = await open(stagingPath, "w");
+      try {
+        for await (const chunk of body) {
+          hash.update(chunk);
+          size += chunk.byteLength;
+          await handle.write(chunk);
+        }
+      } finally {
+        await handle.close();
+      }
+
+      const digest = hash.digest("hex");
+      const key = `${digest.slice(0, 2)}/${digest}.${extension}`;
+      const filePath = this.resolvePath(spaceId, key);
+      await mkdir(dirname(filePath), { recursive: true });
+      await rename(stagingPath, filePath);
+      return { key, url: this.url(spaceId, key), size };
+    } catch (error) {
+      await unlink(stagingPath).catch(() => {});
+      throw error;
+    }
   }
 
   async read(spaceId: string, key: string): Promise<Buffer | null> {

@@ -228,12 +228,14 @@ async function uploadFile(
   buffer: Buffer,
   mime: string,
 ): Promise<string> {
-  const form = new FormData();
-  form.append("file", new Blob([buffer], { type: mime }), filename);
-  const res = await fetch(`${BASE_URL}/api/v1/spaces/${sid}/uploads`, {
-    method: "POST",
-    body: form,
-  });
+  const res = await fetch(
+    `${BASE_URL}/api/v1/spaces/${sid}/uploads?filename=${encodeURIComponent(filename)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": mime },
+      body: buffer,
+    },
+  );
   if (!res.ok) throw new Error(`Upload failed: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { key: string; url: string };
   expect(data.url).toBe(`/api/v1/spaces/${sid}/uploads/${data.key}`);

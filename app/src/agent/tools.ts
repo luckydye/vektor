@@ -494,23 +494,18 @@ export async function uploadFile(
     documentId?: string;
   },
 ) {
-  const form = new FormData();
   const bytes = Buffer.from(options.contentBase64, "base64");
-  form.set("filename", options.filename);
-  form.set(
-    "file",
-    new Blob([bytes], {
-      type: options.contentType ?? "application/octet-stream",
-    }),
-    options.filename,
-  );
+  const query = new URLSearchParams({ filename: options.filename });
   if (options.documentId) {
-    form.set("documentId", options.documentId);
+    query.set("documentId", options.documentId);
   }
-  return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/uploads`, {
+  return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/uploads?${query}`, {
     method: "POST",
-    body: form,
-    headers: { Origin: new URL(config.apiUrl).origin },
+    body: bytes,
+    headers: {
+      Origin: new URL(config.apiUrl).origin,
+      "Content-Type": options.contentType ?? "application/octet-stream",
+    },
   });
 }
 

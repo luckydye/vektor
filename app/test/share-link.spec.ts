@@ -219,16 +219,17 @@ describe("opening a share link", () => {
 
 describe("the attachments of a shared page", () => {
   async function ownerUpload(): Promise<string> {
-    const form = new FormData();
-    form.set("file", new File(["ATTACHED"], "note.txt", { type: "text/plain" }));
-    form.set("filename", "note.txt");
-    form.set("documentId", documentId);
-
-    const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
-      method: "POST",
-      headers: { Cookie: `vektor.session_token=${owner.token}` },
-      body: form,
-    });
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/uploads?filename=note.txt&documentId=${documentId}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          Cookie: `vektor.session_token=${owner.token}`,
+        },
+        body: "ATTACHED",
+      },
+    );
     expect(response.status).toBe(200);
     return (await response.json()).url as string;
   }
@@ -286,16 +287,17 @@ describe("the cookie a shared page hands back", () => {
   }
 
   async function attach(document: string): Promise<string> {
-    const form = new FormData();
-    form.set("file", new File(["ATTACHED"], "note.txt", { type: "text/plain" }));
-    form.set("filename", "note.txt");
-    form.set("documentId", document);
-
-    const uploaded = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
-      method: "POST",
-      headers: { Cookie: `vektor.session_token=${owner.token}` },
-      body: form,
-    });
+    const uploaded = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/uploads?filename=note.txt&documentId=${document}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          Cookie: `vektor.session_token=${owner.token}`,
+        },
+        body: "ATTACHED",
+      },
+    );
     expect(uploaded.status).toBe(200);
     const url = (await uploaded.json()).url as string;
 
@@ -482,10 +484,7 @@ describe("who may manage shares", () => {
       name: "Settings Link Fixture",
     });
 
-    const response = await apiRequest(
-      `/api/v1/spaces/${spaceId}/shares`,
-      owner.token,
-    );
+    const response = await apiRequest(`/api/v1/spaces/${spaceId}/shares`, owner.token);
     expect(response.status).toBe(200);
     const allLinks = (await response.json()).links as Array<{
       id: string;
