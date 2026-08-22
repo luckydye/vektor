@@ -411,7 +411,7 @@ export function Sidebar(props: Props) {
             ? `translateX(${drawerOffset() - drawerWidth()}px)`
             : undefined,
           transition: isDrawerDragging() ? "none" : undefined,
-          "--color-background": "var(--color-neutral-25)",
+          "--color-background": "transparent",
         }}
         class={twMerge(
           "@container sidebar flex p-1.5",
@@ -431,7 +431,7 @@ export function Sidebar(props: Props) {
       >
         <span
           aria-hidden="true"
-          class="absolute top-1/2 left-full ml-1 h-12 w-1 -translate-y-1/2 rounded-full bg-neutral-300/70 md:hidden"
+          class="absolute top-1/2 -right-2 md:right-1 h-20 w-1 -translate-y-1/2 rounded-full bg-neutral-300/30 z-20"
         />
 
         <button
@@ -453,8 +453,8 @@ export function Sidebar(props: Props) {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle, not a control. */}
         <div
           class={twMerge(
-            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-primary-200/50 md:block",
-            isResizing() ? "bg-primary-200/50 active:bg-primary-200" : "",
+            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-neutral-200/50 md:block rounded-[99px]",
+            isResizing() ? "bg-neutral-200 active:bg-neutral-200" : "",
           )}
           onMouseDown={startResize}
         >
