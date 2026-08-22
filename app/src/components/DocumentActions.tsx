@@ -319,7 +319,6 @@ export function DocumentActions(props: Props) {
         order: 20,
         run: async () => {
           await api.space.patch(space.id, { preferences: { pinnedDocumentId: "" } });
-          window.location.reload();
         },
       });
       return;
@@ -333,7 +332,12 @@ export function DocumentActions(props: Props) {
       order: 20,
       run: async () => {
         await api.space.patch(space.id, { preferences: { pinnedDocumentId: docId } });
-        window.location.reload();
+        toast.show(t("Pinned to Home"), "success", 8000, {
+          action: {
+            label: t("View activity"),
+            run: () => navigate("/"),
+          },
+        });
       },
     });
   });

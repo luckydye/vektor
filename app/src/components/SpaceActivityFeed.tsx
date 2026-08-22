@@ -124,7 +124,9 @@ export function SpaceActivityFeed(props: Props) {
   return (
     <div class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-size-label">{t("Space Activity")}</h2>
+        <h2 class="text-neutral-500 text-size-large leading-large">
+          {t("Space Activity")}
+        </h2>
       </div>
 
       <Show when={error()}>
