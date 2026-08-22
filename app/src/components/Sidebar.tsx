@@ -411,7 +411,7 @@ export function Sidebar(props: Props) {
             ? `translateX(${drawerOffset() - drawerWidth()}px)`
             : undefined,
           transition: isDrawerDragging() ? "none" : undefined,
-          "--color-background": "transparent",
+          "--color-background": "var(--color-neutral-10)",
         }}
         class={twMerge(
           "@container sidebar flex p-1.5",
