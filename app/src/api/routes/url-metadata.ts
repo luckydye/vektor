@@ -15,7 +15,7 @@ import { createVektorDocumentAddress } from "#documents/address.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
-import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
+import { assertPublicUrl, SsrfError, safeFetch } from "#utils/ssrf.ts";
 
 export interface LinkMetadata {
   url: string;
@@ -58,7 +58,6 @@ interface CacheEntry {
 const EXTERNAL_CACHE_TTL_MS = 10 * 60 * 1000;
 const INTERNAL_CACHE_TTL_MS = 2 * 60 * 1000;
 const cache = new Map<string, CacheEntry>();
-const MAX_REDIRECTS = 3;
 
 /** SSRF-validate a URL, translating violations into a 400 API response. */
 async function validateExternalUrl(url: string): Promise<URL> {
@@ -154,44 +153,20 @@ function resolveUrl(href: string, baseUrl: string): string {
 }
 
 async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
-  let target = await validateExternalUrl(url);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
-    let response: Response | null = null;
-    for (let i = 0; i <= MAX_REDIRECTS; i += 1) {
-      response = await fetch(target, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
-          Accept: "text/html,application/xhtml+xml",
-        },
-        redirect: "manual",
-      });
-
-      const status = response.status;
-      if (status >= 300 && status < 400) {
-        const location = response.headers.get("location");
-        if (!location) {
-          throw new Error("Redirect missing location");
-        }
-
-        if (i === MAX_REDIRECTS) {
-          throw new Error("Too many redirects");
-        }
-
-        const next = new URL(location, target);
-        target = await validateExternalUrl(next.toString());
-        continue;
-      }
-
-      break;
-    }
-
-    if (!response) {
-      throw new Error("Failed to fetch URL");
-    }
+    // `safeFetch` pins the socket to the address it validated and re-validates
+    // every redirect hop, closing the DNS-rebinding window a bare `fetch` leaves.
+    const response = await safeFetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch URL: ${response.status}`);
@@ -199,7 +174,7 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
 
     const html = await response.text();
 
-    const base = target.toString();
+    const base = response.url;
     return {
       url: base,
       title: extractTitle(html),
@@ -221,6 +196,11 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
       updatedAt: null,
       fetchedAt: Date.now(),
     };
+  } catch (error) {
+    if (error instanceof SsrfError) {
+      throw badRequestResponse(error.message);
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -321,11 +301,11 @@ function textFromUnknownProperty(value: unknown): string {
 }
 
 async function fetchJsonWithTimeout(url: string): Promise<unknown> {
-  const target = await validateExternalUrl(url);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    const response = await fetch(target, {
+    const response = await safeFetch(url, {
+      method: "GET",
       signal: controller.signal,
       headers: {
         Accept: "application/json",
