@@ -563,7 +563,7 @@ export function DocumentTree(props: Props) {
                         <button
                           type="button"
                           onClick={() => !isEditMode() && toggleItem(category().id)}
-                          class="flex flex-1 items-center gap-2 px-1 py-1 text-left"
+                          class="flex flex-1 items-center gap-2 px-4xs py-1 text-left"
                           aria-expanded={isCategoryOpen(category())}
                         >
                           <CategoryBadge category={category()} class="h-6 w-6">
