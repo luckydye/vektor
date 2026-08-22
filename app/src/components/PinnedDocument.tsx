@@ -2,6 +2,7 @@ import { createEffect, createSignal, onMount, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
 import { api, type DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
@@ -13,14 +14,15 @@ interface Props {
   pinnedDocumentId: string;
 }
 
-function docTitle(document: DocumentWithProperties): string {
+function docTitle(document: DocumentWithProperties, untitled: string): string {
   const title = document.properties?.title;
-  return title ? propertyValueToText(title) : "Untitled";
+  return title ? propertyValueToText(title) : untitled;
 }
 
 export function PinnedDocument(props: Props) {
   const [doc, setDoc] = createSignal<DocumentWithProperties | null>(null);
   const { currentSpace } = useSpace();
+  const t = useTranslation();
   const userCanEdit = () => canEdit(currentSpace()?.userRole);
 
   let viewEl: HTMLElement | undefined;
@@ -74,7 +76,7 @@ export function PinnedDocument(props: Props) {
         >
           <Icon class="h-3.5 w-3.5 shrink-0 text-amber-500" name="pin-to-home" />
           <span class="font-semibold text-amber-600 text-size-small uppercase tracking-wide">
-            Pinned
+            {t("Pinned")}
           </span>
           <Show
             when={doc()}
@@ -82,7 +84,7 @@ export function PinnedDocument(props: Props) {
           >
             {(current) => (
               <span class="font-semibold text-neutral-800 text-size-medium transition-colors group-hover:text-blue-600">
-                {docTitle(current())}
+                {docTitle(current(), t("Untitled"))}
               </span>
             )}
           </Show>
@@ -93,7 +95,7 @@ export function PinnedDocument(props: Props) {
             onClick={unpin}
             class="text-neutral-400 text-size-small transition-colors hover:text-neutral-700"
           >
-            Unpin
+            {t("Unpin")}
           </button>
         </Show>
       </div>
@@ -109,7 +111,7 @@ export function PinnedDocument(props: Props) {
             class="mt-3 flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 transition-colors hover:bg-neutral-100"
           >
             <span class="font-medium text-neutral-800 text-size-medium">
-              {docTitle(doc() as DocumentWithProperties)}
+              {docTitle(doc() as DocumentWithProperties, t("Untitled"))}
             </span>
             <span class="ml-auto text-neutral-400 text-size-small capitalize">
               {doc()?.type}
