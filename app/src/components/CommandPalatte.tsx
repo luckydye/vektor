@@ -5,6 +5,11 @@ import { twMerge } from "tailwind-merge";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import {
+  useVisualViewport,
+  viewportLayerStyle,
+} from "#composeables/useVisualViewport.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
@@ -13,7 +18,6 @@ import { history } from "#utils/history.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon, type IconName } from "./Icon.tsx";
-import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 type HistoryEntry = { url: string; lastVisited: number };
 // biome-ignore lint/suspicious/noExplicitAny: documents are untyped at this layer.
@@ -60,6 +64,7 @@ function resultDescription(result: Result, lang: string): string | undefined {
 export function CommandPalatte() {
   const t = useTranslation();
   const lang = useLocale();
+  const viewport = useVisualViewport();
 
   const navigate = useNavigate();
   const { documents } = useDocuments();
@@ -247,17 +252,21 @@ export function CommandPalatte() {
       <a-blur
         attr:hidden={isOpen() ? undefined : ""}
         attr:enabled={isOpen() ? "" : undefined}
-        class="overlay-fade fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[15vh]"
+        class="overlay-fade fixed z-50 flex items-start justify-center overflow-hidden bg-black/30"
+        style={{
+          ...viewportLayerStyle(viewport()),
+          "padding-top": `${Math.round(viewport().height * 0.15)}px`,
+        }}
         onClick={closePalette}
         on:exit={closePalette}
       >
         {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the click reaching the dismissal layer. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handling lives on the input below. */}
         <div
-          class="mx-4 w-full max-w-[640px] overflow-hidden rounded-xl border border-neutral-100 bg-background shadow-2xl"
+          class="mx-4 flex max-h-full w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-neutral-100 bg-background shadow-2xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div class="flex items-center gap-3 border-neutral-100 border-b px-4 py-3">
+          <div class="flex flex-none items-center gap-3 border-neutral-100 border-b px-4 py-3">
             <Icon class="h-4 w-4 flex-none text-neutral" name="search" />
             <input
               ref={searchInput}
@@ -281,7 +290,10 @@ export function CommandPalatte() {
             <a-shortcut class="hidden sm:flex" attr:data-shortcut="esc" />
           </div>
 
-          <div ref={resultsContainer} class="max-h-[400px] overflow-y-auto py-1">
+          <div
+            ref={resultsContainer}
+            class="min-h-0 flex-1 overflow-y-auto py-1 md:max-h-[400px]"
+          >
             <Show when={isOpen() && filteredResults().length === 0}>
               <div class="px-4 py-10 text-center">
                 <p class="text-neutral text-size-medium">{t("No results found")}</p>

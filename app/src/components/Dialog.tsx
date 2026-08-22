@@ -2,8 +2,12 @@ import { createEffect, type JSX, mergeProps, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import "@atrium-ui/elements/blur";
-import { IconButton } from "./IconButton.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
+import {
+  useVisualViewport,
+  viewportLayerStyle,
+} from "#composeables/useVisualViewport.ts";
+import { IconButton } from "./IconButton.tsx";
 
 interface Props {
   show?: boolean;
@@ -22,6 +26,7 @@ interface Props {
 
 export function Dialog(props: Props) {
   const t = useTranslation();
+  const viewport = useVisualViewport();
 
   const merged = mergeProps(
     {
@@ -65,7 +70,8 @@ export function Dialog(props: Props) {
       <a-blur
         attr:hidden={merged.show ? undefined : ""}
         attr:enabled={merged.show ? "" : undefined}
-        class="dialog-layer fixed inset-0 z-100 flex items-end justify-center md:items-center"
+        class="dialog-layer fixed z-100 flex items-end justify-center md:items-center"
+        style={viewportLayerStyle(viewport())}
         on:exit={onDismiss}
       >
         <button
@@ -81,7 +87,7 @@ export function Dialog(props: Props) {
           role="dialog"
           aria-modal="true"
           class={`dialog-panel relative flex w-full flex-col overflow-hidden rounded-t-2xl bg-background shadow-xl md:rounded-2xl ${merged.maxWidth} ${merged.panelHeight} ${
-            merged.expand ? "h-[90dvh] md:h-[85vh]" : "max-h-[90dvh] md:max-h-[85vh]"
+            merged.expand ? "h-[90%] md:h-[85%]" : "max-h-[90%] md:max-h-[85%]"
           }`}
           onClick={(event) => event.stopPropagation()}
         >

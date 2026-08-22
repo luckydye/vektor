@@ -13,11 +13,15 @@ import {
   useDockedWindows,
 } from "#composeables/useDockedWindows.ts";
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
+import {
+  useVisualViewport,
+  viewportLayerStyle,
+} from "#composeables/useVisualViewport.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   id: string;
@@ -63,6 +67,7 @@ export function DockedPanel(props: Props) {
   const [insets, setInsets] = createSignal<Insets>(getInsets());
 
   const isDesktop = useIsDesktop();
+  const viewport = useVisualViewport();
 
   function sidebarOffset(): number {
     return isDesktop() ? insets().sidebar : 0;
@@ -76,23 +81,23 @@ export function DockedPanel(props: Props) {
 
   function dockedLeft(): number {
     if (side() === "left") return sidebarOffset() + precedingWidth();
-    return window.innerWidth - DOCK_MARGIN - precedingWidth() - width();
+    return viewport().width - DOCK_MARGIN - precedingWidth() - width();
   }
 
   const overlayStyle = createMemo<JSX.CSSProperties>(() => {
     if (mode() === "docked") {
       const base = {
-        top: `${DOCK_MARGIN}px`,
+        top: `${viewport().offsetTop + DOCK_MARGIN}px`,
         width: `${width()}px`,
-        height: `calc(100vh - ${DOCK_MARGIN * 2}px)`,
+        height: `${viewport().height - DOCK_MARGIN * 2}px`,
       };
       return side() === "left"
         ? { ...base, left: `${sidebarOffset() + precedingWidth()}px` }
         : { ...base, right: `${DOCK_MARGIN + precedingWidth()}px` };
     }
     return {
-      left: `${floatX()}px`,
-      top: `${floatY()}px`,
+      left: `${viewport().offsetLeft + floatX()}px`,
+      top: `${viewport().offsetTop + floatY()}px`,
       width: `${floatW()}px`,
       height: `${floatH()}px`,
     };
@@ -126,7 +131,7 @@ export function DockedPanel(props: Props) {
       setFloatX(windowStartX);
       setFloatY(windowStartY);
       setFloatW(width());
-      setFloatH(window.innerHeight - DOCK_MARGIN * 2);
+      setFloatH(viewport().height - DOCK_MARGIN * 2);
     } else {
       windowStartX = floatX();
       windowStartY = floatY();
@@ -172,7 +177,7 @@ export function DockedPanel(props: Props) {
         const threshold =
           side() === "left"
             ? sidebarOffset() + precedingWidth() + DOCK_THRESHOLD
-            : window.innerWidth - DOCK_MARGIN - width() - DOCK_THRESHOLD;
+            : viewport().width - DOCK_MARGIN - width() - DOCK_THRESHOLD;
         const movedAway = side() === "left" ? newX > threshold : newX < threshold;
 
         if (movedAway) {
@@ -204,7 +209,7 @@ export function DockedPanel(props: Props) {
       if (mode() === "floating") {
         const sidebar = sidebarOffset();
         const nearLeft = floatX() < sidebar + DOCK_THRESHOLD;
-        const nearRight = floatX() + floatW() > window.innerWidth - DOCK_THRESHOLD;
+        const nearRight = floatX() + floatW() > viewport().width - DOCK_THRESHOLD;
 
         if (nearLeft) {
           dock(props.id, "left");
@@ -223,13 +228,20 @@ export function DockedPanel(props: Props) {
     }
   }
 
-  function onWindowResize() {
+  // Keeps a floating panel inside the on-screen area when it shrinks — a window
+  // resize, or a keyboard covering the lower part of the viewport.
+  function clampFloating() {
     if (mode() !== "floating") return;
-    const maxX = window.innerWidth - floatW() - DOCK_MARGIN;
+    const maxX = viewport().width - floatW() - DOCK_MARGIN;
     if (floatX() > maxX) setFloatX(Math.max(0, maxX));
-    const maxY = window.innerHeight - floatH() - DOCK_MARGIN;
+    setFloatH(
+      Math.min(floatH(), Math.max(MIN_HEIGHT, viewport().height - DOCK_MARGIN * 2)),
+    );
+    const maxY = viewport().height - floatH() - DOCK_MARGIN;
     if (floatY() > maxY) setFloatY(Math.max(0, maxY));
   }
+
+  createEffect(on(viewport, clampFloating, { defer: true }));
 
   function onClose() {
     close(props.id);
@@ -246,13 +258,11 @@ export function DockedPanel(props: Props) {
 
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-    window.addEventListener("resize", onWindowResize);
 
     onCleanup(() => {
       deregister(props.id);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
-      window.removeEventListener("resize", onWindowResize);
       stopInsets?.();
     });
   });
