@@ -109,7 +109,7 @@ export function Navigation() {
 
   return (
     <div class="z-1 flex h-full flex-col">
-      <div class="sticky top-0 z-10 flex-none rounded-t-md px-5xs py-5xs">
+      <div class="sticky top-0 z-10 flex-none rounded-t-md px-3xs @max-xs:px-5xs pt-4xs pb-5xs">
         <CreateSpaceDialog
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}
@@ -139,10 +139,10 @@ export function Navigation() {
 
       <div class="sidebar-scroll min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <nav class="@container flex flex-col gap-3xs">
-          <div class="flex flex-none flex-col gap-0.5 px-4xs pt-5xs">
+          <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
             <button
               type="button"
-              class="button-with-icon mb-4xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
+              class="button-with-icon mb-xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
               title={t("Quick Search")}
               onClick={() => Actions.run("ui:toggle:palatte")}
             >
@@ -167,7 +167,7 @@ export function Navigation() {
           </div>
 
           <Show when={extensionMenuLinks().length > 0 && !isLoading()}>
-            <div class="flex flex-none flex-col gap-0.5 px-3xs">
+            <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs">
               <For each={extensionMenuLinks()}>
                 {(link) => (
                   <MenuLink
@@ -182,8 +182,8 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="@max-xs:hidden px-5xs pt-4xs pb-s">
-            <div class="mx-4xs border-neutral-400/25 border-b"></div>
+          <div class="@max-xs:hidden px-5xs pt-2xs pb-s">
+            <div class="mx-2xs border-neutral-400/25 border-b"></div>
 
             {/* The hint gives the lone Done button something to belong to, and says
                 what the mode is for — nothing else on screen does. */}
