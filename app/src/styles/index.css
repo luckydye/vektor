@@ -220,20 +220,6 @@ title-bar {
   }
 }
 
-/* Tabbed mode: the browser paints a tab strip above the shell, so the window
-   already reads as chrome and the sidebar loses its browser-tab gutter, same as
-   the overlay case. No title bar and no drag regions here — the strip is the
-   drag surface, and each tab renders the shell in full below it. */
-@media (display-mode: tabbed) {
-  .sidebar {
-    padding: 0;
-  }
-
-  .sidebar-panel {
-    border-radius: 0;
-  }
-}
-
 .main-content:has([data-type="csv"]) {
   height: 100dvh;
   overflow: hidden;
