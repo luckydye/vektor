@@ -5,10 +5,6 @@
   "e": "document:edit",
   "escape": "document:cancel",
   "mod-l": "revisions:toggle",
-  "mod-enter": [
-    "ai-chat:toggle",
-    "format:hardbreak"
-  ],
 
   "mod-b": "format:bold",
   "mod-i": "format:italic",
@@ -35,6 +31,7 @@
   "mod-shift-j": "format:align:justify",
 
   "mod-alt-c": "format:codeblock",
+  "mod-enter": "format:hardbreak",
   "shift-enter": "format:hardbreak",
   "ctrl-enter": "format:hardbreak",
 

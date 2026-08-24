@@ -101,3 +101,36 @@ export function outdentEditor(editor: Editor): boolean {
   shiftBlockIndent(editor, -1);
   return true;
 }
+
+/** Whether {@link indentEditor} would change anything at the current selection. */
+export function canIndent(editor: Editor): boolean {
+  if (editor.isActive("tableCell") || editor.isActive("tableHeader")) return false;
+  if (editor.isActive("taskItem")) return editor.can().sinkListItem("taskItem");
+  if (editor.isActive("listItem")) return editor.can().sinkListItem("listItem");
+  return !editor.state.selection.empty;
+}
+
+/** Whether {@link outdentEditor} would change anything at the current selection. */
+export function canOutdent(editor: Editor): boolean {
+  if (editor.isActive("tableCell") || editor.isActive("tableHeader")) return false;
+  if (editor.isActive("taskItem")) return editor.can().liftListItem("taskItem");
+  if (editor.isActive("listItem")) return editor.can().liftListItem("listItem");
+
+  const { state } = editor;
+  const { selection } = state;
+  if (selection.empty) {
+    const pos = selection.from;
+    if (pos > 0 && state.doc.textBetween(pos - 1, pos) === "\t") return true;
+  }
+
+  let indented = false;
+  state.doc.nodesBetween(selection.from, selection.to, (node) => {
+    if (
+      INDENT_TYPES.includes(node.type.name) &&
+      ((node.attrs.indent as number) || 0) > 0
+    ) {
+      indented = true;
+    }
+  });
+  return indented;
+}

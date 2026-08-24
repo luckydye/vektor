@@ -36,11 +36,11 @@ import {
   type DocumentPresenceProfile,
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
-import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "#editor/formattingActions.ts";
+import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.ts";
@@ -370,7 +370,6 @@ export function DocumentContent(props: Props) {
     Actions.register("toolbar:dismiss", {
       title: "Dismiss toolbar",
       description: "Hide the editor toolbar",
-      group: "formatting",
       run: async () => {
         documentToolbar()?.dismiss?.();
       },
