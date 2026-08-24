@@ -552,7 +552,7 @@ export function DocumentTree(props: Props) {
                       }}
                     >
                       <div
-                        class="group/category flex items-center gap-2 rounded-md text-neutral-900 text-size-normal hover:bg-neutral-100 active:bg-neutral-200"
+                        class="relative group/category flex items-center gap-1 rounded-md text-neutral-900 text-size-normal hover:bg-neutral-100 active:bg-neutral-200"
                         classList={{
                           "border border-blue-300 bg-blue-50":
                             dragOverIndex() === categoryIndex(category().id) &&
@@ -563,13 +563,13 @@ export function DocumentTree(props: Props) {
                         <button
                           type="button"
                           onClick={() => !isEditMode() && toggleItem(category().id)}
-                          class="flex flex-1 items-center gap-2 px-4xs py-1 text-left"
+                          class="flex flex-1 items-center gap-2 px-4xs py-1 text-left overflow-hidden whitespace-nowrap hyphens-auto group-hover/category:clip-right group-focus-within/category:clip-right"
                           aria-expanded={isCategoryOpen(category())}
                         >
                           <CategoryBadge category={category()} class="h-6 w-6">
                             <Icon
                               class={twMerge(
-                                "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity transition-transform group-hover/category:opacity-100",
+                                "absolute top-1/2 left-1/2 z-10 h-4 w-4 flex-none -translate-x-1/2 -translate-y-1/2 opacity-0 transition-all group-hover/category:opacity-100",
                                 expandedItems().has(category().id) && "rotate-90",
                               )}
                               name="chevron-right-thin"
@@ -581,7 +581,7 @@ export function DocumentTree(props: Props) {
 
                         <Show when={!isEditMode() && canManageCategories()}>
                           <div
-                            class="mr-2 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/category:opacity-100 group-hover/category:opacity-100"
+                            class="absolute right-0 mr-2 flex shrink-0 items-center gap-0.5 opacity-0 group-focus-within/category:opacity-100 group-hover/category:opacity-100"
                             classList={{
                               "opacity-100":
                                 contextMenu()?.category?.id === category().id,

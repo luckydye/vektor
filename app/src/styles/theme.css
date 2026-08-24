@@ -616,6 +616,10 @@
   @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
 }
 
+@utility clip-right {
+    clip-path: polygon(0 0, calc(100% - 3.75rem) 0, calc(100% - 3.75rem) 100%, 0% 100%);
+}
+
 /* Responsive type scale.
  *
  * The desktop scale is tuned for a dense, mouse-driven layout read at ~60cm.
