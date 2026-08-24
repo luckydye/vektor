@@ -5,7 +5,6 @@
 
 import type { SpaceStore } from "#db/client/store.ts";
 import {
-  clearDocumentIndex,
   readDocumentIndexSource,
   readDocumentType,
   readIndexableDocumentIds,
@@ -20,6 +19,12 @@ import {
 } from "#search/embedding.ts";
 import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 
+const contentIndexedDocumentTypes = new Set(["document", "markdown", "record"]);
+
+function contentIsIndexed(type: string | null): boolean {
+  return type === null || contentIndexedDocumentTypes.has(type);
+}
+
 export async function updateDocumentEmbedding(
   s: SpaceStore,
   documentId: string,
@@ -30,12 +35,9 @@ export async function updateDocumentEmbedding(
     return;
   }
 
-  if (meta.type === "canvas") {
-    await clearDocumentIndex(s, documentId);
-    return;
-  }
-
-  const source = await readDocumentIndexSource(s, documentId);
+  const source = await readDocumentIndexSource(s, documentId, {
+    includeContent: contentIsIndexed(meta.type),
+  });
 
   if (!source) {
     return;
