@@ -86,8 +86,6 @@ function isBlankRow(row: string[]): boolean {
 }
 
 function csvToHtmlTable(content: string): string {
-  // A file ending in one or more newlines parses to trailing single-empty-cell
-  // rows; they are punctuation, not data, so they do not become table rows.
   const rows = parseCsvRows(content);
   while (rows.length > 0 && isBlankRow(rows[rows.length - 1] as string[])) rows.pop();
   return rowsToHtmlTable(rows);

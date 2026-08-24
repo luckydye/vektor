@@ -114,9 +114,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
       "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
     ),
   );
-  // csv documents used to be immutable, so every one of them was stamped
-  // readonly when it was created. They are edited in the spreadsheet now, and
-  // nothing else could have set the flag on them, so it is safe to clear.
   await exec(spaceDb, sql.raw("UPDATE document SET readonly = 0 WHERE type = 'csv'"));
   await exec(
     spaceDb,

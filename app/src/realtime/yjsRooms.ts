@@ -247,7 +247,6 @@ export function replaceLiveDocumentContent(
   if (!room?.doc) return false;
 
   const doc = room.doc;
-  // A sheet room holds a grid, not a fragment, so it has its own writer.
   if (type === "csv") return writeSheetContent(room, doc, documentId, content);
 
   const updates: Uint8Array[] = [];
@@ -299,11 +298,6 @@ const COLLABORATION_REVISION_INTERVAL_MS = 3 * 60 * 60 * 1000;
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
 const MIN_PERSIST_INTERVAL_MS = 5000;
 
-/**
- * Writes table markup into an open sheet room and broadcasts the change.
- * Returns false when the markup holds no table, so the caller can refuse the
- * write rather than blank the grid.
- */
 function writeSheetContent(
   room: YRoom,
   doc: Y.Doc,
@@ -313,15 +307,10 @@ function writeSheetContent(
   const table = htmlTableToTable(content);
   if (!table) return false;
 
-  // The websocket handler broadcasts updates it *receives*; one made here has
-  // to be sent on deliberately, or connected clients keep the old grid until
-  // they reload.
   const updates: Uint8Array[] = [];
   const capture = (update: Uint8Array) => updates.push(update);
   doc.on("update", capture);
   try {
-    // `fillSheetDoc` clears and refills in one transaction, so clients see a
-    // single update rather than a teardown followed by a rebuild.
     fillSheetDoc(doc, table.cells, table.layout);
   } finally {
     doc.off("update", capture);
@@ -332,18 +321,6 @@ function writeSheetContent(
   return true;
 }
 
-/**
- * Replays content written outside the room back into it.
- *
- * A REST write goes straight to the database, but an open room holds the
- * document in memory and persists over it on the next tick — so without this a
- * `PUT` to a document somebody has open is silently discarded, and anyone
- * watching sees it revert. Rebuilding the room's doc broadcasts to every client
- * as an ordinary update.
- *
- * Only `csv` for now: prose documents route external edits through
- * `transformDocumentContent`, which merges rather than replaces.
- */
 export async function replaceYRoomContent(
   spaceId: string,
   documentId: string,
@@ -814,10 +791,6 @@ export async function transformDocumentContent(
     // is O(doc) and is what OOMs the process on large append-only logs edited
     // without a live room (e.g. the metrics-logger job). Other ops still
     // normalize so mid-document line references stay accurate.
-    //
-    // A sheet is never normalized: the prose schema has no place for a cell's
-    // `data-source` or `data-style`, so the round-trip would drop every formula
-    // and every bit of formatting in the document.
     const skipNormalize =
       dbDoc.type === "canvas" ||
       dbDoc.type === "csv" ||
@@ -874,11 +847,6 @@ export async function transformDocumentContent(
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
   }
 
-  // A sheet keeps its grid in `rows`/`columns`, not in the XmlFragment the
-  // general path below edits — that fragment is empty for a csv document, so
-  // the edit would apply to nothing and the stored table would come back
-  // unchanged. Operations run against the table markup instead, and the result
-  // is written back to the grid as one transaction.
   if (dbDoc.type === "csv") {
     const next = transform(htmlFromSheetDoc(doc));
     if (!writeSheetContent(room, doc, documentId, next)) {

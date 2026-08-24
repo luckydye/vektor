@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { htmlTableToCells } from "#documents/htmlTable.ts";
 import {
   applyEditOperations,
   type EditOperation,
   parseJsonPath,
 } from "#documents/edit.ts";
+import { htmlTableToCells } from "#documents/htmlTable.ts";
 import {
   WsMsgType,
   wsDecode,
@@ -519,8 +519,6 @@ describe("Document edit operations", () => {
   it("edits a csv document without a live room, keeping formulas as formulas", async () => {
     const documentId = await createDocument("name,qty\nWidget,42", "csv");
 
-    // Adding rows to a sheet: the stored table is one line, so the way in is a
-    // pattern on the markup rather than a line reference.
     let response = await editDocument(documentId, [
       {
         op: "sub",
@@ -535,9 +533,6 @@ describe("Document edit operations", () => {
     expect(htmlTableToCells(content)).toHaveLength(3);
     expect(content).toContain('<td data-source="=B2*2">84</td>');
 
-    // A second edit reads the stored sheet back. It must not be re-flowed
-    // through the prose schema on the way: that has nowhere to put a cell's
-    // `data-source` and would wrap every cell in a paragraph.
     response = await editDocument(documentId, [
       { op: "sub", pattern: "Widget", replacement: "Widget Pro" },
     ]);
@@ -569,8 +564,6 @@ describe("Document edit operations", () => {
     const clientDoc = new Y.Doc();
     Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(received[0]!).update);
 
-    // The room holds the grid the spreadsheet observes, not prose blocks — a
-    // client that joins gets rows it can render.
     const rows = clientDoc.getArray<Y.Map<unknown>>(SHEET_ROWS);
     expect(rows.length).toBe(2);
     expect(readCell(rows.get(0) as Y.Map<unknown>, 0)?.v).toBe("name");
@@ -586,7 +579,6 @@ describe("Document edit operations", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).live).toBe(true);
 
-    // The new row reaches the connected client as an ordinary Yjs update.
     while (received.length < 2) await new Promise((resolve) => setTimeout(resolve, 50));
     for (const payload of received.slice(1)) {
       Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(payload).update);
@@ -594,11 +586,9 @@ describe("Document edit operations", () => {
     expect(rows.length).toBe(3);
     expect(readCell(rows.get(2) as Y.Map<unknown>, 0)?.v).toBe("Gadget");
 
-    // Both the stored content and a live read carry the edit.
     expect(await readContent(documentId)).toContain("<td>Gadget</td>");
     expect(await readContent(documentId, "?live=true")).toContain("<td>Gadget</td>");
 
-    // Markup with no table at all is refused rather than blanking the grid.
     const broken = await editDocument(documentId, [
       { op: "sub", pattern: "<table>.*</table>", replacement: "<p>not a table</p>" },
     ]);

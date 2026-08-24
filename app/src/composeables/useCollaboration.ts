@@ -159,7 +159,6 @@ function getBrowserClientId() {
   return next;
 }
 
-/** The identity this tab presents in any presence room. */
 export const browserClientId = getBrowserClientId();
 
 /**

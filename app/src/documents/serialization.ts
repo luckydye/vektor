@@ -75,8 +75,6 @@ export function docNodeFromContent(
 /** Builds a Y.Doc from persisted canvas, sheet, workflow-source, or HTML content. */
 export function docFromContent(type: string | null | undefined, content: string): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
-  // A sheet is a grid of rows, not prose: the document the room holds is the
-  // shape `#spreadsheet/collab.ts` observes, not an XmlFragment.
   if (type === "csv") return sheetDocFromHtml(content);
   return docToYDoc(docNodeFromContent(type, content));
 }

@@ -36,11 +36,6 @@ async function writeOutput(
   return { stdout: `${csv}\n`, stderr: "", exitCode: 0 };
 }
 
-/**
- * Both commands extract the first `<table>` and convert it to CSV; they differ
- * only in the name they report. Cells are whitespace-collapsed, since the input
- * is arbitrary markup whose own indentation is not cell content.
- */
 async function runHtmlToCsv(
   name: string,
   args: string[],

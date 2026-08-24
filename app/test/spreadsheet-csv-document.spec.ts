@@ -18,8 +18,6 @@ import {
   sheetRows,
 } from "#spreadsheet/sheetDoc.ts";
 
-// `#spreadsheet/engine.ts` boots the engine from a Vite `?url` asset, which is a
-// browser path. Here the module is handed the bytes directly.
 beforeAll(async () => {
   const require = createRequire(import.meta.url);
   await init({
@@ -27,7 +25,6 @@ beforeAll(async () => {
   });
 });
 
-/** The stored markup for a grid of plain text, as a csv upload produces it. */
 function stored(rows: string[][]): string {
   return rowsToHtmlTable(rows);
 }
@@ -128,8 +125,6 @@ describe("csvDocument", () => {
 
   it("keeps a cell forced to text as text", () => {
     const model = createModel(stored([["code"]]), "Test");
-    // The apostrophe is the spreadsheet convention for "this is text, not a
-    // number" — without it `0012` would come back as 12.
     model.setUserInput(0, 2, 1, "'0012");
     model.evaluate();
 
@@ -182,15 +177,11 @@ describe("toHtmlIfMarkdown for csv documents", () => {
   });
 
   it("converts csv text sent without a useful content type", () => {
-    // Creating a spreadsheet posts a JSON body; the content type describes the
-    // envelope, so the document's type is what says the body is CSV.
     expect(toHtmlIfMarkdown(csv, "application/json", "csv")).toBe(table);
     expect(toHtmlIfMarkdown(csv, null, "csv")).toBe(table);
   });
 
   it("leaves an html body alone even when the document is a csv", () => {
-    // Converting again would read the markup as CSV text and bury the whole
-    // table inside one escaped cell.
     expect(toHtmlIfMarkdown(table, "text/html", "csv")).toBe(table);
     expect(toHtmlIfMarkdown(table, "text/html", "csv")).not.toContain("&lt;table&gt;");
   });
@@ -234,8 +225,6 @@ describe("sheetDoc", () => {
       ]),
     );
 
-    // Two peers that start from the same state and never see each other's edit
-    // until they exchange updates.
     const peerA = new Y.Doc();
     const peerB = new Y.Doc();
     Y.applyUpdate(peerA, Y.encodeStateAsUpdate(base));
@@ -269,8 +258,6 @@ describe("sheetDoc", () => {
     Y.applyUpdate(peerA, Y.encodeStateAsUpdate(peerB));
     Y.applyUpdate(peerB, Y.encodeStateAsUpdate(peerA));
 
-    // The row keeps its identity through the insert, so B's edit lands on the
-    // row it was made on rather than on whatever ends up at that index.
     const values = (doc: Y.Doc) => sheetRows(doc).map((row) => readCell(row, 0)?.v ?? "");
     expect(values(peerA)).toEqual(["a", "inserted", "edited"]);
     expect(values(peerA)).toEqual(values(peerB));
@@ -280,7 +267,6 @@ describe("sheetDoc", () => {
     const doc = sheetDocFromHtml(rowsToHtmlTable([["a", "", "c"]]));
     const row = sheetRows(doc).get(0) as Y.Map<unknown>;
     expect([...row.keys()].sort()).toEqual(["0", "2"]);
-    // It still comes back as a cell, so the table stays rectangular.
     expect(htmlFromSheetDoc(doc)).toBe(
       "<table><thead><tr><th>a</th><th></th><th>c</th></tr></thead><tbody></tbody></table>",
     );
@@ -301,11 +287,9 @@ describe("csvDocument formatting", () => {
     model.updateRangeStyle(area(1, 1, 1, 1), "font.b", "true");
 
     const saved = toDocumentHtml(model);
-    // The whole style is ~130 bytes of defaults; only the difference is kept.
     expect(saved).toContain(
       `data-style="${'{"font":{"b":true}}'.replace(/"/g, "&quot;")}"`,
     );
-    // The untouched neighbour carries no style at all.
     expect(saved).toContain("<th>b</th>");
   });
 
