@@ -1,6 +1,10 @@
 /**
  * Tests for image header parsing and upload URL → storage key resolution.
  *
+ * Pixel dimensions themselves are stored on the `file` row at upload time; this
+ * file covers the parser that produces them and the key resolution in front of
+ * the lookup.
+ *
  * The parser is cross-checked against the native addon's `metadata()`, which
  * fully decodes the image: the two must agree on every format the app serves.
  *
@@ -8,18 +12,10 @@
  *   bunx --bun vitest run test/image-dimensions.spec.ts
  */
 
-import { afterAll, describe, expect, it } from "vitest";
-import {
-  getUploadImageAspectRatio,
-  getUploadImageDimensions,
-  readImageDimensions,
-} from "#files/imageDimensions.ts";
+import { describe, expect, it } from "vitest";
+import { getUploadImageAspectRatio, getUploadImageDimensions } from "#db/space/files.ts";
+import { readImageDimensions } from "#files/imageDimensions.ts";
 import { getNativeImage } from "#files/native.ts";
-import {
-  type FileStorageAdapter,
-  getFileStorage,
-  setFileStorage,
-} from "#files/storage.ts";
 import { uploadKeyFromUrl } from "#files/uploads.ts";
 
 const native = await getNativeImage();
@@ -124,76 +120,22 @@ describe("uploadKeyFromUrl", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getUploadImageDimensions / getUploadImageAspectRatio
+// getUploadImageDimensions — the paths that answer before opening a database
 // ---------------------------------------------------------------------------
 
+/**
+ * Dimensions now come off the `file` row, written at upload, so the cases that
+ * used to be about storage reads and a per-process cache are gone with it. What
+ * is still worth pinning here is that a URL which names no upload is refused on
+ * its shape, ahead of any space lookup — the rest needs a seeded space and is
+ * exercised through the upload route.
+ */
 describe("upload image dimensions", () => {
-  const originalStorage = getFileStorage();
-  const png = Buffer.from(native.encodeSolid(300, 100, 10, 20, 30, "png", 80));
-  const files = new Map<string, Buffer>([
-    ["ab/wide.png", png],
-    ["ab/notimage.pdf", Buffer.from("%PDF-1.4 not really")],
-  ]);
-  let reads = 0;
-
-  const stub: FileStorageAdapter = {
-    async put() {
-      throw new Error("unused");
-    },
-    async read(_spaceId, key) {
-      reads++;
-      return files.get(key) ?? null;
-    },
-    async delete() {},
-    async list() {
-      return [];
-    },
-    url: (spaceId, key) => `/api/v1/spaces/${spaceId}/uploads/${key}`,
-  };
-  setFileStorage(stub);
-
-  afterAll(() => {
-    setFileStorage(originalStorage);
-  });
-
-  const url = (key: string) => `/api/v1/spaces/space_1/uploads/${key}`;
-
-  it("reads dimensions and the derived aspect ratio", async () => {
-    expect(await getUploadImageDimensions("space_1", url("ab/wide.png"))).toEqual({
-      width: 300,
-      height: 100,
-    });
-    expect(await getUploadImageAspectRatio("space_1", url("ab/wide.png"))).toBe(3);
-  });
-
-  it("takes the first entry of a multi-valued property", async () => {
-    expect(
-      await getUploadImageAspectRatio("space_1", [
-        url("ab/wide.png"),
-        url("ab/other.png"),
-      ]),
-    ).toBe(3);
-  });
-
-  it("caches per key, including misses", async () => {
-    const before = reads;
-    await getUploadImageDimensions("space_1", url("ab/wide.png"));
-    await getUploadImageDimensions("space_1", url("ab/missing.png"));
-    await getUploadImageDimensions("space_1", url("ab/missing.png"));
-    // Only the first miss reaches storage; the hit was cached above.
-    expect(reads).toBe(before + 1);
-  });
-
-  it("returns null for external URLs without touching storage", async () => {
-    const before = reads;
+  it("returns null for a URL that names no upload", async () => {
     expect(
       await getUploadImageAspectRatio("space_1", "https://example.com/photo.jpg"),
     ).toBeNull();
     expect(await getUploadImageAspectRatio("space_1", undefined)).toBeNull();
-    expect(reads).toBe(before);
-  });
-
-  it("returns null for a stored file that is not a known image format", async () => {
-    expect(await getUploadImageAspectRatio("space_1", url("ab/notimage.pdf"))).toBeNull();
+    expect(await getUploadImageDimensions("space_1", "/not/an/upload/url")).toBeNull();
   });
 });

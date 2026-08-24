@@ -368,6 +368,18 @@ export const file = sqliteTable("file", {
   mimeType: text("mime_type"),
   /** Size of the stored bytes, for listings that label a file without reading it */
   size: integer("size"),
+  /**
+   * Pixel dimensions, read from the image's header once at upload. Null on a
+   * non-image, and on a row indexed before these columns existed.
+   *
+   * Stored for the same reason as `size` and `extractedText`: so a page that
+   * needs a fact about a file does not have to fetch the file to learn it. The
+   * header image's aspect ratio is wanted during SSR, where reaching storage
+   * costs a read per render of a value that never changes — the keys are
+   * content hashes, so these are immutable for the life of the row.
+   */
+  width: integer("width"),
+  height: integer("height"),
   /** Relative URL to access the file, e.g. /api/v1/spaces/{spaceId}/uploads/{key} */
   url: text("url"),
   updatedAt: integer("updated_at", { mode: "timestamp" }),

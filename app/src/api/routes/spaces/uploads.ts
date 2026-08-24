@@ -20,6 +20,7 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
+import { readImageDimensions } from "#files/imageDimensions.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -137,6 +138,11 @@ export const POST: ApiRouteHandler = (context) =>
         file.type || undefined,
       );
 
+      // Read off the header while the bytes are here, so nothing has to fetch
+      // the file again to lay out the page that shows it. Null for anything
+      // that is not an image, or whose header we do not parse.
+      const dimensions = readImageDimensions(buffer);
+
       // Insert full metadata to file table for all uploads
       const db = await getSpaceDb(spaceId);
       await db
@@ -147,6 +153,8 @@ export const POST: ApiRouteHandler = (context) =>
           originalName,
           mimeType: file.type || null,
           size: buffer.byteLength,
+          width: dimensions?.width ?? null,
+          height: dimensions?.height ?? null,
           url,
           updatedAt: new Date(),
           extractedText,
@@ -163,6 +171,8 @@ export const POST: ApiRouteHandler = (context) =>
             originalName,
             mimeType: file.type || null,
             size: buffer.byteLength,
+            width: dimensions?.width ?? null,
+            height: dimensions?.height ?? null,
             url,
             updatedAt: new Date(),
             extractedText,

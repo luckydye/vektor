@@ -12,6 +12,7 @@ import { many, one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getSpace } from "#db/space/spaces.ts";
+import { uploadKeyFromUrl } from "#files/uploads.ts";
 
 /** Ceiling on the ids per `IN (...)`, keeping the statement under SQLite's limit. */
 const ID_CHUNK = 500;
@@ -92,4 +93,46 @@ export async function filterAccessibleFiles<T extends { documentId: string | nul
         !viewer.documentScope
       : readableParentIds.has(file.documentId),
   );
+}
+
+/**
+ * An uploaded image's stored pixel dimensions, or null when they are unknown.
+ *
+ * Read from the `file` row rather than from the image: the columns are written
+ * once at upload, and `syncFileIndex` fills them for rows that predate them. A
+ * row that is still missing them — a non-image, or one not yet reconciled —
+ * answers null, and the caller renders without an intrinsic ratio exactly as it
+ * did before the file was indexed.
+ *
+ * Takes a `spaceId` rather than a store for the same reason as
+ * {@link getFileDocumentId}: callers reach this before any database is open.
+ */
+export async function getUploadImageDimensions(
+  spaceId: string,
+  url: string | string[] | undefined,
+): Promise<{ width: number; height: number } | null> {
+  const key = uploadKeyFromUrl(spaceId, Array.isArray(url) ? url[0] : url);
+  if (!key) return null;
+  if (!(await getSpace(spaceId))) return null;
+
+  const { db } = await openSpaceStore(spaceId);
+  const row = await one(
+    db
+      .select({ width: fileTable.width, height: fileTable.height })
+      .from(fileTable)
+      .where(eq(fileTable.path, key)),
+  );
+
+  if (!row?.width || !row.height) return null;
+  return { width: row.width, height: row.height };
+}
+
+/** Width/height ratio of an uploaded image, or null when it is not known. */
+export async function getUploadImageAspectRatio(
+  spaceId: string,
+  url: string | string[] | undefined,
+): Promise<number | null> {
+  const dimensions = await getUploadImageDimensions(spaceId, url);
+  if (!dimensions || dimensions.height <= 0) return null;
+  return dimensions.width / dimensions.height;
 }

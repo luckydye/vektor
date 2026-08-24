@@ -33,6 +33,10 @@ import {
   readOnlyDocumentTypes,
 } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
+import {
+  DIMENSION_READABLE_EXTENSIONS,
+  readImageDimensions,
+} from "#files/imageDimensions.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
@@ -585,18 +589,47 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
   const indexed = new Map(
     (
       await many(
-        s.db.select({ path: fileTable.path, size: fileTable.size }).from(fileTable),
+        s.db
+          .select({ path: fileTable.path, size: fileTable.size, width: fileTable.width })
+          .from(fileTable),
       )
-    ).map((r) => [r.path, r.size] as const),
+    ).map((r) => [r.path, r] as const),
   );
 
   const toIndex = diskFiles.filter((f) => !indexed.has(f.key)).slice(0, 200);
 
   // Rows indexed before the column existed, filled from the listing just read.
   // Capped like the insert below, so a large space converges over a few calls.
-  const toSize = diskFiles.filter((f) => indexed.get(f.key) === null).slice(0, 200);
+  const toSize = diskFiles.filter((f) => indexed.get(f.key)?.size === null).slice(0, 200);
   for (const { key, size } of toSize) {
     await s.db.update(fileTable).set({ size }).where(eq(fileTable.path, key));
+  }
+
+  // The same catch-up for `width`/`height`. Capped far below the rest because
+  // this runs inside a file listing and, unlike `size`, the values are not in
+  // the listing already — each one costs a read. The rows it fills already
+  // render, just without an intrinsic ratio, so this is the one pass here that
+  // is pure catch-up and it yields the request rather than converging fast.
+  // Restricted to the formats the header parser handles, so an unreadable file
+  // is skipped rather than re-fetched on every listing.
+  const DIMENSION_BACKFILL_PER_CALL = 25;
+  const toDimension = diskFiles
+    .filter((f) => {
+      const row = indexed.get(f.key);
+      if (!row || row.width !== null) return false;
+      return DIMENSION_READABLE_EXTENSIONS.has(
+        f.key.split(".").pop()?.toLowerCase() ?? "",
+      );
+    })
+    .slice(0, DIMENSION_BACKFILL_PER_CALL);
+  for (const { key } of toDimension) {
+    const buf = await storage.read(s.spaceId, key);
+    const dimensions = buf && readImageDimensions(buf);
+    if (!dimensions) continue;
+    await s.db
+      .update(fileTable)
+      .set({ width: dimensions.width, height: dimensions.height })
+      .where(eq(fileTable.path, key));
   }
 
   for (const { key, size, updatedAt } of toIndex) {
@@ -604,6 +637,7 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
     if (!buf) continue;
     const name = key.split("/").pop() ?? key;
     const extracted = extractFileTextFromBuffer(buf, name, undefined);
+    const dimensions = readImageDimensions(buf);
     const url = storage.url(s.spaceId, key);
     await s.db
       .insert(fileTable)
@@ -613,6 +647,8 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
         originalName: name,
         mimeType: null,
         size,
+        width: dimensions?.width ?? null,
+        height: dimensions?.height ?? null,
         url,
         updatedAt,
         extractedText: extracted,
