@@ -1,6 +1,5 @@
 import { columnNameFromNumber, type Model } from "@ironcalc/wasm";
 import { createMemo } from "solid-js";
-import { Icon } from "#components/Icon.tsx";
 import { CellEditor } from "#spreadsheet/CellEditor.tsx";
 import type { WorkbookState } from "#spreadsheet/grid/workbookState.ts";
 
@@ -10,6 +9,7 @@ interface Props {
   canEdit: boolean;
   revision: () => number;
   refresh: () => void;
+  onEditStart: () => void;
   onEditEnd: () => void;
   onError: (message: string) => void;
 }
@@ -42,12 +42,17 @@ export function FormulaBar(props: Props) {
 
   return (
     <div class="ic-formula-bar">
-      <div class="ic-name-box">
-        {address()}
-        <Icon name="chevron-down" />
-      </div>
+      <div class="ic-name-box" title={address()}>{address()}</div>
       <span class="ic-fx">fx</span>
-      <div class="ic-formula-bar-input">
+      <div
+        class="ic-formula-bar-input"
+        onPointerDown={(event) => {
+          if (!props.canEdit) return;
+          if (!props.workbookState.getEditingCell()) props.onEditStart();
+          event.stopPropagation();
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
         <CellEditor
           model={props.model}
           workbookState={props.workbookState}

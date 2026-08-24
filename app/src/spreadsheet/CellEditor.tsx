@@ -198,6 +198,7 @@ export function CellEditor(props: Props) {
             cell.mode = "edit";
             cell.focus = props.type;
             props.workbookState.setEditingCell(cell);
+            props.onTextUpdated();
             event.stopPropagation();
           }
         }}

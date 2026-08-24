@@ -141,7 +141,10 @@ export function Spreadsheet(props: Props) {
     if (hadFocus && !workbookState.getEditingCell()) focusRoot();
   };
 
-  const startEditing = (initialText?: string) => {
+  const startEditing = (
+    initialText?: string,
+    focus: "cell" | "formula-bar" = "cell",
+  ) => {
     const { sheet, row, column } = props.model.getSelectedView(); // solid-reactivity-ok: destructures the engine's return value, not props
     // Typing into a cell replaces it and stays in "accept" mode, where an arrow
     // key commits and moves on. F2 or a double-click opens the existing text in
@@ -154,7 +157,7 @@ export function Spreadsheet(props: Props) {
       text,
       cursorStart: text.length,
       cursorEnd: text.length,
-      focus: "cell",
+      focus,
       referencedRange: null,
       activeRanges: [],
       mode: initialText === undefined ? "edit" : "accept",
@@ -464,6 +467,7 @@ export function Spreadsheet(props: Props) {
         canEdit={props.canEdit}
         revision={revision}
         refresh={refresh}
+        onEditStart={() => startEditing(undefined, "formula-bar")}
         onEditEnd={endEditing}
         onError={setError}
       />
