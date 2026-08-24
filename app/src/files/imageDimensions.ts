@@ -9,6 +9,8 @@ export interface ImageDimensions {
   height: number;
 }
 
+import type { FileStorageAdapter } from "./storage.ts";
+
 /**
  * Extensions {@link readImageDimensions} can actually read. A backfill uses this
  * to skip fetching bytes it would only fail to parse — SVG in particular is an
@@ -104,4 +106,52 @@ export function readImageDimensions(buffer: Buffer): ImageDimensions | null {
   }
 
   return null;
+}
+
+/**
+ * How much of a stored file to sample when looking for its dimensions.
+ *
+ * PNG, GIF and WebP declare theirs in the first 30 bytes. JPEG is the reason
+ * for the size: its dimensions follow whatever EXIF and ICC segments the
+ * camera wrote, so the scan has to get past them. 64 KiB clears that for real
+ * photographs while staying a fixed cost against a file of any size.
+ */
+const IMAGE_HEADER_BYTES = 64 * 1024;
+
+/**
+ * Dimensions of a stored image, read from its first bytes rather than all of
+ * them — the point being that an upload never has to be held in memory, or
+ * fetched whole from an object store, to learn how wide it is.
+ *
+ * Null for a format with no pixel header, and for a JPEG whose metadata runs
+ * past the sample: {@link readImageDimensions} is bounds-checked, so a
+ * truncated header reads as unknown rather than as a wrong answer.
+ */
+export async function readStoredImageDimensions(
+  storage: FileStorageAdapter,
+  spaceId: string,
+  key: string,
+): Promise<ImageDimensions | null> {
+  const extension = key.split(".").pop()?.toLowerCase() ?? "";
+  if (!DIMENSION_READABLE_EXTENSIONS.has(extension)) return null;
+
+  const stream = await storage.readStream(spaceId, key, {
+    start: 0,
+    end: IMAGE_HEADER_BYTES - 1,
+  });
+  if (!stream) return null;
+
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return readImageDimensions(Buffer.concat(chunks));
 }

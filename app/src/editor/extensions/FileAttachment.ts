@@ -2,6 +2,7 @@ import { type Editor, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
+import { reportUploadFailure, useUploads } from "#composeables/useUploads.ts";
 import { nodeFromSpec } from "./specSchema.ts";
 
 export interface FileAttachmentOptions {
@@ -62,11 +63,6 @@ async function uploadFile(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  // Loaded on demand: uploading only ever happens in the browser, and this
-  // extension is part of `contentExtensions`, which the server builds to
-  // (de)serialize documents. A static import would pull the framework runtime
-  // into the server (and every serialization worker) just to build a schema.
-  const { useUploads } = await import("#composeables/useUploads.ts");
   // The editor owns the inline placeholder; the manager owns all toasts,
   // including the error one — a failed upload must never leave text behind
   // in the document, since that would sync to every collaborator.
@@ -148,7 +144,8 @@ function insertPlaceholderAndUpload(
     .then((url) => {
       replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
     })
-    .catch(() => {
+    .catch((error) => {
+      reportUploadFailure(error, file.name);
       removePlaceholder(editor, placeholderText);
     });
 }
@@ -320,8 +317,8 @@ function replacePlaceholderWithAttachment(
   }
 }
 
-// The failure is reported by the upload manager's error toast; here we only
-// clean up, so a failed upload leaves the document exactly as it was.
+// Cleanup only: the caller reports the failure, so a failed upload leaves the
+// document exactly as it was.
 function removePlaceholder(editor: Editor, placeholderText: string): void {
   const placeholder = findPlaceholder(editor, placeholderText);
   if (!placeholder) return;
@@ -360,7 +357,8 @@ export async function handleFileAttachmentUpload(
     try {
       const url = await uploadFile(file, spaceId, documentId);
       replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
-    } catch {
+    } catch (error) {
+      reportUploadFailure(error, file.name);
       removePlaceholder(editor, placeholderText);
     }
   };

@@ -18,6 +18,7 @@ import {
 } from "#composeables/useComments.ts";
 import { CommentThread, type Comment as CommentThreadType } from "./CommentThread.tsx";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export interface CommentBubbleHandle {
   commentsForOverlays: () => Array<{
@@ -108,6 +109,8 @@ function toThreadComment(c: ApiComment): CommentThreadType {
 }
 
 export function CommentBubble(props: Props) {
+  const t = useTranslation();
+
   const {
     comments,
     activeReference,
@@ -450,7 +453,7 @@ export function CommentBubble(props: Props) {
                 type="button"
                 onClick={handleAddComment}
                 class="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-background text-neutral-500 shadow-md transition-all hover:border-primary-300 hover:text-primary-600 hover:shadow-lg"
-                title="Add comment"
+                title={t("Add comment")}
               >
                 <Icon class="h-4 w-4" name="add" />
               </button>

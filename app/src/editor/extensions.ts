@@ -55,6 +55,7 @@ import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
 import { RichClipboardPaste } from "./extensions/RichClipboardPaste.ts";
+import { TableInsertControls } from "./extensions/TableInsertControls.ts";
 import { TableReorder } from "./extensions/TableReorder.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
 import { TableEditing } from "./extensions/table.ts";
@@ -464,6 +465,7 @@ export function documentExtensions(
     RichClipboardPaste,
     TableEditing,
     TableReorder,
+    TableInsertControls,
     TaskItem.extend({
       addKeyboardShortcuts() {
         return {

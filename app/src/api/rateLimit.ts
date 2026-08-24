@@ -59,6 +59,8 @@ interface RouteRule extends RateLimitRule {
   instance?: boolean;
 }
 
+export const SHARE_LINK_ROUTE_PATTERN = "/[spaceSlug]/s/[linkId]";
+
 /**
  * Routes whose per-request cost warrants a tighter bucket than the default.
  * Ceilings sit well above ordinary use — a canvas bursts link-previews on load,
@@ -100,6 +102,8 @@ const ROUTE_RULES: readonly RouteRule[] = [
   { pattern: "/api/v1/proxy-media", max: 120, windowMs: MINUTE },
   // Image decode/resize per request.
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", max: 300, windowMs: MINUTE },
+  // Astro route; password verification makes this more expensive than a normal page.
+  { pattern: SHARE_LINK_ROUTE_PATTERN, max: 120, windowMs: MINUTE },
 ];
 
 function positiveInt(raw: string | undefined, fallback: number): number {

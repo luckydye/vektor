@@ -1,5 +1,15 @@
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 
@@ -24,6 +34,13 @@ export interface ByteRange {
   end: number;
 }
 
+/** A file that has landed in storage under its content-addressed key. */
+export interface StoredUpload {
+  key: string;
+  url: string;
+  size: number;
+}
+
 /**
  * Pluggable file storage adapter.
  * Default: LocalFileStorageAdapter (data/uploads/).
@@ -37,6 +54,18 @@ export interface FileStorageAdapter {
     buffer: Buffer,
     contentType?: string,
   ): Promise<string>;
+  /**
+   * Store a stream under the SHA-256 of its own bytes, never holding the whole
+   * file in memory. The key follows from the content, so it is only known once
+   * the last chunk has been read: an implementation stages the bytes somewhere
+   * of its own choosing and moves them into place afterwards.
+   */
+  putHashed(
+    spaceId: string,
+    extension: string,
+    body: ReadableStream<Uint8Array>,
+    contentType?: string,
+  ): Promise<StoredUpload>;
   /**
    * Read a whole file by key. Null if not found.
    *
@@ -114,6 +143,45 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, buffer);
     return this.url(spaceId, key);
+  }
+
+  async putHashed(
+    spaceId: string,
+    extension: string,
+    body: ReadableStream<Uint8Array>,
+    _contentType?: string,
+  ): Promise<StoredUpload> {
+    const stagingPath = join(this.root, spaceId, ".staging", randomUUID());
+    await mkdir(dirname(stagingPath), { recursive: true });
+
+    const hash = createHash("sha256");
+    let size = 0;
+    try {
+      const handle = await open(stagingPath, "w");
+      try {
+        for await (const chunk of body) {
+          hash.update(chunk);
+          size += chunk.byteLength;
+          await handle.write(chunk);
+        }
+      } finally {
+        await handle.close();
+      }
+
+      const digest = hash.digest("hex");
+      const key = `${digest.slice(0, 2)}/${digest}.${extension}`;
+      const filePath = this.resolvePath(spaceId, key);
+      // The digest cannot escape the space, so only a hostile `extension` could
+      // — and a write that would land outside must fail rather than report a
+      // URL for bytes nobody can serve.
+      if (!filePath) throw new Error(`Refusing to write outside the space: ${key}`);
+      await mkdir(dirname(filePath), { recursive: true });
+      await rename(stagingPath, filePath);
+      return { key, url: this.url(spaceId, key), size };
+    } catch (error) {
+      await unlink(stagingPath).catch(() => {});
+      throw error;
+    }
   }
 
   async read(spaceId: string, key: string): Promise<Buffer | null> {

@@ -53,10 +53,6 @@ const ALLOWED: Record<string, { calls: number; why: string }> = {
     calls: 1,
     why: "URL asserted to match the provider origin, and redirect: manual so the bearer token cannot follow a 3xx (#52)",
   },
-  "src/api/routes/url-metadata.ts": {
-    calls: 2,
-    why: "validates every hop by hand (redirect: manual / error), but does not pin the socket — the DNS-rebinding window is still open here",
-  },
 
   // Not a server-side egress surface.
   "src/api/ApiClient.ts": { calls: 7, why: "browser-side client for our own API" },
@@ -78,6 +74,7 @@ const MUST_USE_SAFE_FETCH = [
   "src/agent/commands/curl.ts",
   // The operator-supplied provider baseUrl, which reaches wherever it points (#71).
   "src/api/provider/ollama.ts",
+  "src/api/routes/url-metadata.ts",
 ];
 
 function sourceFiles(dir: string): string[] {

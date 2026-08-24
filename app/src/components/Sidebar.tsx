@@ -3,7 +3,6 @@ import { isServer } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { Actions } from "#utils/actions.ts";
 import { readStored, storedText, writeStored } from "#utils/clientStorage.ts";
-import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import {
   DEFAULT_SIDEBAR_WIDTH,
@@ -15,6 +14,7 @@ import {
 } from "#utils/sidebarState.ts";
 import { Icon } from "./Icon.tsx";
 import { Navigation } from "./Navigation.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   defaultWidth?: number;
@@ -31,6 +31,8 @@ const ANDROID_BACK_GESTURE_INSET = 24;
 const SNAP_THRESHOLD = 15;
 
 export function Sidebar(props: Props) {
+  const t = useTranslation();
+
   const defaultWidth = () => props.defaultWidth ?? DEFAULT_SIDEBAR_WIDTH;
   const minWidth = () => props.minWidth ?? MIN_SIDEBAR_WIDTH;
   const maxWidth = () => props.maxWidth ?? MAX_SIDEBAR_WIDTH;
@@ -409,7 +411,7 @@ export function Sidebar(props: Props) {
             ? `translateX(${drawerOffset() - drawerWidth()}px)`
             : undefined,
           transition: isDrawerDragging() ? "none" : undefined,
-          "--color-background": "var(--color-neutral-25)",
+          "--color-background": "var(--color-neutral-10)",
         }}
         class={twMerge(
           "@container sidebar flex p-1.5",
@@ -429,7 +431,7 @@ export function Sidebar(props: Props) {
       >
         <span
           aria-hidden="true"
-          class="absolute top-1/2 left-full ml-1 h-12 w-1 -translate-y-1/2 rounded-full bg-neutral-300/70 md:hidden"
+          class="absolute top-1/2 -right-2 md:right-1 h-20 w-1 -translate-y-1/2 rounded-full bg-neutral-300/30 z-20"
         />
 
         <button
@@ -451,8 +453,8 @@ export function Sidebar(props: Props) {
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a drag handle, not a control. */}
         <div
           class={twMerge(
-            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-primary-200/50 md:block",
-            isResizing() ? "bg-primary-200/50 active:bg-primary-200" : "",
+            "sidebar-resize-handle group absolute top-2 right-1 bottom-2 z-20 hidden w-1 cursor-col-resize transition-colors hover:bg-neutral-200/50 md:block rounded-[99px]",
+            isResizing() ? "bg-neutral-200 active:bg-neutral-200" : "",
           )}
           onMouseDown={startResize}
         >

@@ -1,5 +1,5 @@
 import { html, render } from "lit-html";
-import { Actions } from "#utils/actions.ts";
+import { type ActionOptions, Actions } from "#utils/actions.ts";
 
 if (
   typeof customElements !== "undefined" &&
@@ -11,6 +11,7 @@ if (
     class StatusbarElement extends HTMLElement {
       private unsubscribeActionsRegister: (() => void) | null = null;
       private unsubscribeActionsUnregister: (() => void) | null = null;
+      private paintHandle: number | null = null;
       private root: ShadowRoot;
 
       constructor() {
@@ -20,6 +21,13 @@ if (
 
       connectedCallback() {
         window.addEventListener("document:save", this.onEditorEvent);
+        // Selection and document changes decide which actions apply, so repaint
+        // on every editor update.
+        window.addEventListener("editor-update", this.paint);
+        // editor-ready / editor-destroyed are dispatched on the view element and
+        // don't bubble, so catch them on the way down.
+        window.addEventListener("editor-ready", this.paint, true);
+        window.addEventListener("editor-destroyed", this.paint, true);
         this.unsubscribeActionsRegister = Actions.subscribe(
           "actions:register",
           this.paint,
@@ -33,8 +41,13 @@ if (
 
       disconnectedCallback() {
         window.removeEventListener("document:save", this.onEditorEvent);
+        window.removeEventListener("editor-update", this.paint);
+        window.removeEventListener("editor-ready", this.paint, true);
+        window.removeEventListener("editor-destroyed", this.paint, true);
         this.unsubscribeActionsRegister?.();
         this.unsubscribeActionsUnregister?.();
+        if (this.paintHandle !== null) cancelAnimationFrame(this.paintHandle);
+        this.paintHandle = null;
       }
 
       private onEditorEvent = (event: Event) => {
@@ -43,12 +56,30 @@ if (
         }
       };
 
+      /**
+       * Coalesced onto the next frame: editor events arrive while the
+       * transaction is still being applied, and the Yjs UndoManager only
+       * updates its stacks afterwards — painting synchronously reads a
+       * `can().redo()` that is still false.
+       */
       private paint = () => {
-        render(this.render(), this.root);
+        if (this.paintHandle !== null) return;
+        this.paintHandle = requestAnimationFrame(() => {
+          this.paintHandle = null;
+          render(this.render(), this.root);
+        });
       };
 
+      /** An action is listed only when it has a shortcut and currently applies. */
+      private isListed(id: string, action: ActionOptions) {
+        if (!Actions.getShortcutsForAction(id)) return false;
+        return action.available?.() ?? true;
+      }
+
       private render() {
-        const actions = [...Actions.group("formatting")];
+        const actions = Actions.group("formatting").filter(([id, action]) =>
+          this.isListed(id, action),
+        );
 
         return html`
           <style>

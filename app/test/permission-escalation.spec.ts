@@ -483,7 +483,7 @@ describe("editor cannot hand out space-level access (issue #120)", () => {
     });
     expect(response.status).toBe(403);
 
-    expect((await anonymousRead()).status).toBe(401);
+    expect((await anonymousRead()).status).toBe(404);
   });
 
   it("refuses an editor granting any other group at space level", async () => {
@@ -554,7 +554,7 @@ describe("editor cannot hand out space-level access (issue #120)", () => {
       action: "revoke",
     });
     expect(revoke.status).toBe(200);
-    expect((await anonymousRead()).status).toBe(401);
+    expect((await anonymousRead()).status).toBe(404);
   });
 });
 

@@ -1,7 +1,7 @@
 import { For, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import "./AvatarElement.ts";
 import { PagerCursor } from "./PagerCursor.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export interface OverviewUser {
   id: string;
@@ -31,6 +31,8 @@ interface Props {
  * mounts this decides that, since the same rule is what makes the tab visible.
  */
 export function UsersOverview(props: Props) {
+  const t = useTranslation();
+
   return (
     <div class="space-y-8 px-xs pt-m pb-20 lg:px-xl">
       <div class="flex items-center justify-between gap-3xs">

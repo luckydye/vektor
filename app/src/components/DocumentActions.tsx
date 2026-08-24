@@ -19,7 +19,6 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { Button } from "./Button.tsx";
 import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
@@ -31,6 +30,7 @@ import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
@@ -69,6 +69,8 @@ interface Props {
 }
 
 export function DocumentActions(props: Props) {
+  const t = useTranslation();
+
   const navigate = useNavigate();
   const { currentSpaceId, currentSpace } = useSpace();
   const currentUser = useUserProfile();
@@ -283,11 +285,11 @@ export function DocumentActions(props: Props) {
     const muted = emailMuted();
     const actionName = muted ? "document:unmute-email" : "document:mute-email";
     registerScopedAction(actionName, {
-      title: muted ? "Enable email notifications" : "Mute email notifications",
+      title: muted ? t("Enable email notifications") : t("Mute email notifications"),
       icon: () => (muted ? "enable-notifications" : "mute-notifications"),
       description: muted
-        ? "Receive publication and comment emails for this document"
-        : "Stop publication and comment emails for this document",
+        ? t("Receive publication and comment emails for this document")
+        : t("Stop publication and comment emails for this document"),
       group: "document",
       order: 35,
       run: async () => {
@@ -317,7 +319,6 @@ export function DocumentActions(props: Props) {
         order: 20,
         run: async () => {
           await api.space.patch(space.id, { preferences: { pinnedDocumentId: "" } });
-          window.location.reload();
         },
       });
       return;
@@ -331,7 +332,12 @@ export function DocumentActions(props: Props) {
       order: 20,
       run: async () => {
         await api.space.patch(space.id, { preferences: { pinnedDocumentId: docId } });
-        window.location.reload();
+        toast.show(t("Pinned to Home"), "success", 8000, {
+          action: {
+            label: t("View activity"),
+            run: () => navigate("/"),
+          },
+        });
       },
     });
   });
@@ -379,7 +385,7 @@ export function DocumentActions(props: Props) {
       group: "document:danger",
       order: 20,
       run: async () => {
-        if (!confirm("Are you sure you want to archive this document?")) return;
+        if (!confirm(t("Are you sure you want to archive this document?"))) return;
 
         const spaceId = currentSpaceId();
         if (!spaceId) throw new Error("No space selected");
@@ -405,7 +411,7 @@ export function DocumentActions(props: Props) {
       group: "document:danger",
       order: 30,
       run: async () => {
-        if (!confirm("Are you sure you want to unpublish this document?")) return;
+        if (!confirm(t("Are you sure you want to unpublish this document?"))) return;
 
         const spaceId = currentSpaceId();
         if (!spaceId) throw new Error("No space selected");
@@ -493,7 +499,7 @@ export function DocumentActions(props: Props) {
           onClick={startEditing}
         >
           <Icon name="edit-document" />
-          <span>Edit</span>
+          <span>{t("Edit")}</span>
         </button>
       </Show>
 
@@ -519,7 +525,7 @@ export function DocumentActions(props: Props) {
                 class="pointer-events-none absolute top-[calc(100%+9px)] right-0 z-[100] w-max max-w-[280px] rounded-[7px] bg-red-600 px-2.5 py-1.5 text-size-small text-white shadow-large"
               >
                 <span class="absolute -top-1 right-4 h-2 w-2 rotate-45 bg-red-600" />
-                {saveError()?.message ?? "Publishing failed"}
+                {saveError()?.message ?? t("Publishing failed")}
               </p>
             </Show>
             <div class="button-primary-base button-with-icon items-stretch overflow-hidden">
@@ -531,7 +537,11 @@ export function DocumentActions(props: Props) {
               >
                 <Icon name="publish" />
                 <span>
-                  {isSaving() ? "Saving..." : isNewDocument() ? "Create" : "Publish"}
+                  {isSaving()
+                    ? t("Saving…")
+                    : isNewDocument()
+                      ? t("Create")
+                      : t("Publish")}
                 </span>
               </button>
               <Show when={!isNewDocument()}>
@@ -541,7 +551,7 @@ export function DocumentActions(props: Props) {
                     type="button"
                     class="button-primary-pointer flex items-center justify-center border-primary-300 border-l px-4xs"
                     disabled={isSaving()}
-                    aria-label="Publish options"
+                    aria-label={t("Publish options")}
                   >
                     <Icon name="chevron-down" />
                   </button>
@@ -558,10 +568,10 @@ export function DocumentActions(props: Props) {
                           onClick={(e) => void saveAsSuggestion(e)}
                         >
                           <div class="font-medium text-size-small">
-                            Save as suggestion
+                            {t("Save as suggestion")}
                           </div>
                           <div class="text-neutral-500 text-size-small">
-                            Create an open suggestion instead of publishing
+                            {t("Create an open suggestion instead of publishing")}
                           </div>
                         </button>
 
@@ -572,10 +582,10 @@ export function DocumentActions(props: Props) {
                           onClick={(e) => void publishAsTemplate(e)}
                         >
                           <div class="font-medium text-size-small">
-                            Publish as template
+                            {t("Publish as template")}
                           </div>
                           <div class="text-neutral-500 text-size-small">
-                            Publish and offer this document when creating a new one
+                            {t("Publish and offer this document when creating a new one")}
                           </div>
                         </button>
                       </div>
@@ -589,7 +599,7 @@ export function DocumentActions(props: Props) {
           <Show when={showCancel()}>
             <Button variant="secondary" onClick={cancelEditing}>
               <Icon name="cancel" />
-              <span>Cancel</span>
+              <span>{t("Cancel")}</span>
             </Button>
           </Show>
         </div>

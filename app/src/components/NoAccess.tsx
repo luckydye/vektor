@@ -1,8 +1,10 @@
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function NoAccess() {
+  const t = useTranslation();
+
   return (
     <div class="flex h-full items-center justify-center bg-neutral-200">
       <div class="max-w-md px-6 py-12 text-center">

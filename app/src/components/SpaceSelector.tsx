@@ -1,10 +1,9 @@
 import { Index, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { memberCountLabel } from "#utils/utils.ts";
-import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
 import "@atrium-ui/elements/popover";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface SelectorSpace {
   id: string;
@@ -24,12 +23,10 @@ interface Props {
   /** The space the trigger names, which need not be one of the listed ones. */
   current?: SelectorSpace | null;
   allSpacesHref?: string;
-  canCreateDocs?: boolean;
   canCreateSpaces?: boolean;
   loading?: boolean;
   onSelect?: (space: SelectorSpace) => void;
   onCreate?: () => void;
-  onCreateDoc?: () => void;
 }
 
 function dismissPopover(target: EventTarget | null) {
@@ -37,6 +34,9 @@ function dismissPopover(target: EventTarget | null) {
 }
 
 export function SpaceSelector(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   return (
     <div class="flex w-full gap-4">
       <Show
@@ -79,7 +79,7 @@ export function SpaceSelector(props: Props) {
                       {props.current?.name || t("Select Space")}
                     </div>
                     <div class="overflow-hidden text-ellipsis whitespace-nowrap text-neutral-600 text-size-normal leading-[1.35em]">
-                      {memberCountLabel(props.current?.members)}
+                      {memberCountLabel(props.current?.members, lang)}
                     </div>
                   </div>
                 </div>
@@ -166,22 +166,6 @@ export function SpaceSelector(props: Props) {
           </a-popover>
         </a-popover-trigger>
       </Show>
-
-      <div class="flex @max-sm:hidden flex-none items-center gap-2xs py-5xs pr-4xs">
-        <Show when={props.canCreateDocs}>
-          <Button
-            variant="secondary"
-            ariaLabel={t("New document")}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onCreateDoc?.();
-            }}
-            class="px-4xs"
-          >
-            <Icon name="new-document" />
-          </Button>
-        </Show>
-      </div>
     </div>
   );
 }

@@ -34,10 +34,10 @@ export function tokenRole(token: {
 }
 
 /** Phrased as what the person may do, not as a role name. */
-export function roleLabel(role: string): string {
-  if (role === "owner") return t("Owner");
-  if (role === "editor") return t("Can edit");
-  if (role === "viewer") return t("Can view");
+export function roleLabel(role: string, lang: string): string {
+  if (role === "owner") return t("Owner", lang);
+  if (role === "editor") return t("Can edit", lang);
+  if (role === "viewer") return t("Can view", lang);
   return role;
 }
 

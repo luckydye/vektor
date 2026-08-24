@@ -1,17 +1,19 @@
 import { html, render } from "lit-html";
+import { browserLang, createTranslator } from "#utils/lang.ts";
 import { HtmlBlock } from "./HtmlBlock.ts";
+
+const t = createTranslator(browserLang());
 
 /**
  * `HtmlBlock` plus its lit-rendered editing UI.
  *
  * CLIENT ONLY. Importing this module pulls lit-html (and in a dev build, lit's
- * dev-mode runtime) into whatever bundle references it. The server reaches the
- * schema-only `HtmlBlock` through `contentExtensions` to (de)serialize
- * documents, and must never load a DOM rendering library to do that — keep this
- * module out of any module graph the server touches. Mirrors the
- * `Mentions` / `MentionSuggestions` split: the plain node lives in
- * `HtmlBlock.ts`, the interactive view lives here and is injected by
- * `documentExtensions` at editor construction.
+ * dev-mode runtime) into whatever bundle references it. Keeping the schema-only
+ * `HtmlBlock` separate also lets non-rendering editor use cases construct the
+ * schema without a DOM rendering library. Mirrors the `Mentions` /
+ * `MentionSuggestions` split: the plain node lives in `HtmlBlock.ts`, while the
+ * interactive view lives here and is injected by `documentExtensions` at editor
+ * construction.
  */
 export const HtmlBlockNodeView = HtmlBlock.extend({
   addNodeView() {
@@ -116,7 +118,7 @@ export const HtmlBlockNodeView = HtmlBlock.extend({
                 class="html-block-toggle-btn"
                 @click=${toggleView}
                 aria-pressed=${isPreview ? "true" : "false"}
-                aria-label=${isPreview ? "Edit HTML source" : "Show HTML preview"}
+                aria-label=${isPreview ? t("Edit HTML source") : t("Show HTML preview")}
               >
                 ${
                   isPreview

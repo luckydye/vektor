@@ -5,9 +5,10 @@ import { useTemplates } from "#composeables/useTemplates.ts";
 import { useToast } from "#composeables/useToast.ts";
 import type { DocumentTemplate } from "#documents/templates.ts";
 import { insertTemplateContent } from "#editor/templates.ts";
-import { type TranslationKey, t } from "#utils/lang.ts";
+import { type TranslationKey } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Icon, type IconName } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 type DocumentType = "canvas" | "workflow" | "database" | "csv";
 
@@ -44,6 +45,8 @@ const documentOptions: Array<{
 ];
 
 export function NewDocumentPicker() {
+  const t = useTranslation();
+
   const navigate = useNavigate();
   const location = useLocation();
   const { currentSpace } = useSpace();

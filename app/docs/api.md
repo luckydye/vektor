@@ -1257,22 +1257,22 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/uploads"
 - **Auth**: session, access token or job token; `editor` on the document named by
   `documentId`, or on the space for an upload that belongs to no document. A caller with
   no editor reach into the space at all is refused before the body is parsed.
-- **Body**: multipart form — `file` (blob, required), `filename?`, `documentId?`
-  (must pass `isSafeUploadIdPart`).
-- **Behavior**: 1.25GB size cap per upload (job uploads are trusted and exempt).
-  Content-addressed storage key (`sha256[:2]/sha256.ext`), so re-uploading identical
-  bytes lands on the existing row: the first document to claim a file keeps it, since
-  that document's ACL is what serves it. Text is extracted synchronously and stored for
-  search; if `documentId` is given, the parent document's embedding is re-indexed
-  asynchronously.
-- **Returns**: `200 { url, key }`. `400` for missing file / invalid `documentId` /
-  oversize.
+- **Body**: the file's bytes, raw. `Content-Type` is stored as the file's MIME type;
+  `filename?` and `documentId?` (must pass `isSafeUploadIdPart`) are query parameters.
+  The body is not a multipart form: it streams to storage as it arrives, so an upload
+  costs a chunk of memory rather than its own size, and there is no size cap.
+- **Behavior**: content-addressed storage key (`sha256[:2]/sha256.ext`), so re-uploading
+  identical bytes lands on the existing row: the first document to claim a file keeps it,
+  since that document's ACL is what serves it. Files up to 25MB have their text extracted
+  and stored for search; a larger file is stored in full but not searchable by content.
+  If `documentId` is given, the parent document's embedding is re-indexed asynchronously.
+- **Returns**: `200 { url, key }`. `400` for a missing body / invalid `documentId`.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" \
-  -F "file=@architecture.png" \
-  -F "documentId=doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31" \
-  "$VEKTOR/spaces/$SPACE/uploads"
+  -H "Content-Type: image/png" \
+  --data-binary @architecture.png \
+  "$VEKTOR/spaces/$SPACE/uploads?filename=architecture.png&documentId=doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31"
 ```
 
 ```json

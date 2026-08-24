@@ -2,6 +2,9 @@
 
 version: "3"
 
+env:
+  VEKTOR_JOB_FETCH_ALLOW_PRIVATE: 1
+
 tasks:
   setup:
     cmds:
@@ -142,7 +145,8 @@ tasks:
     dotenv:
       - ../.env
     env:
-      NODE_ENV: test 
+      NODE_ENV: test
+      VEKTOR_JOB_FETCH_ALLOW_PRIVATE: "0"
     cmds:
       - bash -c './vektor serve --email-auth --port 4321 --host 127.0.0.1 & echo $! > /tmp/vektor-test-server.pid'
       - defer: kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true

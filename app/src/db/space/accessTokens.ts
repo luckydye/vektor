@@ -78,7 +78,10 @@ function hashSecret(secret: string): string {
   return createHash("sha256").update(secret).digest("hex");
 }
 
-/** Matches the one row that is this token, and never a grant carrying no credential. */
+/**
+ * Matches the one row that is this token, and never a share link — whose
+ * endpoints are open to editors rather than owners.
+ */
 function tokenRow(tokenId: string) {
   return and(eq(acl.userId, tokenId), eq(acl.kind, AclKind.TOKEN));
 }

@@ -13,7 +13,6 @@ import { useAuditLogs } from "#composeables/useAuditLogs.ts";
 import { useRevisions } from "#composeables/useRevisions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
-import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import { DockedPanel } from "./DockedPanel.tsx";
@@ -25,6 +24,7 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Icon } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId: string;
@@ -36,6 +36,9 @@ function dispatchWindowEvent(event: Event) {
 }
 
 export function RevisionsSidebar(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const {
     revisions,
     getRevision,
@@ -83,7 +86,7 @@ export function RevisionsSidebar(props: Props) {
   }
 
   function getUserName(userId?: string | null): string {
-    return userDisplayName(getUser(userId), userId);
+    return userDisplayName(getUser(userId), userId, lang);
   }
 
   function isPublishedEntry(entry: AuditLog): boolean {

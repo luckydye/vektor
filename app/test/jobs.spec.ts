@@ -82,13 +82,14 @@ async function runJobExpectingFailure(
 
 /** Upload a file to the space and return its URL. */
 async function upload(name: string, bytes: Uint8Array, type: string): Promise<string> {
-  const form = new FormData();
-  form.append("file", new File([bytes as BlobPart], name, { type }));
-  form.append("filename", name);
-  const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
-    method: "POST",
-    body: form,
-  });
+  const response = await fetch(
+    `${BASE_URL}/api/v1/spaces/${spaceId}/uploads?filename=${encodeURIComponent(name)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": type },
+      body: bytes as BlobPart,
+    },
+  );
   if (!response.ok)
     throw new Error(`upload failed ${response.status}: ${await response.text()}`);
   return ((await response.json()) as { url: string }).url;

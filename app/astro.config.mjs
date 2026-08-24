@@ -76,6 +76,14 @@ export default defineConfig({
         codes: ["en", "en-US", "en-GB", "en-CA", "en-AU", "en-NZ", "en-IE"],
       },
       {
+        path: "es",
+        codes: ["es", "es-ES", "es-MX", "es-AR", "es-CO", "es-CL", "es-PE"],
+      },
+      {
+        path: "ja",
+        codes: ["ja", "ja-JP"],
+      },
+      {
         path: "ko",
         codes: ["ko", "ko-KR"],
       },

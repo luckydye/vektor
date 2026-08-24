@@ -1,6 +1,6 @@
 {
   "name": "@vektorapp/app",
-  "version": "0.0.113",
+  "version": "0.0.126",
   "type": "module",
   "scripts": {
     "figma:parse": "figma connect parse --config figma.config.json",
@@ -17,7 +17,6 @@
     "@solidjs/router": "1.0.0",
     "@tailwindcss/vite": "^4.1.16",
     "@tiptap/core": "3.9.1",
-    "@tiptap/extension-collaboration": "3.9.1",
     "@tiptap/extension-table": "3.9.1",
     "@tiptap/html": "^3.13.0",
     "@tiptap/pm": "3.9.1",

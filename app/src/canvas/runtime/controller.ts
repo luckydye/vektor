@@ -112,7 +112,7 @@ import {
   readSystemClipboard,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
-import { type TranslationKey, t } from "#utils/lang.ts";
+import { createTranslator, type TranslationKey } from "#utils/lang.ts";
 import "#canvas/ui/PresenceCursorElement.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
@@ -246,7 +246,12 @@ export interface CanvasHost {
 export type CanvasController = ReturnType<typeof createCanvasController>;
 export type CanvasView = CanvasController["view"];
 
-export function createCanvasController(host: CanvasHost, dom: CanvasDomRefs) {
+export function createCanvasController(
+  host: CanvasHost,
+  dom: CanvasDomRefs,
+  lang: string,
+) {
+  const t = createTranslator(lang);
   type DragState =
     | {
         type: "shape";

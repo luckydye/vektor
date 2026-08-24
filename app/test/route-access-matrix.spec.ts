@@ -156,9 +156,10 @@ let fixtures: Record<IdentityName, Fixture>;
 let probes: Probe[] = [];
 
 /**
- * How a status reads as an access verdict. A 400/404/405 means the request died
- * before or beside the guard — it is not evidence of denial, and saying so is
- * the difference between a matrix you can trust and one that flatters itself.
+ * How a status reads as an access verdict. A 404 is deliberately ambiguous: it
+ * may hide a private resource or report a missing one, so it cannot prove that
+ * the guard ran. A 400/405 likewise means the request died before or beside the
+ * guard rather than proving denial.
  */
 function outcomeOf(status: number | null): Outcome {
   if (status === null) return "not-probed";

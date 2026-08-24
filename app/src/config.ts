@@ -246,6 +246,15 @@ export function config() {
 }
 
 /**
+ * Whether this instance is served over HTTPS, and so whether a cookie it sets
+ * must be `Secure`. Read from configuration rather than from a request: behind a
+ * TLS-terminating proxy the request itself arrives over plain HTTP.
+ */
+export function isHttpsSite(): boolean {
+  return (config().SITE_URL ?? "").startsWith("https://");
+}
+
+/**
  * True when the operator confirmed a trusted reverse proxy fronts the app
  * (VEKTOR_TRUST_PROXY=1/true); only then may X-Forwarded-* headers be honored.
  */

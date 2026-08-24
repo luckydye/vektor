@@ -454,6 +454,9 @@ export async function updateSpace(
     preferences: Object.fromEntries(updatedPreferences),
     createdAt: existing.createdAt,
     updatedAt: now,
+    // Carried over: the client caches spaces by id, so a response without it
+    // overwrites the count the listing established and the sidebar reads zero.
+    memberCount: existing.memberCount,
   };
 }
 

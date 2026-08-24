@@ -734,13 +734,13 @@ describe("agent model loop", () => {
     }
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe("http://vektor.test/api/v1/spaces/space/uploads");
-    const form = requests[0]?.init?.body as FormData;
-    expect(form.get("filename")).toBe("report.txt");
-    expect(form.get("documentId")).toBe("document-1");
-    const uploadedFile = form.get("file") as File;
-    expect(uploadedFile.type.startsWith("text/plain")).toBe(true);
-    expect(await uploadedFile.text()).toBe("report body");
+    const requested = new URL(String(requests[0]?.url));
+    expect(requested.pathname).toBe("/api/v1/spaces/space/uploads");
+    expect(requested.searchParams.get("filename")).toBe("report.txt");
+    expect(requested.searchParams.get("documentId")).toBe("document-1");
+    const headers = new Headers(requests[0]?.init?.headers);
+    expect(headers.get("content-type")).toBe("text/plain");
+    expect(String(requests[0]?.init?.body)).toBe("report body");
   });
 
   it("keeps extension installation available through the shell command", async () => {

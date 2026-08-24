@@ -10,7 +10,6 @@ import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts"
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
-import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import "#editor/css/mentions.css";
@@ -19,6 +18,7 @@ import { AIChatSessions } from "./AIChatSessions.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { MessageInput, type MessageInputHandle } from "./MessageInput.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId?: string;
@@ -50,6 +50,8 @@ function buildAttachmentContext(attachments: UploadedAttachment[]): string {
 }
 
 export function AIChatPanel(props: Props) {
+  const t = useTranslation();
+
   const documentId = () => props.documentId ?? "";
 
   const { currentSpace, currentSpaceId } = useSpace();

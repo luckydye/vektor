@@ -92,7 +92,6 @@ declare module "solid-js" {
       "document-statusbar": CustomElementAttributes;
       "vektor-cosmetic": CustomElementAttributes;
       "wiki-drawer": CustomElementAttributes;
-      "drawer-track": CustomElementAttributes;
       "category-target": CustomElementAttributes;
       "page-target": CustomElementAttributes;
       "document-view": CustomElementAttributes;

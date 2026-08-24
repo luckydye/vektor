@@ -1,3 +1,11 @@
+import {
+  AclFailure,
+  AuthenticationRequiredError,
+  CredentialRejectedError,
+  InvalidAclRequestError,
+  PermissionDeniedError,
+  ResourceUnavailableError,
+} from "#acl/errors.ts";
 import type { ApiContext } from "#api/server/types.ts";
 import type { PropertyFilter } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -33,6 +41,26 @@ export function badRequestResponse(message: string): Response {
   return errorResponse(message, 400);
 }
 
+/** Translate an ACL domain failure at the HTTP boundary. */
+export function aclFailureResponse(error: AclFailure): Response {
+  if (
+    error instanceof AuthenticationRequiredError ||
+    error instanceof CredentialRejectedError
+  ) {
+    return unauthorizedResponse();
+  }
+  if (error instanceof PermissionDeniedError) {
+    return forbiddenResponse(error.detail);
+  }
+  if (error instanceof ResourceUnavailableError) {
+    return notFoundResponse(error.resource);
+  }
+  if (error instanceof InvalidAclRequestError) {
+    return badRequestResponse(error.message);
+  }
+  return errorResponse("Unhandled ACL failure", 500);
+}
+
 export function successResponse(data?: unknown): Response {
   return jsonResponse(data ?? { success: true }, 200);
 }
@@ -60,6 +88,9 @@ export async function withApiErrorHandling(
   try {
     return await handler();
   } catch (error) {
+    if (error instanceof AclFailure) {
+      return aclFailureResponse(error);
+    }
     if (error instanceof Response) {
       return error;
     }

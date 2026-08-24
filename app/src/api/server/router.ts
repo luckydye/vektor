@@ -1,7 +1,9 @@
 import type { Next } from "hono";
+import { AclFailure } from "#acl/errors.ts";
 import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
+import { aclFailureResponse } from "#api/http.ts";
 import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
@@ -76,6 +78,7 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("credentials", {
     jobToken: headers.get("X-Job-Token"),
     authorization: headers.get("Authorization"),
+    cookie: headers.get("Cookie"),
     user,
   });
 }
@@ -199,6 +202,9 @@ export async function apiRouter(
 
     return limit ? withRateLimitHeaders(result, limit) : result;
   } catch (error) {
+    if (error instanceof AclFailure) {
+      return aclFailureResponse(error);
+    }
     appLogger.error("Unhandled API route error", {
       path: pathname,
       error: error instanceof Error ? error.message : String(error),

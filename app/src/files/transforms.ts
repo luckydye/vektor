@@ -185,7 +185,7 @@ export async function serveTransformed(
   const responseHeaders = (contentLength: number): Record<string, string> => ({
     "Content-Type": mimeType,
     "Content-Length": String(contentLength),
-    "Cache-Control": "public, max-age=31536000, immutable",
+    "Cache-Control": "private, max-age=3600",
     ...servedFileSecurityHeaders(outputExt),
   });
 
@@ -237,7 +237,7 @@ export async function serveTransformed(
         "Content-Length": String(original.byteLength),
         // Deliberately not "immutable": this is a degraded fallback that
         // should be re-fetched (and transformed) once the addon is available.
-        "Cache-Control": "no-store",
+        "Cache-Control": "private, no-store",
         ...servedFileSecurityHeaders(origExt),
       },
     });

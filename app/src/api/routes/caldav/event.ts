@@ -1,6 +1,8 @@
 import { Permission } from "#acl/permissions.ts";
 import {
+  authorizeCalDAVDocument,
   CORS_HEADERS,
+  caldavRoute,
   documentToICal,
   optionsPreflight,
   parseICalEvent,
@@ -20,13 +22,21 @@ import { patchDocumentProperties } from "#db/space/properties.ts";
  */
 export const OPTIONS: ApiRouteHandler = () => optionsPreflight();
 
-export const GET: ApiRouteHandler = async (context) => {
+export const GET: ApiRouteHandler = caldavRoute(async (context) => {
   const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
 
   const docId = eventId.replace(/\.ics$/, "");
+  const denied = await authorizeCalDAVDocument(
+    caldavUser,
+    spaceId,
+    docId,
+    Permission.VIEWER,
+  );
+  if (denied) return denied;
+
   const doc = await getDocument(await openSpaceStore(spaceId), docId);
   if (!doc) return new Response("Not Found", { status: 404 });
 
@@ -37,9 +47,9 @@ export const GET: ApiRouteHandler = async (context) => {
     status: 200,
     headers: { "Content-Type": "text/calendar; charset=utf-8", ...CORS_HEADERS },
   });
-};
+});
 
-export const PUT: ApiRouteHandler = async (context) => {
+export const PUT: ApiRouteHandler = caldavRoute(async (context) => {
   const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, {
@@ -58,6 +68,16 @@ export const PUT: ApiRouteHandler = async (context) => {
   const existing = await getDocument(store, docId);
 
   if (existing) {
+    // Only an update needs the per-document check: a create has no document to
+    // be restricted yet, and the space-level EDITOR gate above covers it.
+    const documentDenied = await authorizeCalDAVDocument(
+      caldavUser,
+      spaceId,
+      docId,
+      Permission.EDITOR,
+    );
+    if (documentDenied) return documentDenied;
+
     await patchDocumentProperties(
       store,
       docId,
@@ -87,4 +107,4 @@ export const PUT: ApiRouteHandler = async (context) => {
       ...CORS_HEADERS,
     },
   });
-};
+});

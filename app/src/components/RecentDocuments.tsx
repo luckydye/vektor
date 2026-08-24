@@ -2,9 +2,9 @@ import "@atrium-ui/elements/track";
 import { createMemo, For, Index, Show } from "solid-js";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { DocumentTeaser } from "./DocumentTeaser.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   limit?: number;
@@ -13,6 +13,8 @@ interface Props {
 const TEASER_TYPES = new Set(["document", "canvas", "database"]);
 
 export function RecentDocuments(props: Props) {
+  const t = useTranslation();
+
   const { currentSpace } = useSpace();
   const count = props.limit ?? 5;
 
@@ -26,7 +28,18 @@ export function RecentDocuments(props: Props) {
 
   return (
     <div>
-      <h2 class="mb-4 text-size-label">{t("Recently Modified")}</h2>
+      <div class="mb-4 flex items-center justify-between gap-4">
+        <h2 class="text-neutral-500 text-size-large leading-large">
+          {t("Recently Modified")}
+        </h2>
+        <a
+          href={spacePath(currentSpace()?.slug, "/search")}
+          class="group inline-flex shrink-0 items-center gap-1.5 text-neutral-400 text-size-medium transition-colors hover:text-neutral-700"
+        >
+          {t("View all")}
+          <span class="transition-transform group-hover:translate-x-0.5">→</span>
+        </a>
+      </div>
 
       <div class="h-60">
         <Show
@@ -58,25 +71,6 @@ export function RecentDocuments(props: Props) {
           >
             <a-track snap class="flex h-full w-full overflow-visible">
               <For each={docs()}>{(doc) => <DocumentTeaser doc={doc} />}</For>
-
-              <a
-                href={spacePath(currentSpace()?.slug, "/search")}
-                class="group block w-60 flex-none pr-4"
-              >
-                <div class="flex aspect-video items-center justify-center rounded-xl border-2 border-neutral-200 border-dashed transition-colors group-hover:border-neutral-300">
-                  <span class="font-medium text-neutral-400 text-sm transition-colors group-hover:text-neutral-500">
-                    {t("View all")} →
-                  </span>
-                </div>
-                <div class="mt-3">
-                  <h4
-                    class="font-bold text-size-medium italic leading-snug"
-                    style={{ color: "var(--color-primary-700)" }}
-                  >
-                    {t("Browse all documents")}
-                  </h4>
-                </div>
-              </a>
             </a-track>
           </Show>
         </Show>

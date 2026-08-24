@@ -15,6 +15,7 @@ import {
   type HtmlTextNode,
   parseHtml,
   reconstructNode,
+  sanitizeMessageHtml,
   SyntaxKind,
 } from "#utils/html.ts";
 
@@ -48,11 +49,15 @@ markdownRenderer.link = function ({ href, title, tokens }) {
 };
 
 export function renderMessageMarkdown(content: string): string {
-  return marked.parse(content, {
-    breaks: true,
-    gfm: true,
-    renderer: markdownRenderer,
-  }) as string;
+  // Markdown carries inline HTML, so the output is sanitized rather than
+  // trusted to the renderer overrides above.
+  return sanitizeMessageHtml(
+    marked.parse(content, {
+      breaks: true,
+      gfm: true,
+      renderer: markdownRenderer,
+    }) as string,
+  );
 }
 
 function escapeMarkdownText(value: string): string {

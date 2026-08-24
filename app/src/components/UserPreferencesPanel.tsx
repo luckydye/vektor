@@ -13,7 +13,7 @@ import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.t
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import { t } from "#utils/lang.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
@@ -25,6 +25,7 @@ import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   onClose?: () => void;
@@ -35,45 +36,51 @@ type ViewTransitionDocument = Document & {
 };
 
 const tabs = [
-  { id: "appearance", label: t("Appearance") },
-  // { id: "cosmetics", label: t("Profile") },
-  { id: "notifications", label: t("Notifications") },
-  { id: "integrations", label: t("Integrations") },
-  { id: "tokens", label: t("Access Tokens") },
-];
+  { id: "appearance", label: "Appearance" },
+  // { id: "cosmetics", label: "Profile" },
+  { id: "notifications", label: "Notifications" },
+  { id: "integrations", label: "Integrations" },
+  { id: "tokens", label: "Access Tokens" },
+] satisfies { id: string; label: TranslationKey }[];
 
-const themeOptions: { value: ThemePreference; label: string; swatchClass: string }[] = [
+const themeOptions: {
+  value: ThemePreference;
+  label: TranslationKey;
+  swatchClass: string;
+}[] = [
   {
     value: "system",
-    label: t("System"),
+    label: "System",
     swatchClass:
       "bg-[linear-gradient(135deg,#ffffff_0%,#ffffff_48%,#222222_52%,#222222_100%)]",
   },
-  { value: "light", label: t("Light"), swatchClass: "bg-[#fff5b8]" },
-  { value: "dark", label: t("Dark"), swatchClass: "bg-[#252525]" },
+  { value: "light", label: "Light", swatchClass: "bg-[#fff5b8]" },
+  { value: "dark", label: "Dark", swatchClass: "bg-[#252525]" },
 ];
 
 const integrationProviders: OAuthIntegrationProvider[] = ["gitlab", "youtrack"];
 
 const integrationProviderDetails: Record<
   OAuthIntegrationProvider,
-  { label: string; description: string; initial: string; iconClass: string }
+  { label: string; description: TranslationKey; initial: string; iconClass: string }
 > = {
   gitlab: {
     label: "GitLab",
-    description: t("Connect GitLab to work with your projects and issues."),
+    description: "Connect GitLab to work with your projects and issues.",
     initial: "G",
     iconClass: "bg-[#fc6d26]",
   },
   youtrack: {
     label: "YouTrack",
-    description: t("Connect YouTrack to work with your issues and projects."),
+    description: "Connect YouTrack to work with your issues and projects.",
     initial: "Y",
     iconClass: "bg-[#4c57e8]",
   },
 };
 
 export function UserPreferencesPanel(props: Props) {
+  const t = useTranslation();
+
   const [themePreference, setThemePreference] = createSignal<ThemePreference>("system");
   const currentUser = useUserProfile();
   const {
@@ -118,13 +125,18 @@ export function UserPreferencesPanel(props: Props) {
   const activeSpaceName = createMemo(() => currentSpace()?.name || null);
 
   const integrationCards = createMemo(() =>
-    integrationProviders.map((provider) => ({
-      provider,
-      connection:
-        integrationConnections().find((connection) => connection.provider === provider) ??
-        null,
-      ...integrationProviderDetails[provider],
-    })),
+    integrationProviders.map((provider) => {
+      const details = integrationProviderDetails[provider];
+      return {
+        provider,
+        connection:
+          integrationConnections().find(
+            (connection) => connection.provider === provider,
+          ) ?? null,
+        ...details,
+        description: t(details.description),
+      };
+    }),
   );
 
   const applyThemePreferenceWithTransition = (preference: ThemePreference) => {
@@ -315,7 +327,7 @@ export function UserPreferencesPanel(props: Props) {
       </div>
 
       <SettingsLayout
-        tabs={tabs}
+        tabs={tabs.map((tab) => ({ ...tab, label: t(tab.label) }))}
         onTabChange={(id) => {
           if (id === "tokens") void accessTokens.load();
         }}
@@ -354,7 +366,7 @@ export function UserPreferencesPanel(props: Props) {
                               class={`h-full w-full rounded-full ${option.swatchClass}`}
                             />
                           </span>
-                          <span>{option.label}</span>
+                          <span>{t(option.label)}</span>
                         </button>
                       )}
                     </For>

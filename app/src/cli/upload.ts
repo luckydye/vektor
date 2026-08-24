@@ -37,23 +37,18 @@ export async function commandUploadFile(flags: {
   const filename = flags.filename ?? basename(flags.source);
   const contentType = flags.contentType ?? file.type ?? "application/octet-stream";
 
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([await file.arrayBuffer()], { type: contentType }),
-    filename,
-  );
-  form.append("filename", filename);
-  if (flags.documentId) form.append("documentId", flags.documentId);
+  const query = new URLSearchParams({ filename });
+  if (flags.documentId) query.set("documentId", flags.documentId);
 
-  const url = `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads`;
+  const url = `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads?${query}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       ...authHeaders(token),
       Origin: new URL(host).origin,
+      "Content-Type": contentType,
     },
-    body: form,
+    body: file,
   });
 
   if (!res.ok) {

@@ -1,4 +1,5 @@
 ---
+import { isAccessDenied } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { SpaceApp } from "#components/SpaceApp.tsx";
@@ -49,9 +50,8 @@ if (settingsPath) {
       Permission.OWNER,
     );
   } catch (error) {
-    if (!(error instanceof Response)) throw error;
-    // Not the guard's own Response: its 403 body would tell an existing space
-    // the caller may not reach from one that is not there.
+    if (!isAccessDenied(error)) throw error;
+    // Use the page boundary's deliberately opaque response for every refusal.
     return spaceUnavailableResponse();
   }
 }
@@ -61,8 +61,8 @@ const storedDocumentRecord = docSlugMatch
   : null;
 
 /**
- * Viewer verdict for one document, swallowing the Response `verifyAccess`
- * throws: answering with it would leak the guard's 403/404 distinction.
+ * Viewer verdict for one document, swallowing the ACL failure: answering with
+ * transport-specific detail would leak whether the document exists.
  */
 async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   try {
@@ -74,7 +74,7 @@ async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
     );
     return true;
   } catch (error) {
-    if (!(error instanceof Response)) throw error;
+    if (!isAccessDenied(error)) throw error;
     return false;
   }
 }
@@ -102,7 +102,7 @@ if (!readableDocumentRecord) {
       Permission.VIEWER,
     );
   } catch (error) {
-    if (!(error instanceof Response)) throw error;
+    if (!isAccessDenied(error)) throw error;
     return spaceUnavailableResponse();
   }
 }

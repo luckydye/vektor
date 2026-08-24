@@ -38,11 +38,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.25rem;
-    height: 1.33rem;
+    width: 1rem;
+    height: 1.1rem;
     content: "";
     cursor: grab;
     background: var(--color-forground);
+    opacity: 0.5;
     mask: url("../../assets/icons/drag-dots.svg") center / contain no-repeat;
     position: relative;
     padding-right: 0.33em;

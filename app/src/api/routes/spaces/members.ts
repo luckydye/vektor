@@ -1,8 +1,8 @@
 import { inArray } from "drizzle-orm";
-import { getSpaceMembersWithGroups } from "#acl/directory.ts";
+import { getGroupMemberIds, getSpaceMembersWithGroups } from "#acl/directory.ts";
 import { canAccess, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
-import { getResourceScopedGranteeUserIds, listPermissions } from "#acl/store.ts";
+import { getResourceScopedGrantees, listPermissions } from "#acl/store.ts";
 import {
   jsonResponse,
   requireParam,
@@ -45,8 +45,14 @@ export const GET: ApiRouteHandler = (context) =>
       // Users who only hold a document/tree/category grant (no space-wide
       // role) still need to resolve to a name/avatar wherever this endpoint
       // is used to look up "who is userId X" — comments, revisions,
-      // mentions, the members table itself.
-      const resourceScopedUserIds = await getResourceScopedGranteeUserIds(spaceId);
+      // mentions, the members table itself. A group grant on a category is one
+      // such grant for everyone in the group, so it is expanded like the
+      // space-level ones.
+      const resourceScoped = await getResourceScopedGrantees(spaceId);
+      const resourceScopedUserIds = new Set([
+        ...resourceScoped.userIds,
+        ...(await getGroupMemberIds([...resourceScoped.groupIds])),
+      ]);
 
       // Fetch user data for all members
       const authDb = getAuthDb();

@@ -11,13 +11,14 @@ import {
   propertyValueToScalar,
 } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
-import { currentLang, t } from "#utils/lang.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import type { IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
 import type { SelectMenuItem } from "./SelectMenu.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId?: string;
@@ -28,20 +29,27 @@ interface Props {
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
 }
 
-const GRID_TYPE_OPTIONS: SelectMenuItem[] = [
-  { id: "grid", label: t("Grid"), icon: "grid-grid" },
-  { id: "clean", label: t("Clean"), icon: "grid-clean" },
-  { id: "dots", label: t("Dots"), icon: "grid-dots" },
+type TranslatableSelectMenuItem = Omit<SelectMenuItem, "label"> & {
+  label: TranslationKey;
+};
+
+const GRID_TYPE_OPTIONS: TranslatableSelectMenuItem[] = [
+  { id: "grid", label: "Grid", icon: "grid-grid" },
+  { id: "clean", label: "Clean", icon: "grid-clean" },
+  { id: "dots", label: "Dots", icon: "grid-dots" },
 ];
 
-const propertyTypes: SelectMenuItem[] = [
-  { id: "text", label: t("Text"), icon: "add" },
-  { id: "multi-select", label: t("Multi Select"), icon: "add" },
-  { id: "date", label: t("Date"), icon: "add" },
-  { id: "user", label: t("User"), icon: "people" },
+const propertyTypes: TranslatableSelectMenuItem[] = [
+  { id: "text", label: "Text", icon: "add" },
+  { id: "multi-select", label: "Multi Select", icon: "add" },
+  { id: "date", label: "Date", icon: "add" },
+  { id: "user", label: "User", icon: "people" },
 ];
 
 export function DocumentProperties(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { categories } = useCategories();
   const { document } = useDocument(() => props.documentId);
   const { updateProperty, deleteProperty, properties: spaceProperties } = useProperties();
@@ -137,7 +145,7 @@ export function DocumentProperties(props: Props) {
       const option = GRID_TYPE_OPTIONS.find(
         (o) => o.id === propertyValueToScalar(property.value),
       );
-      return option?.label ?? t("Dots");
+      return option ? t(option.label) : t("Dots");
     }
 
     const value = propertyValueToScalar(property.value);
@@ -151,7 +159,7 @@ export function DocumentProperties(props: Props) {
     if (property.type === "date" && value) {
       const date = new Date(value);
       if (!Number.isNaN(date.getTime())) {
-        return date.toLocaleDateString(currentLang(), {
+        return date.toLocaleDateString(lang, {
           month: "short",
           day: "numeric",
           year: "numeric",
@@ -239,7 +247,11 @@ export function DocumentProperties(props: Props) {
     }
 
     if (property.name?.toLowerCase() === "gridtype") {
-      return GRID_TYPE_OPTIONS.map((o) => ({ id: o.id, label: o.label, icon: o.icon }));
+      return GRID_TYPE_OPTIONS.map((o) => ({
+        id: o.id,
+        label: t(o.label),
+        icon: o.icon,
+      }));
     }
 
     if (property.type === "user") {
@@ -415,7 +427,10 @@ export function DocumentProperties(props: Props) {
 
           <PropertyPopover
             isOpen={isCreatePopoverOpen()}
-            propertyTypes={propertyTypes}
+            propertyTypes={propertyTypes.map((item) => ({
+              ...item,
+              label: t(item.label),
+            }))}
             spaceProperties={availableNewProperties()}
             onUpdateIsOpen={setIsCreatePopoverOpen}
             onCreate={(property) => void handleCreate(property)}

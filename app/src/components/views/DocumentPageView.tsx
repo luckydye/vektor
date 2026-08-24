@@ -43,6 +43,7 @@ import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
@@ -54,6 +55,7 @@ interface Props {
   draftType?: string;
   draftCategory?: string;
   draftTitle?: string;
+  draftParent?: string;
   ssrNow?: number;
 }
 
@@ -76,6 +78,7 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
 };
 
 export function DocumentPageView(props: Props) {
+  const lang = useLocale();
   const navigate = useNavigate();
   const location = useLocation();
   const [now, setNow] = createSignal(props.ssrNow ?? Date.now());
@@ -94,6 +97,9 @@ export function DocumentPageView(props: Props) {
   );
   const draftTitle = createMemo(() =>
     isDraft() ? props.draftTitle?.trim() || undefined : undefined,
+  );
+  const draftParent = createMemo(() =>
+    isDraft() ? props.draftParent || undefined : undefined,
   );
 
   const docQuery = useQuery({
@@ -291,7 +297,7 @@ export function DocumentPageView(props: Props) {
 
   const updatedAtStr = createMemo(() => {
     const updatedAt = doc()?.updatedAt;
-    return updatedAt ? formatRelativeTime(updatedAt, { now: now() }) : "";
+    return updatedAt ? formatRelativeTime(updatedAt, lang, { now: now() }) : "";
   });
 
   const [redirecting, setRedirecting] = createSignal(false);
@@ -325,6 +331,7 @@ export function DocumentPageView(props: Props) {
       const newDoc = await api.documents.post(space.id, {
         type: documentType(),
         content: autoCreate.content,
+        ...(draftParent() ? { parentId: draftParent() } : {}),
         properties: {
           title: draftTitle() ?? autoCreate.title,
           ...(draftCategory() ? { category: draftCategory() } : {}),
@@ -622,7 +629,7 @@ export function DocumentPageView(props: Props) {
 
                   <inset-view
                     id="document-properties"
-                    class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-l"}`}
+                    class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-xl"}`}
                   >
                     {documentPropertiesBlock()}
                   </inset-view>

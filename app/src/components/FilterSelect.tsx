@@ -8,8 +8,8 @@ import {
   Show,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { t } from "#utils/lang.ts";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export interface FilterSelectOption {
   value: string;
@@ -45,6 +45,8 @@ const PANEL_GAP = 4;
  * would push the rest of the form around.
  */
 export function FilterSelect(props: Props) {
+  const t = useTranslation();
+
   const [isOpen, setIsOpen] = createSignal(false);
   const [query, setQuery] = createSignal("");
   const [activeIndex, setActiveIndex] = createSignal(0);

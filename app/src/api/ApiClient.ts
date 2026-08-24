@@ -348,6 +348,24 @@ export interface PersonalAccessToken extends AccessToken {
   spaceName: string;
 }
 
+export interface ShareLink {
+  id: string;
+  name: string | null;
+  resourceType: string;
+  resourceId: string;
+  hasPassword: boolean;
+  expiresAt: Date | string | null;
+  lastUsedAt: Date | string | null;
+  createdAt: Date | string;
+  createdBy: string | null;
+  revokedAt: Date | string | null;
+  resource?: {
+    title: string;
+    slug: string;
+    archived: boolean;
+  } | null;
+}
+
 /**
  * One row of the ACL as the permissions endpoint returns it.
  *
@@ -1685,11 +1703,15 @@ export class ApiClient {
       documentId?: string,
       options?: { onProgress?: (progress: number) => void; signal?: AbortSignal },
     ) => {
-      const formData = new FormData();
-      formData.append("file", file, filename);
-      if (documentId) {
-        formData.append("documentId", documentId);
+      const name = filename ?? (file instanceof File ? file.name : null);
+      const query = new URLSearchParams();
+      if (name) {
+        query.set("filename", name);
       }
+      if (documentId) {
+        query.set("documentId", documentId);
+      }
+      const path = `/api/v1/spaces/${spaceId}/uploads?${query}`;
 
       // Use XMLHttpRequest instead of fetch so we can report upload progress.
       // fetch has no way to observe how much of the request body has been sent.
@@ -1702,7 +1724,7 @@ export class ApiClient {
           }
 
           const xhr = new XMLHttpRequest();
-          xhr.open("POST", `/api/v1/spaces/${spaceId}/uploads`);
+          xhr.open("POST", path);
 
           if (signal) {
             const abort = () => xhr.abort();
@@ -1739,7 +1761,10 @@ export class ApiClient {
             reject(new Error("Upload failed: network error"));
           });
 
-          xhr.send(formData);
+          // The file is the body itself, so the request streams instead of
+          // being assembled as a multipart document in memory first.
+          xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+          xhr.send(file);
         },
       );
     },
@@ -1847,6 +1872,36 @@ export class ApiClient {
 
     delete: async (tokenId: string) => {
       await this.apiDelete(this.baseUrl, `/api/v1/access-tokens/${tokenId}`);
+    },
+  };
+
+  shares = {
+    get: async (spaceId: string, documentId?: string) => {
+      return await this.apiGet<{ links: ShareLink[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/shares${documentId ? `?documentId=${encodeURIComponent(documentId)}` : ""}`,
+      );
+    },
+
+    create: async (
+      spaceId: string,
+      body: {
+        name: string;
+        resourceType: string;
+        resourceId: string;
+        expiresInDays: number;
+        password?: string;
+      },
+    ) => {
+      return await this.apiPost<{ id: string; path: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/shares`,
+        body,
+      );
+    },
+
+    revoke: async (spaceId: string, linkId: string) => {
+      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/shares/${linkId}`);
     },
   };
 

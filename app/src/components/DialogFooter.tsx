@@ -1,6 +1,6 @@
 import { mergeProps } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   confirmLabel: string;
@@ -16,6 +16,8 @@ interface Props {
 }
 
 export function DialogFooter(props: Props) {
+  const t = useTranslation();
+
   const merged = mergeProps(
     { tone: "default" as const, layout: "split" as const },
     props,

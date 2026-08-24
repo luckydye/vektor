@@ -41,8 +41,8 @@ class CanvasTwitterEmbedElement extends HostElement {
 
   private rerender() {
     if (!this.container) return;
-    // oEmbed markup comes from Twitter's publish API and is fetched
-    // script-free, so it is safe to inject.
+    // oEmbed markup arrives sanitized from `url-metadata.ts`, which is what
+    // makes it injectable; widgets.js hydrates the blockquote it leaves behind.
     this.container.innerHTML = this.html;
     this.observer?.disconnect();
     void this.hydrate();

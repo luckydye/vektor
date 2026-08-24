@@ -602,19 +602,15 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     uploadArtifact: (async (filename: unknown, content: unknown, mimeType: unknown) => {
       const data = asBuffer(content);
       checkPayloadSize(data.byteLength, `artifact ${String(filename)}`);
-      const form = new FormData();
-      form.append(
-        "file",
-        new Blob([data], {
-          type: mimeType ? String(mimeType) : "application/octet-stream",
-        }),
-      );
-      form.append("filename", String(filename));
+      const query = new URLSearchParams({ filename: String(filename) });
       onLog(`upload ${String(filename)} (${data.byteLength} bytes)`);
-      const response = await api("/uploads", {
+      const response = await api(`/uploads?${query}`, {
         method: "POST",
-        body: form,
-        headers: { Origin: origin },
+        body: data,
+        headers: {
+          Origin: origin,
+          "Content-Type": mimeType ? String(mimeType) : "application/octet-stream",
+        },
       });
       return ((await response.json()) as { url: string }).url;
     }) as never,
