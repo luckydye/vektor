@@ -163,6 +163,6 @@ Implementations must treat addresses and pasted URLs as untrusted input:
 ## Implementation Pointers
 
 - Address helpers: `app/src/utils/documentAddress.ts`
-- Remote URL discovery: `app/src/api/routes/v1/url-metadata.ts`
+- Remote URL discovery: `app/src/api/routes/url-metadata.ts`
 - Canvas document references: `app/src/canvas/elements/documentLink.ts`
 - Drag payload emitter: `app/src/editor/elements/page-target.ts`

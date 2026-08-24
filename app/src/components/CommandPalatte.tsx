@@ -2,13 +2,20 @@ import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
+import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import {
+  useVisualViewport,
+  viewportLayerStyle,
+} from "#composeables/useVisualViewport.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { history } from "#utils/history.ts";
+import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
@@ -21,12 +28,12 @@ type Result =
   | { type: "search"; title: string; space: string; id?: undefined }
   | { type: "create"; title: string; id?: undefined };
 
-const SECTION_LABELS: Record<Result["type"], string> = {
-  document: "Documents",
-  action: "Actions",
-  search: "Search",
-  create: "Create",
-};
+function sectionLabel(type: Result["type"], lang: string): string {
+  if (type === "document") return t("Documents", lang);
+  if (type === "action") return t("Actions", lang);
+  if (type === "search") return t("Search", lang);
+  return t("Create", lang);
+}
 
 const RESULT_ICONS: Record<Result["type"], IconName> = {
   document: "document",
@@ -35,32 +42,33 @@ const RESULT_ICONS: Record<Result["type"], IconName> = {
   create: "new-document",
 };
 
-/**
- * How many documents the list may show at once. Filtering runs over the whole
- * space first, so typing still reaches every document; this only bounds what
- * gets built into the DOM. A space with a few hundred documents otherwise
- * renders a few hundred rows — each one a custom element with `innerHTML`
- * icons — every time the document list changes.
- */
 const MAX_DOCUMENT_RESULTS = 50;
 
-function resultLabel(result: Result): string {
-  if (result.type === "document") return documentTitle(result.data);
+function resultLabel(result: Result, lang: string): string {
+  if (result.type === "document") return documentTitle(result.data, lang);
   if (result.type === "action") return result.data.title || result.id;
-  if (result.type === "search") return `Search "${result.title}" in ${result.space}`;
-  return `Create Document with title "${result.title}"`;
+  if (result.type === "search")
+    return t('Search "{query}" in {space}', lang)
+      .replace("{query}", result.title)
+      .replace("{space}", result.space);
+  return t('Create Document with title "{title}"', lang).replace("{title}", result.title);
 }
 
-function resultDescription(result: Result): string | undefined {
+function resultDescription(result: Result, lang: string): string | undefined {
   if (result.type === "action") return result.data.description;
-  if (result.type === "search") return "Search the full text of every document";
-  if (result.type === "create") return "Open a new document with this title";
+  if (result.type === "search") return t("Search the full text of every document", lang);
+  if (result.type === "create") return t("Open a new document with this title", lang);
   return undefined;
 }
 
 export function CommandPalatte() {
+  const t = useTranslation();
+  const lang = useLocale();
+  const viewport = useVisualViewport();
+
   const navigate = useNavigate();
   const { documents } = useDocuments();
+  const { documentContext } = useDocumentContext();
   const { currentSpace } = useSpace();
 
   const [isOpen, setIsOpen] = createSignal(false);
@@ -77,9 +85,6 @@ export function CommandPalatte() {
   const getLastVisited = (doc: Doc) => lastVisitedByUrl().get(`/doc/${doc.slug}`) ?? null;
 
   const filteredResults = createMemo<Result[]>(() => {
-    // Nothing is visible while the palette is closed, and the document list it
-    // renders changes on every cache write. Deriving it here keeps those writes
-    // from rebuilding a hidden list.
     if (!isOpen()) return [];
 
     const typed = searchQuery().trim();
@@ -97,7 +102,6 @@ export function CommandPalatte() {
       });
     }
 
-    // Most recently visited first, then everything never visited.
     const visited = lastVisitedByUrl();
     const sorted = [...docs].sort((a: Doc, b: Doc) => {
       const aVisited = visited.get(`/doc/${a.slug}`);
@@ -119,22 +123,15 @@ export function CommandPalatte() {
     }
 
     const space = currentSpace();
-    // The filter above only reads titles and slugs of the cached list. Handing
-    // the same query to the search page is how the body of every document —
-    // and the semantic index — becomes reachable from here.
     if (typed && space) {
       results.push({ type: "search", title: typed, space: space.name || "this space" });
     }
 
-    // Offered for whatever was typed, matches or not: the query that finds
-    // nothing is exactly the title of the document that does not exist yet.
-    // Last, so it never steals Enter from a document that does match.
     if (typed && space) results.push({ type: "create", title: typed });
 
     return results;
   });
 
-  /** First index per result type — the row that carries its section heading. */
   const sectionStarts = createMemo(() => {
     const starts = new Map<Result["type"], number>();
     filteredResults().forEach((result, index) => {
@@ -162,22 +159,6 @@ export function CommandPalatte() {
     setIsOpen((open) => !open);
   }
 
-  /**
-   * Moves focus into the input on every open, and back out on every close.
-   *
-   * Neither half can be done where the palette is toggled from. The overlay is
-   * `hidden` while closed and a hidden element cannot take focus, so a focus
-   * call in the same tick as the state change is silently dropped — hence a
-   * frame's wait. `a-blur` does some of this itself but cannot be relied on for
-   * either direction: it focuses on open only when the open came from the
-   * keyboard (deliberately, so a pointer open paints no focus ring), and it
-   * restores focus on close only when it recorded where focus was on the way
-   * in, which it skips when focus was already inside it.
-   *
-   * Releasing focus matters as much as taking it: `Actions.handleKey` ignores
-   * every shortcut while an `<input>` has focus, so focus left behind in the
-   * closed overlay makes the palette impossible to reopen with the keyboard.
-   */
   createEffect(
     on(isOpen, (open) => {
       if (open) {
@@ -199,7 +180,7 @@ export function CommandPalatte() {
     if (doc?.slug) {
       const url = `/doc/${doc.slug}`;
       try {
-        await history.log(url, documentTitle(doc));
+        await history.log(url, documentTitle(doc, lang));
       } catch (error) {
         console.error("Failed to log history:", error);
       }
@@ -214,19 +195,20 @@ export function CommandPalatte() {
     Actions.run(actionId);
   }
 
-  /**
-   * Opens the draft with the title seeded rather than creating the document —
-   * the user still picks a type and writes before anything is persisted.
-   */
   function createDocumentWithTitle(title: string) {
     closePalette();
-    navigate(`/new?title=${encodeURIComponent(title)}`);
+    const query = new URLSearchParams({ title });
+    // The draft lands where the user already is: under the open document, or in
+    // the space root from anywhere without one.
+    const parentId = documentContext().documentId;
+    if (parentId) query.set("parent", parentId);
+    navigate(`/new?${query.toString()}`);
   }
 
-  /** Hands the query to the search page, which owns the server-side index. */
   function searchSpace(query: string) {
     closePalette();
-    navigate(`/search?q=${encodeURIComponent(query)}`);
+    const trimmed = query.trim();
+    navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
   }
 
   function runResult(result: Result) {
@@ -259,8 +241,8 @@ export function CommandPalatte() {
   createEffect(on(searchQuery, () => setSelectedIndex(0), { defer: true }));
 
   Actions.register("ui:toggle:palatte", {
-    title: "Toggle Command Palatte",
-    description: "Open or close the command menu",
+    title: t("Toggle Command Palatte"),
+    description: t("Open or close the command menu"),
     group: "navigation",
     run: async () => togglePalette(),
   });
@@ -270,34 +252,51 @@ export function CommandPalatte() {
       <a-blur
         attr:hidden={isOpen() ? undefined : ""}
         attr:enabled={isOpen() ? "" : undefined}
-        class="overlay-fade fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[15vh]"
+        class="overlay-fade fixed z-50 flex items-start justify-center overflow-hidden bg-black/30"
+        style={{
+          ...viewportLayerStyle(viewport()),
+          "padding-top": `${Math.round(viewport().height * 0.15)}px`,
+        }}
         onClick={closePalette}
         on:exit={closePalette}
       >
         {/* biome-ignore lint/a11y/noStaticElementInteractions: stops the click reaching the dismissal layer. */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handling lives on the input below. */}
         <div
-          class="mx-4 w-full max-w-[640px] overflow-hidden rounded-xl border border-neutral-100 bg-background shadow-2xl"
+          class="mx-4 flex max-h-full w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-neutral-100 bg-background shadow-2xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div class="flex items-center gap-3 border-neutral-100 border-b px-4 py-3">
+          <div class="flex flex-none items-center gap-3 border-neutral-100 border-b px-4 py-3">
             <Icon class="h-4 w-4 flex-none text-neutral" name="search" />
             <input
               ref={searchInput}
               type="text"
-              placeholder="Search documents and actions…"
+              placeholder={t("Search documents and actions…")}
               class="flex-1 bg-transparent text-neutral-900 text-size-medium outline-none placeholder:text-neutral"
               value={searchQuery()}
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
               onKeyDown={handleKeydown}
             />
+            <button
+              type="button"
+              onClick={() => searchSpace(searchQuery())}
+              class="flex flex-none items-center gap-1 rounded-md px-2 py-1 font-medium text-neutral text-size-small transition-colors hover:bg-neutral-100 hover:text-neutral-800"
+              title={t("Open the full search page")}
+            >
+              {t("Full search")}
+              <Icon class="h-3 w-3" name="chevron-right-small" />
+            </button>
+
             <a-shortcut class="hidden sm:flex" attr:data-shortcut="esc" />
           </div>
 
-          <div ref={resultsContainer} class="max-h-[400px] overflow-y-auto py-1">
+          <div
+            ref={resultsContainer}
+            class="min-h-0 flex-1 overflow-y-auto py-1 md:max-h-[400px]"
+          >
             <Show when={isOpen() && filteredResults().length === 0}>
               <div class="px-4 py-10 text-center">
-                <p class="text-neutral text-size-medium">No results found</p>
+                <p class="text-neutral text-size-medium">{t("No results found")}</p>
               </div>
             </Show>
 
@@ -307,7 +306,7 @@ export function CommandPalatte() {
                   <Show when={sectionStarts().get(result.type) === index()}>
                     <div class="px-3 pt-2 pb-0.5">
                       <span class="font-medium text-neutral text-size-extra-small uppercase tracking-wider">
-                        {SECTION_LABELS[result.type]}
+                        {sectionLabel(result.type, lang)}
                       </span>
                     </div>
                   </Show>
@@ -316,17 +315,17 @@ export function CommandPalatte() {
                     component={result.type === "document" ? "page-target" : "div"}
                     {...(result.type === "document"
                       ? {
-                          "data-document-id": result.data.id,
-                          "data-document-type": result.data.type ?? undefined,
-                          "data-space-id": currentSpace()?.id,
-                          "data-document-url": spacePath(
+                          "attr:data-document-id": result.data.id,
+                          "attr:data-document-type": result.data.type ?? undefined,
+                          "attr:data-space-id": currentSpace()?.id,
+                          "attr:data-document-url": spacePath(
                             currentSpace()?.slug,
                             `/doc/${result.data.slug}`,
                           ),
                         }
                       : {})}
                     class="block px-1 [&[data-dragging]]:opacity-50"
-                    on:document-drag-start={closePalette}
+                    on:drag={closePalette}
                   >
                     <button
                       type="button"
@@ -351,18 +350,18 @@ export function CommandPalatte() {
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
                         <span class="truncate font-normal text-size-medium">
-                          {resultLabel(result)}
+                          {resultLabel(result, lang)}
                         </span>
                         <Show
                           when={result.type === "document" && getLastVisited(result.data)}
                         >
                           {(visited) => (
                             <span class="flex-none text-neutral text-size-small opacity-50">
-                              {formatRelativeTime(visited(), { style: "short" })}
+                              {formatRelativeTime(visited(), lang, { style: "short" })}
                             </span>
                           )}
                         </Show>
-                        <Show when={resultDescription(result)}>
+                        <Show when={resultDescription(result, lang)}>
                           {(description) => (
                             <span class="truncate text-neutral text-size-small opacity-50">
                               {description()}
@@ -401,11 +400,11 @@ export function CommandPalatte() {
             <div class="flex items-center gap-3">
               <span class="flex pointer-coarse:hidden items-center gap-1">
                 <a-shortcut attr:data-shortcut="↑-↓" />
-                Navigate
+                {t("Navigate")}
               </span>
               <span class="flex pointer-coarse:hidden items-center gap-1">
                 <a-shortcut attr:data-shortcut="↵" />
-                Select
+                {t("Select")}
               </span>
             </div>
             <span class="flex pointer-coarse:hidden items-center gap-1">
@@ -415,7 +414,7 @@ export function CommandPalatte() {
                     .value
                 }
               />
-              Toggle
+              {t("Toggle")}
             </span>
           </div>
         </div>

@@ -2,6 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { htmlTableToCells } from "#documents/htmlTable.ts";
 import {
+  applyEditOperations,
+  type EditOperation,
+  parseJsonPath,
+} from "#documents/edit.ts";
+import {
   WsMsgType,
   wsDecode,
   wsDecodeYjsUpdate,
@@ -185,6 +190,30 @@ describe("Document edit operations", () => {
     expect((await editDocument(documentId, [{ op: "nope" }])).status).toBe(400);
     expect(
       (await editDocument(documentId, [{ op: "set", path: ".a", value: 1 }])).status,
+    ).toBe(400);
+  });
+
+  it("rejects prototype-polluting json paths with a 400", async () => {
+    const documentId = await createDocument(JSON.stringify({ a: 1 }));
+
+    for (const path of [
+      ".__proto__.polluted",
+      '["constructor"]["prototype"].polluted',
+      ".constructor.prototype.polluted",
+      ".a.__proto__.polluted",
+    ]) {
+      const response = await editDocument(documentId, [
+        { op: "set", path, value: "PWNED" },
+      ]);
+      expect(response.status, path).toBe(400);
+    }
+
+    // The document is untouched, and a key that does not exist still does not
+    // resolve — the flip from 400 to 200 here was the original proof that a
+    // previous request had polluted the server's `Object.prototype`.
+    expect(JSON.parse(await readContent(documentId))).toEqual({ a: 1 });
+    expect(
+      (await editDocument(documentId, [{ op: "unset", path: ".polluted" }])).status,
     ).toBe(400);
   });
 
@@ -577,5 +606,126 @@ describe("Document edit operations", () => {
     expect(rows.length).toBe(3);
 
     ws.close();
+  });
+});
+
+/**
+ * In-process, deliberately: pollution lands on the `Object.prototype` of
+ * whatever process applies the operation, so only a direct call can assert that
+ * nothing leaked. The HTTP spec above covers the 400 the route returns.
+ */
+describe("Document edit json paths cannot reach the prototype chain", () => {
+  const content = JSON.stringify({ config: { timeout: 10 }, items: [1, 2] });
+  const pollutingPaths = [
+    ".__proto__.polluted",
+    '["constructor"]["prototype"].polluted',
+    ".constructor.prototype.polluted",
+    ".config.__proto__.polluted",
+    '.config["constructor"]["prototype"].polluted',
+    ".items[0].__proto__.polluted",
+  ];
+
+  it("parses paths without deciding key policy", () => {
+    // `parseJsonPath` stays a pure parser: whether a segment is safe depends on
+    // the operation, so that call belongs where the operation is applied.
+    expect(parseJsonPath(".__proto__.polluted")).toEqual(["__proto__", "polluted"]);
+    expect(parseJsonPath('.config.timeout["weird key"][2]')).toEqual([
+      "config",
+      "timeout",
+      "weird key",
+      2,
+    ]);
+  });
+
+  it("rejects set/push/unset on prototype paths without polluting", () => {
+    for (const path of pollutingPaths) {
+      const operations: EditOperation[] = [
+        { op: "set", path, value: "PWNED" },
+        { op: "push", path, value: "PWNED" },
+        { op: "unset", path },
+      ];
+      for (const operation of operations) {
+        expect(
+          () => applyEditOperations(content, [operation]),
+          `${operation.op} ${path}`,
+        ).toThrow();
+      }
+    }
+
+    // Nothing landed on the shared prototype.
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).prototype).toBeUndefined();
+    expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+  });
+
+  it("treats a dangerous key as ordinary data, and lets it be deleted again", () => {
+    // No key denylist: a document may legitimately hold a field named
+    // `prototype` or `constructor`, and a nested `set` value can carry a literal
+    // `__proto__` through JSON regardless. What matters is that such a key is
+    // only ever own data — never a prototype write — and stays removable.
+    const stored = '{"__proto__":{"x":1},"prototype":{"status":"draft"},"a":1}';
+
+    const written = applyEditOperations(stored, [
+      { op: "set", path: ".prototype", value: { status: "done" } },
+      { op: "set", path: ".constructor", value: "Foo" },
+    ]);
+    // Built via JSON.parse, not a literal: `{__proto__: …}` in source sets the
+    // prototype instead of defining the key we mean to assert on.
+    expect(JSON.parse(written)).toEqual(
+      JSON.parse(
+        '{"__proto__":{"x":1},"prototype":{"status":"done"},"constructor":"Foo","a":1}',
+      ),
+    );
+
+    const cleaned = applyEditOperations(stored, [{ op: "unset", path: ".__proto__" }]);
+    expect(cleaned).not.toContain("__proto__");
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+    expect(Object.getPrototypeOf(JSON.parse(cleaned))).toBe(Object.prototype);
+  });
+
+  it("does not observe inherited keys on an operable path", () => {
+    // A prototype key from any other source must not look like document data:
+    // `unset` may only delete own properties, and `push` may only append to an
+    // own array.
+    //
+    // Defined non-enumerable on purpose: a plain assignment would put an
+    // enumerable key on `Object.prototype`, which every `for...in` in this
+    // process would then walk.
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    Object.defineProperty(Object.prototype, "inheritedKey", {
+      value: ["from prototype"],
+      configurable: true,
+    });
+    try {
+      expect(() =>
+        applyEditOperations(content, [{ op: "unset", path: ".inheritedKey" }]),
+      ).toThrow();
+      expect(() =>
+        applyEditOperations(content, [
+          { op: "push", path: ".inheritedKey", value: "PWNED" },
+        ]),
+      ).toThrow();
+      expect(() =>
+        applyEditOperations(content, [
+          { op: "set", path: ".inheritedKey.deep", value: "PWNED" },
+        ]),
+      ).toThrow();
+      expect(proto.inheritedKey).toEqual(["from prototype"]);
+    } finally {
+      delete proto.inheritedKey;
+    }
+  });
+
+  it("still applies ordinary json operations", () => {
+    const result = applyEditOperations(content, [
+      { op: "set", path: ".config.timeout", value: 30 },
+      { op: "set", path: ".config.retries", value: 2 },
+      { op: "push", path: ".items", value: { name: "new" } },
+      { op: "unset", path: ".items[0]" },
+    ]);
+    expect(JSON.parse(result)).toEqual({
+      config: { timeout: 30, retries: 2 },
+      items: [2, { name: "new" }],
+    });
   });
 });

@@ -1,0 +1,22 @@
+---
+import { SpacesApp } from "#components/SpacesApp.tsx";
+import BaseLayout from "#layouts/BaseLayout.astro";
+
+if (!Astro.locals.session) {
+  return Astro.redirect("/login");
+}
+
+const lang = Astro.preferredLocale || "en";
+// Server-side so a linked `?tab=users` renders that page rather than flashing
+// the space overview first. Which tabs exist is still the island's call.
+const initialTab = Astro.url.searchParams.get("tab") === "users" ? "users" : "spaces";
+---
+
+<BaseLayout title="Spaces">
+  <SpacesApp
+    client:load
+    replicaScope={Astro.locals.user?.id ? `user:${Astro.locals.user.id}` : "public"}
+    lang={lang}
+    initialTab={initialTab}
+  />
+</BaseLayout>

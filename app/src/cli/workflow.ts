@@ -1,11 +1,8 @@
 /**
  * Workflow command — runs a workflow document via the host API and streams logs.
  *
- * Defaults to http://localhost:8080 and auto-discovers the first space
- * from a running vektor instance. Override with flags or env vars:
- *   VEKTOR_HOST         e.g. http://localhost:3000   (or --url)
- *   VEKTOR_SPACE_ID     space identifier             (or --space)
- *   VEKTOR_ACCESS_TOKEN API token                    (or --token, optional)
+ * Connection settings come from `vektor login` (see resolve.ts), overridable
+ * with VEKTOR_HOST, VEKTOR_SPACE_ID and VEKTOR_ACCESS_TOKEN.
  *
  * Usage:
  *   vektor workflow run <docId> [--input key=value ...] [--file key=/path ...] [--json]
@@ -16,8 +13,7 @@
  *   vektor workflow abc123 --json
  */
 
-import { config } from "#config";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
+import { resolveConfig } from "./resolve.ts";
 
 type RunResponse = {
   status: string;
@@ -31,8 +27,6 @@ export type CliOptions = {
   inputs: Record<string, unknown>;
   filePaths: Record<string, string>;
   json: boolean;
-  spaceId?: string;
-  token: string | undefined;
 };
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -43,7 +37,7 @@ function usage(): string {
   return [
     "Usage: vektor workflow run <docId> [--input key=value ...] [--json]",
     "",
-    "Env vars: VEKTOR_HOST, VEKTOR_SPACE_ID, VEKTOR_ACCESS_TOKEN",
+    "Connection: vektor login, or VEKTOR_HOST / VEKTOR_SPACE_ID / VEKTOR_ACCESS_TOKEN",
     "",
     "Examples:",
     "  vektor workflow abc123",
@@ -96,8 +90,6 @@ export function parseArgs(argv: string[]): CliOptions {
     inputs,
     filePaths,
     json,
-    spaceId: config().CLI_SPACE_ID || undefined,
-    token: config().CLI_ACCESS_TOKEN,
   };
 }
 
@@ -131,22 +123,19 @@ async function uploadFile(
 ): Promise<string> {
   const file = Bun.file(filePath);
   const name = filePath.split("/").pop() ?? "upload";
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([await file.arrayBuffer()], {
-      type: file.type || "application/octet-stream",
-    }),
-    name,
-  );
-  const res = await fetch(`${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads`, {
-    method: "POST",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      Origin: new URL(url).origin,
+  const query = new URLSearchParams({ filename: name });
+  const res = await fetch(
+    `${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads?${query}`,
+    {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Origin: new URL(url).origin,
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
     },
-    body: form,
-  });
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
     throw new Error(`File upload failed (${res.status}): ${text}`);
@@ -156,12 +145,10 @@ async function uploadFile(
 }
 
 export async function commandLogs(runId: string): Promise<void> {
-  const url = resolveHost();
-  const token = config().CLI_ACCESS_TOKEN;
-  const spaceId = config().CLI_SPACE_ID ?? (await resolveSpaceId(url, token));
+  const { host, token, spaceId } = await resolveConfig();
 
   const run = (await apiFetch(
-    url,
+    host,
     token,
     `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
   )) as RunResponse;
@@ -172,18 +159,17 @@ export async function commandLogs(runId: string): Promise<void> {
 }
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
-  const { token, documentId, inputs, filePaths, json } = options;
-  const url = resolveHost();
-  const spaceId = options.spaceId ?? (await resolveSpaceId(url, token));
+  const { documentId, inputs, filePaths, json } = options;
+  const { host, token, spaceId } = await resolveConfig();
 
   for (const [key, filePath] of Object.entries(filePaths)) {
     if (!json) process.stderr.write(`Uploading ${filePath}…\n`);
-    inputs[key] = await uploadFile(url, spaceId, token, filePath);
+    inputs[key] = await uploadFile(host, spaceId, token, filePath);
     if (!json) process.stderr.write(`Uploaded: ${inputs[key]}\n`);
   }
 
   const { runId } = (await apiFetch(
-    url,
+    host,
     token,
     `/api/v1/spaces/${spaceId}/workflows/runs`,
     {
@@ -204,7 +190,7 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
     await new Promise((r) => setTimeout(r, 2000));
 
     const run = (await apiFetch(
-      url,
+      host,
       token,
       `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
     )) as RunResponse;

@@ -148,3 +148,36 @@ table {
 .table-reorder-active {
   cursor: grabbing;
 }
+
+/* Append-a-column / append-a-row buttons on the focused table's edges */
+.table-insert-control {
+  position: fixed;
+  z-index: 40;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  /* At rest this is a hint, not a control: only the glyph shows, and faintly.
+     The bar it sits on is the hover affordance. */
+  color: var(--color-neutral-400);
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-full);
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.table-insert-control:hover {
+  color: var(--color-primary-700);
+  background-color: var(--color-primary-100);
+  opacity: 1;
+}
+
+.table-insert-control svg {
+  width: 12px;
+  height: 12px;
+}

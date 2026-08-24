@@ -8,10 +8,8 @@ import { DialogFooter } from "./DialogFooter.tsx";
 import { Icon } from "./Icon.tsx";
 
 interface Props {
-  /** Inputs the script reads, in the order it reads them. */
   fields: WorkflowInputField[];
   spaceId: string;
-  /** The workflow being run; uploads are filed against it. */
   documentId: string;
   pending?: boolean;
   error?: string | null;
@@ -21,8 +19,6 @@ interface Props {
 
 export function WorkflowRunInputsDialog(props: Props) {
   const [values, setValues] = createSignal<Record<string, string>>({});
-  // File fields hold the uploaded URL; the name is kept for the label, and for
-  // the `fileName` the run view shows next to a `file` input.
   const [fileNames, setFileNames] = createSignal<Record<string, string>>({});
   const [uploading, setUploading] = createSignal<Record<string, number>>({});
   const [uploadError, setUploadError] = createSignal<string | null>(null);
@@ -51,10 +47,6 @@ export function WorkflowRunInputsDialog(props: Props) {
     setValues((current) => ({ ...current, [name]: next }));
   }
 
-  /**
-   * A file input is a URL to the script, so the pick is uploaded here and the
-   * field carries the resulting URL.
-   */
   async function uploadFor(name: string, file: File | undefined) {
     if (!file) return;
     setUploadError(null);
@@ -82,17 +74,12 @@ export function WorkflowRunInputsDialog(props: Props) {
     }
   }
 
-  // Blank optional fields are left out rather than passed as "": the script's
-  // own `??` fallback should decide the value, and an empty string would win
-  // over it.
   function submit() {
     const inputs: Record<string, string> = {};
     for (const field of props.fields) {
       const entered = value(field.name);
       if (entered !== "") inputs[field.name] = entered;
     }
-    // The run view pairs `file` with `fileName` to offer the download; fill it in
-    // from the upload unless the script asks for it itself.
     const uploadedName = fileNames().file;
     if (inputs.file && uploadedName && !inputs.fileName) inputs.fileName = uploadedName;
     props.onRun?.(inputs);

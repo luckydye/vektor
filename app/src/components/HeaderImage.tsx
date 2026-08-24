@@ -6,13 +6,7 @@ import { withTransformParams } from "#files/transformUrl.ts";
 interface Props {
   documentId: string;
   initialSrc?: string | null;
-  /**
-   * Layout orientation, derived from the image aspect ratio by the parent.
-   * "portrait" renders a narrow column sized by `aspectRatio`; "landscape"
-   * (default) keeps the full-width banner.
-   */
   orientation?: "landscape" | "portrait";
-  /** Aspect ratio (width / height) used to size the portrait column. */
   aspectRatio?: number | null;
   class?: string;
 }
@@ -35,8 +29,6 @@ export function HeaderImage(props: Props) {
   });
 
   const isUploadingHeader = () => uploadingDocumentId() === props.documentId;
-  // No mounted guard: the upload registry and the query both start empty on the
-  // server, so the skeleton is already absent from the server render.
   const showSkeleton = createMemo(
     () => isUploadingHeader() || (isLoading() && !!props.initialSrc),
   );

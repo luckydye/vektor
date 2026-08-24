@@ -196,14 +196,14 @@ if (!existsSync(execShimPath)) {
 console.log(`[native-exec] embedding ${execAddonFilename}`);
 
 const embeddingAddonFilename = `embedding-${process.platform}-${process.arch}.node`;
-const embeddingAddonPath = `${import.meta.dir}/src/embeddings/native/${embeddingAddonFilename}`;
+const embeddingAddonPath = `${import.meta.dir}/src/search/native/${embeddingAddonFilename}`;
 if (!existsSync(embeddingAddonPath)) {
   throw new Error(
     `[native-embedding] addon not found at ${embeddingAddonPath}\n` +
       `Build it first:  cd native/embedding && bun run build`,
   );
 }
-const embeddingShimPath = `${import.meta.dir}/src/embeddings/native/addon.ts`;
+const embeddingShimPath = `${import.meta.dir}/src/search/native/addon.ts`;
 if (!existsSync(embeddingShimPath)) {
   throw new Error(
     `[native-embedding] shim not found at ${embeddingShimPath}\n` +

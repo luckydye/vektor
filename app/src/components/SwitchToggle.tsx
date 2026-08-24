@@ -2,10 +2,10 @@ import { play } from "cuelume";
 import { Show } from "solid-js";
 
 interface Props {
-  /** Two-way bound value. */
   value: boolean;
   disabled?: boolean;
   label?: string;
+  ariaLabel?: string;
   onInput?: (value: boolean) => void;
 }
 
@@ -26,6 +26,7 @@ export function SwitchToggle(props: Props) {
         disabled={props.disabled}
         role="switch"
         aria-checked={props.value}
+        aria-label={props.ariaLabel}
         onChange={(event) => {
           play("toggle");
           props.onInput?.(event.currentTarget.checked);

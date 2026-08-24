@@ -22,7 +22,6 @@ export function RestoreButton(props: Props) {
     setIsLoading(true);
     try {
       await api.document.restore(spaceId, props.documentId);
-      // Reload so the surrounding list drops the restored row.
       window.location.reload();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to restore document");

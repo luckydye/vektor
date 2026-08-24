@@ -1,31 +1,23 @@
 import { mergeProps } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
-  /** Label for the confirming action. */
   confirmLabel: string;
-  /** Replaces `confirmLabel` while `pending` — e.g. "Saving…". */
   pendingLabel?: string;
   cancelLabel?: string;
-  /** An in-flight action: disables both buttons and swaps the confirm label. */
   pending?: boolean;
-  /** Disables confirm alone, for a form that is not yet valid. */
   disabled?: boolean;
   tone?: "default" | "danger";
-  /**
-   * Submit the `<form>` with this id instead of emitting `confirm`. Lets the
-   * form keep its own validation and submit handler while its button lives down
-   * here in the pinned footer.
-   */
   form?: string;
-  /** `split` fills the width 50/50; `end` right-aligns at content width. */
   layout?: "split" | "end";
   onCancel?: () => void;
   onConfirm?: () => void;
 }
 
 export function DialogFooter(props: Props) {
+  const t = useTranslation();
+
   const merged = mergeProps(
     { tone: "default" as const, layout: "split" as const },
     props,

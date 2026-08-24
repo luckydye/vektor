@@ -6,9 +6,12 @@ import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { api } from "#api/client.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { extensions } from "#extensions/manager.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 import { handleVideoUpload } from "./VideoUpload.ts";
+
+const t = createTranslator(browserLang());
 
 export interface TrailingNodePlusOptions {
   spaceId: string;
@@ -27,7 +30,7 @@ type ColumnLayoutCommandChain = {
 };
 
 async function createDocumentAndInsertMention(editor: Editor, spaceId: string) {
-  const title = window.prompt("New document title:")?.trim();
+  const title = window.prompt(t("New document title:"))?.trim();
   if (!title) return;
 
   const doc = await api.documents.post(spaceId, {
@@ -57,8 +60,8 @@ async function createDocumentAndInsertMention(editor: Editor, spaceId: string) {
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {
   const items: ContentItem[] = [
     {
-      title: "Table",
-      description: "Insert a table",
+      title: t("Table"),
+      description: t("Insert a table"),
       icon: iconMarkup("table"),
       command: (editor) => {
         editor
@@ -69,32 +72,32 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
     {
-      title: "Image",
-      description: "Upload and insert an image",
+      title: t("Image"),
+      description: t("Upload and insert an image"),
       icon: iconMarkup("image"),
       command: (editor) => {
         handleImageUpload(editor, spaceId, documentId);
       },
     },
     {
-      title: "Video",
-      description: "Upload and insert a video",
+      title: t("Video"),
+      description: t("Upload and insert a video"),
       icon: iconMarkup("video"),
       command: (editor) => {
         handleVideoUpload(editor, spaceId, documentId);
       },
     },
     {
-      title: "File/Attachment",
-      description: "Upload and insert any file",
+      title: t("File/Attachment"),
+      description: t("Upload and insert any file"),
       icon: iconMarkup("file-attachment"),
       command: (editor) => {
         handleFileAttachmentUpload(editor, spaceId, documentId);
       },
     },
     {
-      title: "2 Columns",
-      description: "Insert a 2-column layout",
+      title: t("2 Columns"),
+      description: t("Insert a 2-column layout"),
       icon: iconMarkup("2-columns"),
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
@@ -103,8 +106,8 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
     {
-      title: "3 Columns",
-      description: "Insert a 3-column layout",
+      title: t("3 Columns"),
+      description: t("Insert a 3-column layout"),
       icon: iconMarkup("3-columns"),
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
@@ -113,8 +116,8 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
     {
-      title: "4 Columns",
-      description: "Insert a 4-column layout",
+      title: t("4 Columns"),
+      description: t("Insert a 4-column layout"),
       icon: iconMarkup("4-columns"),
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
@@ -123,24 +126,24 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
     {
-      title: "HTML Block",
-      description: "Insert raw HTML markup",
+      title: t("HTML Block"),
+      description: t("Insert raw HTML markup"),
       icon: iconMarkup("html"),
       command: (editor) => {
         editor.chain().focus().insertHtmlBlock().run();
       },
     },
     {
-      title: "Date",
-      description: "Insert a date picker",
+      title: t("Date"),
+      description: t("Insert a date picker"),
       icon: iconMarkup("date"),
       command: (editor) => {
         editor.chain().focus().insertDatePicker().run();
       },
     },
     {
-      title: "New document",
-      description: "Create a new document and insert a link to it",
+      title: t("New document"),
+      description: t("Create a new document and insert a link to it"),
       icon: iconMarkup("document"),
       command: (editor) => {
         void createDocumentAndInsertMention(editor, spaceId).catch(async (error) => {
@@ -148,7 +151,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
           // where the browser-only toast store must stay out of the graph.
           const { useToast } = await import("#composeables/useToast.ts");
           useToast().error(
-            error instanceof Error ? error.message : "Failed to create the document",
+            error instanceof Error ? error.message : t("Failed to create the document"),
           );
         });
       },
@@ -158,7 +161,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
   for (const { extensionId, route } of extensions.getRoutesWithPlacement("inline")) {
     items.push({
       title: route.menuItem?.title || route.title || extensionId,
-      description: route.description || "Extension view",
+      description: route.description || t("Extension view"),
       icon: route.menuItem?.icon || iconMarkup("extension"),
       command: (editor) => {
         editor
@@ -250,16 +253,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
 
       const editor = extension.editor;
       if (editor) {
-        // Focus the last empty paragraph first
-        const { doc } = editor.state;
-        const lastNode = doc.lastChild;
-        const lastNodePos = doc.content.size - (lastNode?.nodeSize || 0);
-        editor
-          .chain()
-          .focus(lastNodePos + 1)
-          .run();
-
-        // Execute the command
+        focusTrailingParagraph();
         item.command(editor);
       }
 
@@ -436,7 +430,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
             <ul class="max-h-60 overflow-auto py-2">
               ${
                 slashItems.length === 0
-                  ? html`<li class="px-4 py-2.5 text-neutral-400 text-size-small">No results</li>`
+                  ? html`<li class="px-4 py-2.5 text-neutral-400 text-size-small">${t("No results")}</li>`
                   : slashItems.map(
                       (item, index) => html`
                         <li
@@ -540,6 +534,24 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       }, 0);
     }
 
+    /**
+     * The trailing line is a decoration, so writing after the last block needs a
+     * paragraph to write into. Adding it here keeps it a change the user asked
+     * for — the document is shared, and anything else records as their edit.
+     */
+    function focusTrailingParagraph() {
+      const editor = extension.editor;
+      const { doc } = editor.state;
+      const lastNode = doc.lastChild;
+      const chain = editor.chain();
+
+      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
+        chain.insertContentAt(doc.content.size, { type: "paragraph" });
+      }
+
+      chain.focus("end").run();
+    }
+
     function syncTrailingButtonVisibility(view: EditorView) {
       const button = view.dom.querySelector<HTMLElement>(".trailing-node-plus-button");
       if (!button) return;
@@ -561,46 +573,31 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         props: {
           decorations(state) {
             const { doc } = state;
-            const decorations: Decoration[] = [];
+            const widget = document.createElement("button");
+            widget.type = "button";
+            widget.className = "trailing-node-plus-button";
+            widget.contentEditable = "false";
+            widget.innerHTML = `
+              ${iconMarkup("add")}
+              <span>${t("Add content")}</span>
+            `;
 
-            // Check if the document ends with an empty paragraph
-            const lastNode = doc.lastChild;
+            widget.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
 
-            // Render the button if:
-            // 1. Last node is a paragraph
-            // 2. It's empty
+              const rect = widget.getBoundingClientRect();
+              focusTrailingParagraph();
+              openPopup(rect);
+            });
+
             // Visibility is row-aware and is updated from the plugin view below.
-            if (
-              lastNode &&
-              lastNode.type.name === "paragraph" &&
-              lastNode.content.size === 0
-            ) {
-              const widget = document.createElement("button");
-              widget.type = "button";
-              widget.className = "trailing-node-plus-button";
-              widget.contentEditable = "false";
-              widget.innerHTML = `
-                  ${iconMarkup("add")}
-                  <span>Add content</span>
-                `;
-
-              widget.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const rect = widget.getBoundingClientRect();
-                openPopup(rect);
-              });
-
-              decorations.push(
-                Decoration.widget(doc.content.size, widget, {
-                  side: 1,
-                  key: "trailing-plus-button",
-                }),
-              );
-            }
-
-            return DecorationSet.create(doc, decorations);
+            return DecorationSet.create(doc, [
+              Decoration.widget(doc.content.size, widget, {
+                side: 1,
+                key: "trailing-plus-button",
+              }),
+            ]);
           },
         },
         view(view) {
@@ -690,34 +687,5 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         },
       }),
     ];
-  },
-
-  // Ensure there's always a trailing empty paragraph
-  onCreate() {
-    this.editor.commands.command(({ tr, state }) => {
-      const { doc } = state;
-      const lastNode = doc.lastChild;
-
-      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
-        tr.insert(doc.content.size, state.schema.nodes.paragraph.create());
-        return true;
-      }
-
-      return false;
-    });
-  },
-
-  onUpdate() {
-    this.editor.commands.command(({ tr, state }) => {
-      const { doc } = state;
-      const lastNode = doc.lastChild;
-
-      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
-        tr.insert(doc.content.size, state.schema.nodes.paragraph.create());
-        return true;
-      }
-
-      return false;
-    });
   },
 });

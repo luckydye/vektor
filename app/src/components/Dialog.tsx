@@ -1,29 +1,21 @@
 import { createEffect, type JSX, mergeProps, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import "@atrium-ui/elements/blur";
-import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
+import {
+  useVisualViewport,
+  viewportLayerStyle,
+} from "#composeables/useVisualViewport.ts";
+import { IconButton } from "./IconButton.tsx";
 
 interface Props {
   show?: boolean;
   title?: string;
-  /** Allow dismissing via backdrop click or Escape. */
   closeOnBackdrop?: boolean;
-  /** Desktop max-width utility class (mobile is always full-width). */
   maxWidth?: string;
-  /** Optional fixed panel height. Content still scrolls within the body. */
   panelHeight?: string;
-  /**
-   * Override body classes (padding + overflow). Pass e.g. "p-0" for full-bleed
-   * content, or your own overflow for self-scrolling content.
-   */
   bodyClass?: string;
-  /**
-   * Fill to a fixed tall height instead of fitting content. Needed for content
-   * that manages its own internal scroll (e.g. docked panels): a definite
-   * height lets a child's `h-full`/`flex-1` scroll region resolve.
-   */
   expand?: boolean;
   header?: JSX.Element;
   footer?: JSX.Element;
@@ -33,6 +25,9 @@ interface Props {
 }
 
 export function Dialog(props: Props) {
+  const t = useTranslation();
+  const viewport = useVisualViewport();
+
   const merged = mergeProps(
     {
       show: false,
@@ -51,14 +46,10 @@ export function Dialog(props: Props) {
     merged.onClose?.();
   }
 
-  // Backdrop click and <a-blur>'s exit event (Escape / focus-out) are the
-  // dismissal paths; both respect closeOnBackdrop. The header ✕ always closes.
   function onDismiss() {
     if (merged.closeOnBackdrop) close();
   }
 
-  // Ref-counted body scroll lock so a closing dialog cannot unlock the page
-  // while another overlay (e.g. the mobile sidebar) is still open.
   let holdsLock = false;
   function applyScrollLock(shouldLock: boolean) {
     if (shouldLock && !holdsLock) {
@@ -77,12 +68,10 @@ export function Dialog(props: Props) {
     <Portal>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. */}
       <a-blur
-        // `undefined`, not `false`: on a custom element Solid writes the
-        // attribute verbatim, so `hidden={false}` renders `hidden="false"` —
-        // present, and therefore hiding the dialog it was meant to reveal.
         attr:hidden={merged.show ? undefined : ""}
         attr:enabled={merged.show ? "" : undefined}
-        class="dialog-layer fixed inset-0 z-100 flex items-end justify-center md:items-center"
+        class="dialog-layer fixed z-100 flex items-end justify-center md:items-center"
+        style={viewportLayerStyle(viewport())}
         on:exit={onDismiss}
       >
         <button
@@ -98,11 +87,10 @@ export function Dialog(props: Props) {
           role="dialog"
           aria-modal="true"
           class={`dialog-panel relative flex w-full flex-col overflow-hidden rounded-t-2xl bg-background shadow-xl md:rounded-2xl ${merged.maxWidth} ${merged.panelHeight} ${
-            merged.expand ? "h-[90dvh] md:h-[85vh]" : "max-h-[90dvh] md:max-h-[85vh]"
+            merged.expand ? "h-[90%] md:h-[85%]" : "max-h-[90%] md:max-h-[85%]"
           }`}
           onClick={(event) => event.stopPropagation()}
         >
-          {/* Mobile grab handle */}
           <div class="flex flex-none justify-center pt-2 pb-1 md:hidden">
             <div class="h-1 w-9 rounded-full bg-neutral-300" />
           </div>
@@ -119,14 +107,12 @@ export function Dialog(props: Props) {
               >
                 {merged.header}
               </Show>
-              <button
-                type="button"
-                class="-mr-1 flex-none rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
-                aria-label={t("Close")}
+              <IconButton
+                class="-mr-1"
+                icon="cancel"
+                label={t("Close")}
                 onClick={close}
-              >
-                <Icon class="block h-4 w-4" name="cancel" />
-              </button>
+              />
             </div>
           </Show>
 

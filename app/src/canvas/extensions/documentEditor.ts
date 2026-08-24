@@ -17,6 +17,7 @@ import { HostElement } from "#canvas/runtime/elementBase.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import {
+  CollaborationJoinAbandoned,
   currentEditorPresenceState,
   type DocumentPresenceProfile,
 } from "#editor/collaboration.ts";
@@ -109,7 +110,9 @@ class CanvasDocumentEditorElement extends HostElement {
       if (this.disposed) return;
       this.status = "ready";
     } catch (error) {
-      if (this.disposed) return;
+      // Abandonment means the session left the room, not that the embed
+      // failed; painting an error for it would outlive whatever moved on.
+      if (this.disposed || error instanceof CollaborationJoinAbandoned) return;
       this.status = "error";
       this.errorMessage = error instanceof Error ? error.message : String(error);
     }

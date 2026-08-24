@@ -2,16 +2,9 @@ import { createSignal, type JSX, onCleanup, onMount } from "solid-js";
 
 interface Props {
   children: JSX.Element;
-  /** Extra classes for the floating container (e.g. visibility rules). */
   class?: string;
 }
 
-/**
- * Floats a notice above the bottom of the viewport, aligned with the column it
- * is rendered in. A zero-height anchor stays in the normal flow so the fixed
- * element can track that column's left edge and width as the layout changes;
- * `inset-x-0` keeps it usable before the first measurement (SSR, pre-hydration).
- */
 export function BottomBanner(props: Props) {
   const [style, setStyle] = createSignal<{ left: string; width: string }>();
   let anchorEl: HTMLDivElement | undefined;

@@ -17,4 +17,4 @@ bun run build
 ```
 
 The build writes `embedding-<platform>-<arch>.node` and a static loader under
-`app/src/embeddings/native/`, which Bun embeds into compiled Vektor binaries.
+`app/src/search/native/`, which Bun embeds into compiled Vektor binaries.

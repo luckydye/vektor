@@ -1,8 +1,8 @@
 import { createEffect } from "solid-js";
 import "@atrium-ui/elements/popover";
-import { t } from "#utils/lang.ts";
 import { FileDrop } from "./FileDrop.tsx";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 const HEADER_IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
@@ -13,6 +13,8 @@ interface Props {
 }
 
 export function HeaderImageDialog(props: Props) {
+  const t = useTranslation();
+
   let triggerRef: HTMLButtonElement | undefined;
   let cancelRef: HTMLButtonElement | undefined;
 
@@ -31,7 +33,6 @@ export function HeaderImageDialog(props: Props) {
 
   return (
     <a-popover-trigger class="group absolute top-0 left-0 h-0 w-0 overflow-hidden">
-      {/* Zero-size anchor; clicked programmatically to open the popover */}
       <button
         ref={triggerRef}
         slot="trigger"

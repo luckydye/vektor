@@ -1,18 +1,11 @@
 import { For, Show } from "solid-js";
 import { PEN_COLORS } from "#canvas/extensions/drawTool.ts";
 import { type CanvasChrome, swallowPointer } from "#canvas/ui/Canvas.tsx";
-import { t } from "#utils/lang.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
-/**
- * Appearance of what is currently selected.
- *
- * Only present while the selection has something to configure. Reads the
- * selection rather than the tool, which is the one difference from
- * `CanvasToolProperties`.
- */
 export function CanvasProperties(props: { chrome: CanvasChrome }) {
-  // `chrome` is one object built in Canvas.tsx and never replaced, so reading it
-  // once at setup is the same as reading it per use.
+  const t = useTranslation();
+
   const { view, frame, run } = props.chrome; // solid-reactivity-ok: stable object
 
   const visible = frame(() => view()?.hasSelectedElementProperties() ?? false);

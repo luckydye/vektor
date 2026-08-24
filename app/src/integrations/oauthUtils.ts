@@ -20,6 +20,8 @@ export function createPkceCodeChallenge(codeVerifier: string): string {
   return toBase64Url(createHash("sha256").update(codeVerifier).digest());
 }
 
+const redirectPathBase = new URL("https://vektor.invalid");
+
 export function normalizeRedirectPath(value: string | null | undefined): string | null {
   if (!value) {
     return null;
@@ -29,11 +31,21 @@ export function normalizeRedirectPath(value: string | null | undefined): string 
   if (!path.startsWith("/")) {
     return null;
   }
-  if (path.startsWith("//")) {
+
+  // Resolve with the same WHATWG rules Response.redirect and browsers use.
+  // In particular, backslashes are treated as slashes for special schemes, so
+  // `/\evil.example` is protocol-relative even though it does not start `//`.
+  let resolved: URL;
+  try {
+    resolved = new URL(path, redirectPathBase);
+  } catch {
+    return null;
+  }
+  if (resolved.origin !== redirectPathBase.origin) {
     return null;
   }
 
-  return path;
+  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
 }
 
 export function appendQueryParams(path: string, params: Record<string, string>): string {

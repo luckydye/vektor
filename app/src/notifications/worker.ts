@@ -1,21 +1,24 @@
 import { eq } from "drizzle-orm";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { config, getLocalOrigin } from "#config";
-import { verifyDocumentRole } from "#db/api.ts";
-import { getComment } from "#db/comments.ts";
-import { getAuthDb } from "#db/db.ts";
-import { getDocument } from "#db/documents.ts";
-import { isEmailMuted } from "#db/emailNotificationPreferences.ts";
+import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
+import { getAuthDb } from "#db/client/db.ts";
+import { one } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { user } from "#db/schema/auth.ts";
+import type { EmailNotificationOutbox } from "#db/schema/space.ts";
+import { getComment } from "#db/space/comments.ts";
+import { getDocument } from "#db/space/documents.ts";
+import { isEmailMuted } from "#db/space/emailNotificationPreferences.ts";
 import {
   claimDueEmailNotifications,
   markEmailNotificationSent,
   markEmailNotificationSkipped,
   retryEmailNotification,
-} from "#db/emailNotifications.ts";
-import { getRevisionContent } from "#db/revisions.ts";
-import { user } from "#db/schema/auth.ts";
-import type { EmailNotificationOutbox } from "#db/schema/space.ts";
-import { listActiveSpaceIds } from "#db/spaceIndex.ts";
-import { getSpace } from "#db/spaces.ts";
+} from "#db/space/emailOutbox.ts";
+import { getRevisionContent } from "#db/space/revisions.ts";
+import { getSpace } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
@@ -49,79 +52,77 @@ async function deliver(
   spaceId: string,
   notification: EmailNotificationOutbox,
 ): Promise<void> {
-  if (
-    await isEmailMuted(spaceId, notification.recipientUserId, notification.documentId)
-  ) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "Document muted");
+  const store = await openSpaceStore(spaceId);
+  if (await isEmailMuted(store, notification.recipientUserId, notification.documentId)) {
+    await markEmailNotificationSkipped(store, notification.id, "Document muted");
     return;
   }
 
   try {
-    await verifyDocumentRole(
+    await verifyAccess(
       spaceId,
-      notification.documentId,
+      { type: ResourceType.DOCUMENT, id: notification.documentId },
       notification.recipientUserId,
-      "viewer",
+      Permission.VIEWER,
     );
   } catch {
-    await markEmailNotificationSkipped(
-      spaceId,
-      notification.id,
-      "Document access revoked",
-    );
+    await markEmailNotificationSkipped(store, notification.id, "Document access revoked");
     return;
   }
 
   const authDb = getAuthDb();
   const [recipient, actor, doc, space] = await Promise.all([
-    authDb
-      .select({ email: user.email, emailVerified: user.emailVerified })
-      .from(user)
-      .where(eq(user.id, notification.recipientUserId))
-      .get(),
-    authDb
-      .select({ name: user.name, email: user.email, image: user.image })
-      .from(user)
-      .where(eq(user.id, notification.actorId))
-      .get(),
-    getDocument(spaceId, notification.documentId),
+    one(
+      authDb
+        .select({ email: user.email, emailVerified: user.emailVerified })
+        .from(user)
+        .where(eq(user.id, notification.recipientUserId)),
+    ),
+    one(
+      authDb
+        .select({ name: user.name, email: user.email, image: user.image })
+        .from(user)
+        .where(eq(user.id, notification.actorId)),
+    ),
+    getDocument(await openSpaceStore(spaceId), notification.documentId),
     getSpace(spaceId),
   ]);
 
   if (!recipient?.email || !recipient.emailVerified) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "No verified email");
+    await markEmailNotificationSkipped(store, notification.id, "No verified email");
     return;
   }
   if (!doc || !space) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "Document unavailable");
+    await markEmailNotificationSkipped(store, notification.id, "Document unavailable");
     return;
   }
 
   const titleValue = doc.properties.title;
   const title = titleValue ? propertyValueToText(titleValue).trim() : doc.slug;
+  // A comment email quotes the comment; a publication email quotes the revision
+  // it announced — and diffs it against its predecessor unless it is a mention,
+  // which quotes the passage the recipient's name is in instead.
+  const aboutComment =
+    notification.kind === "comment_created" || notification.kind === "comment_mention";
+  const aboutPublication =
+    notification.kind === "document_published" ||
+    notification.kind === "document_mention";
   const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
-    notification.kind === "comment_created"
-      ? getComment(spaceId, notification.sourceId)
-      : undefined,
-    notification.kind === "document_published" &&
-    typeof notification.publishedRevision === "number"
-      ? getRevisionContent(
-          spaceId,
-          notification.documentId,
-          notification.publishedRevision,
-        )
+    aboutComment ? getComment(store, notification.sourceId) : undefined,
+    aboutPublication && typeof notification.publishedRevision === "number"
+      ? getRevisionContent(store, notification.documentId, notification.publishedRevision)
       : undefined,
     notification.kind === "document_published" &&
     typeof notification.previousPublishedRevision === "number"
       ? getRevisionContent(
-          spaceId,
+          store,
           notification.documentId,
           notification.previousPublishedRevision,
         )
       : undefined,
   ]);
-  if (notification.kind === "comment_created" && !commentRecord) {
-    await markEmailNotificationSkipped(spaceId, notification.id, "Comment unavailable");
+  if (aboutComment && !commentRecord) {
+    await markEmailNotificationSkipped(store, notification.id, "Comment unavailable");
     return;
   }
 
@@ -135,9 +136,11 @@ async function deliver(
     commentContent: commentRecord?.content,
     previousPublishedContent,
     publishedContent,
+    recipientEmail: recipient.email,
+    brandColor: space.preferences?.brandColor,
   });
   await sendEmail({ to: recipient.email, ...rendered });
-  await markEmailNotificationSent(spaceId, notification.id);
+  await markEmailNotificationSent(store, notification.id);
 }
 
 async function tick(): Promise<void> {
@@ -145,13 +148,14 @@ async function tick(): Promise<void> {
   tickInProgress = true;
   try {
     for (const spaceId of await listActiveSpaceIds()) {
+      const store = await openSpaceStore(spaceId);
       try {
-        const due = await claimDueEmailNotifications(spaceId);
+        const due = await claimDueEmailNotifications(store);
         for (const notification of due) {
           try {
             await deliver(spaceId, notification);
           } catch (error) {
-            await retryEmailNotification(spaceId, notification, error);
+            await retryEmailNotification(store, notification, error);
             appLogger.warn("Email notification delivery failed", {
               error,
               spaceId,

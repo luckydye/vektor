@@ -65,7 +65,6 @@ export function AgentSettings() {
       if (provider === "ollama") {
         body = { provider: "ollama", model, baseUrl };
       } else {
-        // Keep existing key if blank and one already exists
         const current = meta();
         const existingKeyOk =
           !apiKey && current?.configured && (current as { hasApiKey: boolean }).hasApiKey;
@@ -74,8 +73,6 @@ export function AgentSettings() {
           return;
         }
         if (existingKeyOk) {
-          // Re-fetching the existing key isn't possible, and the backend
-          // requires apiKey for these providers — ask for it again.
           setSaveError("Enter the API key to save changes.");
           return;
         }
@@ -133,7 +130,6 @@ export function AgentSettings() {
         fallback={<div class="py-4 text-neutral-500 text-size-medium">Loading…</div>}
       >
         <div>
-          {/* Current config status */}
           <Show
             when={configured()}
             fallback={
@@ -167,7 +163,6 @@ export function AgentSettings() {
             )}
           </Show>
 
-          {/* Configuration form */}
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -254,9 +249,13 @@ export function AgentSettings() {
                   onInput={(e) => setForm("baseUrl", e.currentTarget.value)}
                   type="url"
                   required
-                  placeholder="http://127.0.0.1:11434"
+                  placeholder="https://ollama.example.com"
                   class="focus-ring w-full rounded-md border border-neutral-200 px-3 py-1.5 font-mono text-size-medium"
                 />
+                <p class="mt-1 text-neutral-500 text-size-small">
+                  Loopback and private addresses are refused unless the server runs with{" "}
+                  <code class="font-mono">VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1</code>.
+                </p>
               </div>
             </Show>
 

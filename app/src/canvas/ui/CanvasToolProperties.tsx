@@ -3,30 +3,17 @@ import { PEN_COLORS } from "#canvas/extensions/drawTool.ts";
 import type { CanvasToolProperty } from "#canvas/runtime/extensionApi.ts";
 import { type CanvasChrome, swallowPointer } from "#canvas/ui/Canvas.tsx";
 import { Icon } from "#components/Icon.tsx";
-import { t } from "#utils/lang.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
-/**
- * What the active tool will draw with.
- *
- * Rendered from the tool's declared `properties` rather than from a branch per
- * tool, so a new tool gets a properties bar by declaring one — the chrome never
- * learns its name. Only the control *kinds* live here.
- *
- * Solid rather than lit for the same reason as the toolbar: it is buttons bound
- * to commands, and it changes when the reader picks something, not when the
- * canvas paints.
- */
 export function CanvasToolProperties(props: { chrome: CanvasChrome }) {
-  // `chrome` is one object built in Canvas.tsx and never replaced, so reading it
-  // once at setup is the same as reading it per use.
+  const t = useTranslation();
+
   const { view, frame, run } = props.chrome; // solid-reactivity-ok: stable object
 
   const visible = frame(() => view()?.hasToolProperties() ?? false);
   const properties = frame(() => view()?.activeToolProperties() ?? []);
   const palettes = frame(() => view()?.activeToolColorPalettes() ?? []);
   const activeColors = frame(() => view()?.state.activeColors ?? {});
-  // Pen colour is shared engine state, not a tool property: the shape tool
-  // stamps in the same colour. Shown for any tool that paints ink.
   const inkTool = frame(() => view()?.state.activeTool === "draw");
   const penColor = frame(() => view()?.state.penColor);
   const currentValue = (property: CanvasToolProperty) =>
@@ -93,8 +80,6 @@ export function CanvasToolProperties(props: { chrome: CanvasChrome }) {
                                 )
                               }
                             >
-                              {/* The dot shows the true relative width, clamped
-                                  so the largest stop still fits the button. */}
                               <span
                                 class="canvas-tool-size-dot"
                                 style={{

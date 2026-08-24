@@ -345,7 +345,12 @@ export const DragHandle = Extension.create<DragHandleOptions>({
       dragPreview = preview;
       event.dataTransfer.setDragImage(preview, 0, 0);
 
-      view.dragging = { slice, move: true };
+      // The dragged node travels with the drag: the drop handler deletes exactly
+      // this node instead of falling back to the live selection. For a table,
+      // prosemirror-tables has by then normalised the whole-table NodeSelection
+      // into a cell selection, and deleting that empties the cells and leaves
+      // the table behind instead of moving it.
+      view.dragging = { slice, move: true, node: selection } as EditorView["dragging"];
       view.dispatch(state.tr.setSelection(selection));
       setTimeout(() => {
         element.style.pointerEvents = "none";

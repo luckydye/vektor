@@ -1,11 +1,11 @@
 import { Show } from "solid-js";
+import { Permission } from "#acl/permissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { AgentSettings } from "./AgentSettings.tsx";
 import { ArchivedDocuments } from "./ArchivedDocuments.tsx";
 import { ExtensionSettings } from "./ExtensionSettings.tsx";
 import { JobsSettings } from "./JobsSettings.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
-import { SpaceAccessTokensSettings } from "./SpaceAccessTokensSettings.tsx";
 import { SpaceGeneralSettings } from "./SpaceGeneralSettings.tsx";
 import { SpaceSecretsSettings } from "./SpaceSecretsSettings.tsx";
 
@@ -65,10 +65,10 @@ export function SpaceSettings() {
               </p>
               <ExtensionSettings />
 
-              <SpaceSecretsSettings />
+              <Show when={currentSpace()?.userRole === Permission.OWNER}>
+                <SpaceSecretsSettings />
+              </Show>
             </section>
-
-            <SpaceAccessTokensSettings />
           </>
         ),
         agent: () => (

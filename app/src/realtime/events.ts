@@ -1,13 +1,16 @@
 /**
  * In-process fan-out for realtime topic events: DB writes call `sendSyncEvent`,
- * which coalesces per space over a short debounce window, and the WebSocket
- * server (`websocket.ts`) subscribes to push them to connected clients.
+ * which coalesces per space over a short debounce window, and every connection's
+ * `TopicSubscriptions` subscribes to push them to the client.
  */
 
+import { publishAuthorizationChange } from "#acl/events.ts";
+import { documentLockChangedKind } from "./changes.ts";
 import {
   type RealtimeEventInput,
   type RealtimeTopic,
   type RealtimeTopicEvent,
+  realtimeTopics,
   toRealtimeTopicEvent,
 } from "./protocol.ts";
 
@@ -71,10 +74,15 @@ export function sendSyncEvent(spaceId: string, ...events: RealtimeEventInput[]) 
 
   const pendingTopicEvents =
     pendingEvents.get(spaceId) ?? new Map<RealtimeTopic, RealtimeTopicEvent>();
+  let authorizationChanged = false;
   for (const event of events) {
     const normalizedEvent = toRealtimeTopicEvent(event);
+    authorizationChanged ||=
+      normalizedEvent.topic === realtimeTopics.acl ||
+      normalizedEvent.data?.kind === documentLockChangedKind;
     pendingTopicEvents.set(normalizedEvent.topic, normalizedEvent);
   }
+  if (authorizationChanged) publishAuthorizationChange({ spaceId });
   pendingEvents.set(spaceId, pendingTopicEvents);
 
   if (debounceTimer) {

@@ -39,8 +39,8 @@ import {
   wrapTextIcon,
 } from "#assets/icons.ts";
 import { Icon } from "#components/Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { Popover } from "#spreadsheet/Popover.tsx";
-import { t } from "#utils/lang.ts";
 
 interface Props {
   model: Model;
@@ -125,6 +125,7 @@ function withFewerDecimals(format: string): string {
 }
 
 export function Toolbar(props: Props) {
+  const t = useTranslation();
   /** The style of the selected cell, which is what the controls reflect. */
   const style = () => {
     props.revision();
@@ -451,6 +452,7 @@ function ColorControl(props: {
   canEdit: boolean;
   onPick: (color: Color) => void;
 }) {
+  const t = useTranslation();
   return (
     <Popover
       class="ic-menu--palette"

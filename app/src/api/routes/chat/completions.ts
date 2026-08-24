@@ -1,0 +1,144 @@
+import { authenticateJobTokenOrSpaceRole } from "#acl/guards.ts";
+import { Permission } from "#acl/permissions.ts";
+import {
+  badRequestResponse,
+  errorResponse,
+  parseJsonBody,
+  withApiErrorHandling,
+} from "#api/http.ts";
+import { proxyToAnthropic } from "#api/provider/anthropic.ts";
+import { proxyToOllama } from "#api/provider/ollama.ts";
+import {
+  getOpenAICompatibleChatCompletionsUrl,
+  getOpenAICompatibleHeaders,
+} from "#api/provider/openaiCompatible.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getAIProvider } from "#db/space/aiConfig.ts";
+import { appLogger } from "#observability/logger.ts";
+import { SsrfError } from "#utils/ssrf.ts";
+
+export const POST: ApiRouteHandler = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const spaceId = context.req.raw.headers.get("X-Space-Id");
+      if (!spaceId) {
+        throw badRequestResponse("X-Space-Id header is required");
+      }
+
+      // `spaceId` is a client-supplied header, so a session alone proves nothing
+      // about this space: without a role check any logged-in user could name
+      // someone else's space and spend its provider credentials. The shared
+      // guard also scopes user-carrying job tokens to that user's real access,
+      // which a signature-only check cannot do.
+      await authenticateJobTokenOrSpaceRole(
+        context.var.credentials,
+        spaceId,
+        Permission.VIEWER,
+      );
+
+      const provider = await getAIProvider(await openSpaceStore(spaceId));
+      const bodyJson = await parseJsonBody(context.req.raw);
+
+      if (provider.provider === "anthropic") {
+        return proxyToAnthropic(
+          provider.apiKey,
+          provider.model,
+          bodyJson,
+          context.req.raw.signal,
+        );
+      }
+      if (provider.provider === "ollama") {
+        return proxyToOllama(
+          provider.baseUrl,
+          provider.model,
+          bodyJson,
+          context.req.raw.signal,
+        );
+      }
+
+      bodyJson.model = provider.model;
+      const response = await fetch(getOpenAICompatibleChatCompletionsUrl(provider), {
+        method: "POST",
+        headers: getOpenAICompatibleHeaders(provider),
+        body: JSON.stringify(bodyJson),
+        signal: context.req.raw.signal,
+      });
+
+      await logChatCompletionUpstreamFailure(provider.provider, provider.model, response);
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          "Content-Type": response.headers.get("Content-Type") ?? "application/json",
+          "Cache-Control": "no-cache",
+        },
+      });
+    },
+    {
+      fallbackMessage: "Proxy request failed",
+      onError: (error) => {
+        appLogger.error("Chat completions proxy failed", {
+          error,
+        });
+        // Stored configuration, not an upstream failure — and the settings page
+        // still reports the baseUrl as configured, so a generic 500 strands them.
+        if (error instanceof SsrfError) {
+          return errorResponse(
+            `AI provider base URL is not allowed: ${error.message}. Update it in space settings, or start the server with VEKTOR_JOB_FETCH_ALLOW_PRIVATE=1 to reach a private host.`,
+            502,
+          );
+        }
+        return errorResponse(
+          `Proxy request failed: ${chatCompletionProxyErrorDetail(error)}`,
+          500,
+        );
+      },
+    },
+  );
+
+/**
+ * Fetch implementations commonly wrap the useful DNS/socket failure in
+ * `cause`, leaving only "fetch failed" as the outer message. Include that
+ * nested detail in the authorized API response without exposing stacks or
+ * serialized request options (which may contain provider credentials).
+ */
+function chatCompletionProxyErrorDetail(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  if (error.cause instanceof Error && error.cause.message !== error.message) {
+    return `${error.message}: ${error.cause.message}`;
+  }
+
+  return error.message;
+}
+
+async function logChatCompletionUpstreamFailure(
+  provider: string,
+  model: string,
+  response: Response,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  let responseBody: string;
+  try {
+    responseBody = await response.clone().text();
+  } catch (error) {
+    responseBody =
+      error instanceof Error
+        ? `failed to read upstream body: ${error.message}`
+        : "failed to read upstream body";
+  }
+
+  appLogger.error("Chat completions upstream error", {
+    provider,
+    model,
+    statusCode: response.status,
+    contentType: response.headers.get("Content-Type"),
+    body: responseBody.slice(0, 2000),
+  });
+}

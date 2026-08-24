@@ -22,7 +22,13 @@ export function hslToHex(h: number, s: number, l: number): string {
   return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
 }
 
-function generateColorPalette(baseColor: string): Record<string, string> {
+/**
+ * The light-mode brand ramp a base color produces, keyed by Tailwind-style
+ * stop. `generatePaletteCss` turns this into the app's custom properties;
+ * anything rendering outside the stylesheet — notification email — reads the
+ * stops directly so it lands on the same colors the space's UI uses.
+ */
+export function generateColorPalette(baseColor: string): Record<string, string> {
   const [h, s] = hexToHsl(baseColor);
 
   const palette: Record<string, string> = {};
@@ -141,13 +147,20 @@ function componentToHex(c: number): string {
 }
 
 export function generatePaletteCss(baseColor: string) {
+  const declare = (prefix: string, palette: Record<string, string>) =>
+    Object.entries(palette)
+      .map(([key, value]) => `--color-${prefix}-${key}: ${value};`)
+      .join("\n  ");
+
   return {
-    light: Object.entries(generateColorPalette(baseColor))
-      .map(([key, value]) => `--color-primary-${key}: ${value};`)
-      .join("\n  "),
-    dark: Object.entries(generateDarkColorPalette(baseColor))
-      .map(([key, value]) => `--color-primary-${key}: ${value};`)
-      .join("\n  "),
+    light: [
+      declare("primary", generateColorPalette(baseColor)),
+      declare("neutral", generateNeutralPalette(baseColor, NEUTRAL_LIGHT_STOPS)),
+    ].join("\n  "),
+    dark: [
+      declare("primary", generateDarkColorPalette(baseColor)),
+      declare("neutral", generateNeutralPalette(baseColor, NEUTRAL_DARK_STOPS)),
+    ].join("\n  "),
   };
 }
 
@@ -170,4 +183,91 @@ export function getTextColor(bgColor: string | undefined) {
 /** True for a full 6-digit hex color (`#rrggbb`), the only format we persist. */
 export function isHexColor(value: string | null): value is string {
   return /^#[0-9a-f]{6}$/i.test(value ?? "");
+}
+
+/**
+ * A brand color as ink on a light surface: its own hue and saturation at the
+ * lightness `generateColorPalette` gives the `600` stop, so another space's name
+ * reads the way `text-primary-600` reads for the space you are in. Taking the hex
+ * as given would leave a pastel brand illegible and a near-black one flat.
+ */
+export function brandTextColor(color: string | undefined): string | undefined {
+  if (!color || !isHexColor(color)) return undefined;
+
+  const [hue, saturation] = hexToHsl(color);
+  return hslToHex(hue, saturation, 0.35);
+}
+
+/**
+ * Lightness of each neutral stop, mirroring the hand-picked ramps in
+ * `theme.css` so a tinted neutral drops in where the static one was.
+ */
+const NEUTRAL_LIGHT_STOPS: Array<[string, number]> = [
+  ["10", 100],
+  ["25", 96],
+  ["50", 97.6],
+  ["100", 91],
+  ["200", 82],
+  ["300", 69],
+  ["400", 56.5],
+  ["500", 43],
+  ["600", 35.5],
+  ["700", 24],
+  ["800", 16],
+  ["900", 8],
+  ["950", 5],
+];
+
+const NEUTRAL_DARK_STOPS: Array<[string, number]> = [
+  ["10", 8],
+  ["25", 12.5],
+  ["50", 13],
+  ["100", 13.5],
+  ["200", 18.5],
+  ["300", 32],
+  ["400", 46],
+  ["500", 70],
+  ["600", 80],
+  ["700", 90.5],
+  ["800", 95.5],
+  ["900", 98.5],
+  ["950", 100],
+];
+
+/**
+ * Saturation of the tint at mid lightness. Absolute rather than a fraction of
+ * the brand's own saturation, which left a muted brand with plain greys — but
+ * capped by it, so a grey brand still gets grey neutrals.
+ */
+const NEUTRAL_TINT = 0.14;
+
+/**
+ * The greys of a space, tinted with the *complement* of its brand hue. A neutral
+ * carrying the brand's own hue reads as a washed-out primary and muddies the
+ * surfaces it sits behind; the opposite hue stays visibly neutral while still
+ * belonging to the palette, and makes primary-on-neutral pop instead of blend.
+ *
+ * Saturation tapers toward the ends of the ramp so the extremes stay near white
+ * and near black rather than turning into pastels.
+ */
+function generateNeutralPalette(
+  baseColor: string,
+  stops: Array<[string, number]>,
+): Record<string, string> {
+  const [hue, saturation] = hexToHsl(baseColor);
+  const complement = (hue + 180) % 360;
+
+  const palette: Record<string, string> = {};
+
+  for (const [key, lightness] of stops) {
+    // Peaks at mid lightness, falls to zero at pure white/black.
+    const taper = 1 - Math.abs(lightness - 50) / 50;
+    palette[key] = hslToHex(
+      complement,
+      Math.min(saturation, NEUTRAL_TINT) * (0.45 + 0.55 * taper),
+      lightness / 100,
+    );
+  }
+
+  return palette;
 }

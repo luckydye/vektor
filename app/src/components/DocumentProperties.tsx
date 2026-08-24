@@ -6,16 +6,19 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useProperties } from "#composeables/useProperties.ts";
 import type { Property } from "#documents/properties.ts";
 import {
+  canonicalPropertyKey,
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
 } from "#documents/properties.ts";
-import { getTextColor } from "#utils/color.ts";
-import { currentLang, t } from "#utils/lang.ts";
+import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
+import type { CategoryBadgeData } from "./CategoryBadge.tsx";
 import type { IconName } from "./Icon.tsx";
 import { PropertyChip } from "./PropertyChip.tsx";
 import { PropertyPopover } from "./PropertyPopover.tsx";
 import type { SelectMenuItem } from "./SelectMenu.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId?: string;
@@ -26,21 +29,27 @@ interface Props {
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
 }
 
-// Backdrop grid options for canvas documents, mirroring the layout picker.
-const GRID_TYPE_OPTIONS: SelectMenuItem[] = [
-  { id: "grid", label: t("Grid"), icon: "grid-grid" },
-  { id: "clean", label: t("Clean"), icon: "grid-clean" },
-  { id: "dots", label: t("Dots"), icon: "grid-dots" },
+type TranslatableSelectMenuItem = Omit<SelectMenuItem, "label"> & {
+  label: TranslationKey;
+};
+
+const GRID_TYPE_OPTIONS: TranslatableSelectMenuItem[] = [
+  { id: "grid", label: "Grid", icon: "grid-grid" },
+  { id: "clean", label: "Clean", icon: "grid-clean" },
+  { id: "dots", label: "Dots", icon: "grid-dots" },
 ];
 
-const propertyTypes: SelectMenuItem[] = [
-  { id: "text", label: t("Text"), icon: "add" },
-  { id: "multi-select", label: t("Multi Select"), icon: "add" },
-  { id: "date", label: t("Date"), icon: "add" },
-  { id: "user", label: t("User"), icon: "people" },
+const propertyTypes: TranslatableSelectMenuItem[] = [
+  { id: "text", label: "Text", icon: "add" },
+  { id: "multi-select", label: "Multi Select", icon: "add" },
+  { id: "date", label: "Date", icon: "add" },
+  { id: "user", label: "User", icon: "people" },
 ];
 
 export function DocumentProperties(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { categories } = useCategories();
   const { document } = useDocument(() => props.documentId);
   const { updateProperty, deleteProperty, properties: spaceProperties } = useProperties();
@@ -56,6 +65,12 @@ export function DocumentProperties(props: Props) {
 
   const isDocumentType = createMemo(() => effectiveDocumentType() === "document");
   const isCanvasType = createMemo(() => effectiveDocumentType() === "canvas");
+
+  const isTemplate = createMemo(
+    () =>
+      propertyValueToScalar(documentProperties()[templatePropertyKey]) ===
+      templatePropertyValue,
+  );
 
   function requireDocumentId(): string {
     if (!props.documentId) {
@@ -91,7 +106,6 @@ export function DocumentProperties(props: Props) {
     setIsCreatePopoverOpen(false);
   };
 
-  /** Resolves a slug against the loaded categories, falling back to the SSR one. */
   const findCategory = (categorySlug: string) =>
     categories().find((c) => c.slug === categorySlug || c.name === categorySlug) ||
     (props.initialCategory?.slug === categorySlug ||
@@ -99,20 +113,20 @@ export function DocumentProperties(props: Props) {
       ? props.initialCategory
       : null);
 
-  const getCategoryIcon = (categorySlug: string | undefined) => {
-    if (!categorySlug) return null;
+  const getCategoryBadge = (
+    categorySlug: string | undefined,
+  ): CategoryBadgeData | undefined => {
+    if (!categorySlug) return undefined;
 
     const category = findCategory(categorySlug);
-    if (!category) return null;
+    if (!category) return undefined;
 
-    const bgColor = category.color || "#E5E7EB";
-    const textColor = getTextColor(bgColor);
-    const iconText = category.icon || category.name.charAt(0).toUpperCase();
-
-    return `<div class="w-[18px] h-[18px] rounded-sm flex items-center justify-center text-size-small font-semibold" style="background-color: ${bgColor}; color: ${textColor};">${iconText}</div>`;
+    return { name: category.name, color: category.color, icon: category.icon };
   };
 
   const getPropertyLabel = (property: Property): string => {
+    if (property.id === templatePropertyKey) return t("Template");
+
     if (property.name?.toLowerCase() === "category") {
       const categorySlug = propertyValueToScalar(property.value);
       if (!categorySlug) return t("Category");
@@ -131,7 +145,7 @@ export function DocumentProperties(props: Props) {
       const option = GRID_TYPE_OPTIONS.find(
         (o) => o.id === propertyValueToScalar(property.value),
       );
-      return option?.label ?? t("Dots");
+      return option ? t(option.label) : t("Dots");
     }
 
     const value = propertyValueToScalar(property.value);
@@ -143,10 +157,9 @@ export function DocumentProperties(props: Props) {
     }
 
     if (property.type === "date" && value) {
-      // Format date as readable string (e.g., "Jan 15, 2024")
       const date = new Date(value);
       if (!Number.isNaN(date.getTime())) {
-        return date.toLocaleDateString(currentLang(), {
+        return date.toLocaleDateString(lang, {
           month: "short",
           day: "numeric",
           year: "numeric",
@@ -168,13 +181,13 @@ export function DocumentProperties(props: Props) {
     return property.value.map((value) => getPropertyLabel({ ...property, value }));
   };
 
-  /** A category's chip is a generated colour badge, not an icon from the set. */
-  const getPropertyIconSvg = (property: Property) =>
+  const getPropertyBadge = (property: Property) =>
     property.id?.toLowerCase() === "category"
-      ? (getCategoryIcon(propertyValueToScalar(property.value)) ?? undefined)
+      ? getCategoryBadge(propertyValueToScalar(property.value))
       : undefined;
 
   const getPropertyIcon = (property: Property): IconName | undefined => {
+    if (property.id === templatePropertyKey) return "copy";
     if (property.id?.toLowerCase() === "category") return undefined;
     if (property.id?.toLowerCase() === "layout") {
       return propertyValueToScalar(property.value) === "full"
@@ -193,6 +206,8 @@ export function DocumentProperties(props: Props) {
   };
 
   const getPropertyVariant = (property: Property): "default" | "special" => {
+    if (property.id === templatePropertyKey) return "special";
+
     const propertyName = property.name?.toLowerCase();
     return propertyName === "category" ||
       propertyName === "layout" ||
@@ -202,6 +217,8 @@ export function DocumentProperties(props: Props) {
   };
 
   const getPropertyName = (property: Property): string => {
+    if (property.id === templatePropertyKey) return t("Template");
+
     const normalizedName = property.name.toLowerCase();
     if (normalizedName === "category") return t("Category");
     if (normalizedName === "layout") return t("Layout");
@@ -215,10 +232,11 @@ export function DocumentProperties(props: Props) {
 
   const getPropertyValues = async (property: Property): Promise<SelectMenuItem[]> => {
     if (property.name?.toLowerCase() === "category") {
-      return categories().map((cat) => {
-        const badge = getCategoryIcon(cat.slug);
-        return { id: cat.slug, label: cat.name, iconSvg: badge || undefined };
-      });
+      return categories().map((cat) => ({
+        id: cat.slug,
+        label: cat.name,
+        badge: { name: cat.name, color: cat.color, icon: cat.icon },
+      }));
     }
 
     if (property.name?.toLowerCase() === "layout") {
@@ -229,7 +247,11 @@ export function DocumentProperties(props: Props) {
     }
 
     if (property.name?.toLowerCase() === "gridtype") {
-      return GRID_TYPE_OPTIONS.map((o) => ({ id: o.id, label: o.label, icon: o.icon }));
+      return GRID_TYPE_OPTIONS.map((o) => ({
+        id: o.id,
+        label: t(o.label),
+        icon: o.icon,
+      }));
     }
 
     if (property.type === "user") {
@@ -249,7 +271,9 @@ export function DocumentProperties(props: Props) {
 
     return (
       spaceProperties()
-        ?.find((sp) => sp.name === property.name)
+        ?.find(
+          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(property.name),
+        )
         ?.values?.map((value) => ({
           id: value,
           label: value,
@@ -260,6 +284,18 @@ export function DocumentProperties(props: Props) {
 
   const properties = createMemo((): Property[] => {
     const list: Property[] = [];
+
+    // The marker is hidden from the editable properties below, so being a
+    // template would otherwise be invisible on the document itself. It leads
+    // the row and stays read-only: publishing is what sets it.
+    if (isTemplate()) {
+      list.push({
+        id: templatePropertyKey,
+        name: templatePropertyKey,
+        type: "select",
+        value: templatePropertyValue,
+      } as Property);
+    }
 
     list.push({
       id: "category",
@@ -289,7 +325,9 @@ export function DocumentProperties(props: Props) {
     const otherProps = Object.entries(documentProperties())
       .map(([key, value]): Property | null => {
         if (isHiddenDocumentPropertyKey(key)) return null;
-        const spaceProperty = spaceProperties()?.find((sp) => sp.name === key);
+        const spaceProperty = spaceProperties()?.find(
+          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(key),
+        );
         const propertyType = (spaceProperty?.type as Property["type"]) || "select";
 
         return {
@@ -304,12 +342,16 @@ export function DocumentProperties(props: Props) {
     return [...list, ...otherProps];
   });
 
-  const availableNewProperties = createMemo(() =>
-    spaceProperties().filter((sp) => {
+  const availableNewProperties = createMemo(() => {
+    // Folded: offering a property the document already holds under another case
+    // would overwrite its value.
+    const held = new Set(Object.keys(documentProperties()).map(canonicalPropertyKey));
+
+    return spaceProperties().filter((sp) => {
       if (isHiddenDocumentPropertyKey(sp.name)) return false;
-      return !(sp.name in documentProperties());
-    }),
-  );
+      return !held.has(canonicalPropertyKey(sp.name));
+    });
+  });
 
   return (
     <div
@@ -319,49 +361,52 @@ export function DocumentProperties(props: Props) {
       )}
     >
       <For each={properties()}>
-        {(property) => (
-          <div
-            class={twMerge(
-              "pointer-events-auto",
-              props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
-            )}
-          >
-            <Show when={props.layout === "labeled"}>
-              <span
-                class="w-28 shrink-0 truncate text-interactive text-neutral-700"
-                title={getPropertyName(property)}
-              >
-                {getPropertyName(property)}
-              </span>
-            </Show>
+        {(property) => {
+          // The chip already reads "Template", so the labeled layout keeps the
+          // name column empty for it — width and all, to stay on the grid.
+          const isMarker = property.id === templatePropertyKey;
+          const readonly = () => props.readonly || isMarker;
 
-            <PropertyChip
-              label={getPropertyLabel(property)}
-              nameLabel={getPropertyName(property)}
-              valueLabels={getPropertyValueLabels(property)}
-              icon={getPropertyIcon(property)}
-              iconSvg={getPropertyIconSvg(property)}
-              variant={getPropertyVariant(property)}
-              readonly={props.readonly}
-              property={property}
-              showTooltip={props.layout !== "labeled"}
-              allowMultiple={
-                property.type === "multi-select" || Array.isArray(property.value)
-              }
-              propertyValues={getPropertyValues}
-              onUpdate={
-                props.readonly
-                  ? undefined
-                  : (updated) => void handleUpdateProperty(updated)
-              }
-              onDelete={
-                props.readonly
-                  ? undefined
-                  : (deleted) => void handleDeleteProperty(deleted)
-              }
-            />
-          </div>
-        )}
+          return (
+            <div
+              class={twMerge(
+                "pointer-events-auto",
+                props.layout === "labeled" ? "flex min-h-8 items-center gap-3xs" : "",
+              )}
+            >
+              <Show when={props.layout === "labeled"}>
+                <span
+                  class="w-28 shrink-0 truncate text-interactive text-neutral-700"
+                  title={isMarker ? undefined : getPropertyName(property)}
+                >
+                  {isMarker ? "" : getPropertyName(property)}
+                </span>
+              </Show>
+
+              <PropertyChip
+                label={getPropertyLabel(property)}
+                nameLabel={getPropertyName(property)}
+                valueLabels={getPropertyValueLabels(property)}
+                icon={getPropertyIcon(property)}
+                badge={getPropertyBadge(property)}
+                variant={getPropertyVariant(property)}
+                readonly={readonly()}
+                property={property}
+                showTooltip={props.layout !== "labeled" && !isMarker}
+                allowMultiple={
+                  property.type === "multi-select" || Array.isArray(property.value)
+                }
+                propertyValues={getPropertyValues}
+                onUpdate={
+                  readonly() ? undefined : (updated) => void handleUpdateProperty(updated)
+                }
+                onDelete={
+                  readonly() ? undefined : (deleted) => void handleDeleteProperty(deleted)
+                }
+              />
+            </div>
+          );
+        }}
       </For>
 
       <Show when={!props.readonly}>
@@ -382,7 +427,10 @@ export function DocumentProperties(props: Props) {
 
           <PropertyPopover
             isOpen={isCreatePopoverOpen()}
-            propertyTypes={propertyTypes}
+            propertyTypes={propertyTypes.map((item) => ({
+              ...item,
+              label: t(item.label),
+            }))}
             spaceProperties={availableNewProperties()}
             onUpdateIsOpen={setIsCreatePopoverOpen}
             onCreate={(property) => void handleCreate(property)}

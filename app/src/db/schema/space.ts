@@ -76,21 +76,27 @@ export const document = sqliteTable("document", {
   createdBy: text("created_by").notNull(),
 });
 
-export const revision = sqliteTable("revision", {
-  id: text("id").primaryKey(),
-  documentId: text("document_id")
-    .notNull()
-    .references(() => document.id, { onDelete: "cascade" }),
-  rev: integer("rev").notNull(),
-  slug: text("slug").notNull(),
-  snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
-  checksum: text("checksum").notNull(),
-  parentRev: integer("parent_rev"),
-  status: text("status"),
-  message: text("message"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-});
+export const revision = sqliteTable(
+  "revision",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    rev: integer("rev").notNull(),
+    slug: text("slug").notNull(),
+    snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
+    checksum: text("checksum").notNull(),
+    parentRev: integer("parent_rev"),
+    status: text("status"),
+    message: text("message"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    createdBy: text("created_by").notNull(),
+  },
+  // `currentRev` and `publishedRev` are (documentId, rev) pointers, so a second
+  // row at one number makes them ambiguous rather than merely untidy.
+  (t) => [uniqueIndex("revision_document_id_rev_unique").on(t.documentId, t.rev)],
+);
 
 export const property = sqliteTable(
   "property",
@@ -120,6 +126,14 @@ export const category = sqliteTable("category", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
+/**
+ * Every permission grant in the space — and every credential, because an access
+ * token and a share link *are* grants that carry one. Folding them together
+ * means a credential cannot outlive its grant or leave one behind: the row is
+ * both, scoped to exactly one resource.
+ *
+ * The trailing columns are null on an ordinary grant.
+ */
 export const acl = sqliteTable(
   "acl",
   {
@@ -130,6 +144,29 @@ export const acl = sqliteTable(
     permission: text("permission").notNull(),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+
+    /** Human label for a credential, shown in space settings. */
+    name: text("name"),
+    /**
+     * The credential this row is opened with, read according to `kind`: an
+     * access token's SHA-256, or a share link's Argon2id password verifier; null
+     * on the ordinary grants that carry none. Unique — on the column for a table
+     * created from this schema, and the `acl_secret_unique` index for one
+     * migrated into it, because SQLite cannot ADD COLUMN with UNIQUE.
+     */
+    secret: text("secret").unique(),
+    /**
+     * `token`, `link`, or null on a grant carrying no credential. It says how
+     * `secret` reads, and keeps the editor-facing share endpoints away from
+     * owner-minted access tokens.
+     */
+    kind: text("kind"),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+    /** The user an access token delegates; it never outranks what they hold. */
+    createdBy: text("created_by"),
+    /** Soft revoke: the row keeps its grant but stops authenticating. */
+    revokedAt: integer("revoked_at", { mode: "timestamp" }),
   },
   (table) => ({
     pk: primaryKey({
@@ -140,6 +177,9 @@ export const acl = sqliteTable(
 
 export type AclEntry = typeof acl.$inferSelect;
 export type AclInsert = typeof acl.$inferInsert;
+
+/** An `acl` row that carries a credential. */
+export type AccessToken = AclEntry & { secret: string; createdBy: string };
 
 export const spaceSecret = sqliteTable(
   "space_secret",
@@ -256,24 +296,12 @@ export const emailNotificationOutbox = sqliteTable(
 
 export type EmailNotificationOutbox = typeof emailNotificationOutbox.$inferSelect;
 
-export const accessToken = sqliteTable("access_token", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  token: text("token").notNull().unique(),
-  expiresAt: integer("expires_at", { mode: "timestamp" }),
-  lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-  revokedAt: integer("revoked_at", { mode: "timestamp" }),
-});
-
-export type AccessToken = typeof accessToken.$inferSelect;
-export type AccessTokenInsert = typeof accessToken.$inferInsert;
-
 export const workflowSchedule = sqliteTable("workflow_schedule", {
   id: text("id").primaryKey(),
   /** Workflow document id this schedule runs on each tick */
-  documentId: text("document_id").notNull(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => document.id, { onDelete: "cascade" }),
   /** Standard 5-field cron expression, e.g. "0 6 * * 1" */
   cronExpression: text("cron_expression").notNull(),
   /** IANA timezone for evaluating the expression (defaults to server time) */
@@ -320,6 +348,11 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
   messages: text("messages").notNull(),
   conversationHistory: text("conversation_history").notNull(),
   shellSnapshot: text("shell_snapshot"),
+  /**
+   * Role of the last conversation turn, denormalised out of the history so the
+   * session picker can list a space without reading its transcripts.
+   */
+  lastMessageRole: text("last_message_role"),
 });
 
 /** Ephemeral full-text index of uploaded files. Fully rebuildable by scanning the uploads directory. */
@@ -333,6 +366,8 @@ export const file = sqliteTable("file", {
   /** Original filename as uploaded (not the randomised on-disk name) */
   originalName: text("original_name"),
   mimeType: text("mime_type"),
+  /** Size of the stored bytes, for listings that label a file without reading it */
+  size: integer("size"),
   /** Relative URL to access the file, e.g. /api/v1/spaces/{spaceId}/uploads/{key} */
   url: text("url"),
   updatedAt: integer("updated_at", { mode: "timestamp" }),

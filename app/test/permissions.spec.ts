@@ -7,40 +7,43 @@ import {
   canView,
   canViewAudit,
   canViewHistory,
-  hasFeature,
-  hasPermission,
+  Feature,
+  highestPermission,
   isOwner,
-} from "#composeables/usePermissions.ts";
+  meetsPermissionLevel,
+  Permission,
+  resolveFeature,
+} from "#acl/permissions.ts";
 
 describe("Permission Utilities", () => {
-  describe("hasPermission", () => {
+  describe("meetsPermissionLevel", () => {
     it("should return true when user has exact permission level", () => {
-      expect(hasPermission("viewer", "viewer")).toBe(true);
-      expect(hasPermission("editor", "editor")).toBe(true);
-      expect(hasPermission("owner", "owner")).toBe(true);
+      expect(meetsPermissionLevel(Permission.VIEWER, Permission.VIEWER)).toBe(true);
+      expect(meetsPermissionLevel(Permission.EDITOR, Permission.EDITOR)).toBe(true);
+      expect(meetsPermissionLevel(Permission.OWNER, Permission.OWNER)).toBe(true);
     });
 
     it("should return true when user has higher permission level", () => {
-      expect(hasPermission("owner", "editor")).toBe(true);
-      expect(hasPermission("owner", "viewer")).toBe(true);
-      expect(hasPermission("editor", "viewer")).toBe(true);
+      expect(meetsPermissionLevel(Permission.OWNER, Permission.EDITOR)).toBe(true);
+      expect(meetsPermissionLevel(Permission.OWNER, Permission.VIEWER)).toBe(true);
+      expect(meetsPermissionLevel(Permission.EDITOR, Permission.VIEWER)).toBe(true);
     });
 
     it("should return false when user has lower permission level", () => {
-      expect(hasPermission("viewer", "editor")).toBe(false);
-      expect(hasPermission("viewer", "owner")).toBe(false);
-      expect(hasPermission("editor", "owner")).toBe(false);
+      expect(meetsPermissionLevel(Permission.VIEWER, Permission.EDITOR)).toBe(false);
+      expect(meetsPermissionLevel(Permission.VIEWER, Permission.OWNER)).toBe(false);
+      expect(meetsPermissionLevel(Permission.EDITOR, Permission.OWNER)).toBe(false);
     });
 
     it("should return false when userRole is undefined", () => {
-      expect(hasPermission(undefined, "viewer")).toBe(false);
-      expect(hasPermission(undefined, "editor")).toBe(false);
-      expect(hasPermission(undefined, "owner")).toBe(false);
+      expect(meetsPermissionLevel(undefined, Permission.VIEWER)).toBe(false);
+      expect(meetsPermissionLevel(undefined, Permission.EDITOR)).toBe(false);
+      expect(meetsPermissionLevel(undefined, Permission.OWNER)).toBe(false);
     });
 
     it("should return false for invalid role strings", () => {
-      expect(hasPermission("invalid", "viewer")).toBe(false);
-      expect(hasPermission("guest", "viewer")).toBe(false);
+      expect(meetsPermissionLevel("invalid", Permission.VIEWER)).toBe(false);
+      expect(meetsPermissionLevel("guest", Permission.VIEWER)).toBe(false);
     });
   });
 
@@ -108,67 +111,89 @@ describe("Permission Utilities", () => {
   describe("Permission Hierarchy", () => {
     it("should enforce correct hierarchy: owner > editor > viewer", () => {
       // Owner can do everything
-      expect(hasPermission("owner", "owner")).toBe(true);
-      expect(hasPermission("owner", "editor")).toBe(true);
-      expect(hasPermission("owner", "viewer")).toBe(true);
+      expect(meetsPermissionLevel(Permission.OWNER, Permission.OWNER)).toBe(true);
+      expect(meetsPermissionLevel(Permission.OWNER, Permission.EDITOR)).toBe(true);
+      expect(meetsPermissionLevel(Permission.OWNER, Permission.VIEWER)).toBe(true);
 
       // Editor can do editor, viewer
-      expect(hasPermission("editor", "owner")).toBe(false);
-      expect(hasPermission("editor", "editor")).toBe(true);
-      expect(hasPermission("editor", "viewer")).toBe(true);
+      expect(meetsPermissionLevel(Permission.EDITOR, Permission.OWNER)).toBe(false);
+      expect(meetsPermissionLevel(Permission.EDITOR, Permission.EDITOR)).toBe(true);
+      expect(meetsPermissionLevel(Permission.EDITOR, Permission.VIEWER)).toBe(true);
 
       // Viewer can only view
-      expect(hasPermission("viewer", "owner")).toBe(false);
-      expect(hasPermission("viewer", "editor")).toBe(false);
-      expect(hasPermission("viewer", "viewer")).toBe(true);
+      expect(meetsPermissionLevel(Permission.VIEWER, Permission.OWNER)).toBe(false);
+      expect(meetsPermissionLevel(Permission.VIEWER, Permission.EDITOR)).toBe(false);
+      expect(meetsPermissionLevel(Permission.VIEWER, Permission.VIEWER)).toBe(true);
     });
   });
 
-  describe("hasFeature", () => {
+  describe("highestPermission", () => {
+    it("picks the strongest grant regardless of order", () => {
+      expect(highestPermission([Permission.VIEWER, Permission.EDITOR])).toBe(
+        Permission.EDITOR,
+      );
+      expect(highestPermission([Permission.OWNER, Permission.VIEWER])).toBe(
+        Permission.OWNER,
+      );
+    });
+
+    it("ignores values that are not roles", () => {
+      expect(highestPermission(["comment", undefined, Permission.VIEWER])).toBe(
+        Permission.VIEWER,
+      );
+    });
+
+    it("returns undefined when there is no role to report", () => {
+      expect(highestPermission([])).toBeUndefined();
+      expect(highestPermission([undefined, "admin"])).toBeUndefined();
+    });
+  });
+
+  describe("resolveFeature", () => {
     it("should return true for explicitly granted features", () => {
       const features = { comment: true, view_history: false };
-      expect(hasFeature("viewer", "comment", features)).toBe(true);
+      expect(resolveFeature("viewer", Feature.COMMENT, features)).toBe(true);
     });
 
     it("should return false for explicitly denied features", () => {
       const features = { comment: false, view_history: true };
-      expect(hasFeature("owner", "comment", features)).toBe(false);
+      expect(resolveFeature("owner", Feature.COMMENT, features)).toBe(false);
     });
 
     it("should fall back to defaults when no explicit feature set", () => {
       // Owner defaults
-      expect(hasFeature("owner", "comment")).toBe(true);
-      expect(hasFeature("owner", "view_history")).toBe(true);
-      expect(hasFeature("owner", "view_audit")).toBe(true);
-      expect(hasFeature("owner", "manage_extensions")).toBe(true);
+      expect(resolveFeature("owner", Feature.COMMENT)).toBe(true);
+      expect(resolveFeature("owner", Feature.VIEW_HISTORY)).toBe(true);
+      expect(resolveFeature("owner", Feature.VIEW_AUDIT)).toBe(true);
+      expect(resolveFeature("owner", Feature.MANAGE_EXTENSIONS)).toBe(true);
 
       // Editor defaults
-      expect(hasFeature("editor", "comment")).toBe(true);
-      expect(hasFeature("editor", "view_history")).toBe(true);
-      expect(hasFeature("editor", "view_audit")).toBe(true);
-      expect(hasFeature("editor", "manage_extensions")).toBe(false);
+      expect(resolveFeature("editor", Feature.COMMENT)).toBe(true);
+      expect(resolveFeature("editor", Feature.VIEW_HISTORY)).toBe(true);
+      expect(resolveFeature("editor", Feature.VIEW_AUDIT)).toBe(true);
+      expect(resolveFeature("editor", Feature.MANAGE_EXTENSIONS)).toBe(false);
 
       // Viewer defaults
-      expect(hasFeature("viewer", "comment")).toBe(false);
-      expect(hasFeature("viewer", "view_history")).toBe(false);
-      expect(hasFeature("viewer", "view_audit")).toBe(false);
-      expect(hasFeature("viewer", "manage_extensions")).toBe(false);
+      expect(resolveFeature("viewer", Feature.COMMENT)).toBe(false);
+      expect(resolveFeature("viewer", Feature.VIEW_HISTORY)).toBe(false);
+      expect(resolveFeature("viewer", Feature.VIEW_AUDIT)).toBe(false);
+      expect(resolveFeature("viewer", Feature.MANAGE_EXTENSIONS)).toBe(false);
     });
 
     it("should return false for undefined role", () => {
-      expect(hasFeature(undefined, "comment")).toBe(false);
-      expect(hasFeature(undefined, "view_history")).toBe(false);
+      expect(resolveFeature(undefined, Feature.COMMENT)).toBe(false);
+      expect(resolveFeature(undefined, Feature.VIEW_HISTORY)).toBe(false);
     });
 
     it("should return false for invalid role", () => {
-      expect(hasFeature("invalid", "comment")).toBe(false);
+      expect(resolveFeature("invalid", Feature.COMMENT)).toBe(false);
     });
 
     it("should prioritise explicit features over defaults", () => {
       // Editor normally has comment, but explicit deny overrides
-      expect(hasFeature("editor", "comment", { comment: false })).toBe(false);
+      expect(resolveFeature("editor", Feature.COMMENT, { comment: false })).toBe(false);
       // Viewer normally doesn't have comment, but explicit grant overrides
-      expect(hasFeature("viewer", "comment", { comment: true })).toBe(true);
+      expect(resolveFeature("viewer", Feature.COMMENT, { comment: true })).toBe(true);
     });
   });
 

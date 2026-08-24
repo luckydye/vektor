@@ -1,9 +1,10 @@
 import { createMemo, For, Show } from "solid-js";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate } from "#utils/dateFormat.ts";
 import { spacePath } from "#utils/utils.ts";
 
 interface Props {
@@ -21,7 +22,6 @@ function docTitle(doc: DocumentWithProperties) {
   return title ? propertyValueToText(title) : "Untitled";
 }
 
-/** Every property except the ones already shown, flattened to display strings. */
 function docTags(doc: DocumentWithProperties): string[] {
   if (!doc.properties) return [];
   const excluded = new Set(["title", "name", "headerImage"]);
@@ -31,8 +31,8 @@ function docTags(doc: DocumentWithProperties): string[] {
 }
 
 export function DocumentTeaser(props: Props) {
+  const lang = useLocale();
   const { currentSpace } = useSpace();
-  // Computed once per doc rather than the five times the template asked for it.
   const tags = createMemo(() => docTags(props.doc));
   const headerImage = createMemo(() => docHeaderImage(props.doc));
 
@@ -93,7 +93,7 @@ export function DocumentTeaser(props: Props) {
 
         <div class="mt-3">
           <p class="mb-1 font-semibold text-neutral-500 text-size-extra-small tabular-nums">
-            {formatDate(props.doc.updatedAt)}
+            {formatDate(props.doc.updatedAt, lang)}
           </p>
           <h4 class="line-clamp-3 font-bold text-primary-700 text-size-medium italic leading-snug transition-colors group-hover:text-primary-500">
             {docTitle(props.doc)}

@@ -1,4 +1,5 @@
-import { getExtension, getExtensionPackage } from "#db/extensions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getExtension, getExtensionPackage } from "#db/space/extensions.ts";
 import {
   appendRunLog,
   finalizeRun,
@@ -118,7 +119,7 @@ export async function executeWorkflowScript(
       return cached;
     }
 
-    const extension = await getExtension(spaceId, extensionId);
+    const extension = await getExtension(await openSpaceStore(spaceId), extensionId);
     if (!extension) throw new Error(`Extension not found: ${extensionId}`);
 
     const jobDef = extension.manifest.jobs?.find((j) => j.id === workflowJobId);
@@ -126,7 +127,10 @@ export async function executeWorkflowScript(
       throw new Error(`Job "${workflowJobId}" not found in extension "${extensionId}"`);
     }
 
-    const zipBuffer = await getExtensionPackage(spaceId, extensionId);
+    const zipBuffer = await getExtensionPackage(
+      await openSpaceStore(spaceId),
+      extensionId,
+    );
     if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
 
     if (controller.signal.aborted) throw new Error("Workflow cancelled");

@@ -1,27 +1,4 @@
-export function normalizeTimestamp(value: string | number | Date): Date {
-  if (value instanceof Date) {
-    return value;
-  }
-
-  if (typeof value === "number") {
-    return new Date(value < 1e12 ? value * 1000 : value);
-  }
-
-  const trimmed = value.trim();
-  if (/^\d+(\.\d+)?$/.test(trimmed)) {
-    const numeric = Number(trimmed);
-    if (!Number.isFinite(numeric)) {
-      throw new Error(`Invalid numeric timestamp: ${value}`);
-    }
-    return new Date(numeric < 1e12 ? numeric * 1000 : numeric);
-  }
-
-  const parsed = new Date(trimmed);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`Invalid timestamp: ${value}`);
-  }
-  return parsed;
-}
+import { t } from "#utils/lang.ts";
 
 /** Inverse of `slugify` for display: "my-extension" → "My Extension". */
 export function kebabToTitle(kebab: string): string {
@@ -29,21 +6,6 @@ export function kebabToTitle(kebab: string): string {
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-export function slugify(text: string) {
-  const reservedSlugs = ["new"];
-
-  let slug = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  if (reservedSlugs.includes(slug)) {
-    slug = `${slug}-1`;
-  }
-
-  return slug;
 }
 
 export function detectAppType(
@@ -78,6 +40,12 @@ export function detectAppType(
 export function spacePath(spaceSlug: string | null | undefined, path: string): string {
   if (!spaceSlug) return path;
   return `/${spaceSlug}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** A space's member count as a label: "1 Member", "12 Members". */
+export function memberCountLabel(count: number | undefined, lang: string): string {
+  const members = count ?? 0;
+  return `${members} ${members === 1 ? t("Member", lang) : t("Members", lang)}`;
 }
 
 /** Byte count as a short human label: "812 B", "3.4 KB", "1.2 MB". */

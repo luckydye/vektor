@@ -18,8 +18,8 @@ import {
 } from "#composeables/useComments.ts";
 import { CommentThread, type Comment as CommentThreadType } from "./CommentThread.tsx";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
-/** Imperative handle, handed back through the `ref` prop. */
 export interface CommentBubbleHandle {
   commentsForOverlays: () => Array<{
     id: string;
@@ -29,6 +29,8 @@ export interface CommentBubbleHandle {
   }>;
   handleMoveThread: (payload: { reference: string; y: number }) => Promise<void>;
   handleThreadReposition: () => void;
+  /** Which thread is open, so its bubble can render as the selected one. */
+  activeReference: () => string | null;
 }
 
 interface Props {
@@ -36,11 +38,6 @@ interface Props {
   documentId: string;
   currentRev?: number;
   editor?: Editor;
-  /**
-   * The `<document-view>` the add bubble tracks. Hover is scoped to this
-   * element, so anything stacked in front of it (header actions, docked
-   * panels, dialogs) receives the pointer instead and the bubble stays away.
-   */
   documentView?: HTMLElement | null;
   ref?: (handle: CommentBubbleHandle) => void;
 }
@@ -48,13 +45,56 @@ interface Props {
 const EDGE_THRESHOLD_PX = 60;
 const COMMENT_BUBBLE_PROXIMITY_PX = 20;
 const THREAD_GAP_PX = 8;
-const ADD_BUBBLE_GAP_PX = 4;
+// Clears the image resize handle, which overhangs the document edge by 20px.
+const ADD_BUBBLE_GAP_PX = 28;
 const ADD_BUBBLE_SIZE_PX = 32;
 const VIEWPORT_MARGIN_PX = 8;
-/** Slack around the button, covering the gap between it and the document. */
 const ADD_BUBBLE_REACH_PX = 12;
-/** Backstop for pointers that stop reporting, e.g. on leaving the window. */
 const HIDE_GRACE_MS = 400;
+
+/**
+ * Where an element sits in layout, ignoring any transform on it.
+ *
+ * A bubble carries a press squish and a drag lift, and `getBoundingClientRect`
+ * reports the painted box: anchoring to that pins the panel to whichever frame
+ * of the animation was current, and it shifts as soon as anything re-measures.
+ */
+function layoutOrigin(el: HTMLElement): { top: number; left: number } {
+  const parent = el.offsetParent as HTMLElement | null;
+  if (!parent) {
+    const rect = el.getBoundingClientRect();
+    return { top: rect.top, left: rect.left };
+  }
+  const parentRect = parent.getBoundingClientRect();
+  return {
+    top: parentRect.top + parent.clientTop + el.offsetTop,
+    left: parentRect.left + parent.clientLeft + el.offsetLeft,
+  };
+}
+
+/**
+ * Holds a panel inside the viewport: it keeps the anchor it was given while it
+ * fits, and rides up by exactly the overflow when it does not.
+ */
+function useViewportFit() {
+  const [height, setHeight] = createSignal(0);
+
+  const ref = (el: HTMLElement) => {
+    if (typeof ResizeObserver === "undefined") return;
+    // Measured rather than assumed: a thread grows as replies arrive, and the
+    // clamp has to follow it without waiting for a scroll or resize event.
+    const observer = new ResizeObserver(() => setHeight(el.offsetHeight));
+    observer.observe(el);
+    onCleanup(() => observer.disconnect());
+  };
+
+  const top = (anchor: number) => {
+    const lowest = window.innerHeight - VIEWPORT_MARGIN_PX - height();
+    return Math.max(VIEWPORT_MARGIN_PX, Math.min(anchor, lowest));
+  };
+
+  return { ref, top };
+}
 
 function toThreadComment(c: ApiComment): CommentThreadType {
   return {
@@ -69,6 +109,8 @@ function toThreadComment(c: ApiComment): CommentThreadType {
 }
 
 export function CommentBubble(props: Props) {
+  const t = useTranslation();
+
   const {
     comments,
     activeReference,
@@ -97,21 +139,20 @@ export function CommentBubble(props: Props) {
   const [addingCommentRef, setAddingCommentRef] = createSignal<string | null>(null);
   const [fadeAddBubble, setFadeAddBubble] = createSignal(false);
 
-  // Inline anchor click tooltip
   const [clickedAnchorRef, setClickedAnchorRef] = createSignal<string | null>(null);
   const [tooltipPos, setTooltipPos] = createSignal({ top: 0, left: 0 });
   let tooltipEl: HTMLDivElement | undefined;
 
-  // The bubbles portal into <body>, which does not exist during SSR. A flag set
-  // after mount (rather than `isServer`) keeps hydrated markup identical.
   const [hasMounted, setHasMounted] = createSignal(false);
 
-  // Thread anchor derived from the comment bubble the thread belongs to,
-  // so the thread stays attached to the bubble instead of the viewport edge.
   const [threadAnchor, setThreadAnchor] = createSignal<{
     top: number;
     right: number;
   } | null>(null);
+
+  const threadFit = useViewportFit();
+  const composeFit = useViewportFit();
+  const anchorTooltipFit = useViewportFit();
 
   function anchorFromPath(e: MouseEvent): { el: HTMLElement; commentId: string } | null {
     for (const node of e.composedPath()) {
@@ -125,12 +166,10 @@ export function CommentBubble(props: Props) {
   function handleDocumentClick(e: MouseEvent) {
     const hit = anchorFromPath(e);
     if (!hit) {
-      // Click outside tooltip closes it
       if (tooltipEl && !tooltipEl.contains(e.target as Node)) setClickedAnchorRef(null);
       return;
     }
     const ref = `[data-comment-id="${hit.commentId}"]`;
-    // Toggle off if clicking the same anchor again
     if (clickedAnchorRef() === ref) {
       setClickedAnchorRef(null);
       return;
@@ -164,10 +203,10 @@ export function CommentBubble(props: Props) {
       setThreadAnchor(null);
       return;
     }
-    const rect = bubble.getBoundingClientRect();
+    const origin = layoutOrigin(bubble);
     setThreadAnchor({
-      top: rect.top,
-      right: window.innerWidth - rect.left + THREAD_GAP_PX,
+      top: origin.top,
+      right: window.innerWidth - origin.left + THREAD_GAP_PX,
     });
   }
 
@@ -178,8 +217,6 @@ export function CommentBubble(props: Props) {
 
   createEffect(
     on(activeReference, () => {
-      // The bubble overlay has already rendered; Solid applies writes
-      // synchronously, so there is no tick to await before measuring.
       updateThreadAnchor();
     }),
   );
@@ -236,20 +273,12 @@ export function CommentBubble(props: Props) {
     setFadeAddBubble(false);
   }
 
-  /**
-   * The button sits beside the document view — and, where the margin is
-   * narrower than the button, slightly over it — so the pointer always leaves
-   * the element that keeps it alive on its way there, sometimes well inside
-   * that element's box. Never hide on the spot: fade out on a delay the
-   * button's own hover cancels.
-   */
   function scheduleHideAddBubble() {
     cancelHide();
     hideTimer = setTimeout(hideAddBubble, HIDE_GRACE_MS);
   }
 
   function handleDocumentPointerMove(e: PointerEvent) {
-    // A hover affordance: touch has no hover, and a tap-drag would flash it.
     if (e.pointerType === "touch") return;
 
     const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
@@ -264,8 +293,6 @@ export function CommentBubble(props: Props) {
       return;
     }
 
-    // Just outside the document, in the same gutter the comment bubbles use —
-    // never at the viewport edge, where a docked panel would cover it.
     const left = Math.min(
       rect.right + ADD_BUBBLE_GAP_PX,
       window.innerWidth - ADD_BUBBLE_SIZE_PX - VIEWPORT_MARGIN_PX,
@@ -278,22 +305,18 @@ export function CommentBubble(props: Props) {
     setFadeAddBubble(isNearCommentBubble(left + ADD_BUBBLE_SIZE_PX / 2, e.clientY));
   }
 
-  /** Is the pointer on the button, or in the short corridor leading to it? */
   function isNearAddBubble(x: number, y: number) {
+    // Reach back to the document edge so the gap the cursor crosses stays live.
+    const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
+    const docRight = docView?.getBoundingClientRect().right ?? Number.POSITIVE_INFINITY;
     return (
-      x >= bubbleX() - ADD_BUBBLE_REACH_PX &&
+      x >= Math.min(docRight, bubbleX() - ADD_BUBBLE_REACH_PX) &&
       x <= bubbleX() + ADD_BUBBLE_SIZE_PX + ADD_BUBBLE_REACH_PX &&
       y >= bubbleY() - ADD_BUBBLE_SIZE_PX / 2 - ADD_BUBBLE_REACH_PX &&
       y <= bubbleY() + ADD_BUBBLE_SIZE_PX / 2 + ADD_BUBBLE_REACH_PX
     );
   }
 
-  /**
-   * Showing is the document view's business alone; this only takes the bubble
-   * away again, the moment the pointer is somewhere it no longer belongs —
-   * over the header actions or a docked panel, say, rather than a grace period
-   * later.
-   */
   function handleWindowPointerMove(e: PointerEvent) {
     if (!showAddBubble()) return;
     if (isNearAddBubble(e.clientX, e.clientY)) {
@@ -301,17 +324,12 @@ export function CommentBubble(props: Props) {
       return;
     }
     const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
-    // Over the document the element's own handler decides; anywhere else the
-    // pointer has moved on to something stacked in front of it.
     if (docView && !e.composedPath().includes(docView)) hideAddBubble();
   }
 
   function handleAddComment() {
-    // Viewport y for the fixed-positioned thread popup
     setAddingCommentY(bubbleY());
     setAddingCommentX(bubbleX());
-    // Stored reference is the y offset relative to the document content,
-    // so the bubble stays anchored regardless of scroll position.
     const docView = props.documentView; // solid-reactivity-ok: handler, re-reads per call
     const docTop = docView ? docView.getBoundingClientRect().top : 0;
     setAddingCommentRef(String(Math.max(0, Math.round(bubbleY() - docTop))));
@@ -377,9 +395,6 @@ export function CommentBubble(props: Props) {
     setActiveReference(null);
   }
 
-  // Hover lives on the document view itself rather than on the window: an
-  // element in front of it (docked panel, header actions) then swallows the
-  // pointer and the bubble never appears over it.
   createEffect(() => {
     const docView = props.documentView; // solid-reactivity-ok: effect re-runs and rebinds when it changes
     if (!docView) return;
@@ -397,11 +412,9 @@ export function CommentBubble(props: Props) {
   onMount(() => {
     setHasMounted(true);
     setupListeners();
-    // Capture phase so scrolls inside nested containers also re-anchor the thread.
     window.addEventListener("scroll", handleThreadReposition, true);
     window.addEventListener("resize", handleThreadReposition);
     window.addEventListener("editor-update", handleThreadReposition);
-    // Inline anchor click detection — composedPath pierces the shadow DOM.
     document.addEventListener("click", handleDocumentClick);
 
     onCleanup(() => {
@@ -414,13 +427,17 @@ export function CommentBubble(props: Props) {
     });
   });
 
-  props.ref?.({ commentsForOverlays, handleMoveThread, handleThreadReposition });
+  props.ref?.({
+    commentsForOverlays,
+    handleMoveThread,
+    handleThreadReposition,
+    activeReference,
+  });
 
   return (
     <Show when={hasMounted()}>
       <Portal>
         <div class="contents">
-          {/* Add comment bubble — hovering the document's right margin */}
           <Show when={showAddBubble()}>
             <div
               class="fixed z-50 -translate-y-1/2 transition-opacity duration-200"
@@ -436,51 +453,49 @@ export function CommentBubble(props: Props) {
                 type="button"
                 onClick={handleAddComment}
                 class="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-background text-neutral-500 shadow-md transition-all hover:border-primary-300 hover:text-primary-600 hover:shadow-lg"
-                title="Add comment"
+                title={t("Add comment")}
               >
                 <Icon class="h-4 w-4" name="add" />
               </button>
             </div>
           </Show>
 
-          {/* Thread for existing comment reference — anchored to its comment bubble */}
-          <Show when={activeReference()}>
+          <Show keyed when={activeReference()}>
             {(reference) => (
               <div
-                class="fixed z-40"
+                ref={threadFit.ref}
+                class="comment-thread-enter fixed z-40"
                 style={
                   threadAnchor()
                     ? {
-                        top: `${threadAnchor()?.top}px`,
+                        top: `${threadFit.top(threadAnchor()?.top ?? 0)}px`,
                         right: `${threadAnchor()?.right}px`,
                       }
-                    : { top: `${threadPosition()}px`, right: "1rem" }
+                    : { top: `${threadFit.top(threadPosition())}px`, right: "1rem" }
                 }
               >
                 <CommentThread
                   spaceId={props.spaceId}
                   documentId={props.documentId}
                   comments={commentsForThread()}
-                  activeReference={reference()}
+                  activeReference={reference}
                   isSubmitting={isSubmitting()}
                   isDeletingComment={isDeletingComment()}
                   onSubmit={(payload) => void handleSubmit(payload)}
                   onDelete={(id) => void handleDeleteComment(id)}
-                  onResolve={() => void handleResolve(reference())}
+                  onResolve={() => void handleResolve(reference)}
                   onClose={handleCloseThread}
                 />
               </div>
             )}
           </Show>
 
-          {/* Thread for new comment (bubble click) */}
           <Show when={addingCommentY() !== null && !activeReference()}>
             <div
-              class="fixed z-40"
+              ref={composeFit.ref}
+              class="comment-thread-enter fixed z-40"
               style={{
-                top: `${addingCommentY()}px`,
-                // Opens to the left of the button that spawned it, the same way
-                // an existing thread hangs off its comment bubble.
+                top: `${composeFit.top(addingCommentY() ?? 0)}px`,
                 right: `${window.innerWidth - addingCommentX() + THREAD_GAP_PX}px`,
               }}
             >
@@ -501,17 +516,19 @@ export function CommentBubble(props: Props) {
             </div>
           </Show>
 
-          {/* Inline anchor click tooltip */}
           <Show when={clickedAnchorRef() && !activeReference()}>
             {(_) => {
               const anchor = clickedAnchorRef();
               if (!anchor) return null;
               return (
                 <div
-                  ref={tooltipEl}
-                  class="fixed z-40"
+                  ref={(el) => {
+                    tooltipEl = el;
+                    anchorTooltipFit.ref(el);
+                  }}
+                  class="comment-thread-enter fixed z-40"
                   style={{
-                    top: `${tooltipPos().top}px`,
+                    top: `${anchorTooltipFit.top(tooltipPos().top)}px`,
                     left: `${tooltipPos().left}px`,
                   }}
                 >

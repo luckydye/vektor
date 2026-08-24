@@ -1,9 +1,9 @@
 import { type Accessor, createContext, createMemo, useContext } from "solid-js";
-import { api, type Space } from "#api/client.ts";
+import { api, type CurrentUser, type Space } from "#api/client.ts";
 
 export type { Space };
 
-import { type MaybeAccessor, useMutation, useQuery } from "./query.ts";
+import { type MaybeAccessor, useMutation, useQuery, useQueryClient } from "./query.ts";
 
 export type { MaybeAccessor };
 
@@ -17,6 +17,7 @@ export type { MaybeAccessor };
 export const ActiveSpaceIdContext = createContext<Accessor<string | null>>(() => null);
 
 export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
+  const queryClient = useQueryClient();
   const contextSpaceId = useContext(ActiveSpaceIdContext);
   const activeSpaceId = activeSpaceIdOverride ?? contextSpaceId;
 
@@ -38,6 +39,14 @@ export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
   const spaceNotFound = createMemo(
     () => !isPending() && spaces() !== undefined && currentSpace() === null,
   );
+
+  // Whether creation is allowed is the operator's allow list applied to this
+  // user, so only the server can answer it. Shared cache key: every island
+  // asking resolves to the one request.
+  const { data: currentUser } = useQuery<CurrentUser>({
+    queryKey: ["current_user"],
+    queryFn: () => api.users.me(),
+  });
 
   const createSpaceMutation = useMutation({
     mutationFn: async (params: {
@@ -66,12 +75,49 @@ export function useSpace(activeSpaceIdOverride?: Accessor<string | null>) {
     },
   });
 
+  /**
+   * Standing owner access to a space an instance admin only reaches through
+   * their admin rights. Written to the groups rather than to the person, so it
+   * keeps working for whoever administers the instance next; only when there is
+   * no admin group to name — no-auth's local account — does it name the user.
+   */
+  const gainAccessMutation = useMutation({
+    mutationFn: async (spaceId: string) => {
+      const groups = currentUser()?.adminGroups ?? [];
+      const userId = currentUser()?.id;
+      const grantees: Array<{ groupId?: string; userId?: string }> =
+        groups.length > 0
+          ? groups.map((groupId) => ({ groupId }))
+          : userId
+            ? [{ userId }]
+            : [];
+      if (grantees.length === 0) throw new Error("No admin group to grant access to");
+
+      for (const grantee of grantees) {
+        await api.permissions.grant(spaceId, {
+          ...grantee,
+          type: "role",
+          roleOrFeature: "owner",
+          resourceType: "space",
+          resourceId: spaceId,
+        });
+      }
+    },
+    // The listing is what carries `adminAccess`, so it has to be re-read before
+    // the card can stop saying the space is not theirs.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wiki_spaces"] }),
+  });
+
   return {
     isLoading: isPending,
     currentSpace,
     currentSpaceId: createMemo(() => currentSpace()?.id ?? null),
     spaceNotFound,
     spaces,
+    // Undefined until the answer arrives, so a caller can tell "not allowed"
+    // from "not known yet" and neither flash nor pre-render the affordance.
+    canCreateSpace: createMemo(() => currentUser()?.canCreateSpace),
+    gainAccess: (spaceId: string) => gainAccessMutation.mutateAsync(spaceId),
     createSpace: (name: string, slug: string, preferences?: Record<string, string>) =>
       createSpaceMutation.mutateAsync({ name, slug, preferences }),
     updateSpace: (

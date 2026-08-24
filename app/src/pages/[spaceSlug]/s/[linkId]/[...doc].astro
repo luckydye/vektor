@@ -1,0 +1,226 @@
+---
+import {
+  isAccessDenied,
+  ResourceUnavailableError,
+  ShareLinkPasswordRequiredError,
+} from "#acl/errors.ts";
+import {
+  authenticateShareLink,
+  SHARE_COOKIE,
+  verifyAccess,
+  withShareLink,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
+import { resolveClientIp } from "#api/clientIp.ts";
+import { checkRateLimit, SHARE_LINK_ROUTE_PATTERN } from "#api/rateLimit.ts";
+import { isHttpsSite } from "#config";
+import { openSpaceStore } from "#db/client/store.ts";
+import {
+  getDocument,
+  getDocumentChildren,
+} from "#db/space/documents.ts";
+import { getRevisionContent } from "#db/space/revisions.ts";
+import { documentTitle } from "#documents/title.ts";
+import { contentIsHtml } from "#documents/types.ts";
+import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
+import BaseLayout from "#layouts/BaseLayout.astro";
+import { appLogger } from "#observability/logger.ts";
+
+const spaceSlug = Astro.params.spaceSlug ?? "";
+const linkId = Astro.params.linkId ?? "";
+const requestedDocumentId = Astro.params.doc;
+const lang = Astro.preferredLocale || "en";
+
+// The URL is the credential: never cache it, never index it.
+const privateHeaders = {
+  "Cache-Control": "private, no-store",
+  "X-Robots-Tag": "noindex, nofollow",
+};
+for (const [name, value] of Object.entries(privateHeaders)) {
+  Astro.response.headers.set(name, value);
+}
+
+// Returned Response objects do not inherit Astro.response headers.
+function withPrivateHeaders(response: Response): Response {
+  for (const [name, value] of Object.entries(privateHeaders)) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
+
+function basicAuthPassword(header: string | null): string | null {
+  if (!header?.startsWith("Basic ")) return null;
+  const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+  const separator = decoded.indexOf(":");
+  return separator === -1 ? null : decoded.slice(separator + 1);
+}
+
+function basicRealm(name: string | null): string {
+  const printable = (name ?? "").replace(/[^\x20-\x7e]/g, "").replace(/["\\]/g, "");
+  return printable.trim().slice(0, 64) || "Shared page";
+}
+
+const notFound = withPrivateHeaders(
+  new Response(null, { status: 404, statusText: "Not found" }),
+);
+
+// The page bypasses API middleware; unvalidated cookies must not create buckets.
+const limit = checkRateLimit({
+  pattern: SHARE_LINK_ROUTE_PATTERN,
+  method: Astro.request.method,
+  authorization: undefined,
+  cookie: undefined,
+  ip: resolveClientIp(
+    Astro.clientAddress,
+    Astro.request.headers.get("x-forwarded-for"),
+  ),
+});
+if (limit && !limit.allowed) {
+  appLogger.warn("Share link rate limit exceeded", {
+    key: limit.key,
+    blocked: limit.blocked,
+  });
+  return withPrivateHeaders(
+    new Response("Too many requests", {
+      status: 429,
+      headers: { "Retry-After": String(limit.retryAfterSeconds) },
+    }),
+  );
+}
+
+const link = await authenticateShareLink(
+  spaceSlug,
+  linkId,
+  basicAuthPassword(Astro.request.headers.get("Authorization")),
+).catch((error: unknown) => {
+  if (error instanceof ResourceUnavailableError) return notFound;
+  if (error instanceof ShareLinkPasswordRequiredError) {
+    return withPrivateHeaders(
+      new Response("Password required", {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": `Basic realm="${basicRealm(error.linkName)}", charset="UTF-8"`,
+        },
+      }),
+    );
+  }
+  throw error;
+});
+if (link instanceof Response) return withPrivateHeaders(link);
+
+const store = await openSpaceStore(link.spaceId);
+const documentId = requestedDocumentId || link.resourceId;
+
+// Ambient grants must not widen a document share to the optional child path.
+if (
+  link.resourceType === ResourceType.DOCUMENT &&
+  documentId !== link.resourceId
+) {
+  return notFound;
+}
+
+try {
+  await verifyAccess(
+    link.spaceId,
+    { type: ResourceType.DOCUMENT, id: documentId },
+    link.aclUserId,
+    Permission.VIEWER,
+  );
+} catch (error) {
+  if (isAccessDenied(error)) return notFound;
+  throw error;
+}
+
+const record = await getDocument(store, documentId);
+if (!record) return notFound;
+const publishedRev = record.publishedRev;
+if (publishedRev === null) return notFound;
+
+const rendersAsHtml = contentIsHtml(record.type);
+const publishedContent = await getRevisionContent(
+  store,
+  documentId,
+  publishedRev,
+);
+if (publishedContent === null) return notFound;
+
+const readShadowHtml = renderDocumentReadShadowHtml(publishedContent, {
+  readonly: true,
+});
+
+// Attachment requests need the link and, when protected, proof of its password.
+Astro.cookies.set(
+  SHARE_COOKIE,
+  withShareLink(Astro.request.headers.get("cookie"), link.carried),
+  {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isHttpsSite(),
+  },
+);
+
+const children =
+  link.resourceType === ResourceType.DOCUMENT_TREE
+    ? await getDocumentChildren(store, documentId, {
+        userId: link.aclUserId,
+        userGroups: [],
+      })
+    : [];
+
+const title = documentTitle(record, lang);
+// `max-w-3xl` resolves to this theme's 80px spacing token. The app-wide
+// document width is the canonical readable-page constraint.
+---
+
+<BaseLayout title={title}>
+  <main class="mx-auto w-full max-w-(--document-width) px-xs py-10 md:px-m">
+    <h1 class="mb-xl font-bold text-neutral-900 text-size-display">{title}</h1>
+
+    {rendersAsHtml ? (
+        <document-view
+          space-id={link.spaceId}
+          document-id={documentId}
+          readonly
+          set:html={readShadowHtml}
+        />
+      ) : (
+        <p class="rounded-md border border-neutral-200 bg-neutral-50 p-4 text-neutral-600 text-size-medium">
+          This page is a {record.type}, which only opens in Vektor. Sign in to view it.
+        </p>
+      )}
+
+    {children.length > 0 && (
+        <nav class="mt-10 border-neutral-100 border-t pt-6">
+          <h2 class="mb-2 text-neutral-400 text-size-small">Pages in this share</h2>
+          <ul class="space-y-1">
+            {children.map((child) => (
+              <li>
+                <a
+                  class="text-neutral-900 text-size-medium underline"
+                  href={`/${spaceSlug}/s/${linkId}/${child.id}`}
+                >
+                  {documentTitle(child, lang)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
+    <footer
+      class="mt-10 border-neutral-100 border-t pt-6 text-neutral-400 text-size-small"
+    >
+      Shared read-only through a link.
+    </footer>
+  </main>
+
+  <script>
+    import "#editor/document.ts";
+    import "#editor/elements/cake.ts";
+    import "#editor/elements/figma-embed.ts";
+    import "#editor/elements/html-block.ts";
+    import "#editor/elements/ticket-link.ts";
+    import "#editor/elements/user-mention.ts";
+  </script>
+</BaseLayout>

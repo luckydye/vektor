@@ -1,12 +1,12 @@
 import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
-import "#model-viewer/ModelViewerElement.ts";
+import "#components/model-viewer/ModelViewerElement.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
   dragOnPointerDown,
 } from "#canvas/runtime/elementBase.ts";
 import type { CanvasShape } from "#canvas/runtime/extensionApi.ts";
-import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
+import { MODEL_VIEWER_TAG } from "#components/model-viewer/ModelViewerElement.ts";
 
 // A 3D model on the canvas: a resizable, transparent shape that hosts the
 // reusable <model-viewer-3d> WebGPU preview. Distinct from the generic `file`

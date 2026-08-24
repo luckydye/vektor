@@ -55,6 +55,7 @@ import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
 import { RichClipboardPaste } from "./extensions/RichClipboardPaste.ts";
+import { TableInsertControls } from "./extensions/TableInsertControls.ts";
 import { TableReorder } from "./extensions/TableReorder.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
 import { TableEditing } from "./extensions/table.ts";
@@ -408,10 +409,24 @@ function baseEditorExtensions(): Extensions {
 export function createBaseEditor(options: BaseEditorOptions): Editor {
   const { extensions = [], ...editorOptions } = options;
 
-  return new Editor({
+  const editor = new Editor({
     ...editorOptions,
     extensions: [...baseEditorExtensions(), ...extensions],
   });
+
+  pinPreventScroll(editor.view.dom);
+
+  return editor;
+}
+
+// Focus restores from outside the editor — a popover handing focus back to
+// whatever was active when it opened — scroll the editable into view, which
+// throws the page back to the top of the document. ProseMirror only ever
+// focuses with `preventScroll` and scrolls the caret into view itself, so
+// forcing the flag here loses nothing.
+function pinPreventScroll(dom: HTMLElement) {
+  const focus = dom.focus.bind(dom);
+  dom.focus = (options?: FocusOptions) => focus({ ...options, preventScroll: true });
 }
 
 // `mentions` and `htmlBlock` default to the schema-only nodes so the server can
@@ -450,6 +465,7 @@ export function documentExtensions(
     RichClipboardPaste,
     TableEditing,
     TableReorder,
+    TableInsertControls,
     TaskItem.extend({
       addKeyboardShortcuts() {
         return {

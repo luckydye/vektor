@@ -1,8 +1,13 @@
 import type { Next } from "hono";
+import { AclFailure } from "#acl/errors.ts";
+import { withIdentityScope } from "#acl/identity.ts";
+import { resolveRequestIdentity } from "#acl/session.ts";
+import { resolveClientIp } from "#api/clientIp.ts";
+import { aclFailureResponse } from "#api/http.ts";
+import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
-import { auth, authTrustedOrigins } from "#auth";
-import { getPublicEnv, isTrustProxyEnabled } from "#config";
-import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
+import { authTrustedOrigins } from "#auth";
+import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
@@ -48,10 +53,10 @@ function isCrossSiteForgery(c: ApiContext, method: string): boolean {
 }
 
 function clientIp(c: ApiContext): string {
-  const socketIp = c.env.incoming.socket?.remoteAddress ?? "";
-  if (!isTrustProxyEnabled()) return socketIp;
-  const forwardedFor = c.req.header("x-forwarded-for");
-  return forwardedFor?.split(",").at(-1)?.trim() || socketIp;
+  return resolveClientIp(
+    c.env.incoming.socket?.remoteAddress,
+    c.req.header("x-forwarded-for"),
+  );
 }
 
 async function hydrateRequestContext(c: ApiContext): Promise<void> {
@@ -63,23 +68,19 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
     headers.delete("x-forwarded-for");
   }
 
-  let user: App.Locals["user"] = null;
-  let session: App.Locals["session"] = null;
-  if (isNoAuthMode()) {
-    user = LOCAL_USER;
-    session = LOCAL_SESSION;
-  } else {
-    const authenticated = await auth.api.getSession({ headers });
-    if (authenticated) {
-      user = authenticated.user;
-      session = authenticated.session;
-    }
-  }
+  const { user, session } = await resolveRequestIdentity(headers);
 
   c.set("publicEnv", getPublicEnv());
   c.set("requestHeaders", headers);
   c.set("session", session);
   c.set("user", user);
+  // The seam with `#acl`: guards read this struct and never the context itself.
+  c.set("credentials", {
+    jobToken: headers.get("X-Job-Token"),
+    authorization: headers.get("Authorization"),
+    cookie: headers.get("Cookie"),
+    user,
+  });
 }
 
 function isApiPath(pathname: string): boolean {
@@ -98,6 +99,33 @@ function resolveHandler(module: ApiRouteModule, method: string) {
 
 function jsonError(status: number, message: string): Response {
   return Response.json({ error: message }, { status });
+}
+
+function withRateLimitHeaders(response: Response, limit: RateLimitCheck): Response {
+  try {
+    response.headers.set("X-Limit-Remaining", String(limit.remaining));
+  } catch {
+    // A Response proxied from `fetch` (better-auth) has immutable headers, and
+    // an advisory hint is not worth reconstructing the body around.
+  }
+  return response;
+}
+
+function rateLimitedResponse(limit: RateLimitCheck): Response {
+  return Response.json(
+    {
+      error: limit.blocked
+        ? "API access temporarily disabled for this client"
+        : "Too many requests",
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(limit.retryAfterSeconds),
+        "X-Limit-Remaining": "0",
+      },
+    },
+  );
 }
 
 /**
@@ -125,6 +153,29 @@ export async function apiRouter(
     return jsonError(403, "Cross-origin request rejected");
   }
 
+  // Ahead of `hydrateRequestContext` so an over-limit caller is turned away
+  // before the session lookup, and ahead of the 405 so a flood of unsupported
+  // methods is counted rather than routing freely.
+  const limit = checkRateLimit({
+    pattern: match.pattern,
+    method,
+    authorization: c.req.header("authorization"),
+    cookie: c.req.header("cookie"),
+    ip: clientIp(c),
+    jobToken: c.req.header("x-job-token"),
+    spaceId: c.req.header("x-space-id") ?? match.params.spaceId,
+  });
+  if (limit && !limit.allowed) {
+    // The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK.
+    appLogger.warn("API rate limit exceeded", {
+      path: pathname,
+      method,
+      key: limit.key,
+      blocked: limit.blocked,
+    });
+    return rateLimitedResponse(limit);
+  }
+
   const handler = resolveHandler(match.module, method);
   if (!handler) {
     const allowed = Object.keys(match.module)
@@ -137,16 +188,23 @@ export async function apiRouter(
   }
 
   try {
-    await hydrateRequestContext(c);
-    const result = await handler(c);
+    // One identity cache for the length of this request, so the IdP staleness
+    // bound stays a per-request bound rather than a per-check one.
+    const result = await withIdentityScope(async () => {
+      await hydrateRequestContext(c);
+      return await handler(c);
+    });
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });
       return jsonError(500, "Internal server error");
     }
 
-    return result;
+    return limit ? withRateLimitHeaders(result, limit) : result;
   } catch (error) {
+    if (error instanceof AclFailure) {
+      return aclFailureResponse(error);
+    }
     appLogger.error("Unhandled API route error", {
       path: pathname,
       error: error instanceof Error ? error.message : String(error),

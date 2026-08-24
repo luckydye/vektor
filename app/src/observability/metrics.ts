@@ -8,7 +8,8 @@
  */
 
 import { eq, sql } from "drizzle-orm";
-import { getAuthDb } from "#db/connection.ts";
+import { getAuthDb } from "#db/client/connection.ts";
+import { one } from "#db/client/query.ts";
 import { spaceIndex, user } from "#db/schema/auth.ts";
 import { activeRuns } from "#jobs/runStore.ts";
 import { getJobQueueStats } from "#jobs/scheduler.ts";
@@ -161,17 +162,18 @@ function rollingCpuUtilizationRatio(): number {
 
 /** Number of active spaces registered in the space index. */
 async function activeSpaceCount(): Promise<number> {
-  const row = await getAuthDb()
-    .select({ total: sql<number>`count(*)` })
-    .from(spaceIndex)
-    .where(eq(spaceIndex.status, "active"))
-    .get();
+  const row = await one(
+    getAuthDb()
+      .select({ total: sql<number>`count(*)` })
+      .from(spaceIndex)
+      .where(eq(spaceIndex.status, "active")),
+  );
   return row?.total ?? 0;
 }
 
 /** Number of registered users. */
 async function userCount(): Promise<number> {
-  const row = await getAuthDb().select({ total: sql<number>`count(*)` }).from(user).get();
+  const row = await one(getAuthDb().select({ total: sql<number>`count(*)` }).from(user));
   return row?.total ?? 0;
 }
 

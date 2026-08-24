@@ -4,11 +4,11 @@ import * as Y from "yjs";
 import { api } from "#api/client.ts";
 import { browserClientId } from "#composeables/useCollaboration.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
 import { SpreadsheetHost } from "#spreadsheet/SpreadsheetHost.tsx";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import { t } from "#utils/lang.ts";
 
 interface Props {
   documentId: string;
@@ -37,6 +37,7 @@ const PUBLISH_DEBOUNCE_MS = 200;
  * model: seeding a document locally makes two histories that never reconcile.
  */
 export function CsvView(props: Props) {
+  const t = useTranslation();
   const { currentSpaceId } = useSpace();
   const documentId = createMemo(() => props.documentId);
 

@@ -1,20 +1,38 @@
 ---
+import { isAccessDenied } from "#acl/errors.ts";
+import { verifyAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import { SpaceApp } from "#components/SpaceApp.tsx";
-import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
-import { getDocument, getDocumentBySlug } from "#db/documents.ts";
-import { resolvePublishedDocumentContent } from "#db/revisions.ts";
-import {
-  requireSpaceViewer,
-  resolveSpacePage,
-  resolveUserSpaceRole,
-} from "#db/spacePage.ts";
-import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getDocument, getDocumentBySlug } from "#db/space/documents.ts";
+import { resolvePublishedDocumentContent } from "#db/space/revisions.ts";
+import { getSpaceBySlug, getUserSpaceRole } from "#db/space/spaces.ts";
+import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
+import { LAST_VISITED_SPACE_KEY } from "#utils/activeSpace.server.ts";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 
-const result = await resolveSpacePage(Astro);
-if (result.response) return result.response;
-const { space } = result;
+const { spaceSlug } = Astro.params;
+if (!spaceSlug) return Astro.redirect("/");
+
+/**
+ * The one answer a caller who may not see this space gets, whether the slug is
+ * refused or resolves to nothing: telling those apart lets anyone enumerate
+ * private space slugs, which are creator-chosen and often guessable.
+ */
+function spaceUnavailableResponse(): Response {
+  if (!Astro.locals.session) {
+    return new Response(null, { status: 302, headers: { Location: "/login" } });
+  }
+  return new Response(null, { status: 403, statusText: "Forbidden" });
+}
+
+// Missing the session is not itself the refusal: a space that grants viewer to
+// the `public` group must render without one, so only the checks below decide.
+const space = await getSpaceBySlug(spaceSlug);
+if (!space) return spaceUnavailableResponse();
+
+const store = await openSpaceStore(space.id);
 
 const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
 const settingsPath =
@@ -22,76 +40,101 @@ const settingsPath =
   Astro.url.pathname.startsWith(`/${space.slug}/settings/`);
 
 if (settingsPath) {
-  if (!Astro.locals.session) {
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "/login" },
-    });
-  }
+  if (!Astro.locals.session) return spaceUnavailableResponse();
 
   try {
-    await verifySpaceRole(space.id, Astro.locals.user?.id ?? "", "owner");
+    await verifyAccess(
+      space.id,
+      { type: ResourceType.SPACE, id: space.id },
+      Astro.locals.user?.id ?? "",
+      Permission.OWNER,
+    );
   } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
+    if (!isAccessDenied(error)) throw error;
+    // Use the page boundary's deliberately opaque response for every refusal.
+    return spaceUnavailableResponse();
   }
 }
 
 const storedDocumentRecord = docSlugMatch
-  ? await getDocumentBySlug(space.id, docSlugMatch[1])
+  ? await getDocumentBySlug(store, docSlugMatch[1])
   : null;
+
+/**
+ * Viewer verdict for one document, swallowing the ACL failure: answering with
+ * transport-specific detail would leak whether the document exists.
+ */
+async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
+  try {
+    await verifyAccess(
+      space.id,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      Astro.locals.user?.id ?? null,
+      Permission.VIEWER,
+    );
+    return true;
+  } catch (error) {
+    if (!isAccessDenied(error)) throw error;
+    return false;
+  }
+}
+
+/**
+ * The addressed document once the per-document check has passed for it, `null`
+ * when it has not — nothing resolved, or the caller may not read what did.
+ * Every document-derived value below hangs off this.
+ */
+const readableDocumentRecord =
+  storedDocumentRecord && (await holdsDocumentViewerRole(storedDocumentRecord.id))
+    ? storedDocumentRecord
+    : null;
+
+if (!readableDocumentRecord) {
+  // Space-wide viewer, or any document/tree/category grant inside the space —
+  // a resource-scoped grantee still has to reach the container it lives in.
+  // Also the only place an anonymous caller is sent to /login: redirecting on
+  // the document verdict would tell a refused slug from an unresolved one.
+  try {
+    await verifyAccess(
+      space.id,
+      { type: ResourceType.SPACE, id: space.id, anyGrantInSpace: true },
+      Astro.locals.user?.id ?? null,
+      Permission.VIEWER,
+    );
+  } catch (error) {
+    if (!isAccessDenied(error)) throw error;
+    return spaceUnavailableResponse();
+  }
+}
 
 if (docSlugMatch && !storedDocumentRecord) {
   // A document addressed by its ID redirects to its canonical slug URL, matching
-  // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
-  // rendering the shell for a document whose slug the URL never resolved.
-  const documentById = await getDocument(space.id, docSlugMatch[1]);
-  if (documentById) {
+  // the dedicated doc page this catch-all replaced. Gated on viewer: slugs are
+  // title-derived, so redirecting anyone else hands out the title.
+  const documentById = await getDocument(store, docSlugMatch[1]);
+  if (documentById && (await holdsDocumentViewerRole(documentById.id))) {
     return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
   }
 }
 
-let hasDirectDocumentAccess = false;
-if (storedDocumentRecord) {
-  try {
-    await verifyDocumentRole(
-      space.id,
-      storedDocumentRecord.id,
-      Astro.locals.user?.id ?? null,
-      "viewer",
-    );
-    hasDirectDocumentAccess = true;
-  } catch (error) {
-    if (!Astro.locals.session && error instanceof Response) {
-      return new Response(null, {
-        status: 302,
-        headers: { Location: "/login" },
-      });
-    }
-  }
-}
-
-if (!hasDirectDocumentAccess) {
-  const accessDenied = await requireSpaceViewer(Astro, space);
-  if (accessDenied) return accessDenied;
-}
-
-const documentRecord = storedDocumentRecord
-  ? await resolvePublishedDocumentContent(space.id, storedDocumentRecord)
+// A caller who reached the space but may not read this document renders the
+// shell an unresolved slug produces — a 403 here would confirm the slug exists.
+const documentRecord = readableDocumentRecord
+  ? await resolvePublishedDocumentContent(store, readableDocumentRecord)
   : null;
 let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))
   : undefined;
 
 if (initialDocument) {
-  initialDocument.headerImageAspectRatio = await getHeaderImageAspectRatio(
+  initialDocument.headerImageAspectRatio = await getUploadImageAspectRatio(
     space.id,
     initialDocument.properties.headerImage,
   );
 }
 
 if (Astro.locals.session) {
-  Astro.cookies.set("lastVisitedSpace", space.slug, {
+  Astro.cookies.set(LAST_VISITED_SPACE_KEY, space.slug, {
     path: "/",
     maxAge: 60 * 60 * 24 * 90, // 90 days
     sameSite: "lax",
@@ -99,14 +142,14 @@ if (Astro.locals.session) {
   });
 }
 
-const userRole = await resolveUserSpaceRole(Astro, space);
+const userRole = Astro.locals.user
+  ? await getUserSpaceRole(space, Astro.locals.user.id)
+  : undefined;
 // Serialize Date fields to ISO strings so the server-rendered HTML matches the
 // client props (Astro serializes props via JSON.stringify, which converts Date
 // objects to strings). Without this, data-updated-at / data-created-at
 // attributes differ between server and client, triggering hydration mismatches.
-const initialSpace = JSON.parse(
-  JSON.stringify({ ...space, userRole: userRole ?? undefined }),
-);
+const initialSpace = JSON.parse(JSON.stringify({ ...space, userRole }));
 
 const initialSidebarWidth = parseSidebarWidth(
   Astro.cookies.get(SIDEBAR_WIDTH_KEY)?.value,

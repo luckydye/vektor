@@ -1,27 +1,25 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
-import { slugify } from "#utils/utils.ts";
+import { isHexColor } from "#utils/color.ts";
+import { imageFileAsDataUrl } from "#utils/image.ts";
+import { slugify, spaceSlugRejection } from "#utils/slug.ts";
 import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { SpaceProfileCard } from "./SpaceProfileCard.tsx";
 
 const DEFAULT_BRAND_COLOR = "#42516d";
-// Logos are stored inline in space preferences, which every space request
-// carries, so keep them compact.
-const MAX_LOGO_BYTES = 300 * 1024;
 
 interface Props {
   show?: boolean;
   onUpdateShow?: (value: boolean) => void;
+  // Awaited: a rejection (a taken slug, most often) has to keep the dialog
+  // open and land in `formError`, so the handler must report back here.
   onCreate?: (data: {
     name: string;
     slug: string;
     brandColor: string;
     logoSvg: string;
-  }) => void;
+  }) => void | Promise<void>;
 }
-
-const isValidSlug = (slug: string) => /^[a-z0-9-]+$/.test(slug);
-const isValidHexColor = (color: string) => /^#[0-9A-Fa-f]{6}$/.test(color);
 
 export function CreateSpaceDialog(props: Props) {
   const [name, setName] = createSignal("");
@@ -29,6 +27,7 @@ export function CreateSpaceDialog(props: Props) {
   const [brandColor, setBrandColor] = createSignal(DEFAULT_BRAND_COLOR);
   const [logoSvg, setLogoSvg] = createSignal("");
   const [formError, setFormError] = createSignal("");
+  const [pending, setPending] = createSignal(false);
 
   function reset() {
     setName("");
@@ -47,63 +46,47 @@ export function CreateSpaceDialog(props: Props) {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    if (!["image/svg+xml", "image/png", "image/jpeg"].includes(file.type)) {
-      setFormError("Only SVG, PNG, and JPG files are supported");
-      return;
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      setFormError("Logo file must be smaller than 300 KB");
-      return;
-    }
-
     try {
-      if (file.type === "image/svg+xml") {
-        // Inline SVG is rendered with innerHTML, so strip anything executable
-        // before it is stored.
-        const text = (await file.text())
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-          .replace(/on\w+="[^"]*"/g, "")
-          .replace(/on\w+='[^']*'/g, "");
-        setLogoSvg(text);
-      } else {
-        const reader = new FileReader();
-        reader.onload = (loadEvent) => setLogoSvg(loadEvent.target?.result as string);
-        reader.onerror = () => setFormError("Failed to read image file");
-        reader.readAsDataURL(file);
-      }
+      setLogoSvg(await imageFileAsDataUrl(file));
       setFormError("");
-    } catch {
-      setFormError("Failed to read image file");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Failed to read image file");
     }
   }
 
-  function handleSubmit(event: Event) {
+  async function handleSubmit(event: Event) {
     event.preventDefault();
+    if (pending()) return;
 
     if (!name().trim()) return setFormError("Please enter a space name");
     if (!slug().trim()) return setFormError("Please enter a slug");
-    if (!isValidSlug(slug())) {
-      return setFormError(
-        "Slug must contain only lowercase letters, numbers, and hyphens",
-      );
-    }
-    if (!isValidHexColor(brandColor())) {
+    // The endpoint's own rule set, so "docs" is refused with the reason here
+    // rather than after a round trip.
+    const slugRejection = spaceSlugRejection(slug());
+    if (slugRejection) return setFormError(slugRejection);
+    if (!isHexColor(brandColor())) {
       return setFormError("Please enter a valid hex color (e.g., #42516d)");
     }
 
     setFormError("");
-    props.onCreate?.({
-      name: name().trim(),
-      slug: slug().trim(),
-      brandColor: brandColor(),
-      logoSvg: logoSvg(),
-    });
+    setPending(true);
+    try {
+      await props.onCreate?.({
+        name: name().trim(),
+        slug: slug().trim(),
+        brandColor: brandColor(),
+        logoSvg: logoSvg(),
+      });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create space");
+      return;
+    } finally {
+      setPending(false);
+    }
     reset();
     handleClose();
   }
 
-  // Clear the form when the dialog closes, so reopening never shows the last
-  // attempt.
   createEffect(
     on(
       () => props.show,
@@ -125,6 +108,8 @@ export function CreateSpaceDialog(props: Props) {
         <DialogFooter
           form="create-space-form"
           confirmLabel="Create"
+          pendingLabel="Creating…"
+          pending={pending()}
           onCancel={handleClose}
         />
       }
@@ -179,7 +164,7 @@ export function CreateSpaceDialog(props: Props) {
             onInput={(event) => setSlug(event.currentTarget.value)}
           />
           <p class="mt-1 text-neutral text-size-small">
-            Only lowercase letters, numbers, and hyphens
+            Lowercase letters, numbers and single inner hyphens
           </p>
         </div>
 

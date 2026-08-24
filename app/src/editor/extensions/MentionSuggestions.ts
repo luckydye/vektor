@@ -88,7 +88,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                 userName.toLowerCase().includes(q) || userEmail.toLowerCase().includes(q)
               );
             })
-            .slice(0, 5)
+            .slice(0, 20)
             .map((member: SpaceMember) => ({
               id: member.user?.email || member.userId || "",
               label: member.user?.name || "Unknown User",

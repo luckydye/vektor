@@ -6,15 +6,24 @@ import {
   on,
   onCleanup,
 } from "solid-js";
+import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
+import { CollaborationJoinAbandoned } from "#editor/collaboration.ts";
 import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
+import { useQueryClient } from "./query.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
+import { useProperties } from "./useProperties.ts";
 import { useRevisions } from "./useRevisions.ts";
 import { useToast } from "./useToast.ts";
 
-export type SaveMode = "revision" | "suggestion";
+/**
+ * Where the content of an edit session goes when it ends. `template` is a
+ * publish that also marks the document as one the new-document picker offers
+ * as a starting point.
+ */
+export type SaveMode = "revision" | "suggestion" | "template";
 
 /** Whether the user has an active editing session on the current document. */
 export const [editing, setEditing] = createSignal(false);
@@ -105,6 +114,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   const {
+    spaceId,
     documentId,
     documentType,
     readonly,
@@ -122,16 +132,38 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveError: documentSaveError,
     saveDocument,
   } = useDocument(documentId, documentType);
-  const { saveRevision } = useRevisions(documentId);
+  const { saveRevision, error: revisionError } = useRevisions(documentId);
+  const { updateProperty } = useProperties();
+  const queryClient = useQueryClient();
   const toast = useToast();
 
   let editorSession = 0;
+  // Which document the running session belongs to, so the two effects below can
+  // tell "the session has to move" from "it is already where it belongs".
+  let sessionActive = false;
+  let sessionDocumentId: string | undefined;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearSaveStatusTimer() {
     if (!saveStatusTimer) return;
     clearTimeout(saveStatusTimer);
     saveStatusTimer = null;
+  }
+
+  /**
+   * Being a template is a property on a saved document, so there is nothing to
+   * mark until a draft has become one — which is why the action is not offered
+   * before then.
+   */
+  async function markAsTemplate() {
+    const currentDocumentId = documentId();
+    if (!currentDocumentId) {
+      throw new Error("A draft has to be saved before it can become a template");
+    }
+    await updateProperty(currentDocumentId, templatePropertyKey, templatePropertyValue);
+    // The picker caches its list, and the first thing somebody does after
+    // making a template is go looking for it.
+    queryClient.invalidateQueries({ queryKey: ["wiki_templates", spaceId] });
   }
 
   async function finishEditing(mode: SaveMode) {
@@ -143,24 +175,39 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     setSaveStatus("saving");
     setSaveError(null);
 
-    let saved = false;
-    try {
-      const content = getEditorHtml();
-      if (content) {
-        if (mode === "suggestion") {
-          saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
-        } else {
-          saved = await saveDocument(content, { publish: mode === "revision" });
-        }
-      }
-    } catch (error) {
-      setSaveStatus("error");
-      setSaveError(error instanceof Error ? error : new Error(String(error)));
+    const content = getEditorHtml();
+    if (!content) {
+      // No editor, or nothing in it. Not a failure, so nothing to report.
+      setSaveStatus("idle");
       return;
     }
 
-    if (!saved) {
-      setSaveStatus("idle");
+    try {
+      if (mode === "suggestion") {
+        // `saveRevision` keeps its failure to itself and answers null, so the
+        // message has to be picked up from the composable's own error signal.
+        if (!(await saveRevision(content, "Suggested changes", "suggestion"))) {
+          throw new Error(revisionError() ?? "Could not save the suggestion");
+        }
+      } else {
+        // Marked before the publish, so a marker that cannot be written
+        // leaves the document as it was rather than published without it.
+        if (mode === "template") await markAsTemplate();
+        if (!(await saveDocument(content, { publish: true }))) {
+          // Also swallowed, but `useDocument` has raised the toast already —
+          // record it so the editor keeps showing that nothing was published.
+          setSaveStatus("error");
+          setSaveError(
+            new Error(documentSaveError() ?? "Could not publish the document"),
+          );
+          return;
+        }
+      }
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      setSaveStatus("error");
+      setSaveError(failure);
+      toast.error(failure.message);
       return;
     }
 
@@ -174,6 +221,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     }, 2000);
 
     if (mode === "suggestion") setSuggestionSavedCount((count) => count + 1);
+    else if (mode === "template") toast.success("Published as template");
     else toast.success("Document published");
   }
 
@@ -191,23 +239,47 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       group: "edit",
       run: async () => finishEditing("suggestion"),
     });
+
+    if (documentId()) {
+      Actions.register("document:save:template", {
+        title: "Publish as template",
+        description: "Publish and offer this document as a starting point for new ones",
+        group: "edit",
+        run: async () => finishEditing("template"),
+      });
+    }
   }
 
   function unregisterSaveActions() {
     Actions.unregister("document:save:publish");
     Actions.unregister("document:save:suggestion");
+    Actions.unregister("document:save:template");
   }
 
   async function startEditorSession() {
+    // A document switch flushes the `editing` and `documentId` effects back to
+    // back, and each asks for a session on the document arriving.
+    if (sessionActive && sessionDocumentId === documentId()) return;
     const session = ++editorSession;
     if (!canMountEditor()) return;
+    sessionActive = true;
+    sessionDocumentId = documentId();
+    // A new session has not failed yet — a message left over from the previous
+    // one would sit next to the button as if it had.
+    setSaveStatus("");
+    setSaveError(null);
     registerSaveActions();
     try {
       await collaboration.joinUntilReady();
     } catch (error) {
+      if (error instanceof CollaborationJoinAbandoned) return;
       if (session === editorSession) {
+        const failure = error instanceof Error ? error : new Error(String(error));
         setSaveStatus("error");
-        setSaveError(error instanceof Error ? error : new Error(String(error)));
+        setSaveError(failure);
+        // Editing is turned back off here, so without this the click on Edit
+        // looks like it simply did nothing.
+        toast.error(`Could not start editing: ${failure.message}`);
         setEditing(false);
       }
       return;
@@ -220,6 +292,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   function stopEditorSession() {
     editorSession++;
+    sessionActive = false;
+    sessionDocumentId = undefined;
     unregisterSaveActions();
     setShouldMountEditor(false);
     collaboration.leave();
@@ -246,6 +320,9 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   createEffect(
     on(documentId, (currentDocumentId, previousDocumentId) => {
       if (currentDocumentId === previousDocumentId) return;
+      // The `editing` effect may already have moved the session here, and
+      // tearing that down to rebuild it drops a join the server is answering.
+      if (sessionActive && sessionDocumentId === currentDocumentId) return;
 
       stopEditorSession();
       if (editing()) {

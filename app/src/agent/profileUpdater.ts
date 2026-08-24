@@ -1,5 +1,6 @@
-import { getAIProvider } from "#db/aiConfig.ts";
-import { getUserProfile, setUserProfile } from "#db/userProfiles.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getAIProvider } from "#db/space/aiConfig.ts";
+import { getUserProfile, setUserProfile } from "#db/space/userProfiles.ts";
 import { appLogger } from "#observability/logger.ts";
 import { callModel } from "./core.ts";
 
@@ -47,8 +48,9 @@ async function runProfileUpdate(options: {
   userId: string;
   sessionMessages: unknown[];
 }): Promise<void> {
-  const provider = await getAIProvider(options.spaceId);
-  const currentProfile = await getUserProfile(options.spaceId, options.userId);
+  const store = await openSpaceStore(options.spaceId);
+  const provider = await getAIProvider(store);
+  const currentProfile = await getUserProfile(store, options.userId);
 
   type DisplayMsg = { role: string; content?: string | null };
   const transcript = (options.sessionMessages as DisplayMsg[])
@@ -80,7 +82,7 @@ async function runProfileUpdate(options: {
   const content = typeof message.content === "string" ? message.content.trim() : "";
   if (!content) return;
 
-  await setUserProfile(options.spaceId, options.userId, content);
+  await setUserProfile(store, options.userId, content);
   appLogger.info("User profile updated", {
     spaceId: options.spaceId,
     userId: options.userId,

@@ -1,16 +1,33 @@
 import { createMemo, Show } from "solid-js";
+import { canEdit } from "#acl/permissions.ts";
 import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
 import { PinnedDocument } from "#components/PinnedDocument.tsx";
 import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
+import { SpaceHomeHeadline } from "#components/SpaceHomeHeadline.tsx";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
-import { t } from "#utils/lang.ts";
+
+function greetingKey(hour: number): "Good morning" | "Good afternoon" | "Good evening" {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function firstName(name: string | undefined): string | undefined {
+  return name?.trim().split(/\s+/)[0] || undefined;
+}
 
 export function SpaceHomeView() {
+  const t = useTranslation();
+  const locale = useLocale();
+  const user = useUserProfile();
+  const now = new Date();
+
   const { currentSpace } = useSpace();
   const { uploadFile } = useUploads();
   const userCanUpload = createMemo(() => canEdit(currentSpace()?.userRole));
@@ -33,9 +50,7 @@ export function SpaceHomeView() {
           }),
         },
       });
-    } catch {
-      // The shared upload manager reports the failure through the progress toast.
-    }
+    } catch {}
   }
 
   return (
@@ -47,6 +62,20 @@ export function SpaceHomeView() {
           onSelect={(file) => void uploadDroppedFile(file)}
         >
           <inset-view class="block h-full space-y-12 px-xs pt-m pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:px-xl lg:pb-8 print:px-0">
+            <SpaceHomeHeadline
+              date={new Intl.DateTimeFormat(locale, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              }).format(now)}
+              greeting={t(greetingKey(now.getHours()))}
+              name={firstName(user()?.name)}
+              subtitle={t("Here’s what moved forward in {space}.").replace(
+                "{space}",
+                space().name,
+              )}
+            />
+
             <Show when={space().preferences.pinnedDocumentId}>
               {(pinnedId) => (
                 <PinnedDocument spaceId={space().id} pinnedDocumentId={pinnedId()} />

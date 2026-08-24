@@ -1,14 +1,16 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { formatRelativeTime } from "#utils/datetime.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
 import "#editor/css/mentions.css";
 import "./AvatarElement.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 import { MessageInput } from "./MessageInput.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface Comment {
   id: string;
@@ -39,6 +41,9 @@ interface Props {
 }
 
 export function CommentThread(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { members } = useMembers();
   const currentUser = useUserProfile();
 
@@ -49,10 +54,10 @@ export function CommentThread(props: Props) {
     comment.createdByUser ?? findMemberUser(members(), comment.createdBy);
 
   const getUserName = (comment: Comment): string =>
-    userDisplayName(getUser(comment), comment.createdBy);
+    userDisplayName(getUser(comment), comment.createdBy, lang);
 
   function getRelativeTime(dateString: string) {
-    return formatRelativeTime(dateString, { style: "narrow" });
+    return formatRelativeTime(dateString, lang, { style: "narrow" });
   }
 
   function handleSubmit() {
@@ -67,7 +72,7 @@ export function CommentThread(props: Props) {
   }
 
   function handleDeleteComment(commentId: string) {
-    if (confirm("Are you sure you want to delete this comment?")) {
+    if (confirm(t("Are you sure you want to delete this comment?"))) {
       props.onDelete?.(commentId);
     }
   }
@@ -78,7 +83,6 @@ export function CommentThread(props: Props) {
     on(
       commentCount,
       () => {
-        // Solid has already rendered the new comment by the time this runs.
         if (commentListRef) commentListRef.scrollTop = commentListRef.scrollHeight;
       },
       { defer: true },
@@ -86,11 +90,10 @@ export function CommentThread(props: Props) {
   );
 
   return (
-    <div class="flex h-full max-h-[600px] w-80 flex-col rounded-lg border border-neutral-100 bg-background shadow-xl">
-      {/* Header */}
+    <div class="flex h-full max-h-[min(600px,calc(100dvh-1rem))] w-80 flex-col rounded-lg border border-neutral-100 bg-background shadow-xl">
       <div class="flex items-center justify-between rounded-t-lg border-neutral-100 border-b bg-neutral-50/80 p-3 backdrop-blur-sm">
         <div class="flex items-center gap-2">
-          <h3 class="font-semibold text-neutral-800 text-size-medium">Thread</h3>
+          <h3 class="font-semibold text-neutral-800 text-size-medium">{t("Thread")}</h3>
           <Show when={props.comments.length > 0}>
             <span class="rounded-full bg-neutral-200/50 px-1.5 py-0.5 font-medium text-neutral-500 text-size-extra-small">
               {props.comments.length}
@@ -99,32 +102,29 @@ export function CommentThread(props: Props) {
         </div>
         <div class="flex items-center gap-1">
           <Show when={props.comments.length > 0}>
-            <Button
-              variant="ghost"
+            <IconButton
+              class="enabled:active:bg-green-600/20 enabled:hover:bg-green-600/10 enabled:hover:text-green-600"
+              icon="confirmation"
+              label={t("Resolve thread")}
               onClick={() => props.onResolve?.()}
-              class="h-6 w-6 p-1 text-neutral-400 hover:text-green-600"
-              ariaLabel="Resolve thread"
-            >
-              <Icon class="h-4 w-4" name="confirmation" />
-            </Button>
+            />
           </Show>
-          <Button
-            variant="ghost"
+          <IconButton
+            class="-mr-1"
+            icon="cancel"
+            label={t("Close thread")}
             onClick={() => props.onClose?.()}
-            class="-mr-1 h-6 w-6 p-1 text-neutral-400 hover:text-neutral-700"
-            ariaLabel="Close thread"
-          >
-            <Icon class="h-4 w-4" name="cancel" />
-          </Button>
+          />
         </div>
       </div>
 
-      {/* Comments List */}
       <div ref={commentListRef} class="flex-1 space-y-4 overflow-y-auto p-3">
         <Show when={props.comments.length === 0}>
           <div class="flex h-24 flex-col items-center justify-center text-center text-neutral-400">
-            <p class="font-medium text-neutral-500 text-size-medium">No comments yet</p>
-            <p class="text-size-small opacity-75">Start the conversation!</p>
+            <p class="font-medium text-neutral-500 text-size-medium">
+              {t("No comments yet")}
+            </p>
+            <p class="text-size-small opacity-75">{t("Start the conversation!")}</p>
           </div>
         </Show>
 
@@ -152,7 +152,7 @@ export function CommentThread(props: Props) {
                       onClick={() => handleDeleteComment(comment.id)}
                       disabled={props.isDeletingComment}
                       class="ml-auto h-5 w-5 p-0.5 text-neutral-400 opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
-                      ariaLabel="Delete comment"
+                      ariaLabel={t("Delete comment")}
                     >
                       <Icon class="h-3 w-3" name="delete-entry" />
                     </Button>
@@ -169,7 +169,6 @@ export function CommentThread(props: Props) {
         </For>
       </div>
 
-      {/* Input Area */}
       <div class="p-5xs">
         <div class="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
           <MessageInput
@@ -178,7 +177,7 @@ export function CommentThread(props: Props) {
             mentions
             spaceId={props.spaceId}
             documentId={props.documentId}
-            placeholder="Reply..."
+            placeholder={t("Reply…")}
             rows={2}
             submitKey="ctrl+enter"
             disabled={props.isSubmitting || !newCommentContent().trim()}

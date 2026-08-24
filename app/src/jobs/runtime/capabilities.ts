@@ -26,6 +26,12 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { config, getLocalOrigin } from "#config";
 import { createJobToken } from "#jobs/jobToken.ts";
+import {
+  isPrivateOrBlockedIp,
+  safeFetch,
+  type UrlValidator,
+  urlHostname,
+} from "#utils/ssrf.ts";
 import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
@@ -42,20 +48,13 @@ const MAX_SLEEP_MS = 5 * 60 * 1000;
 const EXEC_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
- * Binaries a job may run. These are document-conversion tools that jobs have
- * always needed and cannot reasonably be reimplemented in-process. The list is
- * deliberately a fixed set of names — never a path, never guest-supplied — so
- * `exec` is a door to specific tools rather than to the shell.
+ * Binaries a job may run: the document-conversion tools jobs need and cannot
+ * reasonably reimplement in-process. Fixed names, never a path and never
+ * guest-supplied, so `exec` is a door to specific tools rather than to the
+ * shell — and only to the three the image installs, since allowlisting a tool
+ * that does not ship buys nothing and would admit it the day it does.
  */
-const EXEC_ALLOWLIST = new Set([
-  "htmlq",
-  "pandoc",
-  "rsvg-convert",
-  "qpdf",
-  "gs",
-  "libreoffice",
-  "soffice",
-]);
+const EXEC_ALLOWLIST = new Set(["htmlq", "pandoc", "rsvg-convert"]);
 
 export interface CapabilityContext {
   spaceId: string;
@@ -124,54 +123,44 @@ function checkPayloadSize(bytes: number, what: string): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Reject requests aimed at this host or the local network.
- *
- * Job code legitimately fetches the public internet, so egress is open by
- * default — but the loopback and private ranges are where the internal API,
- * the database and cloud metadata endpoints live. A job that wants space data
- * has capabilities for it and does not need to dial the API itself.
+ * Reject requests aimed at this host or the local network. Egress is otherwise
+ * open, since job code legitimately fetches the public internet. Only the error
+ * wording and the `JOB_FETCH_ALLOW_PRIVATE` hatch are job-specific, so this is a
+ * {@link UrlValidator} over the shared denylist rather than a second copy of it.
  */
-function isPrivateAddress(address: string): boolean {
-  if (address === "::1" || address.startsWith("fe80:") || address.startsWith("fc"))
-    return true;
-  if (address.startsWith("::ffff:")) return isPrivateAddress(address.slice(7));
-
-  const parts = address.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n))) return false;
-  const [a, b] = parts;
-  if (a === 127 || a === 0 || a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 169 && b === 254) return true; // link-local, incl. cloud metadata
-  return false;
-}
-
-async function assertEgressAllowed(url: URL): Promise<void> {
+export const assertEgressAllowed: UrlValidator = async (rawUrl) => {
+  const url = new URL(rawUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`fetch: unsupported protocol "${url.protocol}"`);
   }
-  if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return;
+  // No pinning either: the hatch exists to reach the local network.
+  if (config().JOB_FETCH_ALLOW_PRIVATE === "1") return { url, addresses: [] };
 
-  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  const hostname = urlHostname(url);
   if (hostname === "localhost" || hostname.endsWith(".localhost")) {
     throw new Error(`fetch: ${url.hostname} is not reachable from a job`);
   }
 
   // Resolve first so a public name pointing at a private address is caught too.
   const addresses = isIP(hostname)
-    ? [{ address: hostname }]
-    : await lookup(hostname, { all: true }).catch(() => {
-        throw new Error(`fetch: could not resolve ${url.hostname}`);
-      });
+    ? [hostname]
+    : (
+        await lookup(hostname, { all: true }).catch(() => {
+          throw new Error(`fetch: could not resolve ${url.hostname}`);
+        })
+      ).map((record) => record.address);
 
-  for (const { address } of addresses) {
-    if (isPrivateAddress(address)) {
+  for (const address of addresses) {
+    if (isPrivateOrBlockedIp(address)) {
       throw new Error(
         `fetch: ${url.hostname} resolves to the private address ${address}, which jobs cannot reach`,
       );
     }
   }
-}
+
+  // A literal IP has nothing to re-resolve, so nothing to pin.
+  return { url, addresses: isIP(hostname) ? [] : addresses };
+};
 
 /**
  * Flatten a `Response` into the plain shape the prelude rebuilds a
@@ -206,6 +195,12 @@ async function describeResponse(
 // Scratch directory
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** True when an already-resolved path is the scratch root or sits under it. */
+function isInside(root: string, resolved: string): boolean {
+  const rel = relative(root, resolved);
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
 /** A private directory per run, created on first use and removed at dispose. */
 class Scratch {
   private root: string | null = null;
@@ -223,11 +218,45 @@ class Scratch {
       throw new Error(`scratch: "${requested}" must be a relative path`);
     }
     const resolved = normalize(join(root, requested));
-    const rel = relative(root, resolved);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+    if (!isInside(root, resolved)) {
       throw new Error(`scratch: "${requested}" escapes the scratch directory`);
     }
     return resolved;
+  }
+
+  /**
+   * Vet one `exec` argument. Allowlisting the binary keeps guest input from
+   * becoming a command, but the converters take input and output paths, so an
+   * unchecked argument would read or write anywhere the server process can —
+   * every argument is treated as a candidate location and has to resolve inside
+   * the scratch tree, which ordinary flags and values do unchanged.
+   */
+  async assertArgAllowed(cwd: string, arg: string): Promise<void> {
+    const root = await this.dir();
+    // Unwrapping only, and only ever narrowing: `--flag=value` and `@argfile`
+    // hide a path one level in, and a flag's value may be a `:`-separated
+    // search path. An argument that matches neither shape is checked whole,
+    // which is the stricter reading, so a missed shape cannot pass a path.
+    const flag = /^-{1,2}[^=]*=/.exec(arg);
+    const candidates = flag
+      ? arg.slice(flag[0].length).split(":")
+      : [arg.replace(/^@/, "")];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      // Both decisions are a parser's, not a pattern's. A URL names a location
+      // no path check would see — `file:///etc/passwd`, and gio and libreoffice
+      // answer to schemes not worth enumerating — and the URL parser sees
+      // through the tabs, newlines and leading spaces a pattern trips over. The
+      // slash keeps CSS selectors out of it: `a:hover` parses as a URL, and
+      // htmlq takes selectors as arguments.
+      if (candidate.includes("/") && URL.canParse(candidate)) {
+        throw new Error(`exec: argument "${arg}" names a URL, not a scratch path`);
+      }
+      if (isAbsolute(candidate) || !isInside(root, normalize(join(cwd, candidate)))) {
+        throw new Error(`exec: argument "${arg}" points outside the scratch directory`);
+      }
+    }
   }
 
   async destroy(): Promise<void> {
@@ -347,7 +376,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     // ── network ──────────────────────────────────────────────────────────────
     fetch: (async (rawUrl: unknown, rawInit: unknown) => {
       const url = new URL(String(rawUrl));
-      await assertEgressAllowed(url);
 
       const init = asRecord(rawInit);
       const method = String(init.method ?? "GET").toUpperCase();
@@ -359,15 +387,21 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
             : String(init.body);
 
       onLog(`${method} ${url.href}`);
-      const response = await fetch(url, {
-        method,
-        headers: Object.fromEntries(
-          Object.entries(asRecord(init.headers)).map(([k, v]) => [k, String(v)]),
-        ),
-        body,
-        redirect: init.redirect === "manual" ? "manual" : "follow",
-        signal,
-      });
+      // Validated and pinned on every hop: a bare `fetch` here let a public 302
+      // walk the server into loopback or the metadata endpoint.
+      const response = await safeFetch(
+        url.href,
+        {
+          method,
+          headers: Object.fromEntries(
+            Object.entries(asRecord(init.headers)).map(([k, v]) => [k, String(v)]),
+          ),
+          body,
+          ...(init.redirect === "manual" ? { redirect: "manual" as const } : {}),
+          signal,
+        },
+        assertEgressAllowed,
+      );
 
       return await describeResponse(response, url.href);
     }) as never,
@@ -513,8 +547,9 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     // ── tools ────────────────────────────────────────────────────────────────
     /**
      * Run one of a fixed set of conversion tools. The command must be an
-     * allowlisted name, the working directory is always the scratch root, and no
-     * shell is involved, so guest input cannot become a command.
+     * allowlisted name and no shell is involved, so guest input cannot become a
+     * command; every argument is confined to the scratch tree, so it cannot
+     * become a path to another tenant's data either.
      */
     exec: (async (rawCommand: unknown, rawArgs: unknown, rawOptions: unknown) => {
       const command = String(rawCommand ?? "");
@@ -524,6 +559,7 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       const args = (Array.isArray(rawArgs) ? rawArgs : []).map(String);
       const options = asRecord(rawOptions);
       const cwd = options.cwd ? await scratch.resolve(options.cwd) : await scratch.dir();
+      for (const arg of args) await scratch.assertArgAllowed(cwd, arg);
 
       onLog(`exec ${command} ${args.join(" ")}`);
       return await new Promise((resolve, reject) => {
@@ -566,19 +602,15 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     uploadArtifact: (async (filename: unknown, content: unknown, mimeType: unknown) => {
       const data = asBuffer(content);
       checkPayloadSize(data.byteLength, `artifact ${String(filename)}`);
-      const form = new FormData();
-      form.append(
-        "file",
-        new Blob([data], {
-          type: mimeType ? String(mimeType) : "application/octet-stream",
-        }),
-      );
-      form.append("filename", String(filename));
+      const query = new URLSearchParams({ filename: String(filename) });
       onLog(`upload ${String(filename)} (${data.byteLength} bytes)`);
-      const response = await api("/uploads", {
+      const response = await api(`/uploads?${query}`, {
         method: "POST",
-        body: form,
-        headers: { Origin: origin },
+        body: data,
+        headers: {
+          Origin: origin,
+          "Content-Type": mimeType ? String(mimeType) : "application/octet-stream",
+        },
       });
       return ((await response.json()) as { url: string }).url;
     }) as never,

@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
-import { getRelativeSelection } from "y-prosemirror";
+import { getRelativeSelection, ySyncPluginKey } from "y-prosemirror";
 import * as Y from "yjs";
 import type { CanvasToolId } from "#canvas/index.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
@@ -61,14 +61,10 @@ export function findYSyncState(
   const state = target && "state" in target ? target.state : target;
   if (!state) return null;
 
-  for (const plugin of state.plugins) {
-    const pluginState = plugin.getState(state);
-    if (isYSyncState(pluginState)) {
-      return pluginState;
-    }
-  }
-
-  return null;
+  // The plugin key is typed `any`, and an editor without the Collaboration
+  // extension has no sync state at all.
+  const syncState: unknown = ySyncPluginKey.getState(state);
+  return isYSyncState(syncState) ? syncState : null;
 }
 
 /**
@@ -108,6 +104,24 @@ export function currentEditorPresenceState(
     };
   } catch {
     return { kind: "editor", focused: false, selection: null };
+  }
+}
+
+/**
+ * Rejection for a join whose room was left before the server answered. The
+ * caller moved on by definition, so it is not a failure worth reporting.
+ */
+export class CollaborationJoinAbandoned extends Error {
+  constructor() {
+    super("Left the document before it finished syncing");
+    this.name = "CollaborationJoinAbandoned";
+  }
+}
+
+export class CollaborationResetRequired extends Error {
+  constructor() {
+    super("The document was reopened from storage and has to be resynced");
+    this.name = "CollaborationResetRequired";
   }
 }
 

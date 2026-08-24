@@ -1,0 +1,23 @@
+---
+import {
+  LAST_VISITED_SPACE_KEY,
+  resolveActiveSpaceSlug,
+} from "#utils/activeSpace.server.ts";
+
+// Landing spot for the tabbed-mode new-tab button. Manifest members hold a
+// fixed URL and cannot name the active space, so this resolves the space the
+// same way a bare "/" does and hands off to that space's composer. Two segments
+// on purpose: a single one would fall inside the home tab's "/:space" scope,
+// and Chrome hides the new-tab button when its target is in that scope.
+if (!Astro.locals.session) {
+  return Astro.redirect("/login");
+}
+
+const activeSpaceSlug = await resolveActiveSpaceSlug(
+  Astro.locals.user?.id,
+  Astro.cookies.get(LAST_VISITED_SPACE_KEY)?.value,
+);
+
+return Astro.redirect(activeSpaceSlug ? `/${activeSpaceSlug}/new` : "/spaces");
+---
+

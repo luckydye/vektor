@@ -1,6 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { Extension, ExtensionManifest, JobDefinition } from "#db/extensions.ts";
+import type {
+  Extension,
+  ExtensionManifest,
+  JobDefinition,
+} from "#db/space/extensions.ts";
 import { kebabToTitle } from "#utils/utils.ts";
 import { createZipBuffer, type ZipEntry } from "#utils/zip.ts";
 

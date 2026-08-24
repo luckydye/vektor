@@ -4,7 +4,9 @@
 
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { iconMarkup } from "#components/Icon.tsx";
-import { escapeHtml } from "#utils/html.ts";
+import { escapeHtml, sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
+const t = createTranslator(browserLang());
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
@@ -43,9 +45,17 @@ function fallbackText(params: {
   if (params.type === "canvas" || isCanvasSnapshotContent(params.content)) {
     return "Canvas document";
   }
+  if (params.type === "csv") return "Table document";
   return "No document content";
 }
 
+/**
+ * A card that is not a document renders a label, never its content: the
+ * `content` attribute arrives from stored document HTML, where a custom
+ * element keeps its attributes verbatim, so writing it into the shadow root as
+ * markup is a stored-XSS sink. Document content goes through `document-view`,
+ * which sanitizes.
+ */
 function previewHtml(params: {
   status: DocumentPreviewStatus;
   type: DocumentPreviewType | null;
@@ -56,17 +66,7 @@ function previewHtml(params: {
     return workflowPreviewHtml(params.workflow);
   }
 
-  const content = params.content.trim();
-  if (
-    params.status !== "loaded" ||
-    !content ||
-    params.type === "canvas" ||
-    isCanvasSnapshotContent(content)
-  ) {
-    return `<p class="empty">${escapeHtml(fallbackText(params))}</p>`;
-  }
-
-  return `<div class="content">${content}</div>`;
+  return `<p class="empty">${escapeHtml(fallbackText(params))}</p>`;
 }
 
 function shouldRenderDocumentView(params: {
@@ -217,7 +217,9 @@ function workflowPreviewHtml(state: WorkflowPreviewState | null): string {
   if (status !== "completed") {
     output = `<p class="empty">Latest run is ${escapeHtml(status)}.</p>`;
   } else if (outputHtml) {
-    output = `<div class="content workflow-output-html">${outputHtml}</div>`;
+    // A run's `html` output is whatever the workflow produced, so it is
+    // sanitized here the same way `WorkflowView` sanitizes it.
+    output = `<div class="content workflow-output-html">${sanitizeVektorDocumentPreviewHtml(outputHtml)}</div>`;
   } else if (tableData) {
     output = renderTablePreview(tableData);
   } else if (outputDocumentId) {
@@ -559,7 +561,7 @@ if (
               <span class="title">${escapeHtml(title)}</span>
               <span class="type">${escapeHtml(documentTypeLabel(type))}</span>
             </span>
-            <button type="button" class="open" draggable="false" aria-label="Open document">
+            <button type="button" class="open" draggable="false" aria-label=${t("Open document")}>
               <span class="open-icon">${iconMarkup("chevron-right-thin")}</span>
             </button>
           </div>

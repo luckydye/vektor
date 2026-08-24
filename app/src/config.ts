@@ -38,10 +38,6 @@ export function config() {
        */
       COLLABORATION_HOST: process.env.VEKTOR_COLLABORATION_HOST,
 
-      /**
-       * The default space to redirect to from root "/"
-       */
-      DEFAULT_SPACE: process.env.VEKTOR_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
       IN_MEMORY_DB: process.env.VEKTOR_IN_MEMORY_DB,
       /**
@@ -50,6 +46,12 @@ export function config() {
        * Remote credentials may be supplied with the authToken query parameter.
        */
       DATABASE_URL: process.env.VEKTOR_DATABASE_URL,
+      /**
+       * Where the local auth database and space databases live, `./data` by
+       * default. Set per test run so a suite never reads the accounts and spaces
+       * a developer accumulated in the working copy.
+       */
+      DATA_DIR: process.env.VEKTOR_DATA_DIR,
       NODE_ENV: process.env.NODE_ENV,
 
       /**
@@ -59,21 +61,69 @@ export function config() {
       TRUST_PROXY: process.env.VEKTOR_TRUST_PROXY,
       /** Hard cap (bytes) for buffered API request bodies. */
       MAX_REQUEST_BYTES: process.env.VEKTOR_MAX_REQUEST_BYTES,
+
+      /** Set to "0"/"false" to turn API rate limiting off entirely. */
+      RATE_LIMIT: process.env.VEKTOR_RATE_LIMIT,
+      /** Requests per window on routes without a tighter rule. */
+      RATE_LIMIT_MAX: process.env.VEKTOR_RATE_LIMIT_MAX,
+      /** Rate limit window, in seconds. */
+      RATE_LIMIT_WINDOW: process.env.VEKTOR_RATE_LIMIT_WINDOW,
+      /**
+       * Killswitch: comma-separated rate limit keys to refuse outright, as they
+       * appear in the 429 log line (`ip:<addr>`, `token:<hash>`).
+       */
+      RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
+      /**
+       * How many spaces one user may have created and still own, `50` when
+       * unset and unlimited at `0`. Each space allocates its own database, so
+       * an unbounded count is a disk and file-descriptor budget handed to
+       * whoever signs up.
+       */
+      MAX_SPACES_PER_USER: process.env.VEKTOR_MAX_SPACES_PER_USER,
+      /**
+       * How many space databases stay open at once, `128` when unset and
+       * unlimited at `0`. Reached, the least recently used idle connections are
+       * closed; the next request for one reopens it.
+       */
+      MAX_OPEN_SPACE_DBS: process.env.VEKTOR_MAX_OPEN_SPACE_DBS,
+
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */
       SERVER_HOST: process.env.HOST,
+
+      /**
+       * Base URL of a Gravatar-compatible avatar API (e.g. https://gravatar.com
+       * or a self-hosted Libravatar); `<host>/avatar/<email-hash>` is then used
+       * for users whose login provider supplied no picture. Unset means no
+       * lookup: it would disclose an email hash to that host, which would also
+       * see the IP of everyone viewing the avatar.
+       */
+      GRAVATAR_URL: process.env.VEKTOR_GRAVATAR_URL,
 
       EMAIL_AUTH: process.env.VEKTOR_EMAIL_AUTH,
       REQUIRE_EMAIL_VERIFICATION: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION,
       EMAIL_FROM: process.env.VEKTOR_EMAIL_FROM,
       SMTP_HOST: process.env.VEKTOR_SMTP_HOST,
       SMTP_PORT: process.env.VEKTOR_SMTP_PORT,
-      SMTP_SECURE: process.env.VEKTOR_SMTP_SECURE,
+      /**
+       * How the SMTP connection is encrypted: "starttls" (default) connects in
+       * the clear and requires an upgrade, "implicit" starts the handshake at
+       * the first byte, "off" never encrypts.
+       */
+      SMTP_TLS: process.env.VEKTOR_SMTP_TLS,
+      /** Set to "0"/"false" to accept any SMTP server certificate. */
+      SMTP_TLS_VERIFY: process.env.VEKTOR_SMTP_TLS_VERIFY,
+      /** Name to verify the certificate against when it differs from SMTP_HOST. */
+      SMTP_TLS_SERVERNAME: process.env.VEKTOR_SMTP_TLS_SERVERNAME,
+      /**
+       * CA bundle file and/or directory of CA certificates trusted for SMTP.
+       * Setting either replaces the built-in root store for this connection.
+       */
+      SMTP_CA_FILE: process.env.VEKTOR_SMTP_CA_FILE,
+      SMTP_CA_DIR: process.env.VEKTOR_SMTP_CA_DIR,
       SMTP_USER: process.env.VEKTOR_SMTP_USER,
       SMTP_PASSWORD: process.env.VEKTOR_SMTP_PASSWORD,
-      /** Comma-separated allowlist of OAuth group claims the IdP may assign. */
-      OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
 
       /** CLI connection settings (vektor document/workflow commands). */
       CLI_HOST: process.env.VEKTOR_HOST,
@@ -97,6 +147,24 @@ export function config() {
       OAUTH_TOKEN_URL: process.env.OAUTH_TOKEN_URL,
       OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
+      /** Seconds a group claim may age before the next re-read. 0 is off. */
+      OAUTH_GROUP_SYNC_INTERVAL: process.env.OAUTH_GROUP_SYNC_INTERVAL,
+      /**
+       * Comma-separated OAuth group ids whose members may create spaces of
+       * their own. Unset leaves creation open to every signed-in user, which is
+       * what it has always been. Set but naming no usable group means nobody
+       * may create one — a misconfigured allow list has to deny, not open up.
+       */
+      SPACE_CREATION_GROUPS: process.env.VEKTOR_SPACE_CREATION_GROUPS,
+
+      /**
+       * Comma-separated OAuth group ids whose members administer the instance:
+       * owner on every space that exists, which is what lets them list and
+       * delete spaces they do not belong to. Unset means nobody — the opposite
+       * default to the allow list above, since an absent setting must not hand
+       * everyone authority over every space.
+       */
+      ADMIN_GROUPS: process.env.VEKTOR_ADMIN_GROUPS,
 
       /**
        * Google social login. When both id and secret are set, a "Continue with
@@ -134,12 +202,25 @@ export function config() {
        */
       JOB_RUNTIME: process.env.VEKTOR_JOB_RUNTIME,
       /**
-       * Allow job `fetch` to reach loopback and private address ranges. Off by
+       * Allow server-side fetches of user-configured URLs — job `fetch`, and an AI
+       * provider base URL — to reach loopback and private address ranges. Off by
        * default: that is where the internal API, the database and cloud metadata
-       * endpoints live, and jobs have capabilities for the space data they need.
-       * Only enable for local development against a private service.
+       * endpoints live. Enabling it for a self-hosted Ollama also lets a space
+       * owner aim the server at any internal host, with viewers reading the reply.
        */
       JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
+
+      /**
+       * OpenTelemetry log export (OTLP/HTTP, JSON encoding). Logs keep going to
+       * stdout/stderr regardless; a collector base URL adds a second sink and
+       * `/v1/logs` is appended to it. Standard OTEL_* names so an existing
+       * collector deployment configures the app unchanged.
+       */
+      OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      /** Extra request headers as `k1=v1,k2=v2` (e.g. an ingest token). */
+      OTEL_EXPORTER_OTLP_HEADERS: process.env.OTEL_EXPORTER_OTLP_HEADERS,
+      /** Reported as `service.name`; defaults to "vektor". */
+      OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
 
       /**
        * Comma-separated list of extension sources the server will accept.
@@ -156,13 +237,21 @@ export function config() {
     SITE_URL: publicEnv.VEKTOR_SITE_URL,
     API_URL: publicEnv.VEKTOR_API_URL,
     COLLABORATION_HOST: publicEnv.VEKTOR_COLLABORATION_HOST,
-    DEFAULT_SPACE: publicEnv.VEKTOR_DEFAULT_SPACE,
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
     GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
   } as const;
+}
+
+/**
+ * Whether this instance is served over HTTPS, and so whether a cookie it sets
+ * must be `Secure`. Read from configuration rather than from a request: behind a
+ * TLS-terminating proxy the request itself arrives over plain HTTP.
+ */
+export function isHttpsSite(): boolean {
+  return (config().SITE_URL ?? "").startsWith("https://");
 }
 
 /**
@@ -185,7 +274,6 @@ export function getPublicEnv(): App.PublicEnv {
     VEKTOR_SITE_URL: appConfig.SITE_URL,
     VEKTOR_API_URL: appConfig.API_URL,
     VEKTOR_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
-    VEKTOR_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
     // Never expose the client secret; only a boolean flag reaches the browser.
@@ -207,6 +295,73 @@ export function getLocalOrigin(): string {
       : argv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
   const port = portArg ?? "8080";
   return `http://127.0.0.1:${port}`;
+}
+
+export function isInMemoryDb(): boolean {
+  return config().IN_MEMORY_DB === "1";
+}
+
+export const LOCAL_USER_ID = "local";
+
+export const LOCAL_USER = {
+  id: LOCAL_USER_ID,
+  name: "Local User",
+  email: "local@localhost",
+  emailVerified: true,
+  image: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+export const LOCAL_SESSION = {
+  id: "local-session",
+  userId: LOCAL_USER_ID,
+  token: "local",
+  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+  ipAddress: null,
+  userAgent: null,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+};
+
+export function isNoAuthMode(): boolean {
+  return config().NO_AUTH === "1";
+}
+
+// No-auth mode makes LOCAL_USER an unauthenticated super-user that bypasses
+// every permission check. It must never be enabled in production — fail fast at
+// startup rather than silently exposing all data. NODE_ENV alone is not a
+// reliable signal (deployments may forget to set it), so also treat any
+// non-local public origin as production-like.
+// Server only: in the browser the runtime env script is not guaranteed to be in
+// the document at module evaluation, and a client-side check guards nothing the
+// server has not already refused to start with.
+if (typeof document === "undefined" && isNoAuthMode()) {
+  if (config().NODE_ENV === "production") {
+    throw new Error(
+      "VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with NODE_ENV=production",
+    );
+  }
+
+  const siteUrl = config().SITE_URL;
+  if (siteUrl) {
+    let hostname = "";
+    try {
+      hostname = new URL(siteUrl).hostname;
+    } catch {
+      // Unparseable SITE_URL: be conservative and treat it as non-local.
+    }
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".localhost");
+    if (!isLocalHost) {
+      throw new Error(
+        `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local VEKTOR_SITE_URL (${siteUrl})`,
+      );
+    }
+  }
 }
 
 declare global {

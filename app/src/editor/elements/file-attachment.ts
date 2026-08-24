@@ -9,8 +9,8 @@
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
 import { iconMarkup } from "#components/Icon.tsx";
-import { MODEL_VIEWER_TAG } from "#model-viewer/ModelViewerElement.ts";
-import { escapeHtml } from "#utils/html.ts";
+import { MODEL_VIEWER_TAG } from "#components/model-viewer/ModelViewerElement.ts";
+import { escapeHtml, isSafeUrlValue } from "#utils/html.ts";
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
 const DOCUMENT_EXTENSIONS = ["docx", "doc", "pdf"];
@@ -100,7 +100,10 @@ if (
 
       render() {
         const run = ++this.previewRun;
-        const src = this.getAttribute("src") || "";
+        // The attribute comes from stored document HTML, where a custom element
+        // keeps its attributes verbatim: a `javascript:` src would run on the
+        // card's own click, which opens it in a new window.
+        const src = this.safeSrc();
         const filename = this.getAttribute("filename") || "file";
         const safeFilename = escapeHtml(filename);
         const fileType = getFileType(filename);
@@ -219,6 +222,12 @@ if (
         }
       }
 
+      /** The `src` attribute if it is a URL worth handing a browser, else "". */
+      safeSrc(): string {
+        const src = this.getAttribute("src") || "";
+        return isSafeUrlValue(src) ? src : "";
+      }
+
       previewMarkup(fileType: FileType, src: string): string {
         if (fileType === "text") {
           return `<pre class="text-content">Loading preview...</pre>`;
@@ -235,7 +244,7 @@ if (
         // Interacting with the live 3D preview should orbit it, not open the file.
         if ((e.target as Element | null)?.closest?.(MODEL_VIEWER_TAG)) return;
         e.preventDefault();
-        const src = this.getAttribute("src");
+        const src = this.safeSrc();
         if (src) {
           window.open(src, "_blank");
         }

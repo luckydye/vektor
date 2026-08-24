@@ -14,14 +14,26 @@ import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
-import { formatDate } from "#utils/datetime.ts";
-import { currentLang, t } from "#utils/lang.ts";
-import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import { isTransformableImageUrl } from "#files/transformUrl.ts";
+import { formatDate } from "#utils/dateFormat.ts";
+import { normalizeTimestamp } from "#utils/datetime.ts";
+import { spacePath } from "#utils/utils.ts";
+import { BottomBanner } from "./BottomBanner.tsx";
+import { type FilePreviewItem, FilePreviews } from "./FilePreviews.tsx";
 import { Icon } from "./Icon.tsx";
+import { IconButton } from "./IconButton.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
-type DocumentListItem = DocumentWithProperties & {
+export type DocumentListItem = DocumentWithProperties & {
   snippet?: string;
+  /**
+   * Set on an item from another space, so its links point there rather than at
+   * the current one. Naming that space is the caller's job: a list is one space's
+   * worth of items, and the heading above it says whose.
+   */
+  spaceId?: string;
+  spaceSlug?: string;
 };
 
 interface Props {
@@ -29,12 +41,25 @@ interface Props {
   categories?: Category[];
   emptyText?: string;
   showToolbar?: boolean;
+  /**
+   * Keep the caller's order — a relevance ranking — instead of newest first.
+   * Honoured only with {@link Props.flat}, since time headings over a list
+   * ordered any other way read as a broken chronology.
+   */
   preserveOrder?: boolean;
+  /** One unlabelled list instead of time groups — for a handful of ranked hits. */
+  flat?: boolean;
+  /** Off for a list whose items cannot be acted on together, like another space's. */
+  selectable?: boolean;
+  /**
+   * Where {@link Props.splitContent} goes: after this many items, or after the
+   * last one when the list is shorter. The time groups resume below it.
+   */
+  splitAfter?: number;
+  splitContent?: () => JSX.Element;
   batchActions?: (selectedIds: Set<string>, deselectAll: () => void) => JSX.Element;
   rowActions?: (doc: DocumentWithProperties) => JSX.Element;
 }
-
-// ── Time grouping ────────────────────────────────────────────────────────────
 
 const GROUP_ORDER = [
   "today",
@@ -64,22 +89,26 @@ function getTimeGroup(date: Date | string | number): TimeGroup {
   return "older";
 }
 
+/** An upload that gets a thumbnail card instead of a row. */
+function isImageUpload(doc: DocumentListItem): boolean {
+  return doc.type === "file" && isTransformableImageUrl(doc.fileUrl);
+}
+
 export function DocumentGroupedList(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace } = useSpace();
 
   onMount(() => {
     import("#editor/elements/page-target.ts");
   });
 
-  // ── Category lookup ────────────────────────────────────────────────────────
-
   const categoryBySlug = createMemo(() => {
     const map = new Map<string, Category>();
     for (const c of props.categories ?? []) map.set(c.slug, c);
     return map;
   });
-
-  // ── Filters & sort ─────────────────────────────────────────────────────────
 
   const [dateRangeStart, setDateRangeStart] = createSignal<Date | null>(null);
   const [dateRangeEnd, setDateRangeEnd] = createSignal<Date | null>(null);
@@ -89,7 +118,7 @@ export function DocumentGroupedList(props: Props) {
     const end = dateRangeEnd();
     if (!start && !end) return null;
     const fmt = (d: Date) =>
-      d.toLocaleDateString(currentLang(), {
+      d.toLocaleDateString(lang, {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -125,14 +154,13 @@ export function DocumentGroupedList(props: Props) {
       docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() >= start);
     }
     if (rangeEnd) {
-      // include the full end day
       const end = new Date(rangeEnd);
       end.setDate(end.getDate() + 1);
       docs = docs.filter(
         (d) => normalizeTimestamp(d.updatedAt).getTime() < end.getTime(),
       );
     }
-    if (props.preserveOrder) return [...docs];
+    if (props.preserveOrder && props.flat) return [...docs];
 
     return [...docs].sort(
       (a, b) =>
@@ -141,33 +169,59 @@ export function DocumentGroupedList(props: Props) {
     );
   });
 
-  const groups = createMemo(() => {
+  /** One bucket of rows: a time group, or the whole list when `flat`. */
+  function toGroup(id: TimeGroup, docs: DocumentListItem[], label: string | null) {
+    return {
+      id,
+      label,
+      count: docs.length,
+      previews: docs.filter(isImageUpload).map(toPreviewItem),
+      docs: docs.filter((doc) => !isImageUpload(doc)),
+    };
+  }
+
+  /** `continuedFrom` is the group the section above ended in, if it is this one. */
+  function buildGroups(docs: DocumentListItem[], continuedFrom?: TimeGroup) {
+    if (props.flat) return [toGroup("today", docs, null)];
+
     const map = new Map<TimeGroup, DocumentListItem[]>();
-    for (const doc of filtered()) {
+    for (const doc of docs) {
       const g = getTimeGroup(doc.updatedAt);
       if (!map.has(g)) map.set(g, []);
       map.get(g)?.push(doc);
     }
-    return GROUP_ORDER.filter((g) => map.has(g)).map((g) => ({
-      id: g,
-      label: {
+    return GROUP_ORDER.filter((g) => map.has(g)).map((g) => {
+      const label = {
         today: t("Today"),
         yesterday: t("Yesterday"),
         "earlier-this-week": t("Earlier this week"),
         "earlier-this-month": t("Earlier this month"),
         older: t("Older"),
-      }[g],
-      docs: map.get(g) ?? [],
-    }));
-  });
+      }[g];
+      return toGroup(
+        g,
+        map.get(g) ?? [],
+        g === continuedFrom ? `${label} (${t("continued")})` : label,
+      );
+    });
+  }
 
-  // ── Selection ──────────────────────────────────────────────────────────────
+  /** The groups above and below {@link Props.splitContent}; one section without it. */
+  const sections = createMemo(() => {
+    const docs = filtered();
+    const splitAfter = props.splitAfter; // solid-reactivity-ok: memo body, re-reads per recompute
+    if (splitAfter === undefined || docs.length <= splitAfter) return [buildGroups(docs)];
+
+    const above = buildGroups(docs.slice(0, splitAfter));
+    return [above, buildGroups(docs.slice(splitAfter), above.at(-1)?.id)];
+  });
 
   const [selectedIds, setSelectedIds] = createSignal(new Set<string>());
   const allIds = createMemo(() => filtered().map((d) => d.id));
   let lastClickedId: string | null = null;
 
-  function toggleSelect(id: string, event: MouseEvent) {
+  // Takes the event structurally: a tile selects from a keydown, a row from a click.
+  function toggleSelect(id: string, event: { shiftKey: boolean }) {
     const next = new Set(selectedIds());
 
     if (event.shiftKey && lastClickedId && lastClickedId !== id) {
@@ -192,8 +246,6 @@ export function DocumentGroupedList(props: Props) {
     setSelectedIds(new Set<string>());
   }
 
-  // Drop any selected id that's no longer in `items` (e.g. after paging) so
-  // stale ids from a previous page never reach batch actions.
   createEffect(
     on(
       () => props.items,
@@ -208,7 +260,9 @@ export function DocumentGroupedList(props: Props) {
     ),
   );
 
-  // ── Collapsed groups ───────────────────────────────────────────────────────
+  // Held here rather than in the tile grid: `groups()` hands `For` new objects on
+  // every refetch, which re-creates the grid and would drop its own state.
+  const [expandedPreviews, setExpandedPreviews] = createSignal(new Set<TimeGroup>());
 
   const [collapsed, setCollapsed] = createSignal(new Set<TimeGroup>());
   function toggleCollapse(groupId: TimeGroup) {
@@ -218,11 +272,24 @@ export function DocumentGroupedList(props: Props) {
     setCollapsed(next);
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
   function docTitle(doc: DocumentListItem) {
     const title = doc.properties?.title ?? doc.properties?.name;
     return title ? propertyValueToText(title) : t("Untitled");
+  }
+
+  /** The document's own space, which is the current one unless it says otherwise. */
+  function docSpacePath(doc: DocumentListItem) {
+    return spacePath(doc.spaceSlug ?? currentSpace()?.slug, `/doc/${doc.slug}`);
+  }
+
+  function toPreviewItem(doc: DocumentListItem): FilePreviewItem {
+    return {
+      id: doc.id,
+      title: docTitle(doc),
+      url: doc.fileUrl ?? "",
+      size: doc.fileSize,
+      documentUrl: docSpacePath(doc),
+    };
   }
 
   function docCategoryName(doc: DocumentListItem): string | null {
@@ -232,29 +299,34 @@ export function DocumentGroupedList(props: Props) {
     return categoryBySlug().get(slug)?.name ?? slug;
   }
 
+  // Count, then what can be done, then the way out — dismissal last, at the far
+  // end, the way the canvas toolbar keeps its own trailing controls.
   const selectionBar = () => (
     <Show when={selectedIds().size > 0}>
-      <span class="text-neutral-500 text-size-small">
+      <span class="px-2 text-neutral-500 text-size-small tabular-nums">
         {selectedIds().size} {t("selected")}
       </span>
-      <button
-        type="button"
-        onClick={deselectAll}
-        class="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
-        title={t("Deselect all")}
-      >
-        <Icon class="h-3.5 w-3.5" name="cancel" />
-      </button>
       {props.batchActions?.(selectedIds(), deselectAll)}
+      <span class="mx-0.5 h-6 w-px bg-neutral-200" />
+      <IconButton
+        class="h-8 w-8"
+        icon="cancel"
+        label={t("Deselect all")}
+        onClick={deselectAll}
+      />
     </Show>
   );
 
+  const floatingSelection = createMemo(
+    () =>
+      props.showToolbar === false && props.selectable !== false && selectedIds().size > 0,
+  );
+
   return (
-    <div>
-      {/* Toolbar */}
+    // Room for the floating bar, so the last rows stay reachable under it.
+    <div classList={{ "pb-16": floatingSelection() }}>
       <Show when={props.showToolbar !== false}>
         <div class="mb-4 flex items-center gap-2">
-          {/* Date range picker */}
           <a-popover-trigger>
             <button
               slot="trigger"
@@ -315,11 +387,17 @@ export function DocumentGroupedList(props: Props) {
         </div>
       </Show>
 
-      {/* Deselect + batch actions (outside toolbar, when toolbar hidden) */}
-      <Show when={props.showToolbar === false}>
-        <div class="mb-4 flex min-h-[32px] items-center justify-end gap-2">
-          {selectionBar()}
-        </div>
+      {/* Over the list rather than above it: without a toolbar to share, the row
+          this used to sit in was blank on every view that never selects anything.
+          It rides the content column, as `BottomBanner` measures it. */}
+      <Show when={floatingSelection()}>
+        <BottomBanner>
+          {/* The canvas toolbar's shell: same radius, padding, translucency and
+              lift, so the two floating bars read as the same kind of thing. */}
+          <div class="pointer-events-auto flex items-center gap-1 whitespace-nowrap rounded-lg border border-neutral-200 bg-background/95 p-1.5 shadow-[0_10px_28px_rgba(15,23,42,0.14)] backdrop-blur-sm">
+            {selectionBar()}
+          </div>
+        </BottomBanner>
       </Show>
 
       <Show
@@ -333,129 +411,195 @@ export function DocumentGroupedList(props: Props) {
         }
       >
         <div class="space-y-4">
-          <For each={groups()}>
-            {(group) => (
-              <div>
-                {/* Group header */}
-                <button
-                  type="button"
-                  class="mb-2 flex w-full items-center gap-2 text-left"
-                  onClick={() => toggleCollapse(group.id)}
-                >
-                  <Icon class="h-3.5 w-3.5 text-neutral-400" name="activity" />
-                  <span class="font-semibold text-neutral-700 text-size-small">
-                    {group.label}
-                  </span>
-                  <span class="rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500 text-size-extra-small tabular-nums">
-                    {group.docs.length}
-                  </span>
-                  <div class="flex-1" />
-                  <Icon
-                    class={twMerge(
-                      "h-4 w-4 text-neutral-400 transition-transform",
-                      collapsed().has(group.id) && "-rotate-90",
-                    )}
-                    name="chevron-down"
-                  />
-                </button>
-
-                {/* Group rows */}
-                <a-expandable
-                  attr:opened={collapsed().has(group.id) ? undefined : ""}
-                  inert={collapsed().has(group.id)}
-                  class="overflow-hidden rounded-lg border border-neutral-100"
-                >
-                  <For each={group.docs}>
-                    {(doc, idx) => (
-                      <page-target
-                        attr:data-document-id={doc.id}
-                        attr:data-document-type={doc.type ?? undefined}
-                        attr:data-space-id={currentSpace()?.id}
-                        attr:data-document-url={spacePath(
-                          currentSpace()?.slug,
-                          `/doc/${doc.slug}`,
-                        )}
-                        class="group/row relative flex items-center hover:bg-neutral-50 [&[data-dragging]]:opacity-50"
-                        classList={{
-                          "border-neutral-100 border-t": idx() !== 0,
-                          "bg-primary-50 hover:bg-primary-50": selectedIds().has(doc.id),
-                        }}
-                      >
-                        {/* Checkbox */}
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the checkbox is the control. */}
-                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
-                        <div
-                          class="flex shrink-0 items-center self-stretch pl-3"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedIds().has(doc.id)}
-                            onClick={(event) => toggleSelect(doc.id, event)}
-                            class="h-3.5 w-3.5 cursor-pointer accent-primary-500 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
-                            classList={{ "!opacity-100": selectedIds().has(doc.id) }}
-                          />
-                        </div>
-
-                        {/* Link: doc icon + title + meta + badge + date */}
-                        <a
-                          href={
-                            doc.fileUrl ??
-                            spacePath(currentSpace()?.slug, `/doc/${doc.slug}`)
-                          }
-                          target={doc.fileUrl ? "_blank" : undefined}
-                          rel={doc.fileUrl ? "noopener noreferrer" : undefined}
-                          class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
-                        >
-                          <Icon
-                            class="h-4 w-4 shrink-0 text-neutral-300"
-                            name="document"
-                          />
-
-                          <div class="min-w-0 flex-1">
-                            <p class="truncate font-medium text-neutral-800 text-size-medium">
-                              {docTitle(doc)}
-                            </p>
-                            <p class="truncate text-neutral-400 text-size-extra-small">
-                              <Show when={docCategoryName(doc)}>
-                                <span>{docCategoryName(doc)} • </span>
-                              </Show>
-                              <span class="capitalize">{doc.type || t("Document")}</span>
-                            </p>
-                            {/* Snippets are document HTML, so they render behind the
-                                document-view shadow boundary and cannot style the shell. */}
-                            <Show when={doc.snippet}>
-                              {(snippet) => (
-                                <SearchSnippet html={snippet()} class="mt-1" />
-                              )}
-                            </Show>
-                          </div>
-
-                          <Show when={docCategoryName(doc)}>
-                            <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 text-size-extra-small">
-                              {docCategoryName(doc)}
+          <For each={sections()}>
+            {(groups, sectionIndex) => (
+              <>
+                <div class="space-y-4">
+                  <For each={groups}>
+                    {(group) => (
+                      <div>
+                        <Show when={group.label}>
+                          <button
+                            type="button"
+                            class="mb-2 flex w-full items-center gap-2 text-left"
+                            onClick={() => toggleCollapse(group.id)}
+                          >
+                            <Icon class="h-3.5 w-3.5 text-neutral-400" name="activity" />
+                            <span class="font-semibold text-neutral-700 text-size-small">
+                              {group.label}
                             </span>
+                            <span class="rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500 text-size-extra-small tabular-nums">
+                              {group.count}
+                            </span>
+                            <div class="flex-1" />
+                            <Icon
+                              class={twMerge(
+                                "h-4 w-4 text-neutral-400 transition-transform",
+                                collapsed().has(group.id) && "-rotate-90",
+                              )}
+                              name="chevron-down"
+                            />
+                          </button>
+                        </Show>
+
+                        <a-expandable
+                          attr:opened={collapsed().has(group.id) ? undefined : ""}
+                          inert={collapsed().has(group.id)}
+                          class="overflow-hidden"
+                        >
+                          <Show when={group.previews.length > 0}>
+                            {/* The inset lines the tiles up with the row icons below: pl-3 + checkbox + px-3. */}
+                            <FilePreviews
+                              class="mb-4 rounded-lg border border-neutral-100 px-[2.375rem] py-4"
+                              items={group.previews}
+                              selectedIds={selectedIds()}
+                              onToggleSelect={toggleSelect}
+                              expanded={expandedPreviews().has(group.id)}
+                              onExpand={() =>
+                                setExpandedPreviews(
+                                  new Set(expandedPreviews()).add(group.id),
+                                )
+                              }
+                            />
                           </Show>
 
-                          <span class="w-20 shrink-0 text-right text-neutral-400 text-size-extra-small tabular-nums">
-                            {formatDate(doc.updatedAt)}
-                          </span>
-                        </a>
+                          <Show when={group.docs.length > 0}>
+                            {/* Opaque, so the rows keep their white surface (and a
+                                visible hover) on a tinted background. */}
+                            <div class="overflow-hidden rounded-lg border border-neutral-100 bg-background">
+                              <For each={group.docs}>
+                                {(doc, idx) => (
+                                  <page-target
+                                    attr:data-document-id={doc.id}
+                                    attr:data-document-type={doc.type ?? undefined}
+                                    attr:data-space-id={doc.spaceId ?? currentSpace()?.id}
+                                    attr:data-document-url={docSpacePath(doc)}
+                                    class="group/row relative flex items-center hover:bg-neutral-50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-primary-500 has-[a:focus-visible]:ring-inset [&[data-dragging]]:opacity-50"
+                                    classList={{
+                                      "border-neutral-100 border-t": idx() !== 0,
+                                      "bg-primary-50 hover:bg-primary-50":
+                                        selectedIds().has(doc.id),
+                                    }}
+                                  >
+                                    <Show
+                                      when={props.selectable !== false}
+                                      fallback={<div class="shrink-0 pl-3" />}
+                                    >
+                                      {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the checkbox is the control. */}
+                                      {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
+                                      <div
+                                        class="flex shrink-0 items-center self-stretch pl-3"
+                                        onClick={(event) => event.stopPropagation()}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedIds().has(doc.id)}
+                                          onClick={(event) => toggleSelect(doc.id, event)}
+                                          tabindex={-1}
+                                          class="h-3.5 w-3.5 cursor-pointer accent-primary-500 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
+                                          classList={{
+                                            "!opacity-100": selectedIds().has(doc.id),
+                                          }}
+                                        />
+                                      </div>
+                                    </Show>
 
-                        {/* Row actions */}
-                        {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the actions are the controls. */}
-                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
-                        <div
-                          class="flex shrink-0 items-center gap-1 pr-3 opacity-0 transition-opacity group-hover/row:opacity-100"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {props.rowActions?.(doc)}
-                        </div>
-                      </page-target>
+                                    <a
+                                      href={doc.fileUrl ?? docSpacePath(doc)}
+                                      target={doc.fileUrl ? "_blank" : undefined}
+                                      rel={
+                                        doc.fileUrl ? "noopener noreferrer" : undefined
+                                      }
+                                      // The ring is on the row, so that it takes in the
+                                      // checkbox the tab stop stands in for.
+                                      class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 focus-visible:outline-none"
+                                      onKeyDown={(event) => {
+                                        // The row's one focus stop answers both keys: Enter
+                                        // for the checkbox it no longer reaches by tab, Space
+                                        // for the link, in place of scrolling the page.
+                                        if (event.key === "Enter") {
+                                          // Without a checkbox there is nothing to stand in
+                                          // for: Enter follows the link, as on any other.
+                                          if (props.selectable === false) return;
+                                          event.preventDefault();
+                                          toggleSelect(doc.id, event);
+                                          return;
+                                        }
+                                        if (event.key !== " ") return;
+                                        event.preventDefault();
+                                        window.open(
+                                          event.currentTarget.href,
+                                          "_blank",
+                                          "noopener",
+                                        );
+                                      }}
+                                    >
+                                      <Icon
+                                        class="h-4 w-4 shrink-0 text-neutral-300"
+                                        name="document"
+                                      />
+
+                                      <div class="min-w-0 flex-1">
+                                        <p class="truncate font-medium text-neutral-800 text-size-medium">
+                                          {docTitle(doc)}
+                                        </p>
+                                        {/* The category is the chip on the right; repeating it here read as two different values. */}
+                                        <p class="truncate text-neutral-400 text-size-extra-small capitalize">
+                                          {doc.type || t("Document")}
+                                        </p>
+                                        <Show when={doc.snippet}>
+                                          {(snippet) => (
+                                            <SearchSnippet
+                                              html={snippet()}
+                                              class="mt-1"
+                                            />
+                                          )}
+                                        </Show>
+                                      </div>
+
+                                      <Show when={docCategoryName(doc)}>
+                                        <span class="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 text-size-extra-small">
+                                          {docCategoryName(doc)}
+                                        </span>
+                                      </Show>
+
+                                      <span class="w-20 shrink-0 text-right text-neutral-400 text-size-extra-small tabular-nums">
+                                        {formatDate(doc.updatedAt, lang)}
+                                      </span>
+                                    </a>
+
+                                    {/* biome-ignore lint/a11y/noStaticElementInteractions: the wrapper only stops the row's click from reaching the link; the actions are the controls. */}
+                                    {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing is activated here, so there is no keyboard equivalent to add. */}
+                                    <div
+                                      class="flex shrink-0 items-center gap-1 pr-3 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {props.rowActions?.(doc)}
+                                    </div>
+                                  </page-target>
+                                )}
+                              </For>
+                            </div>
+                          </Show>
+                        </a-expandable>
+                      </div>
                     )}
                   </For>
-                </a-expandable>
-              </div>
+                </div>
+
+                {/* `splitAfter` too: with no split asked for there is one section,
+                    and this would append the content to any list that merely
+                    passed a `splitContent` — a later page of results, say. */}
+                <Show
+                  when={
+                    sectionIndex() === 0 &&
+                    props.splitAfter !== undefined &&
+                    props.splitContent
+                  }
+                >
+                  {props.splitContent?.()}
+                </Show>
+              </>
             )}
           </For>
         </div>

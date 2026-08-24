@@ -1,11 +1,12 @@
-import { extractFile } from "#db/extensions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { extractFile } from "#db/space/extensions.ts";
 import {
   classifyJobError,
   type JobRunTrigger,
   recordJobRunFinished,
   recordJobRunQueued,
   recordJobRunStarted,
-} from "#db/jobRuns.ts";
+} from "#db/space/jobRuns.ts";
 import { getJobRuntime } from "./runtime/index.ts";
 import type { CapabilityTable } from "./runtime/types.ts";
 
@@ -59,7 +60,7 @@ async function finishJobRun(
   } else {
     jobsFailedTotal += 1;
   }
-  await recordJobRunFinished(spaceId, executionId, result);
+  await recordJobRunFinished(await openSpaceStore(spaceId), executionId, result);
 }
 
 function releaseJobSlot(): void {
@@ -130,7 +131,8 @@ export async function runJob(
 
   const executionId = crypto.randomUUID();
   jobsQueuedTotal += 1;
-  await recordJobRunQueued(spaceId, {
+  const store = await openSpaceStore(spaceId);
+  await recordJobRunQueued(store, {
     id: executionId,
     scheduleId: scheduleId ?? null,
     jobId: logicalJobId ?? entryPath,
@@ -151,7 +153,7 @@ export async function runJob(
     });
     throw error;
   }
-  await recordJobRunStarted(spaceId, executionId);
+  await recordJobRunStarted(store, executionId);
 
   try {
     const outputs = await getJobRuntime().execute(fileBuffer.toString("utf8"), {

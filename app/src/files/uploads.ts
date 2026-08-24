@@ -17,6 +17,36 @@ export function isSafeUploadPath(value: string): boolean {
     .every((part) => part !== "." && part !== ".." && SAFE_UPLOAD_PATH_PART.test(part));
 }
 
+/**
+ * Extract the storage key from an internal upload URL, e.g.
+ * "/api/v1/spaces/{spaceId}/uploads/ab/abc123.png" -> "ab/abc123.png".
+ * Returns null for external URLs, other spaces' uploads, and unsafe keys.
+ */
+export function uploadKeyFromUrl(
+  spaceId: string,
+  url: string | undefined,
+): string | null {
+  if (!url) return null;
+
+  let pathname: string;
+  try {
+    pathname = new URL(url, "http://localhost").pathname;
+  } catch {
+    return null;
+  }
+
+  const prefix = `/api/v1/spaces/${encodeURIComponent(spaceId)}/uploads/`;
+  if (!pathname.startsWith(prefix)) return null;
+
+  let key: string;
+  try {
+    key = decodeURIComponent(pathname.slice(prefix.length));
+  } catch {
+    return null;
+  }
+  return isSafeUploadPath(key) ? key : null;
+}
+
 export function getUploadsRoot(spaceId: string): string {
   return resolve(process.cwd(), "data", "uploads", spaceId);
 }

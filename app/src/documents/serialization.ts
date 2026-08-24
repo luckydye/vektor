@@ -3,7 +3,7 @@ import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/index.ts";
 import { htmlFromSheetDoc, sheetDocFromHtml } from "#spreadsheet/sheetDoc.ts";
 import { codeToDoc, htmlToDoc } from "./schema/parse.ts";
 import { docToHtml } from "./schema/render.ts";
-import { textOf } from "./schema/specs.ts";
+import { type DocNode, textOf } from "./schema/specs.ts";
 import { yDocToDoc } from "./schema/yDecode.ts";
 import { docToYDoc } from "./schema/yEncode.ts";
 
@@ -59,14 +59,26 @@ export function toCleanHtml(doc: Y.Doc): string {
   return docToHtml(yDocToDoc(doc));
 }
 
+/**
+ * Parses persisted content into the document tree its type describes. Canvas
+ * and sheet content have no tree — they live in Y.Maps and Y.Arrays, not the
+ * `default` fragment.
+ */
+export function docNodeFromContent(
+  type: string | null | undefined,
+  content: string,
+): DocNode {
+  if (type === "workflow") return codeToDoc(content, "javascript");
+  return htmlToDoc(content);
+}
+
 /** Builds a Y.Doc from persisted canvas, sheet, workflow-source, or HTML content. */
 export function docFromContent(type: string | null | undefined, content: string): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
   // A sheet is a grid of rows, not prose: the document the room holds is the
   // shape `#spreadsheet/collab.ts` observes, not an XmlFragment.
   if (type === "csv") return sheetDocFromHtml(content);
-  if (type === "workflow") return docToYDoc(codeToDoc(content, "javascript"));
-  return docToYDoc(htmlToDoc(content));
+  return docToYDoc(docNodeFromContent(type, content));
 }
 
 /** Serializes a Y.Doc to canvas JSON, sheet markup, workflow source, or HTML. */

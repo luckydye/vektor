@@ -93,6 +93,7 @@ import {
   presentationIcon,
   printIcon,
   publishIcon,
+  recordIcon,
   redoIcon,
   refreshIcon,
   resizeHandleIcon,
@@ -128,6 +129,7 @@ import {
   videoIcon,
   warningTriangleIcon,
 } from "#assets/icons.ts";
+import { sanitizeSvgMarkup } from "#utils/html.ts";
 
 const icons = {
   "2-columns": twoColumnsIcon,
@@ -223,6 +225,7 @@ const icons = {
   presentation: presentationIcon,
   print: printIcon,
   publish: publishIcon,
+  record: recordIcon,
   redo: redoIcon,
   refresh: refreshIcon,
   "resize-handle": resizeHandleIcon,
@@ -259,8 +262,6 @@ const icons = {
 
 export type IconName = keyof typeof icons;
 
-const isMarkup = (value: string): boolean => /^\s*</.test(value);
-
 const FALLBACK = icons.missing;
 
 const templates = new Map<string, HTMLTemplateElement>();
@@ -279,10 +280,6 @@ function iconNode(svg: string): Node {
 function stamp(element: Element, svg: string): void {
   if (stamped.get(element) === svg) return;
 
-  // A hydrated element already holds what the server wrote, and re-stamping it
-  // would throw that markup away to rebuild the same thing. This matches what
-  // `innerHTML` did here before — dom-expressions skips property writes on
-  // hydrated nodes, so the server's markup was already the one that stood.
   if (!stamped.has(element) && element.firstChild) {
     stamped.set(element, svg);
     return;
@@ -292,7 +289,6 @@ function stamp(element: Element, svg: string): void {
   stamped.set(element, svg);
 }
 
-/** An icon's markup, for callers that build DOM without Solid. */
 export function iconMarkup(name: IconName): string {
   return icons[name] ?? FALLBACK;
 }
@@ -305,7 +301,11 @@ interface Props {
 
 export function Icon(props: Props) {
   const svg = () => {
-    if (props.svg) return isMarkup(props.svg) ? props.svg : FALLBACK;
+    // `svg` is untrusted extension-provided markup and ends up in `innerHTML`
+    // here and in the SSR branch below. A value that is not an SVG document —
+    // a URL, or a payload dressed up as one — sanitizes to "" and shows the
+    // fallback.
+    if (props.svg) return sanitizeSvgMarkup(props.svg) || FALLBACK;
     if (props.name) return icons[props.name] ?? FALLBACK;
     return "";
   };

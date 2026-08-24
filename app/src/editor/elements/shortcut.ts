@@ -50,7 +50,12 @@ customElements.define(
         icon.className = "key";
         // Only modifiers have a glyph; everything else prints as its letter.
         const glyph = KEY_ICONS[key.toLowerCase()];
-        icon.innerHTML = glyph ? iconMarkup(glyph) : key.toUpperCase();
+        if (glyph) {
+          // Trusted markup from the icon registry; the key name never is.
+          icon.innerHTML = iconMarkup(glyph);
+        } else {
+          icon.textContent = key.toUpperCase();
+        }
         return icon;
       });
 

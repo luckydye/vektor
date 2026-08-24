@@ -13,9 +13,9 @@ import mouthThree from "#assets/avatars/parts/mouth/mouth-3.svg?raw";
 import mouthFour from "#assets/avatars/parts/mouth/mouth-4.svg?raw";
 import avatarRobot from "#assets/avatars/robot.svg?raw";
 import avatarZero from "#assets/avatars/zero.svg?raw";
+import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
 import { createCosmeticElement } from "#cosmetics/CosmeticElement.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
-import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 import { avatarColorFromHash, hashAvatarSeed } from "#utils/avatarColor.ts";
 
 const avatarElementTag = "vektor-avatar";
@@ -48,14 +48,7 @@ const mouthParts = [mouthOne, mouthTwo, mouthThree, mouthFour];
 const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 const robotAvatar = `data:image/svg+xml,${encodeURIComponent(avatarRobot)}`;
 
-// Access tokens are represented in the ACL as "token:<token-id>" (see
-// getTokenUserId). They are machines, not people, so they get a robot face
-// instead of the hash-selected human features.
-function isTokenSeed(seed: string): boolean {
-  return seed.startsWith("token:");
-}
-
-const userCache = new Map<string, { expiresAt: number; user: AvatarUser }>();
+const userCache = new Map<string, { expiresAt: number; user: AvatarUser | undefined }>();
 const userRequests = new Map<string, Promise<AvatarUser | undefined>>();
 const userCacheDuration = 5 * 60 * 1000;
 const avatarStyles = `
@@ -123,11 +116,16 @@ function composeAvatar(eyes: string, mouth: string): string {
   return `<svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">${uniquePaths.join("")}</svg>`;
 }
 
-function getGeneratedAvatar(seed: string): { color: string; src: string } {
+function getGeneratedAvatar(
+  seed: string,
+  kind: "person" | "credential",
+): { color: string; src: string } {
   const hash = hashAvatarSeed(seed);
   const color = avatarColorFromHash(hash);
 
-  if (isTokenSeed(seed)) {
+  // Machines get a robot face rather than hash-selected human features, on the
+  // say-so of the caller listing them — never inferred from the id.
+  if (kind === "credential") {
     return { color, src: robotAvatar };
   }
 
@@ -140,10 +138,6 @@ function getGeneratedAvatar(seed: string): { color: string; src: string } {
   };
 }
 
-function hasAvatarIdentity(user: AvatarUser | null | undefined): boolean {
-  return Boolean(user?.email || user?.image);
-}
-
 function resolveAvatarUser(
   providedUser: AvatarUser | null | undefined,
   fetchedUser: AvatarUser | undefined,
@@ -154,7 +148,7 @@ function resolveAvatarUser(
   return {
     id: providedUser.id ?? fetchedUser.id,
     email: providedUser.email ?? fetchedUser.email,
-    image: providedUser.image ?? fetchedUser.image,
+    image: providedUser.image || fetchedUser.image,
     name: providedUser.name ?? fetchedUser.name,
     appearance: providedUser.appearance ?? fetchedUser.appearance,
   };
@@ -179,7 +173,16 @@ function loadUser(userId: string): Promise<AvatarUser | undefined> {
       userCache.set(userId, { expiresAt: Date.now() + userCacheDuration, user });
       return user;
     })
-    .catch(() => undefined)
+    // A miss is cached like a hit: plenty of ids in an activity list belong to
+    // nobody — a credential that wrote a revision, an account since deleted —
+    // and each would otherwise 404 once per row that mentions it.
+    .catch(() => {
+      userCache.set(userId, {
+        expiresAt: Date.now() + userCacheDuration,
+        user: undefined,
+      });
+      return undefined;
+    })
     .finally(() => {
       userRequests.delete(userId);
     });
@@ -191,10 +194,12 @@ const AvatarElement =
   typeof HTMLElement === "undefined"
     ? undefined
     : class AvatarElement extends HTMLElement {
-        static observedAttributes = ["size", "user-id"];
+        static observedAttributes = ["size", "user-id", "kind"];
 
         private readonly avatarContainer: HTMLDivElement;
         private fetchedUser: AvatarUser | undefined;
+        /** Set once a lookup has come back with nobody behind the id. */
+        private noSuchUser = false;
         private loadVersion = 0;
         private providedUser: AvatarUser | null | undefined;
         private providedSize: string | number | null = null;
@@ -248,21 +253,37 @@ const AvatarElement =
           }
 
           this.fetchedUser = undefined;
+          this.noSuchUser = false;
           this.render();
           void this.resolveUser();
         }
 
-        private async resolveUser() {
-          if (!this.isConnected || hasAvatarIdentity(this.providedUser)) return;
+        /**
+         * What the caller says this id is, when it knows: `credential` for any
+         * machine identity, `person` for an account. Absent means it does not
+         * know, and the server is asked. Deliberately not a property — a
+         * getter-only `kind` would break a dynamic `kind={…}` binding.
+         */
+        private get declaredKind(): "credential" | "person" | undefined {
+          const kind = this.getAttribute("kind")?.trim();
+          return kind === "credential" || kind === "person" ? kind : undefined;
+        }
 
-          const userId = this.getAttribute("user-id");
-          if (!userId || isTokenSeed(userId)) return;
+        private async resolveUser() {
+          if (!this.isConnected || this.providedUser?.image) return;
+
+          // Session profiles contain the stored image only. Resolve any missing
+          // image here so every avatar also gets a server-derived Gravatar URL.
+          const userId = (this.providedUser?.id || this.getAttribute("user-id"))?.trim();
+          // A credential has no user row, so there is no profile to resolve.
+          if (!userId || this.declaredKind === "credential") return;
 
           const version = ++this.loadVersion;
           const user = await loadUser(userId);
           if (!this.isConnected || version !== this.loadVersion) return;
 
           this.fetchedUser = user;
+          this.noSuchUser = !user;
           this.render();
         }
 
@@ -279,29 +300,41 @@ const AvatarElement =
           avatar.style.width = `${size}px`;
           avatar.style.height = `${size}px`;
 
-          if (user?.image) {
-            const image = document.createElement("img");
-            image.src = user.image;
-            image.alt = user.name || user.email || "User profile";
-            image.className = "avatar-image";
-            avatar.appendChild(image);
-          } else {
-            const image = document.createElement("img");
-            // Generated avatars are seeded by the stable user id so the same
-            // person renders identically everywhere, regardless of whether the
-            // caller has their (PII-gated) email.
-            const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
-            if (seed) {
-              const generatedAvatar = getGeneratedAvatar(seed);
-              avatar.style.background = generatedAvatar.color;
-              image.src = generatedAvatar.src;
-            } else {
+          const image = document.createElement("img");
+          image.alt = user?.name || user?.email || "User profile";
+          image.className = "avatar-image";
+
+          // Generated avatars are seeded by the stable user id so the same
+          // person renders identically everywhere, regardless of whether the
+          // caller has their (PII-gated) email.
+          const seed = (user?.id ?? this.getAttribute("user-id"))?.trim();
+          const drawGeneratedAvatar = () => {
+            const kind = this.declaredKind;
+            // An id that resolves to nobody gets the neutral face rather than a
+            // person's features: it may be a credential, or an account since
+            // deleted, and inventing a face for either claims a person. A caller
+            // that declared a kind is believed over the lookup.
+            if (!seed || (this.noSuchUser && !kind)) {
               image.src = defaultAvatar;
+              return;
             }
-            image.alt = user?.name || user?.email || "User profile";
-            image.className = "avatar-image";
-            avatar.appendChild(image);
+
+            const generatedAvatar = getGeneratedAvatar(seed, kind ?? "person");
+            avatar.style.background = generatedAvatar.color;
+            image.src = generatedAvatar.src;
+          };
+
+          if (user?.image) {
+            // A remote picture can fail for reasons we can't see up front: a
+            // Gravatar URL 404s for an address with no account (d=404), and a
+            // provider URL can expire. Either way, draw the generated face.
+            image.addEventListener("error", drawGeneratedAvatar, { once: true });
+            image.src = user.image;
+          } else {
+            drawGeneratedAvatar();
           }
+
+          avatar.appendChild(image);
 
           root.appendChild(avatar);
           const frame = createCosmeticElement(user?.appearance?.avatarFrame);

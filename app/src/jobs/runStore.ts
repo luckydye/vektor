@@ -1,12 +1,15 @@
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { getSpaceDb } from "#db/db.ts";
+import { getSpaceDb } from "#db/client/db.ts";
+import { many } from "#db/client/query.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { createId } from "#db/ids.ts";
+import { document, property } from "#db/schema/space.ts";
 import {
   assertDocumentCanParent,
   type DocumentWithProperties,
+  deleteDocument,
   getDocument,
-} from "#db/documents.ts";
-import { createId } from "#db/ids.ts";
-import { document, property } from "#db/schema/space.ts";
+} from "#db/space/documents.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
@@ -316,13 +319,14 @@ async function listStoredRuns(
 
   const limit = options?.limit ?? 50;
   const fetchLimit = limit + 1;
-  const rows = await db
-    .select({ id: document.id, createdAt: document.createdAt })
-    .from(document)
-    .where(and(...conditions))
-    .orderBy(desc(document.createdAt), desc(document.id))
-    .limit(fetchLimit)
-    .all();
+  const rows = await many(
+    db
+      .select({ id: document.id, createdAt: document.createdAt })
+      .from(document)
+      .where(and(...conditions))
+      .orderBy(desc(document.createdAt), desc(document.id))
+      .limit(fetchLimit),
+  );
 
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
@@ -332,7 +336,7 @@ async function listStoredRuns(
 
   const runs = await Promise.all(
     pageRows.map(async ({ id }) => {
-      const doc = await getDocument(spaceId, id);
+      const doc = await getDocument(await openSpaceStore(spaceId), id);
       const run = doc ? deserializeRun(id, doc) : undefined;
       return run ? { runId: id, run: { ...run, spaceId } } : undefined;
     }),
@@ -417,7 +421,11 @@ export async function createRun(
     logs: [],
   };
   const db = await getSpaceDb(spaceId);
-  await assertDocumentCanParent(spaceId, documentId, workflowRunDocumentType);
+  await assertDocumentCanParent(
+    await openSpaceStore(spaceId),
+    documentId,
+    workflowRunDocumentType,
+  );
   await db.insert(document).values({
     id: runId,
     slug: `workflow-run-${runId.slice("doc_".length)}`,
@@ -538,7 +546,7 @@ export async function getRunForRead(
 ): Promise<RunState | undefined> {
   const active = activeRuns.get(runId);
   if (active && active.spaceId === spaceId) return active;
-  const doc = await getDocument(spaceId, runId);
+  const doc = await getDocument(await openSpaceStore(spaceId), runId);
   const run = doc ? deserializeRun(runId, doc) : undefined;
   return run ? { ...run, spaceId } : undefined;
 }
@@ -622,8 +630,14 @@ export async function clearRunStoreForTests(spaceId: string): Promise<void> {
   await flushRunStoreForTests();
   resetRunStoreMemoryForTests();
   try {
-    const db = await getSpaceDb(spaceId);
-    await db.delete(document).where(eq(document.type, workflowRunDocumentType));
+    const store = await openSpaceStore(spaceId);
+    const runs = await many(
+      store.db
+        .select({ id: document.id })
+        .from(document)
+        .where(eq(document.type, workflowRunDocumentType)),
+    );
+    for (const { id } of runs) await deleteDocument(store, id);
   } catch (error) {
     appLogger.warn("Failed to clear workflow run documents for tests", {
       spaceId,

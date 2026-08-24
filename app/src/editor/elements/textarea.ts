@@ -1,4 +1,6 @@
 import { html, render } from "lit-html";
+import { browserLang, createTranslator } from "#utils/lang.ts";
+const t = createTranslator(browserLang());
 
 interface LanguageModelSession {
   destroy?: () => void;
@@ -92,7 +94,7 @@ customElements.define(
               ?disabled=${!this.state.isAvailable || this.state.isGenerating}
               @click=${this.handleGenerate}
               style="padding: 0.5rem 1rem; background: ${this.state.isAvailable && !this.state.isGenerating ? "#3b82f6" : "#9ca3af"}; color: white; border: none; border-radius: var(--radius-sm); font-size: 0.875rem; cursor: ${this.state.isAvailable && !this.state.isGenerating ? "pointer" : "not-allowed"}; transition: bg-background 0.2s; white-space: nowrap;"
-              title=${this.state.isAvailable ? "Generate content with AI" : "AI language model is not available in this browser"}
+              title=${this.state.isAvailable ? t("Generate content with AI") : t("AI language model is not available in this browser")}
             >
               ${
                 this.state.isGenerating

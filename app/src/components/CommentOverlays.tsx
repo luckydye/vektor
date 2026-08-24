@@ -6,6 +6,7 @@ import {
   resolveReferenceSelector,
 } from "#composeables/useComments.ts";
 import "./AvatarElement.ts";
+import { Icon } from "./Icon.tsx";
 
 interface CommentUser {
   id: string;
@@ -22,6 +23,8 @@ export interface Comment {
 
 interface Props {
   comments: Comment[];
+  /** Reference of the open thread, drawn as the selected bubble. */
+  activeReference?: string | null;
   onMove?: (payload: { reference: string; y: number }) => void;
   onPositioned?: () => void;
 }
@@ -43,14 +46,12 @@ const MAX_VISIBLE_AVATARS = 3;
 const DRAG_THRESHOLD_PX = 4;
 
 function findElement(reference: string, root: Element | ShadowRoot): Element | null {
-  // Case 1: Reference is an ID
   const byId =
     root instanceof ShadowRoot
       ? root.getElementById(reference)
       : root.querySelector(`#${reference}`);
   if (byId) return byId;
 
-  // Case 2: Reference is a selector (e.g. "p:nth-of-type(1)")
   try {
     const bySelector = root.querySelector(reference);
     if (bySelector) return bySelector;
@@ -62,8 +63,6 @@ function findElement(reference: string, root: Element | ShadowRoot): Element | n
 export function CommentOverlays(props: Props) {
   let containerEl: HTMLDivElement | undefined;
 
-  // A store rather than a signal: dragging writes a single overlay's `top` in
-  // place, and only that bubble should move.
   const [overlays, setOverlays] = createStore<CommentOverlay[]>([]);
 
   const [drag, setDrag] = createSignal<{
@@ -74,7 +73,6 @@ export function CommentOverlays(props: Props) {
   } | null>(null);
   let suppressClick = false;
 
-  /** Top of the document content relative to the overlay container. */
   function documentViewTop(): number {
     const docView = document.querySelector("document-view");
     if (!containerEl || !docView) return 0;
@@ -87,7 +85,6 @@ export function CommentOverlays(props: Props) {
     const docView = document.querySelector("document-view");
     if (!containerEl || !docView) return;
 
-    // Group comments and their distinct authors by reference.
     const commentGroups = new Map<string, Comment[]>();
     for (const c of props.comments) {
       if (!c.reference) continue;
@@ -104,15 +101,12 @@ export function CommentOverlays(props: Props) {
     const newOverlays: CommentOverlay[] = [];
 
     commentGroups.forEach((comments, reference) => {
-      // Inline anchor comments are shown as hover tooltips, not right-edge bubbles.
       if (isInlineAnchorReference(reference)) return;
 
       const participants = Array.from(
         comments
           .reduce((byUser, comment) => {
             const userId = comment.createdByUser?.id ?? comment.createdBy;
-            // Optimistic comments have no author until the server responds, so their
-            // comment id keeps their temporary avatar separate from another pending one.
             const key = userId || comment.id;
             if (!byUser.has(key)) {
               byUser.set(key, { key, userId, user: comment.createdByUser ?? null });
@@ -124,22 +118,18 @@ export function CommentOverlays(props: Props) {
       const overlay = { count: comments.length, reference, participants };
 
       if (isPositionReference(reference)) {
-        // Position references are y offsets relative to the document content
         newOverlays.push({ ...overlay, top: docTop + Number(reference) });
         return;
       }
 
       const target = findElement(reference, searchRoot);
       if (target) {
-        // Calculate top relative to the overlay container
         const top = target.getBoundingClientRect().top - containerRect.top;
         newOverlays.push({ ...overlay, top });
       }
     });
 
     setOverlays(newOverlays);
-    // Consumers anchored to a bubble measure after it has moved in the DOM.
-    // Solid applies the store write synchronously, so there is no tick to await.
     props.onPositioned?.();
   }
 
@@ -150,8 +140,6 @@ export function CommentOverlays(props: Props) {
   function openSidebar(reference: string) {
     window.dispatchEvent(new CustomEvent("comment:create", { detail: { reference } }));
   }
-
-  // --- Drag-to-reposition ---
 
   function startDrag(e: PointerEvent, overlay: CommentOverlay) {
     if (e.button !== 0) return;
@@ -180,7 +168,6 @@ export function CommentOverlays(props: Props) {
     setDrag(null);
     if (!d || d.reference !== overlay.reference || !d.moved) return;
 
-    // Inline anchor references are bound to document text — don't convert to a y-offset.
     if (isInlineAnchorReference(d.reference)) return;
 
     suppressClick = true;
@@ -202,14 +189,7 @@ export function CommentOverlays(props: Props) {
     let resizeObserver: ResizeObserver | null = null;
 
     window.addEventListener("resize", handleResize);
-    // The overlay stores positions relative to its container, while document
-    // anchors are measured in the viewport. Recalculate on every captured
-    // scroll so bubbles stay attached when either the page or a nested pane
-    // scrolls.
     window.addEventListener("scroll", handleResize, true);
-    // Recompute when the document content grows/shrinks (images loading,
-    // entering/leaving edit mode, ...). The container is inset-0, so it
-    // tracks the wrapper around the document content.
     if (containerEl && typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(handleResize);
       resizeObserver.observe(containerEl);
@@ -245,10 +225,13 @@ export function CommentOverlays(props: Props) {
             }}
             data-comment-overlay-bubble="true"
             data-comment-reference={overlay.reference}
-            class="pointer-events-auto absolute right-0 z-20 flex min-h-10 touch-none select-none items-center rounded-full px-1 transition-colors duration-200 hover:text-primary-600 hover:ring-2 hover:ring-primary-100"
+            class="pointer-events-auto absolute right-4xs z-20 flex touch-none select-none items-center gap-5xs rounded-full border border-neutral-100 bg-background py-5xs pr-4xs pl-5xs shadow-md transition duration-150 hover:border-primary-200 hover:text-primary-600 hover:shadow-lg active:scale-95 active:duration-75"
             classList={{
-              "cursor-grabbing shadow-lg":
+              // Dragging outranks the press squish: the bubble is lifted, not held down.
+              "scale-105! cursor-grabbing shadow-lg":
                 drag()?.reference === overlay.reference && !!drag()?.moved,
+              "border-primary-300 ring-2 ring-primary-100":
+                props.activeReference === overlay.reference,
               "cursor-pointer":
                 !(drag()?.reference === overlay.reference && drag()?.moved) &&
                 isInlineAnchorReference(overlay.reference),
@@ -262,12 +245,15 @@ export function CommentOverlays(props: Props) {
             }`}
             aria-label={`View ${overlay.count} comment${overlay.count === 1 ? "" : "s"}`}
           >
-            <span class="flex items-center py-1">
+            <span class="flex items-center">
               <For each={overlay.participants.slice(0, MAX_VISIBLE_AVATARS)}>
                 {(participant, avatarIndex) => (
-                  <span classList={{ "-ml-4": avatarIndex() > 0 }}>
+                  <span
+                    class="rounded-full ring-2 ring-background"
+                    classList={{ "-ml-4xs": avatarIndex() > 0 }}
+                  >
                     <vektor-avatar
-                      size="36"
+                      size="24"
                       attr:user-id={participant.userId}
                       prop:user={participant.user}
                       class="pointer-events-none"
@@ -276,10 +262,14 @@ export function CommentOverlays(props: Props) {
                 )}
               </For>
               <Show when={overlay.participants.length > MAX_VISIBLE_AVATARS}>
-                <span class="absolute -right-1 -bottom-1 flex h-6 min-w-6 items-center justify-center rounded-full border border-neutral-200 bg-background px-1 font-semibold text-neutral-700 text-size-extra-small shadow-sm">
+                <span class="-ml-4xs flex h-6 min-w-6 items-center justify-center rounded-full bg-neutral-100 pr-5xs pl-4xs font-semibold text-neutral-700 text-size-extra-small ring-2 ring-background">
                   +{overlay.participants.length - MAX_VISIBLE_AVATARS}
                 </span>
               </Show>
+            </span>
+            <span class="flex items-center gap-5xs text-neutral-500">
+              <Icon class="h-3.5 w-3.5" name="comment" />
+              <span class="font-semibold text-size-small">{overlay.count}</span>
             </span>
           </button>
         )}

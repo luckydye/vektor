@@ -6,7 +6,7 @@ import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
-import { initializeDatabases } from "./db/db.ts";
+import { initializeDatabases } from "./db/client/db.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 import {
   startEmailNotificationWorker,
@@ -323,9 +323,11 @@ async function shutdown(reason: string, exitCode = 0) {
       clearTimeout(forcedShutdownTimer);
     }
     appLogger.info("Shutdown completed", { reason });
+    await appLogger.flush();
     process.exit(exitCode);
   } catch (error) {
     appLogger.error("Shutdown failed", { reason, error });
+    await appLogger.flush();
     process.exit(1);
   }
 }

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getAuthDb } from "#db/db.ts";
+import { getAuthDb } from "#db/client/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import {
   createSessionApiRequest,
@@ -36,7 +36,7 @@ interface Suggestion {
 
 let serverProcess: TestServerProcess;
 
-// alice + bob share "engineering"; carol is in "sales"; dave has no groups.
+// alice + bob share an engineering group; carol is in sales; dave has no groups.
 let alice: { id: string; email: string; name: string; token: string };
 let bob: { id: string; email: string; name: string };
 let carol: { id: string; email: string; name: string };
@@ -61,9 +61,14 @@ beforeAll(async () => {
   const d = await createTestUser("Dave Nogroup");
   dave = { id: d.userId, email: d.email, name: d.name, token: d.token };
 
-  await assignUserToGroup(alice.id, ["engineering"]);
-  await assignUserToGroup(bob.id, ["engineering", "leads"]);
-  await assignUserToGroup(carol.id, ["sales"]);
+  // Group names are unique per run. This spec runs against the file-backed auth
+  // DB (see above), so its users outlive the run — with fixed names, every run
+  // adds another pair to the same group until the group exceeds the endpoint's
+  // 20-suggestion cap and this run's bob falls outside the slice.
+  const run = Date.now();
+  await assignUserToGroup(alice.id, [`engineering-${run}`]);
+  await assignUserToGroup(bob.id, [`engineering-${run}`, `leads-${run}`]);
+  await assignUserToGroup(carol.id, [`sales-${run}`]);
   // dave stays without any groups
 }, 30_000);
 

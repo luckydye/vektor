@@ -1,7 +1,7 @@
 import { createSignal, type JSX, mergeProps, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { t } from "#utils/lang.ts";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   disabled?: boolean;
@@ -11,11 +11,10 @@ interface Props {
 }
 
 export function FileDropOverlay(props: Props) {
+  const t = useTranslation();
+
   const merged = mergeProps({ disabled: false }, props);
   const [isDraggingFile, setIsDraggingFile] = createSignal(false);
-  // The overlay portals into <body>, which does not exist during SSR. A flag
-  // set after mount (rather than `isServer`) keeps the hydrated markup
-  // identical to the server's — `isServer` is already false while hydrating.
   const [hasMounted, setHasMounted] = createSignal(false);
   onMount(() => setHasMounted(true));
 

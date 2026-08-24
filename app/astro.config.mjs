@@ -14,6 +14,16 @@ export default defineConfig({
     enabled: false,
   },
 
+  // Only the /docs pages render markdown through Astro. Code samples there are
+  // presented as dark panels in both site themes, so one dark syntax theme is
+  // what the panel chrome in `styles/docs.css` is built around.
+  markdown: {
+    shikiConfig: {
+      theme: "github-dark",
+      wrap: false,
+    },
+  },
+
   security: {
     checkOrigin: false,
   },
@@ -64,6 +74,14 @@ export default defineConfig({
       {
         path: "en",
         codes: ["en", "en-US", "en-GB", "en-CA", "en-AU", "en-NZ", "en-IE"],
+      },
+      {
+        path: "es",
+        codes: ["es", "es-ES", "es-MX", "es-AR", "es-CO", "es-CL", "es-PE"],
+      },
+      {
+        path: "ja",
+        codes: ["ja", "ja-JP"],
       },
       {
         path: "ko",

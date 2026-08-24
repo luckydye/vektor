@@ -27,6 +27,7 @@ import {
 import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";
@@ -35,7 +36,7 @@ import {
   type DocumentPresenceProfile,
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
-import docStyles from "#editor/css/document.css?inline";
+import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
@@ -75,11 +76,9 @@ type DocumentToolbarElement = HTMLElement & {
   openBackgroundColorPicker?: () => void;
 };
 
-function escapeRawTextElement(value: string) {
-  return value.replace(/<\/(script|style)/gi, "<\\/$1");
-}
-
 export function DocumentContent(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
   const documentId = createMemo(() => props.documentId);
   const documentType = createMemo(() => props.documentType || "document");
   const documentReadonly = createMemo(() => props.readonly ?? false);
@@ -140,12 +139,6 @@ export function DocumentContent(props: Props) {
 
   resetEditingState();
 
-  // Edit mode is per document, but this component is not: `DocumentPageView`
-  // only tears its subtree down while the next document is being fetched, so
-  // navigating to an already-cached document swaps the id under the same
-  // instance and the mount-time decision above never runs again. Re-decide on
-  // every id change — before `useEditor`'s own id effect, which would otherwise
-  // restart the leftover session against the new document.
   createEffect(
     on(documentId, (currentDocumentId, previousDocumentId) => {
       if (currentDocumentId === previousDocumentId) return;
@@ -201,9 +194,6 @@ export function DocumentContent(props: Props) {
     void collaboration.setupPresence();
   }
 
-  // Cancelling an edit session tears the presence room down entirely
-  // (useEditor's stopEditorSession -> collaboration.leave()), so re-entering
-  // edit mode must rejoin presence explicitly, not just the Yjs doc room.
   function handleEditSessionStarted() {
     setupDocumentPresence();
   }
@@ -363,7 +353,7 @@ export function DocumentContent(props: Props) {
   function registerEditorActions() {
     if (formattingActionsRegistered) return;
 
-    registerFormattingActions(() => editor() as Editor);
+    registerFormattingActions(() => editor() as Editor, lang);
     formattingActionsRegistered = true;
   }
 
@@ -481,14 +471,9 @@ export function DocumentContent(props: Props) {
 
   const ssrDeclarativeShadowDom = createMemo(() => {
     if (!isServer) return "";
-    return [
-      '<template shadowrootmode="open">',
-      `<style data-document-styles>${escapeRawTextElement(docStyles)}</style>`,
-      '<div part="content"><div>',
-      renderedHtml(),
-      "</div></div>",
-      "</template>",
-    ].join("");
+    return renderDocumentReadShadowHtml(renderedHtml(), {
+      readonly: documentReadonly(),
+    });
   });
 
   useSync(
@@ -510,7 +495,6 @@ export function DocumentContent(props: Props) {
   return (
     <>
       <main class="relative mb-30">
-        {/* Document View (read + edit, single persistent instance) */}
         <Show when={supportsRichTextDocument()}>
           <div classList={{ "h-full": editing() }}>
             <document-view
@@ -518,6 +502,7 @@ export function DocumentContent(props: Props) {
               prop:html={renderedHtml()}
               attr:space-id={props.spaceId}
               attr:document-id={documentId()}
+              attr:readonly={documentReadonly() ? "" : undefined}
               data-allow-mismatch="children"
               on:task-toggle-request={requestTaskToggle}
               innerHTML={ssrDeclarativeShadowDom()}
@@ -525,9 +510,7 @@ export function DocumentContent(props: Props) {
           </div>
         </Show>
 
-        <div>
-          {/* DON'T REMOVE; This fixes shadowDOM content not visible in print preview */}
-        </div>
+        <div></div>
       </main>
 
       <Show when={documentId() && supportsComments(documentType())}>
@@ -546,6 +529,7 @@ export function DocumentContent(props: Props) {
               />
               <CommentOverlays
                 comments={commentBubble()?.commentsForOverlays() ?? []}
+                activeReference={commentBubble()?.activeReference() ?? null}
                 onMove={(payload) => void commentBubble()?.handleMoveThread(payload)}
                 onPositioned={() => commentBubble()?.handleThreadReposition()}
               />

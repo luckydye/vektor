@@ -1,6 +1,7 @@
 import { createEffect, For, Show } from "solid-js";
 import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
+import { CategoryBadge } from "./CategoryBadge.tsx";
 
 interface BreadcrumbItem {
   id: string;
@@ -29,9 +30,6 @@ export function Breadcrumbs(props: Props) {
 
   let olRef: HTMLOListElement | undefined;
 
-  // Keep the deepest crumb visible when the trail overflows. Reading all three
-  // inputs is what re-runs this; the DOM is already updated by the time a Solid
-  // effect runs, so the old `nextTick` is unnecessary.
   createEffect(() => {
     void props.category;
     void parents();
@@ -57,9 +55,7 @@ export function Breadcrumbs(props: Props) {
                   href={spacePath(currentSpace()?.slug, `/?category=${category().slug}`)}
                   class="inline-flex items-center gap-1.5 transition-colors hover:text-neutral-900 hover:underline"
                 >
-                  <Show when={category().icon}>
-                    <span class="text-base">{category().icon}</span>
-                  </Show>
+                  <CategoryBadge category={category()} class="h-4 w-4" />
                   <span>{category().name}</span>
                 </a>
                 <span class="px-1 text-neutral-400" aria-hidden="true">

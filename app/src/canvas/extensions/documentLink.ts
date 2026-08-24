@@ -2,7 +2,7 @@ import { CanvasElement } from "#canvas/runtime/extensionApi.ts";
 import { shared } from "#canvas/runtime/state.ts";
 import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
-import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
+import type { LinkMetadata } from "#api/routes/url-metadata.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,
@@ -344,22 +344,15 @@ export const CanvasDocumentLink = CanvasElement.create({
       open: (shape, host, event) => {
         event.preventDefault();
         if (host.wasDragged()) return;
+        const href = documentService(host).documentHrefForShape(shape);
+        if (!href) return;
+        // A workflow card can ask for its output document, which lives next to
+        // the card's own document under the same space path.
         const requested =
           event instanceof CustomEvent && typeof event.detail?.documentId === "string"
             ? event.detail.documentId
             : null;
-        const documents = documentService(host);
-        const documentId = requested ?? documents.documentIdForShape(shape);
-        if (!documentId) return;
-        const href = documents.documentHrefForShape(shape);
-        if (documents.isRemote(shape) && href) {
-          host.openUrl(href);
-          return;
-        }
-        host.dispatch("view-document", {
-          spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
-          documentId,
-        });
+        host.openUrl(requested ? siblingDocumentHref(href, requested) : href);
       },
     };
   },
@@ -515,6 +508,16 @@ function documentSpaceIdForShape(
   return (
     parseVektorDocumentAddress(shapeDocumentAddress(shape))?.spaceId || fallbackSpaceId
   );
+}
+
+// Swaps the document segment of a document href, keeping origin and space path.
+function siblingDocumentHref(href: string, documentId: string): string {
+  try {
+    const base = new URL(href, window.location.origin);
+    return new URL(`./${encodeURIComponent(documentId)}`, base).toString();
+  } catch {
+    return href;
+  }
 }
 
 function documentHrefForShape(shape: CanvasShape): string | undefined {

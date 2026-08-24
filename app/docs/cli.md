@@ -13,7 +13,7 @@ src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
 src/cli/mcp.ts          MCP stdio server
-src/cli/resolve.ts      resolveHost(), resolveSpaceId()
+src/cli/resolve.ts      stored config file, resolveConfig(), resolveHost()
 ```
 
 ## Adding a Command
@@ -23,21 +23,18 @@ src/cli/resolve.ts      resolveHost(), resolveSpaceId()
 Use the pattern from `document.ts`:
 
 ```typescript
-import { config } from "../config.ts";
-import { resolveHost, resolveSpaceId } from "./resolve.ts";
-
-async function resolveConnection() {
-  const host = resolveHost();
-  const token = config().CLI_ACCESS_TOKEN;
-  const spaceId = await resolveSpaceId(host, token);
-  return { host, token, spaceId };
-}
+import { resolveConfig } from "./resolve.ts";
 
 export async function commandFoo(flags: { ... }): Promise<void> {
-  const { host, token, spaceId } = await resolveConnection();
+  const { host, token, spaceId } = await resolveConfig();
   // ...
 }
 ```
+
+`resolveConfig()` is the only way in: it layers env vars over the stored config file and
+discovers a space when none is configured. Call it once per command — the space lookup
+can cost a request. `resolveHost()` is exported for `login`, which needs the host before
+a space exists.
 
 ### 2. Route in `vektor.ts`
 
@@ -59,12 +56,37 @@ If you're adding commands for an area where the routes still use `requireUser`, 
 
 ## Auth
 
-The CLI authenticates with a Bearer token from `VEKTOR_ACCESS_TOKEN`. Never create job tokens locally — the server mints them when needed (like for agent sessions). The browser does the same thing.
+The CLI authenticates with a Bearer token. Never create job tokens locally — the server mints them when needed (like for agent sessions). The browser does the same thing.
 
 ```typescript
-const token = config().CLI_ACCESS_TOKEN;
+const { token } = await resolveConfig();
 const headers = token ? { Authorization: `Bearer ${token}` } : {};
 ```
+
+Never read `config().CLI_ACCESS_TOKEN` directly — `resolveConfig()` is what honors the
+stored config file as well as the env var.
+
+### Stored config
+
+`vektor login` writes the space id and access token to
+`$XDG_CONFIG_HOME/vektor/config.json` (`~/.config/vektor/config.json` by default), mode
+`0600`. `vektor logout` deletes it.
+
+```json
+{
+  "spaceId": "space_4f2b…",
+  "accessToken": "at_9f1c…"
+}
+```
+
+`VEKTOR_HOST` is the exception: `resolveHost()` reads the env var (or the localhost
+default) and never the file, so the server URL stays a property of the shell, not of the
+stored login. `vektor login` prints a reminder to keep the export when the host is not
+the default.
+
+Env vars win over the file, so `VEKTOR_ACCESS_TOKEN` in a shell profile keeps shadowing
+a fresh `vektor login` — the command warns when that env var is set. Writes merge into
+the existing file, and an unreadable or corrupt file is ignored rather than fatal.
 
 ## MCP
 
@@ -87,7 +109,8 @@ const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
 `--space <id>` is stripped before routing and injected into `VEKTOR_SPACE_ID`. Any new global flag should be handled the same way with `stripFlag()`.
 
-Do not add `--url`, `--space`, or `--token` to individual commands — they are env-var only.
+Do not add `--url`, `--space`, or `--token` to individual commands — they come from the
+stored config file and the env vars only.
 
 The `space` commands are the exception to the HTTP-oriented command pattern:
 they use `VEKTOR_DATABASE_URL` to update the auth database directly. A

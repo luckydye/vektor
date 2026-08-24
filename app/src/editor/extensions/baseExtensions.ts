@@ -1,22 +1,34 @@
 import {
   Extension,
+  escapeForRegEx,
   getMarkAttributes,
+  getMarksBetween,
+  InputRule,
   Mark,
+  markInputRule,
   markPasteRule,
   Node,
   textblockTypeInputRule,
   wrappingInputRule,
 } from "@tiptap/core";
-import type { NodeType } from "@tiptap/pm/model";
+import {
+  Fragment,
+  type MarkType,
+  type NodeType,
+  type Node as PMNode,
+  type Schema,
+} from "@tiptap/pm/model";
 import {
   liftListItem as pmLiftListItem,
   sinkListItem as pmSinkListItem,
   splitListItem as pmSplitListItem,
   wrapInList as pmWrapInList,
 } from "@tiptap/pm/schema-list";
-import type { EditorState } from "@tiptap/pm/state";
-import { TextSelection } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { canJoin } from "@tiptap/pm/transform";
 import { HEADING_LEVELS, nodesWithAttr } from "#documents/schema/specs.ts";
+import { isSafeUrlValue } from "#utils/html.ts";
 import { markFromSpec, nodeFromSpec } from "./specSchema.ts";
 
 /**
@@ -180,6 +192,61 @@ export const HardBreak = Node.create({
 
 // ---- Marks ----
 
+/**
+ * A markdown emphasis rule: on the closing delimiter, drop both delimiters and
+ * mark the text between them. Every type in `types` is applied, so one rule can
+ * set more than one mark — `***text***` is bold and italic at once.
+ */
+function emphasisInputRule(find: RegExp, types: MarkType[]) {
+  return new InputRule({
+    find,
+    handler: ({ state, range, match }) => {
+      const text = match[match.length - 1];
+      if (!text) return null;
+      const fullMatch = match[0];
+      const leading = fullMatch.search(/\S/);
+      const textStart = range.from + fullMatch.indexOf(text);
+      const textEnd = textStart + text.length;
+
+      // Inline code excludes every other mark, so leave its text alone.
+      const excluded = getMarksBetween(range.from, range.to, state.doc).some(
+        (item) =>
+          item.to > textStart &&
+          types.some((type) => item.mark.type !== type && item.mark.type.excludes(type)),
+      );
+      if (excluded) return null;
+
+      const { tr } = state;
+      if (textEnd < range.to) tr.delete(textEnd, range.to);
+      if (textStart > range.from) tr.delete(range.from + leading, textStart);
+      const from = range.from + leading;
+      for (const type of types) {
+        tr.addMark(from, from + text.length, type.create());
+        tr.removeStoredMark(type);
+      }
+    },
+  });
+}
+
+/**
+ * One emphasis rule per spelling of the same emphasis — `**` and `__` both mean
+ * bold. The delimiter has to be preceded by the start of the block or a space,
+ * or `snake_case_names` would turn italic halfway through being typed.
+ */
+function emphasisRules(schema: Schema, delimiters: string[], markNames: string[]) {
+  const types = markNames.map((name) => schema.marks[name]);
+  return delimiters.map((delimiter) => {
+    const pattern = escapeForRegEx(delimiter);
+    const inner = `[^${escapeForRegEx(delimiter[0])}]+`;
+    return emphasisInputRule(
+      new RegExp(
+        `(?:^|\\s)(${pattern}(?!\\s+${pattern})(${inner})${pattern}(?!\\s+${pattern}))$`,
+      ),
+      types,
+    );
+  });
+}
+
 export const Bold = Mark.create({
   name: "bold",
   addOptions: htmlAttributeOptions,
@@ -208,6 +275,14 @@ export const Bold = Mark.create({
       "Mod-b": () => this.editor.commands.toggleBold(),
     };
   },
+  addInputRules() {
+    return [
+      // The triple form lives here so it is tried before the `**` and `*`
+      // rules, neither of which matches a delimiter longer than its own.
+      ...emphasisRules(this.type.schema, ["***", "___"], ["bold", "italic"]),
+      ...emphasisRules(this.type.schema, ["**", "__"], ["bold"]),
+    ];
+  },
 });
 
 export const Italic = Mark.create({
@@ -235,6 +310,9 @@ export const Italic = Mark.create({
       "Mod-i": () => this.editor.commands.toggleItalic(),
     };
   },
+  addInputRules() {
+    return emphasisRules(this.type.schema, ["*", "_"], ["italic"]);
+  },
 });
 
 export const Strike = Mark.create({
@@ -256,6 +334,9 @@ export const Strike = Mark.create({
         ({ commands }) =>
           commands.unsetMark(this.name),
     };
+  },
+  addInputRules() {
+    return emphasisRules(this.type.schema, ["~~", "~"], ["strike"]);
   },
 });
 
@@ -305,6 +386,14 @@ export const Code = Mark.create({
         ({ commands }) =>
           commands.unsetMark(this.name),
     };
+  },
+  addInputRules() {
+    return [
+      markInputRule({
+        find: /(?:^|\s)(`(?!\s+`)([^`]+)`(?!\s+`))$/,
+        type: this.type,
+      }),
+    ];
   },
 });
 
@@ -614,16 +703,218 @@ export const Link = Mark.create({
       }),
     ];
   },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("linkClick"),
+        props: {
+          handleDOMEvents: {
+            // contenteditable follows no link, so an editable document opens
+            // one itself. A plain click still places the caret, which is what
+            // the toolbar's link button needs to edit or unset the mark.
+            click(view, event) {
+              if (!view.editable || event.button !== 0) return false;
+              if (!event.metaKey && !event.ctrlKey) return false;
+
+              const anchor = (event.target as HTMLElement | null)?.closest?.("a");
+              const href = anchor?.getAttribute("href");
+              if (!href || !isSafeUrlValue(href)) return false;
+
+              let target: URL;
+              try {
+                target = new URL(href, window.location.href);
+              } catch {
+                return false;
+              }
+
+              event.preventDefault();
+              // Links render with `target="_blank"`, and a new tab keeps the
+              // document being edited open either way.
+              window.open(target.href, anchor?.target || "_blank", "noopener");
+              return true;
+            },
+          },
+        },
+      }),
+    ];
+  },
 });
 
 // ---- Lists ----
 
-function findParentOfType(type: NodeType, state: EditorState) {
-  const { $from } = state.selection;
+const LIST_ITEM_TYPES: Record<string, string> = {
+  bulletList: "listItem",
+  orderedList: "listItem",
+  taskList: "taskItem",
+};
+
+/** A list, and the span of its items a toggle applies to. */
+type ItemSpan = { pos: number; node: PMNode; first: number; last: number };
+
+/**
+ * The innermost list around the selection, and which of its items the
+ * selection covers. A caret is one item; a selection dragged over the whole
+ * list is all of them.
+ */
+function selectedItems(state: EditorState): ItemSpan | null {
+  const { $from, $to } = state.selection;
   for (let d = $from.depth; d > 0; d--) {
-    if ($from.node(d).type === type) return { pos: $from.before(d), node: $from.node(d) };
+    const node = $from.node(d);
+    if (!(node.type.name in LIST_ITEM_TYPES)) continue;
+    const inSameList = $to.depth >= d && $to.node(d) === node;
+    return {
+      pos: $from.before(d),
+      node,
+      first: $from.index(d),
+      // A selection running past the end of this list takes the rest of it.
+      last: inSameList ? $to.index(d) : node.childCount - 1,
+    };
   }
   return null;
+}
+
+/**
+ * Whole lists the selection encloses, for a selection that starts outside any
+ * of them — select-all above all, which resolves at the top of the document
+ * and so has no list to walk up to.
+ */
+function enclosedLists(state: EditorState): ItemSpan[] {
+  const { $from, $to } = state.selection;
+  const depth = $from.sharedDepth($to.pos);
+  const start = $from.start(depth);
+  const spans: ItemSpan[] = [];
+  $from.node(depth).forEach((child, offset) => {
+    const pos = start + offset;
+    const enclosed = pos >= $from.pos && pos + child.nodeSize <= $to.pos;
+    if (enclosed && child.type.name in LIST_ITEM_TYPES) {
+      spans.push({ pos, node: child, first: 0, last: child.childCount - 1 });
+    }
+  });
+  return spans;
+}
+
+function totalSize(items: PMNode[]) {
+  return items.reduce((size, item) => size + item.nodeSize, 0);
+}
+
+/**
+ * Whether `pos` sits between two lists of `listType`, the only join worth
+ * making. `canJoin` alone is not enough: it answers yes for any *empty*
+ * neighbour, including the trailing paragraph the document editor keeps after
+ * the last block, and the join then throws.
+ */
+function joinsTwoLists(tr: Transaction, pos: number, listType: NodeType) {
+  const $pos = tr.doc.resolve(pos);
+  return (
+    $pos.nodeBefore?.type === listType &&
+    $pos.nodeAfter?.type === listType &&
+    canJoin(tr.doc, pos)
+  );
+}
+
+/**
+ * Rewrite `span`'s items as `itemType` under a `listType` list, splitting the
+ * list around them, and join the result onto an adjacent list of the same type.
+ *
+ * It goes in one step because the intermediate states are invalid content (task
+ * items under a bullet list and vice versa), which `setNodeMarkup` refuses.
+ * Returns how far the items moved, or null when they cannot hold the item type.
+ */
+function convertItems(
+  tr: Transaction,
+  span: ItemSpan,
+  listType: NodeType,
+  itemType: NodeType,
+) {
+  const before: PMNode[] = [];
+  const converted: PMNode[] = [];
+  const after: PMNode[] = [];
+  for (let i = 0; i < span.node.childCount; i++) {
+    const item = span.node.child(i);
+    if (i < span.first) before.push(item);
+    else if (i > span.last) after.push(item);
+    else if (!itemType.validContent(item.content)) return null;
+    else converted.push(itemType.create(null, item.content, item.marks));
+  }
+
+  const lists = [listType.create(null, converted, span.node.marks)];
+  if (before.length) lists.unshift(span.node.copy(Fragment.from(before)));
+  if (after.length) {
+    // The items that stay behind keep counting where the split left off.
+    const attrs =
+      typeof span.node.attrs.start === "number"
+        ? { ...span.node.attrs, start: span.node.attrs.start + before.length }
+        : span.node.attrs;
+    lists.push(span.node.type.create(attrs, after, span.node.marks));
+  }
+
+  const start = span.pos + (before.length ? totalSize(before) + 2 : 0);
+  const end = start + totalSize(converted) + 2;
+  tr.replaceWith(span.pos, span.pos + span.node.nodeSize, lists);
+
+  // Meeting a list of the same type — a sibling, or one made by an earlier
+  // toggle — makes one list rather than two. The joins map the selection.
+  if (joinsTwoLists(tr, end, listType)) tr.join(end);
+  if (joinsTwoLists(tr, start, listType)) tr.join(start);
+
+  // Item nodes keep their content, so the only shift is the wrapper opened for
+  // the items left in front.
+  return before.length ? 2 : 0;
+}
+
+/**
+ * Toggle the selected list items to `listTypeName`: unwrap them when they are
+ * already that type, otherwise convert them.
+ */
+function toggleListType(
+  listTypeName: string,
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+) {
+  const listType = state.schema.nodes[listTypeName];
+  const itemType = state.schema.nodes[LIST_ITEM_TYPES[listTypeName]];
+  const selected = selectedItems(state);
+
+  if (selected) {
+    if (selected.node.type === listType) return pmLiftListItem(itemType)(state, dispatch);
+    const { tr } = state;
+    const offset = convertItems(tr, selected, listType, itemType);
+    if (offset === null) return false;
+    if (dispatch) {
+      const { anchor, head } = state.selection;
+      dispatch(
+        tr.setSelection(TextSelection.create(tr.doc, anchor + offset, head + offset)),
+      );
+    }
+    return true;
+  }
+
+  // Back to front, so each span's positions still hold when it is its turn.
+  const spans = enclosedLists(state).reverse();
+  if (!spans.length) return pmWrapInList(listType)(state, dispatch);
+
+  const { tr } = state;
+  let changed = false;
+  if (spans.every((span) => span.node.type === listType)) {
+    for (const span of spans) {
+      const blocks: PMNode[] = [];
+      span.node.forEach((item) => {
+        item.forEach((block) => {
+          blocks.push(block);
+        });
+      });
+      tr.replaceWith(span.pos, span.pos + span.node.nodeSize, blocks);
+      changed = true;
+    }
+  } else {
+    for (const span of spans) {
+      if (span.node.type === listType) continue;
+      if (convertItems(tr, span, listType, itemType) !== null) changed = true;
+    }
+  }
+  if (!changed) return false;
+  if (dispatch) dispatch(tr);
+  return true;
 }
 
 export const BulletList = Node.create({
@@ -636,21 +927,8 @@ export const BulletList = Node.create({
     return {
       toggleBulletList:
         () =>
-        ({ state, dispatch, chain }) => {
-          const { schema } = state;
-          const inThis = findParentOfType(schema.nodes.bulletList, state);
-          if (inThis) return pmLiftListItem(schema.nodes.listItem)(state, dispatch);
-          const inOther = findParentOfType(schema.nodes.orderedList, state);
-          if (inOther) {
-            return chain()
-              .command(({ tr }) => {
-                tr.setNodeMarkup(inOther.pos, schema.nodes.bulletList);
-                return true;
-              })
-              .run();
-          }
-          return pmWrapInList(schema.nodes.bulletList)(state, dispatch);
-        },
+        ({ state, dispatch }) =>
+          toggleListType("bulletList", state, dispatch),
     };
   },
   addInputRules() {
@@ -673,21 +951,8 @@ export const OrderedList = Node.create({
     return {
       toggleOrderedList:
         () =>
-        ({ state, dispatch, chain }) => {
-          const { schema } = state;
-          const inThis = findParentOfType(schema.nodes.orderedList, state);
-          if (inThis) return pmLiftListItem(schema.nodes.listItem)(state, dispatch);
-          const inOther = findParentOfType(schema.nodes.bulletList, state);
-          if (inOther) {
-            return chain()
-              .command(({ tr }) => {
-                tr.setNodeMarkup(inOther.pos, schema.nodes.orderedList);
-                return true;
-              })
-              .run();
-          }
-          return pmWrapInList(schema.nodes.orderedList)(state, dispatch);
-        },
+        ({ state, dispatch }) =>
+          toggleListType("orderedList", state, dispatch),
     };
   },
   addInputRules() {
@@ -750,12 +1015,8 @@ export const TaskList = Node.create({
     return {
       toggleTaskList:
         () =>
-        ({ state, dispatch }) => {
-          const { schema } = state;
-          const inThis = findParentOfType(schema.nodes.taskList, state);
-          if (inThis) return pmLiftListItem(schema.nodes.taskItem)(state, dispatch);
-          return pmWrapInList(schema.nodes.taskList)(state, dispatch);
-        },
+        ({ state, dispatch }) =>
+          toggleListType("taskList", state, dispatch),
     };
   },
   addInputRules() {

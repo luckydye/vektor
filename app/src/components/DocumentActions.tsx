@@ -9,20 +9,19 @@ import {
   Show,
 } from "solid-js";
 import "@atrium-ui/elements/popover";
+import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { setCancelCount, setEditing, useEditor } from "#composeables/useEditor.ts";
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { Button } from "./Button.tsx";
-import { ContextMenu } from "./ContextMenu.tsx";
+import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Contributors } from "./Contributors.tsx";
 import { DocumentShareDialog } from "./DocumentShareDialog.tsx";
@@ -31,13 +30,47 @@ import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
+
+function runContextMenuAction(e: Event, name: string) {
+  Actions.run(name);
+  (e.target as Element | null)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
+}
+
+function MenuActionItem(props: { name: string; options: ActionOptions; class?: string }) {
+  return (
+    <ContextMenuItem
+      class={props.class}
+      onClick={(event) => runContextMenuAction(event, props.name)}
+    >
+      <div class="aspect-sqaure w-[1rem] flex-none">
+        <Icon
+          name={props.options.icon?.() as IconName | undefined}
+          class="align-middle"
+        />
+      </div>
+      <span class="mr-2 block w-full text-left" data-action={props.name}>
+        {props.options.title}
+      </span>
+      <a-shortcut
+        attr:data-shortcut={
+          Actions.getShortcutsForAction(props.name)?.values().next().value
+        }
+      />
+    </ContextMenuItem>
+  );
+}
 
 interface Props {
   title?: string;
   headerImage?: string | null;
+  tableOfContentsVisible?: boolean;
+  onToggleTableOfContents?: () => void;
 }
 
 export function DocumentActions(props: Props) {
+  const t = useTranslation();
+
   const navigate = useNavigate();
   const { currentSpaceId, currentSpace } = useSpace();
   const currentUser = useUserProfile();
@@ -49,7 +82,7 @@ export function DocumentActions(props: Props) {
     removeHeaderImage,
     dialogOpen,
   } = useHeaderImage();
-  const { editing, saveStatus, hasChanges } = useEditor();
+  const { editing, saveStatus, saveError, hasChanges } = useEditor();
   const { documentContext, canUseDocumentEditor, hasPublishedVersion } =
     useDocumentContext();
   const toast = useToast();
@@ -59,7 +92,6 @@ export function DocumentActions(props: Props) {
   const documentId = createMemo(() => documentContext().documentId);
   const documentType = createMemo(() => documentContext().documentType);
 
-  const [isCreatingToken, setIsCreatingToken] = createSignal(false);
   const [isDuplicating, setIsDuplicating] = createSignal(false);
   const [showShareDialog, setShowShareDialog] = createSignal(false);
   const [emailMuted, setEmailMuted] = createSignal(false);
@@ -90,6 +122,13 @@ export function DocumentActions(props: Props) {
     );
   }
 
+  function toggleTableOfContentsFromMenu(event: Event) {
+    props.onToggleTableOfContents?.();
+    (event.target as Element | null)?.dispatchEvent(
+      new CustomEvent("exit", { bubbles: true }),
+    );
+  }
+
   registerScopedAction("document:print", {
     title: t("Print"),
     icon: () => "print",
@@ -98,55 +137,6 @@ export function DocumentActions(props: Props) {
     order: 40,
     run: async () => {
       window.print();
-    },
-  });
-
-  registerScopedAction("document:accesstoken", {
-    title: t("Copy API Command"),
-    icon: () => "source-code",
-    description: t("Creates API token to access this document"),
-    group: "document:dev",
-    order: 10,
-    run: async () => {
-      if (isCreatingToken()) return;
-
-      try {
-        setIsCreatingToken(true);
-
-        const spaceId = currentSpaceId();
-        if (!spaceId) throw new Error("No space selected");
-
-        const docId = documentId();
-        if (!docId) return;
-
-        // Create a 30-day access token for this document
-        const documentName = props.title || docId;
-        const tokenResult = await api.accessTokens.create(spaceId, {
-          name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
-          resourceType: "document",
-          resourceId: docId,
-          permission: "editor",
-          expiresInDays: 30,
-        });
-
-        const command = `curl -X PUT ${location.origin}/api/v1/spaces/${spaceId}/documents/${docId} \\
-    -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer ${tokenResult.token}" \\
-    -d '{"content": "<html>Your content here</html>"}'`;
-
-        await navigator.clipboard.writeText(command);
-
-        alert(
-          `✓ API command copied to clipboard!\n\nA 30-day access token has been created and included.\nToken ID: ${tokenResult.id}`,
-        );
-      } catch (error) {
-        console.error("Failed to create token:", error);
-        alert(
-          "❌ Failed to create access token. Please check your permissions and try again.",
-        );
-      } finally {
-        setIsCreatingToken(false);
-      }
     },
   });
 
@@ -176,10 +166,33 @@ export function DocumentActions(props: Props) {
     },
   });
 
+  const [actionsView, setActionsView] = createSignal<[string, ActionOptions][]>([]);
   const [actions, setActions] = createSignal<[string, ActionOptions][]>([]);
+  const [actionsSpace, setActionsSpace] = createSignal<[string, ActionOptions][]>([]);
   const [actionsDanger, setActionsDanger] = createSignal<[string, ActionOptions][]>([]);
   const [actionsDev, setActionsDev] = createSignal<[string, ActionOptions][]>([]);
   const [devMode, setDevMode] = createSignal(false);
+
+  const showTableOfContents = createMemo(
+    () => documentType() === "document" && !!props.onToggleTableOfContents,
+  );
+  const showWorkflowEdit = createMemo(
+    () => documentType() === "workflow" && !!documentId() && userCanEdit(),
+  );
+  const showEditItem = createMemo(() => canUseDocumentEditor() && !editing());
+
+  // The menu groups view preferences, content actions, space-wide actions and
+  // destructive ones; a group only gets a separator when something precedes it.
+  const sections = createMemo(() => [
+    actionsSpace().length > 0,
+    showTableOfContents() || actionsView().length > 0,
+    showWorkflowEdit() ||
+      showEditItem() ||
+      actions().length > 0 ||
+      actionsDanger().length > 0,
+  ]);
+  const separatorBefore = (index: number) =>
+    sections()[index] && sections().slice(0, index).some(Boolean);
 
   async function publishDocument(e: MouseEvent) {
     const action = Actions.get("document:save:publish");
@@ -201,13 +214,22 @@ export function DocumentActions(props: Props) {
     (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
   }
 
+  async function publishAsTemplate(e: MouseEvent) {
+    const action = Actions.get("document:save:template");
+    if (!action) return;
+    await action.run();
+    (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
+  }
+
   function handleContextMenuMousedown(event: MouseEvent) {
     setDevMode(event.altKey || event.metaKey);
     if (devMode()) setActionsDev(Actions.group("document:dev"));
   }
 
   function refreshActionGroups() {
+    setActionsView(Actions.group("document:view"));
     setActions(Actions.group("document"));
+    setActionsSpace(Actions.group("document:space"));
     setActionsDanger(Actions.group("document:danger"));
   }
 
@@ -233,13 +255,6 @@ export function DocumentActions(props: Props) {
 
     refreshActionGroups();
   });
-
-  function runContextMenuAction(e: Event, name: string) {
-    Actions.run(name);
-    (e.target as Element | null)?.dispatchEvent(
-      new CustomEvent("exit", { bubbles: true }),
-    );
-  }
 
   createEffect(() => {
     const spaceId = currentSpaceId();
@@ -270,11 +285,11 @@ export function DocumentActions(props: Props) {
     const muted = emailMuted();
     const actionName = muted ? "document:unmute-email" : "document:mute-email";
     registerScopedAction(actionName, {
-      title: muted ? "Enable email notifications" : "Mute email notifications",
+      title: muted ? t("Enable email notifications") : t("Mute email notifications"),
       icon: () => (muted ? "enable-notifications" : "mute-notifications"),
       description: muted
-        ? "Receive publication and comment emails for this document"
-        : "Stop publication and comment emails for this document",
+        ? t("Receive publication and comment emails for this document")
+        : t("Stop publication and comment emails for this document"),
       group: "document",
       order: 35,
       run: async () => {
@@ -300,11 +315,10 @@ export function DocumentActions(props: Props) {
         title: t("Unpin from Home"),
         icon: () => "pin-to-home",
         description: t("Remove this document from the space home page"),
-        group: "document",
+        group: "document:space",
         order: 20,
         run: async () => {
           await api.space.patch(space.id, { preferences: { pinnedDocumentId: "" } });
-          window.location.reload();
         },
       });
       return;
@@ -314,11 +328,16 @@ export function DocumentActions(props: Props) {
       title: t("Pin to Home"),
       icon: () => "pin-to-home",
       description: t("Showcase this document on the space home page"),
-      group: "document",
+      group: "document:space",
       order: 20,
       run: async () => {
         await api.space.patch(space.id, { preferences: { pinnedDocumentId: docId } });
-        window.location.reload();
+        toast.show(t("Pinned to Home"), "success", 8000, {
+          action: {
+            label: t("View activity"),
+            run: () => navigate("/"),
+          },
+        });
       },
     });
   });
@@ -366,7 +385,7 @@ export function DocumentActions(props: Props) {
       group: "document:danger",
       order: 20,
       run: async () => {
-        if (!confirm("Are you sure you want to archive this document?")) return;
+        if (!confirm(t("Are you sure you want to archive this document?"))) return;
 
         const spaceId = currentSpaceId();
         if (!spaceId) throw new Error("No space selected");
@@ -392,7 +411,7 @@ export function DocumentActions(props: Props) {
       group: "document:danger",
       order: 30,
       run: async () => {
-        if (!confirm("Are you sure you want to unpublish this document?")) return;
+        if (!confirm(t("Are you sure you want to unpublish this document?"))) return;
 
         const spaceId = currentSpaceId();
         if (!spaceId) throw new Error("No space selected");
@@ -410,8 +429,8 @@ export function DocumentActions(props: Props) {
     registerScopedAction("document:share", {
       title: t("Share"),
       icon: () => "users-group",
-      description: t("Invite people to this document or space"),
-      group: "document",
+      description: t("Invite people to this document or category"),
+      group: "document:space",
       order: 10,
       run: async () => {
         setShowShareDialog(true);
@@ -450,11 +469,6 @@ export function DocumentActions(props: Props) {
     }
   });
 
-  // Extensions name their own icons, and an unknown name draws nothing rather
-  // than a stand-in glyph that means something else.
-  const actionIcon = (options: ActionOptions): IconName | undefined =>
-    options.icon?.() as IconName | undefined;
-
   return (
     <div
       id="document-actions"
@@ -478,8 +492,6 @@ export function DocumentActions(props: Props) {
         />
       </Show>
 
-      {/* Workflows have no dedicated edit button; the context menu carries it. */}
-
       <Show when={canUseDocumentEditor() && !editing()}>
         <button
           type="button"
@@ -487,7 +499,7 @@ export function DocumentActions(props: Props) {
           onClick={startEditing}
         >
           <Icon name="edit-document" />
-          <span>Edit</span>
+          <span>{t("Edit")}</span>
         </button>
       </Show>
 
@@ -500,57 +512,94 @@ export function DocumentActions(props: Props) {
 
       <Show when={canUseDocumentEditor() && editing()}>
         <div class="flex items-center gap-2">
-          <div class="button-primary-base button-with-icon items-stretch overflow-hidden">
-            <button
-              type="button"
-              class="button-primary-pointer inline-flex items-center justify-center px-3xs"
-              disabled={publishDisabled()}
-              onClick={(e) => void publishDocument(e)}
-            >
-              <Icon name="publish" />
-              <span>
-                {isSaving() ? "Saving..." : isNewDocument() ? "Create" : "Publish"}
-              </span>
-            </button>
-            <Show when={!isNewDocument()}>
-              <a-popover-trigger class="group flex items-stretch">
-                <button
-                  slot="trigger"
-                  type="button"
-                  class="button-primary-pointer flex items-center justify-center border-primary-300 border-l px-4xs"
-                  disabled={isSaving()}
-                  aria-label="Publish options"
-                >
-                  <Icon name="chevron-down" />
-                </button>
-                <a-popover class="group" placements="bottom-end">
-                  <div class="mt-2 w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
-                    <div
-                      class="flex w-[220px] flex-col gap-[4px] rounded-lg border border-neutral-100 bg-background p-[4px]"
-                      style={{ "box-shadow": "-2px 2px 24px 0px rgba(0, 0, 0, 0.1)" }}
-                    >
-                      <button
-                        type="button"
-                        class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
-                        disabled={suggestionSaveDisabled()}
-                        onClick={(e) => void saveAsSuggestion(e)}
-                      >
-                        <div class="font-medium text-size-small">Save as suggestion</div>
-                        <div class="text-neutral-500 text-size-small">
-                          Create an open suggestion instead of publishing
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                </a-popover>
-              </a-popover-trigger>
+          {/* `relative` for the failure bubble below, which the group's own
+              `overflow-hidden` would otherwise clip. */}
+          <div class="relative flex">
+            {/* A toast is gone in four seconds; the editor is still open on a
+              failed publish, so the reason has to stay with the button. Floated
+              like a tooltip rather than placed in the row, which would shift the
+              toolbar the moment a publish fails. */}
+            <Show when={saveStatus() === "error"}>
+              <p
+                role="alert"
+                class="pointer-events-none absolute top-[calc(100%+9px)] right-0 z-[100] w-max max-w-[280px] rounded-[7px] bg-red-600 px-2.5 py-1.5 text-size-small text-white shadow-large"
+              >
+                <span class="absolute -top-1 right-4 h-2 w-2 rotate-45 bg-red-600" />
+                {saveError()?.message ?? t("Publishing failed")}
+              </p>
             </Show>
+            <div class="button-primary-base button-with-icon items-stretch overflow-hidden">
+              <button
+                type="button"
+                class="button-primary-pointer inline-flex items-center justify-center px-3xs"
+                disabled={publishDisabled()}
+                onClick={(e) => void publishDocument(e)}
+              >
+                <Icon name="publish" />
+                <span>
+                  {isSaving()
+                    ? t("Saving…")
+                    : isNewDocument()
+                      ? t("Create")
+                      : t("Publish")}
+                </span>
+              </button>
+              <Show when={!isNewDocument()}>
+                <a-popover-trigger class="group flex items-stretch">
+                  <button
+                    slot="trigger"
+                    type="button"
+                    class="button-primary-pointer flex items-center justify-center border-primary-300 border-l px-4xs"
+                    disabled={isSaving()}
+                    aria-label={t("Publish options")}
+                  >
+                    <Icon name="chevron-down" />
+                  </button>
+                  <a-popover class="group" placements="bottom-end">
+                    <div class="mt-2 w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
+                      <div
+                        class="flex w-[220px] flex-col gap-[4px] rounded-lg border border-neutral-100 bg-background p-[4px]"
+                        style={{ "box-shadow": "-2px 2px 24px 0px rgba(0, 0, 0, 0.1)" }}
+                      >
+                        <button
+                          type="button"
+                          class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
+                          disabled={suggestionSaveDisabled()}
+                          onClick={(e) => void saveAsSuggestion(e)}
+                        >
+                          <div class="font-medium text-size-small">
+                            {t("Save as suggestion")}
+                          </div>
+                          <div class="text-neutral-500 text-size-small">
+                            {t("Create an open suggestion instead of publishing")}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
+                          disabled={isSaving()}
+                          onClick={(e) => void publishAsTemplate(e)}
+                        >
+                          <div class="font-medium text-size-small">
+                            {t("Publish as template")}
+                          </div>
+                          <div class="text-neutral-500 text-size-small">
+                            {t("Publish and offer this document when creating a new one")}
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </a-popover>
+                </a-popover-trigger>
+              </Show>
+            </div>
           </div>
 
           <Show when={showCancel()}>
             <Button variant="secondary" onClick={cancelEditing}>
               <Icon name="cancel" />
-              <span>Cancel</span>
+              <span>{t("Cancel")}</span>
             </Button>
           </Show>
         </div>
@@ -576,7 +625,36 @@ export function DocumentActions(props: Props) {
           )}
         </Show>
         <ContextMenu>
-          <Show when={documentType() === "workflow" && documentId() && userCanEdit()}>
+          <For each={actionsSpace()}>
+            {([name, options]) => <MenuActionItem name={name} options={options} />}
+          </For>
+
+          <Show when={separatorBefore(1)}>
+            <ContextMenuSeparator />
+          </Show>
+
+          <Show when={showTableOfContents()}>
+            <ContextMenuItem onClick={toggleTableOfContentsFromMenu}>
+              <div class="aspect-sqaure w-[1rem] flex-none">
+                <Icon name="list" class="align-middle" />
+              </div>
+              <span class="mr-2 block w-full text-left">
+                {props.tableOfContentsVisible
+                  ? t("Hide table of contents")
+                  : t("Show table of contents")}
+              </span>
+            </ContextMenuItem>
+          </Show>
+
+          <For each={actionsView()}>
+            {([name, options]) => <MenuActionItem name={name} options={options} />}
+          </For>
+
+          <Show when={separatorBefore(2)}>
+            <ContextMenuSeparator />
+          </Show>
+
+          <Show when={showWorkflowEdit()}>
             <ContextMenuItem onClick={openWorkflowEditorFromMenu}>
               <div class="aspect-sqaure w-[1rem] flex-none">
                 <Icon name="edit-document" class="align-middle" />
@@ -585,7 +663,7 @@ export function DocumentActions(props: Props) {
             </ContextMenuItem>
           </Show>
 
-          <Show when={canUseDocumentEditor() && !editing()}>
+          <Show when={showEditItem()}>
             <ContextMenuItem
               class="md:hidden"
               onClick={(event) => runContextMenuAction(event, "document:edit")}
@@ -598,49 +676,24 @@ export function DocumentActions(props: Props) {
           </Show>
 
           <For each={actions()}>
-            {([name, options]) => (
-              <ContextMenuItem onClick={(event) => runContextMenuAction(event, name)}>
-                <div class="aspect-sqaure w-[1rem] flex-none">
-                  <Icon name={actionIcon(options)} class="align-middle" />
-                </div>
-                <span class="mr-2 block w-full text-left" data-action={name}>
-                  {options.title}
-                </span>
-                <a-shortcut
-                  attr:data-shortcut={
-                    Actions.getShortcutsForAction(name)?.values().next().value
-                  }
-                />
-              </ContextMenuItem>
-            )}
+            {([name, options]) => <MenuActionItem name={name} options={options} />}
           </For>
 
           <For each={actionsDanger()}>
             {([name, options]) => (
-              <ContextMenuItem
-                onClick={(event) => runContextMenuAction(event, name)}
+              <MenuActionItem
+                name={name}
+                options={options}
                 class="text-orange-600 hover:text-orange-700"
-              >
-                <div class="aspect-sqaure w-[1rem] flex-none">
-                  <Icon name={actionIcon(options)} class="align-middle" />
-                </div>
-                <span>{options.title}</span>
-              </ContextMenuItem>
+              />
             )}
           </For>
 
-          <Show when={devMode()}>
+          <Show when={devMode() && actionsDev().length > 0}>
+            <ContextMenuSeparator />
             <For each={actionsDev()}>
               {([name, options]) => (
-                <ContextMenuItem
-                  onClick={(event) => runContextMenuAction(event, name)}
-                  class="text-neutral-400"
-                >
-                  <div class="aspect-sqaure w-[1rem] flex-none">
-                    <Icon name={actionIcon(options)} class="align-middle" />
-                  </div>
-                  <span>{options.title}</span>
-                </ContextMenuItem>
+                <MenuActionItem name={name} options={options} class="text-neutral-400" />
               )}
             </For>
           </Show>

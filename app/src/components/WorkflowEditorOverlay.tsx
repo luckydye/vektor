@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on } from "solid-js";
 import "#editor/elements/code-editor.ts";
-import { useCollaboration } from "#composeables/useCollaboration.ts";
+import { reportJoinFailure, useCollaboration } from "#composeables/useCollaboration.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import {
   currentEditorPresenceState,
@@ -34,8 +34,9 @@ export function WorkflowEditorOverlay(props: Props) {
   }
 
   createEffect(() => {
+    const ydoc = collaboration.ydoc();
     const editor = codeEditor();
-    if (editor) editor.collaborationDocument = collaboration.ydoc();
+    if (editor) editor.collaborationDocument = ydoc;
   });
 
   createEffect(() => {
@@ -53,15 +54,18 @@ export function WorkflowEditorOverlay(props: Props) {
     editor?.setPresenceProfiles(editorProfiles);
   });
 
-  // Joining is keyed to the document, not to mount: navigating from one workflow
-  // to another keeps this panel alive, and `useCollaboration` only leaves the old
-  // room on that change — the new one has to be joined from here, or the editor
-  // sits on the empty replacement doc and shows no script.
   createEffect(
     on(
       () => props.documentId,
       async () => {
-        await collaboration.joinUntilReady();
+        try {
+          await collaboration.joinUntilReady();
+        } catch (error) {
+          // Presence in a room that never synced would announce an editor
+          // showing nothing, so it stays behind the join.
+          reportJoinFailure(error);
+          return;
+        }
         collaboration.setPresenceState(
           currentEditorPresenceState(codeEditor()?.editorInstance),
         );

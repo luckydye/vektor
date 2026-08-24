@@ -3,6 +3,7 @@
 @theme {
   /* text */
   --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
 
   --text-size-extra-small: 0.6875rem; /* 11px */
   --text-size-small: 0.75rem; /* 12px */
@@ -367,6 +368,14 @@
   @apply button-with-icon;
 }
 
+/* Icon-only buttons. Only the properties no caller overrides live here; the box
+ * and the colours are Tailwind classes in IconButton, where twMerge can resolve
+ * them against a caller's own. */
+@utility button-icon {
+  @apply inline-flex flex-none cursor-pointer items-center justify-center rounded-md transition-colors;
+  @apply disabled:button-disabled;
+}
+
 /* Tone and size modifiers. Declared after the variants so they win on source order. */
 @utility button-danger {
   @apply !border-red-600 !bg-red-600 enabled:hover:!bg-red-700 enabled:active:!bg-red-800;
@@ -511,6 +520,27 @@
   pointer-events: none;
 }
 
+/**
+ * A comment thread growing out of the bubble that opened it.
+ *
+ * Enter only: the panel is unmounted rather than hidden, so there is no leaving
+ * state to transition. The origin sits on the right edge because the panel is
+ * anchored there, beside its bubble.
+ */
+@utility comment-thread-enter {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+  transform-origin: right top;
+  transition:
+    opacity 160ms var(--emphasized-curve, ease-out),
+    transform 160ms var(--emphasized-curve, ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96) translateX(6px);
+  }
+}
+
 /** The user preferences panel inside the profile popover. */
 @utility preferences-panel {
   position: static;
@@ -546,6 +576,7 @@
 @media (prefers-reduced-motion: reduce) {
   .overlay-fade,
   .overlay-slide,
+  .comment-thread-enter,
   .preferences-panel,
   .dialog-layer,
   .dialog-layer .dialog-backdrop,
@@ -583,6 +614,10 @@
 
 @utility focus-ring {
   @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+@utility clip-right {
+    clip-path: polygon(0 0, calc(100% - 3.75rem) 0, calc(100% - 3.75rem) 100%, 0% 100%);
 }
 
 /* Responsive type scale.

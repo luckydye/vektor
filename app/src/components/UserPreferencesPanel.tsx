@@ -1,6 +1,7 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
+import { isPermission } from "#acl/permissions.ts";
 import {
   api,
   type OAuthIntegrationConnection,
@@ -8,20 +9,23 @@ import {
 } from "#api/client.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import { t } from "#utils/lang.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
   storeThemePreference,
   type ThemePreference,
 } from "#utils/themePreference.ts";
+import { AccessTokensPanel } from "./AccessTokensPanel.tsx";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   onClose?: () => void;
@@ -32,44 +36,51 @@ type ViewTransitionDocument = Document & {
 };
 
 const tabs = [
-  { id: "appearance", label: t("Appearance") },
-  { id: "cosmetics", label: t("Profile") },
-  { id: "notifications", label: t("Notifications") },
-  { id: "integrations", label: t("Integrations") },
-];
+  { id: "appearance", label: "Appearance" },
+  // { id: "cosmetics", label: "Profile" },
+  { id: "notifications", label: "Notifications" },
+  { id: "integrations", label: "Integrations" },
+  { id: "tokens", label: "Access Tokens" },
+] satisfies { id: string; label: TranslationKey }[];
 
-const themeOptions: { value: ThemePreference; label: string; swatchClass: string }[] = [
+const themeOptions: {
+  value: ThemePreference;
+  label: TranslationKey;
+  swatchClass: string;
+}[] = [
   {
     value: "system",
-    label: t("System"),
+    label: "System",
     swatchClass:
       "bg-[linear-gradient(135deg,#ffffff_0%,#ffffff_48%,#222222_52%,#222222_100%)]",
   },
-  { value: "light", label: t("Light"), swatchClass: "bg-[#fff5b8]" },
-  { value: "dark", label: t("Dark"), swatchClass: "bg-[#252525]" },
+  { value: "light", label: "Light", swatchClass: "bg-[#fff5b8]" },
+  { value: "dark", label: "Dark", swatchClass: "bg-[#252525]" },
 ];
 
 const integrationProviders: OAuthIntegrationProvider[] = ["gitlab", "youtrack"];
 
 const integrationProviderDetails: Record<
   OAuthIntegrationProvider,
-  { label: string; description: string; initial: string; iconClass: string }
+  { label: string; description: TranslationKey; initial: string; iconClass: string }
 > = {
   gitlab: {
     label: "GitLab",
-    description: t("Connect GitLab to work with your projects and issues."),
+    description: "Connect GitLab to work with your projects and issues.",
     initial: "G",
     iconClass: "bg-[#fc6d26]",
   },
   youtrack: {
     label: "YouTrack",
-    description: t("Connect YouTrack to work with your issues and projects."),
+    description: "Connect YouTrack to work with your issues and projects.",
     initial: "Y",
     iconClass: "bg-[#4c57e8]",
   },
 };
 
 export function UserPreferencesPanel(props: Props) {
+  const t = useTranslation();
+
   const [themePreference, setThemePreference] = createSignal<ThemePreference>("system");
   const currentUser = useUserProfile();
   const {
@@ -78,7 +89,6 @@ export function UserPreferencesPanel(props: Props) {
     appearance: cosmeticAppearance,
     equip: equipCosmetic,
   } = useCosmetics();
-  // `null` means "automatic" — the presence color follows the user's avatar.
   const { cursorColorOverride, setCursorColor, clearCursorColor } =
     useCanvasCursorColor();
   const automaticCursorColor = createMemo(() => getAvatarColor(currentUser()?.id));
@@ -103,18 +113,30 @@ export function UserPreferencesPanel(props: Props) {
   const [notificationPreferenceError, setNotificationPreferenceError] = createSignal<
     string | null
   >(null);
-  const { currentSpace, currentSpaceId } = useSpace();
+  const { currentSpace, currentSpaceId, spaces } = useSpace();
+  const accessTokens = usePersonalAccessTokens();
+
+  // A token delegates its issuer's role on the space, so a space reached only
+  // through a document grant has no role to delegate and cannot mint one.
+  const tokenSpaces = createMemo(() =>
+    (spaces() ?? []).filter((space) => isPermission(space.userRole)),
+  );
 
   const activeSpaceName = createMemo(() => currentSpace()?.name || null);
 
   const integrationCards = createMemo(() =>
-    integrationProviders.map((provider) => ({
-      provider,
-      connection:
-        integrationConnections().find((connection) => connection.provider === provider) ??
-        null,
-      ...integrationProviderDetails[provider],
-    })),
+    integrationProviders.map((provider) => {
+      const details = integrationProviderDetails[provider];
+      return {
+        provider,
+        connection:
+          integrationConnections().find(
+            (connection) => connection.provider === provider,
+          ) ?? null,
+        ...details,
+        description: t(details.description),
+      };
+    }),
   );
 
   const applyThemePreferenceWithTransition = (preference: ThemePreference) => {
@@ -208,6 +230,17 @@ export function UserPreferencesPanel(props: Props) {
     }
   };
 
+  const revokeToken = (tokenId: string) => {
+    if (!confirm(t("Revoke this token? Anything using it stops working immediately.")))
+      return;
+    void accessTokens.revoke(tokenId);
+  };
+
+  const deleteToken = (tokenId: string) => {
+    if (!confirm(t("Delete this token permanently?"))) return;
+    void accessTokens.remove(tokenId);
+  };
+
   const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
@@ -281,7 +314,6 @@ export function UserPreferencesPanel(props: Props) {
 
   return (
     <>
-      {/* Header */}
       <div class="flex items-center gap-2 border-neutral-100 border-b px-4 py-3">
         <button
           type="button"
@@ -294,9 +326,11 @@ export function UserPreferencesPanel(props: Props) {
         <p class="font-medium text-base text-foreground">{t("Preferences")}</p>
       </div>
 
-      {/* Tabbed settings layout */}
       <SettingsLayout
-        tabs={tabs}
+        tabs={tabs.map((tab) => ({ ...tab, label: t(tab.label) }))}
+        onTabChange={(id) => {
+          if (id === "tokens") void accessTokens.load();
+        }}
         class="min-h-[200px] w-[620px] max-w-[calc(100vw-2rem)]"
         panels={{
           appearance: () => (
@@ -332,7 +366,7 @@ export function UserPreferencesPanel(props: Props) {
                               class={`h-full w-full rounded-full ${option.swatchClass}`}
                             />
                           </span>
-                          <span>{option.label}</span>
+                          <span>{t(option.label)}</span>
                         </button>
                       )}
                     </For>
@@ -411,15 +445,15 @@ export function UserPreferencesPanel(props: Props) {
             </>
           ),
 
-          cosmetics: () => (
-            <CosmeticsPanel
-              inventory={cosmeticInventory}
-              loadout={cosmeticLoadout()}
-              appearance={cosmeticAppearance()}
-              user={currentUser()}
-              onEquip={equipCosmetic}
-            />
-          ),
+          // cosmetics: () => (
+          //   <CosmeticsPanel
+          //     inventory={cosmeticInventory}
+          //     loadout={cosmeticLoadout()}
+          //     appearance={cosmeticAppearance()}
+          //     user={currentUser()}
+          //     onEquip={equipCosmetic}
+          //   />
+          // ),
 
           notifications: () => (
             <section>
@@ -469,6 +503,23 @@ export function UserPreferencesPanel(props: Props) {
                 </Show>
               </Show>
             </section>
+          ),
+
+          tokens: () => (
+            <AccessTokensPanel
+              tokens={accessTokens.tokens()}
+              spaces={tokenSpaces()}
+              defaultSpaceId={currentSpaceId()}
+              isLoading={accessTokens.isLoading()}
+              isCreating={accessTokens.isCreating()}
+              pendingTokenId={accessTokens.pendingTokenId()}
+              createdToken={accessTokens.createdToken()}
+              error={accessTokens.error()}
+              onCreate={accessTokens.create}
+              onDismissCreatedToken={accessTokens.dismissCreatedToken}
+              onRevoke={revokeToken}
+              onDelete={deleteToken}
+            />
           ),
 
           integrations: () => (

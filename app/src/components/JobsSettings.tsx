@@ -4,8 +4,9 @@ import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { propertyValueToText } from "#documents/properties.ts";
-import { formatDateTime } from "#utils/datetime.ts";
+import { formatDateTime } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 
@@ -17,8 +18,6 @@ interface AvailableWorkflow {
   title: string;
 }
 
-// Extension jobs, for the "Recent Extension Job Runs" name lookup only
-// (scheduling now targets workflows, not extension jobs directly).
 interface AvailableJob {
   id: string;
   name: string;
@@ -55,10 +54,10 @@ function formatDuration(run: JobRun): string {
 }
 
 export function JobsSettings() {
+  const lang = useLocale();
   const { currentSpace, currentSpaceId } = useSpace();
   const navigate = useNavigate();
 
-  // Schedules state
   const [schedules, setSchedules] = createSignal<WorkflowSchedule[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = createSignal(false);
   const [scheduleError, setScheduleError] = createSignal<string | null>(null);
@@ -68,7 +67,6 @@ export function JobsSettings() {
   const [newScheduleCron, setNewScheduleCron] = createSignal("");
   const [newScheduleTimezone, setNewScheduleTimezone] = createSignal("");
 
-  // Workflow documents in the space, for the create form and name lookup
   const [availableWorkflows, setAvailableWorkflows] = createSignal<AvailableWorkflow[]>(
     [],
   );
@@ -270,7 +268,6 @@ export function JobsSettings() {
 
   return (
     <div>
-      {/* Scheduled Workflows */}
       <div class="mb-4 flex items-center justify-between">
         <h2 class="font-semibold text-neutral-900 text-size-medium">
           Scheduled Workflows
@@ -292,7 +289,6 @@ export function JobsSettings() {
         </div>
       </Show>
 
-      {/* Create Schedule Form */}
       <Show when={isCreatingSchedule()}>
         <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
           <form
@@ -449,11 +445,13 @@ export function JobsSettings() {
                     </td>
                     <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
                       {schedule.enabled && schedule.nextRunAt
-                        ? formatDateTime(schedule.nextRunAt)
+                        ? formatDateTime(schedule.nextRunAt, lang)
                         : "—"}
                     </td>
                     <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                      {schedule.lastRunAt ? formatDateTime(schedule.lastRunAt) : "—"}
+                      {schedule.lastRunAt
+                        ? formatDateTime(schedule.lastRunAt, lang)
+                        : "—"}
                     </td>
                     <td class="space-x-2 whitespace-nowrap px-4 py-2.5 text-right">
                       <button
@@ -479,7 +477,6 @@ export function JobsSettings() {
         </div>
       </Show>
 
-      {/* Recent Workflow Runs */}
       <div class="mt-8 border-neutral-100 border-t pt-6">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-medium">
@@ -548,10 +545,10 @@ export function JobsSettings() {
                         {run.documentTitle}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                        {run.startedAt ? formatDateTime(run.startedAt) : "—"}
+                        {run.startedAt ? formatDateTime(run.startedAt, lang) : "—"}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                        {run.finishedAt ? formatDateTime(run.finishedAt) : "—"}
+                        {run.finishedAt ? formatDateTime(run.finishedAt, lang) : "—"}
                       </td>
                     </tr>
                   )}
@@ -574,7 +571,6 @@ export function JobsSettings() {
         </Show>
       </div>
 
-      {/* Recent Extension Job Runs */}
       <div class="mt-8 border-neutral-100 border-t pt-6">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-medium">
@@ -654,7 +650,7 @@ export function JobsSettings() {
                           {run.trigger}
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                          {formatDateTime(run.startedAt ?? run.queuedAt)}
+                          {formatDateTime(run.startedAt ?? run.queuedAt, lang)}
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
                           {formatDuration(run)}

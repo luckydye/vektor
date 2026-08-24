@@ -1,10 +1,19 @@
 import { Route, Router, useParams, useSearchParams } from "@solidjs/router";
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { isServer } from "solid-js/web";
+import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
+import { LocaleContext } from "#composeables/useTranslation.ts";
 import {
   DocumentContextContext,
   provideDocumentContext,
@@ -12,17 +21,18 @@ import {
 import { SsrUrlContext } from "#composeables/useRoute.ts";
 import { ActiveSpaceIdContext, useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
-import { setClientLang } from "#utils/lang.ts";
+import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
 import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
-import { DocumentOverlay } from "./DocumentOverlay.tsx";
+import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
 import { DocumentPageView } from "./views/DocumentPageView.tsx";
@@ -42,15 +52,9 @@ interface Props {
   initialDocument?: Record<string, unknown>;
   initialSidebarWidth?: number;
   replicaScope?: string;
-  lang?: string;
+  lang: string;
 }
 
-/**
- * Strips the router base so a URL is relative to it — "/test/doc/foo" becomes
- * "/doc/foo". Anchors carry the full space-scoped URL so middle-click and
- * open-in-new-tab resolve on the server, but the route records are
- * base-relative.
- */
 function stripRouterBase(url: string, base: string) {
   if (base === "/") return url || "/";
   const normalized = base.endsWith("/") ? base.slice(0, -1) : base;
@@ -59,18 +63,6 @@ function stripRouterBase(url: string, base: string) {
   return url || "/";
 }
 
-/**
- * Placeholder for a route whose view lands in phase 5.
- *
- * Named rather than blank: phase 4's exit is "the app boots, most routes still
- * blank", and a route that renders nothing is indistinguishable from one that
- * failed to match.
- */
-/**
- * `/new` and `/doc/:slug` are the same view; the draft is the case with no
- * slug. The route params are read here rather than inside the view so the view
- * stays a plain component the snapshot harness can mount directly.
- */
 function DocumentRoute() {
   const params = useParams<{ documentSlug?: string }>();
   return <DocumentPageView documentSlug={params.documentSlug} />;
@@ -81,31 +73,24 @@ function NewDocumentRoute() {
     type?: string;
     category?: string;
     title?: string;
+    parent?: string;
   }>();
   return (
     <DocumentPageView
       draftType={searchParams.type}
       draftCategory={searchParams.category}
       draftTitle={searchParams.title}
+      draftParent={searchParams.parent}
     />
   );
 }
 
 export function SpaceApp(props: Props) {
-  // The island root sets the document's locale rather than providing it: `t()`
-  // is called from 427 sites, most of them plain modules with no component
-  // context to read from. On the server the middleware scopes it per request.
   if (!isServer) {
-    setClientLang(props.lang);
     api.setReplicaScope(props.replicaScope);
   }
 
   const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "/";
-  // `props.url` carries the query string — the router needs it, because a route
-  // can be parameterised by search params alone (`/new?title=…` seeds a draft
-  // title, and reading it only after hydration is too late for the components
-  // that snapshot their props on setup). `SsrUrlContext` is a *pathname* its
-  // consumers pattern-match, so that one gets the query stripped.
   const ssrRelativeUrl = stripRouterBase(
     (props.url ?? "/").split("?")[0] || "/",
     routerBase,
@@ -115,14 +100,8 @@ export function SpaceApp(props: Props) {
     (props.initialSpace?.id as string | undefined) ?? null,
   );
 
-  // One client for the island: shared across islands in the browser, fresh per
-  // render on the server. See islandQueryClient for why the binding's
-  // module-level fallback is not good enough — the seeding just below would
-  // otherwise write into a cache shared by every SSR render in the process.
   const queryClient = islandQueryClient();
 
-  // Seed the query cache with SSR-fetched data so children render immediately
-  // instead of waiting on their queries.
   if (props.initialSpace) {
     queryClient.setQueryData(["wiki_spaces"], [props.initialSpace], { stale: true });
   }
@@ -133,11 +112,28 @@ export function SpaceApp(props: Props) {
     );
   }
 
-  const { currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
+  const { currentSpace, currentSpaceId, spaceNotFound } = useSpace(activeSpaceId);
+  const toast = useToast();
   const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
   const [hasMounted, setHasMounted] = createSignal(false);
   const [mobileSidebarOffset, setMobileSidebarOffset] = createSignal(0);
   const [isMobileSidebarDragging, setIsMobileSidebarDragging] = createSignal(false);
+
+  const [showOrganizationTour, setShowOrganizationTour] = createSignal(false);
+
+  /**
+   * Offers the organizing tour the first time this browser can actually organize.
+   *
+   * An effect rather than a line in `onMount` because the role is not always known
+   * at mount: without the SSR prop, or on a mid-session promotion, it arrives later.
+   */
+  let offeredOrganizationTour = false;
+  createEffect(() => {
+    if (offeredOrganizationTour || !hasMounted()) return;
+    if (!canEdit(currentSpace()?.userRole) || hasSeenOrganizationTour()) return;
+    offeredOrganizationTour = true;
+    setShowOrganizationTour(true);
+  });
 
   const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
 
@@ -154,24 +150,13 @@ export function SpaceApp(props: Props) {
     void extensions.refresh(spaceId).catch(console.error);
   });
 
-  /**
-   * Lightweight chrome elements every route needs — the sidebar tree targets,
-   * shortcut hints and the mobile drawer. Registered eagerly.
-   */
   const registerShellElements = () =>
     Promise.all([
       import("#editor/elements/category-target.ts"),
       import("#editor/elements/page-target.ts"),
       import("#editor/elements/shortcut.ts"),
-      import("#editor/elements/drawer.ts"),
     ]).catch(console.error);
 
-  /**
-   * Heavy document/editor elements — these pull in TipTap, Yjs and embeds. They
-   * only render inside document content, so they stay off the initial-render
-   * path. Custom elements upgrade once defined and the renderers tolerate late
-   * registration, so deferring is safe.
-   */
   const registerDocumentElements = () =>
     Promise.all([
       import("#editor/document.ts"),
@@ -208,7 +193,41 @@ export function SpaceApp(props: Props) {
     const spaceId = activeSpaceId();
     if (spaceId) extensions.init(spaceId).catch(console.error);
 
-    onCleanup(() => window.removeEventListener("resize", resetMobileDrawerOnDesktop));
+    let redirectingAfterRevocation = false;
+    let accessRefresh = Promise.resolve();
+
+    const handleRevocation = () => {
+      if (redirectingAfterRevocation) return;
+      redirectingAfterRevocation = true;
+      toast.show("Your access to this space was revoked.", "error", 10_000);
+      setTimeout(() => window.location.assign("/spaces"), 1200);
+    };
+
+    const refreshAccess = () => {
+      accessRefresh = accessRefresh
+        .then(async () => {
+          const previousRole = currentSpace()?.userRole;
+          const spaces = await api.spaces.get();
+          const refreshedSpace = spaces.find((candidate) => candidate.id === spaceId);
+          if (!refreshedSpace) {
+            handleRevocation();
+          } else if (refreshedSpace.userRole !== previousRole) {
+            toast.show("Your permissions in this space changed.", "info");
+          }
+        })
+        .catch(console.error);
+    };
+
+    const unsubscribeAccessChanges = api.subscribeToRealtimeAccessChanges((change) => {
+      if (change.spaceId !== spaceId || change.scope !== "space") return;
+      if (change.access === "none") handleRevocation();
+      else if (change.access === "refresh") refreshAccess();
+    });
+
+    onCleanup(() => {
+      unsubscribeAccessChanges();
+      window.removeEventListener("resize", resetMobileDrawerOnDesktop);
+    });
   });
 
   const layoutStyle = createMemo(() => ({
@@ -217,9 +236,6 @@ export function SpaceApp(props: Props) {
     "--inset-left": `${initialSidebarWidth}px`,
   }));
 
-  // Provided at this level because the writer is `DocumentPageView` and the
-  // readers are both under it (`DocumentActions`) and beside it in the shell
-  // (`AIChatPanel`), so this is the only scope that covers everyone.
   const documentContext = provideDocumentContext();
 
   const Shell = (shellProps: { children?: unknown }) => (
@@ -232,12 +248,6 @@ export function SpaceApp(props: Props) {
         <div
           class="main-content relative h-full min-h-screen transition-transform md:transition-none"
           style={{
-            // Only carry a transform while the mobile drawer actually offsets
-            // the shell. A transform — even translateX(0) — and will-change
-            // make this element the containing block for its fixed-position
-            // descendants, so the editor's viewport-anchored overlays (drag
-            // handles, toolbars, table reorder handles) would drift by the
-            // page's scroll offset.
             transform:
               mobileSidebarOffset() === 0
                 ? undefined
@@ -288,22 +298,17 @@ export function SpaceApp(props: Props) {
         <Icon class="h-7 w-7" name="command-palette" />
       </button>
 
-      {/* A mounted flag, *not* `<Show when={!isServer}>`.
-          
-          `isServer` is false during hydration, so the client would render these
-          on its first pass while the server rendered nothing — and Solid's
-          hydration then fails outright with "Unable to find DOM nodes for
-          hydration key", taking the whole island down. Measured: the toast
-          container never appeared and the palette threw.
-          
-          This is the same conclusion as ticket 1380, and it holds on both
-          sides: for *rendering* inside a hydrated island the guard has to be a
-          post-hydration flag. `isServer` is for code paths that must not run on
-          the server, not for withholding markup. */}
       <Show when={hasMounted()}>
+        <DocumentOrganizationTour
+          show={showOrganizationTour()}
+          onUpdateShow={(value) => {
+            // Dismissal is the only way out, so this is where "seen" is recorded.
+            if (!value) markOrganizationTourSeen();
+            setShowOrganizationTour(value);
+          }}
+        />
         <CalDAVSetupDialog />
         <ToastContainer />
-        <DocumentOverlay />
         <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />
         <CommandPalatte />
       </Show>
@@ -311,39 +316,28 @@ export function SpaceApp(props: Props) {
   );
 
   return (
-    <QueryClientContext.Provider value={queryClient}>
-      <ActiveSpaceIdContext.Provider value={activeSpaceId}>
-        <SsrUrlContext.Provider value={ssrRelativeUrl}>
-          <DocumentContextContext.Provider value={documentContext}>
-            {/* `url` is the server's only route source. `Router` delegates to
-              `StaticRouter` when `isServer`, and that reads `props.url`,
-              falling back to SolidStart's request event — which does not exist
-              under Astro — and then to `""`. Without this every SSR matched
-              `/` and served the space home for every path, so hydrating any
-              other route walked markup for a tree that was never rendered and
-              threw. The client ignores it and reads `window.location`.
-
-              It gets the full path, not the base-relative one: the client
-              source is `window.location.pathname`, and the router strips
-              `base` itself. Handing it a pre-stripped path strips twice.
-              Query string included, so `useSearchParams()` resolves during SSR
-              too — see `ssrRelativeUrl` above. */}
-            <Router
-              url={props.url ?? "/"}
-              base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
-              root={Shell}
-            >
-              <Route path="/" component={SpaceHomeView} />
-              <Route path="/search" component={SpaceSearchView} />
-              <Route path="/new" component={NewDocumentRoute} />
-              <Route path="/settings" component={SpaceSettingsView} />
-              <Route path="/doc/*documentSlug" component={DocumentRoute} />
-              <Route path="/x/*extensionPath" component={ExtensionRouteView} />
-              <Route path="*" component={NotFoundView} />
-            </Router>
-          </DocumentContextContext.Provider>
-        </SsrUrlContext.Provider>
-      </ActiveSpaceIdContext.Provider>
-    </QueryClientContext.Provider>
+    <LocaleContext.Provider value={props.lang}>
+      <QueryClientContext.Provider value={queryClient}>
+        <ActiveSpaceIdContext.Provider value={activeSpaceId}>
+          <SsrUrlContext.Provider value={ssrRelativeUrl}>
+            <DocumentContextContext.Provider value={documentContext}>
+              <Router
+                url={props.url ?? "/"}
+                base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
+                root={Shell}
+              >
+                <Route path="/" component={SpaceHomeView} />
+                <Route path="/search" component={SpaceSearchView} />
+                <Route path="/new" component={NewDocumentRoute} />
+                <Route path="/settings" component={SpaceSettingsView} />
+                <Route path="/doc/*documentSlug" component={DocumentRoute} />
+                <Route path="/x/*extensionPath" component={ExtensionRouteView} />
+                <Route path="*" component={NotFoundView} />
+              </Router>
+            </DocumentContextContext.Provider>
+          </SsrUrlContext.Provider>
+        </ActiveSpaceIdContext.Provider>
+      </QueryClientContext.Provider>
+    </LocaleContext.Provider>
   );
 }

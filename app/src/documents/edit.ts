@@ -1,3 +1,5 @@
+import { safeJsonParse } from "#utils/json.ts";
+
 export type EditOperation =
   | { op: "insert"; line: string; content: string }
   | { op: "replace"; range: string; content: string }
@@ -38,6 +40,9 @@ function resolveJsonParent(
     if (Array.isArray(current) && typeof segment === "number") {
       current = current[segment];
     } else if (current && typeof current === "object" && !Array.isArray(current)) {
+      // Own properties only: an inherited key is not part of this document, and
+      // following one leads onto the shared prototype chain.
+      if (!Object.hasOwn(current, String(segment))) return null;
       current = (current as Record<string, unknown>)[String(segment)];
     } else {
       return null;
@@ -111,7 +116,9 @@ function applyJsonOperation(
         throw new Error(`index out of bounds at '${operation.path}'`);
       }
       parent.splice(key, 1);
-    } else if (String(key) in parent) {
+      // `in` would also see inherited keys, so a polluted prototype could make
+      // an absent key look present (and deleting it would be a no-op).
+    } else if (Object.hasOwn(parent, String(key))) {
       delete parent[String(key)];
     } else {
       throw new Error(`path '${operation.path}' does not resolve`);
@@ -119,7 +126,11 @@ function applyJsonOperation(
     return;
   }
 
-  const target = Array.isArray(parent) ? parent[key as number] : parent[String(key)];
+  const target = Array.isArray(parent)
+    ? parent[key as number]
+    : Object.hasOwn(parent, String(key))
+      ? parent[String(key)]
+      : undefined;
   if (!Array.isArray(target)) {
     throw new Error(`'${operation.path}' is not an array`);
   }
@@ -181,7 +192,7 @@ export function applyEditOperations(
       case "push": {
         let root: unknown;
         try {
-          root = JSON.parse(current);
+          root = safeJsonParse(current);
         } catch {
           throw new Error("document is not valid JSON");
         }

@@ -1,10 +1,11 @@
 import { type JSX, mergeProps, Show } from "solid-js";
+import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 
 interface Props {
   icon?: IconName;
-  /** Generated artwork — a category's colour badge — rather than a set icon. */
   iconSvg?: string;
+  badge?: CategoryBadgeData;
   label?: string;
   selected?: boolean;
   onClick?: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>;
@@ -23,7 +24,8 @@ export function SelectItem(props: Props) {
       }}
       onClick={merged.onClick}
     >
-      <Show when={merged.icon || merged.iconSvg}>
+      <Show when={merged.badge}>{(badge) => <CategoryBadge category={badge()} />}</Show>
+      <Show when={!merged.badge && (merged.icon || merged.iconSvg)}>
         <Icon
           class="h-[18px] w-[18px] shrink-0"
           name={merged.icon}

@@ -1,22 +1,12 @@
 import { createEffect, onMount } from "solid-js";
 import docStyles from "#editor/css/document.css?inline";
-
-/**
- * Renders a search-result excerpt inside a `document-view` shadow root.
- *
- * Snippets are cut out of stored document HTML, so they can carry document
- * markup — including `<style>` — into whatever page shows them. Putting them
- * behind the shadow boundary keeps those styles scoped to the excerpt instead
- * of leaking into the app shell.
- */
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 interface Props {
   html: string;
   class?: string;
 }
 
-// The excerpt is a two-line teaser, not a document: flatten the block markup
-// that came along with it so headings and paragraphs read as one run of text.
 const SNIPPET_STYLES = `
 :host { display: block; }
 
@@ -48,8 +38,6 @@ const SNIPPET_STYLES = `
 }
 `;
 
-// A result list renders dozens of rows; parse the document stylesheet once and
-// share the sheet objects across every snippet's shadow root.
 let sheets: CSSStyleSheet[] | null = null;
 
 function snippetSheets() {
@@ -69,22 +57,20 @@ export function SearchSnippet(props: Props) {
   function render() {
     if (!el) return;
 
-    // `document-view` may not be upgraded here (the editor chunk loads
-    // lazily), so attach the shadow root ourselves rather than waiting.
     const shadow = el.shadowRoot ?? el.attachShadow({ mode: "open" });
     shadow.adoptedStyleSheets = snippetSheets();
 
     const content = document.createElement("div");
     content.setAttribute("part", "content");
-    content.innerHTML = props.html;
+    // A snippet is either highlighted text or, for the listing query, the first
+    // 200 characters of the stored document — raw markup, cut mid-element.
+    content.innerHTML = sanitizeDocumentHtml(props.html);
 
     shadow.querySelector('[part="content"]')?.remove();
     shadow.appendChild(content);
   }
 
   onMount(render);
-  // Tracks `props.html` by reading it; a bare effect covers both the initial
-  // run and every change, which is what onMounted + watch did in two pieces.
   createEffect(() => {
     void props.html;
     render();

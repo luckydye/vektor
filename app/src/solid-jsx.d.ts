@@ -46,6 +46,9 @@ declare module "solid-js" {
       // Every dynamic attribute on a custom element needs the namespace: Solid
       // drops an un-namespaced one entirely. See custom-elements.vitest.tsx.
       "attr:user-id"?: string | undefined;
+      // What an id is, when the caller knows: see AvatarElement.declaredKind.
+      "attr:kind"?: string | undefined;
+      kind?: string;
       "attr:asset-id"?: string | undefined;
       "attr:data-document-id"?: string | undefined;
       "attr:data-document-type"?: string | undefined;
@@ -60,6 +63,7 @@ declare module "solid-js" {
       "attr:inline-document-references"?: string | undefined;
       "attr:space-id"?: string | undefined;
       "attr:document-id"?: string | undefined;
+      "attr:readonly"?: string | undefined;
       "attr:html"?: string | undefined;
       snap?: boolean;
       language?: string;
@@ -88,7 +92,6 @@ declare module "solid-js" {
       "document-statusbar": CustomElementAttributes;
       "vektor-cosmetic": CustomElementAttributes;
       "wiki-drawer": CustomElementAttributes;
-      "drawer-track": CustomElementAttributes;
       "category-target": CustomElementAttributes;
       "page-target": CustomElementAttributes;
       "document-view": CustomElementAttributes;
@@ -103,6 +106,7 @@ declare module "solid-js" {
       "a-list": CustomElementAttributes;
       "a-calendar": CustomElementAttributes;
       "a-expandable": CustomElementAttributes;
+      "a-lightbox": CustomElementAttributes;
       "a-track": CustomElementAttributes;
       "a-popover": CustomElementAttributes;
       "a-popover-trigger": CustomElementAttributes;

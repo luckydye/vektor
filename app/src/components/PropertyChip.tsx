@@ -1,19 +1,20 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import type { Property } from "#documents/properties.ts";
-import { t } from "#utils/lang.ts";
+import { CategoryBadge, type CategoryBadgeData } from "./CategoryBadge.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   label?: string;
   nameLabel?: string;
   valueLabels?: string[];
   icon?: IconName;
-  /** Generated artwork — a category's colour badge — rather than a set icon. */
   iconSvg?: string;
+  badge?: CategoryBadgeData;
   variant?: "default" | "special";
   readonly?: boolean;
   property?: Property | null;
@@ -25,6 +26,8 @@ interface Props {
 }
 
 export function PropertyChip(props: Props) {
+  const t = useTranslation();
+
   let inputElement: HTMLInputElement | undefined;
 
   const [valueOptions, setValueOptions] = createSignal<SelectMenuItem[]>([]);
@@ -52,14 +55,12 @@ export function PropertyChip(props: Props) {
     setPropertyName(property.name);
     setSelectedValue(property.value);
 
-    // For date properties, set the date value
     if (property.type === "date" && property.value && !Array.isArray(property.value)) {
       setDateValue(property.value);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 25));
 
-    // Only fetch options for non-date properties
     if (property.type !== "date") {
       inputElement?.focus();
 
@@ -113,13 +114,18 @@ export function PropertyChip(props: Props) {
       return;
     }
 
-    setSelectedValue(itemValue);
-    props.onUpdate?.({
-      ...property,
-      name: propertyName(),
-      value: itemValue,
-      search: searchInput(),
-    });
+    // Picking the value the property already has is a no-op, not an edit: it
+    // would patch the document and bump its revision for nothing.
+    if (itemValue !== selectedValue()) {
+      setSelectedValue(itemValue);
+      props.onUpdate?.({
+        ...property,
+        name: propertyName(),
+        value: itemValue,
+        search: searchInput(),
+      });
+    }
+
     handleExit();
   };
 
@@ -203,15 +209,22 @@ export function PropertyChip(props: Props) {
             onClick={() => void handleClick()}
           >
             <Show
-              when={props.icon}
+              when={props.badge}
               fallback={
-                <div class="flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-primary-500" />
+                <Show
+                  when={props.icon}
+                  fallback={
+                    <div class="flex h-[18px] w-[18px] items-center justify-center rounded-sm bg-primary-500" />
+                  }
+                >
+                  <Icon
+                    class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
+                    name={props.icon}
+                  />
+                </Show>
               }
             >
-              <Icon
-                class={`[&_svg]:inline [&_svg]:h-[18px] [&_svg]:w-[18px] ${iconClass()}`}
-                name={props.icon}
-              />
+              {(badge) => <CategoryBadge category={badge()} />}
             </Show>
             <Show
               when={valueLabels().length > 0}
@@ -241,7 +254,6 @@ export function PropertyChip(props: Props) {
         )}
       </Show>
 
-      {/* Edit Property Popover */}
       <Show when={isEditPopoverOpen() && props.property}>
         {(property) => (
           <a-blur
@@ -249,9 +261,11 @@ export function PropertyChip(props: Props) {
             on:exit={handleExit}
             class="absolute -top-4xs -left-4xs z-50 flex flex-col rounded-lg border border-neutral-100 bg-neutral-10 p-5xs shadow-large"
           >
-            {/* Property name input with delete button */}
             <div class="flex w-full items-center gap-4xs px-3xs">
-              <Show when={props.icon}>
+              <Show when={props.badge}>
+                {(badge) => <CategoryBadge category={badge()} />}
+              </Show>
+              <Show when={!props.badge && props.icon}>
                 <Icon
                   class="h-[18px] w-[18px] text-neutral-950"
                   name={props.icon}

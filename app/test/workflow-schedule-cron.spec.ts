@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeNextRunAt, validateCronExpression } from "#db/workflowSchedules.ts";
+import { computeNextRunAt, validateCronExpression } from "#db/space/workflowSchedules.ts";
 
 /** What `date` reads as on a wall clock in `timezone`, as `YYYY-MM-DD HH:mm:ss`. */
 function wallClock(date: Date, timezone: string): string {

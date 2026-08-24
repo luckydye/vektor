@@ -1,26 +1,36 @@
 import { useNavigate } from "@solidjs/router";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { canAccessSettings, canEdit } from "#composeables/usePermissions.ts";
+import { canAccessSettings } from "#acl/permissions.ts";
+import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
+import { spaceSelectorSlots } from "#utils/pinnedSpaces.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Button } from "./Button.tsx";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
 import { Icon } from "./Icon.tsx";
 import { MenuLink } from "./MenuLink.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function Navigation() {
+  const t = useTranslation();
+
   const navigate = useNavigate();
-  // The tree owns rearrange mode; the header button reads and toggles it
-  // through the handle.
   const [documentTree, setDocumentTree] = createSignal<DocumentTreeHandle | null>(null);
   const { pathname } = useRoute();
-  const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
+  const {
+    currentSpace,
+    spaces,
+    createSpace,
+    canCreateSpace,
+    isLoading: spaceIsLoading,
+  } = useSpace();
+  const { pinnedSpaceIds } = usePinnedSpaces();
 
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
   const [extensionMenuLinks, setExtensionMenuLinks] = createSignal<
@@ -34,9 +44,6 @@ export function Navigation() {
       return match ? `x/${match[1]}` : "";
     }
     if (path.includes("/settings")) return "settings";
-    // The router keeps its base ("/{space}/") in `location.pathname`, so the
-    // space home is "/{space}" — only the pre-hydration SSR fallback is
-    // base-relative and reports a bare "/".
     if (path === "" || path === spacePath(currentSpace()?.slug, "").replace(/\/+$/, "")) {
       return "home";
     }
@@ -52,13 +59,23 @@ export function Navigation() {
       members: space.memberCount,
       color: space.preferences?.brandColor,
       logoSvg: space.preferences?.logoSvg,
+      pinned: pinnedSpaceIds().has(space.id),
     })),
+  );
+
+  const selectorSpaces = createMemo(() =>
+    spaceSelectorSlots(uiSpaces(), pinnedSpaceIds()),
+  );
+
+  // Looked up separately: an unpinned current space can fall outside the listed
+  // ones, and the trigger still has to name it.
+  const currentUiSpace = createMemo(
+    () => uiSpaces().find((space) => space.id === currentSpace()?.id) ?? null,
   );
 
   const userCanAccessSettings = createMemo(
     () => !isLoading() && canAccessSettings(currentSpace()?.userRole),
   );
-  const userCanEdit = createMemo(() => !isLoading() && canEdit(currentSpace()?.userRole));
 
   function updateExtensionMenuLinks() {
     setExtensionMenuLinks(extensions.getMenuLinks());
@@ -92,49 +109,45 @@ export function Navigation() {
 
   return (
     <div class="z-1 flex h-full flex-col">
-      <div class="sticky top-0 z-10 flex-none rounded-t-md px-5xs py-5xs">
+      <div class="sticky top-0 z-10 flex-none rounded-t-md px-3xs @max-xs:px-5xs pt-4xs pb-5xs">
         <CreateSpaceDialog
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}
           onCreate={async (data) => {
-            try {
-              const newSpace = await createSpace(data.name, data.slug, {
-                brandColor: data.brandColor,
-                logoSvg: data.logoSvg,
-              });
-              window.location.href = `/${newSpace.slug}/`;
-            } catch (err) {
-              console.error("Failed to create space:", err);
-            }
+            // Failures propagate on purpose: the dialog shows them in its form
+            // error and stays open so the slug can be corrected.
+            const newSpace = await createSpace(data.name, data.slug, {
+              brandColor: data.brandColor,
+              logoSvg: data.logoSvg,
+            });
+            window.location.href = `/${newSpace.slug}/`;
           }}
         />
         <SpaceSelector
-          spaces={uiSpaces()}
-          value={currentSpace()?.id}
-          canCreateDocs={userCanEdit()}
+          spaces={selectorSpaces()}
+          current={currentUiSpace()}
+          allSpacesHref="/spaces"
+          canCreateSpaces={canCreateSpace() === true}
           loading={isLoading()}
           onSelect={(space) => {
             const full = spaces()?.find((s: ApiSpace) => s.id === space.id);
             if (full) window.location.href = `/${full.slug}/`;
           }}
           onCreate={() => setShowCreateDialog(true)}
-          onCreateDoc={() => Actions.run("document:create")}
         />
       </div>
 
       <div class="sidebar-scroll min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <nav class="@container flex flex-col gap-3xs">
-          <div class="flex flex-none flex-col gap-0.5 px-3xs pt-5xs">
+          <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
             <button
               type="button"
-              class="button-with-icon mb-4xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
+              class="button-with-icon mb-xs flex min-h-[36px] w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
               title={t("Quick Search")}
               onClick={() => Actions.run("ui:toggle:palatte")}
             >
               <Icon name="search" />
-              <span class="@max-xs:hidden flex-1 truncate text-size-normal">
-                {t("Quick Search")}
-              </span>
+              <span class="@max-xs:hidden flex-1 truncate">{t("Quick Search")}</span>
               <a-shortcut class="@max-xs:hidden! flex-none" data-shortcut="mod-k" />
             </button>
             <MenuLink
@@ -154,7 +167,7 @@ export function Navigation() {
           </div>
 
           <Show when={extensionMenuLinks().length > 0 && !isLoading()}>
-            <div class="flex flex-none flex-col gap-0.5 px-3xs">
+            <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs">
               <For each={extensionMenuLinks()}>
                 {(link) => (
                   <MenuLink
@@ -169,19 +182,23 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="@max-xs:hidden px-5xs pt-4xs pb-s">
-            <div class="mx-4xs border-neutral-400/25 border-b"></div>
+          <div class="@max-xs:hidden px-5xs pt-2xs pb-s">
+            <div class="mx-2xs border-neutral-400/25 border-b"></div>
 
+            {/* The hint gives the lone Done button something to belong to, and says
+                what the mode is for — nothing else on screen does. */}
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">
               <Show when={documentTree()?.isEditMode}>
-                <button
-                  type="button"
+                <span class="truncate text-neutral-500 text-size-extra-small">
+                  {t("Drag to reorder")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  text={t("Done")}
+                  ariaLabel={t("Done rearranging")}
                   onClick={() => documentTree()?.toggleEditMode()}
-                  class="rounded-sm px-1 py-0.5 font-medium text-blue-600 text-size-extra-small transition-colors hover:text-blue-700"
-                  title={t("Done rearranging")}
-                >
-                  {t("Done")}
-                </button>
+                />
               </Show>
             </div>
 

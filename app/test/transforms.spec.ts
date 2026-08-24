@@ -228,12 +228,14 @@ async function uploadFile(
   buffer: Buffer,
   mime: string,
 ): Promise<string> {
-  const form = new FormData();
-  form.append("file", new Blob([buffer], { type: mime }), filename);
-  const res = await fetch(`${BASE_URL}/api/v1/spaces/${sid}/uploads`, {
-    method: "POST",
-    body: form,
-  });
+  const res = await fetch(
+    `${BASE_URL}/api/v1/spaces/${sid}/uploads?filename=${encodeURIComponent(filename)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": mime },
+      body: buffer,
+    },
+  );
   if (!res.ok) throw new Error(`Upload failed: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { key: string; url: string };
   expect(data.url).toBe(`/api/v1/spaces/${sid}/uploads/${data.key}`);
@@ -274,6 +276,7 @@ describe("image transforms — integration", () => {
     const res = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads/${imageKey}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("image/png");
+    expect(res.headers.get("Cache-Control")).toBe("private, max-age=3600");
 
     const buf = Buffer.from(await res.arrayBuffer());
     const m = meta(buf);
@@ -312,6 +315,7 @@ describe("image transforms — integration", () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/webp");
+    expect(res.headers.get("Cache-Control")).toBe("private, max-age=3600");
 
     const buf = Buffer.from(await res.arrayBuffer());
     const m = meta(buf);

@@ -1,5 +1,4 @@
 import { Editor, getSchema } from "@tiptap/core";
-import Collaboration from "@tiptap/extension-collaboration";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { prosemirrorToYDoc, relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
@@ -12,6 +11,7 @@ import {
   findYSyncState,
 } from "#editor/collaboration.ts";
 import codeStyles from "#editor/css/code.css?inline";
+import { Collaboration } from "#editor/extensions/Collaboration.ts";
 
 export interface CodeEditorElementApi extends HTMLElement {
   value: string;

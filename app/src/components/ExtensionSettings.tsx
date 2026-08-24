@@ -1,7 +1,8 @@
 import { createMemo, For, Show } from "solid-js";
 import { useExtensions } from "#composeables/useExtensions.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { config } from "#config";
-import { formatDate } from "#utils/datetime.ts";
+import { formatDate } from "#utils/dateFormat.ts";
 import { FileDrop } from "./FileDrop.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
@@ -34,6 +35,7 @@ function avatarColor(id: string) {
 }
 
 export function ExtensionSettings() {
+  const lang = useLocale();
   const uploadAllowed = createMemo(() => {
     const raw = config().EXTENSION_ALLOWED_SOURCES;
     if (!raw) return true;
@@ -70,7 +72,6 @@ export function ExtensionSettings() {
   return (
     <div class="flex flex-1 flex-col">
       <div class="space-y-4 pt-6">
-        {/* Upload Error */}
         <Show when={uploadError()}>
           <div class="rounded-md border border-red-200 bg-red-50 p-3">
             <p class="text-red-600 text-size-medium">{uploadError()}</p>
@@ -86,7 +87,6 @@ export function ExtensionSettings() {
           }
         >
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {/* Valid extensions */}
             <For each={extensions()}>
               {(ext) => (
                 <div class="group relative flex flex-col rounded-lg border border-neutral-100 p-4 transition-all hover:border-neutral-200 hover:shadow-sm">
@@ -133,7 +133,7 @@ export function ExtensionSettings() {
 
                   <div class="mt-3 flex items-center justify-between border-neutral-100 border-t pt-3">
                     <span class="text-neutral-400 text-size-small">
-                      {formatDate(ext.updatedAt)}
+                      {formatDate(ext.updatedAt, lang)}
                     </span>
                     <span class="flex items-center gap-3">
                       <button
@@ -157,7 +157,6 @@ export function ExtensionSettings() {
               )}
             </For>
 
-            {/* Broken extensions */}
             <For each={extensionErrors()}>
               {(item) => (
                 <div class="flex flex-col rounded-lg border border-amber-200 bg-amber-50 p-4">
@@ -218,7 +217,6 @@ export function ExtensionSettings() {
               )}
             </For>
 
-            {/* Upload Card (trailing) */}
             <Show when={uploadAllowed()}>
               <FileDrop
                 accept=".zip,application/zip"
@@ -271,7 +269,6 @@ export function ExtensionSettings() {
           </div>
         </Show>
 
-        {/* Upload Not Allowed */}
         <Show when={!isLoading() && !uploadAllowed()}>
           <div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
             <p class="text-neutral-500 text-size-medium">

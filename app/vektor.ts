@@ -5,6 +5,7 @@
  *
  * Usage:
  *   vektor login
+ *   vektor logout
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
  *   vektor mcp
  *   vektor agent [prompt...] [--doc <slug|id>] [--once]
@@ -45,9 +46,9 @@ import {
   commandWrite,
 } from "./src/cli/document.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
-import { commandLogin } from "./src/cli/login.ts";
+import { commandLogin, commandLogout } from "./src/cli/login.ts";
 import { commandMcp } from "./src/cli/mcp.ts";
-import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
+import { configPath, resolveConfig } from "./src/cli/resolve.ts";
 import {
   commandSpaceAttach,
   commandSpaceEnable,
@@ -56,7 +57,6 @@ import {
 } from "./src/cli/space.ts";
 import { commandUploadFile } from "./src/cli/upload.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
-import { config } from "./src/config.ts";
 
 function parseFlags(args: string[]): {
   positional: string[];
@@ -104,6 +104,7 @@ Usage:
 
 Commands:
   vektor login
+  vektor logout
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor mcp
   vektor agent [prompt...] [--doc <slug|id>] [--once]
@@ -127,18 +128,24 @@ Commands:
   vektor space enable <database-id>
   vektor space ls
 
-Env vars:
+Configuration:
+  vektor login stores the space and access token in
+  ${configPath()}
+  The server URL is never stored — set VEKTOR_HOST yourself.
+
+Env vars (override the stored config):
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
   VEKTOR_SPACE_ID       Space to use (default: first space on server)
   VEKTOR_ACCESS_TOKEN   API token (required if auth is enabled; used by vektor mcp)
   VEKTOR_DATABASE_URL   Auth database URL (default: file:./data/auth.db)
+  XDG_CONFIG_HOME       Config directory root (default: ~/.config)
 `);
 }
 
 async function verifyNativeAddons(): Promise<void> {
   const [{ getNativeEmbedding }, { getNativeImage }, { getNativeExec }] =
     await Promise.all([
-      import("./src/embeddings/native.ts"),
+      import("./src/search/embeddingRuntime.ts"),
       import("./src/files/native.ts"),
       import("./src/exec/native.ts"),
     ]);
@@ -181,6 +188,11 @@ async function main(): Promise<void> {
 
   if (command === "login") {
     await commandLogin();
+    return;
+  }
+
+  if (command === "logout") {
+    commandLogout();
     return;
   }
 
@@ -259,18 +271,16 @@ async function main(): Promise<void> {
     }
 
     if (subcommand === "upload") {
-      const url = resolveHost();
-      const token = config().CLI_ACCESS_TOKEN;
+      const { host, token, spaceId } = await resolveConfig();
 
       if (!token) {
-        throw new Error("Access Token required");
+        throw new Error("Access Token required — run: vektor login");
       }
 
-      const space = await resolveSpaceId(url, token);
       await commandUpload(
         extensionId?.startsWith("--") ? undefined : extensionId,
-        url,
-        space,
+        host,
+        spaceId,
         token,
       );
       return;
@@ -429,7 +439,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    `Unknown command: ${command}\n\nTry: serve, mcp, workflow, extension, cat, upload, write, set, ls, query, category, space`,
+    `Unknown command: ${command}\n\nTry: login, logout, serve, mcp, workflow, extension, cat, upload, write, set, ls, query, category, space`,
   );
 }
 

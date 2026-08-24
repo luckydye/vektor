@@ -14,6 +14,7 @@
 import type { Model } from "@ironcalc/wasm";
 import { createEffect, createSignal, on, Show } from "solid-js";
 import { Icon } from "#components/Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { FormulaBar } from "#spreadsheet/FormulaBar.tsx";
 import { GridContextMenu, type GridMenuAction } from "#spreadsheet/GridContextMenu.tsx";
 import {
@@ -31,7 +32,6 @@ import {
 } from "#spreadsheet/presence.ts";
 import { Toolbar } from "#spreadsheet/Toolbar.tsx";
 import { type HeaderTarget, Worksheet } from "#spreadsheet/Worksheet.tsx";
-import { t } from "#utils/lang.ts";
 import "#spreadsheet/spreadsheet.css";
 
 interface Props {
@@ -57,6 +57,7 @@ interface Props {
 const INTERNAL_MIME = "application/json";
 
 export function Spreadsheet(props: Props) {
+  const t = useTranslation();
   let root!: HTMLDivElement;
   const workbookState = new WorkbookState();
   const [revision, setRevision] = createSignal(0);

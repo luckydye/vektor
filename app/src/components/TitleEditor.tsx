@@ -30,8 +30,6 @@ export function TitleEditor(props: Props) {
   function startEditing() {
     if (!props.canEdit) return;
     setIsEditing(true);
-    // No `nextTick`: the signal write renders synchronously, so the input is
-    // already in the document.
     inputEl?.focus({ preventScroll: true });
   }
 
@@ -61,11 +59,7 @@ export function TitleEditor(props: Props) {
           properties: { title: { value: localTitle() } },
         });
 
-        // Only a document still on its placeholder slug gets a new one, so this
-        // fires once per document at most.
         if (data.slug && /\/doc\/[^/]+/.test(window.location.pathname)) {
-          // Router paths are relative to its base ("/{spaceSlug}/"), so no
-          // spacePath() prefix here.
           navigate(`/doc/${data.slug}`, { replace: true });
         }
       } catch (error) {

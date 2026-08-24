@@ -1,7 +1,6 @@
 import { type Accessor, createSignal } from "solid-js";
 import { getSession } from "#composeables/auth-client.ts";
-import { config } from "#config";
-import { LOCAL_USER } from "#noAuth";
+import { config, LOCAL_USER } from "#config";
 
 type UserProfile = {
   id: string;
@@ -13,7 +12,7 @@ type UserProfile = {
   image?: string | null | undefined;
 };
 
-// Browser islands share the resolved profile. SSR must not retain either the
+// Browser islands share the session profile. SSR must not retain either the
 // authenticated user or an in-flight session lookup in the server module graph.
 const [browserUser, setBrowserUser] = createSignal<UserProfile>();
 let browserLoading = false;
