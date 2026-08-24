@@ -715,14 +715,7 @@ export function DocumentPageView(props: Props) {
                       </Show>
                     </div>
 
-                    <Show
-                      when={
-                        !isDraft() &&
-                        !editing() &&
-                        !isCanvas() &&
-                        !isWorkflow()
-                      }
-                    >
+                    <Show when={!isDraft() && !editing() && !isCanvas() && !isWorkflow()}>
                       <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
                         <Show when={doc()?.updatedAt}>
                           <div class="mb-12 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">

@@ -513,7 +513,6 @@ describe("Document edit operations", () => {
 
     ws.close();
   });
-
 });
 
 /**

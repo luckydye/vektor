@@ -3,12 +3,12 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { useSpace } from "#composeables/useSpace.ts";
 import { useTemplates } from "#composeables/useTemplates.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import type { DocumentTemplate } from "#documents/templates.ts";
 import { insertTemplateContent } from "#editor/templates.ts";
 import { type TranslationKey } from "#utils/lang.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Icon, type IconName } from "./Icon.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 type DocumentType = "canvas" | "workflow" | "database";
 

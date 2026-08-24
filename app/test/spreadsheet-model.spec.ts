@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
-import {
-  getDocumentTypeForContentType,
-  toHtmlIfMarkdown,
-} from "#documents/content.ts";
+import { getDocumentTypeForContentType, toHtmlIfMarkdown } from "#documents/content.ts";
 import {
   cellsToHtmlTable,
   htmlTableToCells,
@@ -173,9 +170,7 @@ describe("CSV import", () => {
   });
 
   it("imports csv uploads as normal documents", () => {
-    expect(getDocumentTypeForContentType("text/csv; charset=utf-8")).toBe(
-      "document",
-    );
+    expect(getDocumentTypeForContentType("text/csv; charset=utf-8")).toBe("document");
   });
 
   it("still converts markdown for a plain document", () => {

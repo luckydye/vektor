@@ -214,11 +214,7 @@ export function getLiveDocumentContent(
     }
     return toCleanHtml(room.doc);
   }
-  if (
-    type === "canvas" ||
-    type === "workflow" ||
-    isJsonContent(persisted)
-  )
+  if (type === "canvas" || type === "workflow" || isJsonContent(persisted))
     return persisted;
   return normalizeHtmlContent(persisted);
 }

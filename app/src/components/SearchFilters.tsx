@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import {
   canonicalPropertyKey,
   DATE_FILTER_KEY,
@@ -10,7 +11,6 @@ import {
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 import { Icon, type IconName } from "./Icon.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   spaceId: string;

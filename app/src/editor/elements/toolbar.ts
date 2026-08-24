@@ -4,6 +4,7 @@ import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import { iconMarkup } from "#components/Icon.tsx";
 import { browserLang, createTranslator } from "#utils/lang.ts";
+
 const t = createTranslator(browserLang());
 
 const TEXT_COLOR_PRESETS = [
@@ -1606,7 +1607,7 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                this.icon(iconMarkup("csv-file")),
+                this.icon(iconMarkup("function")),
                 t("Convert to Spreadsheet"),
                 () => this.chain()?.convertTableToSpreadsheet().run(),
                 {

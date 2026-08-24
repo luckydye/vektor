@@ -2283,9 +2283,9 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
     `null`). Loads the revision into the draft (and into the open collaboration room, if
     any), triggers "document published" email notifications plus a "mentioned you" one
     for each user newly mentioned, and is audit-logged.
-  - `readonly: boolean` — lock/unlock the document (types in `readOnlyDocumentTypes`,
-    e.g. CSV, must stay readonly). Persists the live draft before locking.
-    Audit-logged.
+  - `readonly: boolean` — lock/unlock the document. Immutable types in
+    `readOnlyDocumentTypes` must stay readonly. Persists the live draft before
+    locking. Audit-logged.
 - **Returns**: `200 { success: true }` for a parent/publish/readonly patch. A properties
   patch answers `200 {}`, or `200 { slug }` when a `title` patch also claimed a new
   slug. The slug is fixed when the document is created and does not follow later

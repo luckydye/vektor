@@ -1475,7 +1475,6 @@ describe("Realtime WebSocket readonly documents", () => {
     },
     TEST_TIMEOUT_MS,
   );
-
 });
 
 describe("Realtime WebSocket writes against an open room", () => {

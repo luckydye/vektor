@@ -114,12 +114,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
       "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
     ),
   );
-  // Deprecated standalone CSV documents stored HTML tables already. Fold them
-  // into normal documents now that spreadsheets are embedded table content.
-  await exec(
-    spaceDb,
-    sql.raw("UPDATE document SET type = 'document', readonly = 0 WHERE type = 'csv'"),
-  );
   await exec(
     spaceDb,
     sql.raw(

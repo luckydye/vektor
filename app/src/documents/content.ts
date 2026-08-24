@@ -99,10 +99,7 @@ function isCsvContent(contentType: string | null): boolean {
   return Boolean(mimeType && CSV_TYPE_SET.has(mimeType));
 }
 
-export function toHtmlIfMarkdown(
-  content: string,
-  contentType: string | null,
-): string {
+export function toHtmlIfMarkdown(content: string, contentType: string | null): string {
   if (isCsvContent(contentType)) {
     return csvToHtmlTable(content);
   }

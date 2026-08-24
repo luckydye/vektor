@@ -74,7 +74,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: t("Spreadsheet Table"),
       description: t("Insert a spreadsheet inside the document"),
-      icon: iconMarkup("csv-file"),
+      icon: iconMarkup("function"),
       command: (editor) => {
         editor.chain().focus().insertSpreadsheetTable().run();
       },
