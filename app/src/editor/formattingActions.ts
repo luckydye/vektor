@@ -358,6 +358,26 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     },
   });
 
+  Actions.register("format:spreadsheet:insert", {
+    title: t("Insert Spreadsheet Table"),
+    description: t("Insert a spreadsheet inside the document"),
+    group: "table",
+    run: async () => {
+      if (!isEditorAvailable()) return;
+      getEditor().chain().focus().insertSpreadsheetTable().run();
+    },
+  });
+
+  Actions.register("format:spreadsheet:convert", {
+    title: t("Convert Table to Spreadsheet"),
+    description: t("Convert the current plain-text table to a spreadsheet"),
+    group: "table",
+    run: async () => {
+      if (!isEditorAvailable()) return;
+      getEditor().chain().focus().convertTableToSpreadsheet().run();
+    },
+  });
+
   Actions.register("format:table:delete", {
     title: t("Delete Table"),
     description: t("Delete the current table"),
@@ -663,6 +683,8 @@ export function unregisterFormattingActions() {
     "format:undo",
     "format:redo",
     "format:table:insert",
+    "format:spreadsheet:insert",
+    "format:spreadsheet:convert",
     "format:table:delete",
     "format:table:addColumnBefore",
     "format:table:addColumnAfter",

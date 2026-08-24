@@ -801,7 +801,7 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("HTML content is required and must be a string");
       }
 
-      html = toHtmlIfMarkdown(body.html, contentType, document.type);
+      html = toHtmlIfMarkdown(body.html, contentType);
       message = typeof body.message === "string" ? body.message : undefined;
     } else {
       const rawContent = await context.req.raw.text();
@@ -809,7 +809,7 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      html = toHtmlIfMarkdown(rawContent, contentType, document.type);
+      html = toHtmlIfMarkdown(rawContent, contentType);
     }
 
     const revision =

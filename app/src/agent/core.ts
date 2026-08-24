@@ -74,7 +74,6 @@ const READONLY_DOC_TYPES = new Set(readOnlyDocumentTypes);
 function recipeForDocumentType(documentType?: string | null): string {
   if (documentType === "canvas") return "canvas";
   if (documentType === "app") return "app-doc";
-  if (documentType === "csv") return "edit-csv";
   return "edit-text";
 }
 
@@ -82,7 +81,7 @@ function recipeForDocumentType(documentType?: string | null): string {
  * When a document is in context, inline the editing playbook directly instead
  * of making the model discover it via \`recipes\`. Small models skip the lookup
  * step, so the most common task gets its instructions up front. The inlined
- * recipe is chosen by document type (canvas / app / csv / html).
+ * recipe is chosen by document type (canvas / app / html).
  */
 function documentEditingSection(
   documentId?: string,

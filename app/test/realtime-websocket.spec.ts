@@ -1476,34 +1476,6 @@ describe("Realtime WebSocket readonly documents", () => {
     TEST_TIMEOUT_MS,
   );
 
-  it(
-    "drops Yjs updates for a permanently readonly document type",
-    async () => {
-      // `csv` is readonly by type (readOnlyDocumentTypes), which the HTTP write
-      // paths already refuse; the room refuses it on the same terms.
-      const documentId = await createDocument(
-        "Sheet",
-        "<table><tr><td>a</td></tr></table>",
-        "csv",
-      );
-      const writer = await connectWebSocket(BASE_URL, testSpaceId);
-
-      try {
-        const writerDoc = await joinRoom(writer, documentId);
-        writer.socket.send(
-          wsEncodeYjsUpdate(documentId, appendParagraph(writerDoc, "injected row")),
-        );
-
-        await Bun.sleep(REVALIDATION_MS);
-        expect(await readContent(documentId, true)).not.toContain("injected row");
-        expect(await readContent(documentId, false)).not.toContain("injected row");
-        expect(writer.socket.readyState).toBe(WebSocket.OPEN);
-      } finally {
-        writer.socket.close();
-      }
-    },
-    TEST_TIMEOUT_MS,
-  );
 });
 
 describe("Realtime WebSocket writes against an open room", () => {

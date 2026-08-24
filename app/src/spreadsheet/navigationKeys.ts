@@ -1,7 +1,7 @@
 // Ported from IronCalc `components/Workbook/useKeyboardNavigation.ts` at tag
 // v0.8.3, MIT OR Apache-2.0. De-Reactified into a plain handler factory, and the
-// styling (Ctrl+B/I/U) and sheet-switching (Alt+Arrow) shortcuts dropped: a csv
-// document stores neither formatting nor a second sheet. See ./grid/README.md.
+// styling (Ctrl+B/I/U) and sheet-switching (Alt+Arrow) shortcuts dropped: an
+// embedded table has no second sheet. See ./grid/README.md.
 
 import { isEditingKey, isNavigationKey, type NavigationKey } from "./grid/address.ts";
 

@@ -351,11 +351,9 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
   }
 
   const contentTypeFor = (type: unknown): string =>
-    type === "csv"
-      ? "text/csv; charset=utf-8"
-      : type === "app"
-        ? "application/vnd.wiki.app+html; charset=utf-8"
-        : "text/markdown; charset=utf-8";
+    type === "app"
+      ? "application/vnd.wiki.app+html; charset=utf-8"
+      : "text/markdown; charset=utf-8";
 
   const table: CapabilityTable = {
     // ── timing ───────────────────────────────────────────────────────────────

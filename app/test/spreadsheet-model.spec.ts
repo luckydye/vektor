@@ -2,21 +2,17 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
-import * as Y from "yjs";
-import { toHtmlIfMarkdown } from "#documents/content.ts";
+import {
+  getDocumentTypeForContentType,
+  toHtmlIfMarkdown,
+} from "#documents/content.ts";
 import {
   cellsToHtmlTable,
   htmlTableToCells,
   htmlTableToCsv,
   rowsToHtmlTable,
 } from "#documents/htmlTable.ts";
-import { createModel, toDocumentHtml } from "#spreadsheet/csvDocument.ts";
-import {
-  htmlFromSheetDoc,
-  readCell,
-  sheetDocFromHtml,
-  sheetRows,
-} from "#spreadsheet/sheetDoc.ts";
+import { createModel, toTableHtml } from "#spreadsheet/spreadsheetModel.ts";
 
 beforeAll(async () => {
   const require = createRequire(import.meta.url);
@@ -86,7 +82,7 @@ describe("htmlTable", () => {
   });
 });
 
-describe("csvDocument", () => {
+describe("spreadsheetModel", () => {
   it("loads a stored table into the grid", () => {
     const model = createModel(
       stored([
@@ -114,7 +110,7 @@ describe("csvDocument", () => {
     model.setUserInput(0, 4, 1, "=SUM(A2:A3)");
     model.evaluate();
 
-    const saved = toDocumentHtml(model);
+    const saved = toTableHtml(model);
     expect(saved).toContain('data-source="=SUM(A2:A3)"');
     expect(saved).toContain(">42<");
 
@@ -128,11 +124,11 @@ describe("csvDocument", () => {
     model.setUserInput(0, 2, 1, "'0012");
     model.evaluate();
 
-    const reloaded = createModel(toDocumentHtml(model), "Test");
+    const reloaded = createModel(toTableHtml(model), "Test");
     expect(reloaded.getFormattedCellValue(0, 2, 1)).toBe("0012");
   });
 
-  it("saves the same document again unchanged", () => {
+  it("saves the same table again unchanged", () => {
     const model = createModel(
       stored([
         ["name", "qty"],
@@ -144,8 +140,8 @@ describe("csvDocument", () => {
     model.setUserInput(0, 3, 2, "=B2*2");
     model.evaluate();
 
-    const saved = toDocumentHtml(model);
-    expect(toDocumentHtml(createModel(saved, "Test"))).toBe(saved);
+    const saved = toTableHtml(model);
+    expect(toTableHtml(createModel(saved, "Test"))).toBe(saved);
   });
 
   it("grows the saved table to cover cells added past the loaded range", () => {
@@ -153,19 +149,19 @@ describe("csvDocument", () => {
     model.setUserInput(0, 12, 5, "far away");
     model.evaluate();
 
-    const cells = htmlTableToCells(toDocumentHtml(model));
+    const cells = htmlTableToCells(toTableHtml(model));
     expect(cells).toHaveLength(12);
     expect(cells?.[11]).toHaveLength(5);
     expect(cells?.[11]?.[4]?.value).toBe("far away");
   });
 
-  it("handles a document with no table at all", () => {
+  it("handles empty table markup", () => {
     const model = createModel("", "Test");
-    expect(toDocumentHtml(model)).toBe("<table><tbody></tbody></table>");
+    expect(toTableHtml(model)).toBe("<table><tbody></tbody></table>");
   });
 });
 
-describe("toHtmlIfMarkdown for csv documents", () => {
+describe("CSV import", () => {
   const csv = "a,b\n1,2\n";
   const table = rowsToHtmlTable([
     ["a", "b"],
@@ -176,14 +172,10 @@ describe("toHtmlIfMarkdown for csv documents", () => {
     expect(toHtmlIfMarkdown(csv, "text/csv")).toBe(table);
   });
 
-  it("converts csv text sent without a useful content type", () => {
-    expect(toHtmlIfMarkdown(csv, "application/json", "csv")).toBe(table);
-    expect(toHtmlIfMarkdown(csv, null, "csv")).toBe(table);
-  });
-
-  it("leaves an html body alone even when the document is a csv", () => {
-    expect(toHtmlIfMarkdown(table, "text/html", "csv")).toBe(table);
-    expect(toHtmlIfMarkdown(table, "text/html", "csv")).not.toContain("&lt;table&gt;");
+  it("imports csv uploads as normal documents", () => {
+    expect(getDocumentTypeForContentType("text/csv; charset=utf-8")).toBe(
+      "document",
+    );
   });
 
   it("still converts markdown for a plain document", () => {
@@ -191,89 +183,7 @@ describe("toHtmlIfMarkdown for csv documents", () => {
   });
 });
 
-describe("sheetDoc", () => {
-  it("round-trips the stored markup through a collaborative document", () => {
-    const original = cellsToHtmlTable(
-      [
-        [{ value: "name" }, { value: "qty", style: { font: { b: true } } }],
-        [{ value: "Widget" }, { value: "42", source: "=SUM(B3:B4)" }],
-      ],
-      { columnWidths: [140, undefined], rowHeights: [undefined, 40] },
-    );
-
-    expect(htmlFromSheetDoc(sheetDocFromHtml(original))).toBe(original);
-  });
-
-  it("puts each cell under its own key, so peers do not collide", () => {
-    const doc = sheetDocFromHtml(
-      rowsToHtmlTable([
-        ["a", "b"],
-        ["c", "d"],
-      ]),
-    );
-    const rows = sheetRows(doc);
-    expect(rows.length).toBe(2);
-    expect(readCell(rows.get(0) as never, 0)?.v).toBe("a");
-    expect(readCell(rows.get(1) as never, 1)?.v).toBe("d");
-  });
-
-  it("merges concurrent edits to different cells", () => {
-    const base = sheetDocFromHtml(
-      rowsToHtmlTable([
-        ["a", "b"],
-        ["c", "d"],
-      ]),
-    );
-
-    const peerA = new Y.Doc();
-    const peerB = new Y.Doc();
-    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(base));
-    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(base));
-
-    (sheetRows(peerA).get(0) as Y.Map<unknown>).set("0", { v: "from A" });
-    (sheetRows(peerB).get(1) as Y.Map<unknown>).set("1", { v: "from B" });
-
-    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(peerB));
-    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(peerA));
-
-    for (const peer of [peerA, peerB]) {
-      expect(readCell(sheetRows(peer).get(0) as never, 0)?.v).toBe("from A");
-      expect(readCell(sheetRows(peer).get(1) as never, 1)?.v).toBe("from B");
-    }
-    expect(htmlFromSheetDoc(peerA)).toBe(htmlFromSheetDoc(peerB));
-  });
-
-  it("keeps a row insert from one peer alongside an edit from another", () => {
-    const base = sheetDocFromHtml(rowsToHtmlTable([["a"], ["b"]]));
-    const peerA = new Y.Doc();
-    const peerB = new Y.Doc();
-    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(base));
-    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(base));
-
-    const inserted = new Y.Map<unknown>();
-    inserted.set("0", { v: "inserted" });
-    sheetRows(peerA).insert(1, [inserted]);
-    (sheetRows(peerB).get(1) as Y.Map<unknown>).set("0", { v: "edited" });
-
-    Y.applyUpdate(peerA, Y.encodeStateAsUpdate(peerB));
-    Y.applyUpdate(peerB, Y.encodeStateAsUpdate(peerA));
-
-    const values = (doc: Y.Doc) => sheetRows(doc).map((row) => readCell(row, 0)?.v ?? "");
-    expect(values(peerA)).toEqual(["a", "inserted", "edited"]);
-    expect(values(peerA)).toEqual(values(peerB));
-  });
-
-  it("leaves an empty cell out rather than storing a blank", () => {
-    const doc = sheetDocFromHtml(rowsToHtmlTable([["a", "", "c"]]));
-    const row = sheetRows(doc).get(0) as Y.Map<unknown>;
-    expect([...row.keys()].sort()).toEqual(["0", "2"]);
-    expect(htmlFromSheetDoc(doc)).toBe(
-      "<table><thead><tr><th>a</th><th></th><th>c</th></tr></thead><tbody></tbody></table>",
-    );
-  });
-});
-
-describe("csvDocument formatting", () => {
+describe("spreadsheetModel formatting", () => {
   const area = (row: number, column: number, width: number, height: number) => ({
     sheet: 0,
     row,
@@ -286,7 +196,7 @@ describe("csvDocument formatting", () => {
     const model = createModel(stored([["a", "b"]]), "Test");
     model.updateRangeStyle(area(1, 1, 1, 1), "font.b", "true");
 
-    const saved = toDocumentHtml(model);
+    const saved = toTableHtml(model);
     expect(saved).toContain(
       `data-style="${'{"font":{"b":true}}'.replace(/"/g, "&quot;")}"`,
     );
@@ -309,7 +219,7 @@ describe("csvDocument formatting", () => {
     model.updateRangeStyle(area(2, 2, 1, 1), "num_fmt", "0.00%");
     model.updateRangeStyle(area(1, 1, 1, 1), "font.size", "18");
 
-    const reloaded = createModel(toDocumentHtml(model), "Test");
+    const reloaded = createModel(toTableHtml(model), "Test");
     const style = (row: number, column: number) =>
       reloaded.getCellStyle(0, row, column).style;
 
@@ -327,7 +237,7 @@ describe("csvDocument formatting", () => {
     const model = createModel(stored([["a"]]), "Test");
     model.updateRangeStyle(area(4, 3, 1, 1), "fill.color", "#00FF00");
 
-    const reloaded = createModel(toDocumentHtml(model), "Test");
+    const reloaded = createModel(toTableHtml(model), "Test");
     expect(reloaded.getCellStyle(0, 4, 3).style.fill.color).toBe("#00FF00");
     expect(reloaded.getFormattedCellValue(0, 4, 3)).toBe("");
   });
@@ -343,7 +253,7 @@ describe("csvDocument formatting", () => {
     model.setColumnsWidth(0, 2, 2, 175);
     model.setRowsHeight(0, 2, 2, 40);
 
-    const saved = toDocumentHtml(model);
+    const saved = toTableHtml(model);
     expect(saved).toContain('data-width="175"');
     expect(saved).toContain('data-height="40"');
 
@@ -354,7 +264,7 @@ describe("csvDocument formatting", () => {
 
   it("writes no colgroup when every column is the default width", () => {
     const model = createModel(stored([["a", "b"]]), "Test");
-    expect(toDocumentHtml(model)).not.toContain("colgroup");
+    expect(toTableHtml(model)).not.toContain("colgroup");
   });
 
   it("saves a formatted document again unchanged", () => {
@@ -369,8 +279,8 @@ describe("csvDocument formatting", () => {
     model.updateRangeStyle(area(2, 2, 1, 1), "fill.color", "#FFCC00");
     model.setColumnsWidth(0, 1, 1, 140);
 
-    const saved = toDocumentHtml(model);
-    expect(toDocumentHtml(createModel(saved, "Test"))).toBe(saved);
+    const saved = toTableHtml(model);
+    expect(toTableHtml(createModel(saved, "Test"))).toBe(saved);
   });
 
   it("ignores a data-style that is not usable JSON", () => {

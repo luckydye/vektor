@@ -4,7 +4,6 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentContent, updateDocument } from "#db/space/documents.ts";
 import { createRevision, getLatestRevisionCreatedAt } from "#db/space/revisions.ts";
 import type { EditOperation } from "#documents/edit.ts";
-import { htmlTableToTable } from "#documents/htmlTable.ts";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToHtml, nodeToHtml } from "#documents/schema/render.ts";
 import type { DocNode } from "#documents/schema/specs.ts";
@@ -23,7 +22,6 @@ import {
 import { contentIsHtml, documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
-import { fillSheetDoc, htmlFromSheetDoc } from "#spreadsheet/sheetDoc.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
@@ -200,8 +198,8 @@ function normalizeHtmlContent(content: string): string {
 /**
  * Returns the document content as edit operations see it: the live Yjs room
  * state when one is open, otherwise the persisted content. HTML is normalized
- * to one top-level block per line; canvas, sheet markup and workflow source stay
- * in their native serialized formats.
+ * to one top-level block per line; canvas and workflow source stay in their
+ * native serialized formats.
  */
 export function getLiveDocumentContent(
   spaceId: string,
@@ -211,14 +209,13 @@ export function getLiveDocumentContent(
 ): string {
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
-    if (type === "canvas" || type === "csv" || type === "workflow") {
+    if (type === "canvas" || type === "workflow") {
       return contentFromDoc(type, room.doc);
     }
     return toCleanHtml(room.doc);
   }
   if (
     type === "canvas" ||
-    type === "csv" ||
     type === "workflow" ||
     isJsonContent(persisted)
   )
@@ -247,8 +244,6 @@ export function replaceLiveDocumentContent(
   if (!room?.doc) return false;
 
   const doc = room.doc;
-  if (type === "csv") return writeSheetContent(room, doc, documentId, content);
-
   const updates: Uint8Array[] = [];
   const captureUpdate = (update: Uint8Array) => updates.push(update);
 
@@ -297,41 +292,6 @@ const COLLABORATION_REVISION_INTERVAL_MS = 3 * 60 * 60 * 1000;
 // for ~100ms+, so cap how often it runs during sustained editing. Clean
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
 const MIN_PERSIST_INTERVAL_MS = 5000;
-
-function writeSheetContent(
-  room: YRoom,
-  doc: Y.Doc,
-  documentId: string,
-  content: string,
-): boolean {
-  const table = htmlTableToTable(content);
-  if (!table) return false;
-
-  const updates: Uint8Array[] = [];
-  const capture = (update: Uint8Array) => updates.push(update);
-  doc.on("update", capture);
-  try {
-    fillSheetDoc(doc, table.cells, table.layout);
-  } finally {
-    doc.off("update", capture);
-  }
-  for (const update of updates) {
-    broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
-  }
-  return true;
-}
-
-export async function replaceYRoomContent(
-  spaceId: string,
-  documentId: string,
-  type: string | null | undefined,
-  content: string,
-): Promise<void> {
-  if (type !== "csv") return;
-  const room = yRooms.get(roomKey(spaceId, documentId));
-  if (!room?.doc) return;
-  writeSheetContent(room, room.doc, documentId, content);
-}
 
 export async function persistYRoomDraft(key: string): Promise<void> {
   const timer = persistTimers.get(key);
@@ -793,7 +753,6 @@ export async function transformDocumentContent(
     // normalize so mid-document line references stay accurate.
     const skipNormalize =
       dbDoc.type === "canvas" ||
-      dbDoc.type === "csv" ||
       isJsonContent(persisted) ||
       asBlockSpliceInsert(operations) !== null;
     const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
@@ -845,14 +804,6 @@ export async function transformDocumentContent(
     );
 
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
-  }
-
-  if (dbDoc.type === "csv") {
-    const next = transform(htmlFromSheetDoc(doc));
-    if (!writeSheetContent(room, doc, documentId, next)) {
-      throw new Error("csv edit must produce a <table>");
-    }
-    return { content: htmlFromSheetDoc(doc), live: true };
   }
 
   // Fast path: append/prepend splices only the new blocks into the fragment,

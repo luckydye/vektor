@@ -1,6 +1,6 @@
 /**
- * Moves a `csv` document between its stored `<table>` markup and an IronCalc
- * `Model`. See `#documents/htmlTable.ts` for the markup itself.
+ * Moves spreadsheet table markup between a document and an IronCalc `Model`.
+ * See `#documents/htmlTable.ts` for the markup itself.
  *
  * Loading goes through `pasteCsvText`, which takes the whole grid in one call.
  * That matters more than it looks: filling a 2000x12 sheet with `setUserInput`
@@ -20,6 +20,7 @@ import {
   type TableCell,
   type TableLayout,
 } from "#documents/htmlTable.ts";
+import { LAST_COLUMN } from "#spreadsheet/grid/constants.ts";
 
 /** Documents hold a single sheet, and IronCalc counts rows/columns from 1. */
 const SHEET = 0;
@@ -38,9 +39,12 @@ const EXTENT_SEED_COLUMNS = 32;
  *
  * Read from the engine rather than written out here, so it cannot drift from
  * whatever IronCalc considers default. Cached: it is the same for every cell of
- * every document, and building a throwaway `Model` is not free.
+ * every table, and building a throwaway `Model` is not free.
  */
 let defaults: { style: CellStyle; columnWidth: number; rowHeight: number } | undefined;
+
+/** Loaded width by model, used to find sparse data beyond the initial scan band. */
+const loadedWidths = new WeakMap<Model, number>();
 
 function getDefaults(): { style: CellStyle; columnWidth: number; rowHeight: number } {
   if (!defaults) {
@@ -50,6 +54,7 @@ function getDefaults(): { style: CellStyle; columnWidth: number; rowHeight: numb
       columnWidth: model.getColumnWidth(SHEET, FIRST),
       rowHeight: model.getRowHeight(SHEET, FIRST),
     };
+    model.free();
   }
   return defaults;
 }
@@ -64,7 +69,7 @@ function isPlainObject(value: unknown): value is Json {
  * What `style` has that `base` does not, recursively.
  *
  * A full `CellStyle` is ~130 bytes of overwhelmingly default values, and the
- * document carries one per cell, so only the difference is stored:
+ * table carries one per cell, so only the difference is stored:
  * `{"font":{"b":true}}` rather than the whole thing.
  */
 function styleDiff(style: Json, base: Json): Json {
@@ -115,7 +120,7 @@ function cellsToTsv(rows: TableCell[][]): string {
 }
 
 /**
- * A model holding the document's grid.
+ * A model holding a spreadsheet table's grid.
  *
  * Cells arrive as text and are typed on the way in, exactly as a spreadsheet
  * opening a CSV would type them: `0012` becomes the number 12, `=1+1` becomes a
@@ -125,10 +130,14 @@ function cellsToTsv(rows: TableCell[][]): string {
 export function createModel(html: string, name: string): Model {
   const model = new Model(name, "en", "UTC", "en");
   const table = htmlTableToTable(html);
-  if (!table || table.cells.length === 0) return model;
+  if (!table || table.cells.length === 0) {
+    loadedWidths.set(model, 0);
+    return model;
+  }
 
   const rows = table.cells;
   const width = rows.reduce((widest, row) => Math.max(widest, row.length), 0);
+  loadedWidths.set(model, width);
   if (width === 0) return model;
 
   model.pasteCsvText(
@@ -138,7 +147,7 @@ export function createModel(html: string, name: string): Model {
   model.evaluate();
   applyStyles(model, rows, width);
   applyLayout(model, table.layout);
-  // A paste leaves everything it wrote selected. Opening a document should look
+  // A paste leaves everything it wrote selected. Opening a table should look
   // like opening a file: the top-left cell, nothing highlighted.
   model.setSelectedCell(FIRST, FIRST);
   model.setSelectedRange(FIRST, FIRST, FIRST, FIRST);
@@ -188,9 +197,18 @@ function applyLayout(model: Model, layout: TableLayout): void {
 function usedExtent(model: Model): { rows: number[]; columns: number[] } {
   const rows = new Set<number>();
   const columns = new Set<number>();
+  const selected = model.getSelectedView();
+  const seedWidth = Math.max(EXTENT_SEED_COLUMNS, loadedWidths.get(model) ?? 0);
   let pendingColumns: number[] = Array.from(
-    { length: EXTENT_SEED_COLUMNS },
+    { length: seedWidth },
     (_, index) => FIRST + index,
+  );
+  pendingColumns.push(
+    Math.max(FIRST, selected.column - 1),
+    selected.column,
+    Math.min(LAST_COLUMN, selected.column + 1),
+    Math.min(selected.range[1], selected.range[3]),
+    Math.max(selected.range[1], selected.range[3]),
   );
   let pendingRows: number[] = [];
 
@@ -233,11 +251,11 @@ function usedExtent(model: Model): { rows: number[]; columns: number[] } {
 }
 
 /**
- * The model as the document's stored markup. Rows and columns are emitted as a
+ * The model as table markup. Rows and columns are emitted as a
  * dense rectangle from A1 to the last occupied cell, so the gaps a spreadsheet
  * allows become the empty cells a table needs.
  */
-export function toDocumentHtml(model: Model): string {
+export function toTableHtml(model: Model): string {
   const { cells, layout } = readSheet(model);
   return cellsToHtmlTable(cells, layout);
 }
@@ -253,6 +271,7 @@ export function readSheet(model: Model): { cells: TableCell[][]; layout: TableLa
   if (lastRow === undefined || lastColumn === undefined) {
     return { cells: [], layout: {} };
   }
+  loadedWidths.set(model, Math.max(loadedWidths.get(model) ?? 0, lastColumn));
 
   const base = getDefaults().style as unknown as Json;
   const grid: TableCell[][] = [];

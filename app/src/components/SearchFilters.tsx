@@ -36,7 +36,6 @@ const CHIP_REMOVE =
 const TYPE_ICONS: Record<string, IconName> = {
   app: "extension",
   canvas: "canvas",
-  csv: "csv-file",
   database: "database",
   document: "document",
   file: "file",

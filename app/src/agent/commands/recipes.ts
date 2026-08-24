@@ -6,7 +6,6 @@ import appDocRaw from "./recipes/app-doc.txt" with { type: "text" };
 import canvasRaw from "./recipes/canvas.txt" with { type: "text" };
 import createDocRaw from "./recipes/create-doc.txt" with { type: "text" };
 import databaseRaw from "./recipes/database.txt" with { type: "text" };
-import editCsvRaw from "./recipes/edit-csv.txt" with { type: "text" };
 import editJsonRaw from "./recipes/edit-json.txt" with { type: "text" };
 import editTextRaw from "./recipes/edit-text.txt" with { type: "text" };
 import extensionRaw from "./recipes/extension.txt" with { type: "text" };
@@ -38,7 +37,6 @@ function parseRecipe(raw: string): Recipe {
 const RECIPES: Record<string, Recipe> = {
   "edit-text": parseRecipe(editTextRaw),
   "edit-json": parseRecipe(editJsonRaw),
-  "edit-csv": parseRecipe(editCsvRaw),
   canvas: parseRecipe(canvasRaw),
   "create-doc": parseRecipe(createDocRaw),
   database: parseRecipe(databaseRaw),

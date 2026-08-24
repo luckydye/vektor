@@ -5,7 +5,6 @@ import {
   type EditOperation,
   parseJsonPath,
 } from "#documents/edit.ts";
-import { htmlTableToCells } from "#documents/htmlTable.ts";
 import {
   WsMsgType,
   wsDecode,
@@ -13,7 +12,6 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
-import { readCell, SHEET_ROWS } from "#spreadsheet/sheetDoc.ts";
 import {
   createApiRequest,
   startTestServer,
@@ -516,87 +514,6 @@ describe("Document edit operations", () => {
     ws.close();
   });
 
-  it("edits a csv document without a live room, keeping formulas as formulas", async () => {
-    const documentId = await createDocument("name,qty\nWidget,42", "csv");
-
-    let response = await editDocument(documentId, [
-      {
-        op: "sub",
-        pattern: "</tbody>",
-        replacement: '<tr><td>Gadget</td><td data-source="=B2*2">84</td></tr></tbody>',
-      },
-    ]);
-    expect(response.status).toBe(200);
-    expect((await response.json()).live).toBe(false);
-
-    let content = await readContent(documentId);
-    expect(htmlTableToCells(content)).toHaveLength(3);
-    expect(content).toContain('<td data-source="=B2*2">84</td>');
-
-    response = await editDocument(documentId, [
-      { op: "sub", pattern: "Widget", replacement: "Widget Pro" },
-    ]);
-    expect(response.status).toBe(200);
-
-    content = await readContent(documentId);
-    expect(content).toContain('data-source="=B2*2"');
-    expect(content).toContain("<td>Widget Pro</td>");
-    expect(content).not.toContain("<p>");
-  });
-
-  it("applies csv edits through a live Yjs room and broadcasts the grid", async () => {
-    const documentId = await createDocument("name,qty\nWidget,42", "csv");
-
-    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`);
-    ws.binaryType = "arraybuffer";
-    const received: Uint8Array[] = [];
-    ws.addEventListener("message", (event) => {
-      const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
-      if (frame.type === WsMsgType.YjsUpdate) received.push(frame.payload);
-    });
-    await new Promise<void>((resolve, reject) => {
-      ws.addEventListener("open", () => resolve());
-      ws.addEventListener("error", () => reject(new Error("websocket error")));
-    });
-
-    ws.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
-    while (received.length < 1) await new Promise((resolve) => setTimeout(resolve, 50));
-    const clientDoc = new Y.Doc();
-    Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(received[0]!).update);
-
-    const rows = clientDoc.getArray<Y.Map<unknown>>(SHEET_ROWS);
-    expect(rows.length).toBe(2);
-    expect(readCell(rows.get(0) as Y.Map<unknown>, 0)?.v).toBe("name");
-    expect(clientDoc.getXmlFragment("default").length).toBe(0);
-
-    const response = await editDocument(documentId, [
-      {
-        op: "sub",
-        pattern: "</tbody>",
-        replacement: "<tr><td>Gadget</td><td>7</td></tr></tbody>",
-      },
-    ]);
-    expect(response.status).toBe(200);
-    expect((await response.json()).live).toBe(true);
-
-    while (received.length < 2) await new Promise((resolve) => setTimeout(resolve, 50));
-    for (const payload of received.slice(1)) {
-      Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(payload).update);
-    }
-    expect(rows.length).toBe(3);
-    expect(readCell(rows.get(2) as Y.Map<unknown>, 0)?.v).toBe("Gadget");
-
-    expect(await readContent(documentId)).toContain("<td>Gadget</td>");
-    expect(await readContent(documentId, "?live=true")).toContain("<td>Gadget</td>");
-
-    const broken = await editDocument(documentId, [
-      { op: "sub", pattern: "<table>.*</table>", replacement: "<p>not a table</p>" },
-    ]);
-    expect(broken.status).toBe(400);
-    expect(rows.length).toBe(3);
-
-    ws.close();
-  });
 });
 
 /**

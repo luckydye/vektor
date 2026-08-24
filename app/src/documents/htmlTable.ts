@@ -1,12 +1,9 @@
 /**
- * The `<table>` markup that `csv` documents store in their `content` column,
- * in both directions.
+ * Conversion between rich-text `<table>` markup and spreadsheet cell data.
  *
  * A CSV upload is converted to a table on the way in (`#documents/content.ts`),
- * and that table is the only copy — the original file is not kept. So this is
- * the document's real storage format, and everything that reads a csv document
- * goes through here: the spreadsheet UI loading and saving it, and the agent's
- * `html-to-csv` command.
+ * and that table is the only copy — the original file is not kept. Embedded
+ * spreadsheet tables and the agent's `html-to-csv` command use the same shape.
  *
  * A cell holds its displayed value. When the value was computed from something
  * else — a formula, or an input the engine typed differently from how it prints
@@ -36,7 +33,7 @@ export interface TableCell {
    * How the cell is formatted, as the difference from the spreadsheet's default
    * style — `{"font":{"b":true}}` and the like. Only the difference, because the
    * full style is ~130 bytes of mostly defaults and there is one per cell.
-   * Opaque here; `#spreadsheet/csvDocument.ts` gives it meaning.
+   * Opaque here; `#spreadsheet/spreadsheetModel.ts` gives it meaning.
    */
   style?: Record<string, unknown>;
 }
@@ -229,8 +226,7 @@ function rowHtml(
 
 /**
  * Rows as the stored table markup: the first row is the header, the rest the
- * body. Empty input still produces a table, so a csv document always has one
- * for readers to find.
+ * body. Empty input still produces a valid empty table.
  */
 export function cellsToHtmlTable(rows: TableCell[][], layout: TableLayout = {}): string {
   const [header, ...body] = rows;

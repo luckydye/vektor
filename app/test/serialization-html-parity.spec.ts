@@ -50,6 +50,8 @@ const CASES: Record<string, string> = {
   // has been saved once is read back from this, not from bare `<td>`s.
   "table with spans":
     '<table style="width: 400px;"><colgroup><col style="width: 200px;"><col style="width: 200px;"></colgroup><tbody><tr><th colspan="2" rowspan="1" colwidth="200,200" style="width: 200px;"><p>h</p></th></tr><tr><td colspan="1" rowspan="1" colwidth="200" style="width: 200px;"><p>a</p></td><td colspan="1" rowspan="1" colwidth="200" style="width: 200px;"><p>b</p></td></tr></tbody></table>',
+  "spreadsheet table metadata":
+    '<table data-table-kind="spreadsheet"><tbody><tr data-height="32"><td data-source="=1+41" data-style="{&quot;font&quot;:{&quot;b&quot;:true},&quot;fill&quot;:{&quot;color&quot;:&quot;#ffeeaa&quot;}}"><p>42</p></td></tr></tbody></table>',
   "link mark": '<p><a href="https://example.com/x?a=1&amp;b=2">link</a></p>',
   "hard break": "<p>line<br>break</p>",
   "html block":

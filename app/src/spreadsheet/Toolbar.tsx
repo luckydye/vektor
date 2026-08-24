@@ -7,7 +7,7 @@
  * step — the model is the state, and `revision` is what makes reading it
  * reactive.
  *
- * All of it survives a reload: `#spreadsheet/csvDocument.ts` stores each cell's
+ * All of it survives a reload: `#spreadsheet/spreadsheetModel.ts` stores each cell's
  * style alongside its value. A control that could not be saved is not here.
  */
 

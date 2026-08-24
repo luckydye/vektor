@@ -1606,6 +1606,14 @@ if (
 
             <div class="menu-group">
               ${this.button(
+                this.icon(iconMarkup("csv-file")),
+                t("Convert to Spreadsheet"),
+                () => this.chain()?.convertTableToSpreadsheet().run(),
+                {
+                  disabled: !this.editor?.can().convertTableToSpreadsheet(),
+                },
+              )}
+              ${this.button(
                 this.icon(iconMarkup("table")),
                 t("Toggle Header Cell"),
                 () => this.chain()?.toggleHeaderCell().run(),

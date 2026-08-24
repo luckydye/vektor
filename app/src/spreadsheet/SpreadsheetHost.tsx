@@ -28,6 +28,9 @@ interface Props {
   remoteRevision: () => number;
   remoteSelections: () => RemoteSelection[];
   onSelectionChange: (selection: SheetSelection) => void;
+  /** Embedded sheets route history through the surrounding rich-text document. */
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 /**
@@ -65,6 +68,8 @@ export function SpreadsheetHost(props: Props) {
           remoteRevision={props.remoteRevision}
           remoteSelections={props.remoteSelections}
           onSelectionChange={props.onSelectionChange}
+          onUndo={props.onUndo}
+          onRedo={props.onRedo}
           // Focus and the context menu need to ask *this* root what is focused
           // and where a click landed; `document.activeElement` and `event.target`
           // both stop at the host once a shadow boundary is in the way.

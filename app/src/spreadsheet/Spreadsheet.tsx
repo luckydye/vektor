@@ -8,8 +8,8 @@
 // revision counter — that `refresh()` bumps after any such call, and everything
 // reading either of them subscribes to it. That is the whole reactivity story.
 //
-// No sheet tabs: a csv document holds a single sheet. The formatting toolbar is
-// in Toolbar.tsx, and everything it offers is persisted — see csvDocument.ts.
+// No sheet tabs: an embedded spreadsheet table holds a single sheet. The formatting
+// toolbar is in Toolbar.tsx, and everything it offers is persisted in table markup.
 
 import type { Model } from "@ironcalc/wasm";
 import { createEffect, createSignal, on, Show } from "solid-js";
@@ -45,6 +45,9 @@ interface Props {
   remoteSelections: () => RemoteSelection[];
   /** This client's selection moved; tell the room. */
   onSelectionChange: (selection: SheetSelection) => void;
+  /** Overrides the engine-local history when embedded in another editor. */
+  onUndo?: () => void;
+  onRedo?: () => void;
   /**
    * The shadow root this is rendered into. `document.activeElement` reports the
    * host, not what is focused inside, so anything asking "do we have focus?"
@@ -236,10 +239,18 @@ export function Spreadsheet(props: Props) {
     onEditKeyPressStart: (initialText) => startEditing(initialText),
     onCellEditStart: () => startEditing(),
     onUndo: () => {
+      if (props.onUndo) {
+        props.onUndo();
+        return;
+      }
       props.model.undo();
       mutated();
     },
     onRedo: () => {
+      if (props.onRedo) {
+        props.onRedo();
+        return;
+      }
       props.model.redo();
       mutated();
     },

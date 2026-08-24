@@ -228,7 +228,7 @@ export const POST: ApiRouteHandler = (context) =>
           "Custom document timestamps require access-token or job-token authentication",
         );
       }
-      content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType, type);
+      content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType);
     } else {
       const rawContent = await context.req.raw.text();
       if (!rawContent) {
@@ -238,7 +238,7 @@ export const POST: ApiRouteHandler = (context) =>
       type =
         context.req.raw.headers.get("X-Document-Type") ??
         getDocumentTypeForContentType(contentType);
-      content = toHtmlIfMarkdown(rawContent, contentType, type);
+      content = toHtmlIfMarkdown(rawContent, contentType);
       const titleHeader = context.req.raw.headers.get("X-Document-Title");
       const slugHeader = context.req.raw.headers.get("X-Document-Slug");
       if (slugHeader) slugHint = slugHeader;

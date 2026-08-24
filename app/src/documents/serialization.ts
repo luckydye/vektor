@@ -1,6 +1,5 @@
 import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#canvas/document/index.ts";
-import { htmlFromSheetDoc, sheetDocFromHtml } from "#spreadsheet/sheetDoc.ts";
 import { codeToDoc, htmlToDoc } from "./schema/parse.ts";
 import { docToHtml } from "./schema/render.ts";
 import { type DocNode, textOf } from "./schema/specs.ts";
@@ -61,8 +60,7 @@ export function toCleanHtml(doc: Y.Doc): string {
 
 /**
  * Parses persisted content into the document tree its type describes. Canvas
- * and sheet content have no tree — they live in Y.Maps and Y.Arrays, not the
- * `default` fragment.
+ * content has no tree — it lives in Y.Maps rather than the `default` fragment.
  */
 export function docNodeFromContent(
   type: string | null | undefined,
@@ -72,17 +70,15 @@ export function docNodeFromContent(
   return htmlToDoc(content);
 }
 
-/** Builds a Y.Doc from persisted canvas, sheet, workflow-source, or HTML content. */
+/** Builds a Y.Doc from persisted canvas, workflow-source, or HTML content. */
 export function docFromContent(type: string | null | undefined, content: string): Y.Doc {
   if (type === "canvas") return loadCanvasYDoc(content);
-  if (type === "csv") return sheetDocFromHtml(content);
   return docToYDoc(docNodeFromContent(type, content));
 }
 
-/** Serializes a Y.Doc to canvas JSON, sheet markup, workflow source, or HTML. */
+/** Serializes a Y.Doc to canvas JSON, workflow source, or HTML. */
 export function contentFromDoc(type: string | null | undefined, doc: Y.Doc): string {
   if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
-  if (type === "csv") return htmlFromSheetDoc(doc);
   if (type === "workflow") return workflowCode(doc);
   return toCleanHtml(doc);
 }

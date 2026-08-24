@@ -70,7 +70,7 @@ export function getDocumentTypeForContentType(
 ): string | undefined {
   const mimeType = getMimeType(contentType);
   if (!mimeType) return undefined;
-  if (CSV_TYPE_SET.has(mimeType)) return "csv";
+  if (CSV_TYPE_SET.has(mimeType)) return "document";
   if (APP_TYPES.has(mimeType)) return "app";
   if (mimeType === "text/html" || MARKDOWN_TYPES.has(mimeType)) return "document";
   return undefined;
@@ -92,29 +92,18 @@ function csvToHtmlTable(content: string): string {
 }
 
 /**
- * Whether `content` is CSV text that needs converting to the stored table.
- *
- * The request's own content type is the better witness and wins where it says
- * anything definite. The document's type is a fallback, for the callers that
- * send CSV text without labelling it — creating a spreadsheet posts a JSON body
- * whose content type describes the envelope, not the grid.
+ * Whether `content` is CSV text that needs converting to rich-text table markup.
  */
-function isCsvContent(contentType: string | null, documentType?: string | null): boolean {
+function isCsvContent(contentType: string | null): boolean {
   const mimeType = getMimeType(contentType);
-  if (mimeType && CSV_TYPE_SET.has(mimeType)) return true;
-  // `text/html` outranks the document's type. A csv document's stored content
-  // *is* HTML, so converting it again would treat the markup as CSV text and
-  // bury the whole table inside one escaped cell of a new one.
-  if (mimeType === "text/html") return false;
-  return typeof documentType === "string" && documentType.toLowerCase() === "csv";
+  return Boolean(mimeType && CSV_TYPE_SET.has(mimeType));
 }
 
 export function toHtmlIfMarkdown(
   content: string,
   contentType: string | null,
-  documentType?: string | null,
 ): string {
-  if (isCsvContent(contentType, documentType)) {
+  if (isCsvContent(contentType)) {
     return csvToHtmlTable(content);
   }
 
