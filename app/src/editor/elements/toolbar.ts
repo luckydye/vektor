@@ -1621,15 +1621,6 @@ if (
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(
-                this.icon(iconMarkup("function")),
-                t("Insert Expression Cell"),
-                () => this.chain()?.insertExpressionCell({ formula: "=" }).run(),
-              )}
-            </div>
-            <div class="menu-divider"></div>
-
-            <div class="menu-group">
               <div class="color-picker-wrapper">
                 ${this.colorControl({
                   icon: iconMarkup("cell-fill"),

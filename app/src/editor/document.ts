@@ -2,7 +2,6 @@ import { setEditing } from "#composeables/useEditor.ts";
 import { renderDocumentReadHtml } from "#editor/readView.ts";
 import docStyles from "./css/document.css?inline";
 import "./elements/textarea.ts";
-import "./elements/expression.ts";
 import "./elements/file-attachment.ts";
 import "./elements/document-attachment.ts";
 import type { Editor } from "@tiptap/core";

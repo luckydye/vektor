@@ -718,29 +718,6 @@ const NODES: NodeSpec[] = [
   },
   {
     kind: "node",
-    name: "expressionCell",
-    group: "inline",
-    inline: true,
-    content: "text*",
-    attrs: {
-      "data-formula": {
-        default: "=",
-        parse: (el) => el.attr("data-formula") || el.text().trim() || "=",
-      },
-    },
-    match: [{ tag: "expression-cell" }],
-    needsNode: true,
-    render: (ctx) => {
-      const formula = ctx.attrs["data-formula"] || textOf(ctx.node);
-      return {
-        tag: "expression-cell",
-        attrs: { ...ctx.html, ...(formula ? { "data-formula": formula as string } : {}) },
-        children: [CONTENT_HOLE],
-      };
-    },
-  },
-  {
-    kind: "node",
     name: "image",
     group: "block",
     draggable: true,

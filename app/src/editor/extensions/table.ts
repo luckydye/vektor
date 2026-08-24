@@ -17,7 +17,6 @@ import {
   TableMap,
 } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
-import { ExpressionCell } from "./ExpressionCell.ts";
 import { nodeFromSpec } from "./specSchema.ts";
 
 function clearNativeSelection(view: EditorView) {
@@ -214,7 +213,6 @@ export const TableEditing = Extension.create({
       TableRow.extend(nodeFromSpec("tableRow")),
       TableHeader.extend(nodeFromSpec("tableHeader")),
       TableCell.extend(nodeFromSpec("tableCell")),
-      ExpressionCell,
       TableCellClipboard,
     ];
   },

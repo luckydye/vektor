@@ -86,8 +86,6 @@ const CASES: Record<string, string> = {
   video: '<video src="/f/a.mp4"></video>',
   "extension view":
     '<extension-view-block data-extension-id="e" data-route-path="/r"></extension-view-block>',
-  "expression cell":
-    '<table><tbody><tr><td><p><expression-cell data-formula="=1+1">=1+1</expression-cell></p></td></tr></tbody></table>',
 };
 
 /**

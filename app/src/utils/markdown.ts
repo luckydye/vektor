@@ -299,9 +299,6 @@ function nodeToMarkdown(node: HtmlNode): string {
         return dateStr;
       }
     }
-    case "expression-cell": {
-      return getAttr(tag, "data-formula") || getTextContent(children) || "=";
-    }
 
     // Default: just render children
     default:
