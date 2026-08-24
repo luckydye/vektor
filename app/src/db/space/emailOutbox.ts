@@ -1,4 +1,4 @@
-import { and, eq, lte, or } from "drizzle-orm";
+import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -8,12 +8,16 @@ export type EmailNotificationKind =
   | "document_published"
   | "document_mention"
   | "comment_created"
-  | "comment_mention";
+  | "comment_mention"
+  | "space_invitation";
 
 export interface EmailNotificationInit {
   kind: EmailNotificationKind;
   sourceId: string;
-  documentId: string;
+  /** Null on an event about the space itself, such as an invitation. */
+  documentId?: string | null;
+  /** The role granted, on an invitation. */
+  role?: string | null;
   publishedRevision?: number | null;
   previousPublishedRevision?: number | null;
   actorId: string;
@@ -38,7 +42,8 @@ export async function insertEmailNotifications(
         id: createId("emailNotification"),
         kind: notification.kind,
         sourceId: notification.sourceId,
-        documentId: notification.documentId,
+        documentId: notification.documentId ?? null,
+        role: notification.role ?? null,
         publishedRevision: notification.publishedRevision ?? null,
         previousPublishedRevision: notification.previousPublishedRevision ?? null,
         actorId: notification.actorId,
@@ -146,4 +151,29 @@ export async function retryEmailNotification(
       updatedAt: now,
     })
     .where(eq(emailNotificationOutbox.id, row.id));
+}
+
+/**
+ * Cancel the mail a deleted document had queued but not yet sent.
+ *
+ * The outbox is append-only: a row is never removed, so what was already
+ * delivered stays on the record and only what is still in flight is stopped.
+ */
+export async function cancelDocumentEmailNotifications(
+  s: SpaceStore,
+  documentId: string,
+): Promise<void> {
+  await s.db
+    .update(emailNotificationOutbox)
+    .set({
+      status: "cancelled",
+      lastError: "Document deleted",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(emailNotificationOutbox.documentId, documentId),
+        inArray(emailNotificationOutbox.status, ["pending", "sending"]),
+      ),
+    );
 }

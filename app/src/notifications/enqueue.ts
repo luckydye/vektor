@@ -7,6 +7,9 @@
  * carried it, so each event splits into a `*_mention` fan-out and a generic one
  * over everybody else. The queries behind each of those live in the repository
  * that owns the table; writing the resulting rows is `insertEmailNotifications`.
+ *
+ * A space invitation has no such fan-out — one grant, one recipient — so it
+ * only shares the muting rules and the "is mail configured at all" guard.
  */
 
 import { config } from "#config";
@@ -29,27 +32,34 @@ async function mentionedUserIds(html: string | null): Promise<string[]> {
 }
 
 /**
- * Drop the actor and anyone who muted the document, then queue the rest.
  * Without SMTP configured nothing is queued at all, so a deployment that never
  * sends mail does not accumulate an unbounded outbox — except in dev and test,
  * where the rows are the point.
  */
+function queueingIsWorthwhile(): boolean {
+  const appConfig = config();
+  const deliveryConfigured =
+    !!appConfig.EMAIL_FROM?.trim() && !!appConfig.SMTP_HOST?.trim();
+  return deliveryConfigured || import.meta.env.DEV || appConfig.NODE_ENV === "test";
+}
+
+/** Drop the actor and anyone who muted the document, then queue the rest. */
 async function enqueueRecipients(
   spaceId: string,
   notification: EmailNotificationInit,
   recipientUserIds: Iterable<string>,
 ): Promise<number> {
-  const appConfig = config();
-  const deliveryConfigured =
-    !!appConfig.EMAIL_FROM?.trim() && !!appConfig.SMTP_HOST?.trim();
-  const developmentDelivery = import.meta.env.DEV || appConfig.NODE_ENV === "test";
-  if (!deliveryConfigured && !developmentDelivery) return 0;
+  if (!queueingIsWorthwhile()) return 0;
 
   const candidates = [...new Set(recipientUserIds)].filter(
     (userId) => userId !== notification.actorId,
   );
   const store = await openSpaceStore(spaceId);
-  const muted = await getEmailMutedUserIds(store, candidates, notification.documentId);
+  const muted = await getEmailMutedUserIds(
+    store,
+    candidates,
+    notification.documentId ?? undefined,
+  );
 
   return insertEmailNotifications(
     store,
@@ -150,4 +160,31 @@ export async function enqueueCommentCreatedEmails(params: {
   ]);
 
   return queued[0] + queued[1];
+}
+
+/**
+ * Queue the mail announcing that somebody was let into the space.
+ *
+ * The grant's own timestamp is the source, so one grant queues one mail while a
+ * member removed and let back in — a row deleted and reinserted — is news
+ * again. Muting the space silences it like anything else: the row carries no
+ * document, which is the case the mute preference falls back to space-wide on.
+ */
+export async function enqueueSpaceInvitationEmail(params: {
+  spaceId: string;
+  grantedAt: Date;
+  recipientUserId: string;
+  actorId: string;
+  role: string;
+}): Promise<number> {
+  return enqueueRecipients(
+    params.spaceId,
+    {
+      kind: "space_invitation",
+      sourceId: String(params.grantedAt.getTime()),
+      actorId: params.actorId,
+      role: params.role,
+    },
+    [params.recipientUserId],
+  );
 }

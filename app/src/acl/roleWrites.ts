@@ -46,7 +46,12 @@ export interface RoleWrite {
  * translation belongs to whoever is answering a request.
  */
 export type RoleWriteResult =
-  | { outcome: "granted"; entry: AclEntry }
+  | {
+      outcome: "granted";
+      entry: AclEntry;
+      /** What the grantee held here before; `undefined` makes this a first grant. */
+      previousRole: Permission | undefined;
+    }
   | { outcome: "revoked" }
   | { outcome: "needs-owner" }
   | { outcome: "last-owner" };
@@ -82,13 +87,12 @@ async function currentRoleOnResource(
   );
 }
 
-async function requiredRoleForRoleWrite(
+function requiredRoleForRoleWrite(
   resourceType: ResourceType,
-  resourceId: string,
   grantee: RoleGrantee,
   role: Permission | undefined,
-  store: SpaceStore,
-): Promise<Permission> {
+  displaced: Permission | undefined,
+): Permission {
   if (meetsPermissionLevel(role, Permission.OWNER)) {
     return Permission.OWNER;
   }
@@ -102,8 +106,6 @@ async function requiredRoleForRoleWrite(
   if (grantee.groupId) {
     return Permission.OWNER;
   }
-
-  const displaced = await currentRoleOnResource(resourceType, resourceId, grantee, store);
 
   if (meetsPermissionLevel(displaced, Permission.OWNER)) {
     return Permission.OWNER;
@@ -167,12 +169,20 @@ export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteRe
   const targetName = await resolveGranteeName(write.grantee.userId);
 
   return store.tx(async (transaction) => {
-    const requiredRole = await requiredRoleForRoleWrite(
+    // Read inside the transaction: it decides both whether the actor outranks
+    // what they are displacing and, once written, whether this was a first
+    // grant — an invitation — or a change to an existing one.
+    const displaced = await currentRoleOnResource(
       write.resourceType,
       write.resourceId,
       write.grantee,
-      write.role,
       transaction,
+    );
+    const requiredRole = requiredRoleForRoleWrite(
+      write.resourceType,
+      write.grantee,
+      write.role,
+      displaced,
     );
     if (requiredRole === Permission.OWNER && !write.actorIsOwner) {
       return { outcome: "needs-owner" };
@@ -200,7 +210,7 @@ export async function writeRolePermission(write: RoleWrite): Promise<RoleWriteRe
         write.role,
         write.actorUserId,
       );
-      return { outcome: "granted", entry };
+      return { outcome: "granted", entry, previousRole: displaced };
     }
 
     await revokePermission(

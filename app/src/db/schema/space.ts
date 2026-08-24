@@ -268,9 +268,14 @@ export const emailNotificationOutbox = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").notNull(),
     sourceId: text("source_id").notNull(),
-    documentId: text("document_id")
-      .notNull()
-      .references(() => document.id, { onDelete: "cascade" }),
+    /**
+     * Null for an event about the space itself, such as an invitation. Not a
+     * foreign key: the outbox records what was queued, so a deleted document
+     * cancels its undelivered mail rather than erasing that it was ever sent.
+     */
+    documentId: text("document_id"),
+    /** The role granted, on an invitation; null on every other kind. */
+    role: text("role"),
     /** Revision published by this event, retained for an accurate email preview. */
     publishedRevision: integer("published_revision"),
     /** The version that was published immediately before this event. */

@@ -9,6 +9,8 @@ const PREVIEW_MAX_LENGTH = 700;
 /** A recipient mentioned all over a document gets the first few spots, not all. */
 const MENTION_QUOTE_LIMIT = 3;
 const ACCESS_FOOTER = "You received this because you have access to this document.";
+const INVITATION_FOOTER =
+  "You received this because you were given access to this space.";
 const MENTION_FOOTER = "You received this because you were mentioned.";
 /**
  * Single-quoted on purpose: this goes into a double-quoted `style` attribute,
@@ -216,28 +218,57 @@ function commentHtml(params: {
   </tr>`;
 }
 
+/**
+ * The card at the foot of the mail: a tile, the destination's name as a link,
+ * and a line of context. It is the call to action every template ends on.
+ */
+function linkCardHtml(params: {
+  glyph: string;
+  title: string;
+  subtitle: string;
+  url: string;
+  accent: Accent;
+}): string {
+  const { glyph, title, subtitle, url, accent } = params;
+  return `
+            <tr>
+              <td style="padding:0 32px 24px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid ${accent.softBorder};border-radius:8px;background:#ffffff;">
+                  <tr>
+                    <td width="36" valign="middle" style="padding:12px 0 12px 14px;"><table role="presentation" width="28" cellspacing="0" cellpadding="0" border="0" style="width:28px;border-radius:6px;background:${accent.soft};"><tr><td align="center" valign="middle" style="height:28px;color:${accent.text};font:700 13px/13px ${EMAIL_FONT};text-align:center;">${glyph}</td></tr></table></td>
+                    <td valign="middle" style="padding:12px 10px;"><a href="${escapeHtml(url)}" style="color:${accent.text};font:600 15px/20px ${EMAIL_FONT};text-decoration:underline;">${escapeHtml(title)}</a><p style="margin:1px 0 0;color:#6e6e6e;font:12px/18px ${EMAIL_FONT};">${escapeHtml(subtitle)}</p></td>
+                    <td width="24" align="right" valign="middle" style="padding:12px 14px 12px 0;color:${accent.text};font:600 16px/20px ${EMAIL_FONT};">&rarr;</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>`;
+}
+
+function documentCardHtml(params: {
+  documentTitle: string;
+  spaceName: string;
+  documentUrl: string;
+  accent: Accent;
+}): string {
+  return linkCardHtml({
+    glyph: "&#9636;",
+    title: params.documentTitle,
+    subtitle: params.spaceName,
+    url: params.documentUrl,
+    accent: params.accent,
+  });
+}
+
 function emailHtml(params: {
   eyebrow: string;
   heading: string;
   message: string;
-  documentTitle: string;
   spaceName: string;
-  documentUrl: string;
   content: string;
   footer: string;
   accent: Accent;
 }): string {
-  const {
-    eyebrow,
-    heading,
-    message,
-    documentTitle,
-    spaceName,
-    documentUrl,
-    content,
-    footer,
-    accent,
-  } = params;
+  const { eyebrow, heading, message, spaceName, content, footer, accent } = params;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -262,17 +293,6 @@ function emailHtml(params: {
               </td>
             </tr>
             ${content}
-            <tr>
-              <td style="padding:0 32px 24px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid ${accent.softBorder};border-radius:8px;background:#ffffff;">
-                  <tr>
-                    <td width="36" valign="middle" style="padding:12px 0 12px 14px;"><table role="presentation" width="28" cellspacing="0" cellpadding="0" border="0" style="width:28px;border-radius:6px;background:${accent.soft};"><tr><td align="center" valign="middle" style="height:28px;color:${accent.text};font:700 13px/13px ${EMAIL_FONT};text-align:center;">▤</td></tr></table></td>
-                    <td valign="middle" style="padding:12px 10px;"><a href="${escapeHtml(documentUrl)}" style="color:${accent.text};font:600 15px/20px ${EMAIL_FONT};text-decoration:underline;">${escapeHtml(documentTitle)}</a><p style="margin:1px 0 0;color:#6e6e6e;font:12px/18px ${EMAIL_FONT};">${escapeHtml(spaceName)}</p></td>
-                    <td width="24" align="right" valign="middle" style="padding:12px 14px 12px 0;color:${accent.text};font:600 16px/20px ${EMAIL_FONT};">&rarr;</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
             <tr>
               <td style="height:8px;line-height:8px;font-size:0;">&nbsp;</td>
             </tr>
@@ -333,12 +353,11 @@ export function renderNotificationEmail(params: {
         message: mention
           ? `You were mentioned in a comment on this document.`
           : `A new comment was added to this document.`,
-        documentTitle,
         spaceName,
-        documentUrl,
-        content: comment
-          ? commentHtml({ actorName, actorImage: params.actorImage, comment, accent })
-          : "",
+        content:
+          (comment
+            ? commentHtml({ actorName, actorImage: params.actorImage, comment, accent })
+            : "") + documentCardHtml({ documentTitle, spaceName, documentUrl, accent }),
         footer: mention ? MENTION_FOOTER : ACCESS_FOOTER,
         accent,
       }),
@@ -359,10 +378,10 @@ export function renderNotificationEmail(params: {
         eyebrow: "Mention",
         heading: `${actorName} mentioned you`,
         message: `You were mentioned in a published version of this document.`,
-        documentTitle,
         spaceName,
-        documentUrl,
-        content: mentionQuotesHtml(quotes, accent),
+        content:
+          mentionQuotesHtml(quotes, accent) +
+          documentCardHtml({ documentTitle, spaceName, documentUrl, accent }),
         footer: MENTION_FOOTER,
         accent,
       }),
@@ -384,11 +403,59 @@ export function renderNotificationEmail(params: {
       eyebrow: "Document updated",
       heading: `${actorName} published changes`,
       message: `There is a new published version of this document.`,
-      documentTitle,
       spaceName,
-      documentUrl,
-      content: previewHtml(preview),
+      content:
+        previewHtml(preview) +
+        documentCardHtml({ documentTitle, spaceName, documentUrl, accent }),
       footer: ACCESS_FOOTER,
+      accent,
+    }),
+  };
+}
+
+/** What each role lets the new member do, in the words the invitation uses. */
+const ROLE_SUMMARY: Record<string, string> = {
+  viewer: "You can read its documents and follow along.",
+  editor: "You can read, write and publish its documents.",
+  owner: "You can manage its documents, its members and its settings.",
+};
+
+export function renderSpaceInvitationEmail(params: {
+  actorName: string;
+  spaceName: string;
+  spaceUrl: string;
+  /** The role granted, as stored: `viewer`, `editor` or `owner`. */
+  role: string;
+  /** The space's `brandColor` preference; anything invalid falls back. */
+  brandColor?: string | null;
+}): { subject: string; text: string; html: string } {
+  const { actorName, spaceName, spaceUrl, role } = params;
+  const accent = accentFor(params.brandColor);
+  // An unknown role is still an invitation worth sending; it just describes
+  // itself as access rather than claiming capabilities it cannot vouch for.
+  const summary = ROLE_SUMMARY[role] ?? "You now have access to it.";
+  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+
+  return {
+    subject: headerText(`${actorName} invited you to ${spaceName}`),
+    text: [
+      `${actorName} gave you access to “${spaceName}” as ${roleLabel.toLowerCase()}.`,
+      summary,
+      `\nOpen space: ${spaceUrl}`,
+    ].join("\n"),
+    html: emailHtml({
+      eyebrow: "Invitation",
+      heading: `${actorName} invited you to ${spaceName}`,
+      message: summary,
+      spaceName,
+      content: linkCardHtml({
+        glyph: escapeHtml(initials(spaceName).toUpperCase()),
+        title: spaceName,
+        subtitle: `${roleLabel} access`,
+        url: spaceUrl,
+        accent,
+      }),
+      footer: INVITATION_FOOTER,
       accent,
     }),
   };
