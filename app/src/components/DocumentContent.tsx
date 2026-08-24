@@ -33,6 +33,7 @@ import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";
 import {
   currentEditorPresenceState,
+  currentSpreadsheetPresenceState,
   type DocumentPresenceProfile,
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
@@ -43,6 +44,11 @@ import {
 } from "#editor/formattingActions.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
+import {
+  SPREADSHEET_SELECTION_EVENT,
+  setSpreadsheetPresenceProfiles,
+  type SpreadsheetSelectionEventDetail,
+} from "#spreadsheet/documentPresence.ts";
 import { Actions } from "#utils/actions.ts";
 import { CommentBubble, type CommentBubbleHandle } from "./CommentBubble.tsx";
 import { CommentOverlays } from "./CommentOverlays.tsx";
@@ -101,6 +107,7 @@ export function DocumentContent(props: Props) {
   const [editor, setEditor] = createSignal<Editor | undefined>();
   const { appearance: localAppearance } = useCosmetics();
   let pendingTaskToggle: number | null = null;
+  let activeSpreadsheetSelection: SpreadsheetSelectionEventDetail | null = null;
 
   function requestTaskToggle(event: Event) {
     pendingTaskToggle = (event as CustomEvent<TaskToggleRequest>).detail.index;
@@ -179,6 +186,21 @@ export function DocumentContent(props: Props) {
     });
 
   function currentPresenceState(): DocumentPresenceState {
+    const activeEditor = editor();
+    const spreadsheet = activeSpreadsheetSelection;
+    const tablePosition = spreadsheet?.getTablePosition();
+    if (
+      activeEditor &&
+      spreadsheet?.selection &&
+      spreadsheet.source.isConnected &&
+      tablePosition !== undefined
+    ) {
+      return currentSpreadsheetPresenceState(
+        activeEditor,
+        tablePosition,
+        spreadsheet.selection,
+      );
+    }
     return currentEditorPresenceState(editor());
   }
 
@@ -218,6 +240,16 @@ export function DocumentContent(props: Props) {
     }
 
     const updatePresence = () => {
+      if (
+        activeSpreadsheetSelection &&
+        !activeSpreadsheetSelection.source.matches(":focus-within")
+      ) {
+        activeSpreadsheetSelection = null;
+      }
+      setSpreadsheetPresenceProfiles(
+        nextEditor,
+        collaboration.presenceProfiles(),
+      );
       collaboration.updatePresence(currentPresenceState());
     };
 
@@ -290,8 +322,11 @@ export function DocumentContent(props: Props) {
   );
 
   createEffect(() => {
-    const editorProfiles = collaboration
-      .presenceProfiles()
+    const profiles = collaboration.presenceProfiles();
+    const activeEditor = editor();
+    if (activeEditor) setSpreadsheetPresenceProfiles(activeEditor, profiles);
+
+    const editorProfiles = profiles
       .filter(
         (profile): profile is CollaborationPresenceProfile<DocumentPresenceState> =>
           profile.state?.kind === "editor",
@@ -336,12 +371,26 @@ export function DocumentContent(props: Props) {
       const destroyedEditor = (event as CustomEvent<{ editor: Editor }>).detail.editor;
       if (editor() === destroyedEditor) setCurrentEditor(undefined);
     };
+    const handleSpreadsheetSelection = (event: Event) => {
+      const detail = (event as CustomEvent<SpreadsheetSelectionEventDetail>).detail;
+      if (detail.selection) {
+        activeSpreadsheetSelection = detail;
+      } else if (activeSpreadsheetSelection?.source === detail.source) {
+        activeSpreadsheetSelection = null;
+      }
+      collaboration.updatePresence(currentPresenceState());
+    };
 
     view.addEventListener("editor-ready", handleEditorReady);
     view.addEventListener("editor-destroyed", handleEditorDestroyed);
+    view.addEventListener(SPREADSHEET_SELECTION_EVENT, handleSpreadsheetSelection);
     onCleanup(() => {
       view.removeEventListener("editor-ready", handleEditorReady);
       view.removeEventListener("editor-destroyed", handleEditorDestroyed);
+      view.removeEventListener(
+        SPREADSHEET_SELECTION_EVENT,
+        handleSpreadsheetSelection,
+      );
     });
   });
 

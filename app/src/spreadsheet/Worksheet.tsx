@@ -80,10 +80,24 @@ export function Worksheet(props: Props) {
   // event is not mistaken for the user scrolling.
   let ignoreScrollEvent = false;
 
+  /**
+   * The scroll element is the real flex-sized viewport. Its sticky child cannot
+   * reliably resolve `height: 100%` while the oversized spacer establishes the
+   * scroll area, so give the drawing layer the measured viewport in pixels.
+   */
+  const viewportSize = () => {
+    const width = scrollElement.clientWidth;
+    const height = scrollElement.clientHeight;
+    sheetContainer.style.width = `${width}px`;
+    sheetContainer.style.height = `${height}px`;
+    return { width, height };
+  };
+
   const buildCanvas = () => {
+    const size = viewportSize();
     const sheet = new WorksheetCanvas({
-      width: sheetContainer.clientWidth,
-      height: sheetContainer.clientHeight,
+      width: size.width,
+      height: size.height,
       model: props.model,
       workbookState: props.workbookState,
       scrollOffset,
@@ -152,15 +166,13 @@ export function Worksheet(props: Props) {
     const resizeObserver = new ResizeObserver(() => {
       const current = canvas();
       if (!current) return;
-      current.setSize({
-        width: sheetContainer.clientWidth,
-        height: sheetContainer.clientHeight,
-      });
-      props.model.setWindowWidth(sheetContainer.clientWidth - headerColumnWidth);
-      props.model.setWindowHeight(sheetContainer.clientHeight - headerRowHeight);
+      const size = viewportSize();
+      current.setSize(size);
+      props.model.setWindowWidth(size.width - headerColumnWidth);
+      props.model.setWindowHeight(size.height - headerRowHeight);
       current.renderSheet();
     });
-    resizeObserver.observe(sheetContainer);
+    resizeObserver.observe(scrollElement);
 
     const rebuildForTheme = () => buildCanvas().renderSheet();
     const themeObserver = new MutationObserver(rebuildForTheme);

@@ -27,6 +27,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import {
   canConvertToSpreadsheet,
   isSpreadsheetTable,
+  normalTableNodeFromSpreadsheet,
   SPREADSHEET_TABLE_KIND,
 } from "#spreadsheet/documentTable.ts";
 import { SpreadsheetTableView } from "./SpreadsheetTableView.ts";
@@ -37,6 +38,7 @@ declare module "@tiptap/core" {
     spreadsheetTable: {
       insertSpreadsheetTable: (options?: { rows?: number; cols?: number }) => ReturnType;
       convertTableToSpreadsheet: () => ReturnType;
+      convertSpreadsheetToTable: () => ReturnType;
     };
   }
 }
@@ -283,6 +285,23 @@ const SpreadsheetTableCommands = Extension.create({
               ...table.node.attrs,
               tableKind: SPREADSHEET_TABLE_KIND,
             });
+            tr.setSelection(NodeSelection.create(tr.doc, table.pos));
+            dispatch(tr);
+          }
+          return true;
+        },
+      convertSpreadsheetToTable:
+        (): Command =>
+        ({ state, dispatch }) => {
+          const table = selectedTable(state);
+          if (!table || !isSpreadsheetTable(table.node)) return false;
+          if (dispatch) {
+            const next = normalTableNodeFromSpreadsheet(table.node);
+            const tr = state.tr.replaceWith(
+              table.pos,
+              table.pos + table.node.nodeSize,
+              next,
+            );
             tr.setSelection(NodeSelection.create(tr.doc, table.pos));
             dispatch(tr);
           }

@@ -16,11 +16,13 @@
 import type { Model } from "@ironcalc/wasm";
 import { onCleanup, onMount } from "solid-js";
 import { render } from "solid-js/web";
+import { LocaleContext } from "#composeables/useTranslation.ts";
 import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
 import { Spreadsheet } from "#spreadsheet/Spreadsheet.tsx";
 import styles from "#spreadsheet/spreadsheet.css?inline";
 
 interface Props {
+  lang: string;
   model: Model;
   canEdit: boolean;
   onChange: () => void;
@@ -61,20 +63,22 @@ export function SpreadsheetHost(props: Props) {
     adoptStyles(shadow);
     const dispose = render(
       () => (
-        <Spreadsheet
-          model={props.model}
-          canEdit={props.canEdit}
-          onChange={props.onChange}
-          remoteRevision={props.remoteRevision}
-          remoteSelections={props.remoteSelections}
-          onSelectionChange={props.onSelectionChange}
-          onUndo={props.onUndo}
-          onRedo={props.onRedo}
-          // Focus and the context menu need to ask *this* root what is focused
-          // and where a click landed; `document.activeElement` and `event.target`
-          // both stop at the host once a shadow boundary is in the way.
-          shadowRoot={shadow}
-        />
+        <LocaleContext.Provider value={props.lang}>
+          <Spreadsheet
+            model={props.model}
+            canEdit={props.canEdit}
+            onChange={props.onChange}
+            remoteRevision={props.remoteRevision}
+            remoteSelections={props.remoteSelections}
+            onSelectionChange={props.onSelectionChange}
+            onUndo={props.onUndo}
+            onRedo={props.onRedo}
+            // Focus and the context menu need to ask *this* root what is focused
+            // and where a click landed; `document.activeElement` and `event.target`
+            // both stop at the host once a shadow boundary is in the way.
+            shadowRoot={shadow}
+          />
+        </LocaleContext.Provider>
       ),
       shadow,
     );
@@ -83,5 +87,5 @@ export function SpreadsheetHost(props: Props) {
 
   // A definite height on the host is what lets `.ic-root { height: 100% }`
   // resolve inside the shadow root.
-  return <div class="flex min-h-0 flex-1 flex-col" ref={host} />;
+  return <div class="spreadsheet-host" ref={host} />;
 }

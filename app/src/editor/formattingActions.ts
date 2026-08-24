@@ -378,6 +378,16 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     },
   });
 
+  Actions.register("format:spreadsheet:convertToTable", {
+    title: t("Convert Spreadsheet to Table"),
+    description: t("Replace formulas with their displayed values"),
+    group: "table",
+    run: async () => {
+      if (!isEditorAvailable()) return;
+      getEditor().chain().focus().convertSpreadsheetToTable().run();
+    },
+  });
+
   Actions.register("format:table:delete", {
     title: t("Delete Table"),
     description: t("Delete the current table"),
@@ -685,6 +695,7 @@ export function unregisterFormattingActions() {
     "format:table:insert",
     "format:spreadsheet:insert",
     "format:spreadsheet:convert",
+    "format:spreadsheet:convertToTable",
     "format:table:delete",
     "format:table:addColumnBefore",
     "format:table:addColumnAfter",

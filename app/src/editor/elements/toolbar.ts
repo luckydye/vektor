@@ -375,7 +375,9 @@ if (
 
         this.inColumnLayout = editor.isActive("columnLayout");
         this.imageActive = isImageSelected(editor);
-        this.tableActive = editor.isActive("table");
+        this.tableActive =
+          editor.isActive("table") &&
+          !editor.isActive("table", { tableKind: "spreadsheet" });
         this.updateHeadingLevel(editor);
         this.updateColors(editor);
         this.updateColumnInfo(editor);

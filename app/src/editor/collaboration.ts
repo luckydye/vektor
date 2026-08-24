@@ -1,14 +1,20 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
-import { getRelativeSelection, ySyncPluginKey } from "y-prosemirror";
+import {
+  absolutePositionToRelativePosition,
+  getRelativeSelection,
+  relativePositionToAbsolutePosition,
+  ySyncPluginKey,
+} from "y-prosemirror";
 import * as Y from "yjs";
 import type { CanvasToolId } from "#canvas/index.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
+import type { SheetSelection } from "#spreadsheet/presence.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
 
-export type DocumentPresenceState = {
+export type EditorPresenceState = {
   kind: "editor";
   focused?: boolean;
   selection?: {
@@ -18,6 +24,18 @@ export type DocumentPresenceState = {
     absoluteHead?: number;
   } | null;
 };
+
+/** A cell range in one spreadsheet table embedded in the rich-text document. */
+export type SpreadsheetPresenceState = {
+  kind: "spreadsheet";
+  table: {
+    relativePosition?: unknown;
+    absolutePosition: number;
+  };
+  selection: SheetSelection;
+};
+
+export type DocumentPresenceState = EditorPresenceState | SpreadsheetPresenceState;
 
 export type CanvasPresenceState = {
   kind: "canvas";
@@ -73,7 +91,7 @@ export function findYSyncState(
  */
 export function currentEditorPresenceState(
   editor: Editor | null | undefined,
-): DocumentPresenceState {
+): EditorPresenceState {
   if (!editor) {
     return { kind: "editor", focused: false, selection: null };
   }
@@ -105,6 +123,77 @@ export function currentEditorPresenceState(
   } catch {
     return { kind: "editor", focused: false, selection: null };
   }
+}
+
+/**
+ * Anchors an embedded spreadsheet selection to its table in the shared Yjs
+ * document. The absolute position is a fallback for the instant before the
+ * collaboration binding has produced its mapping.
+ */
+export function currentSpreadsheetPresenceState(
+  editor: Editor,
+  tablePosition: number,
+  selection: SheetSelection,
+): SpreadsheetPresenceState {
+  const syncState = findYSyncState(editor);
+  if (!syncState) {
+    return {
+      kind: "spreadsheet",
+      table: { absolutePosition: tablePosition },
+      selection,
+    };
+  }
+
+  try {
+    const relativePosition = absolutePositionToRelativePosition(
+      tablePosition,
+      syncState.type,
+      syncState.binding.mapping as Parameters<
+        typeof absolutePositionToRelativePosition
+      >[2],
+    );
+    return {
+      kind: "spreadsheet",
+      table: {
+        relativePosition: Y.relativePositionToJSON(relativePosition),
+        absolutePosition: tablePosition,
+      },
+      selection,
+    };
+  } catch {
+    return {
+      kind: "spreadsheet",
+      table: { absolutePosition: tablePosition },
+      selection,
+    };
+  }
+}
+
+/** Resolves a peer's table anchor against this editor's current document. */
+export function spreadsheetPresenceTablePosition(
+  editor: Editor,
+  state: SpreadsheetPresenceState,
+): number | null {
+  const syncState = findYSyncState(editor);
+  const relativePosition = state.table.relativePosition;
+  if (syncState && relativePosition) {
+    try {
+      const resolved = relativePositionToAbsolutePosition(
+        syncState.doc,
+        syncState.type,
+        Y.createRelativePositionFromJSON(relativePosition as never),
+        syncState.binding.mapping as Parameters<
+          typeof relativePositionToAbsolutePosition
+        >[3],
+      );
+      if (resolved !== null) return resolved;
+    } catch {
+      // Fall through to the absolute position carried for unsynced clients.
+    }
+  }
+
+  const absolutePosition = state.table.absolutePosition;
+  return Number.isFinite(absolutePosition) ? absolutePosition : null;
 }
 
 /**

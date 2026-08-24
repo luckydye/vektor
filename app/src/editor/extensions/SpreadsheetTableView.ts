@@ -2,18 +2,29 @@ import type { Model } from "@ironcalc/wasm";
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { NodeView } from "@tiptap/pm/view";
-import { createComponent } from "solid-js";
+import {
+  type Accessor,
+  createComponent,
+  createSignal,
+  type Setter,
+} from "solid-js";
 import { render } from "solid-js/web";
 import {
   isSpreadsheetTable,
-  normalTableNodeFromSpreadsheet,
   spreadsheetTableFingerprint,
   spreadsheetTableHtml,
   spreadsheetTableNodeFromData,
 } from "#spreadsheet/documentTable.ts";
+import {
+  SPREADSHEET_SELECTION_EVENT,
+  type SpreadsheetSelectionEventDetail,
+  subscribeToSpreadsheetPresence,
+} from "#spreadsheet/documentPresence.ts";
+import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
 import { browserLang, createTranslator } from "#utils/lang.ts";
 
 type GetPos = () => number | undefined;
+const SPREADSHEET_VIEWPORT_GAP = 32;
 const t = createTranslator(browserLang());
 
 /** Interactive editor-only view for a table marked as a spreadsheet. */
@@ -27,6 +38,12 @@ export class SpreadsheetTableView implements NodeView {
   private buildVersion = 0;
   private publishVersion = 0;
   private publishedFingerprint: string | null = null;
+  private lastSelection: SheetSelection | null = null;
+  private readonly remoteSelections: Accessor<RemoteSelection[]>;
+  private readonly setRemoteSelections: Setter<RemoteSelection[]>;
+  private readonly unsubscribePresence: () => void;
+  private layoutObserver: ResizeObserver | null = null;
+  private layoutFrame: number | null = null;
 
   constructor(
     node: ProseMirrorNode,
@@ -38,40 +55,96 @@ export class SpreadsheetTableView implements NodeView {
     this.dom.className = "spreadsheet-table-wrapper";
     this.dom.contentEditable = "false";
 
-    const header = document.createElement("div");
-    header.className = "spreadsheet-table-header";
-    const label = document.createElement("span");
-    label.textContent = t("Spreadsheet");
-    header.append(label);
-
-    const convert = document.createElement("button");
-    convert.type = "button";
-    convert.textContent = t("Convert to table");
-    convert.title = t("Formulas will be replaced by their displayed values");
-    convert.addEventListener("click", this.convertToTable);
-    header.append(convert);
-    this.dom.append(header);
-
     this.mount = document.createElement("div");
     this.mount.className = "spreadsheet-table-mount";
     this.mount.textContent = t("Loading spreadsheet…");
     this.dom.append(this.mount);
 
+    [this.remoteSelections, this.setRemoteSelections] =
+      createSignal<RemoteSelection[]>([]);
+    this.unsubscribePresence = subscribeToSpreadsheetPresence(
+      this.editor,
+      this.getPos,
+      this.setRemoteSelections,
+    );
+    this.dom.addEventListener("focusin", this.handleFocusIn);
+    this.dom.addEventListener("focusout", this.handleFocusOut);
+    window.addEventListener("resize", this.scheduleViewportHeight);
+    window.visualViewport?.addEventListener("resize", this.scheduleViewportHeight);
+    this.layoutObserver = new ResizeObserver(this.scheduleViewportHeight);
+    const layout = document.querySelector<HTMLElement>("[data-layout]");
+    if (layout) this.layoutObserver.observe(layout);
+    this.scheduleViewportHeight();
+
     void this.rebuild();
   }
 
-  private convertToTable = () => {
-    const pos = this.getPos();
-    if (pos === undefined) return;
-    const current = this.editor.state.doc.nodeAt(pos);
-    if (!current || !isSpreadsheetTable(current)) return;
-    this.editor.view.dispatch(
-      this.editor.state.tr.replaceWith(
-        pos,
-        pos + current.nodeSize,
-        normalTableNodeFromSpreadsheet(current),
+  /**
+   * Fills the part of the initial viewport left below the document chrome.
+   * The bottom margin is included so the table and its spacing, together, end
+   * at the viewport edge instead of making the page one margin taller.
+   */
+  private syncViewportHeight(): void {
+    this.layoutFrame = null;
+    if (this.destroyed || !this.dom.isConnected) return;
+
+    const viewport = window.visualViewport;
+    const viewportBottom = viewport
+      ? viewport.offsetTop + viewport.height
+      : window.innerHeight;
+    const top = this.dom.getBoundingClientRect().top;
+    const marginBottom = Number.parseFloat(getComputedStyle(this.dom).marginBottom) || 0;
+    const available = Math.max(
+      0,
+      Math.floor(
+        viewportBottom - top - marginBottom - SPREADSHEET_VIEWPORT_GAP,
       ),
     );
+    const height = `${available}px`;
+    if (this.dom.style.getPropertyValue("--spreadsheet-viewport-height") !== height) {
+      this.dom.style.setProperty("--spreadsheet-viewport-height", height);
+    }
+  }
+
+  private scheduleViewportHeight = (): void => {
+    if (this.layoutFrame !== null) return;
+    this.layoutFrame = requestAnimationFrame(() => this.syncViewportHeight());
+  };
+
+  private hasFocus(): boolean {
+    return this.dom.matches(":focus-within");
+  }
+
+  private dispatchSelection(selection: SheetSelection | null): void {
+    this.dom.dispatchEvent(
+      new CustomEvent<SpreadsheetSelectionEventDetail>(
+        SPREADSHEET_SELECTION_EVENT,
+        {
+          bubbles: true,
+          composed: true,
+          detail: {
+            source: this.dom,
+            getTablePosition: this.getPos,
+            selection,
+          },
+        },
+      ),
+    );
+  }
+
+  private handleSelectionChange = (selection: SheetSelection): void => {
+    this.lastSelection = selection;
+    if (this.hasFocus()) this.dispatchSelection(selection);
+  };
+
+  private handleFocusIn = (): void => {
+    if (this.lastSelection) this.dispatchSelection(this.lastSelection);
+  };
+
+  private handleFocusOut = (): void => {
+    queueMicrotask(() => {
+      if (!this.destroyed && !this.hasFocus()) this.dispatchSelection(null);
+    });
   };
 
   private clearModel(): void {
@@ -97,16 +170,25 @@ export class SpreadsheetTableView implements NodeView {
       if (this.destroyed || version !== this.buildVersion) return;
 
       const model = createModel(spreadsheetTableHtml(this.node), "Table");
+      if (this.lastSelection) {
+        const { row, column, rowEnd, columnEnd } = this.lastSelection;
+        // IronCalc requires its active cell to be one of the range's corners.
+        // A freshly rebuilt model starts at A1, so restoring a range elsewhere
+        // must move the active cell before restoring the range itself.
+        model.setSelectedCell(row, column);
+        model.setSelectedRange(row, column, rowEnd, columnEnd);
+      }
       this.model = model;
       this.mount.replaceChildren();
       this.disposeRender = render(
         () =>
           createComponent(SpreadsheetHost, {
+            lang: browserLang(),
             model,
             canEdit: this.editor.isEditable,
             remoteRevision: () => 0,
-            remoteSelections: () => [],
-            onSelectionChange: () => {},
+            remoteSelections: this.remoteSelections,
+            onSelectionChange: this.handleSelectionChange,
             onChange: () => this.publish(),
             onUndo: () => this.editor.commands.undo(),
             onRedo: () => this.editor.commands.redo(),
@@ -174,10 +256,22 @@ export class SpreadsheetTableView implements NodeView {
   }
 
   destroy(): void {
+    this.dispatchSelection(null);
     this.destroyed = true;
     this.buildVersion++;
     this.publishVersion++;
-    this.dom.querySelector("button")?.removeEventListener("click", this.convertToTable);
+    this.unsubscribePresence();
+    this.layoutObserver?.disconnect();
+    this.layoutObserver = null;
+    if (this.layoutFrame !== null) cancelAnimationFrame(this.layoutFrame);
+    this.layoutFrame = null;
+    window.removeEventListener("resize", this.scheduleViewportHeight);
+    window.visualViewport?.removeEventListener(
+      "resize",
+      this.scheduleViewportHeight,
+    );
+    this.dom.removeEventListener("focusin", this.handleFocusIn);
+    this.dom.removeEventListener("focusout", this.handleFocusOut);
     this.clearModel();
   }
 }

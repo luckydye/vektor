@@ -475,7 +475,8 @@ if (
         const surfaceRect = this.surfaceEl.getBoundingClientRect();
         for (const profile of this.presenceProfiles) {
           const state = profile.state;
-          const selection = state?.focused ? state.selection : null;
+          const selection =
+            state?.kind === "editor" && state.focused ? state.selection : null;
           if (!selection) continue;
 
           const position = presencePosition(
