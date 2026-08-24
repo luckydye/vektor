@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { api, isUploadAborted } from "#api/client.ts";
 import { type ToastAction, useToast } from "./useToast.ts";
-import { useTranslation } from "./useTranslation.ts";
+import { useOptionalTranslation } from "./useTranslation.ts";
 
 // Generic upload manager. It owns the shared upload feedback — a progress
 // toast (reusing useToast), success/error notifications, and a reactive
@@ -51,8 +51,34 @@ export interface UploadFileOptions extends UploadOptions {
 const [activeUploads, setActiveUploads] = createSignal<ActiveUpload[]>([]);
 let nextUploadId = 0;
 
+// Failures already put in front of the user, so `reportUploadFailure` can tell
+// a rejection it has toasted from one that never reached the manager at all.
+const reportedFailures = new WeakSet<object>();
+
+function markReported(error: unknown) {
+  if (error && typeof error === "object") reportedFailures.add(error);
+}
+
+/**
+ * Report a rejected upload at the call site that gives up on it.
+ *
+ * Every upload that reaches the manager is toasted already; this exists for the
+ * ones that fail before that, which would otherwise leave a placeholder to
+ * appear and vanish with nothing logged and nothing shown.
+ */
+export function reportUploadFailure(error: unknown, filename: string): void {
+  if (isUploadAborted(error)) return;
+
+  console.error(`Upload of ${filename} failed`, error);
+  if (error && typeof error === "object" && reportedFailures.has(error)) return;
+
+  const message = error instanceof Error ? error.message : String(error);
+  const t = useOptionalTranslation();
+  useToast().error(`${t("Upload failed")}: ${message}`);
+}
+
 export function useUploads() {
-  const t = useTranslation();
+  const t = useOptionalTranslation();
   const toast = useToast();
 
   function track(filename: string): ActiveUpload {
@@ -85,7 +111,8 @@ export function useUploads() {
    * plainly and briefly, and the progress bar and cancel button both go — there
    * is nothing left to progress or to cancel.
    */
-  function notifyCancelled(toastId: number | null) {
+  function notifyCancelled(toastId: number | null, error: unknown) {
+    markReported(error);
     if (toastId == null) return;
     toast.update(
       toastId,
@@ -106,6 +133,7 @@ export function useUploads() {
       return;
     }
     const text = `${t("Upload failed")}: ${message}`;
+    markReported(error);
     if (toastId != null) {
       toast.update(
         toastId,
@@ -168,7 +196,7 @@ export function useUploads() {
       return result;
     } catch (error) {
       patchUpload(entry.id, { status: "error" });
-      if (isUploadAborted(error)) notifyCancelled(toastId);
+      if (isUploadAborted(error)) notifyCancelled(toastId, error);
       else notifyError(toastId, showError, error);
       throw error;
     } finally {
@@ -250,7 +278,7 @@ export function useUploads() {
       for (const entry of entries) {
         patchUpload(entry.id, { status: "error" });
       }
-      if (isUploadAborted(error)) notifyCancelled(toastId);
+      if (isUploadAborted(error)) notifyCancelled(toastId, error);
       else notifyError(toastId, showError, error);
       throw error;
     } finally {

@@ -2,7 +2,7 @@
 
 .column-content,
 div[data-type="column-layout"] {
-  @apply flex flex-wrap md:flex-row flex-col gap-xs w-full;
+  @apply flex flex-wrap md:flex-row flex-col gap-xs w-full md:gap-x-[calc(var(--spacing-xs)/2)] my-4;
 }
 
 div[data-type="column-item"] {
@@ -10,7 +10,14 @@ div[data-type="column-item"] {
   min-width: 0;
 }
 
-div[data-type="column-item"]:focus-within {
+/* Divider sits in the gutter: half the gap on each side of the line. */
+div[data-type="column-item"] + div[data-type="column-item"] {
+  @apply md:border-l md:border-neutral-200/70 md:pl-[calc(var(--spacing-xs)/2)];
+}
+
+/* :has(:focus-visible) rather than :focus-within so the ring tracks the text
+   caret; clicking media controls inside the column must not raise it. */
+div[data-type="column-item"]:has(:focus-visible) {
   border-color: #3b82f6;
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
