@@ -70,7 +70,7 @@ export function config() {
       RATE_LIMIT_WINDOW: process.env.VEKTOR_RATE_LIMIT_WINDOW,
       /**
        * Killswitch: comma-separated rate limit keys to refuse outright, as they
-       * appear in the 429 log line (`ip:<addr>`, `token:<hash>`).
+       * appear in the 429 log line (`ip:<addr>`, `user:<id>`).
        */
       RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
       /**

@@ -163,10 +163,15 @@ X-Limit-Remaining: 597
 ```
 
 Exceeding the window returns `429` with `Retry-After` in seconds; clients should wait that
-long before retrying. Requests are counted **per access token** when one is presented and
-**per IP** otherwise, so an integration has its own budget while browser sessions share
-the instance's per-IP budget. The token is hashed to form the key and is never stored or
-logged.
+long before retrying. Requests are counted **per signed-in user** once the request has been
+authenticated, and **per IP** for everything else — access tokens included, since a token is
+only validated inside the space it names. Keys come from identities the server resolved, not
+from the credentials presented: sending a different `Authorization` value per request does
+not buy a new budget.
+
+A second, much wider window per IP sits in front of authentication (ten times the default
+ceiling). It bounds the session lookup itself, so an address flooding the API is turned away
+before it costs a database read.
 
 Ordinary routes share one bucket — 600 requests per minute by default, configurable with
 `VEKTOR_RATE_LIMIT_MAX` and `VEKTOR_RATE_LIMIT_WINDOW`. Routes that do more work per call

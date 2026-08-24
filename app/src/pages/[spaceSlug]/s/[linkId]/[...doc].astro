@@ -64,12 +64,11 @@ const notFound = withPrivateHeaders(
   new Response(null, { status: 404, statusText: "Not found" }),
 );
 
-// The page bypasses API middleware; unvalidated cookies must not create buckets.
+// The page bypasses API middleware, and a share link resolves to no session
+// user, so the address is the caller here.
 const limit = checkRateLimit({
   pattern: SHARE_LINK_ROUTE_PATTERN,
   method: Astro.request.method,
-  authorization: undefined,
-  cookie: undefined,
   ip: resolveClientIp(
     Astro.clientAddress,
     Astro.request.headers.get("x-forwarded-for"),
