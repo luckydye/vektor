@@ -1,9 +1,9 @@
-import type { Editor } from "@tiptap/core";
 import type { Model } from "@ironcalc/wasm";
+import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { NodeView } from "@tiptap/pm/view";
+import { createComponent } from "solid-js";
 import { render } from "solid-js/web";
-import { browserLang, createTranslator } from "#utils/lang.ts";
 import {
   isSpreadsheetTable,
   normalTableNodeFromSpreadsheet,
@@ -11,6 +11,7 @@ import {
   spreadsheetTableHtml,
   spreadsheetTableNodeFromData,
 } from "#spreadsheet/documentTable.ts";
+import { browserLang, createTranslator } from "#utils/lang.ts";
 
 type GetPos = () => number | undefined;
 const t = createTranslator(browserLang());
@@ -87,12 +88,11 @@ export class SpreadsheetTableView implements NodeView {
     this.mount.textContent = t("Loading spreadsheet…");
 
     try {
-      const [{ initEngine }, { createModel }, { SpreadsheetHost }] =
-        await Promise.all([
-          import("#spreadsheet/engine.ts"),
-          import("#spreadsheet/spreadsheetModel.ts"),
-          import("#spreadsheet/SpreadsheetHost.tsx"),
-        ]);
+      const [{ initEngine }, { createModel }, { SpreadsheetHost }] = await Promise.all([
+        import("#spreadsheet/engine.ts"),
+        import("#spreadsheet/spreadsheetModel.ts"),
+        import("#spreadsheet/SpreadsheetHost.tsx"),
+      ]);
       await initEngine();
       if (this.destroyed || version !== this.buildVersion) return;
 
@@ -100,18 +100,17 @@ export class SpreadsheetTableView implements NodeView {
       this.model = model;
       this.mount.replaceChildren();
       this.disposeRender = render(
-        () => (
-          <SpreadsheetHost
-            model={model}
-            canEdit={this.editor.isEditable}
-            remoteRevision={() => 0}
-            remoteSelections={() => []}
-            onSelectionChange={() => {}}
-            onChange={() => this.publish()}
-            onUndo={() => this.editor.commands.undo()}
-            onRedo={() => this.editor.commands.redo()}
-          />
-        ),
+        () =>
+          createComponent(SpreadsheetHost, {
+            model,
+            canEdit: this.editor.isEditable,
+            remoteRevision: () => 0,
+            remoteSelections: () => [],
+            onSelectionChange: () => {},
+            onChange: () => this.publish(),
+            onUndo: () => this.editor.commands.undo(),
+            onRedo: () => this.editor.commands.redo(),
+          }),
         this.mount,
       );
     } catch (error) {
@@ -178,9 +177,7 @@ export class SpreadsheetTableView implements NodeView {
     this.destroyed = true;
     this.buildVersion++;
     this.publishVersion++;
-    this.dom
-      .querySelector("button")
-      ?.removeEventListener("click", this.convertToTable);
+    this.dom.querySelector("button")?.removeEventListener("click", this.convertToTable);
     this.clearModel();
   }
 }

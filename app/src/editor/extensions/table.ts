@@ -1,4 +1,4 @@
-import { Extension } from "@tiptap/core";
+import { type Command, Extension, type NodeViewRenderer } from "@tiptap/core";
 import {
   createTable,
   Table,
@@ -29,7 +29,7 @@ import {
   isSpreadsheetTable,
   SPREADSHEET_TABLE_KIND,
 } from "#spreadsheet/documentTable.ts";
-import { SpreadsheetTableView } from "./SpreadsheetTableView.tsx";
+import { SpreadsheetTableView } from "./SpreadsheetTableView.ts";
 import { nodeFromSpec } from "./specSchema.ts";
 
 declare module "@tiptap/core" {
@@ -245,6 +245,53 @@ function positionOfNode(doc: ProseMirrorNode, target: ProseMirrorNode): number |
   return found;
 }
 
+const SpreadsheetTableCommands = Extension.create({
+  name: "spreadsheetTableCommands",
+
+  addCommands() {
+    return {
+      insertSpreadsheetTable:
+        (options: { rows?: number; cols?: number } = {}): Command =>
+        ({ tr, dispatch, editor }) => {
+          const table = createTable(
+            editor.schema,
+            options.rows ?? 6,
+            options.cols ?? 4,
+            true,
+          );
+          const spreadsheet = table.type.create(
+            { ...table.attrs, tableKind: SPREADSHEET_TABLE_KIND },
+            table.content,
+          );
+          if (dispatch) {
+            tr.replaceSelectionWith(spreadsheet);
+            const insertedAt = positionOfNode(tr.doc, spreadsheet);
+            if (insertedAt !== null) {
+              tr.setSelection(NodeSelection.create(tr.doc, insertedAt));
+            }
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
+        },
+      convertTableToSpreadsheet:
+        (): Command =>
+        ({ state, dispatch }) => {
+          const table = selectedTable(state);
+          if (!table || !canConvertToSpreadsheet(table.node)) return false;
+          if (dispatch) {
+            const tr = state.tr.setNodeMarkup(table.pos, undefined, {
+              ...table.node.attrs,
+              tableKind: SPREADSHEET_TABLE_KIND,
+            });
+            tr.setSelection(NodeSelection.create(tr.doc, table.pos));
+            dispatch(tr);
+          }
+          return true;
+        },
+    };
+  },
+});
+
 export const TableEditing = Extension.create({
   name: "tableEditing",
 
@@ -257,51 +304,7 @@ export const TableEditing = Extension.create({
       Table.extend({
         ...nodeFromSpec("table"),
 
-        addCommands() {
-          return {
-            ...this.parent?.(),
-            insertSpreadsheetTable:
-              (options = {}) =>
-              ({ tr, dispatch, editor }) => {
-                const table = createTable(
-                  editor.schema,
-                  options.rows ?? 6,
-                  options.cols ?? 4,
-                  true,
-                );
-                const spreadsheet = table.type.create(
-                  { ...table.attrs, tableKind: SPREADSHEET_TABLE_KIND },
-                  table.content,
-                );
-                if (dispatch) {
-                  tr.replaceSelectionWith(spreadsheet);
-                  const insertedAt = positionOfNode(tr.doc, spreadsheet);
-                  if (insertedAt !== null) {
-                    tr.setSelection(NodeSelection.create(tr.doc, insertedAt));
-                  }
-                  dispatch(tr.scrollIntoView());
-                }
-                return true;
-              },
-            convertTableToSpreadsheet:
-              () =>
-              ({ state, dispatch }) => {
-                const table = selectedTable(state);
-                if (!table || !canConvertToSpreadsheet(table.node)) return false;
-                if (dispatch) {
-                  const tr = state.tr.setNodeMarkup(table.pos, undefined, {
-                    ...table.node.attrs,
-                    tableKind: SPREADSHEET_TABLE_KIND,
-                  });
-                  tr.setSelection(NodeSelection.create(tr.doc, table.pos));
-                  dispatch(tr);
-                }
-                return true;
-              },
-          };
-        },
-
-        addNodeView() {
+        addNodeView(): NodeViewRenderer {
           const cellMinWidth = this.options.cellMinWidth;
           return ({ node, editor, getPos }) => {
             if (isSpreadsheetTable(node)) {
@@ -326,6 +329,7 @@ export const TableEditing = Extension.create({
       TableRow.extend(nodeFromSpec("tableRow")),
       TableHeader.extend(nodeFromSpec("tableHeader")),
       TableCell.extend(nodeFromSpec("tableCell")),
+      SpreadsheetTableCommands,
       TableCellClipboard,
     ];
   },

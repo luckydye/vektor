@@ -54,9 +54,7 @@ export function spreadsheetTableData(node: ProseMirrorNode): SpreadsheetTableDat
   return {
     cells,
     layout: {
-      ...(columnWidths.some((width) => width !== undefined)
-        ? { columnWidths }
-        : {}),
+      ...(columnWidths.some((width) => width !== undefined) ? { columnWidths } : {}),
       ...(rowHeights.some((height) => height !== undefined) ? { rowHeights } : {}),
     },
   };
@@ -118,18 +116,19 @@ export function spreadsheetTableNodeFromData(
     const cells = Array.from({ length: width }, (_, column) => {
       const value = line[column] ?? { value: "" };
       const existingCell = childAt(existingRow, column);
-      const type = existingCell?.type === headerType || (headerRow && rowIndex === 0)
-        ? headerType
-        : cellType;
+      const type =
+        existingCell?.type === headerType || (headerRow && rowIndex === 0)
+          ? headerType
+          : cellType;
       const columnWidth = data.layout.columnWidths?.[column];
       return type.create(
         {
-          ...(existingCell?.attrs ?? type.defaultAttrs ?? {}),
+          ...(existingCell?.attrs ?? {}),
           colspan: 1,
           rowspan: 1,
           colwidth:
             columnWidth === undefined
-              ? (existingCell?.attrs.colwidth ?? type.defaultAttrs?.colwidth)
+              ? (existingCell?.attrs.colwidth ?? null)
               : [Math.round(columnWidth)],
           dataSource: value.source ?? null,
           dataStyle: value.style ?? null,
@@ -140,7 +139,7 @@ export function spreadsheetTableNodeFromData(
     });
     return rowType.create(
       {
-        ...(existingRow?.attrs ?? rowType.defaultAttrs ?? {}),
+        ...(existingRow?.attrs ?? {}),
         dataHeight: data.layout.rowHeights?.[rowIndex] ?? null,
       },
       cells,
@@ -205,17 +204,7 @@ export function normalTableNodeFromSpreadsheet(
         ),
       );
     });
-    rows.push(
-      row.type.create(
-        { ...row.attrs, dataHeight: null },
-        cells,
-        row.marks,
-      ),
-    );
+    rows.push(row.type.create({ ...row.attrs, dataHeight: null }, cells, row.marks));
   });
-  return current.type.create(
-    { ...current.attrs, tableKind: null },
-    rows,
-    current.marks,
-  );
+  return current.type.create({ ...current.attrs, tableKind: null }, rows, current.marks);
 }

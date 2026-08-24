@@ -293,9 +293,7 @@ function jsonDataAttr(attribute: string): AttrSpec {
       }
     },
     render: (value) =>
-      value && typeof value === "object"
-        ? { [attribute]: JSON.stringify(value) }
-        : {},
+      value && typeof value === "object" ? { [attribute]: JSON.stringify(value) } : {},
   };
 }
 
