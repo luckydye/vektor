@@ -51,6 +51,7 @@ export const yRooms = new Map<string, YRoom>();
 const knownCollaborationContentFormats: Readonly<
   Record<string, CollaborationContentFormat>
 > = {
+  app: "source-code",
   canvas: "map-snapshot",
   workflow: "source-code",
 };
@@ -214,8 +215,8 @@ function normalizeHtmlContent(content: string): string {
 /**
  * Returns the document content as edit operations see it: the live Yjs room
  * state when one is open, otherwise the persisted content. HTML is normalized
- * to one top-level block per line; canvas and workflow source stay in their
- * native serialized formats.
+ * to one top-level block per line; app source, canvas snapshots, and workflow
+ * source stay in their native serialized formats.
  */
 export function getLiveDocumentContent(
   spaceId: string,
@@ -348,8 +349,8 @@ export async function persistYRoomDraft(key: string): Promise<void> {
     updateDocument(store, ids.documentId, content, meta.type),
   );
 
-  // HTML collaboration owns checkpoint history. Canvas and workflow
-  // collaboration persist serialized drafts without entering that history.
+  // Rich-text collaboration owns periodic checkpoint history. Serialized
+  // collaboration persists drafts without creating a revision per Yjs update.
   if (format !== "html" || !room.lastEditorId) return;
 
   const latestRevisionCreatedAt = await getLatestRevisionCreatedAt(

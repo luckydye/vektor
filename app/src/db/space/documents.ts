@@ -30,6 +30,7 @@ import {
   allowsChildDocumentType,
   documentIsReadonly,
   fallbackDocumentSlug,
+  isSerializedDocumentType,
 } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
@@ -39,7 +40,7 @@ import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
-import { decompressHtml } from "./revisions.ts";
+import { decompressRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
 export interface DocumentWithProperties {
@@ -941,12 +942,13 @@ async function countMentionsForUser(
     s.db
       .select({
         publishedRev: document.publishedRev,
+        type: document.type,
       })
       .from(document)
       .where(eq(document.id, documentId)),
   );
 
-  if (!doc?.publishedRev) {
+  if (!doc?.publishedRev || isSerializedDocumentType(doc.type)) {
     return 0;
   }
 
@@ -973,7 +975,7 @@ async function countMentionsForUser(
   }
 
   try {
-    const html = decompressHtml(rev.snapshot);
+    const html = decompressRevisionContent(rev.snapshot);
     const mentions = extractMentionsFromHtml(html);
     const count = mentions.filter((m) => m.email === userEmail).length;
 

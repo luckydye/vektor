@@ -2109,11 +2109,12 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/documents?limi
 - **Behavior**: `contentType` is only needed when importing a source format such as
   Markdown. For a JSON body, the server otherwise selects the expected representation
   for known document types and falls back to HTML. A raw body's `Content-Type` describes
-  its content. HTML, Markdown, and unknown inputs are sanitized as HTML. Serialized
-  document types require the JSON body. `type: "workflow"` additionally requires the
-  space's `workflowCreationEnabled` preference not to be `false` (else `403`).
-- **Returns**: `201 { document }`. `400` for missing content, an invalid parent, or a
-  reserved property key.
+  its content. HTML, Markdown, and unknown inputs are sanitized as HTML; serialized
+  document content is stored unchanged. `type: "workflow"` additionally requires the
+  space's `workflowCreationEnabled` preference not to be `false` (else `403`). Content
+  must be a string but may be empty.
+- **Returns**: `201 { document }`. `400` when JSON `content` is omitted or is not a
+  string, or for an invalid parent or reserved property key.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -2190,9 +2191,10 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/documents/archived?limit=1"
 - **Query**: `rev?` (int ≥1 — fetch a specific revision instead of current content),
   `draft` (`"true"` — bypass published-revision resolution), `live` (`"true"` —
   read from the in-memory Yjs collaboration room if the doc is open).
-- **Behavior**: `Accept: text/markdown` or `text/plain` returns the content
-  converted to Markdown instead of JSON. Workflow-run-type documents (internal) are
-  hidden (`404`). CORS headers (`Access-Control-Allow-Origin: *`) are added for
+- **Behavior**: `Accept: text/markdown` or `text/plain` returns rich-text content
+  converted to Markdown instead of JSON. Serialized document content is returned
+  unchanged as `text/plain`. Workflow-run-type documents (internal) are hidden (`404`).
+  CORS headers (`Access-Control-Allow-Origin: *`) are added for
   cross-host embedding. `?rev=` serving exactly the published revision needs no extra
   privilege — the plain read already buys that content — but its metadata does: without
   the `view_history` feature the response carries only `{ rev, content, status: null }`.
@@ -2251,11 +2253,14 @@ Ship on the 21st.
 - **Query**: `publish=true` — also publish the newly created revision.
 - **Body**: JSON — either `{ content: string }` (full content replacement) or
   `{ restore: true }` (unarchive the document; cannot combine with `content`). Or send a
-  raw non-JSON body whose `Content-Type` describes the submitted input.
+  raw non-JSON body whose `Content-Type` describes the submitted input. JSON updates do
+  not accept `contentType`; use a raw body when the input needs content-type conversion.
 - **Behavior**: documents with `document.readonly` set always reject writes with
-  `403`. HTML input is sanitized and creates a revision. Serialized input is stored
-  without an HTML revision; it cannot be combined with `publish=true` and must use the
-  JSON body.
+  `403`. Every explicit replacement creates a revision and may be combined with
+  `publish=true`. Serialized document content is stored unchanged; other input is
+  normalized and sanitized as HTML. Either representation may be submitted as JSON or
+  a raw body. Replacement content may be an empty string, which deliberately clears the
+  document body.
 - **Returns**: `200 { document }` — **`content` is omitted** from the response to avoid
   re-serializing large payloads (the client already has what it sent). A restore
   answers `200 { success: true }`. `404` if the document is missing.
@@ -2357,7 +2362,8 @@ Creates a revision, or a suggestion against one.
 - **Behavior**: readonly documents reject with `403`. `mode: "suggestion"` creates a
   pending-status suggestion revision instead of a normal one, based on the published
   revision or else the latest saved one; a document with neither is a `400`. Input is
-  normalized and sanitized as HTML.
+  normalized and sanitized as HTML, except serialized document content, which is stored
+  unchanged.
 - **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, status,
   message, createdAt, createdBy } }`.
 
@@ -2514,10 +2520,11 @@ curl -sS -b "$COOKIE" \
 - **Query**: `rev` (int ≥1, required), `base?` (int ≥1 — defaults to the revision this
   one was meant to change: its parent for a suggestion, else the document's published
   revision), `format` (`"html"` for an inline `<ins>`/`<del>` redline; default a unified
-  diff patch via the `diff` package).
-- **Returns**: `200` `text/plain` unified patch, or `text/plain` inline HTML redline.
-  Either way the resolved base comes back in `X-Diff-Base-Rev`, so a caller that took
-  the default can name both sides. `400` if no comparable base revision/content exists.
+  diff patch via the `diff` package). Serialized document types use an escaped source
+  patch instead of an HTML redline.
+- **Returns**: `200` `text/plain` unified patch, or `text/html` for the rendered diff.
+  Either way the resolved base comes back in `X-Diff-Base-Rev`, so a caller that took the
+  default can name both sides. `400` if no comparable base revision/content exists.
 
 ```bash
 curl -sS -D - -H "Authorization: Bearer $TOKEN" \

@@ -4,26 +4,19 @@ import {
   createMemo,
   createSignal,
   type JSX,
-  Match,
   on,
   onCleanup,
   onMount,
   Show,
-  Switch,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
-import { AppView } from "#components/AppView.tsx";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
-import { CanvasView } from "#components/CanvasView.tsx";
-import {
-  DatabaseDocumentView,
-  type DatabaseExtensionView,
-} from "#components/DatabaseDocumentView.tsx";
 import { DocumentActions } from "#components/DocumentActions.tsx";
+import { DocumentBody } from "#components/DocumentBody.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
 import { DocumentExtensionViews } from "#components/DocumentExtensionViews.tsx";
 import { DocumentProperties } from "#components/DocumentProperties.tsx";
@@ -33,7 +26,6 @@ import { RestoreButton } from "#components/RestoreButton.tsx";
 import { RevisionsSidebar } from "#components/RevisionsSidebar.tsx";
 import { RevisionView } from "#components/RevisionView.tsx";
 import { TitleEditor } from "#components/TitleEditor.tsx";
-import { WorkflowView } from "#components/WorkflowView.tsx";
 import { useQuery } from "#composeables/query.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { editing, resetEditingState } from "#composeables/useEditor.ts";
@@ -223,34 +215,6 @@ export function DocumentPageView(props: Props) {
           (view, index) =>
             view.extensionId === b[index]?.extensionId &&
             view.route.path === b[index]?.route.path,
-        ),
-    },
-  );
-
-  const databaseViews = createMemo<DatabaseExtensionView[], undefined>(
-    () => {
-      if (isDraft() || !isDatabase()) return [];
-
-      return extensions().flatMap((extension) =>
-        (extension.routes || [])
-          .filter((route) => route.placements?.includes("database"))
-          .map((route) => ({
-            extensionId: extension.id,
-            extensionName: extension.name,
-            route,
-          })),
-      );
-    },
-    undefined,
-    {
-      equals: (a, b) =>
-        a.length === b.length &&
-        a.every(
-          (view, index) =>
-            view.extensionId === b[index]?.extensionId &&
-            view.extensionName === b[index]?.extensionName &&
-            view.route.path === b[index]?.route.path &&
-            view.route.title === b[index]?.route.title,
         ),
     },
   );
@@ -678,45 +642,15 @@ export function DocumentPageView(props: Props) {
                           spaceId={currentSpace()?.id as string}
                         />
 
-                        <Switch
-                          fallback={
-                            <DocumentContent
-                              spaceId={currentSpace()?.id as string}
-                              documentId={doc()?.id}
-                              initialHtml={doc()?.content}
-                              documentType={documentType()}
-                              readonly={isReadonly()}
-                            />
-                          }
-                        >
-                          <Match when={isApp()}>
-                            <AppView html={doc()?.content || ""} />
-                          </Match>
-                          <Match when={isWorkflow()}>
-                            <WorkflowView
-                              documentId={doc()?.id as string}
-                              spaceId={currentSpace()?.id as string}
-                            />
-                          </Match>
-                          <Match when={isDatabase()}>
-                            <DatabaseDocumentView
-                              databaseDocumentId={doc()?.id as string}
-                              spaceId={currentSpace()?.id as string}
-                              views={databaseViews()}
-                              viewConfig={doc()?.properties._databaseViews}
-                              schemaJson={
-                                optionalPropertyValueToText(doc()?.properties._schema) ??
-                                undefined
-                              }
-                            />
-                          </Match>
-                          <Match when={isCanvas()}>
-                            <CanvasView
-                              documentId={doc()?.id}
-                              spaceId={currentSpace()?.id as string}
-                            />
-                          </Match>
-                        </Switch>
+                        <DocumentBody
+                          content={doc()?.content ?? ""}
+                          documentId={doc()?.id as string}
+                          documentType={documentType()}
+                          extensions={extensions()}
+                          properties={doc()?.properties ?? {}}
+                          readonly={isReadonly()}
+                          spaceId={currentSpace()?.id as string}
+                        />
                       </Show>
                     </div>
 

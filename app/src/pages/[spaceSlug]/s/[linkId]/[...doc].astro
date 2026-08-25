@@ -143,9 +143,9 @@ const publishedContent = await getRevisionContent(
 );
 if (publishedContent === null) return notFound;
 
-const readShadowHtml = renderDocumentReadShadowHtml(publishedContent, {
-  readonly: true,
-});
+const readShadowHtml = rendersAsHtml
+  ? renderDocumentReadShadowHtml(publishedContent, { readonly: true })
+  : "";
 
 // Attachment requests need the link and, when protected, proof of its password.
 Astro.cookies.set(

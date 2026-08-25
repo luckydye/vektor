@@ -140,7 +140,9 @@ Positional arguments that contain `=` (like `key=value`) are passed through corr
 
 `prepareDocumentContent` in `src/documents/content.ts` converts markdown to HTML when the submitted content type is a markdown MIME type.
 
-Send `Content-Type: text/markdown` for raw markdown, or `Content-Type: application/json` with `{ contentType: "text/markdown", content: "..." }` to get conversion.
+`document create` sends JSON with `{ contentType: "text/markdown", content: "..." }`.
+`document write` sends a raw body with `Content-Type: text/markdown`; the update API
+does not read `contentType` from a JSON body.
 
 ### Frontmatter is parsed CLI-side
 

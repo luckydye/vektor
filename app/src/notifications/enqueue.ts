@@ -21,6 +21,7 @@ import {
 } from "#db/space/emailOutbox.ts";
 import { getRevisionContent } from "#db/space/revisions.ts";
 import { getUniqueMentionedEmails } from "#documents/mentions.ts";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 
 async function mentionedUserIds(html: string | null): Promise<string[]> {
@@ -64,14 +65,16 @@ export async function enqueueDocumentPublishedEmails(params: {
   publicationId: number;
   revision: number;
   previousPublishedRevision: number | null;
-  publishedHtml: string;
+  documentType: string | null | undefined;
+  publishedContent: string;
   actorId: string;
 }): Promise<number> {
   const store = await openSpaceStore(params.spaceId);
-  const [contributors, mentioned, previousHtml] = await Promise.all([
+  const contentIsHtml = !isSerializedDocumentType(params.documentType);
+  const [contributors, mentioned, previousContent] = await Promise.all([
     listDocumentContributorIds(store, params.documentId),
-    mentionedUserIds(params.publishedHtml),
-    params.previousPublishedRevision === null
+    contentIsHtml ? mentionedUserIds(params.publishedContent) : [],
+    !contentIsHtml || params.previousPublishedRevision === null
       ? null
       : getRevisionContent(store, params.documentId, params.previousPublishedRevision),
   ]);
@@ -79,7 +82,7 @@ export async function enqueueDocumentPublishedEmails(params: {
   // A mention is news the first time it reaches a published revision. Everyone
   // mentioned earlier stays on the generic fan-out, or every later publish
   // would announce the same mention again.
-  const carriedOver = new Set(await mentionedUserIds(previousHtml));
+  const carriedOver = new Set(await mentionedUserIds(previousContent));
   const newlyMentioned = mentioned.filter((userId) => !carriedOver.has(userId));
   const announced = new Set(newlyMentioned);
 

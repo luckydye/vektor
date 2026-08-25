@@ -13,6 +13,7 @@ import {
 import { isServer } from "solid-js/web";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { useSpace } from "#composeables/useSpace.ts";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { AppView } from "./AppView.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -42,6 +43,17 @@ export function RevisionView(props: Props) {
   const renderedHtml = createMemo(() =>
     showingDiff() ? diffContent() : revisionContent(),
   );
+  const diffDescription = createMemo(() => {
+    const base = diffBaseNumber();
+    if (isSerializedDocumentType(props.documentType)) {
+      return base === null
+        ? "Source changes from the published version."
+        : `Source changes from revision ${base}.`;
+    }
+    return base === null
+      ? "Changes from the published version are shown inline."
+      : `Changes from revision ${base} are shown inline.`;
+  });
 
   const [docViewEl, setDocViewEl] = createSignal<DocumentViewElement | null>(null);
 
@@ -188,17 +200,17 @@ export function RevisionView(props: Props) {
                     }
                   >
                     <Match when={showingDiff()}>
-                      {diffBaseNumber() === null
-                        ? "Changes from the published version are shown inline."
-                        : `Changes from revision ${diffBaseNumber()} are shown inline.`}
-                      <span class="inline-flex items-center gap-2">
-                        <span class="rounded-xs bg-green-100 px-1 text-green-700 no-underline">
-                          added
+                      {diffDescription()}
+                      <Show when={!isSerializedDocumentType(props.documentType)}>
+                        <span class="inline-flex items-center gap-2">
+                          <span class="rounded-xs bg-green-100 px-1 text-green-700 no-underline">
+                            added
+                          </span>
+                          <span class="rounded-xs bg-red-100 px-1 text-red-700 line-through">
+                            removed
+                          </span>
                         </span>
-                        <span class="rounded-xs bg-red-100 px-1 text-red-700 line-through">
-                          removed
-                        </span>
-                      </span>
+                      </Show>
                     </Match>
                     <Match when={viewingSuggestion()}>
                       This suggestion is read-only until it is applied.
@@ -217,18 +229,26 @@ export function RevisionView(props: Props) {
           </div>
         </BottomBanner>
 
-        <Show
-          when={props.documentType === "app" && !showingDiff()}
+        <Switch
           fallback={
             <div>
               <document-view ref={setDocViewEl as never} />
             </div>
           }
         >
-          <div class="h-full">
-            <AppView html={revisionContent()} />
-          </div>
-        </Show>
+          <Match when={props.documentType === "app" && !showingDiff()}>
+            <div class="h-full">
+              <AppView html={revisionContent()} />
+            </div>
+          </Match>
+          <Match
+            when={isSerializedDocumentType(props.documentType) && !showingDiff()}
+          >
+            <pre class="overflow-auto whitespace-pre-wrap p-m font-mono text-size-small">
+              {revisionContent()}
+            </pre>
+          </Match>
+        </Switch>
       </div>
     </Show>
   );

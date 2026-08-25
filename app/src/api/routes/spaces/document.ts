@@ -156,7 +156,7 @@ async function handlePublishedRevisionPatch(
     revToPublish === null
       ? null
       : await getRevisionContent(await openSpaceStore(spaceId), documentId, revToPublish);
-  if (revToPublish !== null && !revisionContent) {
+  if (revToPublish !== null && revisionContent === null) {
     throw notFoundResponse("Revision");
   }
 
@@ -183,7 +183,7 @@ async function handlePublishedRevisionPatch(
     return;
   }
 
-  if (!revisionContent) throw notFoundResponse("Revision");
+  if (revisionContent === null) throw notFoundResponse("Revision");
 
   // Publishing a revision also loads it into the draft, so the editor (which
   // always reads doc.content) reflects the revision that is now published.
@@ -204,7 +204,8 @@ async function handlePublishedRevisionPatch(
       publicationId: auditEntry.id,
       revision: revToPublish,
       previousPublishedRevision: existing?.publishedRev ?? null,
-      publishedHtml: revisionContent,
+      documentType: existing?.type,
+      publishedContent: revisionContent,
       actorId: userId,
     });
   } catch (error) {
@@ -321,7 +322,7 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
-      if (!content) {
+      if (content === null) {
         throw notFoundResponse("Revision");
       }
 
@@ -364,11 +365,21 @@ export const GET: ApiRouteHandler = (context) =>
 
     const accept = context.req.raw.headers.get("Accept") ?? "";
     if (accept.includes("text/markdown") || accept.includes("text/plain")) {
+      const serialized = isSerializedDocumentType(document.type);
       return withCors(
-        new Response(htmlToMarkdown(document.content ?? ""), {
-          status: 200,
-          headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        }),
+        new Response(
+          serialized
+            ? (document.content ?? "")
+            : htmlToMarkdown(document.content ?? ""),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": serialized
+                ? "text/plain; charset=utf-8"
+                : "text/markdown; charset=utf-8",
+            },
+          },
+        ),
       );
     }
 
@@ -444,7 +455,6 @@ export const PUT: ApiRouteHandler = (context) =>
 
     const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     let content: string;
-    let contentFormat: "html" | "serialized";
 
     if (contentType === "application/json") {
       const body = await parseJsonBody(context.req.raw);
@@ -487,31 +497,18 @@ export const PUT: ApiRouteHandler = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      if (isSerializedDocumentType(existingDoc.type)) {
-        content = jsonContent;
-        contentFormat = "serialized";
-      } else {
-        content = prepareDocumentContent(jsonContent, null);
-        contentFormat = "html";
-      }
+      content = isSerializedDocumentType(existingDoc.type)
+        ? jsonContent
+        : prepareDocumentContent(jsonContent, null);
     } else {
       if (documentIsReadonly(existingDoc)) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
-      if (isSerializedDocumentType(existingDoc.type)) {
-        throw badRequestResponse(
-          "Serialized documents require an application/json body",
-        );
-      }
-
       const rawContent = await context.req.raw.text();
-      content = prepareDocumentContent(rawContent, contentType);
-      contentFormat = "html";
-    }
-
-    if (publish && contentFormat !== "html") {
-      throw badRequestResponse("Only HTML content can be published");
+      content = isSerializedDocumentType(existingDoc.type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
     }
 
     let document = await updateDocument(store, id, content, existingDoc.type);
@@ -521,31 +518,23 @@ export const PUT: ApiRouteHandler = (context) =>
 
     replaceLiveDocumentContent(spaceId, id, existingDoc.type, content);
 
-    // An HTML replacement is a revision operation. Serialized replacements are
-    // draft writes owned by their caller and never enter the HTML history.
-    if (userId && contentFormat === "html") {
+    // Revisions are representation-agnostic snapshots. Collaborative draft
+    // persistence remains revisionless; an explicit replacement does not.
+    if (userId) {
       const revision = await createRevision(store, id, content, userId, {
         message: "Document updated",
       });
       if (publish === true) {
         await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev);
-        // updateDocument returns before the newly-created revision is assigned
-        // to publishedRev. Return the final canonical document so clients can
-        // replace their optimistic publish state with the real revision number.
-        const publishedDocument = await getDocument(store, id);
-        if (!publishedDocument) {
-          throw notFoundResponse("Document");
-        }
-        document = publishedDocument;
       }
-    } else if (userId) {
-      await createAuditLog(store, {
-        spaceId,
-        docId: id,
-        userId,
-        event: "save",
-        details: { message: "Document updated" },
-      });
+
+      // updateDocument returned before the revision pointers changed. Return
+      // their final canonical values so clients do not cache stale history.
+      const savedDocument = await getDocument(store, id);
+      if (!savedDocument) {
+        throw notFoundResponse("Document");
+      }
+      document = savedDocument;
     }
 
     // Omit `content` from the response. Echoing the (potentially tens-of-MB)
@@ -800,21 +789,25 @@ export const POST: ApiRouteHandler = (context) =>
     // rather than a critique of their payload. Only `mode` is read first.
     await verifyRevisionWrite(spaceId, documentId, user.id, mode);
 
-    let html: string;
+    let revisionContent: string;
     let message: string | undefined;
 
     if (isJson) {
       if (!body.html || typeof body.html !== "string") {
-        throw badRequestResponse("HTML content is required and must be a string");
+        throw badRequestResponse(
+          "Revision content is required and must be a string",
+        );
       }
 
       if (body.contentType !== undefined && typeof body.contentType !== "string") {
         throw badRequestResponse("Content type must be a string");
       }
-      html = prepareDocumentContent(
-        body.html,
-        typeof body.contentType === "string" ? body.contentType : "text/html",
-      );
+      revisionContent = isSerializedDocumentType(document.type)
+        ? body.html
+        : prepareDocumentContent(
+            body.html,
+            typeof body.contentType === "string" ? body.contentType : "text/html",
+          );
       message = typeof body.message === "string" ? body.message : undefined;
     } else {
       const rawContent = await context.req.raw.text();
@@ -822,13 +815,23 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      html = prepareDocumentContent(rawContent, contentType);
+      revisionContent = isSerializedDocumentType(document.type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
     }
 
     const revision =
       mode === "suggestion"
-        ? await createSuggestion(store, documentId, html, user.id, message)
-        : await createRevision(store, documentId, html, user.id, { message });
+        ? await createSuggestion(
+            store,
+            documentId,
+            revisionContent,
+            user.id,
+            message,
+          )
+        : await createRevision(store, documentId, revisionContent, user.id, {
+            message,
+          });
 
     if (!revision) {
       // Only createSuggestion answers null: no revision to base one on, or the

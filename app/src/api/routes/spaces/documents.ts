@@ -240,12 +240,9 @@ export const POST: ApiRouteHandler = (context) =>
       const rawContent = await context.req.raw.text();
       const inferredType = getDocumentTypeForContentType(contentType);
       type = context.req.raw.headers.get("X-Document-Type") ?? inferredType;
-      if (isSerializedDocumentType(type)) {
-        throw badRequestResponse(
-          "Serialized documents require an application/json body",
-        );
-      }
-      content = prepareDocumentContent(rawContent, contentType);
+      content = isSerializedDocumentType(type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
       const titleHeader = context.req.raw.headers.get("X-Document-Title");
       const slugHeader = context.req.raw.headers.get("X-Document-Slug");
       if (slugHeader) slugHint = slugHeader;
