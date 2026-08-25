@@ -48,16 +48,15 @@ import {
   resolvePublishedDocumentContent,
 } from "#db/space/revisions.ts";
 import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
-import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
+import { getMimeType, prepareDocumentContent } from "#documents/content.ts";
 import {
   type DocumentPropertyPatch,
   InvalidDocumentPropertyPatchError,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
 import {
-  contentIsHtml,
   documentIsReadonly,
-  readOnlyDocumentTypes,
+  isSerializedDocumentType,
   workflowRunDocumentType,
 } from "#documents/types.ts";
 import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
@@ -73,7 +72,6 @@ import {
   roomKey,
   setYRoomWriteBlocked,
 } from "#realtime/yjsRooms.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
 
 type DocumentPatchBody = {
@@ -446,7 +444,7 @@ export const PUT: ApiRouteHandler = (context) =>
 
     const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     let content: string;
-    let nextType: string | null | undefined;
+    let contentFormat: "html" | "serialized";
 
     if (contentType === "application/json") {
       const body = await parseJsonBody(context.req.raw);
@@ -485,45 +483,48 @@ export const PUT: ApiRouteHandler = (context) =>
         throw forbiddenResponse("Cannot update readonly document");
       }
 
-      if (!jsonContent || typeof jsonContent !== "string") {
+      if (typeof jsonContent !== "string") {
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
-      nextType = existingDoc.type;
+      if (isSerializedDocumentType(existingDoc.type)) {
+        content = jsonContent;
+        contentFormat = "serialized";
+      } else {
+        content = prepareDocumentContent(jsonContent, null);
+        contentFormat = "html";
+      }
     } else {
       if (documentIsReadonly(existingDoc)) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
-      const rawContent = await context.req.raw.text();
-      if (!rawContent) {
-        throw badRequestResponse("Content is required and must be a string");
+      if (isSerializedDocumentType(existingDoc.type)) {
+        throw badRequestResponse(
+          "Serialized documents require an application/json body",
+        );
       }
 
-      nextType = existingDoc.type;
-      content = toHtmlIfMarkdown(rawContent, contentType, nextType);
+      const rawContent = await context.req.raw.text();
+      content = prepareDocumentContent(rawContent, contentType);
+      contentFormat = "html";
     }
 
-    // Canvas/app documents store serialized JSON, not HTML — parsing it as
-    // markup is meaningless and, on tens-of-MB canvases, an expensive
-    // event-loop-blocking scan, so skip it for non-HTML types.
-    const contentSanitized = contentIsHtml(nextType)
-      ? sanitizeDocumentHtml(content)
-      : content;
+    if (publish && contentFormat !== "html") {
+      throw badRequestResponse("Only HTML content can be published");
+    }
 
-    // createRevision records the canonical content-save audit event, including
-    // its revision ID. Do not also record the draft write or the activity feed
-    // shows a duplicate edit without revision actions.
-    let document = await updateDocument(store, id, contentSanitized, nextType);
+    let document = await updateDocument(store, id, content, existingDoc.type);
     if (!document) {
       throw notFoundResponse("Document");
     }
 
-    replaceLiveDocumentContent(spaceId, id, nextType, contentSanitized);
+    replaceLiveDocumentContent(spaceId, id, existingDoc.type, content);
 
-    if (userId) {
-      const revision = await createRevision(store, id, contentSanitized, userId, {
+    // An HTML replacement is a revision operation. Serialized replacements are
+    // draft writes owned by their caller and never enter the HTML history.
+    if (userId && contentFormat === "html") {
+      const revision = await createRevision(store, id, content, userId, {
         message: "Document updated",
       });
       if (publish === true) {
@@ -537,6 +538,14 @@ export const PUT: ApiRouteHandler = (context) =>
         }
         document = publishedDocument;
       }
+    } else if (userId) {
+      await createAuditLog(store, {
+        spaceId,
+        docId: id,
+        userId,
+        event: "save",
+        details: { message: "Document updated" },
+      });
     }
 
     // Omit `content` from the response. Echoing the (potentially tens-of-MB)
@@ -649,11 +658,6 @@ export const PATCH: ApiRouteHandler = (context) =>
       }
 
       if (readonly !== undefined) {
-        if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
-          throw badRequestResponse(
-            `Documents of type "${existingDoc.type}" are readonly`,
-          );
-        }
         await handleReadonlyPatch(spaceId, id, userId, readonly);
       }
 
@@ -769,9 +773,12 @@ export const POST: ApiRouteHandler = (context) =>
     // A non-JSON body carries content and nothing else, so it can only ever be
     // a full revision.
     const body = isJson
-      ? await parseJsonBody<{ html?: unknown; message?: unknown; mode?: unknown }>(
-          context.req.raw,
-        )
+      ? await parseJsonBody<{
+          html?: unknown;
+          contentType?: unknown;
+          message?: unknown;
+          mode?: unknown;
+        }>(context.req.raw)
       : { mode: "revision" as const };
 
     // `null` and scalars parse as valid JSON, and reading `mode` off them throws
@@ -801,7 +808,13 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("HTML content is required and must be a string");
       }
 
-      html = toHtmlIfMarkdown(body.html, contentType, document.type);
+      if (body.contentType !== undefined && typeof body.contentType !== "string") {
+        throw badRequestResponse("Content type must be a string");
+      }
+      html = prepareDocumentContent(
+        body.html,
+        typeof body.contentType === "string" ? body.contentType : "text/html",
+      );
       message = typeof body.message === "string" ? body.message : undefined;
     } else {
       const rawContent = await context.req.raw.text();
@@ -809,7 +822,7 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      html = toHtmlIfMarkdown(rawContent, contentType, document.type);
+      html = prepareDocumentContent(rawContent, contentType);
     }
 
     const revision =

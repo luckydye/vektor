@@ -28,15 +28,14 @@ import { getSpace } from "#db/space/spaces.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,
-  toHtmlIfMarkdown,
+  prepareDocumentContent,
 } from "#documents/content.ts";
 import {
   propertyValueToText,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
-import { contentIsHtml } from "#documents/types.ts";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
@@ -194,6 +193,7 @@ export const POST: ApiRouteHandler = (context) =>
     let slugHint: string | undefined;
     let createdAt: Date | undefined;
     let updatedAt: Date | undefined;
+    let readonly = false;
 
     if (contentType === "application/json") {
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
@@ -204,10 +204,11 @@ export const POST: ApiRouteHandler = (context) =>
       const jsonSlug = body.slug;
       const jsonCreatedAt = body.createdAt;
       const jsonUpdatedAt = body.updatedAt;
+      const jsonReadonly = body.readonly;
       const jsonBodyContentType =
         typeof body.contentType === "string" ? body.contentType : undefined;
 
-      if (!jsonContent || typeof jsonContent !== "string") {
+      if (typeof jsonContent !== "string") {
         throw badRequestResponse("Content is required and must be a string");
       }
 
@@ -220,6 +221,10 @@ export const POST: ApiRouteHandler = (context) =>
           : undefined;
       parentId = typeof jsonParentId === "string" ? jsonParentId : undefined;
       type = typeof jsonType === "string" ? jsonType : undefined;
+      if (jsonReadonly !== undefined && typeof jsonReadonly !== "boolean") {
+        throw badRequestResponse("Readonly must be a boolean");
+      }
+      readonly = jsonReadonly ?? false;
       if (jsonSlug && typeof jsonSlug === "string") slugHint = jsonSlug;
       createdAt = parseDocumentTimestamp(jsonCreatedAt, "createdAt");
       updatedAt = parseDocumentTimestamp(jsonUpdatedAt, "updatedAt");
@@ -228,17 +233,19 @@ export const POST: ApiRouteHandler = (context) =>
           "Custom document timestamps require access-token or job-token authentication",
         );
       }
-      content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType, type);
+      if (!isSerializedDocumentType(type)) {
+        content = prepareDocumentContent(content, jsonBodyContentType ?? null);
+      }
     } else {
       const rawContent = await context.req.raw.text();
-      if (!rawContent) {
-        throw badRequestResponse("Content is required and must be a string");
+      const inferredType = getDocumentTypeForContentType(contentType);
+      type = context.req.raw.headers.get("X-Document-Type") ?? inferredType;
+      if (isSerializedDocumentType(type)) {
+        throw badRequestResponse(
+          "Serialized documents require an application/json body",
+        );
       }
-
-      type =
-        context.req.raw.headers.get("X-Document-Type") ??
-        getDocumentTypeForContentType(contentType);
-      content = toHtmlIfMarkdown(rawContent, contentType, type);
+      content = prepareDocumentContent(rawContent, contentType);
       const titleHeader = context.req.raw.headers.get("X-Document-Title");
       const slugHeader = context.req.raw.headers.get("X-Document-Slug");
       if (slugHeader) slugHint = slugHeader;
@@ -249,20 +256,12 @@ export const POST: ApiRouteHandler = (context) =>
         };
     }
 
-    if (!content || typeof content !== "string") {
-      throw badRequestResponse("Content is required and must be a string");
-    }
-
     if (type === "workflow") {
       const space = await getSpace(spaceId);
       if (!isWorkflowCreationEnabled(space?.preferences)) {
         throw forbiddenResponse("Workflow creation is disabled for this space");
       }
     }
-
-    // Sanitized at rest, on the same boundary the save and collaboration paths
-    // use. Non-HTML types (canvas, app) store serialized JSON, not markup.
-    if (contentIsHtml(type)) content = sanitizeDocumentHtml(content);
 
     const titleValue = properties?.title;
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
@@ -274,11 +273,7 @@ export const POST: ApiRouteHandler = (context) =>
       userId,
       slugBase,
       content,
-      properties,
-      parentId,
-      type,
-      createdAt,
-      updatedAt,
+      { properties, parentId, type, readonly, createdAt, updatedAt },
     ).catch((error) => {
       if (
         error instanceof InvalidDocumentParentError ||

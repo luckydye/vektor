@@ -10,16 +10,17 @@ import type { DocNode } from "#documents/schema/specs.ts";
 import { fragmentToNodes } from "#documents/schema/yDecode.ts";
 import { applyDocToFragment, docNodesToY } from "#documents/schema/yEncode.ts";
 import {
-  canvasSnapshotFromDoc,
+  type CollaborationContentFormat,
   contentFromDoc,
   docNodeFromContent,
+  mapSnapshotFromDoc,
   toCleanHtml,
 } from "#documents/serialization.ts";
 import {
   deserializeDocContent,
   serializeDocContent,
 } from "#documents/serializationPool.ts";
-import { contentIsHtml, documentIsReadonly } from "#documents/types.ts";
+import { documentIsReadonly } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced, tracedSync } from "#observability/trace.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
@@ -47,6 +48,19 @@ export interface YRoom {
 
 export const yRooms = new Map<string, YRoom>();
 
+const knownCollaborationContentFormats: Readonly<
+  Record<string, CollaborationContentFormat>
+> = {
+  canvas: "map-snapshot",
+  workflow: "source-code",
+};
+
+function collaborationContentFormat(
+  type: string | null | undefined,
+): CollaborationContentFormat {
+  return knownCollaborationContentFormats[type ?? ""] ?? "html";
+}
+
 export function roomKey(spaceId: string, documentId: string): string {
   return `${spaceId}:${documentId}`;
 }
@@ -67,7 +81,9 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
   if (!content) return new Y.Doc();
   // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
   // event loop and spikes memory; the pool falls back to in-process on failure.
-  return traced("loadYDoc", () => deserializeDocContent(meta.type, content));
+  return traced("loadYDoc", () =>
+    deserializeDocContent(collaborationContentFormat(meta.type), content),
+  );
 }
 
 /**
@@ -207,14 +223,14 @@ export function getLiveDocumentContent(
   type: string | null | undefined,
   persisted: string,
 ): string {
+  const format = collaborationContentFormat(type);
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
-    if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
-    if (type === "workflow") return contentFromDoc(type, room.doc);
+    if (format === "map-snapshot") return JSON.stringify(mapSnapshotFromDoc(room.doc));
+    if (format === "source-code") return contentFromDoc(format, room.doc);
     return toCleanHtml(room.doc);
   }
-  if (type === "canvas" || type === "workflow" || isJsonContent(persisted))
-    return persisted;
+  if (format !== "html" || isJsonContent(persisted)) return persisted;
   return normalizeHtmlContent(persisted);
 }
 
@@ -239,13 +255,14 @@ export function replaceLiveDocumentContent(
   if (!room?.doc) return false;
 
   const doc = room.doc;
+  const format = collaborationContentFormat(type);
   const updates: Uint8Array[] = [];
   const captureUpdate = (update: Uint8Array) => updates.push(update);
 
   doc.on("update", captureUpdate);
   try {
     doc.transact(() => {
-      if (type === "canvas") {
+      if (format === "map-snapshot") {
         const snapshot = JSON.parse(content) as { shapes?: unknown; strokes?: unknown };
         syncCanvasCollection(
           doc.getMap<Y.Map<unknown>>("canvas.shapes"),
@@ -259,7 +276,7 @@ export function replaceLiveDocumentContent(
       }
       applyDocToFragment(
         doc.getXmlFragment("default"),
-        docNodeFromContent(type, content),
+        docNodeFromContent(format, content),
       );
     }, "server-edit");
   } finally {
@@ -320,22 +337,20 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   }
 
   const doc = room.doc;
+  const format = collaborationContentFormat(meta.type);
   const serialized = await traced("persist.serialize", () =>
-    serializeDocContent(meta.type, doc),
+    serializeDocContent(format, doc),
   );
-  const content = contentIsHtml(meta.type)
-    ? sanitizeDocumentHtml(serialized)
-    : serialized;
+  const content = format === "html" ? sanitizeDocumentHtml(serialized) : serialized;
 
   const store = await openSpaceStore(ids.spaceId);
   await traced("persist.write", () =>
     updateDocument(store, ids.documentId, content, meta.type),
   );
 
-  // The live draft is persisted on every edit, but revisions are periodic
-  // checkpoints. Only HTML documents have collaborative revision history;
-  // canvases and other serialized document types remain draft-only.
-  if (!contentIsHtml(meta.type) || !room.lastEditorId) return;
+  // HTML collaboration owns checkpoint history. Canvas and workflow
+  // collaboration persist serialized drafts without entering that history.
+  if (format !== "html" || !room.lastEditorId) return;
 
   const latestRevisionCreatedAt = await getLatestRevisionCreatedAt(
     await openSpaceStore(ids.spaceId),
@@ -737,6 +752,8 @@ export async function transformDocumentContent(
     throw new Error("Cannot edit readonly document");
   }
 
+  const format = collaborationContentFormat(dbDoc.type);
+
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
     const persisted =
@@ -747,11 +764,15 @@ export async function transformDocumentContent(
     // without a live room (e.g. the metrics-logger job). Other ops still
     // normalize so mid-document line references stay accurate.
     const skipNormalize =
-      dbDoc.type === "canvas" ||
+      format !== "html" ||
       isJsonContent(persisted) ||
       asBlockSpliceInsert(operations) !== null;
     const base = skipNormalize ? persisted : normalizeHtmlContent(persisted);
-    return { content: transform(base), live: false };
+    const transformed = transform(base);
+    return {
+      content: format === "html" ? sanitizeDocumentHtml(transformed) : transformed,
+      live: false,
+    };
   }
 
   if (room.writeBlocked) {
@@ -762,8 +783,8 @@ export async function transformDocumentContent(
   const updates: Uint8Array[] = [];
   const captureUpdate = (update: Uint8Array) => updates.push(update);
 
-  if (dbDoc.type === "canvas") {
-    const nextRaw = transform(JSON.stringify(canvasSnapshotFromDoc(doc), null, 2));
+  if (format === "map-snapshot") {
+    const nextRaw = transform(JSON.stringify(mapSnapshotFromDoc(doc), null, 2));
     let next: { shapes?: unknown; strokes?: unknown };
     try {
       next = JSON.parse(nextRaw) as { shapes?: unknown; strokes?: unknown };
@@ -774,7 +795,7 @@ export async function transformDocumentContent(
       throw new Error("canvas content must be an object with shapes and strokes");
     }
 
-    const shapesBefore = canvasSnapshotFromDoc(doc).shapes;
+    const shapesBefore = mapSnapshotFromDoc(doc).shapes;
 
     doc.on("update", captureUpdate);
     try {
@@ -790,7 +811,7 @@ export async function transformDocumentContent(
       broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
     }
 
-    const shapesAfter = canvasSnapshotFromDoc(doc).shapes;
+    const shapesAfter = mapSnapshotFromDoc(doc).shapes;
     broadcastCanvasAgentPresence(
       roomKey(spaceId, documentId),
       documentId,
@@ -798,7 +819,29 @@ export async function transformDocumentContent(
       changedCanvasShapes(shapesBefore, shapesAfter),
     );
 
-    return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
+    return { content: JSON.stringify(mapSnapshotFromDoc(doc)), live: true };
+  }
+
+  if (format === "source-code") {
+    const transformed = transform(contentFromDoc(format, doc));
+
+    doc.on("update", captureUpdate);
+    try {
+      doc.transact(() => {
+        applyDocToFragment(
+          doc.getXmlFragment("default"),
+          docNodeFromContent(format, transformed),
+        );
+      }, "server-edit");
+    } finally {
+      doc.off("update", captureUpdate);
+    }
+
+    for (const update of updates) {
+      broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+    }
+
+    return { content: contentFromDoc(format, doc), live: true };
   }
 
   // Fast path: append/prepend splices only the new blocks into the fragment,
@@ -812,7 +855,10 @@ export async function transformDocumentContent(
     for (const update of updates) {
       broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
     }
-    return { content: await serializeDocContent(dbDoc.type, doc), live: true };
+    return {
+      content: await serializeDocContent(collaborationContentFormat(dbDoc.type), doc),
+      live: true,
+    };
   }
 
   // General path: transform the whole document, then splice only the top-level
@@ -826,7 +872,9 @@ export async function transformDocumentContent(
   // diff needs the per-block strings, and serializing is now a string walk with
   // no DOM behind it, which is what made the off-thread hop worth its cost.
   const currentBlocks = fragmentToNodes(doc.getXmlFragment("default")).map(nodeToHtml);
-  const nextHtml = transform(currentBlocks.join("\n"));
+  const transformed = transform(currentBlocks.join("\n"));
+  const nextHtml =
+    format === "html" ? sanitizeDocumentHtml(transformed) : transformed;
   const { from, remove, blocks } = changedBlockRange(
     currentBlocks,
     htmlToDoc(nextHtml).content ?? [],
@@ -840,5 +888,8 @@ export async function transformDocumentContent(
     broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
   }
 
-  return { content: await serializeDocContent(dbDoc.type, doc), live: true };
+  return {
+    content: await serializeDocContent(collaborationContentFormat(dbDoc.type), doc),
+    live: true,
+  };
 }

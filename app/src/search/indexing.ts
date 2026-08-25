@@ -19,7 +19,7 @@ import {
 } from "#search/embedding.ts";
 import { getEmbeddingModel } from "#search/embeddingRuntime.ts";
 
-const contentIndexedDocumentTypes = new Set(["document", "markdown", "record"]);
+const contentIndexedDocumentTypes = new Set(["document", "record"]);
 
 function contentIsIndexed(type: string | null): boolean {
   return type === null || contentIndexedDocumentTypes.has(type);

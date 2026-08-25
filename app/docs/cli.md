@@ -138,9 +138,9 @@ Positional arguments that contain `=` (like `key=value`) are passed through corr
 
 ### Markdown conversion happens server-side
 
-`toHtmlIfMarkdown` in `src/utils/documentContent.ts` converts markdown to HTML when the document type is `markdown` or the `Content-Type` is a markdown MIME type.
+`prepareDocumentContent` in `src/documents/content.ts` converts markdown to HTML when the submitted content type is a markdown MIME type.
 
-Send `Content-Type: text/markdown` for raw markdown, or `Content-Type: application/json` with `{ type: "markdown", content: "..." }` to get conversion.
+Send `Content-Type: text/markdown` for raw markdown, or `Content-Type: application/json` with `{ contentType: "text/markdown", content: "..." }` to get conversion.
 
 ### Frontmatter is parsed CLI-side
 

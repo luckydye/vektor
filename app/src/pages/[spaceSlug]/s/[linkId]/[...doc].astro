@@ -21,7 +21,6 @@ import {
 } from "#db/space/documents.ts";
 import { getRevisionContent } from "#db/space/revisions.ts";
 import { documentTitle } from "#documents/title.ts";
-import { contentIsHtml } from "#documents/types.ts";
 import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { appLogger } from "#observability/logger.ts";
@@ -135,7 +134,8 @@ if (!record) return notFound;
 const publishedRev = record.publishedRev;
 if (publishedRev === null) return notFound;
 
-const rendersAsHtml = contentIsHtml(record.type);
+const htmlRenderedDocumentTypes = new Set(["document", "record"]);
+const rendersAsHtml = htmlRenderedDocumentTypes.has(record.type ?? "document");
 const publishedContent = await getRevisionContent(
   store,
   documentId,

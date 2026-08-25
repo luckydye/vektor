@@ -362,6 +362,7 @@ export function DocumentActions(props: Props) {
           const duplicate = await api.documents.post(spaceId, {
             content: source.content,
             ...(source.type ? { type: source.type } : {}),
+            ...(source.readonly ? { readonly: true } : {}),
           });
           navigate(`/doc/${duplicate.slug}`);
         } catch (error) {

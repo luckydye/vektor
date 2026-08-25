@@ -2102,11 +2102,15 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/documents?limi
   `properties?` (object of property inits, e.g. `{ title, slug, ... }`),
   `parentId?`, `type?`, `slug?`, `createdAt?`/`updatedAt?` (valid date strings;
   accepted only with access-token or job-token authentication, for imports),
+  `readonly?` (boolean, persisted as the document's initial lock),
   `contentType?` (source content type, e.g. `text/markdown`, converted to HTML).
-  Or raw body (any other `Content-Type`) with `X-Document-Type`,
+  Or a raw non-JSON body with `X-Document-Type`,
   `X-Document-Title`, `X-Document-Slug` headers.
-- **Behavior**: HTML-typed content is sanitized on the way in; canvas/app types store
-  serialized JSON and are left alone. `type: "workflow"` additionally requires the
+- **Behavior**: `contentType` is only needed when importing a source format such as
+  Markdown. For a JSON body, the server otherwise selects the expected representation
+  for known document types and falls back to HTML. A raw body's `Content-Type` describes
+  its content. HTML, Markdown, and unknown inputs are sanitized as HTML. Serialized
+  document types require the JSON body. `type: "workflow"` additionally requires the
   space's `workflowCreationEnabled` preference not to be `false` (else `403`).
 - **Returns**: `201 { document }`. `400` for missing content, an invalid parent, or a
   reserved property key.
@@ -2245,12 +2249,13 @@ Ship on the 21st.
 
 - **Auth**: session, access token or job token; `editor` on this document.
 - **Query**: `publish=true` — also publish the newly created revision.
-- **Body**: JSON — either `{ content: string }` (full content replacement, creates a
-  revision) or `{ restore: true }` (revert to the currently-published revision;
-  cannot combine with `content`). Or raw body (non-JSON content type).
-- **Behavior**: readonly documents (`document.readonly` or in
-  `readOnlyDocumentTypes`) always reject writes with `403`. HTML-typed content is
-  sanitized before saving.
+- **Body**: JSON — either `{ content: string }` (full content replacement) or
+  `{ restore: true }` (unarchive the document; cannot combine with `content`). Or send a
+  raw non-JSON body whose `Content-Type` describes the submitted input.
+- **Behavior**: documents with `document.readonly` set always reject writes with
+  `403`. HTML input is sanitized and creates a revision. Serialized input is stored
+  without an HTML revision; it cannot be combined with `publish=true` and must use the
+  JSON body.
 - **Returns**: `200 { document }` — **`content` is omitted** from the response to avoid
   re-serializing large payloads (the client already has what it sent). A restore
   answers `200 { success: true }`. `404` if the document is missing.
@@ -2288,8 +2293,8 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
     `null`). Loads the revision into the draft (and into the open collaboration room, if
     any), triggers "document published" email notifications plus a "mentioned you" one
     for each user newly mentioned, and is audit-logged.
-  - `readonly: boolean` — lock/unlock the document (types in `readOnlyDocumentTypes`,
-    e.g. CSV, must stay readonly). Persists the live draft before locking.
+  - `readonly: boolean` — lock/unlock the document. Persists the live draft before
+    locking.
     Audit-logged.
 - **Returns**: `200 { success: true }` for a parent/publish/readonly patch. A properties
   patch answers `200 {}`, or `200 { slug }` when a `title` patch also claimed a new
@@ -2345,12 +2350,14 @@ Creates a revision, or a suggestion against one.
   `editor` for a full revision, the `comment` feature on this document for
   `mode: "suggestion"`. Authorized before the content is validated, so a refused caller
   gets that verdict rather than a critique of their payload.
-- **Body**: JSON — `html` (string, required), `message?` (string), `mode?`
-  (`"revision"` | `"suggestion"`, default revision). Or raw body, which can only ever be
-  a full revision.
+- **Body**: JSON — `html` (string, required), `contentType?` (defaults to
+  `text/html`), `message?` (string), `mode?` (`"revision"` | `"suggestion"`,
+  default revision). Or an HTML/Markdown raw body, which can only ever be a full
+  revision. Other raw content types are treated as HTML.
 - **Behavior**: readonly documents reject with `403`. `mode: "suggestion"` creates a
   pending-status suggestion revision instead of a normal one, based on the published
-  revision or else the latest saved one; a document with neither is a `400`.
+  revision or else the latest saved one; a document with neither is a `400`. Input is
+  normalized and sanitized as HTML.
 - **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, status,
   message, createdAt, createdBy } }`.
 
