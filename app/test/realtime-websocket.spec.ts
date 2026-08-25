@@ -1312,6 +1312,7 @@ describe("Realtime WebSocket readonly documents", () => {
     title: string,
     content: string,
     type?: string,
+    readonly?: boolean,
   ): Promise<string> {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
       method: "POST",
@@ -1319,6 +1320,7 @@ describe("Realtime WebSocket readonly documents", () => {
         content,
         properties: { title },
         ...(type ? { type } : {}),
+        ...(readonly !== undefined ? { readonly } : {}),
       }),
     });
     expect(response.status).toBe(201);
@@ -1477,14 +1479,14 @@ describe("Realtime WebSocket readonly documents", () => {
   );
 
   it(
-    "drops Yjs updates for a permanently readonly document type",
+    "drops Yjs updates for a document created readonly",
     async () => {
-      // `csv` is readonly by type (readOnlyDocumentTypes), which the HTTP write
-      // paths already refuse; the room refuses it on the same terms.
+      // The persisted lock is the same verdict used by HTTP and realtime writes.
       const documentId = await createDocument(
-        "Sheet",
-        "<table><tr><td>a</td></tr></table>",
-        "csv",
+        "Readonly document",
+        "<p>locked</p>",
+        "document",
+        true,
       );
       const writer = await connectWebSocket(BASE_URL, testSpaceId);
 

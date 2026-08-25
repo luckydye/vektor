@@ -10,7 +10,7 @@ import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
 
-type DocumentType = "canvas" | "workflow" | "database" | "csv";
+type DocumentType = "canvas" | "workflow" | "database";
 
 const documentOptions: Array<{
   type: DocumentType;
@@ -36,12 +36,6 @@ const documentOptions: Array<{
     description: "Organize and manage data in structured tables.",
     icon: "database",
   },
-  {
-    type: "csv",
-    title: "Spreadsheet",
-    description: "Lay out numbers and records in rows and columns.",
-    icon: "table",
-  },
 ];
 
 export function NewDocumentPicker() {
@@ -56,7 +50,6 @@ export function NewDocumentPicker() {
 
   const availableDocumentOptions = createMemo(() =>
     documentOptions.filter((option) => {
-      if (option.type === "csv") return import.meta.env.DEV;
       if (option.type === "workflow") {
         return isWorkflowCreationEnabled(currentSpace()?.preferences);
       }

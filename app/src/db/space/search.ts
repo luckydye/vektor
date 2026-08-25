@@ -4,7 +4,7 @@
  * `#search/ranking.ts`, what goes into the index in `#search/indexing.ts`.
  */
 
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, file as fileTable, property } from "#db/schema/space.ts";
@@ -110,8 +110,8 @@ export interface DocumentIndex {
 }
 
 /**
- * The type on its own, so a canvas — never indexed, content up to tens of
- * megabytes — is skipped before `readDocumentIndexSource` loads that column.
+ * The type on its own, so the indexer can decide whether to load the document's
+ * stored body before `readDocumentIndexSource` reads its content column.
  */
 export async function readDocumentType(
   s: SpaceStore,
@@ -131,8 +131,16 @@ export async function readDocumentType(
 export async function readDocumentIndexSource(
   s: SpaceStore,
   documentId: string,
+  options: { includeContent: boolean },
 ): Promise<DocumentIndexSource | null> {
-  const doc = await one(s.db.select().from(document).where(eq(document.id, documentId)));
+  const doc = await one(
+    s.db
+      .select({
+        content: options.includeContent ? document.content : sql<string>`''`,
+      })
+      .from(document)
+      .where(eq(document.id, documentId)),
+  );
 
   if (!doc) {
     return null;
@@ -157,29 +165,9 @@ export async function writeDocumentIndex(
   await s.db.update(document).set(index).where(eq(document.id, documentId));
 }
 
-export async function clearDocumentIndex(
-  s: SpaceStore,
-  documentId: string,
-): Promise<void> {
-  await s.db
-    .update(document)
-    .set({
-      searchText: null,
-      searchEmbedding: null,
-      searchEmbeddingModel: null,
-      searchUpdatedAt: null,
-    })
-    .where(eq(document.id, documentId));
-}
-
-/** Documents that can carry an index — everything except canvases. */
+/** Every document can carry an index of its title, properties, and attached files. */
 export async function readIndexableDocumentIds(s: SpaceStore): Promise<string[]> {
-  const rows = await many(
-    s.db
-      .select({ id: document.id })
-      .from(document)
-      .where(sql`(${document.type} IS NULL OR ${document.type} != 'canvas')`),
-  );
+  const rows = await many(s.db.select({ id: document.id }).from(document));
 
   return rows.map((row) => row.id);
 }
@@ -194,9 +182,10 @@ export async function readStaleIndexDocumentIds(
       .select({ id: document.id })
       .from(document)
       .where(
-        sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)
-        AND (type IS NULL OR type != 'canvas')
-        AND ${nonArchivedDocumentCondition}`,
+        and(
+          sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)`,
+          nonArchivedDocumentCondition,
+        ),
       ),
   );
 

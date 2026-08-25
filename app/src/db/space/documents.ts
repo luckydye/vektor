@@ -30,7 +30,7 @@ import {
   allowsChildDocumentType,
   documentIsReadonly,
   fallbackDocumentSlug,
-  readOnlyDocumentTypes,
+  isSerializedDocumentType,
 } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
@@ -40,7 +40,7 @@ import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
-import { decompressHtml } from "./revisions.ts";
+import { decompressRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
 export interface DocumentWithProperties {
@@ -118,6 +118,15 @@ export type PropertyInit =
 
 export class InvalidDocumentParentError extends Error {}
 
+export interface CreateDocumentOptions {
+  properties?: Record<string, PropertyInit>;
+  parentId?: string | null;
+  type?: string;
+  readonly?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 /**
  * Enforce the generic parent document's child-type policy before creating or
  * reparenting a document.
@@ -143,12 +152,9 @@ export async function createDocument(
   createdBy: string,
   slug: string,
   content: string,
-  initialProperties?: Record<string, PropertyInit>,
-  parentId?: string | null,
-  type?: string,
-  createdAt?: Date,
-  updatedAt?: Date,
+  options: CreateDocumentOptions = {},
 ): Promise<DocumentWithProperties> {
+  const { properties: initialProperties, parentId, type, readonly = false } = options;
   if (parentId) await assertDocumentCanParent(s, parentId, type);
   // Every key up front, before the document row exists: the property inserts
   // below are not in one transaction with it, so rejecting halfway would leave a
@@ -158,9 +164,8 @@ export async function createDocument(
   }
   const id = createId("document");
   const now = new Date();
-  const documentCreatedAt = createdAt || now;
-  const documentUpdatedAt = updatedAt || now;
-  const isReadonly = readOnlyDocumentTypes.includes(type ?? "");
+  const documentCreatedAt = options.createdAt || now;
+  const documentUpdatedAt = options.updatedAt || now;
 
   // Generate a unique slug if the provided slug already exists
   const uniqueSlug = await generateUniqueSlug(s, slug);
@@ -175,7 +180,7 @@ export async function createDocument(
     createdBy: createdBy,
     parentId: parentId || null,
     archived: false,
-    readonly: isReadonly,
+    readonly,
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
   });
@@ -233,7 +238,7 @@ export async function createDocument(
     updatedAt: documentUpdatedAt,
     createdBy: createdBy,
     parentId: parentId || null,
-    readonly: isReadonly,
+    readonly,
     archived: false,
   };
 }
@@ -376,7 +381,7 @@ export async function documentIsReadonlyById(
 ): Promise<boolean> {
   const row = await one(
     s.db
-      .select({ readonly: document.readonly, type: document.type })
+      .select({ readonly: document.readonly })
       .from(document)
       .where(eq(document.id, id)),
   );
@@ -432,12 +437,10 @@ export async function updateDocument(
 
   const now = new Date();
   const nextType = type === undefined ? existing.type : type;
-  const nextReadonly =
-    existing.readonly || readOnlyDocumentTypes.includes(nextType ?? "");
 
   await s.db
     .update(document)
-    .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
+    .set({ content, updatedAt: now, type: nextType })
     .where(eq(document.id, id));
 
   scheduleDocumentSearchRefresh(s, id);
@@ -453,7 +456,7 @@ export async function updateDocument(
     updatedAt: now,
     createdBy: existing.createdBy,
     parentId: existing.parentId,
-    readonly: nextReadonly,
+    readonly: existing.readonly,
     type: nextType,
     archived: existing.archived,
   };
@@ -939,12 +942,13 @@ async function countMentionsForUser(
     s.db
       .select({
         publishedRev: document.publishedRev,
+        type: document.type,
       })
       .from(document)
       .where(eq(document.id, documentId)),
   );
 
-  if (!doc?.publishedRev) {
+  if (!doc?.publishedRev || isSerializedDocumentType(doc.type)) {
     return 0;
   }
 
@@ -971,7 +975,7 @@ async function countMentionsForUser(
   }
 
   try {
-    const html = decompressHtml(rev.snapshot);
+    const html = decompressRevisionContent(rev.snapshot);
     const mentions = extractMentionsFromHtml(html);
     const count = mentions.filter((m) => m.email === userEmail).length;
 

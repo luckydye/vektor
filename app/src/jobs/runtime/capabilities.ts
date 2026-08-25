@@ -25,6 +25,7 @@ import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { config, getLocalOrigin } from "#config";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import {
   isPrivateOrBlockedIp,
@@ -350,13 +351,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     return response;
   }
 
-  const contentTypeFor = (type: unknown): string =>
-    type === "csv"
-      ? "text/csv; charset=utf-8"
-      : type === "app"
-        ? "application/vnd.wiki.app+html; charset=utf-8"
-        : "text/markdown; charset=utf-8";
-
   const table: CapabilityTable = {
     // ── timing ───────────────────────────────────────────────────────────────
     sleep: ((ms: unknown) =>
@@ -622,10 +616,16 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     }) as never,
 
     writeDocument: (async (documentId: unknown, content: unknown, type: unknown) => {
+      const text = asText(content);
+      const serialized = isSerializedDocumentType(type);
       await api(`/documents/${encodeURIComponent(String(documentId))}`, {
         method: "PUT",
-        headers: { "Content-Type": contentTypeFor(type) },
-        body: asText(content),
+        headers: {
+          "Content-Type": serialized
+            ? "application/json"
+            : "text/markdown; charset=utf-8",
+        },
+        body: serialized ? JSON.stringify({ content: text }) : text,
       });
       return null;
     }) as never,
@@ -633,14 +633,29 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     createDocument: (async (content: unknown, rawOptions: unknown) => {
       const options =
         typeof rawOptions === "string" ? { title: rawOptions } : asRecord(rawOptions);
-      const headers: Record<string, string> = {
-        "Content-Type": contentTypeFor(options.type),
-      };
-      if (options.title) headers["X-Document-Title"] = String(options.title);
+      const text = asText(content);
+      const serialized = isSerializedDocumentType(options.type);
+      const headers: Record<string, string> = serialized
+        ? { "Content-Type": "application/json" }
+        : { "Content-Type": "text/markdown; charset=utf-8" };
+      if (!serialized && options.title) {
+        headers["X-Document-Title"] = String(options.title);
+      }
+      if (!serialized && typeof options.type === "string") {
+        headers["X-Document-Type"] = options.type;
+      }
       const response = await api("/documents", {
         method: "POST",
         headers,
-        body: asText(content),
+        body: serialized
+          ? JSON.stringify({
+              content: text,
+              type: options.type,
+              ...(options.title
+                ? { properties: { title: String(options.title) } }
+                : {}),
+            })
+          : text,
       });
       return ((await response.json()) as { document: unknown }).document;
     }) as never,

@@ -12,9 +12,9 @@ afterAll(() => stopSerializationPool());
 describe("serialization pool", () => {
   it("round-trips HTML content through a worker", async () => {
     const html = "<h1>Title</h1>\n<p>one</p>\n<p>two</p>";
-    const doc = await deserializeDocContent(null, html);
+    const doc = await deserializeDocContent("html", html);
     expect(doc.getXmlFragment("default").length).toBe(3);
-    const out = await serializeDocContent(null, doc);
+    const out = await serializeDocContent("html", doc);
     expect(out).toBe(html);
   });
 
@@ -33,8 +33,8 @@ describe("serialization pool", () => {
       ],
       strokes: [],
     });
-    const doc = await deserializeDocContent("canvas", snapshot);
-    const out = await serializeDocContent("canvas", doc);
+    const doc = await deserializeDocContent("map-snapshot", snapshot);
+    const out = await serializeDocContent("map-snapshot", doc);
     const parsed = JSON.parse(out) as {
       shapes: {
         id: string;
@@ -54,9 +54,9 @@ describe("serialization pool", () => {
     // The worker and the in-process fallback share documents/serialization, so their
     // output must be identical — this is what makes the fallback safe.
     const html = "<h1>Fallback</h1>\n<p>body</p>";
-    const doc = await deserializeDocContent(null, html);
-    const viaPool = await serializeDocContent(null, doc);
-    const inProcess = contentFromDoc(null, doc);
+    const doc = await deserializeDocContent("html", html);
+    const viaPool = await serializeDocContent("html", doc);
+    const inProcess = contentFromDoc("html", doc);
     expect(viaPool).toBe(inProcess);
     expect(viaPool).toBe(html);
   });
@@ -69,7 +69,7 @@ describe("serialization pool", () => {
     const para = new Y.XmlElement("paragraph");
     para.insert(0, [new Y.XmlText("live text")]);
     fragment.push([para]);
-    const out = await serializeDocContent(null, doc);
+    const out = await serializeDocContent("html", doc);
     expect(out).toContain("live text");
   });
 });
