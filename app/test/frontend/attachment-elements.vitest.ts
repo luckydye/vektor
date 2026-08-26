@@ -19,17 +19,6 @@ function mount(html: string): HTMLElement {
 }
 
 describe("document-attachment", () => {
-  it("renders a table document as a label, not as its content", () => {
-    const card = mount(
-      `<document-attachment type="csv" status="loaded" content="<img src=x onerror=alert(1)>"></document-attachment>`,
-    );
-    const shadow = (card as HTMLElement & { shadow: ShadowRoot }).shadow;
-
-    expect(shadow.querySelector("img")).toBeNull();
-    expect(shadow.innerHTML).not.toContain("onerror");
-    expect(shadow.textContent).toContain("Table document");
-  });
-
   it("keeps document content off the shadow root of an unknown type too", () => {
     const card = mount(
       `<document-attachment type="mystery" status="loaded" content="<img src=x onerror=alert(1)>"></document-attachment>`,

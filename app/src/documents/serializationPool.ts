@@ -1,6 +1,10 @@
 import * as Y from "yjs";
 import { appLogger } from "#observability/logger.ts";
-import { contentFromDoc, docFromContent } from "./serialization.ts";
+import {
+  type CollaborationContentFormat,
+  contentFromDoc,
+  docFromContent,
+} from "./serialization.ts";
 import type {
   SerializationRequest,
   SerializationResponse,
@@ -180,16 +184,16 @@ async function dispatch(
  * serialization if the pool is unavailable or the worker fails.
  */
 export async function serializeDocContent(
-  type: string | null | undefined,
+  format: CollaborationContentFormat,
   doc: Y.Doc,
 ): Promise<string> {
   try {
     const update = Y.encodeStateAsUpdate(doc);
-    const response = await dispatch({ op: "serialize", type: type ?? null, update });
+    const response = await dispatch({ op: "serialize", format, update });
     if (response.ok && "content" in response) return response.content;
     throw new Error(response.ok ? "unexpected worker response" : response.error);
   } catch {
-    return contentFromDoc(type, doc);
+    return contentFromDoc(format, doc);
   }
 }
 
@@ -198,11 +202,11 @@ export async function serializeDocContent(
  * in-process deserialization if the pool is unavailable or the worker fails.
  */
 export async function deserializeDocContent(
-  type: string | null | undefined,
+  format: CollaborationContentFormat,
   content: string,
 ): Promise<Y.Doc> {
   try {
-    const response = await dispatch({ op: "deserialize", type: type ?? null, content });
+    const response = await dispatch({ op: "deserialize", format, content });
     if (response.ok && "update" in response) {
       const doc = new Y.Doc();
       Y.applyUpdate(doc, response.update);
@@ -210,7 +214,7 @@ export async function deserializeDocContent(
     }
     throw new Error(response.ok ? "unexpected worker response" : response.error);
   } catch {
-    return docFromContent(type, content);
+    return docFromContent(format, content);
   }
 }
 

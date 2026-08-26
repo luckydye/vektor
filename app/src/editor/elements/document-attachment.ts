@@ -9,7 +9,7 @@ import { browserLang, createTranslator } from "#utils/lang.ts";
 const t = createTranslator(browserLang());
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
-type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
+type DocumentPreviewType = "document" | "canvas" | "workflow" | string;
 
 type WorkflowPreviewState =
   | { status: "idle" | "loading" }
@@ -30,7 +30,6 @@ function isCanvasSnapshotContent(content: string): boolean {
 
 function documentTypeLabel(type: DocumentPreviewType | null): string {
   if (type === "canvas") return "Canvas";
-  if (type === "csv") return "Table";
   if (type === "workflow") return "Workflow";
   return "Document";
 }
@@ -45,7 +44,6 @@ function fallbackText(params: {
   if (params.type === "canvas" || isCanvasSnapshotContent(params.content)) {
     return "Canvas document";
   }
-  if (params.type === "csv") return "Table document";
   return "No document content";
 }
 
@@ -75,7 +73,7 @@ function shouldRenderDocumentView(params: {
   content: string;
 }) {
   if (params.status !== "loaded") return false;
-  if (params.type === "workflow" || params.type === "csv") return false;
+  if (params.type === "workflow") return false;
   if (params.type === "canvas" || isCanvasSnapshotContent(params.content)) return false;
   return true;
 }
@@ -289,7 +287,7 @@ if (
           "loading") as DocumentPreviewStatus;
         const spaceId = this.getAttribute("space-id") || "";
         const documentId = this.getAttribute("document-id") || "";
-        const icon = type === "csv" ? iconMarkup("csv-file") : iconMarkup("document");
+        const icon = iconMarkup("document");
         const workflow =
           type === "workflow" ? this.ensureWorkflowPreview(spaceId, documentId) : null;
 

@@ -220,12 +220,6 @@ title-bar {
   }
 }
 
-.main-content:has([data-type="csv"]) {
-  height: 100dvh;
-  overflow: hidden;
-  min-height: 0;
-}
-
 page-target a {
   -webkit-user-drag: element;
 }

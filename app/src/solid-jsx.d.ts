@@ -88,7 +88,6 @@ declare module "solid-js" {
       "rich-text-editor": CustomElementAttributes;
       "code-editor": CustomElementAttributes;
       "document-toolbar": CustomElementAttributes;
-      "table-view": CustomElementAttributes;
       "document-statusbar": CustomElementAttributes;
       "vektor-cosmetic": CustomElementAttributes;
       "wiki-drawer": CustomElementAttributes;

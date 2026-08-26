@@ -13,7 +13,6 @@ import {
 import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
-import { readOnlyDocumentTypes } from "#documents/types.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { gitlabCommand } from "./commands/gitlab.ts";
@@ -68,8 +67,6 @@ function buildCoreAgentSystemPrompt(
   return `${systemPromptRaw}${gitlabLine}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
 }
 
-const READONLY_DOC_TYPES = new Set(readOnlyDocumentTypes);
-
 /** Maps a document type to the recipe that best explains how to edit it. */
 function recipeForDocumentType(documentType?: string | null): string {
   if (documentType === "canvas") return "canvas";
@@ -90,7 +87,7 @@ function documentEditingSection(
 ): string {
   if (!documentId) return "";
 
-  if (documentReadonly || (documentType && READONLY_DOC_TYPES.has(documentType))) {
+  if (documentReadonly) {
     const typeDescription = documentType ? ` (type "${documentType}")` : "";
     return `
 ## Current document

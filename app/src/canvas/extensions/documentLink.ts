@@ -649,8 +649,8 @@ export function documentUrlPartsFromUrl(
 }
 
 // Only plain rich-text documents can be edited inline on the canvas. Other
-// types (canvas, csv, workflow) render specialized previews, and readonly
-// documents reject writes server-side.
+// types render specialized previews, and readonly documents reject writes
+// server-side.
 function previewSupportsInlineEditing(
   preview: DocumentPreviewState | undefined,
 ): boolean {

@@ -1321,6 +1321,7 @@ export class ApiClient {
         slug?: string;
         type?: string;
         content: string;
+        readonly?: boolean;
         parentId?: string | null;
         categoryId?: string | null;
         properties?: Record<string, unknown>;
@@ -1376,7 +1377,7 @@ export class ApiClient {
       spaceId: string,
       documentId: string,
       content: string,
-      options?: { publish?: boolean },
+      options?: { publish?: boolean; format?: "html" | "serialized" },
     ) => {
       const detailPath = `/api/v1/spaces/${spaceId}/documents/${documentId}`;
       const requestPath = options?.publish ? `${detailPath}?publish=true` : detailPath;
@@ -1394,12 +1395,18 @@ export class ApiClient {
           const response = await fetch(`${this.baseUrl}${requestPath}`, {
             method: "PUT",
             headers: {
-              "Content-Type": "text/html",
+              "Content-Type":
+                options?.format === "serialized"
+                  ? "application/json"
+                  : "text/html",
               ...(this.accessToken
                 ? { Authorization: `Bearer ${this.accessToken}` }
                 : {}),
             },
-            body: content,
+            body:
+              options?.format === "serialized"
+                ? JSON.stringify({ content })
+                : content,
           });
 
           if (!response.ok) {

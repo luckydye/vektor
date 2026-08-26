@@ -21,7 +21,6 @@ import {
 } from "#db/space/documents.ts";
 import { getRevisionContent } from "#db/space/revisions.ts";
 import { documentTitle } from "#documents/title.ts";
-import { contentIsHtml } from "#documents/types.ts";
 import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { appLogger } from "#observability/logger.ts";
@@ -64,12 +63,11 @@ const notFound = withPrivateHeaders(
   new Response(null, { status: 404, statusText: "Not found" }),
 );
 
-// The page bypasses API middleware; unvalidated cookies must not create buckets.
+// The page bypasses API middleware, and a share link resolves to no session
+// user, so the address is the caller here.
 const limit = checkRateLimit({
   pattern: SHARE_LINK_ROUTE_PATTERN,
   method: Astro.request.method,
-  authorization: undefined,
-  cookie: undefined,
   ip: resolveClientIp(
     Astro.clientAddress,
     Astro.request.headers.get("x-forwarded-for"),
@@ -136,7 +134,8 @@ if (!record) return notFound;
 const publishedRev = record.publishedRev;
 if (publishedRev === null) return notFound;
 
-const rendersAsHtml = contentIsHtml(record.type);
+const htmlRenderedDocumentTypes = new Set(["document", "record"]);
+const rendersAsHtml = htmlRenderedDocumentTypes.has(record.type ?? "document");
 const publishedContent = await getRevisionContent(
   store,
   documentId,
@@ -144,9 +143,9 @@ const publishedContent = await getRevisionContent(
 );
 if (publishedContent === null) return notFound;
 
-const readShadowHtml = renderDocumentReadShadowHtml(publishedContent, {
-  readonly: true,
-});
+const readShadowHtml = rendersAsHtml
+  ? renderDocumentReadShadowHtml(publishedContent, { readonly: true })
+  : "";
 
 // Attachment requests need the link and, when protected, proof of its password.
 Astro.cookies.set(
