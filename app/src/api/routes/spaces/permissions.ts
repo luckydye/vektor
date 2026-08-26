@@ -34,6 +34,8 @@ import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import { enqueueSpaceInvitationEmail } from "#notifications/enqueue.ts";
+import { appLogger } from "#observability/logger.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
 // List all permissions (roles and feature overrides)
@@ -225,9 +227,35 @@ export const POST: ApiRouteHandler = (context) =>
       if (result.outcome === "last-owner") {
         throw badRequestResponse("A space must have at least one owner");
       }
-      return result.outcome === "granted"
-        ? jsonResponse({ permission: result.entry })
-        : jsonResponse({ success: true });
+      if (result.outcome !== "granted") return jsonResponse({ success: true });
+
+      // Only a first grant on the space itself is an invitation. A group grant
+      // has no single recipient to write to, and a role changed on somebody
+      // already inside the space is not news of the space.
+      if (
+        userId &&
+        targetResourceType === ResourceType.SPACE &&
+        targetResourceId === spaceId &&
+        result.previousRole === undefined
+      ) {
+        try {
+          await enqueueSpaceInvitationEmail({
+            spaceId,
+            grantedAt: result.entry.createdAt,
+            recipientUserId: userId,
+            actorId: user.id,
+            role: roleOrFeature,
+          });
+        } catch (error) {
+          appLogger.error("Failed to enqueue space invitation email", {
+            error,
+            spaceId,
+            recipientUserId: userId,
+          });
+        }
+      }
+
+      return jsonResponse({ permission: result.entry });
     }
 
     // type === "feature"; owner already verified above

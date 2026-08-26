@@ -23,19 +23,22 @@ import { propertyValueToText } from "#documents/properties.ts";
 import { isSerializedDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
-import { renderNotificationEmail } from "./render.ts";
+import { renderNotificationEmail, renderSpaceInvitationEmail } from "./render.ts";
 
 const TICK_INTERVAL_MS = 15_000;
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let tickInProgress = false;
 
-function documentUrl(spaceSlug: string, documentSlug: string): string {
+function appUrl(path: string): string {
   const origin = config().SITE_URL || config().API_URL || getLocalOrigin();
-  return new URL(
+  return new URL(path, origin).toString();
+}
+
+function documentUrl(spaceSlug: string, documentSlug: string): string {
+  return appUrl(
     `/${encodeURIComponent(spaceSlug)}/doc/${encodeURIComponent(documentSlug)}`,
-    origin,
-  ).toString();
+  );
 }
 
 function emailImageUrl(value: string | null | undefined): string | null {
@@ -54,20 +57,27 @@ async function deliver(
   notification: EmailNotificationOutbox,
 ): Promise<void> {
   const store = await openSpaceStore(spaceId);
-  if (await isEmailMuted(store, notification.recipientUserId, notification.documentId)) {
-    await markEmailNotificationSkipped(store, notification.id, "Document muted");
+  // An invitation announces the space itself and carries no document, which is
+  // the case both the mute preference and the access check fall back on.
+  const documentId = notification.documentId ?? undefined;
+  const about = documentId ? "Document" : "Space";
+
+  if (await isEmailMuted(store, notification.recipientUserId, documentId)) {
+    await markEmailNotificationSkipped(store, notification.id, `${about} muted`);
     return;
   }
 
   try {
     await verifyAccess(
       spaceId,
-      { type: ResourceType.DOCUMENT, id: notification.documentId },
+      documentId
+        ? { type: ResourceType.DOCUMENT, id: documentId }
+        : { type: ResourceType.SPACE, id: spaceId },
       notification.recipientUserId,
       Permission.VIEWER,
     );
   } catch {
-    await markEmailNotificationSkipped(store, notification.id, "Document access revoked");
+    await markEmailNotificationSkipped(store, notification.id, `${about} access revoked`);
     return;
   }
 
@@ -85,7 +95,7 @@ async function deliver(
         .from(user)
         .where(eq(user.id, notification.actorId)),
     ),
-    getDocument(await openSpaceStore(spaceId), notification.documentId),
+    documentId ? getDocument(store, documentId) : undefined,
     getSpace(spaceId),
   ]);
 
@@ -93,7 +103,28 @@ async function deliver(
     await markEmailNotificationSkipped(store, notification.id, "No verified email");
     return;
   }
-  if (!doc || !space) {
+  if (!space) {
+    await markEmailNotificationSkipped(store, notification.id, "Space unavailable");
+    return;
+  }
+  const actorName = actor?.name || actor?.email || "Someone";
+
+  if (notification.kind === "space_invitation") {
+    await sendEmail({
+      to: recipient.email,
+      ...renderSpaceInvitationEmail({
+        actorName,
+        spaceName: space.name,
+        spaceUrl: appUrl(`/${encodeURIComponent(space.slug)}`),
+        role: notification.role ?? "",
+        brandColor: space.preferences?.brandColor,
+      }),
+    });
+    await markEmailNotificationSent(store, notification.id);
+    return;
+  }
+
+  if (!doc) {
     await markEmailNotificationSkipped(store, notification.id, "Document unavailable");
     return;
   }
@@ -113,16 +144,12 @@ async function deliver(
   const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
     aboutComment ? getComment(store, notification.sourceId) : undefined,
     publicationHasHtmlContent && typeof notification.publishedRevision === "number"
-      ? getRevisionContent(store, notification.documentId, notification.publishedRevision)
+      ? getRevisionContent(store, doc.id, notification.publishedRevision)
       : undefined,
     publicationHasHtmlContent &&
     notification.kind === "document_published" &&
     typeof notification.previousPublishedRevision === "number"
-      ? getRevisionContent(
-          store,
-          notification.documentId,
-          notification.previousPublishedRevision,
-        )
+      ? getRevisionContent(store, doc.id, notification.previousPublishedRevision)
       : undefined,
   ]);
   if (aboutComment && !commentRecord) {
@@ -132,7 +159,7 @@ async function deliver(
 
   const rendered = renderNotificationEmail({
     notification,
-    actorName: actor?.name || actor?.email || "Someone",
+    actorName,
     actorImage: emailImageUrl(actor?.image),
     documentTitle: title || "Untitled",
     spaceName: space.name,

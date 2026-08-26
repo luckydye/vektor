@@ -3,7 +3,7 @@ import * as authSchema from "#db/schema/auth.ts";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
 import type { Database } from "./connection.ts";
-import { exec } from "./query.ts";
+import { exec, many } from "./query.ts";
 import {
   addColumnIfMissing,
   generateCreateTableSQL,
@@ -70,6 +70,63 @@ async function backfillAIChatSessionRoles(spaceDb: Database) {
       .update(spaceSchema.aiChatSession)
       .set({ lastMessageRole: role })
       .where(eq(spaceSchema.aiChatSession.id, row.id));
+  }
+}
+
+/**
+ * Take the `NOT NULL` and the foreign key off `email_notification_outbox`.
+ *
+ * An invitation announces the space rather than a document, so the column has
+ * to admit null; and the outbox is append-only, so a deleted document cancels
+ * its undelivered mail instead of cascading the rows away. SQLite can only drop
+ * either constraint by rebuilding the table, and the rows are copied across
+ * because they are a record of what was sent.
+ */
+async function relaxEmailOutboxDocumentId(spaceDb: Database) {
+  const [existing] = await many<{ sql: string | null }>(
+    spaceDb,
+    sql.raw(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_notification_outbox'",
+    ),
+  );
+  const legacy = existing?.sql;
+  if (
+    !legacy?.includes('"document_id" TEXT NOT NULL') &&
+    !legacy?.includes('FOREIGN KEY ("document_id")')
+  ) {
+    return;
+  }
+
+  const columns =
+    '"id", "kind", "source_id", "document_id", "published_revision", ' +
+    '"previous_published_revision", "actor_id", "recipient_user_id", "status", ' +
+    '"attempts", "available_at", "last_error", "created_at", "updated_at", "sent_at"';
+  const rebuilt = generateCreateTableSQL(spaceSchema.emailNotificationOutbox).replace(
+    "email_notification_outbox",
+    "email_notification_outbox_new",
+  );
+
+  // Foreign keys off for the copy, as SQLite's own table-rebuild procedure
+  // prescribes: the old table still cascades, so dropping it would otherwise
+  // take the rows with it between the copy and the rename.
+  await exec(spaceDb, sql.raw("PRAGMA foreign_keys = OFF"));
+  try {
+    await exec(spaceDb, sql.raw(rebuilt));
+    await exec(
+      spaceDb,
+      sql.raw(
+        `INSERT INTO email_notification_outbox_new (${columns}) SELECT ${columns} FROM email_notification_outbox`,
+      ),
+    );
+    await exec(spaceDb, sql.raw("DROP TABLE email_notification_outbox"));
+    await exec(
+      spaceDb,
+      sql.raw(
+        "ALTER TABLE email_notification_outbox_new RENAME TO email_notification_outbox",
+      ),
+    );
+  } finally {
+    await exec(spaceDb, sql.raw("PRAGMA foreign_keys = ON"));
   }
 }
 
@@ -187,6 +244,8 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     spaceSchema.emailNotificationOutbox,
   );
   await exec(spaceDb, sql.raw(emailNotificationOutboxSQL));
+  await relaxEmailOutboxDocumentId(spaceDb);
+  await addColumnIfMissing(spaceDb, spaceSchema.emailNotificationOutbox.role);
   await exec(
     spaceDb,
     sql.raw(

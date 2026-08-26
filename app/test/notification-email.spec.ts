@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
-import { renderNotificationEmail } from "#notifications/render.ts";
+import {
+  renderNotificationEmail,
+  renderSpaceInvitationEmail,
+} from "#notifications/render.ts";
 import { generateColorPalette } from "#utils/color.ts";
 import { type HtmlNode, htmlToPlainText, parseHtml, SyntaxKind } from "#utils/html.ts";
 
@@ -322,5 +325,56 @@ describe("renderNotificationEmail: mentions", () => {
 
     expect(rendered.subject).toBe("Ada Lovelace mentioned you in Locale handling");
     expect(rendered.html).not.toContain("Where you were mentioned");
+  });
+});
+
+describe("renderSpaceInvitationEmail", () => {
+  function invitation(role: string, brandColor?: string) {
+    return renderSpaceInvitationEmail({
+      actorName: "Ada Lovelace",
+      spaceName: "Engineering",
+      spaceUrl: "https://vektor.test/engineering",
+      role,
+      brandColor,
+    });
+  }
+
+  it("names the inviter and the space in the subject", () => {
+    expect(invitation("editor").subject).toBe("Ada Lovelace invited you to Engineering");
+  });
+
+  it("links the card to the space itself", () => {
+    const rendered = invitation("viewer");
+
+    expect(anchors(rendered.html).find((a) => a.text === "Engineering")?.href).toBe(
+      "https://vektor.test/engineering",
+    );
+  });
+
+  it("says what the granted role allows", () => {
+    expect(invitation("viewer").text).toContain("read its documents");
+    expect(invitation("editor").text).toContain("publish its documents");
+    expect(invitation("owner").text).toContain("its members");
+  });
+
+  it("still invites when the role is one it has no wording for", () => {
+    const rendered = invitation("archivist");
+
+    expect(rendered.subject).toContain("invited you to Engineering");
+    expect(htmlToPlainText(rendered.html)).toContain("You now have access to it.");
+  });
+
+  it("wears the space's accent", () => {
+    const palette = generateColorPalette("#2563eb");
+
+    expect(invitation("editor", "#2563eb").html).toContain(palette["700"]);
+  });
+
+  it("keeps every inline style inside its attribute", () => {
+    const stray = attributeNames(invitation("editor").html).filter(
+      (name) => !/^[a-z][a-z0-9-]*$/i.test(name),
+    );
+
+    expect(stray).toEqual([]);
   });
 });

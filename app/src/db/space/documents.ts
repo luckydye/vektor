@@ -39,6 +39,7 @@ import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
+import { cancelDocumentEmailNotifications } from "./emailOutbox.ts";
 import { filterAccessibleFiles } from "./files.ts";
 import { decompressRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
@@ -554,6 +555,7 @@ export async function deleteDocument(
     // These relationships are encoded rather than relational, so an FK cannot
     // clean them up. Relational child rows cascade from the document delete.
     await deleteDocumentEmailPreferences(tx, id);
+    await cancelDocumentEmailNotifications(tx, id);
     await revokeDocumentGrants(tx, id, userId);
     await tx.db
       .delete(comment)
