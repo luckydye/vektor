@@ -264,7 +264,6 @@
   "Light": "Claro",
   "Dark": "Oscuro",
   "Canvas cursor color": "Color del cursor del lienzo",
-  "Space:": "Espacio:",
   "None": "Ninguno",
   "Open a space to manage integrations.": "Abre un espacio para gestionar las integraciones.",
   "Connected as": "Conectado como",
@@ -710,5 +709,6 @@
   "What this share applies to": "A qué se aplica este recurso compartido",
   "Access to grant": "Acceso que se concederá",
   "When the link expires": "Cuándo caduca el enlace",
-  "Link password": "Contraseña del enlace"
+  "Link password": "Contraseña del enlace",
+  "Install an extension that provides an integration.": "Instala una extensión que proporcione una integración."
 }

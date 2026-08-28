@@ -31,6 +31,41 @@ export interface JobDefinition {
   outputs?: Record<string, JobIOField>;
 }
 
+export interface ExtensionIntegrationProfile {
+  /** Response fields tried in order for the external account id. */
+  accountId: string[];
+  /** Response fields tried in order for a display name. */
+  username?: string[];
+}
+
+export interface ExtensionIntegrationAgent {
+  /** Appended to the agent system prompt while a user has the provider connected. */
+  instructions?: string;
+  /** A shell command for the agent, implemented by a job in manifest.jobs. */
+  command?: { name: string; jobId: string };
+}
+
+/**
+ * An OAuth provider an extension contributes. The server runs the flow; the
+ * manifest only describes the endpoints, and `{instance}` in any of them is
+ * replaced with the operator-configured instance URL.
+ */
+export interface ExtensionIntegration {
+  id: string;
+  label: string;
+  description?: string;
+  authorizationUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
+  scopes?: string[];
+  /** Instance URL used when the operator configures none. */
+  defaultInstanceUrl?: string;
+  /** Every proxied request is forced under this path, e.g. "/api/v4". */
+  apiBasePath?: string;
+  profile: ExtensionIntegrationProfile;
+  agent?: ExtensionIntegrationAgent;
+}
+
 export interface ExtensionManifest {
   id: string;
   name: string;
@@ -42,6 +77,7 @@ export interface ExtensionManifest {
   };
   routes?: ExtensionRoute[];
   jobs?: JobDefinition[];
+  integrations?: ExtensionIntegration[];
 }
 
 /** Unpacked package contents, keyed by the archive path of each entry. */
@@ -121,6 +157,74 @@ function resolveMenuIcon(icon: string, files: ZipFiles): string {
   }
 }
 
+const INTEGRATION_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Integrations are how a provider reaches the OAuth routes, so a malformed one
+ * has to fail the install rather than surface as a half-configured provider.
+ */
+function validateIntegrations(manifest: ExtensionManifest): void {
+  const integrations = manifest.integrations;
+  if (!Array.isArray(integrations)) {
+    throw new Error("Extension manifest 'integrations' must be an array");
+  }
+
+  const seen = new Set<string>();
+  for (const integration of integrations) {
+    if (!integration || typeof integration !== "object") {
+      throw new Error("Extension manifest contains an invalid integration");
+    }
+    if (
+      typeof integration.id !== "string" ||
+      !INTEGRATION_ID_PATTERN.test(integration.id)
+    ) {
+      throw new Error(
+        "Extension manifest integration id must be lowercase alphanumeric with hyphens",
+      );
+    }
+    if (seen.has(integration.id)) {
+      throw new Error(
+        `Extension manifest declares integration '${integration.id}' twice`,
+      );
+    }
+    seen.add(integration.id);
+
+    if (typeof integration.label !== "string" || !integration.label.trim()) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' is missing required 'label' field`,
+      );
+    }
+    for (const field of ["authorizationUrl", "tokenUrl", "userInfoUrl"] as const) {
+      if (typeof integration[field] !== "string" || !integration[field].trim()) {
+        throw new Error(
+          `Extension manifest integration '${integration.id}' is missing required '${field}' field`,
+        );
+      }
+    }
+    if (
+      !integration.profile ||
+      !Array.isArray(integration.profile.accountId) ||
+      integration.profile.accountId.length === 0
+    ) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' needs 'profile.accountId' naming at least one response field`,
+      );
+    }
+
+    const commandJobId = integration.agent?.command?.jobId;
+    if (commandJobId && !manifest.jobs?.some((job) => job.id === commandJobId)) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' names agent command job '${commandJobId}', which is not in 'jobs'`,
+      );
+    }
+    if (integration.agent?.command && !integration.agent.command.name?.trim()) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' agent command is missing 'name'`,
+      );
+    }
+  }
+}
+
 export function extractFile(zipBuffer: Buffer, filePath: string): Buffer | null {
   const file = findZipEntry(unzipPackage(zipBuffer), filePath);
   return file ? Buffer.from(file) : null;
@@ -189,6 +293,10 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
         );
       }
     }
+  }
+
+  if (manifest.integrations !== undefined) {
+    validateIntegrations(manifest);
   }
 
   // Validate that declared entry files are present in the ZIP.

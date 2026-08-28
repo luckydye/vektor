@@ -260,7 +260,6 @@
   "Light": "Hell",
   "Dark": "Dunkel",
   "Canvas cursor color": "Farbe des Canvas-Cursors",
-  "Space:": "Space:",
   "None": "Keiner",
   "Open a space to manage integrations.": "Öffne einen Space, um Integrationen zu verwalten.",
   "Connected as": "Verbunden als",
@@ -710,5 +709,6 @@
   "What this share applies to": "Wofür diese Freigabe gilt",
   "Access to grant": "Zu gewährender Zugriff",
   "When the link expires": "Wann der Link abläuft",
-  "Link password": "Link-Passwort"
+  "Link password": "Link-Passwort",
+  "Install an extension that provides an integration.": "Installieren Sie eine Erweiterung, die eine Integration bereitstellt."
 }

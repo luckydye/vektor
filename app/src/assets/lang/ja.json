@@ -264,7 +264,6 @@
   "Light": "ライト",
   "Dark": "ダーク",
   "Canvas cursor color": "キャンバスのカーソル色",
-  "Space:": "スペース：",
   "None": "なし",
   "Open a space to manage integrations.": "連携を管理するにはスペースを開いてください。",
   "Connected as": "接続アカウント",
@@ -710,5 +709,6 @@
   "What this share applies to": "この共有の適用先",
   "Access to grant": "付与するアクセス権",
   "When the link expires": "リンクの有効期限",
-  "Link password": "リンクのパスワード"
+  "Link password": "リンクのパスワード",
+  "Install an extension that provides an integration.": "連携機能を提供する拡張機能をインストールしてください。"
 }

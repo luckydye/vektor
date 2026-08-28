@@ -1,5 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
-
+/** Base64url per RFC 4648 §5: URL-safe alphabet, no padding. */
 export function toBase64Url(input: Buffer): string {
   return input
     .toString("base64")
@@ -8,20 +7,22 @@ export function toBase64Url(input: Buffer): string {
     .replace(/=+$/g, "");
 }
 
-export function createOAuthState(): string {
-  return toBase64Url(randomBytes(24));
-}
+/** Set query parameters on a path, replacing any it already carries. */
+export function appendQueryParams(path: string, params: Record<string, string>): string {
+  const [pathname, existingQuery = ""] = path.split("?", 2);
+  const query = new URLSearchParams(existingQuery);
 
-export function createPkceCodeVerifier(): string {
-  return toBase64Url(randomBytes(48));
-}
+  for (const [key, value] of Object.entries(params)) {
+    query.set(key, value);
+  }
 
-export function createPkceCodeChallenge(codeVerifier: string): string {
-  return toBase64Url(createHash("sha256").update(codeVerifier).digest());
+  const queryString = query.toString();
+  return queryString ? `${pathname}?${queryString}` : pathname;
 }
 
 const redirectPathBase = new URL("https://vektor.invalid");
 
+/** A caller-supplied redirect target, or null unless it stays same-origin. */
 export function normalizeRedirectPath(value: string | null | undefined): string | null {
   if (!value) {
     return null;
@@ -46,16 +47,4 @@ export function normalizeRedirectPath(value: string | null | undefined): string 
   }
 
   return `${resolved.pathname}${resolved.search}${resolved.hash}`;
-}
-
-export function appendQueryParams(path: string, params: Record<string, string>): string {
-  const [pathname, existingQuery = ""] = path.split("?", 2);
-  const query = new URLSearchParams(existingQuery);
-
-  for (const [key, value] of Object.entries(params)) {
-    query.set(key, value);
-  }
-
-  const queryString = query.toString();
-  return queryString ? `${pathname}?${queryString}` : pathname;
 }

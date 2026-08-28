@@ -1491,12 +1491,15 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/settings/ai-provider"
 ## Integrations (OAuth)
 
 Connections are per user, not per space: each member connects their own account.
+Providers are contributed by installed extensions (`integrations` in the
+manifest); the operator supplies credentials as `VEKTOR_OAUTH_<PROVIDER_ID>_CLIENT_ID`,
+`_CLIENT_SECRET`, and — for a self-hosted instance — `_BASE_URL`.
 
 ### `GET /spaces/:spaceId/integrations`
 
 - **Auth**: session; `viewer` on the space.
-- **Returns**: `200 { connections }` — one entry per known provider, connected or not,
-  for the calling user.
+- **Returns**: `200 { connections }` — one entry per provider an installed
+  extension declares, connected or not, for the calling user.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
@@ -1508,6 +1511,8 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
     {
       "provider": "github",
       "label": "GitHub",
+      "description": "Connect GitHub to work with your repositories.",
+      "extensionId": "github",
       "configured": true,
       "missingConfig": [],
       "connected": true,
@@ -1523,8 +1528,10 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
     {
       "provider": "gitlab",
       "label": "GitLab",
+      "description": "Connect GitLab to work with your projects and issues.",
+      "extensionId": "gitlab",
       "configured": false,
-      "missingConfig": ["VEKTOR_GITLAB_CLIENT_ID", "VEKTOR_GITLAB_CLIENT_SECRET"],
+      "missingConfig": ["VEKTOR_OAUTH_GITLAB_CLIENT_ID", "VEKTOR_OAUTH_GITLAB_CLIENT_SECRET"],
       "connected": false,
       "externalAccountId": null,
       "externalUsername": null,
@@ -1541,8 +1548,8 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
 
 ### `GET /spaces/:spaceId/integrations/:provider`
 
-- **Auth**: session; `viewer` on the space. `provider` must be a known
-  `OAuthIntegrationProvider` (else `400`).
+- **Auth**: session; `viewer` on the space. `provider` must be declared by an
+  installed extension (else `400`).
 - **Returns**: `200 { connection }` (same shape as one list entry).
 
 ```bash

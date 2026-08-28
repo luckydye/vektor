@@ -82,7 +82,7 @@
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]/package` | GET | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/integrations` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]` | DELETE | 401 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/integrations/[provider]` | GET | 401 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/integrations/[provider]` | GET | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/callback` | GET | 401 | 403 | 302 | 302 | 302 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/connect` | POST | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/proxy` | POST | 401 | 403 | 400 | 400 | 400 |  |

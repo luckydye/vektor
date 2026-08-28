@@ -15,14 +15,18 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getAIProvider } from "#db/space/aiConfig.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
-import { gitlabCommand } from "./commands/gitlab.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
+import { integrationCommand } from "./commands/integration.ts";
 import { jsExecCommand } from "./commands/jsExec.ts";
 import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: "text" };
 import { getRecipe, queryRecipes } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
+import {
+  getIntegrationAgentSurface,
+  type IntegrationAgentCommand,
+} from "./integrations.ts";
 
 export type AgentResult = {
   content: string;
@@ -33,6 +37,10 @@ export type AgentResult = {
 export type AgentShellBootstrap = {
   cwd?: string;
   env?: Record<string, string>;
+  /** Shell commands contributed by the connected integrations' extensions. */
+  integrationCommands?: IntegrationAgentCommand[];
+  /** Whose credentials a contributed command's job runs under. */
+  userId?: string | null;
 };
 
 export type AgentEvent =
@@ -55,16 +63,17 @@ export type AgentEvent =
 
 function buildCoreAgentSystemPrompt(
   documentId?: string,
-  connectedProviders?: string[],
+  integrationInstructions?: string[],
   userProfile?: string,
   documentType?: string | null,
   documentReadonly?: boolean,
 ) {
-  const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
-  const gitlabLine = gitlabConnected
-    ? "- GitLab: prefer `integration_api_request` for API calls. The `gitlab ls/cat/tree <project> [path] [--ref <ref>]` shell commands are available for repository files.\n"
-    : "";
-  return `${systemPromptRaw}${gitlabLine}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+  const lines = integrationInstructions ?? [];
+  const integrationLines =
+    lines.length > 0
+      ? `\n## Integrations\n${lines.map((line) => `- ${line}\n`).join("")}`
+      : "";
+  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
 }
 
 /** Maps a document type to the recipe that best explains how to edit it. */
@@ -266,6 +275,8 @@ export async function runAgentPrompt(options: {
   documentReadonly?: boolean;
   connectedProviders?: string[];
   userProfile?: string;
+  /** Whose credentials a contributed integration command runs under. */
+  userId?: string | null;
   jobToken: string;
   bash?: Bash;
   signal?: AbortSignal;
@@ -321,7 +332,16 @@ export async function runAgentPrompt(options: {
     documentId,
     connectedProviders,
   };
-  const bash = providedBash ?? createAgentShell({ current: mcpConfig });
+  const integrationSurface = await getIntegrationAgentSurface(
+    spaceId,
+    connectedProviders ?? [],
+  );
+  const bash =
+    providedBash ??
+    createAgentShell(
+      { current: mcpConfig },
+      { integrationCommands: integrationSurface.commands, userId: options.userId },
+    );
   const vektorTools = await listVektorTools(mcpConfig);
   const vektorToolNames = new Set(vektorTools.map((tool) => tool.name));
   const tools = [
@@ -445,7 +465,7 @@ export async function runAgentPrompt(options: {
       role: "system",
       content: buildCoreAgentSystemPrompt(
         documentId,
-        connectedProviders,
+        integrationSurface.instructions,
         userProfile,
         documentType,
         documentReadonly,
@@ -646,10 +666,13 @@ export function createAgentShell(
       htmlToCsvCommand,
       htmlTableToCsvCommand,
       uploadCommand(mcpConfigRef),
-      ...(!mcpConfigRef.current.connectedProviders ||
-      mcpConfigRef.current.connectedProviders.includes("gitlab")
-        ? [gitlabCommand(mcpConfigRef)]
-        : []),
+      ...(bootstrap?.integrationCommands ?? []).map((command) =>
+        integrationCommand(
+          command,
+          mcpConfigRef.current.spaceId,
+          bootstrap?.userId ?? null,
+        ),
+      ),
       extensionCommand(mcpConfigRef),
       curlCommand,
       jsExecCommand,

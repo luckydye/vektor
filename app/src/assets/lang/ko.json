@@ -264,7 +264,6 @@
   "Light": "라이트",
   "Dark": "다크",
   "Canvas cursor color": "캔버스 커서 색상",
-  "Space:": "스페이스:",
   "None": "없음",
   "Open a space to manage integrations.": "연동을 관리하려면 스페이스를 여세요.",
   "Connected as": "연결된 계정",
@@ -710,5 +709,6 @@
   "What this share applies to": "이 공유의 적용 대상",
   "Access to grant": "부여할 접근 권한",
   "When the link expires": "링크 만료 시점",
-  "Link password": "링크 비밀번호"
+  "Link password": "링크 비밀번호",
+  "Install an extension that provides an integration.": "통합을 제공하는 확장을 설치하세요."
 }

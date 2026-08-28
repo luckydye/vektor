@@ -1,8 +1,12 @@
-import { config } from "#config";
-import type { OAuthIntegrationProvider } from "#db/space/oauthIntegrations.ts";
+import { config, integrationOAuthEnv } from "#config";
+import { openSpaceStore } from "#db/client/store.ts";
+import { listExtensions } from "#db/space/extensions.ts";
+import type { OAuthIntegrationConnection } from "#db/space/oauthIntegrations.ts";
+import type { ExtensionIntegration } from "#extensions/manifest.ts";
+import { appLogger } from "#observability/logger.ts";
 
 export interface OAuthProviderConfiguration {
-  id: OAuthIntegrationProvider;
+  id: string;
   label: string;
   clientId: string;
   clientSecret: string;
@@ -11,6 +15,9 @@ export interface OAuthProviderConfiguration {
   tokenUrl: string;
   userInfoUrl: string;
   instanceUrl: string | null;
+  /** Every proxied request is forced under this path when set. */
+  apiBasePath: string | null;
+  profile: ExtensionIntegration["profile"];
 }
 
 export interface OAuthTokenExchangeResult {
@@ -25,15 +32,15 @@ export interface OAuthExternalUser {
   username: string | null;
 }
 
-export function isOAuthIntegrationProvider(
-  value: string,
-): value is OAuthIntegrationProvider {
-  return value === "gitlab" || value === "youtrack";
+/** A provider an installed extension declares, before credentials are applied. */
+export interface OAuthProviderDefinition {
+  extensionId: string;
+  integration: ExtensionIntegration;
 }
 
-export function getOAuthIntegrationProviders(): OAuthIntegrationProvider[] {
-  return ["gitlab", "youtrack"];
-}
+export type OAuthProviderResolution =
+  | { configured: true; config: OAuthProviderConfiguration }
+  | { configured: false; missing: string[] };
 
 export function normalizeInstanceUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -58,91 +65,95 @@ export function normalizeInstanceUrl(value: string | null | undefined): string |
   return parsed.toString().replace(/\/$/, "");
 }
 
-export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider):
-  | { configured: true; config: OAuthProviderConfiguration }
-  | {
-      configured: false;
-      missing: string[];
-    } {
-  const appConfig = config();
+/**
+ * Providers contributed by the space's enabled extensions. Two extensions
+ * claiming one id is a packaging mistake; the first install wins so the space
+ * keeps whichever provider its stored connections already point at.
+ */
+export async function listOAuthProviderDefinitions(
+  spaceId: string,
+): Promise<OAuthProviderDefinition[]> {
+  const extensions = await listExtensions(await openSpaceStore(spaceId));
+  const byId = new Map<string, OAuthProviderDefinition>();
 
-  if (provider === "gitlab") {
-    const baseUrl =
-      normalizeInstanceUrl(appConfig.GITLAB_OAUTH_BASE_URL) || "https://gitlab.com";
-
-    const clientId = appConfig.GITLAB_OAUTH_CLIENT_ID?.trim() || "";
-    const clientSecret = appConfig.GITLAB_OAUTH_CLIENT_SECRET?.trim() || "";
-    const scopes = (appConfig.GITLAB_OAUTH_SCOPES || "api")
-      .split(/[\s,]+/)
-      .map((scope) => scope.trim())
-      .filter(Boolean);
-
-    const authorizationUrl =
-      appConfig.GITLAB_OAUTH_AUTHORIZATION_URL?.trim() || `${baseUrl}/oauth/authorize`;
-    const tokenUrl = appConfig.GITLAB_OAUTH_TOKEN_URL?.trim() || `${baseUrl}/oauth/token`;
-    const userInfoUrl =
-      appConfig.GITLAB_OAUTH_USERINFO_URL?.trim() || `${baseUrl}/api/v4/user`;
-
-    const missing: string[] = [];
-    if (!clientId) missing.push("VEKTOR_GITLAB_OAUTH_CLIENT_ID");
-    if (!clientSecret) missing.push("VEKTOR_GITLAB_OAUTH_CLIENT_SECRET");
-
-    if (missing.length > 0) {
-      return { configured: false, missing };
+  for (const extension of extensions) {
+    for (const integration of extension.manifest.integrations ?? []) {
+      const existing = byId.get(integration.id);
+      if (existing) {
+        appLogger.warn("Duplicate OAuth integration id across extensions", {
+          spaceId,
+          provider: integration.id,
+          kept: existing.extensionId,
+          ignored: extension.id,
+        });
+        continue;
+      }
+      byId.set(integration.id, { extensionId: extension.id, integration });
     }
-
-    return {
-      configured: true,
-      config: {
-        id: "gitlab",
-        label: "GitLab",
-        clientId,
-        clientSecret,
-        scopes,
-        authorizationUrl,
-        tokenUrl,
-        userInfoUrl,
-        instanceUrl: baseUrl,
-      },
-    };
   }
 
-  const baseUrl = normalizeInstanceUrl(appConfig.YOUTRACK_OAUTH_BASE_URL) || null;
+  return [...byId.values()];
+}
 
-  const clientId = appConfig.YOUTRACK_OAUTH_CLIENT_ID?.trim() || "";
-  const clientSecret = appConfig.YOUTRACK_OAUTH_CLIENT_SECRET?.trim() || "";
-  const scopes = (appConfig.YOUTRACK_OAUTH_SCOPES || "YouTrack")
-    .split(/[\s,]+/)
-    .map((scope) => scope.trim())
-    .filter(Boolean);
+export async function getOAuthProviderDefinition(
+  spaceId: string,
+  providerId: string,
+): Promise<OAuthProviderDefinition | null> {
+  const definitions = await listOAuthProviderDefinitions(spaceId);
+  return definitions.find((entry) => entry.integration.id === providerId) ?? null;
+}
 
-  const authorizationUrl =
-    baseUrl != null
-      ? `${baseUrl}/hub/api/rest/oauth2/auth`
-      : appConfig.YOUTRACK_OAUTH_AUTHORIZATION_URL?.trim() || "";
-  const tokenUrl =
-    baseUrl != null
-      ? `${baseUrl}/hub/api/rest/oauth2/token`
-      : appConfig.YOUTRACK_OAUTH_TOKEN_URL?.trim() || "";
-  const userInfoUrl =
-    baseUrl != null
-      ? `${baseUrl}/hub/api/rest/users/me?fields=id,login,name,email,ringId`
-      : appConfig.YOUTRACK_OAUTH_USERINFO_URL?.trim() || "";
+/**
+ * Endpoints are templated so one manifest serves both a hosted service and a
+ * self-hosted instance. A template with no instance URL to fill in is reported
+ * as missing configuration rather than fetched with a literal placeholder.
+ */
+function resolveEndpoint(
+  template: string,
+  instanceUrl: string | null,
+  missing: string[],
+  envPrefix: string,
+): string {
+  if (!template.includes("{instance}")) return template;
+  if (!instanceUrl) {
+    if (!missing.includes(`${envPrefix}_BASE_URL`)) missing.push(`${envPrefix}_BASE_URL`);
+    return "";
+  }
+  return template.replaceAll("{instance}", instanceUrl);
+}
+
+export function resolveOAuthProviderConfiguration(
+  definition: OAuthProviderDefinition,
+): OAuthProviderResolution {
+  const { integration } = definition;
+  const env = integrationOAuthEnv(integration.id);
+  const instanceUrl =
+    normalizeInstanceUrl(env.baseUrl) ||
+    normalizeInstanceUrl(integration.defaultInstanceUrl) ||
+    null;
 
   const missing: string[] = [];
-  if (!clientId) missing.push("VEKTOR_YOUTRACK_OAUTH_CLIENT_ID");
-  if (!clientSecret) missing.push("VEKTOR_YOUTRACK_OAUTH_CLIENT_SECRET");
-  if (!authorizationUrl) {
-    missing.push(
-      "VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL",
-    );
-  }
-  if (!tokenUrl) {
-    missing.push("VEKTOR_YOUTRACK_OAUTH_TOKEN_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");
-  }
-  if (!userInfoUrl) {
-    missing.push("VEKTOR_YOUTRACK_OAUTH_USERINFO_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");
-  }
+  if (!env.clientId) missing.push(`${env.envPrefix}_CLIENT_ID`);
+  if (!env.clientSecret) missing.push(`${env.envPrefix}_CLIENT_SECRET`);
+
+  const authorizationUrl = resolveEndpoint(
+    integration.authorizationUrl,
+    instanceUrl,
+    missing,
+    env.envPrefix,
+  );
+  const tokenUrl = resolveEndpoint(
+    integration.tokenUrl,
+    instanceUrl,
+    missing,
+    env.envPrefix,
+  );
+  const userInfoUrl = resolveEndpoint(
+    integration.userInfoUrl,
+    instanceUrl,
+    missing,
+    env.envPrefix,
+  );
 
   if (missing.length > 0) {
     return { configured: false, missing };
@@ -151,27 +162,31 @@ export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider
   return {
     configured: true,
     config: {
-      id: "youtrack",
-      label: "YouTrack",
-      clientId,
-      clientSecret,
-      scopes,
+      id: integration.id,
+      label: integration.label,
+      clientId: env.clientId,
+      clientSecret: env.clientSecret,
+      scopes: env.scopes.length > 0 ? env.scopes : (integration.scopes ?? []),
       authorizationUrl,
       tokenUrl,
       userInfoUrl,
-      instanceUrl: baseUrl,
+      instanceUrl,
+      apiBasePath: integration.apiBasePath ?? null,
+      profile: integration.profile,
     },
   };
 }
 
-export function getOAuthProviderLabel(provider: OAuthIntegrationProvider): string {
-  return provider === "gitlab" ? "GitLab" : "YouTrack";
+/** Null when no installed extension declares the provider. */
+export async function getOAuthProviderConfiguration(
+  spaceId: string,
+  providerId: string,
+): Promise<OAuthProviderResolution | null> {
+  const definition = await getOAuthProviderDefinition(spaceId, providerId);
+  return definition ? resolveOAuthProviderConfiguration(definition) : null;
 }
 
-export function getOAuthCallbackUrl(
-  spaceId: string,
-  provider: OAuthIntegrationProvider,
-): string {
+export function getOAuthCallbackUrl(spaceId: string, provider: string): string {
   return `${config().SITE_URL}/api/v1/spaces/${spaceId}/integrations/${provider}/callback`;
 }
 
@@ -299,8 +314,20 @@ export async function refreshOAuthToken(options: {
   return parseTokenExchangeResponse(json);
 }
 
+/** First field that holds a non-empty scalar, following the manifest's order. */
+function pickProfileField(
+  profile: Record<string, unknown>,
+  fields: string[] | undefined,
+): string | null {
+  for (const field of fields ?? []) {
+    const value = profile[field];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number") return String(value);
+  }
+  return null;
+}
+
 export async function fetchOAuthExternalUser(
-  provider: OAuthIntegrationProvider,
   providerConfig: OAuthProviderConfiguration,
   accessToken: string,
 ): Promise<OAuthExternalUser> {
@@ -319,25 +346,62 @@ export async function fetchOAuthExternalUser(
   }
 
   const profile = (await response.json()) as Record<string, unknown>;
-
-  if (provider === "gitlab") {
-    const accountId = String(profile.id || "").trim();
-    if (!accountId) {
-      throw new Error("GitLab profile missing id");
-    }
-    const usernameRaw = profile.username ?? profile.name ?? profile.email ?? null;
-    const username =
-      typeof usernameRaw === "string" && usernameRaw.trim() ? usernameRaw.trim() : null;
-    return { accountId, username };
-  }
-
-  const accountId = String(profile.id || profile.ringId || "").trim();
+  const accountId = pickProfileField(profile, providerConfig.profile.accountId);
   if (!accountId) {
-    throw new Error("YouTrack profile missing id");
+    throw new Error(
+      `${providerConfig.label} profile is missing ${providerConfig.profile.accountId.join(" / ")}`,
+    );
   }
-  const usernameRaw =
-    profile.login ?? profile.username ?? profile.name ?? profile.email ?? null;
-  const username =
-    typeof usernameRaw === "string" && usernameRaw.trim() ? usernameRaw.trim() : null;
-  return { accountId, username };
+
+  return {
+    accountId,
+    username: pickProfileField(profile, providerConfig.profile.username),
+  };
+}
+
+/** One provider as the settings UI sees it: what it is, plus this user's link to it. */
+export interface OAuthIntegrationView {
+  provider: string;
+  label: string;
+  description: string | null;
+  extensionId: string;
+  configured: boolean;
+  missingConfig: string[];
+  connected: boolean;
+  externalAccountId: string | null;
+  externalUsername: string | null;
+  instanceUrl: string | null;
+  scopes: string[];
+  accessTokenExpiresAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export function buildIntegrationView(
+  definition: OAuthProviderDefinition,
+  connection: OAuthIntegrationConnection | null,
+): OAuthIntegrationView {
+  const resolved = resolveOAuthProviderConfiguration(definition);
+  const instanceUrl = resolved.configured
+    ? resolved.config.instanceUrl
+    : (connection?.instanceUrl ?? null);
+
+  return {
+    provider: definition.integration.id,
+    label: definition.integration.label,
+    description: definition.integration.description ?? null,
+    extensionId: definition.extensionId,
+    configured: resolved.configured,
+    missingConfig: resolved.configured ? [] : resolved.missing,
+    connected: !!connection,
+    externalAccountId: connection?.externalAccountId ?? null,
+    externalUsername: connection?.externalUsername ?? null,
+    instanceUrl,
+    scopes: connection?.scope?.split(/\s+/).filter(Boolean) ?? [],
+    accessTokenExpiresAt: connection?.accessTokenExpiresAt?.toISOString() ?? null,
+    createdAt: connection?.createdAt.toISOString() ?? null,
+    updatedAt: connection?.updatedAt.toISOString() ?? null,
+    lastUsedAt: connection?.lastUsedAt?.toISOString() ?? null,
+  };
 }

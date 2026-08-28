@@ -40,6 +40,8 @@ An extension requires a `manifest.json` and at least one entry point:
 | `entries.frontend` | `string` | No | Path to frontend JS entry (actions, etc.) |
 | `entries.view` | `string` | No | Path to view JS entry (standalone views) |
 | `routes` | `array` | No | Custom view routes |
+| `jobs` | `array` | No | Sandboxed server-side jobs |
+| `integrations` | `array` | No | OAuth providers the extension contributes |
 
 ### Routes
 
@@ -748,3 +750,72 @@ declare const jobCache: {
 Job globals do not exist under `bun test`. The workflow-builder extension
 preloads `test-setup.ts`, which installs equivalents backed by real libraries, so
 helpers can be unit-tested directly; copy that pattern for other extensions.
+
+## Integrations (OAuth)
+
+OAuth providers are not built into Vektor — an extension declares them, and the
+server runs the flow, stores the encrypted tokens, and proxies API calls. The
+manifest describes the provider; it never contains credentials.
+
+```json
+{
+  "id": "gitlab",
+  "name": "GitLab",
+  "version": "1.0.0",
+  "entries": {},
+  "integrations": [
+    {
+      "id": "gitlab",
+      "label": "GitLab",
+      "description": "Connect GitLab to work with your projects and issues.",
+      "authorizationUrl": "{instance}/oauth/authorize",
+      "tokenUrl": "{instance}/oauth/token",
+      "userInfoUrl": "{instance}/api/v4/user",
+      "scopes": ["api"],
+      "defaultInstanceUrl": "https://gitlab.com",
+      "apiBasePath": "/api/v4",
+      "profile": { "accountId": ["id"], "username": ["username", "name"] }
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Provider id; lowercase alphanumeric and hyphens. Appears in every `/integrations/:provider` route |
+| `label` | Yes | Shown on the settings card |
+| `authorizationUrl`, `tokenUrl`, `userInfoUrl` | Yes | Endpoints. `{instance}` is replaced with the configured instance URL |
+| `scopes` | No | Requested scopes, unless the operator overrides them |
+| `defaultInstanceUrl` | No | Used when the operator configures none — set it for a hosted-only service |
+| `apiBasePath` | No | Proxied requests are confined to this path and prefixed with it |
+| `profile` | Yes | Which userinfo fields hold the account id and display name, tried in order |
+| `agent` | No | `instructions` for the agent's system prompt, and a `command` naming a job in `jobs` |
+
+Credentials come from the environment, named after the provider id: for `gitlab`,
+`VEKTOR_OAUTH_GITLAB_CLIENT_ID`, `VEKTOR_OAUTH_GITLAB_CLIENT_SECRET`, and
+optionally `VEKTOR_OAUTH_GITLAB_BASE_URL` and `VEKTOR_OAUTH_GITLAB_SCOPES`. A
+provider whose id contains hyphens uses underscores in the variable name. Until
+both id and secret are set the settings card shows the provider as unconfigured
+and lists what is missing.
+
+### Agent commands
+
+`agent.command` gives the AI agent a shell command backed by one of the
+extension's jobs. The job receives `input.args` (the argument list) and
+`input.provider`, and returns `stdout`, `stderr` and `exitCode` text outputs. It
+reaches the provider through the integration proxy — the OAuth token stays on
+the server:
+
+```js
+const response = await apiFetch(
+  `/api/v1/spaces/${input.spaceId}/integrations/${input.provider}/proxy`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ method: "GET", path: "/user" }),
+  },
+);
+```
+
+The command is registered only for users who have that provider connected, as
+are the `agent.instructions` appended to the system prompt.

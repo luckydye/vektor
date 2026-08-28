@@ -175,23 +175,6 @@ export function config() {
       GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
       GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
 
-      GITLAB_OAUTH_BASE_URL: process.env.VEKTOR_GITLAB_OAUTH_BASE_URL,
-      GITLAB_OAUTH_CLIENT_ID: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_ID,
-      GITLAB_OAUTH_CLIENT_SECRET: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_SECRET,
-      GITLAB_OAUTH_SCOPES: process.env.VEKTOR_GITLAB_OAUTH_SCOPES,
-      GITLAB_OAUTH_AUTHORIZATION_URL: process.env.VEKTOR_GITLAB_OAUTH_AUTHORIZATION_URL,
-      GITLAB_OAUTH_TOKEN_URL: process.env.VEKTOR_GITLAB_OAUTH_TOKEN_URL,
-      GITLAB_OAUTH_USERINFO_URL: process.env.VEKTOR_GITLAB_OAUTH_USERINFO_URL,
-
-      YOUTRACK_OAUTH_CLIENT_ID: process.env.VEKTOR_YOUTRACK_OAUTH_CLIENT_ID,
-      YOUTRACK_OAUTH_CLIENT_SECRET: process.env.VEKTOR_YOUTRACK_OAUTH_CLIENT_SECRET,
-      YOUTRACK_OAUTH_SCOPES: process.env.VEKTOR_YOUTRACK_OAUTH_SCOPES,
-      YOUTRACK_OAUTH_BASE_URL: process.env.VEKTOR_YOUTRACK_OAUTH_BASE_URL,
-      YOUTRACK_OAUTH_AUTHORIZATION_URL:
-        process.env.VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL,
-      YOUTRACK_OAUTH_TOKEN_URL: process.env.VEKTOR_YOUTRACK_OAUTH_TOKEN_URL,
-      YOUTRACK_OAUTH_USERINFO_URL: process.env.VEKTOR_YOUTRACK_OAUTH_USERINFO_URL,
-
       SECRETS_ENCRYPTION_KEY: process.env.VEKTOR_SECRETS_ENCRYPTION_KEY,
 
       /**
@@ -243,6 +226,36 @@ export function config() {
     GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
   } as const;
+}
+
+/** Env var suffix for a provider id: `my-tracker` reads VEKTOR_OAUTH_MY_TRACKER_*. */
+function integrationEnvPrefix(providerId: string): string {
+  return `VEKTOR_OAUTH_${providerId.toUpperCase().replace(/-/g, "_")}`;
+}
+
+/**
+ * Operator-supplied credentials for an extension-declared OAuth provider. The
+ * provider itself comes from the extension manifest, so these names are derived
+ * from its id rather than enumerated in `config()`.
+ */
+export function integrationOAuthEnv(providerId: string): {
+  clientId: string;
+  clientSecret: string;
+  baseUrl: string;
+  scopes: string[];
+  envPrefix: string;
+} {
+  const env = globalThis.process?.env ?? {};
+  const envPrefix = integrationEnvPrefix(providerId);
+  const scopesRaw = env[`${envPrefix}_SCOPES`] ?? "";
+
+  return {
+    clientId: (env[`${envPrefix}_CLIENT_ID`] ?? "").trim(),
+    clientSecret: (env[`${envPrefix}_CLIENT_SECRET`] ?? "").trim(),
+    baseUrl: (env[`${envPrefix}_BASE_URL`] ?? "").trim(),
+    scopes: scopesRaw.split(/[\s,]+/).filter(Boolean),
+    envPrefix,
+  };
 }
 
 /**

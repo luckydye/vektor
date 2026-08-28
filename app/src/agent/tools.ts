@@ -427,17 +427,15 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     ...(() => {
-      const allProviders = ["gitlab", "youtrack"];
-      const connected = config.connectedProviders;
-      const providers = connected
-        ? allProviders.filter((p) => connected.includes(p))
-        : allProviders;
+      // Providers are contributed by installed extensions, so the enum is the
+      // set this user has actually connected — there is no built-in list.
+      const providers = config.connectedProviders ?? [];
       if (providers.length === 0) return [];
       return [
         {
           name: "integration_api_request",
           description:
-            "Call a configured integration API using the current user's connected OAuth token. GitLab paths are relative to /api/v4, for example /user or /projects?membership=true.",
+            "Call a connected integration's API using the current user's OAuth token. Paths are relative to the provider's API base path.",
           inputSchema: {
             type: "object",
             properties: {

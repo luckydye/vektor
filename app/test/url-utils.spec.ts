@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRedirectPath } from "#integrations/oauthUtils.ts";
+import { normalizeRedirectPath } from "#utils/url.ts";
 
 describe("normalizeRedirectPath", () => {
   it.each([

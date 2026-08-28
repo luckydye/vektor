@@ -19,10 +19,9 @@ import {
   fetchOAuthExternalUser,
   getOAuthCallbackUrl,
   getOAuthProviderConfiguration,
-  isOAuthIntegrationProvider,
 } from "#integrations/oauthProviders.ts";
-import { appendQueryParams, normalizeRedirectPath } from "#integrations/oauthUtils.ts";
 import { appLogger } from "#observability/logger.ts";
+import { appendQueryParams, normalizeRedirectPath } from "#utils/url.ts";
 
 /**
  * A relative `Location` is valid HTTP, but `Response.redirect` demands an
@@ -50,10 +49,6 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const providerParam = requireParam(context.var.params, "provider");
-
-    if (!isOAuthIntegrationProvider(providerParam)) {
-      return badRequestResponse("Unsupported integration provider");
-    }
 
     // Authenticate before anything else, and outside the try below. A denial
     // has to reach the caller as 401/403: the catch turns failures into a
@@ -116,7 +111,10 @@ export const GET: ApiRouteHandler = (context) =>
         });
       }
 
-      const configured = getOAuthProviderConfiguration(providerParam);
+      const configured = await getOAuthProviderConfiguration(spaceId, providerParam);
+      if (!configured) {
+        return badRequestResponse("Unsupported integration provider");
+      }
       if (!configured.configured) {
         return redirectWithResult(
           {
@@ -137,7 +135,6 @@ export const GET: ApiRouteHandler = (context) =>
       });
 
       const externalUser = await fetchOAuthExternalUser(
-        providerParam,
         configured.config,
         tokenSet.accessToken,
       );

@@ -437,11 +437,14 @@ export type AIConfigMeta =
       hasApiKey: boolean;
     };
 
-export type OAuthIntegrationProvider = "gitlab" | "youtrack";
+/** Provider ids are declared by installed extensions, not by the app. */
+export type OAuthIntegrationProvider = string;
 
 export interface OAuthIntegrationConnection {
   provider: OAuthIntegrationProvider;
   label: string;
+  description: string | null;
+  extensionId: string;
   configured: boolean;
   missingConfig: string[];
   connected: boolean;
@@ -1400,17 +1403,13 @@ export class ApiClient {
             method: "PUT",
             headers: {
               "Content-Type":
-                options?.format === "serialized"
-                  ? "application/json"
-                  : "text/html",
+                options?.format === "serialized" ? "application/json" : "text/html",
               ...(this.accessToken
                 ? { Authorization: `Bearer ${this.accessToken}` }
                 : {}),
             },
             body:
-              options?.format === "serialized"
-                ? JSON.stringify({ content })
-                : content,
+              options?.format === "serialized" ? JSON.stringify({ content }) : content,
           });
 
           if (!response.ok) {

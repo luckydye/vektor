@@ -264,7 +264,6 @@
   "Light": "Light",
   "Dark": "Dark",
   "Canvas cursor color": "Canvas cursor color",
-  "Space:": "Space:",
   "None": "None",
   "Open a space to manage integrations.": "Open a space to manage integrations.",
   "Connected as": "Connected as",
@@ -710,5 +709,6 @@
   "What this share applies to": "What this share applies to",
   "Access to grant": "Access to grant",
   "When the link expires": "When the link expires",
-  "Link password": "Link password"
+  "Link password": "Link password",
+  "Install an extension that provides an integration.": "Install an extension that provides an integration."
 }
