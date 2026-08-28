@@ -438,6 +438,45 @@ export function buildFreehandStroke(
   };
 }
 
+/**
+ * The same stroke, shifted. Smoothing, widths and corner damping all depend on
+ * the points' distances from each other, none of which a translation changes,
+ * so the built path is shifted rather than rebuilt — a move drag can afford
+ * this every frame where re-running `buildFreehandStroke` would not.
+ */
+export function translateFreehandStroke<T extends FreehandStroke>(
+  stroke: T,
+  dx: number,
+  dy: number,
+): T {
+  return {
+    ...stroke,
+    points: stroke.points.map((point) => ({
+      ...point,
+      x: point.x + dx,
+      y: point.y + dy,
+    })),
+    path: {
+      start: stroke.path.start
+        ? {
+            ...stroke.path.start,
+            x: stroke.path.start.x + dx,
+            y: stroke.path.start.y + dy,
+          }
+        : null,
+      segments: stroke.path.segments.map((segment) => ({
+        ...segment,
+        cp1x: segment.cp1x + dx,
+        cp1y: segment.cp1y + dy,
+        cp2x: segment.cp2x + dx,
+        cp2y: segment.cp2y + dy,
+        x: segment.x + dx,
+        y: segment.y + dy,
+      })),
+    },
+  };
+}
+
 export function createFreehandStrokeBuilder(
   options: FreehandStrokeOptions = {},
 ): FreehandStrokeBuilder {
@@ -792,29 +831,6 @@ export function drawFreehandStroke(
   transform: WorldTransform,
 ): void {
   drawFreehandPath(ctx, stroke.path, transform, stroke.style);
-}
-
-// Fills an opaque silhouette around a stroke. This is used when replacing a
-// stroke directly inside a transparent raster cache: a small expansion removes
-// antialiased edge pixels that an exact destination-out redraw would leave behind.
-export function fillFreehandStrokeMask(
-  ctx: CanvasRenderingContext2D,
-  stroke: FreehandStroke,
-  transform: WorldTransform,
-  expand = 1,
-): void {
-  if (!stroke.path.start) return;
-  const mask = variableWidthPathFor(stroke.path, transform, stroke.style, expand);
-  if (!mask) return;
-
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "#000";
-  ctx.translate(transform.dx, transform.dy);
-  const scale = transform.scale / mask.geometryScale;
-  ctx.scale(scale, scale);
-  ctx.fill(mask.path);
-  ctx.restore();
 }
 
 // Strokes the silhouette outline of a freehand stroke in screen space.

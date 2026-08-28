@@ -532,8 +532,8 @@ vektor-canvas {
   z-index: 3;
 }
 
-/* All local and remote selection outlines share this screen-space overlay.
-   It sits above the transformed DOM world while remaining interaction-transparent. */
+/* The only layer above the transformed DOM world, so an outline around a card
+   is not covered by the card. Interaction-transparent like the other surfaces. */
 .canvas-selection {
   z-index: 5;
 }

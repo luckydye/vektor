@@ -17,13 +17,10 @@ import {
 } from "#canvas/extensions/shape.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
-import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
+import { FREEHAND_STYLE, translateFreehandStroke } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
-import { createCanvasSelectionRenderer } from "#canvas/render/selectionLayer.ts";
-import {
-  createCanvasInkRenderer,
-  renderCanvasInkOverlay,
-} from "#canvas/render/strokeLayer.ts";
+import { drawCanvasSelections } from "#canvas/render/selectionLayer.ts";
+import { drawCanvasStrokes, renderCanvasInkOverlay } from "#canvas/render/strokeLayer.ts";
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "#canvas/render/theme.ts";
 import { type CanvasTileView, compositeTiles } from "#canvas/render/tiles.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
@@ -466,8 +463,23 @@ export function createCanvasController(
   let themeObserver: MutationObserver | null = null;
   let colorSchemeMedia: MediaQueryList | null = null;
   let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-  let selectionLayerHidden = false;
-  let selectionDragActive = false;
+
+  /**
+   * Ink mid-gesture: the stored strokes are untouched until the pointer is
+   * released, and the scene paints this in their place meanwhile.
+   *
+   * `strokes` carries replacement geometry for a resize or rotate; a plain move
+   * leaves it as the originals and offsets them by `dx`/`dy` at paint time, so
+   * dragging a hundred strokes does not rebuild a hundred point arrays a frame.
+   */
+  let strokePreview: {
+    strokes: CanvasStroke[];
+    dx: number;
+    dy: number;
+    // False until the gesture actually moves something, so a click that lands on
+    // a transform handle without dragging commits nothing.
+    changed: boolean;
+  } | null = null;
 
   const extensionRuntime = extensionManager.createRuntime({
     spaceId: host.spaceId,
@@ -694,7 +706,7 @@ export function createCanvasController(
         const next = new Map(state.intrinsicShapeSizes);
         next.set(id, measured);
         state.intrinsicShapeSizes = next;
-        renderSelections();
+        renderScene();
         return;
       }
       if (!host.canEdit || draggingShapeId() === id || !canMoveShape(shape)) {
@@ -992,25 +1004,16 @@ export function createCanvasController(
 
   function syncStrokesFromY() {
     const previous = new Map(state.strokes.map((stroke) => [stroke.id, stroke]));
-    const addedStrokes: CanvasStroke[] = [];
-    let hasContentChange = false;
+    // Unchanged strokes keep their object identity: `strokePointBounds` memoizes
+    // against it, and culling asks for those bounds on every frame.
     const next = [...yStrokes.entries()]
       .map(([id, value]) => {
         const existing = previous.get(id);
-        const updatedAt = value.get("updatedAt");
-        if (existing && existing.updatedAt === updatedAt) return existing;
-        const stroke = toStroke(id, value);
-        if (existing) hasContentChange = true;
-        else addedStrokes.push(stroke);
-        return stroke;
+        return existing && existing.updatedAt === value.get("updatedAt")
+          ? existing
+          : toStroke(id, value);
       })
       .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
-
-    // Purely additive when no existing stroke changed and none were removed — the
-    // common collaboration case of a peer drawing new strokes. Edits, moves and
-    // deletions fall through to a full raster rebuild.
-    const additiveOnly =
-      !hasContentChange && next.length === previous.size + addedStrokes.length;
 
     let pruned = false;
     for (const id of state.selectedStrokeIds) {
@@ -1021,19 +1024,6 @@ export function createCanvasController(
       }
     }
     if (pruned) state.selectedStrokeIds = new Set(state.selectedStrokeIds);
-
-    // A local draw already patched the cache with its stroke via
-    // commitAddedStroke, so re-patching here would double-paint it. Remote
-    // additions arrive with no commit in flight — patch the cache incrementally
-    // instead of rebuilding the whole ink raster from every stroke (which made
-    // each incoming stroke O(total strokes), collapsing sync on dense canvases).
-    if (additiveOnly && addedStrokes.length > 0 && !inkRenderer.isCommittingCacheUpdate) {
-      inkRenderer.commitAddedStrokes(addedStrokes, () => {
-        state.strokes = next;
-        renderInk();
-      });
-      return;
-    }
 
     state.strokes = next;
     renderInk();
@@ -1596,21 +1586,27 @@ export function createCanvasController(
     return cssInkColor;
   }
 
-  const inkRenderer = createCanvasInkRenderer({
-    getDpr: () => dpr,
-    getScreen: () => state.screen,
-    getTransform: () => transform(),
-    getStrokes: () => state.strokes,
-    getDefaultInkColor: defaultInkColor,
-    invalidateScene: renderScene,
-  });
-  const selectionRenderer = createCanvasSelectionRenderer();
+  /**
+   * The strokes as the user currently sees them: stored geometry, with anything
+   * under an in-flight gesture swapped for its preview. Everything that paints
+   * or outlines ink reads this rather than `state.strokes`, so an outline can
+   * never be drawn a frame behind the stroke it surrounds.
+   */
+  function renderedStrokes(): CanvasStroke[] {
+    const preview = strokePreview;
+    if (!preview) return state.strokes;
+    const moved = preview.dx !== 0 || preview.dy !== 0;
+    const replacements = new Map(
+      preview.strokes.map((stroke) => [
+        stroke.id,
+        moved ? translateFreehandStroke(stroke, preview.dx, preview.dy) : stroke,
+      ]),
+    );
+    return state.strokes.map((stroke) => replacements.get(stroke.id) ?? stroke);
+  }
 
-  // This snapshot deliberately excludes camera state. Its identity therefore
-  // stays stable through pan/zoom frames and changes only when the selection
-  // geometry itself needs to be rebuilt.
   const selectionSnapshot = () => ({
-    strokes: state.strokes,
+    strokes: renderedStrokes(),
     selectedStrokeIds: state.selectedStrokeIds,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections(),
     selectionBounds: selectedGroupBounds() ?? undefined,
@@ -1654,7 +1650,13 @@ export function createCanvasController(
     renderTileShapes(context);
     context.restore();
     context.save();
-    inkRenderer.renderStaticInk(context);
+    drawCanvasStrokes({
+      context,
+      screen: state.screen,
+      transform: transform(),
+      strokes: renderedStrokes(),
+      defaultInkColor: defaultInkColor(),
+    });
     context.restore();
   }
 
@@ -1742,14 +1744,13 @@ export function createCanvasController(
     }
   }
 
+  // Pointer events outrun frames; coalesce a gesture's repaints onto one.
   let inkRafId: number | null = null;
   function scheduleInkRender() {
     if (inkRafId !== null) return;
     inkRafId = requestAnimationFrame(() => {
       inkRafId = null;
-      inkRenderer.renderStrokeTransformCache();
-      renderActiveInk();
-      if (selectionDragActive) renderSelections();
+      renderInk();
     });
   }
 
@@ -1765,7 +1766,21 @@ export function createCanvasController(
   function renderInk() {
     renderScene();
     renderActiveInk();
-    renderSelections();
+    renderSelectionOverlay();
+  }
+
+  /**
+   * Selection outlines, on their own surface because it is the only layer that
+   * sits above the transformed DOM world — ink and shapes render below the
+   * cards, an outline around a card must not.
+   */
+  function renderSelectionOverlay() {
+    const canvas = dom.selection;
+    const context = canvas?.getContext("2d");
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, state.screen.width, state.screen.height);
+    drawCanvasSelections({ ...selectionSnapshot(), context, transform: transform() });
   }
 
   function renderActiveInk() {
@@ -1782,41 +1797,6 @@ export function createCanvasController(
       snapGuides: activeSnapGuides,
       defaultInkColor: defaultInkColor(),
     });
-  }
-
-  function renderSelections(refresh = false) {
-    const canvas = dom.selection;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    if (inkRenderer.isTransformingStroke && !selectionDragActive) {
-      hideSelectionLayer();
-      return;
-    }
-
-    if (selectionLayerHidden) {
-      canvas.style.visibility = "";
-      selectionLayerHidden = false;
-    }
-
-    selectionRenderer.render({
-      context,
-      dpr,
-      screen: state.screen,
-      transform: transform(),
-      selection: selectionSnapshot(),
-      refresh,
-      deferRefresh: state.marqueeRect !== null,
-    });
-  }
-
-  // Stroke transforms hide the selection outline while the selected ink is being
-  // replaced inside the raster cache. Camera movement keeps this layer visible
-  // and redraws it through renderInk with the current viewport transform.
-  function hideSelectionLayer() {
-    const canvas = dom.selection;
-    if (!canvas || selectionLayerHidden) return;
-    canvas.style.visibility = "hidden";
-    selectionLayerHidden = true;
   }
 
   function resize() {
@@ -1917,10 +1897,7 @@ export function createCanvasController(
   };
 
   function insertCanvasStroke(stroke: CanvasStrokeSnapshot) {
-    const completedStroke = toCanvasStroke(stroke.id, stroke);
-    inkRenderer.commitAddedStroke(completedStroke, () => {
-      yStrokes.set(stroke.id, createStrokeMap(stroke));
-    });
+    yStrokes.set(stroke.id, createStrokeMap(stroke));
   }
 
   function pointerGestureEvent(event: PointerEvent): CanvasPointerGestureEvent {
@@ -2279,47 +2256,38 @@ export function createCanvasController(
     };
   }
 
-  function startStrokeTransformInteraction(
-    strokesToMove: CanvasStroke[],
-    hideSelection = true,
-  ) {
-    if (!inkRenderer.beginStrokeTransform(strokesToMove)) return;
-    if (hideSelection) hideSelectionLayer();
-    renderScene();
-    renderActiveInk();
+  function startStrokeTransformInteraction(strokesToMove: CanvasStroke[]) {
+    if (strokesToMove.length === 0) return;
+    strokePreview = { strokes: strokesToMove, dx: 0, dy: 0, changed: false };
+    renderInk();
   }
 
-  function updateStrokeTransformInteraction(
-    transformedStrokes: CanvasStroke[],
-    dx = 0,
-    dy = 0,
-  ) {
-    if (!inkRenderer.setStrokeTransform(transformedStrokes, dx, dy)) return;
+  /** Replacement geometry, for the gestures that reshape a stroke. */
+  function updateStrokeTransformInteraction(transformedStrokes: CanvasStroke[]) {
+    if (!strokePreview) return;
+    strokePreview = { strokes: transformedStrokes, dx: 0, dy: 0, changed: true };
+    scheduleInkRender();
+  }
+
+  /** A plain move, which leaves the captured geometry alone. */
+  function offsetStrokeTransformInteraction(dx: number, dy: number) {
+    if (!strokePreview) return;
+    strokePreview = { ...strokePreview, dx, dy, changed: true };
     scheduleInkRender();
   }
 
   function cancelStrokeTransformInteraction() {
-    const canceledStrokeTransform = inkRenderer.cancelStrokeTransform();
-    if (!canceledStrokeTransform && !selectionDragActive) return;
-    selectionDragActive = false;
-    selectionRenderer.setInteractionOffset(null);
-    renderActiveInk();
-    renderSelections();
-    if (canceledStrokeTransform) renderScene();
+    if (!strokePreview) return;
+    strokePreview = null;
+    renderInk();
   }
 
   function beginDragStrokeTransform(drag: Extract<DragState, { type: "shape" }>) {
-    // Capture the current selection once, then move its raster cache with the
-    // pointer instead of rebuilding or hiding it during the drag.
-    renderSelections();
-    selectionDragActive = true;
-    selectionRenderer.setInteractionOffset({ x: 0, y: 0 });
     startStrokeTransformInteraction(
       drag.strokes.flatMap((item) => {
         const stroke = strokesById().get(item.id);
         return stroke ? [stroke] : [];
       }),
-      false,
     );
   }
 
@@ -3080,7 +3048,6 @@ export function createCanvasController(
       world.y - drag.startPointer.y,
       event.metaKey,
     );
-    selectionRenderer.setInteractionOffset({ x: dx, y: dy });
     ydoc.transact(() => {
       for (const moved of drag.shapes) {
         const shape = shapesById().get(moved.id);
@@ -3091,74 +3058,45 @@ export function createCanvasController(
         });
       }
     });
-    const strokeTransform = inkRenderer.strokeTransform;
-    if (strokeTransform) {
-      updateStrokeTransformInteraction(strokeTransform.originalStrokes, dx, dy);
-    }
+    offsetStrokeTransformInteraction(dx, dy);
     // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
     // this explicit render.
     scheduleInkRender();
   }
 
   function commitStrokeTransformInteraction(drag: DragState) {
-    const transformState = inkRenderer.strokeTransform;
-    if (!transformState) {
-      if (selectionDragActive) {
-        selectionDragActive = false;
-        selectionRenderer.setInteractionOffset(null);
-        renderSelections();
-      }
-      return;
-    }
+    const preview = strokePreview;
+    strokePreview = null;
+    if (!preview?.changed) return;
 
-    const hasChange =
-      drag.type === "shape"
-        ? transformState.dx !== 0 || transformState.dy !== 0
-        : transformState.strokes.some(
-            (stroke, index) => stroke !== transformState.originalStrokes[index],
-          );
-    if (!hasChange) {
-      cancelStrokeTransformInteraction();
-      return;
-    }
-
-    inkRenderer.commitStrokeTransform((committedTransform) => {
+    if (drag.type === "shape") {
+      // Only the strokes this drag captured move; `state.strokes` would sweep
+      // up every stroke on the canvas.
       ydoc.transact(() => {
-        if (drag.type === "shape") {
-          for (const stroke of state.strokes) {
-            translateStroke(
-              stroke.id,
-              stroke.points,
-              committedTransform.dx,
-              committedTransform.dy,
-            );
-          }
-          return;
+        for (const stroke of drag.strokes) {
+          translateStroke(stroke.id, stroke.points, preview.dx, preview.dy);
         }
-        if (drag.type !== "stroke-resize" && drag.type !== "stroke-rotate") return;
-        const stroke = committedTransform.strokes[0];
-        if (!stroke) return;
-        updateStrokePoints(
-          drag.strokeId,
-          stroke.points,
-          drag.type === "stroke-rotate" ? stroke.rotation : undefined,
-        );
       });
+      return;
+    }
+
+    if (drag.type !== "stroke-resize" && drag.type !== "stroke-rotate") return;
+    const stroke = preview.strokes[0];
+    if (!stroke) return;
+    ydoc.transact(() => {
+      updateStrokePoints(
+        drag.strokeId,
+        stroke.points,
+        drag.type === "stroke-rotate" ? stroke.rotation : undefined,
+      );
     });
-    selectionDragActive = false;
-    selectionRenderer.setInteractionOffset(null);
-    renderActiveInk();
-    renderSelections();
   }
 
   function handlePointerUp(event: PointerEvent) {
     if (endToolPointerGesture(event)) event.preventDefault();
     if (dragState?.pointerId === event.pointerId) {
       commitStrokeTransformInteraction(dragState);
-      if (dragState.type === "marquee") {
-        state.marqueeRect = null;
-        renderSelections();
-      }
+      if (dragState.type === "marquee") state.marqueeRect = null;
       if (dragState.type === "pan") state.isPanning = false;
       if (activeSnapGuides.length > 0) {
         activeSnapGuides = [];
@@ -3212,10 +3150,7 @@ export function createCanvasController(
     }
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     if (cancelTransformDrag()) return;
-    if (dragState.type === "marquee") {
-      state.marqueeRect = null;
-      renderSelections();
-    }
+    if (dragState.type === "marquee") state.marqueeRect = null;
     if (dragState.type === "pan") state.isPanning = false;
     cancelStrokeTransformInteraction();
     dragState = null;
@@ -3403,7 +3338,6 @@ export function createCanvasController(
       if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
       cameraMoveTimer = setTimeout(() => {
         state.isCameraMoving = false;
-        renderSelections(true);
         invalidate();
       }, 150);
     });
@@ -3448,11 +3382,6 @@ export function createCanvasController(
       },
       { immediate: true },
     );
-
-    // Drawn every frame rather than watched: the selection overlay is part of
-    // painting, and the arrays a watch would compare are rebuilt on each read,
-    // so it would fire every frame anyway.
-    renderSelections();
   }
 
   /**
@@ -3463,19 +3392,17 @@ export function createCanvasController(
   function runPostRenderReactions(): void {
     watchPost("transform", transform(), () => dom.canvasToolbar?.reposition());
 
-    watchPost("shapes", state.shapes, () => {
-      renderScene();
-      renderSelections();
-    });
-
     watchPost(
       "viewport",
       `${state.camera.centerX}:${state.camera.centerY}:${state.camera.zoom}:${state.screen.width}:${state.screen.height}`,
-      () => {
-        renderInk();
-        updatePresence();
-      },
+      () => updatePresence(),
     );
+
+    // Painted every flush rather than watched. A flush only happens because
+    // something asked for a frame, and the values a watch would compare here —
+    // the selection snapshot, the visible stroke list — are rebuilt on each
+    // read, so it would fire every flush anyway.
+    renderInk();
   }
 
   // --- lifecycle ---------------------------------------------------------
@@ -3690,8 +3617,6 @@ export function createCanvasController(
     if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
     if (inkRafId !== null) cancelAnimationFrame(inkRafId);
     if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
-    inkRenderer.dispose();
-    selectionRenderer.dispose();
   }
 
   // --- view --------------------------------------------------------------
