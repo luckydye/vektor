@@ -1,7 +1,3 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
-import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
 import {
   authenticateDocumentAccess,
@@ -16,7 +12,7 @@ import { file as fileTable } from "#db/schema/space.ts";
 import { getFileDocumentId } from "#db/space/files.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
-import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
+import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
@@ -117,26 +113,14 @@ export const GET: ApiRouteHandler = (context) =>
         });
       }
 
-      // Read file from data/uploads/{spaceId}/{path}
-      const uploadsRoot = getUploadsRoot(spaceId);
-      const filePath = resolve(uploadsRoot, path);
-      if (!isWithinUploadsRoot(spaceId, filePath)) {
-        return new Response("Invalid path", { status: 400 });
+      // Through the adapter, not the filesystem: the bytes may not be local,
+      // and a range must be asked for rather than seeked to. Containment of the
+      // key is the adapter's own business now.
+      const info = await storage.stat(spaceId, path);
+      if (!info) {
+        return new Response("File not found", { status: 404 });
       }
-
-      let fileSize: number;
-      try {
-        const fileStat = await stat(filePath);
-        if (!fileStat.isFile()) {
-          return new Response("File not found", { status: 404 });
-        }
-        fileSize = fileStat.size;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return new Response("File not found", { status: 404 });
-        }
-        throw error;
-      }
+      const fileSize = info.size;
 
       const baseHeaders: Record<string, string> = {
         "Content-Type": mimeType,
@@ -172,9 +156,10 @@ export const GET: ApiRouteHandler = (context) =>
           });
         }
 
-        const stream = Readable.toWeb(
-          createReadStream(filePath, { start, end }),
-        ) as unknown as ReadableStream;
+        const stream = await storage.readStream(spaceId, path, { start, end });
+        if (!stream) {
+          return new Response("File not found", { status: 404 });
+        }
         return new Response(stream, {
           status: 206,
           headers: {
@@ -185,9 +170,10 @@ export const GET: ApiRouteHandler = (context) =>
         });
       }
 
-      const stream = Readable.toWeb(
-        createReadStream(filePath),
-      ) as unknown as ReadableStream;
+      const stream = await storage.readStream(spaceId, path);
+      if (!stream) {
+        return new Response("File not found", { status: 404 });
+      }
       return new Response(stream, {
         status: 200,
         headers: {

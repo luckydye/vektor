@@ -1,10 +1,28 @@
-import { getFileStorage } from "./storage.ts";
-import { uploadKeyFromUrl } from "./uploads.ts";
-
+/**
+ * Header parsing only. Deliberately free of storage and database imports: the
+ * upload path calls this with bytes it already holds, and everything that later
+ * wants a stored file's dimensions reads them off the `file` row instead
+ * (`#db/space/files.ts`) rather than fetching the file again.
+ */
 export interface ImageDimensions {
   width: number;
   height: number;
 }
+
+import type { FileStorageAdapter } from "./storage.ts";
+
+/**
+ * Extensions {@link readImageDimensions} can actually read. A backfill uses this
+ * to skip fetching bytes it would only fail to parse — SVG in particular is an
+ * image with no pixel header, so it is deliberately absent.
+ */
+export const DIMENSION_READABLE_EXTENSIONS = new Set([
+  "png",
+  "gif",
+  "jpg",
+  "jpeg",
+  "webp",
+]);
 
 /**
  * Read pixel dimensions from an image's header bytes. Null for unknown formats.
@@ -90,37 +108,50 @@ export function readImageDimensions(buffer: Buffer): ImageDimensions | null {
   return null;
 }
 
-const dimensionsCache = new Map<string, ImageDimensions | null>();
+/**
+ * How much of a stored file to sample when looking for its dimensions.
+ *
+ * PNG, GIF and WebP declare theirs in the first 30 bytes. JPEG is the reason
+ * for the size: its dimensions follow whatever EXIF and ICC segments the
+ * camera wrote, so the scan has to get past them. 64 KiB clears that for real
+ * photographs while staying a fixed cost against a file of any size.
+ */
+const IMAGE_HEADER_BYTES = 64 * 1024;
 
 /**
- * Read an uploaded image's natural pixel dimensions from storage.
- * Upload keys are content-addressed, so results are safe to cache for the
- * lifetime of the server process. External image URLs are intentionally not
- * fetched.
+ * Dimensions of a stored image, read from its first bytes rather than all of
+ * them — the point being that an upload never has to be held in memory, or
+ * fetched whole from an object store, to learn how wide it is.
+ *
+ * Null for a format with no pixel header, and for a JPEG whose metadata runs
+ * past the sample: {@link readImageDimensions} is bounds-checked, so a
+ * truncated header reads as unknown rather than as a wrong answer.
  */
-export async function getUploadImageDimensions(
+export async function readStoredImageDimensions(
+  storage: FileStorageAdapter,
   spaceId: string,
-  url: string | string[] | undefined,
+  key: string,
 ): Promise<ImageDimensions | null> {
-  const key = uploadKeyFromUrl(spaceId, Array.isArray(url) ? url[0] : url);
-  if (!key) return null;
+  const extension = key.split(".").pop()?.toLowerCase() ?? "";
+  if (!DIMENSION_READABLE_EXTENSIONS.has(extension)) return null;
 
-  const cacheKey = `${spaceId}:${key}`;
-  const cached = dimensionsCache.get(cacheKey);
-  if (cached !== undefined) return cached;
+  const stream = await storage.readStream(spaceId, key, {
+    start: 0,
+    end: IMAGE_HEADER_BYTES - 1,
+  });
+  if (!stream) return null;
 
-  const buffer = await getFileStorage().read(spaceId, key);
-  const dimensions = buffer ? readImageDimensions(buffer) : null;
-  dimensionsCache.set(cacheKey, dimensions);
-  return dimensions;
-}
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
 
-/** Width/height ratio of an uploaded image, or null when it can't be read. */
-export async function getUploadImageAspectRatio(
-  spaceId: string,
-  url: string | string[] | undefined,
-): Promise<number | null> {
-  const dimensions = await getUploadImageDimensions(spaceId, url);
-  if (!dimensions || dimensions.height <= 0) return null;
-  return dimensions.width / dimensions.height;
+  return readImageDimensions(Buffer.concat(chunks));
 }

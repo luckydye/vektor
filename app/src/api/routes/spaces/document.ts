@@ -39,6 +39,7 @@ import {
   setDocumentParent,
   updateDocument,
 } from "#db/space/documents.ts";
+import { getUploadImageAspectRatio } from "#db/space/files.ts";
 import { patchDocumentProperties } from "#db/space/properties.ts";
 import {
   createRevision,
@@ -59,7 +60,6 @@ import {
   isSerializedDocumentType,
   workflowRunDocumentType,
 } from "#documents/types.ts";
-import { getUploadImageAspectRatio } from "#files/imageDimensions.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { enqueueDocumentPublishedEmails } from "#notifications/enqueue.ts";
 import { appLogger } from "#observability/logger.ts";

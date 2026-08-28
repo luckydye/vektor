@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import {
   mkdir,
   open,
@@ -9,12 +10,28 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { Readable } from "node:stream";
 
 export interface StoredFileInfo {
   key: string;
   size: number;
   updatedAt: Date;
+}
+
+/** What a stored object is, without its bytes. */
+export interface StoredFileStat {
+  size: number;
+  updatedAt: Date;
+}
+
+/**
+ * A byte range, inclusive of both ends — the interval HTTP `Range` names and
+ * the one S3 takes verbatim in its own `Range` header.
+ */
+export interface ByteRange {
+  start: number;
+  end: number;
 }
 
 /** A file that has landed in storage under its content-addressed key. */
@@ -49,8 +66,35 @@ export interface FileStorageAdapter {
     body: ReadableStream<Uint8Array>,
     contentType?: string,
   ): Promise<StoredUpload>;
-  /** Read a file by key. Returns null if not found. */
+  /**
+   * Read a whole file by key. Null if not found.
+   *
+   * Every byte lands in memory, so this is for callers that genuinely need all
+   * of them — a transform input, text extraction — and never for serving.
+   * Serving a 1 GB upload through here would hold 1 GB per concurrent request;
+   * {@link readStream} is the path for that.
+   */
   read(spaceId: string, key: string): Promise<Buffer | null>;
+  /**
+   * Size and mtime without fetching the bytes. Null if not found.
+   *
+   * Serving a range needs the total length before it can answer, and asking for
+   * it must not cost a download — locally a `stat`, against an object store a
+   * HEAD.
+   */
+  stat(spaceId: string, key: string): Promise<StoredFileStat | null>;
+  /**
+   * The stored bytes as a stream, or just `range` of them. Null if not found.
+   *
+   * The unit every backend already speaks: a file descriptor with an offset, an
+   * S3 `Range` header, an HTTP byte-range to a CDN. A caller streams the result
+   * straight into a `Response` and never holds the object.
+   */
+  readStream(
+    spaceId: string,
+    key: string,
+    range?: ByteRange,
+  ): Promise<ReadableStream<Uint8Array> | null>;
   /** Delete a file by key. */
   delete(spaceId: string, key: string): Promise<void>;
   /** List all content-addressable (hash-prefix) files for a space. */
@@ -67,8 +111,19 @@ export interface FileStorageAdapter {
 class LocalFileStorageAdapter implements FileStorageAdapter {
   constructor(private readonly root: string) {}
 
-  private resolvePath(spaceId: string, key: string): string {
-    return join(this.root, spaceId, key);
+  /**
+   * Where a key lives, or null when it would land outside the space's own
+   * directory.
+   *
+   * The containment check belongs here rather than at the callers: a key
+   * reaches this adapter from a URL, from the `file` table and from a disk
+   * listing, and only one of those paths used to be checked. Resolving first
+   * and comparing after also catches what a `..` check on the raw key misses.
+   */
+  private resolvePath(spaceId: string, key: string): string | null {
+    const spaceRoot = resolve(this.root, spaceId);
+    const target = resolve(spaceRoot, key);
+    return target === spaceRoot || target.startsWith(`${spaceRoot}/`) ? target : null;
   }
 
   url(spaceId: string, key: string): string {
@@ -82,6 +137,9 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
     _contentType?: string,
   ): Promise<string> {
     const filePath = this.resolvePath(spaceId, key);
+    // A write is the one caller that must not fail quietly: silently storing
+    // nothing would report a URL that serves 404 forever.
+    if (!filePath) throw new Error(`Refusing to write outside the space: ${key}`);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, buffer);
     return this.url(spaceId, key);
@@ -113,6 +171,10 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
       const digest = hash.digest("hex");
       const key = `${digest.slice(0, 2)}/${digest}.${extension}`;
       const filePath = this.resolvePath(spaceId, key);
+      // The digest cannot escape the space, so only a hostile `extension` could
+      // — and a write that would land outside must fail rather than report a
+      // URL for bytes nobody can serve.
+      if (!filePath) throw new Error(`Refusing to write outside the space: ${key}`);
       await mkdir(dirname(filePath), { recursive: true });
       await rename(stagingPath, filePath);
       return { key, url: this.url(spaceId, key), size };
@@ -123,15 +185,49 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
   }
 
   async read(spaceId: string, key: string): Promise<Buffer | null> {
+    const filePath = this.resolvePath(spaceId, key);
+    if (!filePath) return null;
     try {
-      return await readFile(this.resolvePath(spaceId, key));
+      return await readFile(filePath);
     } catch {
       return null;
     }
   }
 
+  async stat(spaceId: string, key: string): Promise<StoredFileStat | null> {
+    const filePath = this.resolvePath(spaceId, key);
+    if (!filePath) return null;
+    try {
+      const info = await stat(filePath);
+      // A directory is not a stored object, and answering with its size would
+      // send a caller on to request bytes that do not exist.
+      if (!info.isFile()) return null;
+      return { size: info.size, updatedAt: info.mtime };
+    } catch {
+      return null;
+    }
+  }
+
+  async readStream(
+    spaceId: string,
+    key: string,
+    range?: ByteRange,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const filePath = this.resolvePath(spaceId, key);
+    if (!filePath) return null;
+    // `createReadStream` does not reject a missing file — it emits on the
+    // stream, which by then is already the response body. Ask first.
+    if (!(await this.stat(spaceId, key))) return null;
+    const stream = range
+      ? createReadStream(filePath, { start: range.start, end: range.end })
+      : createReadStream(filePath);
+    return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+  }
+
   async delete(spaceId: string, key: string): Promise<void> {
-    await unlink(this.resolvePath(spaceId, key)).catch(() => {});
+    const filePath = this.resolvePath(spaceId, key);
+    if (!filePath) return;
+    await unlink(filePath).catch(() => {});
   }
 
   async list(spaceId: string): Promise<StoredFileInfo[]> {
@@ -162,6 +258,17 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
   }
 }
 
+/**
+ * A local adapter rooted at `root`, which holds one directory per space.
+ *
+ * Exported so a root can be chosen rather than inherited from the process's
+ * working directory — a test wants its own, and a configured deployment will
+ * want one that is not relative to wherever the binary was started.
+ */
+export function createLocalFileStorage(root: string): FileStorageAdapter {
+  return new LocalFileStorageAdapter(root);
+}
+
 let _adapter: FileStorageAdapter | null = null;
 
 export function getFileStorage(): FileStorageAdapter {
@@ -171,7 +278,11 @@ export function getFileStorage(): FileStorageAdapter {
   return _adapter;
 }
 
-/** Override the storage adapter (useful for testing or alternate backends). */
-export function setFileStorage(adapter: FileStorageAdapter): void {
+/**
+ * Override the storage adapter. `null` restores the default, which matters
+ * because the server test project runs `isolate: false` — a spec that swaps the
+ * adapter and does not put it back swaps it for every spec after it.
+ */
+export function setFileStorage(adapter: FileStorageAdapter | null): void {
   _adapter = adapter;
 }

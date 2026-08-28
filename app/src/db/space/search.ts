@@ -467,6 +467,8 @@ export async function searchDocuments(
           originalName: fileTable.originalName,
           mimeType: fileTable.mimeType,
           size: fileTable.size,
+          width: fileTable.width,
+          height: fileTable.height,
           url: fileTable.url,
           updatedAt: fileTable.updatedAt,
           extractedText: sql<

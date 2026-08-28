@@ -18,6 +18,10 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
+import {
+  readImageDimensions,
+  readStoredImageDimensions,
+} from "#files/imageDimensions.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -138,6 +142,13 @@ export const POST: ApiRouteHandler = (context) =>
         ? extractFileTextFromBuffer(stored, originalName, contentType)
         : null;
 
+      // Dimensions come from the file's first bytes, so an image too large to
+      // hold still gets them — and nothing has to fetch it again later to lay
+      // out the page that shows it.
+      const dimensions = stored
+        ? readImageDimensions(stored)
+        : await readStoredImageDimensions(storage, spaceId, key);
+
       // Insert full metadata to file table for all uploads
       const db = await getSpaceDb(spaceId);
       await db
@@ -148,6 +159,8 @@ export const POST: ApiRouteHandler = (context) =>
           originalName,
           mimeType: contentType ?? null,
           size,
+          width: dimensions?.width ?? null,
+          height: dimensions?.height ?? null,
           url,
           updatedAt: new Date(),
           extractedText,
@@ -164,6 +177,8 @@ export const POST: ApiRouteHandler = (context) =>
             originalName,
             mimeType: contentType ?? null,
             size,
+            width: dimensions?.width ?? null,
+            height: dimensions?.height ?? null,
             url,
             updatedAt: new Date(),
             extractedText,

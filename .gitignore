@@ -6,6 +6,10 @@ env
 .env.*
 
 *credentials*
+# ...but the rule above is for secret files, and must not swallow source that
+# merely says "credentials" in its name — a silently untracked module fails as
+# "Cannot find module" on the next clone, not at the commit that dropped it.
+!app/src/**/*credentials*
 
 .claude
 .zed
