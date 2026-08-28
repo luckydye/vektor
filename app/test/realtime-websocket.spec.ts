@@ -203,6 +203,19 @@ describe("Realtime authorization invalidation", () => {
   });
 });
 
+/**
+ * Subscribes and consumes the cursor acknowledgement. Every Subscribe is
+ * answered with an Event frame carrying the catch-up, empty for a fresh cursor.
+ */
+async function subscribe(
+  connection: SocketFrames,
+  topics: string[],
+  timeoutMs = FRAME_TIMEOUT_MS,
+): Promise<void> {
+  connection.socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
+  await connection.waitForFrame(WsMsgType.Event, timeoutMs);
+}
+
 async function joinRoom(connection: SocketFrames, documentId: string): Promise<Y.Doc> {
   connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
   const state = wsDecodeYjsUpdate(
@@ -551,10 +564,7 @@ describe("Realtime WebSocket", () => {
 
   it("delivers subscribed events and stops after unsubscribe", async () => {
     const connection = await connectWebSocket(BASE_URL, testSpaceId);
-    connection.socket.send(
-      wsEncode(WsMsgType.Subscribe, { topics: [realtimeTopics.categories] }),
-    );
-    await Bun.sleep(50);
+    await subscribe(connection, [realtimeTopics.categories]);
 
     const firstEvent = connection.waitForFrame(WsMsgType.Event);
     await createCategory("Subscribed category", "subscribed-category");
@@ -590,10 +600,7 @@ describe("Realtime WebSocket", () => {
     await pong;
 
     // The probe must not disturb the subscriptions it is checking on.
-    connection.socket.send(
-      wsEncode(WsMsgType.Subscribe, { topics: [realtimeTopics.categories] }),
-    );
-    await Bun.sleep(50);
+    await subscribe(connection, [realtimeTopics.categories]);
 
     const event = connection.waitForFrame(WsMsgType.Event);
     connection.socket.send(wsEncode(WsMsgType.Ping, {}));
@@ -734,11 +741,7 @@ describe("Realtime WebSocket document-level grants", () => {
         // The connection itself must survive: no space role is held.
         await connection.expectNoFrame(WsMsgType.Error);
 
-        connection.socket.send(
-          wsEncode(WsMsgType.Subscribe, {
-            topics: [realtimeTopics.document(sharedDocumentId)],
-          }),
-        );
+        await subscribe(connection, [realtimeTopics.document(sharedDocumentId)]);
         await connection.expectNoFrame(WsMsgType.Error);
 
         const clientDoc = await joinRoom(connection, sharedDocumentId);
@@ -1225,9 +1228,7 @@ describe("Realtime WebSocket access revocation", () => {
 
       const connection = await connectWebSocket(AUTH_BASE_URL, spaceId, member.token);
       await joinRoom(connection, documentId);
-      connection.socket.send(
-        wsEncode(WsMsgType.Subscribe, { topics: [realtimeTopics.documents] }),
-      );
+      await subscribe(connection, [realtimeTopics.documents]);
       await connection.expectNoFrame(WsMsgType.Error);
 
       await revokeRole(member.userId);
