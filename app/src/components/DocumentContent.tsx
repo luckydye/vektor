@@ -461,7 +461,7 @@ export function DocumentContent(props: Props) {
       const layout = Array.isArray(doc.properties?.layout)
         ? doc.properties.layout[0]
         : doc.properties?.layout;
-      const full = layout === "full";
+      const full = documentType() === "record" || layout === "full";
       const container = document.querySelector<HTMLElement>("[data-layout]");
       container?.classList.toggle("max-w-full", full);
       container?.classList.toggle("max-w-(--document-width)", !full);

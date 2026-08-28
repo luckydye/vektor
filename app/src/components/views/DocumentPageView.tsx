@@ -191,6 +191,7 @@ export function DocumentPageView(props: Props) {
   const isApp = createMemo(() => documentType() === "app");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
+  const isRecord = createMemo(() => documentType() === "record");
   const isRegularDocument = createMemo(() => documentType() === "document");
   const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
@@ -488,7 +489,7 @@ export function DocumentPageView(props: Props) {
               class={twMerge(
                 "relative mx-auto h-full w-full",
                 isFullHeightView() && "flex min-h-0 flex-1 flex-col",
-                isDatabase() || effectiveLayout() === "full"
+                isDatabase() || isRecord() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
               )}
