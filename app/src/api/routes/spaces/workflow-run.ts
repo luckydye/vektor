@@ -11,6 +11,7 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import {
   cancelRun,
   ensureSpaceRecovered,
@@ -36,8 +37,9 @@ export const GET: ApiRouteHandler = (context) =>
       Permission.VIEWER,
     );
 
-    await ensureSpaceRecovered(spaceId);
-    const run = await getRunForRead(spaceId, runId);
+    const store = await openSpaceStore(spaceId);
+    await ensureSpaceRecovered(store);
+    const run = await getRunForRead(store, runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
     const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
     if (aclUserId) {
@@ -89,8 +91,9 @@ function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
         user.id,
         Permission.EDITOR,
       );
-      await ensureSpaceRecovered(spaceId);
-      const run = await getRunForRead(spaceId, runId);
+      const store = await openSpaceStore(spaceId);
+      await ensureSpaceRecovered(store);
+      const run = await getRunForRead(store, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
       await cancelRun(runId);
       return jsonResponse({ ok: true });

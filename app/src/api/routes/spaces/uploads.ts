@@ -13,7 +13,6 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
@@ -150,8 +149,8 @@ export const POST: ApiRouteHandler = (context) =>
         : await readStoredImageDimensions(storage, spaceId, key);
 
       // Insert full metadata to file table for all uploads
-      const db = await getSpaceDb(spaceId);
-      await db
+      const store = await openSpaceStore(spaceId);
+      await store.db
         .insert(fileTable)
         .values({
           path: key,
@@ -185,7 +184,6 @@ export const POST: ApiRouteHandler = (context) =>
           },
         });
 
-      const store = await openSpaceStore(spaceId);
       if (documentId) {
         // Re-index the parent document (reads from file table, no FS scan)
         updateDocumentEmbedding(store, documentId).catch((err) => {

@@ -116,7 +116,8 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
   }
 }
 
-export async function getSpaceDb(spaceId: string): Promise<Database> {
+/** @internal Raw connection entry point for the SpaceStore factory. */
+export async function openSpaceDbForStore(spaceId: string): Promise<Database> {
   return openSpaceDb(spaceId, false);
 }
 

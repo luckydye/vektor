@@ -7,7 +7,7 @@ import {
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileDocumentId } from "#db/space/files.ts";
 import { getFileStorage } from "#files/storage.ts";
@@ -211,7 +211,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
       // Remove from storage (idempotent) and drop the ephemeral index row
       await getFileStorage().delete(spaceId, path);
-      const db = await getSpaceDb(spaceId);
+      const { db } = await openSpaceStore(spaceId);
       await db.delete(fileTable).where(eq(fileTable.path, path));
 
       return new Response(null, { status: 204 });

@@ -40,6 +40,7 @@ export const GET: ApiRouteHandler = (context) =>
       spaceId,
       Permission.VIEWER,
     );
+    const store = await openSpaceStore(spaceId);
     // A run is keyed to a document; its status/title must only be visible to a
     // caller who can read that document. User-less system tokens (userId null)
     // see everything.
@@ -67,12 +68,12 @@ export const GET: ApiRouteHandler = (context) =>
     const filterDocumentId =
       new URL(context.req.url).searchParams.get("filterDocumentId") ?? undefined;
 
-    await ensureSpaceRecovered(spaceId);
+    await ensureSpaceRecovered(store);
 
     if (documentId) {
-      const runId = await getLatestRunIdForDoc(spaceId, documentId);
+      const runId = await getLatestRunIdForDoc(store, documentId);
       if (!runId) return notFoundResponse("Run");
-      const run = await getRunForRead(spaceId, runId);
+      const run = await getRunForRead(store, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
       const readable = await readableDocuments([run.documentId]);
       if (!readable.has(run.documentId)) return notFoundResponse("Run");
@@ -87,7 +88,7 @@ export const GET: ApiRouteHandler = (context) =>
 
     // List runs for this space, newest first, cursor-paginated at the DB
     // level — never the full run history. filterDocumentId narrows to one document.
-    const { runs: spaceRuns, nextCursor } = await listRuns(spaceId, {
+    const { runs: spaceRuns, nextCursor } = await listRuns(store, {
       sourceExtensionId,
       documentId: filterDocumentId,
       cursor,
@@ -97,7 +98,6 @@ export const GET: ApiRouteHandler = (context) =>
       spaceRuns.map((entry) => entry.run.documentId),
     );
     const readableRuns = spaceRuns.filter((entry) => readable.has(entry.run.documentId));
-    const store = await openSpaceStore(spaceId);
     const documentsById = await getDocumentsByIds(
       store,
       readableRuns.map((entry) => entry.run.documentId),
@@ -139,6 +139,7 @@ export const POST: ApiRouteHandler = (context) =>
         Permission.EDITOR,
       );
       const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
+      const store = await openSpaceStore(spaceId);
 
       const body = await parseJsonBody<{
         documentId?: string;
@@ -155,8 +156,8 @@ export const POST: ApiRouteHandler = (context) =>
       let inputs = body.inputs;
       let seedCache: WorkflowStepCache | undefined;
       if (resumeFromRunId) {
-        await ensureSpaceRecovered(spaceId);
-        const priorRun = await getRunForRead(spaceId, resumeFromRunId);
+        await ensureSpaceRecovered(store);
+        const priorRun = await getRunForRead(store, resumeFromRunId);
         if (!priorRun) return notFoundResponse("Run");
         if (priorRun.status === "pending" || priorRun.status === "running") {
           return badRequestResponse("Cannot resume a run that is still in progress");
@@ -178,14 +179,13 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (!documentId) return badRequestResponse("documentId is required");
 
-      const store = await openSpaceStore(spaceId);
       const doc = await getDocument(store, documentId);
       if (!doc) return notFoundResponse("Document");
       if (doc.type !== "workflow") {
         return badRequestResponse("Document type must be 'workflow'");
       }
 
-      const runId = await startWorkflowRun(spaceId, documentId, {
+      const runId = await startWorkflowRun(store, documentId, {
         initiatedByUserId,
         sourceExtensionId,
         runtimeInputs: inputs,

@@ -26,11 +26,10 @@ import { resolveSpaceLocation } from "#db/client/connection.ts";
 import {
   closeSpaceDb,
   createAllocatedSpaceDb,
-  getSpaceDb,
   initializeDatabases,
 } from "#db/client/db.ts";
 import { many, one } from "#db/client/query.ts";
-import { openSpaceStore } from "#db/client/store.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { getUserPreferences } from "#db/space/userPreferences.ts";
@@ -110,7 +109,7 @@ export async function createSpace(
   slug = await resolveSpaceSlug(slug);
 
   const allocation = await allocateSpaceDatabase(id);
-  let spaceDb: Awaited<ReturnType<typeof getSpaceDb>>;
+  let store: SpaceStore;
   const defaultPreferences = {
     brandColor: "#1e293b",
     [spacePreferenceKeys.workflowCreationEnabled]: "true",
@@ -118,25 +117,28 @@ export async function createSpace(
   };
 
   try {
-    spaceDb = await createAllocatedSpaceDb(id);
-    await spaceDb.insert(spaceMetadata).values({
-      id,
-      name,
-      slug,
-      createdBy,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    for (const [key, value] of Object.entries(defaultPreferences)) {
-      await spaceDb.insert(preference).values({
-        id: createId("preference"),
-        key,
-        value,
+    await createAllocatedSpaceDb(id);
+    store = await openSpaceStore(id);
+    await store.tx(async (tx) => {
+      await tx.db.insert(spaceMetadata).values({
+        id,
+        name,
+        slug,
+        createdBy,
         createdAt: now,
         updatedAt: now,
       });
-    }
+
+      for (const [key, value] of Object.entries(defaultPreferences)) {
+        await tx.db.insert(preference).values({
+          id: createId("preference"),
+          key,
+          value,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    });
 
     await upsertSpaceIndex(
       { id, name, slug, createdBy, createdAt: now, updatedAt: now },
@@ -149,14 +151,17 @@ export async function createSpace(
     throw isSlugUniqueViolation(error) ? new SpaceSlugTakenError(slug) : error;
   }
 
-  // Grant owner permission to creator (after closing initial connection)
-  await grantPermission(
-    await openSpaceStore(id),
-    ResourceType.SPACE,
-    id,
-    { userId: createdBy, targetName: await resolveGranteeName(createdBy) },
-    Permission.OWNER,
-    createdBy,
+  // Reuse the allocated space's store for the initial owner grant.
+  const targetName = await resolveGranteeName(createdBy);
+  await store.tx((tx) =>
+    grantPermission(
+      tx,
+      ResourceType.SPACE,
+      id,
+      { userId: createdBy, targetName },
+      Permission.OWNER,
+      createdBy,
+    ),
   );
 
   return {
@@ -174,7 +179,7 @@ export async function getSpace(id: string): Promise<Space | null> {
   await initializeDatabases();
   if (!(await getIndexedSpace(id))) return null;
 
-  const spaceDb = await getSpaceDb(id);
+  const { db: spaceDb } = await openSpaceStore(id);
 
   const result = await one(
     spaceDb.select().from(spaceMetadata).where(eq(spaceMetadata.id, id)),
@@ -368,11 +373,12 @@ export async function listPublicSpaces(): Promise<Space[]> {
 }
 
 export async function updateSpace(
-  id: string,
+  store: SpaceStore,
   name: string,
   slug: string,
   preferences?: Record<string, string>,
 ): Promise<Space | null> {
+  const { spaceId: id } = store;
   const existing = await getSpace(id);
   if (!existing) {
     return null;
@@ -385,66 +391,51 @@ export async function updateSpace(
   }
 
   const now = new Date();
-  const spaceDb = await getSpaceDb(id);
-
-  await spaceDb
-    .update(spaceMetadata)
-    .set({ name, slug, updatedAt: now })
-    .where(eq(spaceMetadata.id, id));
-  try {
-    await updateIndexedSpaceMetadata(id, { name, slug, updatedAt: now });
-  } catch (indexError) {
-    try {
-      await spaceDb
-        .update(spaceMetadata)
-        .set({
-          name: existing.name,
-          slug: existing.slug,
-          updatedAt: existing.updatedAt,
-        })
-        .where(eq(spaceMetadata.id, id));
-    } catch (compensationError) {
-      throw new AggregateError(
-        [indexError, compensationError],
-        `Failed to update the space index and restore metadata for space ${id}`,
-      );
-    }
-    throw isSlugUniqueViolation(indexError) ? new SpaceSlugTakenError(slug) : indexError;
-  }
-
-  // Update preferences if provided. A `Map` for the same reason as in `getSpace`:
-  // the response has to report back a `__proto__` preference it just wrote, and
-  // bracket assignment on an object would drop it.
+  // Space metadata and preferences live together and must land together. The
+  // auth index is a separate database, so update it last: an index failure can
+  // still roll this transaction back.
   const updatedPreferences = new Map(Object.entries(existing.preferences));
-  if (preferences) {
-    for (const [key, value] of Object.entries(preferences)) {
-      // Check if preference exists
-      const existingPref = await one(
-        spaceDb
-          .select()
-          .from(preference)
-          .where(and(eq(preference.key, key), isNull(preference.userId))),
-      );
+  await store.tx(async (tx) => {
+    await tx.db
+      .update(spaceMetadata)
+      .set({ name, slug, updatedAt: now })
+      .where(eq(spaceMetadata.id, id));
 
-      if (existingPref) {
-        // Update existing preference
-        await spaceDb
-          .update(preference)
-          .set({ value, updatedAt: now })
-          .where(eq(preference.id, existingPref.id));
-      } else {
-        // Insert new preference
-        await spaceDb.insert(preference).values({
-          id: createId("preference"),
-          key,
-          value,
-          createdAt: now,
-          updatedAt: now,
-        });
+    if (preferences) {
+      for (const [key, value] of Object.entries(preferences)) {
+        const existingPref = await one(
+          tx.db
+            .select()
+            .from(preference)
+            .where(and(eq(preference.key, key), isNull(preference.userId))),
+        );
+
+        if (existingPref) {
+          await tx.db
+            .update(preference)
+            .set({ value, updatedAt: now })
+            .where(eq(preference.id, existingPref.id));
+        } else {
+          await tx.db.insert(preference).values({
+            id: createId("preference"),
+            key,
+            value,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+        updatedPreferences.set(key, value);
       }
-      updatedPreferences.set(key, value);
     }
-  }
+
+    try {
+      await updateIndexedSpaceMetadata(id, { name, slug, updatedAt: now });
+    } catch (indexError) {
+      throw isSlugUniqueViolation(indexError)
+        ? new SpaceSlugTakenError(slug)
+        : indexError;
+    }
+  });
 
   return {
     id,

@@ -22,9 +22,8 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
-import { openSpaceStore } from "#db/client/store.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import {
@@ -134,16 +133,16 @@ function withCors(response: Response): Response {
 }
 
 async function handlePublishedRevisionPatch(
-  spaceId: string,
+  store: SpaceStore,
   documentId: string,
   userId: string,
   publishedRev: number | null,
 ) {
+  const { spaceId } = store;
   const revToPublish = publishedRev === null ? null : publishedRev;
 
-  const db = await getSpaceDb(spaceId);
   const existing = await one(
-    db
+    store.db
       .select({ publishedRev: documentTable.publishedRev, type: documentTable.type })
       .from(documentTable)
       .where(eq(documentTable.id, documentId)),
@@ -155,28 +154,41 @@ async function handlePublishedRevisionPatch(
   const revisionContent =
     revToPublish === null
       ? null
-      : await getRevisionContent(await openSpaceStore(spaceId), documentId, revToPublish);
+      : await getRevisionContent(store, documentId, revToPublish);
   if (revToPublish !== null && revisionContent === null) {
     throw notFoundResponse("Revision");
   }
 
-  await db
-    .update(documentTable)
-    .set({ publishedRev: revToPublish })
-    .where(eq(documentTable.id, documentId));
+  const auditEntry = await store.tx(async (tx) => {
+    await tx.db
+      .update(documentTable)
+      .set({ publishedRev: revToPublish })
+      .where(eq(documentTable.id, documentId));
 
-  const auditEntry = await createAuditLog(await openSpaceStore(spaceId), {
-    spaceId,
-    docId: documentId,
-    revisionId: revToPublish || undefined,
-    userId,
-    event: revToPublish === null ? "unpublish" : "publish",
-    details: {
-      message:
-        revToPublish === null
-          ? "Document unpublished"
-          : `Published revision ${revToPublish}`,
-    },
+    const entry = await createAuditLog(tx, {
+      spaceId,
+      docId: documentId,
+      revisionId: revToPublish || undefined,
+      userId,
+      event: revToPublish === null ? "unpublish" : "publish",
+      details: {
+        message:
+          revToPublish === null
+            ? "Document unpublished"
+            : `Published revision ${revToPublish}`,
+      },
+    });
+
+    if (revisionContent !== null) {
+      // Publishing a revision also loads it into the draft, so the editor
+      // reflects the revision that is now published.
+      await tx.db
+        .update(documentTable)
+        .set({ content: revisionContent })
+        .where(eq(documentTable.id, documentId));
+    }
+
+    return entry;
   });
 
   if (revToPublish === null) {
@@ -184,13 +196,6 @@ async function handlePublishedRevisionPatch(
   }
 
   if (revisionContent === null) throw notFoundResponse("Revision");
-
-  // Publishing a revision also loads it into the draft, so the editor (which
-  // always reads doc.content) reflects the revision that is now published.
-  await db
-    .update(documentTable)
-    .set({ content: revisionContent })
-    .where(eq(documentTable.id, documentId));
 
   // An open room outranks the stored content for every reader and persists
   // itself back over this write, so the draft only really changes once the live
@@ -219,11 +224,12 @@ async function handlePublishedRevisionPatch(
 }
 
 async function handleReadonlyPatch(
-  spaceId: string,
+  store: SpaceStore,
   documentId: string,
   userId: string,
   readonly: boolean,
 ) {
+  const { spaceId } = store;
   if (typeof readonly !== "boolean") {
     throw badRequestResponse("Readonly must be a boolean");
   }
@@ -235,7 +241,6 @@ async function handleReadonlyPatch(
   try {
     if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
 
-    const store = await openSpaceStore(spaceId);
     await store.tx(async (tx) => {
       await tx.db
         .update(documentTable)
@@ -277,13 +282,14 @@ export const GET: ApiRouteHandler = (context) =>
       throw notFoundResponse("Space");
     }
     const spaceId = space.id;
+    const store = await openSpaceStore(spaceId);
 
     // Resolve slug → ID: try by ID first, fall back to slug so client-side
     // routing and cross-host callers can pass URL slugs directly.
     let id = rawId;
-    const preCheck = await getDocument(await openSpaceStore(spaceId), rawId);
+    const preCheck = await getDocument(store, rawId);
     if (!preCheck) {
-      const bySlug = await getDocumentBySlug(await openSpaceStore(spaceId), rawId);
+      const bySlug = await getDocumentBySlug(store, rawId);
       if (bySlug) id = bySlug.id;
     }
 
@@ -300,7 +306,7 @@ export const GET: ApiRouteHandler = (context) =>
       requiredRole,
     );
 
-    const meta = await getDocument(await openSpaceStore(spaceId), id);
+    const meta = await getDocument(store, id);
     if (!meta) {
       throw notFoundResponse("Document");
     }
@@ -316,12 +322,12 @@ export const GET: ApiRouteHandler = (context) =>
       // the load, so a refusal cannot distinguish a missing revision.
       const access = await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
 
-      const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
+      const metadata = await getRevisionMetadata(store, id, rev);
       if (!metadata) {
         throw notFoundResponse("Revision");
       }
 
-      const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
+      const content = await getRevisionContent(store, id, rev);
       if (content === null) {
         throw notFoundResponse("Revision");
       }
@@ -348,18 +354,18 @@ export const GET: ApiRouteHandler = (context) =>
           spaceId,
           id,
           meta.type,
-          (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
+          (await getDocumentContent(store, id)) ?? "",
         ),
       };
     } else if (!draft && meta.publishedRev !== null) {
-      document = await resolvePublishedDocumentContent(await openSpaceStore(spaceId), {
+      document = await resolvePublishedDocumentContent(store, {
         ...meta,
-        content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
+        content: (await getDocumentContent(store, id)) ?? "",
       });
     } else {
       document = {
         ...meta,
-        content: (await getDocumentContent(await openSpaceStore(spaceId), id)) ?? "",
+        content: (await getDocumentContent(store, id)) ?? "",
       };
     }
 
@@ -525,7 +531,7 @@ export const PUT: ApiRouteHandler = (context) =>
         message: "Document updated",
       });
       if (publish === true) {
-        await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev);
+        await handlePublishedRevisionPatch(store, id, userId, revision.rev);
       }
 
       // updateDocument returned before the revision pointers changed. Return
@@ -643,11 +649,11 @@ export const PATCH: ApiRouteHandler = (context) =>
           throw badRequestResponse("Published revision must be a number or null");
         }
 
-        await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev);
+        await handlePublishedRevisionPatch(store, id, userId, publishedRev);
       }
 
       if (readonly !== undefined) {
-        await handleReadonlyPatch(spaceId, id, userId, readonly);
+        await handleReadonlyPatch(store, id, userId, readonly);
       }
 
       return jsonResponse({ success: true });

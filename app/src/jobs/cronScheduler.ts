@@ -1,5 +1,5 @@
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
-import { openSpaceStore } from "#db/client/store.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
 import { failStaleJobRuns } from "#db/space/jobRuns.ts";
 import {
@@ -66,7 +66,7 @@ async function tick(): Promise<void> {
         for (const schedule of due) {
           // Fire-and-forget: the overlap guard inside runScheduledWorkflow
           // prevents concurrent runs of the same workflow document.
-          void runScheduledWorkflow(spaceId, schedule);
+          void runScheduledWorkflow(store, schedule);
         }
       } catch (error) {
         appLogger.error("Cron tick failed for space", { spaceId, error });
@@ -78,9 +78,10 @@ async function tick(): Promise<void> {
 }
 
 async function runScheduledWorkflow(
-  spaceId: string,
+  store: SpaceStore,
   schedule: WorkflowSchedule,
 ): Promise<void> {
+  const { spaceId } = store;
   appLogger.info("Firing scheduled workflow", {
     spaceId,
     scheduleId: schedule.id,
@@ -90,9 +91,9 @@ async function runScheduledWorkflow(
   try {
     // Overlap guard: a slow-running workflow shouldn't stack concurrent runs
     // from later ticks — skip this fire if the last run hasn't finished.
-    const latestRunId = await getLatestRunIdForDoc(spaceId, schedule.documentId);
+    const latestRunId = await getLatestRunIdForDoc(store, schedule.documentId);
     if (latestRunId) {
-      const latestRun = await getRunForRead(spaceId, latestRunId);
+      const latestRun = await getRunForRead(store, latestRunId);
       if (
         latestRun &&
         (latestRun.status === "pending" || latestRun.status === "running")
@@ -110,7 +111,7 @@ async function runScheduledWorkflow(
       }
     }
 
-    await startWorkflowRun(spaceId, schedule.documentId, {
+    await startWorkflowRun(store, schedule.documentId, {
       initiatedByUserId: schedule.createdBy,
       sourceExtensionId: null,
       runtimeInputs: parseWorkflowScheduleInputs(schedule),

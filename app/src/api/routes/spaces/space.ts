@@ -97,6 +97,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       if (!space) {
         throw badRequestResponse("Space not found");
       }
+      const store = await openSpaceStore(spaceId);
 
       // A write of nothing but the member's own preferences does not touch the
       // space: `updateSpace` would restamp its `updatedAt` and reindex it, which
@@ -104,7 +105,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       const writesSpace = updatesMetadata || Object.keys(spacePreferences).length > 0;
       const updated = writesSpace
         ? await updateSpace(
-            spaceId,
+            store,
             hasName ? name : space.name,
             hasSlug ? slug : space.slug,
             // Only the space's own half — `updateSpace` writes the rows with no
@@ -117,7 +118,6 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("Space not found");
       }
 
-      const store = await openSpaceStore(spaceId);
       await setUserPreferences(store, user.id, userPreferences);
 
       return jsonResponse({
