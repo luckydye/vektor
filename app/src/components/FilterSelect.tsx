@@ -20,6 +20,7 @@ export interface FilterSelectOption {
 
 interface Props {
   id?: string;
+  class?: string;
   value: string;
   options: FilterSelectOption[];
   placeholder?: string;
@@ -183,7 +184,7 @@ export function FilterSelect(props: Props) {
         id={props.id}
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        class="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-left focus:outline-none focus:ring-1 focus:ring-neutral-400"
+        class={`flex w-full min-w-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-left focus:outline-none focus:ring-1 focus:ring-neutral-400 ${props.class ?? ""}`}
         // The panel covers this button, whose border would otherwise show
         // around the panel's inset edge.
         classList={{ invisible: isOpen() }}

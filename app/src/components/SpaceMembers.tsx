@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, on, Show } from "solid-js";
 import {
   Feature,
   highestPermission,
@@ -28,8 +28,6 @@ import {
 } from "#utils/accessToken.ts";
 import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
-import { Dialog } from "./Dialog.tsx";
-import { DialogFooter } from "./DialogFooter.tsx";
 import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
@@ -48,6 +46,18 @@ interface MemberAccess {
   highestRole: string;
 }
 
+type InviteeType = "user" | "group" | "token";
+
+interface InviteRow {
+  id: string;
+  type: InviteeType;
+  value: string;
+  role: string;
+  scope: string;
+  includeChildren: boolean;
+  expiresInDays: number | null;
+}
+
 function getHighestRole(grants: PermissionEntry[]): string {
   return (
     highestPermission(grants.map((grant) => grant.permission.permission)) ??
@@ -58,44 +68,6 @@ function getHighestRole(grants: PermissionEntry[]): string {
 function getDocumentLabel(document: DocumentWithProperties): string {
   const title = document.properties?.title || document.properties?.name;
   return (Array.isArray(title) ? title[0] : title) || document.slug;
-}
-
-function documentBelongsToCategory(
-  document: DocumentWithProperties,
-  categorySlug: string,
-  documentsById: Map<string, DocumentWithProperties>,
-): boolean {
-  const seen = new Set<string>();
-  let current: DocumentWithProperties | undefined = document;
-
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    const categoryValues = [current.properties?.category, current.properties?.collection]
-      .flatMap((value) => (Array.isArray(value) ? value : [value]))
-      .filter(Boolean);
-
-    if (categoryValues.includes(categorySlug)) return true;
-    current = current.parentId ? documentsById.get(current.parentId) : undefined;
-  }
-
-  return false;
-}
-
-function documentIsInTree(
-  document: DocumentWithProperties,
-  rootId: string,
-  documentsById: Map<string, DocumentWithProperties>,
-): boolean {
-  const seen = new Set<string>();
-  let current: DocumentWithProperties | undefined = document;
-
-  while (current && !seen.has(current.id)) {
-    if (current.id === rootId) return true;
-    seen.add(current.id);
-    current = current.parentId ? documentsById.get(current.parentId) : undefined;
-  }
-
-  return false;
 }
 
 function isScopedGrant(grant: PermissionEntry): boolean {
@@ -131,16 +103,9 @@ export function SpaceMembers() {
   const [permissions, setPermissions] = createSignal<PermissionEntry[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   const [isLoading, setIsLoading] = createSignal(false);
-  const [showAddMember, setShowAddMember] = createSignal(false);
-  const [newMemberId, setNewMemberId] = createSignal("");
-  const [newMemberEmail, setNewMemberEmail] = createSignal("");
-  const [newMemberType, setNewMemberType] = createSignal("user");
-  const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
-  /** `space`, `category:<id>`, or `document:<id>`. */
-  const [newMemberScope, setNewMemberScope] = createSignal("space");
-  const [newMemberIncludeChildren, setNewMemberIncludeChildren] = createSignal(false);
-  const [addingMember, setAddingMember] = createSignal(false);
-  const [addMemberError, setAddMemberError] = createSignal<string | null>(null);
+  const [inviteRows, setInviteRows] = createSignal<InviteRow[]>([]);
+  const [sendingInvites, setSendingInvites] = createSignal(false);
+  const [inviteError, setInviteError] = createSignal<string | null>(null);
   const [updatingMember, setUpdatingMember] = createSignal<string | null>(null);
   const [removingMember, setRemovingMember] = createSignal<string | null>(null);
   const [usersMap, setUsersMap] = createSignal(new Map<string, User>());
@@ -150,21 +115,11 @@ export function SpaceMembers() {
   const [copiedUserId, setCopiedUserId] = createSignal<string | null>(null);
   const [expandedMembers, setExpandedMembers] = createSignal(new Set<string>());
   const [inviteSuggestions, setInviteSuggestions] = createSignal<User[]>([]);
-  const [showSuggestions, setShowSuggestions] = createSignal(false);
+  const [suggestionRowId, setSuggestionRowId] = createSignal<string | null>(null);
   const [accessTokens, setAccessTokens] = createSignal<AccessToken[]>([]);
-  const [isCreatingToken, setIsCreatingToken] = createSignal(false);
-  const [isSubmittingToken, setIsSubmittingToken] = createSignal(false);
-  const [newTokenName, setNewTokenName] = createSignal("");
-  const [newTokenPermission, setNewTokenPermission] = createSignal<string>(
-    Permission.EDITOR,
-  );
-  const [newTokenResourceType, setNewTokenResourceType] = createSignal("space");
-  const [newTokenResourceId, setNewTokenResourceId] = createSignal("");
-  const [newTokenExpiresInDays, setNewTokenExpiresInDays] = createSignal<number | null>(
-    null,
-  );
   const [createdTokenValue, setCreatedTokenValue] = createSignal<string | null>(null);
   const [tokenCopied, setTokenCopied] = createSignal(false);
+  let nextInviteRowId = 0;
 
   async function fetchAllDocuments(spaceId: string) {
     const all: DocumentWithProperties[] = [];
@@ -247,52 +202,6 @@ export function SpaceMembers() {
     }
   }
 
-  function openCreateToken() {
-    setIsCreatingToken(true);
-    setShowAddMember(false);
-    setNewTokenName("");
-    setNewTokenPermission(Permission.EDITOR);
-    setNewTokenResourceType("space");
-    setNewTokenResourceId(currentSpace()?.id ?? "");
-    setNewTokenExpiresInDays(null);
-    setError(null);
-  }
-
-  async function handleCreateToken() {
-    const spaceId = currentSpace()?.id;
-    if (!spaceId) return;
-    setIsSubmittingToken(true);
-    setError(null);
-
-    try {
-      const isExtensionsCapability = newTokenPermission() === "extensions";
-      const result = await api.accessTokens.create(spaceId, {
-        name: newTokenName().trim(),
-        permission: newTokenPermission(),
-        ...(isExtensionsCapability
-          ? {}
-          : {
-              resourceType: newTokenResourceType(),
-              resourceId:
-                newTokenResourceType() === "space"
-                  ? spaceId
-                  : newTokenResourceId().trim(),
-            }),
-        ...(newTokenExpiresInDays()
-          ? { expiresInDays: newTokenExpiresInDays() as number }
-          : {}),
-      });
-      setCreatedTokenValue(result.token);
-      setTokenCopied(false);
-      setIsCreatingToken(false);
-      await Promise.all([fetchAccessTokens(), fetchPermissions()]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create token");
-    } finally {
-      setIsSubmittingToken(false);
-    }
-  }
-
   async function handleCopyToken() {
     const value = createdTokenValue();
     if (!value) return;
@@ -334,6 +243,10 @@ export function SpaceMembers() {
       void fetchPermissions();
       void fetchUsers();
       void fetchAccessTokens();
+      void fetchInviteSuggestions();
+      setInviteRows([]);
+      setInviteError(null);
+      setSuggestionRowId(null);
     }),
   );
 
@@ -341,38 +254,6 @@ export function SpaceMembers() {
     if (!topics.includes(realtimeTopics.acl)) return;
     void Promise.all([fetchPermissions(), fetchUsers()]);
   });
-
-  // The form opens pre-filled with the space id. Switching to another resource
-  // type has to clear it, or that id rides along as the document/extension id
-  // and mints a grant that matches nothing.
-  createEffect(
-    on(
-      newTokenResourceType,
-      (type) => {
-        setNewTokenResourceId(type === "space" ? (currentSpace()?.id ?? "") : "");
-      },
-      { defer: true },
-    ),
-  );
-
-  createEffect(
-    on(
-      showAddMember,
-      (isOpen) => {
-        setShowSuggestions(false);
-        if (!isOpen) return;
-        setAddMemberError(null);
-        setNewMemberId("");
-        setNewMemberEmail("");
-        setNewMemberType("user");
-        setNewMemberRole(Permission.VIEWER);
-        setNewMemberScope(defaultScope());
-        setNewMemberIncludeChildren(false);
-        void fetchInviteSuggestions();
-      },
-      { defer: true },
-    ),
-  );
 
   const rolePermissions = createMemo(() =>
     permissions().filter((p) => p.type === "role"),
@@ -387,11 +268,17 @@ export function SpaceMembers() {
       ),
   );
 
-  const filteredInviteSuggestions = createMemo<User[]>(() => {
-    const query = newMemberEmail().trim().toLowerCase();
+  function filteredInviteSuggestions(row: InviteRow): User[] {
+    const query = row.value.trim().toLowerCase();
     const members = existingMemberIds();
+    const selectedEmails = new Set(
+      inviteRows()
+        .filter((invite) => invite.id !== row.id && invite.type === "user")
+        .map((invite) => invite.value.trim().toLowerCase()),
+    );
     return inviteSuggestions()
       .filter((suggestion) => !members.has(suggestion.id))
+      .filter((suggestion) => !selectedEmails.has(suggestion.email.toLowerCase()))
       .filter((suggestion) => {
         if (!query) return true;
         return (
@@ -400,11 +287,11 @@ export function SpaceMembers() {
         );
       })
       .slice(0, 8);
-  });
+  }
 
-  function selectSuggestion(suggestion: User) {
-    setNewMemberEmail(suggestion.email);
-    setShowSuggestions(false);
+  function selectSuggestion(rowId: string, suggestion: User) {
+    updateInviteRow(rowId, { value: suggestion.email });
+    setSuggestionRowId(null);
   }
 
   function getMemberUser(perm: PermissionEntry): User | undefined {
@@ -462,9 +349,39 @@ export function SpaceMembers() {
     return userIsOwner() ? "space" : "";
   }
 
-  /** Turns the scope selection into the resource the grant is written to. */
-  function grantTarget() {
-    const value = newMemberScope();
+  function createInviteRow(): InviteRow {
+    return {
+      id: `invite-${++nextInviteRowId}`,
+      type: "user",
+      value: "",
+      role: Permission.VIEWER,
+      scope: defaultScope(),
+      includeChildren: false,
+      expiresInDays: null,
+    };
+  }
+
+  function updateInviteRow(id: string, update: Partial<InviteRow>) {
+    setInviteRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...update } : row)),
+    );
+  }
+
+  function addInviteRow() {
+    setInviteRows((rows) => [...rows, createInviteRow()]);
+  }
+
+  function removeInviteRow(id: string) {
+    setInviteRows((rows) => {
+      if (rows.length === 1) return [];
+      return rows.filter((row) => row.id !== id);
+    });
+    if (suggestionRowId() === id) setSuggestionRowId(null);
+  }
+
+  /** Turns an invite row's scope into the resource its grant is written to. */
+  function grantTarget(row: InviteRow) {
+    const value = row.scope;
     if (value.startsWith(CATEGORY_SCOPE_PREFIX)) {
       return {
         resourceType: "category" as const,
@@ -473,7 +390,7 @@ export function SpaceMembers() {
     }
     if (value.startsWith(DOCUMENT_SCOPE_PREFIX)) {
       return {
-        resourceType: newMemberIncludeChildren()
+        resourceType: row.includeChildren
           ? ("document_tree" as const)
           : ("document" as const),
         resourceId: value.slice(DOCUMENT_SCOPE_PREFIX.length),
@@ -482,12 +399,16 @@ export function SpaceMembers() {
     return {};
   }
 
-  function openAddMember() {
-    setNewMemberType("user");
-    setNewMemberRole(Permission.VIEWER);
-    setNewMemberScope(defaultScope());
-    setNewMemberIncludeChildren(false);
-    setShowAddMember(true);
+  /** Access tokens use the same space/category/document scope picker as members. */
+  function tokenTarget(row: InviteRow, spaceId: string) {
+    const target = grantTarget(row);
+    return {
+      resourceType:
+        target.resourceType === "document_tree"
+          ? "document"
+          : (target.resourceType ?? "space"),
+      resourceId: target.resourceId ?? spaceId,
+    };
   }
 
   const memberAccess = createMemo<MemberAccess[]>(() => {
@@ -556,59 +477,87 @@ export function SpaceMembers() {
     })),
   ]);
 
-  const documentsByCategoryId = createMemo(
-    () =>
-      new Map(
-        categories().map((category) => [
-          category.id,
-          documents().filter((document) =>
-            documentBelongsToCategory(document, category.slug, documentsById()),
-          ),
-        ]),
-      ),
-  );
-
-  async function handleAddMember(e: Event) {
+  async function handleInviteRows(e: Event) {
     e.preventDefault();
 
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
 
-    const isGroup = newMemberType() === "group";
-
-    if (isGroup ? !newMemberId().trim() : !newMemberEmail().trim()) return;
-
-    if (!newMemberScope()) {
-      setAddMemberError(t("Select what to give access to"));
+    const rows = inviteRows().filter((row) => row.value.trim());
+    if (rows.length === 0) {
+      setInviteError(t("Add at least one person or group"));
       return;
     }
 
-    setAddingMember(true);
-    setAddMemberError(null);
+    if (
+      rows.some(
+        (row) => !row.scope && !(row.type === "token" && row.role === "extensions"),
+      )
+    ) {
+      setInviteError(t("Select what to give access to"));
+      return;
+    }
+
+    const tokenRows = rows.filter((row) => row.type === "token");
+    if (tokenRows.length > 1) {
+      setInviteError(t("Create one token at a time so its value can be copied safely"));
+      return;
+    }
+
+    const emailCounts = new Map<string, number>();
+    for (const row of rows) {
+      if (row.type !== "user") continue;
+      const email = row.value.trim().toLowerCase();
+      emailCounts.set(email, (emailCounts.get(email) ?? 0) + 1);
+    }
+    if ([...emailCounts.values()].some((count) => count > 1)) {
+      setInviteError(t("Each person can only be invited once"));
+      return;
+    }
+
+    setSendingInvites(true);
+    setInviteError(null);
 
     try {
-      await api.permissions.grant(spaceId, {
-        type: "role",
-        roleOrFeature: newMemberRole(),
-        ...(isGroup
-          ? { groupId: newMemberId().trim() }
-          : { email: newMemberEmail().trim() }),
-        ...grantTarget(),
-      });
+      const tokenRow = tokenRows[0];
+      const [, tokenResult] = await Promise.all([
+        Promise.all(
+          rows
+            .filter((row) => row.type !== "token")
+            .map((row) =>
+              api.permissions.grant(spaceId, {
+                type: "role",
+                roleOrFeature: row.role,
+                ...(row.type === "group"
+                  ? { groupId: row.value.trim() }
+                  : { email: row.value.trim() }),
+                ...grantTarget(row),
+              }),
+            ),
+        ),
+        tokenRow
+          ? api.accessTokens.create(spaceId, {
+              name: tokenRow.value.trim(),
+              permission: tokenRow.role,
+              ...(tokenRow.role === "extensions" ? {} : tokenTarget(tokenRow, spaceId)),
+              ...(tokenRow.expiresInDays
+                ? { expiresInDays: tokenRow.expiresInDays }
+                : {}),
+            })
+          : Promise.resolve(null),
+      ]);
 
-      setShowAddMember(false);
-      setNewMemberId("");
-      setNewMemberEmail("");
-      setNewMemberType("user");
-      setNewMemberRole(Permission.VIEWER);
-      setNewMemberScope(defaultScope());
-      setNewMemberIncludeChildren(false);
-      await Promise.all([fetchPermissions(), fetchUsers()]);
+      setInviteRows([]);
+      if (tokenResult) {
+        setCreatedTokenValue(tokenResult.token);
+        setTokenCopied(false);
+      }
+      await Promise.all([fetchPermissions(), fetchUsers(), fetchAccessTokens()]);
     } catch (err) {
-      setAddMemberError(err instanceof Error ? err.message : t("Failed to add member"));
-      console.error("Failed to add member:", err);
+      setInviteError(err instanceof Error ? err.message : t("Failed to send invites"));
+      console.error("Failed to send invites:", err);
     } finally {
-      setAddingMember(false);
+      setSendingInvites(false);
     }
   }
 
@@ -692,48 +641,6 @@ export function SpaceMembers() {
     if (member.categoryGrants.length > 0) return "Category-scoped access";
     if (member.grants.some(isScopedGrant)) return "Document-scoped access";
     return "Resource-scoped access";
-  }
-
-  function getAccessibleResourceGroups(member: MemberAccess) {
-    if (member.spaceGrant) return [];
-
-    const categoryGroups = member.categoryGrants.map((grant) => {
-      const category = categories().find(
-        (item) => item.id === grant.permission.resourceId,
-      );
-      return {
-        id: grant.permission.resourceId ?? "",
-        label: category?.name || "Category",
-        documents: documentsByCategoryId().get(grant.permission.resourceId ?? "") || [],
-      };
-    });
-
-    const documentGroups = member.grants.filter(isScopedGrant).map((grant) => {
-      const resourceId = grant.permission.resourceId ?? "";
-      const root = documentsById().get(resourceId);
-      const isTree = grant.permission.resourceType === "document_tree";
-      return {
-        id: `${grant.permission.resourceType}:${resourceId}`,
-        label: `${isTree ? "Document tree" : "Document"}: ${root ? getDocumentLabel(root) : resourceId}`,
-        documents: root
-          ? isTree
-            ? documents().filter((document) =>
-                documentIsInTree(document, root.id, documentsById()),
-              )
-            : [root]
-          : [],
-      };
-    });
-
-    return [...categoryGroups, ...documentGroups];
-  }
-
-  function getAccessibleDocumentCount(member: MemberAccess): number {
-    return new Set(
-      getAccessibleResourceGroups(member).flatMap((group) =>
-        group.documents.map((document) => document.id),
-      ),
-    ).size;
   }
 
   function hasMixedRoles(member: MemberAccess): boolean {
@@ -824,27 +731,77 @@ export function SpaceMembers() {
     }
   }
 
+  function getScopedGrants(member: MemberAccess): PermissionEntry[] {
+    return member.grants.filter((grant) => grant !== member.spaceGrant);
+  }
+
+  function MemberGrantRow(props: { grant: PermissionEntry }) {
+    const grantMemberId = () =>
+      props.grant.permission.userId || props.grant.permission.groupId;
+
+    return (
+      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 pl-6 pr-4 sm:pl-10">
+        <div class="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+          <span class="truncate font-medium text-neutral-900">
+            {getResourceLabel(props.grant)}
+          </span>
+          <span class="shrink-0 text-neutral-500 text-size-small">
+            Added{" "}
+            {props.grant.permission.createdAt
+              ? formatDate(props.grant.permission.createdAt, lang)
+              : "—"}
+          </span>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <Show
+            when={canEditMember(props.grant.permission.userId)}
+            fallback={
+              <span
+                class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(props.grant.permission.permission)}`}
+              >
+                {props.grant.permission.permission}
+              </span>
+            }
+          >
+            <select
+              value={props.grant.permission.permission}
+              disabled={updatingMember() === grantMemberId()}
+              class="focus-ring h-8 rounded-md border border-neutral-100 bg-background px-2 text-size-small"
+              onChange={(event) =>
+                void handleRoleChange(props.grant, event.currentTarget.value)
+              }
+            >
+              <option value={Permission.VIEWER}>Viewer</option>
+              <option value={Permission.EDITOR}>Editor</option>
+              <Show when={isSpaceGrant(props.grant)}>
+                <option value={Permission.OWNER}>Owner</option>
+              </Show>
+            </select>
+          </Show>
+          <Show when={canRemoveMember(props.grant)}>
+            <button
+              type="button"
+              disabled={removingMember() === grantMemberId()}
+              class="rounded-md px-2 py-1 text-neutral-500 text-size-small hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => void handleRemoveMember(props.grant)}
+            >
+              {removingMember() === grantMemberId() ? "Removing..." : "Remove"}
+            </button>
+          </Show>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <div class="space-y-6">
+      <div class="flex flex-col gap-6">
         <div class="flex items-center justify-between">
           <h2 class="font-semibold text-neutral-900 text-size-large">Access</h2>
-          <div class="flex items-center gap-3">
-            <Show when={userIsOwner() && !isCreatingToken()}>
-              <button
-                type="button"
-                onClick={openCreateToken}
-                class="font-medium text-blue-600 text-size-small hover:text-blue-800"
-              >
-                + Create token
-              </button>
-            </Show>
-            <Button text={t("Invite People")} onClick={openAddMember} />
-          </div>
         </div>
 
-        <Show when={isCreatingToken()}>
-          <div class="rounded-md border border-blue-200 bg-blue-50 p-3">
+        {/*
+          <div class="rounded-lg border border-neutral-200 bg-background p-3">
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -977,7 +934,7 @@ export function SpaceMembers() {
               </div>
             </form>
           </div>
-        </Show>
+        */}
 
         <Show when={createdTokenValue()}>
           {(value) => (
@@ -1012,8 +969,34 @@ export function SpaceMembers() {
         </Show>
 
         <Show when={isLoading() || loadingUsers()}>
-          <div class="flex justify-center py-8">
-            <div class="h-8 w-8 animate-spin rounded-full border-blue-600 border-b-2" />
+          <div class="overflow-hidden rounded-t-md border border-neutral-100 bg-background">
+            <div class="grid grid-cols-[minmax(16rem,2fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)_minmax(7rem,0.7fr)_minmax(5rem,0.5fr)] gap-3 border-neutral-100 border-b bg-neutral-50 px-4 py-2.5">
+              <div class="h-3 w-14 animate-pulse rounded bg-neutral-100" />
+              <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
+              <div class="h-3 w-12 animate-pulse rounded bg-neutral-100" />
+              <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
+              <div class="justify-self-end h-3 w-12 animate-pulse rounded bg-neutral-100" />
+            </div>
+            <For each={[0, 1, 2]}>
+              {() => (
+                <div class="grid grid-cols-[minmax(16rem,2fr)_minmax(7rem,0.7fr)_minmax(13rem,1.2fr)_minmax(7rem,0.7fr)_minmax(5rem,0.5fr)] items-center gap-3 border-neutral-100 border-b px-4 py-3 last:border-b-0">
+                  <div class="flex items-center gap-3">
+                    <div class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-neutral-100" />
+                    <div class="space-y-2">
+                      <div class="h-3 w-32 animate-pulse rounded bg-neutral-100" />
+                      <div class="h-2.5 w-44 animate-pulse rounded bg-neutral-100" />
+                    </div>
+                  </div>
+                  <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
+                  <div class="space-y-2">
+                    <div class="h-3 w-24 animate-pulse rounded bg-neutral-100" />
+                    <div class="h-2.5 w-28 animate-pulse rounded bg-neutral-100" />
+                  </div>
+                  <div class="h-5 w-14 animate-pulse rounded-full bg-neutral-100" />
+                  <div class="justify-self-end h-3 w-12 animate-pulse rounded bg-neutral-100" />
+                </div>
+              )}
+            </For>
           </div>
         </Show>
 
@@ -1023,14 +1006,274 @@ export function SpaceMembers() {
           </div>
         </Show>
 
+        <form
+          onSubmit={(event) => void handleInviteRows(event)}
+          class="order-1 -mt-6 overflow-hidden rounded-b-md border border-neutral-100 border-t-0 bg-background"
+        >
+          <div class="divide-y divide-neutral-100">
+            <Index each={inviteRows()}>
+              {(row) => (
+                <div class="grid grid-cols-[7.5rem_minmax(0,1fr)_2.5rem] items-center gap-y-3 px-4 py-3 lg:grid-cols-[6.5rem_minmax(12rem,2fr)_minmax(8rem,1fr)_7.5rem_7rem_2.5rem]">
+                  <div class="relative col-start-2 row-start-1 min-w-0 lg:col-start-2 lg:row-start-1">
+                    <Show when={row().type !== "token"}>
+                      <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+                        <Show
+                          when={inviteSuggestions().find(
+                            (suggestion) =>
+                              suggestion.email.toLowerCase() ===
+                              row().value.trim().toLowerCase(),
+                          )}
+                          fallback={<Icon class="h-4 w-4 text-neutral-400" name="people" />}
+                        >
+                          {(suggestion) => (
+                            <vektor-avatar
+                              size="24"
+                              attr:user-id={suggestion().id}
+                              prop:user={suggestion()}
+                            />
+                          )}
+                        </Show>
+                      </div>
+                    </Show>
+                    <input
+                      value={row().value}
+                      onInput={(event) => {
+                        updateInviteRow(row().id, { value: event.currentTarget.value });
+                        setSuggestionRowId(row().type === "user" ? row().id : null);
+                      }}
+                      onFocus={() => row().type === "user" && setSuggestionRowId(row().id)}
+                      onBlur={() =>
+                        setTimeout(() => {
+                          if (suggestionRowId() === row().id) setSuggestionRowId(null);
+                        }, 150)
+                      }
+                      type={row().type === "user" ? "email" : "text"}
+                      autocomplete="off"
+                      placeholder={
+                        row().type === "user"
+                          ? t("person@example.com")
+                          : row().type === "group"
+                            ? t("e.g., admins, developers")
+                            : t("e.g., CI deploy token")
+                      }
+                      aria-label={t("Member")}
+                      class={`focus-ring h-9 w-full rounded-md rounded-l-none border border-neutral-200 border-l-0 bg-background py-0 pr-2.5 text-neutral-900 text-size-medium ${row().type === "token" ? "pl-2.5" : "pl-10"}`}
+                    />
+                    <Show
+                      when={
+                        row().type === "user" &&
+                        suggestionRowId() === row().id &&
+                        filteredInviteSuggestions(row()).length > 0
+                      }
+                    >
+                      <ul class="absolute z-10 mt-1 max-h-52 w-full overflow-y-auto rounded-md border border-neutral-200 bg-background py-1 shadow-lg">
+                        <For each={filteredInviteSuggestions(row())}>
+                          {(suggestion) => (
+                            <li>
+                              <button
+                                type="button"
+                                class="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left hover:bg-neutral-50"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  selectSuggestion(row().id, suggestion);
+                                }}
+                              >
+                                <vektor-avatar
+                                  size="28"
+                                  attr:user-id={suggestion.id}
+                                  prop:user={suggestion}
+                                />
+                                <span class="min-w-0">
+                                  <span class="block truncate text-neutral-900 text-size-medium">
+                                    {suggestion.name}
+                                  </span>
+                                  <span class="block truncate text-neutral-400 text-size-small">
+                                    {suggestion.email}
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+                  </div>
+
+                  <select
+                    value={row().type}
+                    disabled={!userIsOwner()}
+                    onChange={(event) => {
+                      const type = event.currentTarget.value as InviteeType;
+                      updateInviteRow(row().id, {
+                        type,
+                        value: "",
+                        role: type === "token" ? Permission.EDITOR : Permission.VIEWER,
+                        scope: type === "token" ? "space" : row().scope,
+                        includeChildren: false,
+                      });
+                    }}
+                    aria-label={t("Type")}
+                    class="focus-ring col-start-1 row-start-1 h-9 w-full min-w-0 rounded-md rounded-r-none border border-neutral-200 bg-background px-2.5 py-0 text-neutral-900 text-size-medium disabled:cursor-default disabled:opacity-100 lg:col-start-1 lg:row-start-1"
+                  >
+                    <option value="user">{t("Person")}</option>
+                    <Show when={userIsOwner()}>
+                      <option value="group">{t("Group")}</option>
+                      <option value="token">{t("Token")}</option>
+                    </Show>
+                  </select>
+
+                  <div class="col-span-3 col-start-1 row-start-2 flex min-w-0 flex-col gap-2 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:ml-3">
+                    <Show
+                      when={!(row().type === "token" && row().role === "extensions")}
+                      fallback={
+                        <div class="flex min-h-8 items-center rounded-md border border-neutral-200 px-2.5 text-neutral-500 text-size-medium">
+                          {t("Extensions (install/update)")}
+                        </div>
+                      }
+                    >
+                      <FilterSelect
+                        id={`member-scope-${row().id}`}
+                        class="h-9"
+                        value={row().scope}
+                        options={scopeOptions()}
+                        placeholder={t("Select access")}
+                        filterPlaceholder={t("Search pages and categories…")}
+                        onChange={(value) =>
+                          updateInviteRow(row().id, {
+                            scope: value,
+                            includeChildren: false,
+                            role:
+                              value === "space" || row().role !== Permission.OWNER
+                                ? row().role
+                                : Permission.VIEWER,
+                          })
+                        }
+                      />
+                    </Show>
+                    <Show
+                      when={
+                        row().type !== "token" &&
+                        row().scope.startsWith(DOCUMENT_SCOPE_PREFIX)
+                      }
+                    >
+                      <select
+                        value={row().includeChildren ? "tree" : "single"}
+                        onChange={(event) =>
+                          updateInviteRow(row().id, {
+                            includeChildren: event.currentTarget.value === "tree",
+                          })
+                        }
+                        aria-label={t("Documents")}
+                        class="focus-ring w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-small"
+                      >
+                        <option value="single">{t("This document")}</option>
+                        <option value="tree">{t("This document and child documents")}</option>
+                      </select>
+                    </Show>
+                  </div>
+
+                  <select
+                    value={row().role}
+                    onChange={(event) =>
+                      updateInviteRow(row().id, { role: event.currentTarget.value })
+                    }
+                    aria-label={t("Role")}
+                    class={`focus-ring row-start-3 h-9 w-full min-w-0 rounded-md border border-neutral-200 bg-background px-2.5 py-0 text-neutral-900 text-size-medium lg:col-span-1 lg:col-start-4 lg:row-start-1 lg:ml-3 lg:w-[calc(100%_-_0.75rem)] ${row().type === "token" ? "col-start-1 rounded-r-none" : "col-span-3 col-start-1"}`}
+                  >
+                    <Show
+                      when={row().type === "token"}
+                      fallback={
+                        <>
+                          <option value={Permission.VIEWER}>
+                            {roleLabel("viewer", lang)}
+                          </option>
+                          <option value={Permission.EDITOR}>
+                            {roleLabel("editor", lang)}
+                          </option>
+                          <Show when={row().scope === "space"}>
+                            <option value={Permission.OWNER}>
+                              {roleLabel("owner", lang)}
+                            </option>
+                          </Show>
+                        </>
+                      }
+                    >
+                      <option value={Permission.VIEWER}>{roleLabel("viewer", lang)}</option>
+                      <option value={Permission.EDITOR}>{roleLabel("editor", lang)}</option>
+                      <option value="extensions">{t("Extensions")}</option>
+                    </Show>
+                  </select>
+
+                  <div
+                    class={`col-start-3 row-start-1 flex items-center justify-self-end self-center lg:row-start-1 ${row().type === "token" ? "lg:col-span-1 lg:col-start-6" : "lg:col-span-2 lg:col-start-5"}`}
+                  >
+                    <button
+                      type="button"
+                      class="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                      onClick={() => removeInviteRow(row().id)}
+                      aria-label={t("Remove")}
+                      title={t("Remove")}
+                    >
+                      <Icon class="h-4 w-4" name="cancel" />
+                    </button>
+                  </div>
+                  <Show when={row().type === "token"}>
+                    <div class="col-span-2 col-start-2 row-start-3 flex h-9 min-w-0 items-center gap-1.5 rounded-md rounded-l-none border border-neutral-200 border-l-0 bg-background px-2 lg:col-span-1 lg:col-start-5 lg:row-start-1">
+                      <Icon class="h-4 w-4 shrink-0 text-neutral-500" name="date" />
+                      <div class="min-w-0 flex-1">
+                        <select
+                          value={String(row().expiresInDays ?? "")}
+                          onChange={(event) =>
+                            updateInviteRow(row().id, {
+                              expiresInDays: event.currentTarget.value
+                                ? Number(event.currentTarget.value)
+                                : null,
+                            })
+                          }
+                          aria-label={t("Expires in")}
+                          class="focus-ring w-full border-0 bg-transparent p-0 font-medium text-neutral-900 text-size-small outline-none"
+                        >
+                          <option value="">{t("Never")}</option>
+                          <option value="7">{t("7 days")}</option>
+                          <option value="30">{t("30 days")}</option>
+                          <option value="90">{t("90 days")}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </Show>
+                </div>
+              )}
+            </Index>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-neutral-100 border-t px-4 py-3">
+            <button
+              type="button"
+              onClick={addInviteRow}
+              class="flex items-center gap-1.5 font-medium text-neutral-600 text-size-small hover:text-neutral-900"
+            >
+              <Icon class="h-4 w-4" name="add" />
+              {inviteRows().length === 0 ? t("Add access") : t("Add another")}
+            </button>
+            <div class="flex items-center gap-3">
+              <Show when={inviteError()}>
+                <p class="text-red-500 text-size-small">{inviteError()}</p>
+              </Show>
+              <Button
+                type="submit"
+                text={sendingInvites() ? t("Saving…") : t("Save access")}
+                disabled={sendingInvites() || inviteRows().length === 0}
+              />
+            </div>
+          </div>
+        </form>
+
         <Show
           when={
             !isLoading() &&
-            !loadingUsers() &&
-            (memberAccess().length > 0 || accessTokens().length > 0)
+            !loadingUsers()
           }
         >
-          <div class="overflow-x-auto rounded-md border border-neutral-100">
+          <div class="overflow-x-auto rounded-t-md border border-neutral-100">
             <table class="min-w-full text-size-medium">
               <thead class="bg-neutral-50">
                 <tr>
@@ -1055,7 +1298,13 @@ export function SpaceMembers() {
                 <For each={memberAccess()}>
                   {(member) => (
                     <>
-                      <tr class="hover:bg-neutral-50">
+                      <tr
+                        class={
+                          expandedMembers().has(member.key)
+                            ? "bg-neutral-50"
+                            : "hover:bg-neutral-50"
+                        }
+                      >
                         <td class="px-4 py-2.5">
                           <div class="flex items-center gap-3">
                             <Show
@@ -1140,126 +1389,43 @@ export function SpaceMembers() {
                         </td>
                       </tr>
                       <Show when={expandedMembers().has(member.key)}>
-                        <tr class="bg-neutral-50">
-                          <td colspan="5" class="px-4 py-3">
-                            <div class="ml-10 space-y-2 border-neutral-200 border-l-2 pl-4">
-                              <For each={member.grants}>
-                                {(grant) => (
-                                  <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-neutral-100 bg-background px-3 py-2">
-                                    <div>
-                                      <div class="font-medium text-neutral-900">
-                                        {getResourceLabel(grant)}
-                                      </div>
-                                      <div class="text-neutral-500 text-size-small">
-                                        Added{" "}
-                                        {grant.permission.createdAt
-                                          ? formatDate(grant.permission.createdAt, lang)
-                                          : "—"}
-                                      </div>
-                                    </div>
-                                    <div class="flex items-center gap-3">
-                                      <Show
-                                        when={canEditMember(grant.permission.userId)}
-                                        fallback={
-                                          <span
-                                            class={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-size-small ${roleBadgeClass(grant.permission.permission)}`}
-                                          >
-                                            {grant.permission.permission}
-                                          </span>
-                                        }
-                                      >
-                                        <select
-                                          value={grant.permission.permission}
-                                          disabled={
-                                            updatingMember() ===
-                                            (grant.permission.userId ||
-                                              grant.permission.groupId)
-                                          }
-                                          class="focus-ring rounded-md border border-neutral-100 px-2 py-1 text-size-medium"
-                                          onChange={(e) =>
-                                            void handleRoleChange(
-                                              grant,
-                                              e.currentTarget.value,
-                                            )
-                                          }
-                                        >
-                                          <option value={Permission.VIEWER}>
-                                            Viewer
-                                          </option>
-                                          <option value={Permission.EDITOR}>
-                                            Editor
-                                          </option>
-                                          <Show when={isSpaceGrant(grant)}>
-                                            <option value={Permission.OWNER}>
-                                              Owner
-                                            </option>
-                                          </Show>
-                                        </select>
-                                      </Show>
-                                      <Show when={canRemoveMember(grant)}>
-                                        <button
-                                          type="button"
-                                          disabled={
-                                            removingMember() ===
-                                            (grant.permission.userId ||
-                                              grant.permission.groupId)
-                                          }
-                                          class="text-red-600 text-size-small hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
-                                          onClick={() => void handleRemoveMember(grant)}
-                                        >
-                                          {removingMember() ===
-                                          (grant.permission.userId ||
-                                            grant.permission.groupId)
-                                            ? "Removing..."
-                                            : "Remove"}
-                                        </button>
-                                      </Show>
-                                    </div>
-                                  </div>
+                        <tr>
+                          <td colspan="5" class="p-0">
+                            <div class="border-neutral-200 border-l-2 bg-neutral-50/60">
+                              <Show when={member.spaceGrant}>
+                                {(spaceGrant) => (
+                                  <MemberGrantRow grant={spaceGrant()} />
                                 )}
-                              </For>
-                              <details class="rounded-md border border-neutral-200 bg-background">
-                                <summary class="cursor-pointer px-3 py-2 font-medium text-neutral-700 text-size-small hover:bg-neutral-50">
-                                  {member.spaceGrant
-                                    ? "Accessible resources · Entire space"
-                                    : `Accessible resources · ${getAccessibleDocumentCount(member)} pages`}
-                                </summary>
-                                <div class="space-y-3 border-neutral-100 border-t p-3">
-                                  <Show when={member.spaceGrant}>
-                                    <p class="text-neutral-600 text-size-small">
-                                      This grant covers every resource in the space.
-                                    </p>
-                                  </Show>
-                                  <For each={getAccessibleResourceGroups(member)}>
-                                    {(group) => (
-                                      <div>
-                                        <div class="flex items-center justify-between text-size-small">
-                                          <span class="font-medium text-neutral-800">
-                                            {group.label}
-                                          </span>
-                                          <span class="text-neutral-500">
-                                            {group.documents.length} pages
-                                          </span>
-                                        </div>
-                                        <ul class="mt-1 divide-y divide-neutral-100 rounded-md border border-neutral-100">
-                                          <For each={group.documents}>
-                                            {(document) => (
-                                              <li class="px-3 py-1.5 text-neutral-700 text-size-small">
-                                                {getDocumentLabel(document)}
-                                              </li>
-                                            )}
-                                          </For>
-                                          <Show when={group.documents.length === 0}>
-                                            <li class="px-3 py-1.5 text-neutral-500 text-size-small">
-                                              No pages in this scope.
-                                            </li>
-                                          </Show>
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </For>
-                                </div>
-                              </details>
+                              </Show>
+                              <Show when={getScopedGrants(member).length > 0}>
+                                <details
+                                  open={!member.spaceGrant}
+                                  class="group border-neutral-100 border-t"
+                                >
+                                  <summary class="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-100/50 py-2 pl-6 pr-4 text-size-small hover:bg-neutral-100 sm:pl-10">
+                                    <span class="flex items-center gap-2 font-medium text-neutral-700">
+                                      <span
+                                        aria-hidden="true"
+                                        class="text-neutral-400 transition-transform group-open:rotate-90"
+                                      >
+                                        ›
+                                      </span>
+                                      {member.spaceGrant
+                                        ? "Scoped overrides"
+                                        : "Scoped access"}
+                                    </span>
+                                    <span class="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600 group-hover:bg-background">
+                                      {getScopedGrants(member).length} grant
+                                      {getScopedGrants(member).length === 1 ? "" : "s"}
+                                    </span>
+                                  </summary>
+                                  <div class="divide-y divide-neutral-100 border-neutral-100 border-t">
+                                    <For each={getScopedGrants(member)}>
+                                      {(grant) => <MemberGrantRow grant={grant} />}
+                                    </For>
+                                  </div>
+                                </details>
+                              </Show>
                             </div>
                           </td>
                         </tr>
@@ -1358,188 +1524,18 @@ export function SpaceMembers() {
             !isLoading() &&
             !loadingUsers() &&
             memberAccess().length === 0 &&
-            accessTokens().length === 0
+            accessTokens().length === 0 &&
+            inviteRows().length === 0
           }
         >
-          <div class="rounded-lg border border-neutral-100 py-12 text-center">
+          <div class="order-2 rounded-lg border border-neutral-100 py-12 text-center">
             <Icon class="mx-auto h-12 w-12 text-neutral-400" name="users-group" />
             <p class="mt-4 text-neutral-500">
-              No members yet. Add your first member to get started.
+              No members yet. Send an invite to get started.
             </p>
           </div>
         </Show>
       </div>
-
-      <Dialog
-        show={showAddMember()}
-        title={t("Invite People")}
-        onUpdateShow={(value) => setShowAddMember(value)}
-        footer={
-          <DialogFooter
-            form="invite-people-form"
-            confirmLabel={t("Invite People")}
-            pendingLabel={t("Adding…")}
-            pending={addingMember()}
-            onCancel={() => setShowAddMember(false)}
-          />
-        }
-      >
-        {/* Two columns, so every control lines up under the same left edge
-            whichever rows the type and scope selections reveal. */}
-        <form
-          id="invite-people-form"
-          onSubmit={(event) => void handleAddMember(event)}
-          class="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-1.5 gap-y-2 rounded-lg bg-neutral-50 p-3"
-        >
-          <Show when={userIsOwner()}>
-            <label class="text-neutral-600 text-size-small" for="member-type">
-              {t("Type")}
-            </label>
-            <select
-              id="member-type"
-              value={newMemberType()}
-              onChange={(e) => setNewMemberType(e.currentTarget.value)}
-              class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-            >
-              <option value="user">{t("Person")}</option>
-              <option value="group">{t("OAuth group")}</option>
-            </select>
-          </Show>
-
-          <Show
-            when={newMemberType() === "user"}
-            fallback={
-              <div class="col-start-2">
-                <input
-                  id="member-id"
-                  value={newMemberId()}
-                  onInput={(e) => setNewMemberId(e.currentTarget.value)}
-                  type="text"
-                  required
-                  placeholder={t("e.g., admins, developers")}
-                  class="w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-                />
-                <p class="mt-1 text-neutral-400 text-size-small">
-                  {t("The group name from your OAuth provider's wiki_groups field")}
-                </p>
-              </div>
-            }
-          >
-            <div class="col-start-2">
-              <input
-                id="member-id"
-                value={newMemberEmail()}
-                onInput={(e) => {
-                  setNewMemberEmail(e.currentTarget.value);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                type="email"
-                required
-                autocomplete="off"
-                placeholder="person@example.com"
-                class="w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-              />
-              <Show when={showSuggestions() && filteredInviteSuggestions().length > 0}>
-                <ul class="mt-1 max-h-52 overflow-y-auto rounded-md border border-neutral-200 bg-background py-1">
-                  <For each={filteredInviteSuggestions()}>
-                    {(suggestion) => (
-                      <li>
-                        <button
-                          type="button"
-                          class="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left hover:bg-neutral-50"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            selectSuggestion(suggestion);
-                          }}
-                        >
-                          <vektor-avatar
-                            size="28"
-                            attr:user-id={suggestion.id}
-                            prop:user={suggestion}
-                          />
-                          <div class="min-w-0">
-                            <div class="truncate text-neutral-900 text-size-medium">
-                              {suggestion.name}
-                            </div>
-                            <div class="truncate text-neutral-400 text-size-small">
-                              {suggestion.email}
-                            </div>
-                          </div>
-                        </button>
-                      </li>
-                    )}
-                  </For>
-                </ul>
-              </Show>
-              <p class="mt-1 text-neutral-400 text-size-small">
-                {t(
-                  "Start typing to pick someone from your groups, or enter the email of an existing account.",
-                )}
-              </p>
-            </div>
-          </Show>
-
-          <label class="text-neutral-600 text-size-small" for="member-role">
-            {t("Access")}
-          </label>
-          <select
-            id="member-role"
-            value={newMemberRole()}
-            onChange={(e) => setNewMemberRole(e.currentTarget.value)}
-            class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-          >
-            <option value={Permission.VIEWER}>{roleLabel("viewer", lang)}</option>
-            <option value={Permission.EDITOR}>{roleLabel("editor", lang)}</option>
-            <Show when={newMemberScope() === "space"}>
-              <option value={Permission.OWNER}>{roleLabel("owner", lang)}</option>
-            </Show>
-          </select>
-
-          <label class="text-neutral-600 text-size-small" for="member-scope">
-            {t("Scope")}
-          </label>
-          <FilterSelect
-            id="member-scope"
-            value={newMemberScope()}
-            options={scopeOptions()}
-            filterPlaceholder={t("Search pages and categories…")}
-            onChange={(value) => {
-              setNewMemberScope(value);
-              setNewMemberIncludeChildren(false);
-              // Owner is a space role; leaving it selected under a
-              // narrower scope would submit a request the API refuses.
-              if (value !== "space") {
-                setNewMemberRole((role) =>
-                  role === Permission.OWNER ? Permission.VIEWER : role,
-                );
-              }
-            }}
-          />
-
-          <Show when={newMemberScope().startsWith(DOCUMENT_SCOPE_PREFIX)}>
-            <label class="text-neutral-600 text-size-small" for="member-depth">
-              {t("Documents")}
-            </label>
-            <select
-              id="member-depth"
-              value={newMemberIncludeChildren() ? "tree" : "single"}
-              onChange={(e) =>
-                setNewMemberIncludeChildren(e.currentTarget.value === "tree")
-              }
-              class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
-            >
-              <option value="single">{t("This document")}</option>
-              <option value="tree">{t("This document and child documents")}</option>
-            </select>
-          </Show>
-
-          <Show when={addMemberError()}>
-            <p class="col-span-2 text-red-500 text-size-small">{addMemberError()}</p>
-          </Show>
-        </form>
-      </Dialog>
     </>
   );
 }
