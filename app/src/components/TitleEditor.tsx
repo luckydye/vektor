@@ -1,5 +1,7 @@
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createSignal, on, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
+import { twMerge } from "tailwind-merge";
 import { api } from "#api/client.ts";
 
 interface Props {
@@ -8,6 +10,7 @@ interface Props {
   documentId?: string;
   initialEditMode?: boolean;
   canEdit?: boolean;
+  variant?: "display" | "breadcrumb";
   onTitleUpdated?: (title: string) => void;
 }
 
@@ -27,10 +30,14 @@ export function TitleEditor(props: Props) {
     ),
   );
 
+  createEffect(() => {
+    if (!isEditing()) return;
+    inputEl?.focus({ preventScroll: true });
+  });
+
   function startEditing() {
     if (!props.canEdit) return;
     setIsEditing(true);
-    inputEl?.focus({ preventScroll: true });
   }
 
   async function updateTitle() {
@@ -69,22 +76,40 @@ export function TitleEditor(props: Props) {
     setIsEditing(false);
   }
 
+  const variant = () => props.variant ?? "display";
+  const titleTag = () => (variant() === "breadcrumb" ? "span" : "h1");
+  const displayClasses = () =>
+    variant() === "breadcrumb"
+      ? "block px-1 font-medium text-neutral-900"
+      : "flex items-center gap-3 px-1 font-bold text-neutral-900 text-size-display";
+  const inputClasses = () =>
+    variant() === "breadcrumb"
+      ? "[field-sizing:content] bg-neutral-50 px-1 font-medium text-neutral-900 outline-none transition-colors placeholder:text-[#9ca3af] focus:border-blue-500 focus:ring-0"
+      : "flex-1 bg-neutral-50 px-1 font-bold text-neutral-900 text-size-display outline-none transition-colors placeholder:text-[#9ca3af] focus:border-blue-500 focus:ring-0";
+
   return (
-    <div class="-ml-1 flex flex-1 items-center gap-3">
+    <div
+      class={twMerge(
+        "flex min-w-0 items-center",
+        variant() === "display" && "-ml-1 flex-1 gap-3",
+      )}
+    >
       <Show
         when={isEditing()}
         fallback={
           <div data-document-id={props.documentId} class="pointer-events-auto">
-            <h1
-              class="flex items-center gap-3 px-1 font-bold text-neutral-900 text-size-display"
+            <Dynamic
+              component={titleTag()}
+              class={displayClasses()}
               classList={{
                 "cursor-text hover:bg-neutral-50": props.canEdit,
                 "cursor-default": !props.canEdit,
               }}
+              title={localTitle()}
               onDblClick={() => props.canEdit && startEditing()}
             >
               {localTitle() || "Untitled Document"}
-            </h1>
+            </Dynamic>
           </div>
         }
       >
@@ -92,7 +117,7 @@ export function TitleEditor(props: Props) {
           ref={inputEl}
           type="text"
           placeholder="Untitled Document"
-          class="pointer-events-auto flex-1 bg-neutral-50 px-1 font-bold text-neutral-900 text-size-display outline-none transition-colors placeholder:text-[#9ca3af] focus:border-blue-500 focus:ring-0"
+          class={twMerge("pointer-events-auto", inputClasses())}
           value={localTitle()}
           onInput={(event) => setLocalTitle(event.currentTarget.value)}
           onBlur={updateTitle}

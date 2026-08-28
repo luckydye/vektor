@@ -417,6 +417,9 @@ export function DocumentPageView(props: Props) {
         category={docCategory()}
         parents={parentBreadcrumbs()}
         currentTitle={title()}
+        documentId={doc()?.id}
+        spaceId={currentSpace()?.id}
+        canEdit={userCanEdit()}
       />
     </Show>
   );
@@ -526,10 +529,6 @@ export function DocumentPageView(props: Props) {
                       <DocumentActions title={title()} headerImage={headerImageSrc()} />
                     </div>
 
-                    <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                      {titleRow()}
-                    </inset-view>
-
                     <inset-view
                       id="document-properties"
                       class="mb-l block px-xs md:px-m print:px-0"
@@ -555,11 +554,19 @@ export function DocumentPageView(props: Props) {
                     />
 
                     <div class="flex min-w-0 flex-1 flex-col">
-                      <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
-                        {titleRow()}
-                      </inset-view>
+                      <Show when={!isDatabase()}>
+                        <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
+                          {titleRow()}
+                        </inset-view>
+                      </Show>
 
-                      <inset-view id="document-properties" class="mb-l block print:px-0">
+                      <inset-view
+                        id="document-properties"
+                        class={twMerge(
+                          "block print:px-0",
+                          isDatabase() ? "mt-2xs mb-2xs" : "mb-l",
+                        )}
+                      >
                         {documentPropertiesBlock("labeled")}
                       </inset-view>
                     </div>
@@ -587,13 +594,18 @@ export function DocumentPageView(props: Props) {
                     {documentActions()}
                   </div>
 
-                  <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                    {titleRow()}
-                  </inset-view>
+                  <Show when={!isDatabase()}>
+                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
+                      {titleRow()}
+                    </inset-view>
+                  </Show>
 
                   <inset-view
                     id="document-properties"
-                    class="mb-xl block px-xs md:px-m print:px-0"
+                    class={twMerge(
+                      "block px-xs md:px-m print:px-0",
+                      isDatabase() ? "mt-2xs mb-2xs" : "mb-xl",
+                    )}
                   >
                     {documentPropertiesBlock()}
                   </inset-view>

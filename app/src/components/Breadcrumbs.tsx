@@ -2,6 +2,7 @@ import { createEffect, For, Show } from "solid-js";
 import { useSpace } from "#composeables/useSpace.ts";
 import { spacePath } from "#utils/utils.ts";
 import { CategoryBadge } from "./CategoryBadge.tsx";
+import { TitleEditor } from "./TitleEditor.tsx";
 
 interface BreadcrumbItem {
   id: string;
@@ -21,6 +22,9 @@ interface Props {
   category?: Category | null;
   parents?: BreadcrumbItem[];
   currentTitle: string;
+  documentId?: string;
+  spaceId?: string;
+  canEdit?: boolean;
 }
 
 export function Breadcrumbs(props: Props) {
@@ -83,13 +87,14 @@ export function Breadcrumbs(props: Props) {
             )}
           </For>
 
-          <li class="shrink-0 px-1">
-            <span
-              class="block max-w-[200px] truncate font-medium text-neutral-900"
+          <li class="shrink-0">
+            <TitleEditor
+              variant="breadcrumb"
               title={props.currentTitle}
-            >
-              {props.currentTitle}
-            </span>
+              documentId={props.documentId}
+              spaceId={props.spaceId}
+              canEdit={props.canEdit}
+            />
           </li>
         </ol>
       </nav>

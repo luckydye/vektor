@@ -356,7 +356,7 @@ export function DocumentProperties(props: Props) {
   return (
     <div
       class={twMerge(
-        "pointer-events-none flex gap-3xs",
+        "pointer-events-none flex gap-3xs -mx-0.5",
         props.layout === "labeled" ? "flex-col items-start" : "flex-wrap items-center",
       )}
     >
