@@ -7,10 +7,10 @@ import {
   DATE_FILTER_KEY,
   DOCUMENT_TYPE_FILTER_KEY,
 } from "#documents/properties.ts";
-import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 import { Icon, type IconName } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   spaceId: string;
@@ -36,16 +36,16 @@ const CHIP_REMOVE =
 const TYPE_ICONS: Record<string, IconName> = {
   app: "extension",
   canvas: "canvas",
-  csv: "csv-file",
   database: "database",
   document: "document",
   file: "file",
-  markdown: "source-code",
   record: "record",
   workflow: "bolt",
 };
 
 export function SearchFilters(props: Props) {
+  const t = useTranslation();
+
   const activeDateFilter = createMemo(
     () => props.value.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
   );

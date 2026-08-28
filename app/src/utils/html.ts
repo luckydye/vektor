@@ -330,7 +330,8 @@ export function htmlToPlainText(html: string): string {
  *  - `sanitizeVektorDocumentPreviewHtml` — markup this app did not write and
  *    only displays: a preview card fetched from somewhere else, a workflow
  *    run's `html` output. Nothing but prose survives.
- *  - `sanitizeSvgMarkup` — a space logo or extension icon, injected as markup.
+ *  - `sanitizeSvgMarkup` — an extension icon or uploaded SVG, sanitized before
+ *    it is injected as markup or encoded into a data URI.
  *
  * A policy names the tags it keeps and the tags it drops together with their
  * subtree. A tag that is neither is *unwrapped*: its children survive, the
@@ -354,8 +355,11 @@ interface SanitizePolicy {
   readonly localUrlsOnly?: boolean;
   /** `<html-block data-html>` payloads are sanitized with the same policy. */
   readonly sanitizesHtmlBlocks?: boolean;
-  /** Links keeping an `href` get a `rel` when they carry none. */
-  readonly hardensLinks?: boolean;
+  /**
+   * Links keeping an `href` get a `rel` when they carry none — `"all"` for
+   * every link, `"newTab"` only for those that also keep a `target`.
+   */
+  readonly hardensLinks?: "all" | "newTab";
   /** `width` / `height` / `colspan` / `rowspan` must be plain integers. */
   readonly numericSizesOnly?: boolean;
 }
@@ -430,6 +434,8 @@ const SAFE_MEDIA_PROTOCOLS = new Set(["http:", "https:", "blob:"]);
  */
 const INLINE_IMAGE_DATA_URL =
   /^data:image\/(?:apng|avif|bmp|gif|jpeg|jpg|png|webp|x-icon)[;,]/i;
+
+const INLINE_SVG_IMAGE_DATA_URL = /^data:image\/svg\+xml[;,]/i;
 
 /**
  * CSS that can reach outside the page. `url()` in any declaration makes every
@@ -653,13 +659,52 @@ const SIZE_ATTRIBUTES = new Set(["colspan", "height", "rowspan", "width"]);
 
 const PREVIEW_POLICY: SanitizePolicy = {
   drop: PREVIEW_DROP_TAGS,
-  hardensLinks: true,
+  hardensLinks: "all",
   numericSizesOnly: true,
   keeps: (tag) => PREVIEW_TAGS.has(tag),
   keepsAttribute: (tag, attribute) => {
     if (GLOBAL_ATTRIBUTES.has(attribute)) return true;
     if (tag === "a" && LINK_ATTRIBUTES.has(attribute)) return true;
     if (tag === "img" && IMAGE_ATTRIBUTES.has(attribute)) return true;
+    return (tag === "td" || tag === "th") && TABLE_CELL_ATTRIBUTES.has(attribute);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Policy: rendered message markdown
+// ---------------------------------------------------------------------------
+
+/**
+ * A preview's vocabulary plus what `renderMessageMarkdown` itself emits: GFM
+ * task-list checkboxes, and the two mention elements the link renderer writes.
+ */
+const MESSAGE_TAGS = new Set([
+  ...PREVIEW_TAGS,
+  "document-mention",
+  "input",
+  "user-mention",
+]);
+
+/** The preview drop list without `input`, which a task list legitimately uses. */
+const MESSAGE_DROP_TAGS = new Set(
+  [...PREVIEW_DROP_TAGS].filter((tag) => tag !== "input"),
+);
+
+const CHECKBOX_ATTRIBUTES = new Set(["checked", "disabled", "type"]);
+const MENTION_ATTRIBUTES = new Set(["data-document-id", "data-href", "email"]);
+
+const MESSAGE_POLICY: SanitizePolicy = {
+  drop: MESSAGE_DROP_TAGS,
+  hardensLinks: "all",
+  numericSizesOnly: true,
+  keeps: (tag) => MESSAGE_TAGS.has(tag),
+  keepsAttribute: (tag, attribute) => {
+    if (GLOBAL_ATTRIBUTES.has(attribute)) return true;
+    if (tag === "a" && (LINK_ATTRIBUTES.has(attribute) || attribute === "target"))
+      return true;
+    if (tag === "img" && IMAGE_ATTRIBUTES.has(attribute)) return true;
+    if (tag === "input" && CHECKBOX_ATTRIBUTES.has(attribute)) return true;
+    if (tag.endsWith("-mention") && MENTION_ATTRIBUTES.has(attribute)) return true;
     return (tag === "td" || tag === "th") && TABLE_CELL_ATTRIBUTES.has(attribute);
   },
 };
@@ -815,6 +860,11 @@ function isCustomElementTag(tag: string): boolean {
 const DOCUMENT_POLICY: SanitizePolicy = {
   drop: DOCUMENT_DROP_TAGS,
   sanitizesHtmlBlocks: true,
+  // Pasted markup can carry `target="_blank"` without a `rel`, which renders
+  // with `window.opener` intact and leaks the document URL as a referrer. Only
+  // those links are rewritten: documents are stored, so a plain in-document
+  // link has to come back out of the sanitizer byte for byte.
+  hardensLinks: "newTab",
   keeps: (tag) => DOCUMENT_TAGS.has(tag) || isCustomElementTag(tag),
   // A deny-list, unlike the preview policy: a document carries the schema's
   // `data-` attributes on its own elements and arbitrary attributes inside an
@@ -830,11 +880,10 @@ const DOCUMENT_POLICY: SanitizePolicy = {
 // ---------------------------------------------------------------------------
 
 /**
- * SVG is markup with its own script surface, and a space logo is markup an
- * editor typed. `script` and `foreignObject` (which switches back to HTML)
- * carry code; `style` can load a resource; the animation elements exist to
- * assign attributes at runtime, which is a way to write an `href` or a handler
- * after the fact.
+ * SVG is markup with its own script surface. `script` and `foreignObject`
+ * (which switches back to HTML) carry code; `style` can load a resource; the
+ * animation elements exist to assign attributes at runtime, which is a way to
+ * write an `href` or a handler after the fact.
  */
 const SVG_DROP_TAGS = new Set([
   "animate",
@@ -946,6 +995,7 @@ function sanitizedAttributes(
   const attrs: string[] = [];
   let keptHref = false;
   let keptRel = false;
+  let keptTarget = false;
 
   for (const attribute of tag.attributes ?? []) {
     const attributeKey = attributeName(attribute);
@@ -984,10 +1034,16 @@ function sanitizedAttributes(
 
     if (attributeKey === "href") keptHref = true;
     if (attributeKey === "rel") keptRel = true;
+    if (attributeKey === "target") keptTarget = true;
     attrs.push(`${attributeKey}="${escapeSanitizedAttributeValue(value)}"`);
   }
 
-  if (policy.hardensLinks && name === "a" && keptHref && !keptRel) {
+  if (
+    name === "a" &&
+    keptHref &&
+    !keptRel &&
+    (policy.hardensLinks === "all" || (policy.hardensLinks === "newTab" && keptTarget))
+  ) {
     attrs.push('rel="noopener noreferrer"');
   }
 
@@ -1111,11 +1167,39 @@ export function sanitizeDocumentHtml(html: string): string {
  * Is this a URL an `<img src>` may point at?
  *
  * The same rule the sanitizer applies to a document's own images, exposed for
- * the stored values that reach a `src` without passing through markup — a space
- * logo given as a URL rather than as inline SVG.
+ * stored values that reach a `src` without passing through markup.
  */
 export function isSafeImageUrl(value: string): boolean {
   return isSafeUrlValue(value, { media: true });
+}
+
+/** A logo/icon image source; uploaded SVG is sanitized before it is encoded. */
+export function isSafeUploadedImageUrl(value: string): boolean {
+  const normalized = normalizeUrlWhitespace(value);
+  if (!normalized) return true;
+  if (INLINE_SVG_IMAGE_DATA_URL.test(normalized)) return true;
+
+  const isImageLocation =
+    normalized.startsWith("//") ||
+    normalized.startsWith("./") ||
+    normalized.startsWith("../") ||
+    normalized.startsWith("/") ||
+    /^(?:https?|blob):/i.test(normalized) ||
+    INLINE_IMAGE_DATA_URL.test(normalized);
+
+  return isImageLocation && isSafeImageUrl(normalized);
+}
+
+/**
+ * Rendered message markdown, safe to hand `innerHTML`.
+ *
+ * Comments and chat messages are markdown, and markdown carries inline HTML —
+ * so the rendered output is sanitized like any other markup this app did not
+ * write, rather than trusted because the renderer escaped what it saw.
+ */
+export function sanitizeMessageHtml(html: string): string {
+  if (!html.trim()) return "";
+  return sanitizeNodes(parse(html), MESSAGE_POLICY, 0, 0);
 }
 
 /** Someone else's HTML, reduced to the prose a preview card shows. */
@@ -1125,8 +1209,7 @@ export function sanitizeVektorDocumentPreviewHtml(html: string): string {
 }
 
 /**
- * An `<svg>` document, safe to hand `innerHTML` — used for the space logo and
- * for extension-supplied icons, which are stored as markup.
+ * An `<svg>` document, safe to hand `innerHTML` or encode into a data URI.
  *
  * Only `<svg>` roots survive: a value that is not an SVG document (a URL, a
  * bare `<img onerror>`) sanitizes to the empty string, which the caller reads

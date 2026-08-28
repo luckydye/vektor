@@ -11,6 +11,7 @@ const idPrefixes = {
   revision: "rev",
   run: "run",
   secret: "secret",
+  shareLink: "share",
   space: "space",
   workflowSchedule: "sched",
 } as const;

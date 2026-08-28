@@ -1,5 +1,6 @@
 import { getUserGroups } from "#acl/userGroups.ts";
 import {
+  caldavRoute,
   documentToICal,
   optionsPreflight,
   requireCalDAVUserAndAccess,
@@ -14,7 +15,7 @@ import { listDocuments } from "#db/space/documents.ts";
  * - PROPFIND: returns calendar metadata
  * - REPORT: returns all documents as VEVENT iCal data
  */
-export const ALL: ApiRouteHandler = async (context) => {
+export const ALL: ApiRouteHandler = caldavRoute(async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();
   const { userId, spaceId } = context.var.params;
   if (!spaceId) return new Response("Bad Request", { status: 400 });
@@ -94,4 +95,4 @@ ${eventEntries}
   }
 
   return new Response("Method Not Allowed", { status: 405 });
-};
+});

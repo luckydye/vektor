@@ -61,30 +61,23 @@ describe("VektorClient", () => {
   });
 
   test("treats a missing or invisible slug as undefined", async () => {
-    for (const status of [403, 404]) {
-      const client = createVektorClient({
-        accessToken: "at_example",
-        fetch: async () => Response.json({ error: "Nope" }, { status }),
-      });
-      expect(await client.getDocumentBySlug("space-1", "ghost")).toBeUndefined();
-    }
+    const client = createVektorClient({
+      accessToken: "at_example",
+      fetch: async () => Response.json({ error: "Nope" }, { status: 404 }),
+    });
+    expect(await client.getDocumentBySlug("space-1", "ghost")).toBeUndefined();
   });
 
-  test("reports a rejected token instead of reporting the slug absent", async () => {
-    const unauthorized = async () => Response.json({ error: "Nope" }, { status: 401 });
-
-    // No token: 401 means the document simply is not public.
-    const anonymous = createVektorClient({ fetch: unauthorized });
-    expect(await anonymous.getDocumentBySlug("space-1", "private")).toBeUndefined();
-
-    // With a token, 401 is a rejected token and must not look like an empty space.
-    const authenticated = createVektorClient({
-      accessToken: "at_expired",
-      fetch: unauthorized,
-    });
-    await expect(authenticated.getDocumentBySlug("space-1", "private")).rejects.toThrow(
-      VektorApiError,
-    );
+  test("keeps authentication and authorization failures loud", async () => {
+    for (const status of [401, 403]) {
+      const client = createVektorClient({
+        accessToken: "at_expired",
+        fetch: async () => Response.json({ error: "Nope" }, { status }),
+      });
+      await expect(client.getDocumentBySlug("space-1", "private")).rejects.toThrow(
+        VektorApiError,
+      );
+    }
   });
 
   test("requests the draft only when asked", async () => {

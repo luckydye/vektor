@@ -187,14 +187,25 @@ export function useDocument(
   }
 
   const saveDocumentMutation = useMutation({
-    mutationFn: async ({ content, publish }: { content: string; publish?: boolean }) => {
+    mutationFn: async ({
+      content,
+      publish,
+      format,
+    }: {
+      content: string;
+      publish?: boolean;
+      format?: "html" | "serialized";
+    }) => {
       const spaceId = currentSpaceId();
       if (!spaceId) {
         throw new Error("No space selected");
       }
       const docId = documentId();
       if (docId) {
-        await api.document.put(spaceId, docId, content, { publish });
+        await api.document.put(spaceId, docId, content, {
+          publish,
+          format,
+        });
         return { content, isNew: false };
       } else {
         const defaultTitle = placeholderDocumentTitle(documentType());
@@ -204,9 +215,13 @@ export function useDocument(
         // user actually edits, so an untouched seeded title never arrives there.
         const title = pendingTitle || params.get("title")?.trim() || defaultTitle;
         const category = params.get("category");
+        // `?parent=` is how the command palette files a draft under the document
+        // the user was reading when they created it.
+        const parentId = params.get("parent");
         const response = await api.documents.post(spaceId, {
           content,
           type: documentType(),
+          ...(parentId ? { parentId } : {}),
           properties: {
             title,
             ...(category ? { category } : {}),
@@ -244,10 +259,14 @@ export function useDocument(
 
   async function saveDocument(
     content: string,
-    options?: { publish?: boolean },
+    options?: { publish?: boolean; format?: "html" | "serialized" },
   ): Promise<boolean> {
     try {
-      await saveDocumentMutation.mutateAsync({ content, publish: options?.publish });
+      await saveDocumentMutation.mutateAsync({
+        content,
+        publish: options?.publish,
+        format: options?.format,
+      });
       return true;
     } catch {
       return false;

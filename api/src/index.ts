@@ -96,9 +96,10 @@ export interface Category {
 export interface Page<T> {
   documents: T[];
   total: number;
-  limit: number;
+  /** The page size that was applied. Absent when the response is unpaginated. */
+  limit?: number;
   /** Null on the last page. Pass it back as `cursor` to read the next one. */
-  nextCursor?: string | null;
+  nextCursor: string | null;
 }
 
 export interface ListDocumentsOptions {
@@ -241,15 +242,9 @@ export class VektorClient {
     return body as T;
   }
 
-  /**
-   * Whether a failure means "no such document for you" rather than a real error.
-   * Vektor answers 401 both for a document that is not public and for a rejected
-   * token, so that status only counts as absence when no token was configured —
-   * a bad token must stay loud instead of emptying the whole site.
-   */
+  /** Whether the server deliberately presents a missing or private document as absent. */
   private isNotVisible(status: number): boolean {
-    if (status === 404 || status === 403) return true;
-    return status === 401 && !this.accessToken;
+    return status === 404;
   }
 
   listSpaces(signal?: AbortSignal): Promise<Space[]> {

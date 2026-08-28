@@ -2,7 +2,6 @@ import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js"
 import { authClient } from "#composeables/auth-client.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { t } from "#utils/lang.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
@@ -11,8 +10,11 @@ import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
 import { Icon } from "./Icon.tsx";
 import { UserPreferencesPanel } from "./UserPreferencesPanel.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function UserProfile() {
+  const t = useTranslation();
+
   const profileUser = useUserProfile();
   const { appearance } = useCosmetics();
   applyThemePreference(getStoredThemePreference());

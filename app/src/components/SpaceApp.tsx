@@ -13,6 +13,7 @@ import { api } from "#api/client.ts";
 import shortcuts from "#assets/shortcuts.json";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
+import { LocaleContext } from "#composeables/useTranslation.ts";
 import {
   DocumentContextContext,
   provideDocumentContext,
@@ -25,7 +26,6 @@ import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.js";
 import { history } from "#utils/history.ts";
-import { setClientLang } from "#utils/lang.ts";
 import { hasSeenOrganizationTour, markOrganizationTourSeen } from "#utils/onboarding.ts";
 import { DEFAULT_SIDEBAR_WIDTH, parseSidebarWidth } from "#utils/sidebarState.ts";
 import { AIChatPanel } from "./AIChatPanel.tsx";
@@ -33,7 +33,6 @@ import { CalDAVSetupDialog } from "./CalDAVSetupDialog.tsx";
 import { CommandPalatte } from "./CommandPalatte.tsx";
 import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
 import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
-import { DocumentOverlay } from "./DocumentOverlay.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
 import { DocumentPageView } from "./views/DocumentPageView.tsx";
@@ -53,7 +52,7 @@ interface Props {
   initialDocument?: Record<string, unknown>;
   initialSidebarWidth?: number;
   replicaScope?: string;
-  lang?: string;
+  lang: string;
 }
 
 function stripRouterBase(url: string, base: string) {
@@ -74,19 +73,20 @@ function NewDocumentRoute() {
     type?: string;
     category?: string;
     title?: string;
+    parent?: string;
   }>();
   return (
     <DocumentPageView
       draftType={searchParams.type}
       draftCategory={searchParams.category}
       draftTitle={searchParams.title}
+      draftParent={searchParams.parent}
     />
   );
 }
 
 export function SpaceApp(props: Props) {
   if (!isServer) {
-    setClientLang(props.lang);
     api.setReplicaScope(props.replicaScope);
   }
 
@@ -155,7 +155,6 @@ export function SpaceApp(props: Props) {
       import("#editor/elements/category-target.ts"),
       import("#editor/elements/page-target.ts"),
       import("#editor/elements/shortcut.ts"),
-      import("#editor/elements/drawer.ts"),
     ]).catch(console.error);
 
   const registerDocumentElements = () =>
@@ -310,7 +309,6 @@ export function SpaceApp(props: Props) {
         />
         <CalDAVSetupDialog />
         <ToastContainer />
-        <DocumentOverlay />
         <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />
         <CommandPalatte />
       </Show>
@@ -318,26 +316,28 @@ export function SpaceApp(props: Props) {
   );
 
   return (
-    <QueryClientContext.Provider value={queryClient}>
-      <ActiveSpaceIdContext.Provider value={activeSpaceId}>
-        <SsrUrlContext.Provider value={ssrRelativeUrl}>
-          <DocumentContextContext.Provider value={documentContext}>
-            <Router
-              url={props.url ?? "/"}
-              base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
-              root={Shell}
-            >
-              <Route path="/" component={SpaceHomeView} />
-              <Route path="/search" component={SpaceSearchView} />
-              <Route path="/new" component={NewDocumentRoute} />
-              <Route path="/settings" component={SpaceSettingsView} />
-              <Route path="/doc/*documentSlug" component={DocumentRoute} />
-              <Route path="/x/*extensionPath" component={ExtensionRouteView} />
-              <Route path="*" component={NotFoundView} />
-            </Router>
-          </DocumentContextContext.Provider>
-        </SsrUrlContext.Provider>
-      </ActiveSpaceIdContext.Provider>
-    </QueryClientContext.Provider>
+    <LocaleContext.Provider value={props.lang}>
+      <QueryClientContext.Provider value={queryClient}>
+        <ActiveSpaceIdContext.Provider value={activeSpaceId}>
+          <SsrUrlContext.Provider value={ssrRelativeUrl}>
+            <DocumentContextContext.Provider value={documentContext}>
+              <Router
+                url={props.url ?? "/"}
+                base={routerBase === "/" ? undefined : routerBase.replace(/\/$/, "")}
+                root={Shell}
+              >
+                <Route path="/" component={SpaceHomeView} />
+                <Route path="/search" component={SpaceSearchView} />
+                <Route path="/new" component={NewDocumentRoute} />
+                <Route path="/settings" component={SpaceSettingsView} />
+                <Route path="/doc/*documentSlug" component={DocumentRoute} />
+                <Route path="/x/*extensionPath" component={ExtensionRouteView} />
+                <Route path="*" component={NotFoundView} />
+              </Router>
+            </DocumentContextContext.Provider>
+          </SsrUrlContext.Provider>
+        </ActiveSpaceIdContext.Provider>
+      </QueryClientContext.Provider>
+    </LocaleContext.Provider>
   );
 }

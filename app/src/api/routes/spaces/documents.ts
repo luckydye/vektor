@@ -10,6 +10,7 @@ import {
   forbiddenResponse,
   jsonResponse,
   parseJsonBody,
+  parsePaginationParams,
   requireParam,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -27,15 +28,14 @@ import { getSpace } from "#db/space/spaces.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,
-  toHtmlIfMarkdown,
+  prepareDocumentContent,
 } from "#documents/content.ts";
 import {
   propertyValueToText,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
-import { contentIsHtml } from "#documents/types.ts";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
@@ -73,16 +73,20 @@ export const GET: ApiRouteHandler = (context) =>
     // Resource-scoped grantees browse here too: a user shared into a single
     // category or document tree has no space-wide role, and the sidebar reads
     // its documents from this endpoint. `viewer` confines them to their grants.
-    const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
-      allowResourceGrants: true,
-    });
+    const access = await authenticateSpaceAccess(
+      context.var.credentials,
+      spaceId,
+      Permission.VIEWER,
+      {
+        allowResourceGrants: true,
+      },
+    );
     const viewer = spaceAccessToViewer(access);
 
-    const limitParam = new URL(context.req.url).searchParams.get("limit");
-    const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
-    const limit =
-      Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50;
-    const cursor = new URL(context.req.url).searchParams.get("cursor") || undefined;
+    const { limit, cursor } = parsePaginationParams(
+      new URL(context.req.url).searchParams,
+      { defaultLimit: 50, maxLimit: 500 },
+    );
     const typeParam =
       new URL(context.req.url).searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = new URL(context.req.url).searchParams.get("categorySlugs");
@@ -146,21 +150,15 @@ export const GET: ApiRouteHandler = (context) =>
         }
       }
 
-      return jsonResponse({
-        documents,
-        total: documents.length,
-        limit: documents.length,
-      });
+      // The full filtered set ships in one response: `total` is its real count
+      // and there is no page size to report.
+      return jsonResponse({ documents, total: documents.length, nextCursor: null });
     }
 
     if (parentIdParam) {
       const documents = await getDocumentChildren(store, parentIdParam, viewer);
-      return jsonResponse({
-        documents,
-        total: documents.length,
-        limit: documents.length,
-        nextCursor: null,
-      });
+      // Unpaginated, as above: every child is returned regardless of `limit`.
+      return jsonResponse({ documents, total: documents.length, nextCursor: null });
     }
 
     // Always return documents without content (content fetched separately when viewing)
@@ -178,7 +176,7 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(
-      context,
+      context.var.credentials,
       spaceId,
       Permission.EDITOR,
     );
@@ -195,6 +193,7 @@ export const POST: ApiRouteHandler = (context) =>
     let slugHint: string | undefined;
     let createdAt: Date | undefined;
     let updatedAt: Date | undefined;
+    let readonly = false;
 
     if (contentType === "application/json") {
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
@@ -205,10 +204,11 @@ export const POST: ApiRouteHandler = (context) =>
       const jsonSlug = body.slug;
       const jsonCreatedAt = body.createdAt;
       const jsonUpdatedAt = body.updatedAt;
+      const jsonReadonly = body.readonly;
       const jsonBodyContentType =
         typeof body.contentType === "string" ? body.contentType : undefined;
 
-      if (!jsonContent || typeof jsonContent !== "string") {
+      if (typeof jsonContent !== "string") {
         throw badRequestResponse("Content is required and must be a string");
       }
 
@@ -221,6 +221,10 @@ export const POST: ApiRouteHandler = (context) =>
           : undefined;
       parentId = typeof jsonParentId === "string" ? jsonParentId : undefined;
       type = typeof jsonType === "string" ? jsonType : undefined;
+      if (jsonReadonly !== undefined && typeof jsonReadonly !== "boolean") {
+        throw badRequestResponse("Readonly must be a boolean");
+      }
+      readonly = jsonReadonly ?? false;
       if (jsonSlug && typeof jsonSlug === "string") slugHint = jsonSlug;
       createdAt = parseDocumentTimestamp(jsonCreatedAt, "createdAt");
       updatedAt = parseDocumentTimestamp(jsonUpdatedAt, "updatedAt");
@@ -229,17 +233,16 @@ export const POST: ApiRouteHandler = (context) =>
           "Custom document timestamps require access-token or job-token authentication",
         );
       }
-      content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType, type);
+      if (!isSerializedDocumentType(type)) {
+        content = prepareDocumentContent(content, jsonBodyContentType ?? null);
+      }
     } else {
       const rawContent = await context.req.raw.text();
-      if (!rawContent) {
-        throw badRequestResponse("Content is required and must be a string");
-      }
-
-      type =
-        context.req.raw.headers.get("X-Document-Type") ??
-        getDocumentTypeForContentType(contentType);
-      content = toHtmlIfMarkdown(rawContent, contentType, type);
+      const inferredType = getDocumentTypeForContentType(contentType);
+      type = context.req.raw.headers.get("X-Document-Type") ?? inferredType;
+      content = isSerializedDocumentType(type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
       const titleHeader = context.req.raw.headers.get("X-Document-Title");
       const slugHeader = context.req.raw.headers.get("X-Document-Slug");
       if (slugHeader) slugHint = slugHeader;
@@ -250,20 +253,12 @@ export const POST: ApiRouteHandler = (context) =>
         };
     }
 
-    if (!content || typeof content !== "string") {
-      throw badRequestResponse("Content is required and must be a string");
-    }
-
     if (type === "workflow") {
       const space = await getSpace(spaceId);
       if (!isWorkflowCreationEnabled(space?.preferences)) {
         throw forbiddenResponse("Workflow creation is disabled for this space");
       }
     }
-
-    // Sanitized at rest, on the same boundary the save and collaboration paths
-    // use. Non-HTML types (canvas, app) store serialized JSON, not markup.
-    if (contentIsHtml(type)) content = sanitizeDocumentHtml(content);
 
     const titleValue = properties?.title;
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
@@ -275,11 +270,7 @@ export const POST: ApiRouteHandler = (context) =>
       userId,
       slugBase,
       content,
-      properties,
-      parentId,
-      type,
-      createdAt,
-      updatedAt,
+      { properties, parentId, type, readonly, createdAt, updatedAt },
     ).catch((error) => {
       if (
         error instanceof InvalidDocumentParentError ||

@@ -43,9 +43,9 @@ export function spacePath(spaceSlug: string | null | undefined, path: string): s
 }
 
 /** A space's member count as a label: "1 Member", "12 Members". */
-export function memberCountLabel(count: number | undefined): string {
+export function memberCountLabel(count: number | undefined, lang: string): string {
   const members = count ?? 0;
-  return `${members} ${members === 1 ? t("Member") : t("Members")}`;
+  return `${members} ${members === 1 ? t("Member", lang) : t("Members", lang)}`;
 }
 
 /** Byte count as a short human label: "812 B", "3.4 KB", "1.2 MB". */

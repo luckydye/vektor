@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { resolveIdentity } from "#acl/identity.ts";
 import { Feature, ResourceType } from "#acl/permissions.ts";
 import { hasFeature, listAccessibleResources } from "#acl/store.ts";
 import { LOCAL_USER_ID } from "#config";
@@ -26,9 +27,10 @@ describe("No auth mode", () => {
     );
     createdSpaceIds.push(space.id);
 
-    expect(await hasFeature(space.id, Feature.VIEW_AUDIT, LOCAL_USER_ID)).toBe(true);
-    expect(await hasFeature(space.id, Feature.VIEW_HISTORY, LOCAL_USER_ID)).toBe(true);
-    expect(await hasFeature(space.id, Feature.COMMENT, LOCAL_USER_ID)).toBe(true);
+    const local = await resolveIdentity(LOCAL_USER_ID);
+    expect(await hasFeature(space.id, Feature.VIEW_AUDIT, local)).toBe(true);
+    expect(await hasFeature(space.id, Feature.VIEW_HISTORY, local)).toBe(true);
+    expect(await hasFeature(space.id, Feature.COMMENT, local)).toBe(true);
   });
 
   it("reads every resource of a space the local user did not create as accessible", async () => {
@@ -45,7 +47,11 @@ describe("No auth mode", () => {
     // The local user holds no ACL row here, so an empty list would read as
     // "nothing accessible" and silently empty every search in dev.
     expect(
-      await listAccessibleResources(space.id, LOCAL_USER_ID, ResourceType.DOCUMENT),
+      await listAccessibleResources(
+        space.id,
+        await resolveIdentity(LOCAL_USER_ID),
+        ResourceType.DOCUMENT,
+      ),
     ).toBeNull();
   });
 });

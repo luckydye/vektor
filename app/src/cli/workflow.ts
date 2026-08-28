@@ -123,22 +123,19 @@ async function uploadFile(
 ): Promise<string> {
   const file = Bun.file(filePath);
   const name = filePath.split("/").pop() ?? "upload";
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([await file.arrayBuffer()], {
-      type: file.type || "application/octet-stream",
-    }),
-    name,
-  );
-  const res = await fetch(`${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads`, {
-    method: "POST",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      Origin: new URL(url).origin,
+  const query = new URLSearchParams({ filename: name });
+  const res = await fetch(
+    `${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads?${query}`,
+    {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Origin: new URL(url).origin,
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
     },
-    body: form,
-  });
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
     throw new Error(`File upload failed (${res.status}): ${text}`);

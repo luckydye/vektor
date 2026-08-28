@@ -1,7 +1,7 @@
 import { createSignal, type JSX, mergeProps, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { t } from "#utils/lang.ts";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   disabled?: boolean;
@@ -11,6 +11,8 @@ interface Props {
 }
 
 export function FileDropOverlay(props: Props) {
+  const t = useTranslation();
+
   const merged = mergeProps({ disabled: false }, props);
   const [isDraggingFile, setIsDraggingFile] = createSignal(false);
   const [hasMounted, setHasMounted] = createSignal(false);

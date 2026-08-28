@@ -5,8 +5,7 @@ import { t } from "#utils/lang.ts";
  * record into a label. Every "who did this" string in the app goes through
  * here, so the fallback chain is the same everywhere.
  *
- * Framework-free by design, so it outlives its callers. The one import, `t`,
- * is the same seam `datetime.ts` already uses.
+ * Framework-free by design, so callers supply the locale explicitly.
  */
 
 /**
@@ -51,7 +50,8 @@ export function findMemberUser(
  */
 export function userDisplayName(
   user: DisplayUser | null | undefined,
-  userId?: string | null,
+  userId: string | null | undefined,
+  lang: string,
 ): string {
-  return user?.name || user?.email || userId || t("Unknown user");
+  return user?.name || user?.email || userId || t("Unknown user", lang);
 }

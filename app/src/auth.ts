@@ -3,7 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { genericOAuth } from "better-auth/plugins";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { NO_GROUPS, sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
-import { config } from "./config.ts";
+import { config, isHttpsSite } from "./config.ts";
 import type { Database } from "./db/client/connection.ts";
 import { getAuthDb } from "./db/client/db.ts";
 import * as schema from "./db/schema/auth.ts";
@@ -127,8 +127,7 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
     },
 
     advanced: {
-      // Cookies must be Secure whenever the app is served over HTTPS.
-      useSecureCookies: (appConfig.SITE_URL ?? "").startsWith("https://"),
+      useSecureCookies: isHttpsSite(),
       cookiePrefix: "vektor",
     },
 

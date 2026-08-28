@@ -4,6 +4,7 @@ import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
@@ -53,6 +54,7 @@ function formatDuration(run: JobRun): string {
 }
 
 export function JobsSettings() {
+  const lang = useLocale();
   const { currentSpace, currentSpaceId } = useSpace();
   const navigate = useNavigate();
 
@@ -443,11 +445,13 @@ export function JobsSettings() {
                     </td>
                     <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
                       {schedule.enabled && schedule.nextRunAt
-                        ? formatDateTime(schedule.nextRunAt)
+                        ? formatDateTime(schedule.nextRunAt, lang)
                         : "—"}
                     </td>
                     <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                      {schedule.lastRunAt ? formatDateTime(schedule.lastRunAt) : "—"}
+                      {schedule.lastRunAt
+                        ? formatDateTime(schedule.lastRunAt, lang)
+                        : "—"}
                     </td>
                     <td class="space-x-2 whitespace-nowrap px-4 py-2.5 text-right">
                       <button
@@ -541,10 +545,10 @@ export function JobsSettings() {
                         {run.documentTitle}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                        {run.startedAt ? formatDateTime(run.startedAt) : "—"}
+                        {run.startedAt ? formatDateTime(run.startedAt, lang) : "—"}
                       </td>
                       <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                        {run.finishedAt ? formatDateTime(run.finishedAt) : "—"}
+                        {run.finishedAt ? formatDateTime(run.finishedAt, lang) : "—"}
                       </td>
                     </tr>
                   )}
@@ -646,7 +650,7 @@ export function JobsSettings() {
                           {run.trigger}
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                          {formatDateTime(run.startedAt ?? run.queuedAt)}
+                          {formatDateTime(run.startedAt ?? run.queuedAt, lang)}
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
                           {formatDuration(run)}

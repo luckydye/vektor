@@ -14,6 +14,7 @@ import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
@@ -114,6 +115,7 @@ async function downloadFile(url: string, fileName: string, exportFileName = file
 }
 
 export function WorkflowView(props: Props) {
+  const lang = useLocale();
   const { currentSpace } = useSpace();
   const navigate = useNavigate();
   const location = useLocation();
@@ -578,7 +580,7 @@ export function WorkflowView(props: Props) {
                   <Show when={selectedRunCreatedAt()}>
                     {(createdAt) => (
                       <span class="text-neutral-400 text-size-small">
-                        {formatDateTime(createdAt())}
+                        {formatDateTime(createdAt(), lang)}
                       </span>
                     )}
                   </Show>

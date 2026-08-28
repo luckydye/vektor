@@ -3,12 +3,16 @@ import { isServer } from "solid-js/web";
 import { api, type InstanceUser } from "#api/client.ts";
 import { islandQueryClient } from "#composeables/islandQueryClient.ts";
 import { QueryClientContext } from "#composeables/query.ts";
+import {
+  LocaleContext,
+  useLocale,
+  useTranslation,
+} from "#composeables/useTranslation.ts";
 import { useInstanceUsers } from "#composeables/useInstanceUsers.ts";
 import { usePinnedSpaces } from "#composeables/usePinnedSpaces.ts";
 import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
-import { setClientLang, t } from "#utils/lang.ts";
 import { MIN_SIDEBAR_WIDTH } from "#utils/sidebarState.ts";
 import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
@@ -29,7 +33,7 @@ interface RailTab {
 
 interface Props {
   replicaScope?: string;
-  lang?: string;
+  lang: string;
   /** The tab `?tab=` named, so a linked page renders itself on the server. */
   initialTab?: SpacesTab;
 }
@@ -102,6 +106,8 @@ function SpacesRail(props: {
 }
 
 function SpacesOverviewContainer() {
+  const t = useTranslation();
+
   const { spaces, isLoading, createSpace, deleteSpace, gainAccess, canCreateSpace } =
     useSpace();
   const toast = useToast();
@@ -186,6 +192,7 @@ function UsersOverviewContainer(props: {
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const lang = useLocale();
   const overviewUsers = createMemo(() =>
     props.users.map((user) => ({
       id: user.id,
@@ -193,7 +200,7 @@ function UsersOverviewContainer(props: {
       email: user.email,
       image: user.image,
       groups: user.groups,
-      joined: formatAbsoluteDate(user.createdAt),
+      joined: formatAbsoluteDate(user.createdAt, lang),
     })),
   );
 
@@ -219,6 +226,8 @@ function UsersOverviewContainer(props: {
  * a component under the query provider may ask.
  */
 function SpacesShell(props: { initialTab?: SpacesTab }) {
+  const t = useTranslation();
+
   const [activeTab, setActiveTab] = createSignal<SpacesTab>(props.initialTab ?? "spaces");
   const {
     isInstanceAdmin,
@@ -286,13 +295,14 @@ function SpacesShell(props: { initialTab?: SpacesTab }) {
  */
 export function SpacesApp(props: Props) {
   if (!isServer) {
-    setClientLang(props.lang);
     api.setReplicaScope(props.replicaScope);
   }
 
   return (
-    <QueryClientContext.Provider value={islandQueryClient()}>
-      <SpacesShell initialTab={props.initialTab} />
-    </QueryClientContext.Provider>
+    <LocaleContext.Provider value={props.lang}>
+      <QueryClientContext.Provider value={islandQueryClient()}>
+        <SpacesShell initialTab={props.initialTab} />
+      </QueryClientContext.Provider>
+    </LocaleContext.Provider>
   );
 }

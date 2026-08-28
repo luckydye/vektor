@@ -941,3 +941,74 @@ describe("Frontend ACL Tests - Group-Based Access", () => {
     expect(response.status).toBe(200);
   });
 });
+
+/**
+ * The space level of the same oracle the document level closes above: a private
+ * space's slug must not be readable off the difference between "refused" and
+ * "no such space". Slugs are creator-chosen, so existence alone names teams.
+ */
+describe("Frontend ACL Tests - Private Space Existence", () => {
+  const unresolvableSlug = "no-space-answers-to-this-slug";
+  let privateSpaceId: string;
+  let privateSpaceSlug: string;
+  let outsiderToken: string;
+
+  beforeAll(async () => {
+    privateSpaceSlug = `frontend-acl-private-${Date.now()}`;
+    const spaceResponse = await apiRequest("/api/v1/spaces", session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Frontend ACL Private Space",
+        slug: privateSpaceSlug,
+      }),
+    });
+    privateSpaceId = (await spaceResponse.json()).space.id;
+
+    outsiderToken = (await createTestUser("Space Existence Outsider")).token;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (privateSpaceId) await deleteSpace(privateSpaceId);
+  });
+
+  it("answers a refused space url exactly as an unresolvable one, anonymously", async () => {
+    const refused = await pageRequest(`/${privateSpaceSlug}`, "");
+    const unresolvable = await pageRequest(`/${unresolvableSlug}`, "");
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
+    // Pinned, not just equal: both are the login redirect, not a 404.
+    expect(refused.status).toBe(302);
+    expect(refused.headers.get("location")).toBe("/login");
+    expect(await refused.text()).toBe(await unresolvable.text());
+  });
+
+  it("answers a refused space url exactly as an unresolvable one, to a non-member", async () => {
+    const refused = await pageRequest(`/${privateSpaceSlug}`, outsiderToken);
+    const unresolvable = await pageRequest(`/${unresolvableSlug}`, outsiderToken);
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.headers.get("location")).toBe(unresolvable.headers.get("location"));
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).toBe(await unresolvable.text());
+  });
+
+  it("answers a refused settings url exactly as an unresolvable one", async () => {
+    // The settings gate runs before the space check, so it needs the same answer.
+    const refused = await pageRequest(`/${privateSpaceSlug}/settings`, outsiderToken);
+    const unresolvable = await pageRequest(
+      `/${unresolvableSlug}/settings`,
+      outsiderToken,
+    );
+
+    expect(refused.status).toBe(unresolvable.status);
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).toBe(await unresolvable.text());
+  });
+
+  it("still renders the space for its owner", async () => {
+    const response = await pageRequest(`/${privateSpaceSlug}`, session1Token);
+
+    expect(response.status).toBe(200);
+  });
+});

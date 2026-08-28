@@ -1,9 +1,9 @@
 import { Editor } from "@tiptap/core";
-import Collaboration from "@tiptap/extension-collaboration";
 import { afterEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { docToYDoc } from "#documents/schema/yEncode.ts";
+import { Collaboration } from "#editor/extensions/Collaboration.ts";
 import { TrailingNodePlus } from "#editor/extensions/TrailingNodePlus.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 

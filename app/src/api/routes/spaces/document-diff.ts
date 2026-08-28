@@ -12,8 +12,9 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument } from "#db/space/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/space/revisions.ts";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
-import { prettyPrintHtml } from "#utils/html.ts";
+import { escapeHtml, prettyPrintHtml } from "#utils/html.ts";
 
 async function getRevision(rev: number, spaceId: string, id: string) {
   const metadata = await getRevisionMetadata(await openSpaceStore(spaceId), id, rev);
@@ -22,7 +23,7 @@ async function getRevision(rev: number, spaceId: string, id: string) {
   }
 
   const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
-  if (!content) {
+  if (content === null) {
     throw notFoundResponse("Revision");
   }
 
@@ -53,7 +54,7 @@ export const GET: ApiRouteHandler = (context) =>
         : parseQueryInt(searchParams, "base", { min: 1 });
 
     const { aclUserId } = await authenticateDocumentAccess(
-      context,
+      context.var.credentials,
       spaceId,
       id,
       Permission.VIEWER,
@@ -64,6 +65,10 @@ export const GET: ApiRouteHandler = (context) =>
 
     const revisionContent = await getRevision(rev, spaceId, id);
     const store = await openSpaceStore(spaceId);
+    const document = await getDocument(store, id);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
     const revisionMetadata = await getRevisionMetadata(store, id, rev);
     if (!revisionMetadata) {
       throw notFoundResponse("Revision");
@@ -71,11 +76,6 @@ export const GET: ApiRouteHandler = (context) =>
 
     let compareBaseRev = requestedBaseRev;
     if (compareBaseRev === null) {
-      const document = await getDocument(store, id);
-      if (!document) {
-        throw notFoundResponse("Document");
-      }
-
       compareBaseRev =
         revisionMetadata.status !== null
           ? revisionMetadata.parentRev
@@ -87,20 +87,24 @@ export const GET: ApiRouteHandler = (context) =>
     await verifyRevisionAccess(spaceId, id, aclUserId, [compareBaseRev]);
 
     const baseContent = await getRevisionContent(store, id, compareBaseRev);
-    if (!baseContent) {
+    if (baseContent === null) {
       throw requestedBaseRev === null
         ? badRequestResponse("Document has no comparable base content")
         : notFoundResponse("Base revision");
     }
 
-    // `format=html` returns a rendered, inline redline of the document (added
-    // text wrapped in <ins>, removed text in <del>) instead of a source-level
-    // unified patch, so the client can display changes in document context.
+    const serialized = isSerializedDocumentType(document.type);
+    const sourcePatch = createPatch(id, baseContent, revisionContent);
+
+    // Rich text gets an inline redline. Serialized representations get an
+    // escaped source patch: their JSON/source must never enter the HTML parser.
     if (searchParams.get("format") === "html") {
-      const html = inlineHtmlDiff(baseContent, revisionContent);
+      const html = serialized
+        ? `<pre>${escapeHtml(sourcePatch)}</pre>`
+        : inlineHtmlDiff(baseContent, revisionContent);
       return new Response(html, {
         headers: {
-          "Content-Type": "text/plain; charset=utf-8",
+          "Content-Type": "text/html; charset=utf-8",
           // Bun omits Content-Length on larger bodies and nginx then waits for
           // a chunked terminator that never comes.
           "Content-Length": Buffer.byteLength(html).toString(),
@@ -110,7 +114,13 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     return new Response(
-      createPatch(id, prettyPrintHtml(baseContent), prettyPrintHtml(revisionContent)),
+      serialized
+        ? sourcePatch
+        : createPatch(
+            id,
+            prettyPrintHtml(baseContent),
+            prettyPrintHtml(revisionContent),
+          ),
       { headers: { "X-Diff-Base-Rev": String(compareBaseRev) } },
     );
   }, "Failed to compute revision diff");

@@ -1,6 +1,6 @@
 import { highestPermission, Permission } from "#acl/permissions.ts";
 import { isHexColor } from "#utils/color.ts";
-import { isSafeImageUrl, sanitizeSvgMarkup } from "#utils/html.ts";
+import { isSafeUploadedImageUrl } from "#utils/html.ts";
 
 /**
  * Space preferences: one open key-value store per space, for anything that has
@@ -48,8 +48,8 @@ const MAX_DESCRIPTION_LENGTH = 2000;
 /**
  * The value a preference is stored as, or why it was refused.
  *
- * A rule may rewrite its value — `logoSvg` is stored sanitized — so the write
- * path has to persist what comes back rather than what came in.
+ * A rule may rewrite its value, so the write path has to persist what comes
+ * back rather than what came in.
  */
 type PreferenceRule = (value: string) => { value: string } | { error: string };
 
@@ -58,13 +58,12 @@ type PreferenceRule = (value: string) => { value: string } | { error: string };
  *
  * A key with no rule here is stored as the opaque text it is — the store is open
  * on purpose. A key gets a rule when the app does something with its value other
- * than show it as text: `logoSvg` is injected as markup, `brandColor` goes into a
- * style attribute and into the generated palette, and a value that is markup or
- * CSS is an injection channel unless it is checked on the way in.
+ * than show it as text: `logoSvg` becomes an image URL and `brandColor` goes
+ * into a style attribute and into the generated palette. Both are injection
+ * channels unless checked on the way in.
  *
  * So: anything that starts rendering a preference as markup, as CSS or as a URL
- * either gives it a rule here or sanitizes at the render site. The render sites
- * that exist today do both (see `Icon.tsx`).
+ * gives it a rule here or sanitizes it at the render site.
  *
  * A `Map`, not an object literal: keys arrive from a JSON request body, and
  * `"__proto__"` is a lookup an object would answer with something truthy.
@@ -86,19 +85,10 @@ const PREFERENCE_RULES = new Map<string, PreferenceRule>([
   ],
   [
     spacePreferenceKeys.logoSvg,
-    (value) => {
-      // Either an inline SVG document or a URL to an image — the space selector
-      // renders the first as markup and the second as an `<img src>`.
-      if (value.trimStart().startsWith("<")) {
-        const svg = sanitizeSvgMarkup(value);
-        return svg
-          ? { value: svg }
-          : { error: "logoSvg must be an <svg> document or an image URL" };
-      }
-      return isSafeImageUrl(value)
+    (value) =>
+      isSafeUploadedImageUrl(value)
         ? { value }
-        : { error: "logoSvg must be an <svg> document or an image URL" };
-    },
+        : { error: "logoSvg must be an image URL or data URI" },
   ],
   [
     spacePreferenceKeys.pinnedDocumentId,

@@ -21,14 +21,23 @@ import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import {
   roleBadgeClass,
+  roleLabel,
   tokenRole,
   tokenStatus,
   tokenStatusClass,
 } from "#utils/accessToken.ts";
 import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
+import { Dialog } from "./Dialog.tsx";
+import { DialogFooter } from "./DialogFooter.tsx";
+import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
 import { Icon } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+
+/** Scope select values that carry the id of the resource a grant lands on. */
+const CATEGORY_SCOPE_PREFIX = "category:";
+const DOCUMENT_SCOPE_PREFIX = "document:";
 
 interface MemberAccess {
   key: string;
@@ -113,6 +122,9 @@ function tokenResourceLabel(resource: {
 }
 
 export function SpaceMembers() {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace, currentSpaceId } = useSpace();
   const user = useUserProfile();
 
@@ -124,8 +136,9 @@ export function SpaceMembers() {
   const [newMemberEmail, setNewMemberEmail] = createSignal("");
   const [newMemberType, setNewMemberType] = createSignal("user");
   const [newMemberRole, setNewMemberRole] = createSignal<string>(Permission.VIEWER);
+  /** `space`, `category:<id>`, or `document:<id>`. */
   const [newMemberScope, setNewMemberScope] = createSignal("space");
-  const [newMemberCategoryId, setNewMemberCategoryId] = createSignal("");
+  const [newMemberIncludeChildren, setNewMemberIncludeChildren] = createSignal(false);
   const [addingMember, setAddingMember] = createSignal(false);
   const [addMemberError, setAddMemberError] = createSignal<string | null>(null);
   const [updatingMember, setUpdatingMember] = createSignal<string | null>(null);
@@ -353,8 +366,8 @@ export function SpaceMembers() {
         setNewMemberEmail("");
         setNewMemberType("user");
         setNewMemberRole(Permission.VIEWER);
-        setNewMemberScope("space");
-        setNewMemberCategoryId("");
+        setNewMemberScope(defaultScope());
+        setNewMemberIncludeChildren(false);
         void fetchInviteSuggestions();
       },
       { defer: true },
@@ -444,10 +457,36 @@ export function SpaceMembers() {
   // non-owner is offered neither.
   const userIsOwner = createMemo(() => isOwner(currentSpace()?.userRole));
 
+  /** Space-wide is the only scope that needs no id, so it is the only default. */
+  function defaultScope() {
+    return userIsOwner() ? "space" : "";
+  }
+
+  /** Turns the scope selection into the resource the grant is written to. */
+  function grantTarget() {
+    const value = newMemberScope();
+    if (value.startsWith(CATEGORY_SCOPE_PREFIX)) {
+      return {
+        resourceType: "category" as const,
+        resourceId: value.slice(CATEGORY_SCOPE_PREFIX.length),
+      };
+    }
+    if (value.startsWith(DOCUMENT_SCOPE_PREFIX)) {
+      return {
+        resourceType: newMemberIncludeChildren()
+          ? ("document_tree" as const)
+          : ("document" as const),
+        resourceId: value.slice(DOCUMENT_SCOPE_PREFIX.length),
+      };
+    }
+    return {};
+  }
+
   function openAddMember() {
     setNewMemberType("user");
     setNewMemberRole(Permission.VIEWER);
-    setNewMemberScope(userIsOwner() ? "space" : "category");
+    setNewMemberScope(defaultScope());
+    setNewMemberIncludeChildren(false);
     setShowAddMember(true);
   }
 
@@ -497,6 +536,26 @@ export function SpaceMembers() {
     () => new Map(documents().map((document) => [document.id, document])),
   );
 
+  const documentScopeOptions = createMemo(() =>
+    documents()
+      .map((document) => ({ id: document.id, label: getDocumentLabel(document) }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  );
+
+  const scopeOptions = createMemo<FilterSelectOption[]>(() => [
+    ...(userIsOwner() ? [{ value: "space", label: t("Entire space") }] : []),
+    ...categories().map((category) => ({
+      value: `${CATEGORY_SCOPE_PREFIX}${category.id}`,
+      label: category.name,
+      group: t("Category"),
+    })),
+    ...documentScopeOptions().map((document) => ({
+      value: `${DOCUMENT_SCOPE_PREFIX}${document.id}`,
+      label: document.label,
+      group: t("Document"),
+    })),
+  ]);
+
   const documentsByCategoryId = createMemo(
     () =>
       new Map(
@@ -519,8 +578,8 @@ export function SpaceMembers() {
 
     if (isGroup ? !newMemberId().trim() : !newMemberEmail().trim()) return;
 
-    if (newMemberScope() === "category" && !newMemberCategoryId()) {
-      setAddMemberError("Select a category");
+    if (!newMemberScope()) {
+      setAddMemberError(t("Select what to give access to"));
       return;
     }
 
@@ -534,9 +593,7 @@ export function SpaceMembers() {
         ...(isGroup
           ? { groupId: newMemberId().trim() }
           : { email: newMemberEmail().trim() }),
-        ...(newMemberScope() === "category"
-          ? { resourceType: "category", resourceId: newMemberCategoryId() }
-          : {}),
+        ...grantTarget(),
       });
 
       setShowAddMember(false);
@@ -544,11 +601,11 @@ export function SpaceMembers() {
       setNewMemberEmail("");
       setNewMemberType("user");
       setNewMemberRole(Permission.VIEWER);
-      setNewMemberScope(userIsOwner() ? "space" : "category");
-      setNewMemberCategoryId("");
+      setNewMemberScope(defaultScope());
+      setNewMemberIncludeChildren(false);
       await Promise.all([fetchPermissions(), fetchUsers()]);
     } catch (err) {
-      setAddMemberError(err instanceof Error ? err.message : "Failed to add member");
+      setAddMemberError(err instanceof Error ? err.message : t("Failed to add member"));
       console.error("Failed to add member:", err);
     } finally {
       setAddingMember(false);
@@ -633,7 +690,7 @@ export function SpaceMembers() {
     }
     if (member.spaceGrant) return "Space-wide access";
     if (member.categoryGrants.length > 0) return "Category-scoped access";
-    if (member.grants.some(isScopedGrant)) return "Page-scoped access";
+    if (member.grants.some(isScopedGrant)) return "Document-scoped access";
     return "Resource-scoped access";
   }
 
@@ -657,7 +714,7 @@ export function SpaceMembers() {
       const isTree = grant.permission.resourceType === "document_tree";
       return {
         id: `${grant.permission.resourceType}:${resourceId}`,
-        label: `${isTree ? "Page tree" : "Page"}: ${root ? getDocumentLabel(root) : resourceId}`,
+        label: `${isTree ? "Document tree" : "Document"}: ${root ? getDocumentLabel(root) : resourceId}`,
         documents: root
           ? isTree
             ? documents().filter((document) =>
@@ -748,11 +805,11 @@ export function SpaceMembers() {
     }
     if (resourceType === "document") {
       const document = documentsById().get(resourceId ?? "");
-      return `Page: ${document ? getDocumentLabel(document) : resourceId}`;
+      return `Document: ${document ? getDocumentLabel(document) : resourceId}`;
     }
     if (resourceType === "document_tree") {
       const document = documentsById().get(resourceId ?? "");
-      return `Page tree: ${document ? getDocumentLabel(document) : resourceId}`;
+      return `Document tree: ${document ? getDocumentLabel(document) : resourceId}`;
     }
     return `${resourceType}: ${resourceId}`;
   }
@@ -782,7 +839,7 @@ export function SpaceMembers() {
                 + Create token
               </button>
             </Show>
-            <Button text="Invite People" onClick={openAddMember} />
+            <Button text={t("Invite People")} onClick={openAddMember} />
           </div>
         </div>
 
@@ -1096,7 +1153,7 @@ export function SpaceMembers() {
                                       <div class="text-neutral-500 text-size-small">
                                         Added{" "}
                                         {grant.permission.createdAt
-                                          ? formatDate(grant.permission.createdAt)
+                                          ? formatDate(grant.permission.createdAt, lang)
                                           : "—"}
                                       </div>
                                     </div>
@@ -1236,10 +1293,10 @@ export function SpaceMembers() {
                             </div>
                             <div class="text-neutral-500 text-size-small">
                               {token.lastUsedAt
-                                ? `Last used ${formatAbsoluteDate(token.lastUsedAt)}`
+                                ? `Last used ${formatAbsoluteDate(token.lastUsedAt, lang)}`
                                 : "Never used"}
                               {token.expiresAt
-                                ? ` · Expires ${formatAbsoluteDate(token.expiresAt)}`
+                                ? ` · Expires ${formatAbsoluteDate(token.expiresAt, lang)}`
                                 : ""}
                             </div>
                           </div>
@@ -1313,227 +1370,176 @@ export function SpaceMembers() {
         </Show>
       </div>
 
-      <Show when={showAddMember()}>
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismissal. */}
-        {/* biome-ignore lint/a11y/useKeyWithClickEvents: the Cancel button is the keyboard path. */}
-        <div
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setShowAddMember(false);
-          }}
+      <Dialog
+        show={showAddMember()}
+        title={t("Invite People")}
+        onUpdateShow={(value) => setShowAddMember(value)}
+        footer={
+          <DialogFooter
+            form="invite-people-form"
+            confirmLabel={t("Invite People")}
+            pendingLabel={t("Adding…")}
+            pending={addingMember()}
+            onCancel={() => setShowAddMember(false)}
+          />
+        }
+      >
+        {/* Two columns, so every control lines up under the same left edge
+            whichever rows the type and scope selections reveal. */}
+        <form
+          id="invite-people-form"
+          onSubmit={(event) => void handleAddMember(event)}
+          class="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-1.5 gap-y-2 rounded-lg bg-neutral-50 p-3"
         >
-          <div class="mx-4 w-full max-w-md rounded-lg bg-background p-6 shadow-xl">
-            <h3 class="mb-4 font-semibold text-neutral-900 text-size-title">
-              Invite People
-            </h3>
-            <form onSubmit={(event) => void handleAddMember(event)} class="space-y-4">
-              <Show when={userIsOwner()}>
-                <div>
-                  <label
-                    for="member-type"
-                    class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                  >
-                    Type
-                  </label>
-                  <select
-                    id="member-type"
-                    value={newMemberType()}
-                    onChange={(e) => setNewMemberType(e.currentTarget.value)}
-                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                  >
-                    <option value="user">User</option>
-                    <option value="group">OAuth Group</option>
-                  </select>
-                </div>
-              </Show>
+          <Show when={userIsOwner()}>
+            <label class="text-neutral-600 text-size-small" for="member-type">
+              {t("Type")}
+            </label>
+            <select
+              id="member-type"
+              value={newMemberType()}
+              onChange={(e) => setNewMemberType(e.currentTarget.value)}
+              class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+            >
+              <option value="user">{t("Person")}</option>
+              <option value="group">{t("OAuth group")}</option>
+            </select>
+          </Show>
 
-              <div>
-                <label
-                  for="member-id"
-                  class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                >
-                  {newMemberType() === "user" ? "Email" : "Group ID"}
-                </label>
-                <Show
-                  when={newMemberType() === "user"}
-                  fallback={
-                    <input
-                      id="member-id"
-                      value={newMemberId()}
-                      onInput={(e) => setNewMemberId(e.currentTarget.value)}
-                      type="text"
-                      required
-                      placeholder="e.g., admins, developers"
-                      class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                    />
-                  }
-                >
-                  <div class="relative">
-                    <input
-                      id="member-id"
-                      value={newMemberEmail()}
-                      onInput={(e) => {
-                        setNewMemberEmail(e.currentTarget.value);
-                        setShowSuggestions(true);
-                      }}
-                      onFocus={() => setShowSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                      type="email"
-                      required
-                      autocomplete="off"
-                      placeholder="person@example.com"
-                      class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                    />
-                    <Show
-                      when={showSuggestions() && filteredInviteSuggestions().length > 0}
-                    >
-                      <ul class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-neutral-200 bg-background py-1 shadow-lg">
-                        <For each={filteredInviteSuggestions()}>
-                          {(suggestion) => (
-                            <li>
-                              <button
-                                type="button"
-                                class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-neutral-50"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  selectSuggestion(suggestion);
-                                }}
-                              >
-                                <vektor-avatar
-                                  size="28"
-                                  attr:user-id={suggestion.id}
-                                  prop:user={suggestion}
-                                />
-                                <div class="min-w-0">
-                                  <div class="truncate font-medium text-neutral-900">
-                                    {suggestion.name}
-                                  </div>
-                                  <div class="truncate text-neutral-500 text-size-small">
-                                    {suggestion.email}
-                                  </div>
-                                </div>
-                              </button>
-                            </li>
-                          )}
-                        </For>
-                      </ul>
-                    </Show>
-                  </div>
-                </Show>
-                <Show
-                  when={newMemberType() === "user"}
-                  fallback={
-                    <p class="mt-1 text-neutral-500 text-size-small">
-                      The group name from your OAuth provider's wiki_groups field
-                    </p>
-                  }
-                >
-                  <p class="mt-1 text-neutral-500 text-size-small">
-                    Start typing to pick someone from your groups, or enter the email of
-                    an existing account. They'll be added to the space immediately.
-                  </p>
-                </Show>
-              </div>
-
-              <div>
-                <label
-                  for="member-scope"
-                  class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                >
-                  Access
-                </label>
-                <select
-                  id="member-scope"
-                  value={newMemberScope()}
-                  onChange={(e) => {
-                    setNewMemberScope(e.currentTarget.value);
-                    // Owner is a space role; leaving it selected under a
-                    // narrower scope would submit a request the API refuses.
-                    if (e.currentTarget.value !== "space") {
-                      setNewMemberRole((role) =>
-                        role === Permission.OWNER ? Permission.VIEWER : role,
-                      );
-                    }
-                  }}
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                >
-                  <Show when={userIsOwner()}>
-                    <option value="space">Entire space</option>
-                  </Show>
-                  <option value="category">Category</option>
-                </select>
-              </div>
-
-              <Show when={newMemberScope() === "category"}>
-                <div>
-                  <label
-                    for="member-category"
-                    class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                  >
-                    Category
-                  </label>
-                  <select
-                    id="member-category"
-                    value={newMemberCategoryId()}
-                    onChange={(e) => setNewMemberCategoryId(e.currentTarget.value)}
-                    required
-                    class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                  >
-                    <option value="">Select a category...</option>
-                    <For each={categories()}>
-                      {(category) => <option value={category.id}>{category.name}</option>}
-                    </For>
-                  </select>
-                </div>
-              </Show>
-
-              <div>
-                <label
-                  for="member-role"
-                  class="mb-1 block font-medium text-neutral-900 text-size-medium"
-                >
-                  Permission Level
-                </label>
-                <select
-                  id="member-role"
-                  value={newMemberRole()}
-                  onChange={(e) => setNewMemberRole(e.currentTarget.value)}
-                  class="focus-ring w-full rounded-md border border-neutral-100 px-3 py-2"
-                >
-                  <option value={Permission.VIEWER}>Viewer - Read-only access</option>
-                  <option value={Permission.EDITOR}>
-                    Editor - Create and edit content
-                  </option>
-                  <Show when={newMemberScope() === "space"}>
-                    <option value={Permission.OWNER}>Owner - Full control</option>
-                  </Show>
-                </select>
-              </div>
-
-              <Show when={addMemberError()}>
-                <div class="rounded-md border border-red-200 bg-red-50 p-3">
-                  <p class="text-red-600 text-size-medium">{addMemberError()}</p>
-                </div>
-              </Show>
-
-              <div class="flex gap-3">
-                <Button
-                  variant="secondary"
-                  text="Cancel"
-                  onClick={() => setShowAddMember(false)}
-                  class="flex-1"
+          <Show
+            when={newMemberType() === "user"}
+            fallback={
+              <div class="col-start-2">
+                <input
+                  id="member-id"
+                  value={newMemberId()}
+                  onInput={(e) => setNewMemberId(e.currentTarget.value)}
+                  type="text"
+                  required
+                  placeholder={t("e.g., admins, developers")}
+                  class="w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
                 />
-                <Button
-                  type="submit"
-                  disabled={addingMember()}
-                  text={addingMember() ? "Adding..." : "Invite People"}
-                  class="flex-1"
-                />
+                <p class="mt-1 text-neutral-400 text-size-small">
+                  {t("The group name from your OAuth provider's wiki_groups field")}
+                </p>
               </div>
-            </form>
-          </div>
-        </div>
-      </Show>
+            }
+          >
+            <div class="col-start-2">
+              <input
+                id="member-id"
+                value={newMemberEmail()}
+                onInput={(e) => {
+                  setNewMemberEmail(e.currentTarget.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                type="email"
+                required
+                autocomplete="off"
+                placeholder="person@example.com"
+                class="w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+              />
+              <Show when={showSuggestions() && filteredInviteSuggestions().length > 0}>
+                <ul class="mt-1 max-h-52 overflow-y-auto rounded-md border border-neutral-200 bg-background py-1">
+                  <For each={filteredInviteSuggestions()}>
+                    {(suggestion) => (
+                      <li>
+                        <button
+                          type="button"
+                          class="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left hover:bg-neutral-50"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            selectSuggestion(suggestion);
+                          }}
+                        >
+                          <vektor-avatar
+                            size="28"
+                            attr:user-id={suggestion.id}
+                            prop:user={suggestion}
+                          />
+                          <div class="min-w-0">
+                            <div class="truncate text-neutral-900 text-size-medium">
+                              {suggestion.name}
+                            </div>
+                            <div class="truncate text-neutral-400 text-size-small">
+                              {suggestion.email}
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+              <p class="mt-1 text-neutral-400 text-size-small">
+                {t(
+                  "Start typing to pick someone from your groups, or enter the email of an existing account.",
+                )}
+              </p>
+            </div>
+          </Show>
+
+          <label class="text-neutral-600 text-size-small" for="member-role">
+            {t("Access")}
+          </label>
+          <select
+            id="member-role"
+            value={newMemberRole()}
+            onChange={(e) => setNewMemberRole(e.currentTarget.value)}
+            class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+          >
+            <option value={Permission.VIEWER}>{roleLabel("viewer", lang)}</option>
+            <option value={Permission.EDITOR}>{roleLabel("editor", lang)}</option>
+            <Show when={newMemberScope() === "space"}>
+              <option value={Permission.OWNER}>{roleLabel("owner", lang)}</option>
+            </Show>
+          </select>
+
+          <label class="text-neutral-600 text-size-small" for="member-scope">
+            {t("Scope")}
+          </label>
+          <FilterSelect
+            id="member-scope"
+            value={newMemberScope()}
+            options={scopeOptions()}
+            filterPlaceholder={t("Search pages and categories…")}
+            onChange={(value) => {
+              setNewMemberScope(value);
+              setNewMemberIncludeChildren(false);
+              // Owner is a space role; leaving it selected under a
+              // narrower scope would submit a request the API refuses.
+              if (value !== "space") {
+                setNewMemberRole((role) =>
+                  role === Permission.OWNER ? Permission.VIEWER : role,
+                );
+              }
+            }}
+          />
+
+          <Show when={newMemberScope().startsWith(DOCUMENT_SCOPE_PREFIX)}>
+            <label class="text-neutral-600 text-size-small" for="member-depth">
+              {t("Documents")}
+            </label>
+            <select
+              id="member-depth"
+              value={newMemberIncludeChildren() ? "tree" : "single"}
+              onChange={(e) =>
+                setNewMemberIncludeChildren(e.currentTarget.value === "tree")
+              }
+              class="min-w-0 flex-1 rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-medium focus:outline-none focus:ring-1 focus:ring-neutral-400"
+            >
+              <option value="single">{t("This document")}</option>
+              <option value="tree">{t("This document and child documents")}</option>
+            </select>
+          </Show>
+
+          <Show when={addMemberError()}>
+            <p class="col-span-2 text-red-500 text-size-small">{addMemberError()}</p>
+          </Show>
+        </form>
+      </Dialog>
     </>
   );
 }

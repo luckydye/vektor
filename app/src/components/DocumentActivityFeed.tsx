@@ -14,6 +14,7 @@ import { t } from "#utils/lang.ts";
 import type { DisplayUser } from "#utils/userDisplay.ts";
 import "./AvatarElement.ts";
 import { Icon, type IconName } from "./Icon.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   entries: AuditLog[];
@@ -23,8 +24,8 @@ interface Props {
   entryActions?: (entry: AuditLog) => JSX.Element;
 }
 
-function getGroupAction(items: AuditLog[]): string {
-  return items[0] ? getAuditEventAction(items[0].event) : t("updated");
+function getGroupAction(items: AuditLog[], lang: string): string {
+  return items[0] ? getAuditEventAction(items[0].event, lang) : t("updated", lang);
 }
 
 function getDocumentActivityIcon(entry: AuditLog): IconName {
@@ -32,8 +33,8 @@ function getDocumentActivityIcon(entry: AuditLog): IconName {
   return "edit-entry";
 }
 
-function getMoreChangesLabel(count: number): string {
-  return `${count} ${count === 1 ? t("more change") : t("more changes")}`;
+function getMoreChangesLabel(lang: string, count: number): string {
+  return `${count} ${count === 1 ? t("more change", lang) : t("more changes", lang)}`;
 }
 
 function isVisibleDocumentEntry(entry: AuditLog): boolean {
@@ -64,24 +65,35 @@ function activityMinute(entry?: AuditLog): string {
   }
 }
 
-function getDocumentBatchKey(entry: AuditLog | undefined, userId: string | null): string {
+function getDocumentBatchKey(
+  entry: AuditLog | undefined,
+  userId: string | null,
+  lang: string,
+): string {
   if (!entry) return "";
   return [
     userId,
     entry.docId,
-    getAuditEventAction(entry.event),
+    getAuditEventAction(entry.event, lang),
     entry.revisionId ?? activityMinute(entry),
   ].join(":");
 }
 
-function isSameDocumentBatch(entry: AuditLog, group: ActivityGroup): boolean {
+function isSameDocumentBatch(
+  entry: AuditLog,
+  group: ActivityGroup,
+  lang: string,
+): boolean {
   return (
-    getDocumentBatchKey(group.items[0], group.userId) ===
-    getDocumentBatchKey(entry, entry.userId ?? null)
+    getDocumentBatchKey(group.items[0], group.userId, lang) ===
+    getDocumentBatchKey(entry, entry.userId ?? null, lang)
   );
 }
 
 export function DocumentActivityFeed(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const [expandedGroups, setExpandedGroups] = createSignal(new Set<string>());
 
   function isGroupExpanded(groupId: string): boolean {
@@ -104,7 +116,11 @@ export function DocumentActivityFeed(props: Props) {
   }
 
   const activityGroups = createMemo(() =>
-    groupActivityEntries(props.entries, isSameDocumentBatch),
+    groupActivityEntries(
+      props.entries,
+      (entry, group) => isSameDocumentBatch(entry, group, lang),
+      lang,
+    ),
   );
 
   return (
@@ -133,7 +149,7 @@ export function DocumentActivityFeed(props: Props) {
                         {props.getUserName(group.userId)}
                       </span>
                       <span class="shrink-0 text-neutral-700">
-                        {getGroupAction(group.items)}
+                        {getGroupAction(group.items, lang)}
                       </span>
                     </div>
                     {props.headerActions?.(group.items)}
@@ -148,8 +164,8 @@ export function DocumentActivityFeed(props: Props) {
                             name={getDocumentActivityIcon(entry)}
                           />
                           <div class="min-w-0 flex-1 truncate font-medium text-neutral-600 text-size-small">
-                            {getEntryChangeLabel(entry) ??
-                              getAuditEventLabel(entry.event)}
+                            {getEntryChangeLabel(entry, lang) ??
+                              getAuditEventLabel(entry.event, lang)}
                           </div>
 
                           <Show when={hasDocumentDelta(entry)}>
@@ -211,6 +227,7 @@ export function DocumentActivityFeed(props: Props) {
                           {isGroupExpanded(group.id)
                             ? t("Show fewer changes")
                             : getMoreChangesLabel(
+                                lang,
                                 getHiddenDocumentEntryCount(group.items),
                               )}
                         </span>

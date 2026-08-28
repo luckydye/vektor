@@ -1,10 +1,17 @@
 import type { Next } from "hono";
+import { AclFailure } from "#acl/errors.ts";
+import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
-import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
+import { aclFailureResponse } from "#api/http.ts";
+import {
+  checkAddressRateLimit,
+  checkRateLimit,
+  type RateLimitCheck,
+} from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
-import { getPublicEnv, isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#config";
+import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
@@ -71,6 +78,13 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   c.set("requestHeaders", headers);
   c.set("session", session);
   c.set("user", user);
+  // The seam with `#acl`: guards read this struct and never the context itself.
+  c.set("credentials", {
+    jobToken: headers.get("X-Job-Token"),
+    authorization: headers.get("Authorization"),
+    cookie: headers.get("Cookie"),
+    user,
+  });
 }
 
 function isApiPath(pathname: string): boolean {
@@ -99,6 +113,16 @@ function withRateLimitHeaders(response: Response, limit: RateLimitCheck): Respon
     // an advisory hint is not worth reconstructing the body around.
   }
   return response;
+}
+
+/** The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK. */
+function logRateLimit(path: string, method: string, limit: RateLimitCheck): void {
+  appLogger.warn("API rate limit exceeded", {
+    path,
+    method,
+    key: limit.key,
+    blocked: limit.blocked,
+  });
 }
 
 function rateLimitedResponse(limit: RateLimitCheck): Response {
@@ -143,27 +167,19 @@ export async function apiRouter(
     return jsonError(403, "Cross-origin request rejected");
   }
 
-  // Ahead of `hydrateRequestContext` so an over-limit caller is turned away
-  // before the session lookup, and ahead of the 405 so a flood of unsupported
-  // methods is counted rather than routing freely.
-  const limit = checkRateLimit({
-    pattern: match.pattern,
-    method,
-    authorization: c.req.header("authorization"),
-    cookie: c.req.header("cookie"),
+  const caller = {
     ip: clientIp(c),
     jobToken: c.req.header("x-job-token"),
     spaceId: c.req.header("x-space-id") ?? match.params.spaceId,
-  });
-  if (limit && !limit.allowed) {
-    // The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK.
-    appLogger.warn("API rate limit exceeded", {
-      path: pathname,
-      method,
-      key: limit.key,
-      blocked: limit.blocked,
-    });
-    return rateLimitedResponse(limit);
+  };
+
+  // Ahead of `hydrateRequestContext` so a flooding address is turned away
+  // before the session lookup, and ahead of the 405 so unsupported methods are
+  // counted rather than routing freely. The route ceiling waits for a caller.
+  const address = checkAddressRateLimit(caller);
+  if (address && !address.allowed) {
+    logRateLimit(pathname, method, address);
+    return rateLimitedResponse(address);
   }
 
   const handler = resolveHandler(match.module, method);
@@ -178,8 +194,24 @@ export async function apiRouter(
   }
 
   try {
-    await hydrateRequestContext(c);
-    const result = await handler(c);
+    // One identity cache for the length of this request, so the IdP staleness
+    // bound stays a per-request bound rather than a per-check one.
+    const { limit, result } = await withIdentityScope(async () => {
+      await hydrateRequestContext(c);
+      // Keyed on the resolved user: a credential the server never accepted
+      // must not buy a window of its own.
+      const limit = checkRateLimit({
+        ...caller,
+        pattern: match.pattern,
+        method,
+        userId: c.var.user?.id,
+      });
+      if (limit && !limit.allowed) {
+        logRateLimit(pathname, method, limit);
+        return { limit, result: rateLimitedResponse(limit) };
+      }
+      return { limit, result: await handler(c) };
+    });
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });
@@ -188,6 +220,9 @@ export async function apiRouter(
 
     return limit ? withRateLimitHeaders(result, limit) : result;
   } catch (error) {
+    if (error instanceof AclFailure) {
+      return aclFailureResponse(error);
+    }
     appLogger.error("Unhandled API route error", {
       path: pathname,
       error: error instanceof Error ? error.message : String(error),

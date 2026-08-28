@@ -4,13 +4,10 @@ import { twMerge } from "tailwind-merge";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import {
-  propertyValueIncludes,
-  propertyValueToScalar,
-  propertyValueToText,
-} from "#documents/properties.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { propertyValueIncludes, propertyValueToScalar } from "#documents/properties.ts";
+import { documentTitle } from "#documents/title.ts";
 import { allowsChildDocumentType } from "#documents/types.ts";
-import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
 
@@ -22,12 +19,10 @@ interface Props {
   onToggle?: (id: string) => void;
 }
 
-function docTitle(doc: DocumentWithProperties) {
-  const title = doc.properties?.title;
-  return title ? propertyValueToText(title) : t("Untitled");
-}
-
 export function DocumentTreeItem(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   const { currentSpace } = useSpace();
   const { draggedDocument } = useDocumentDrag();
 
@@ -108,7 +103,7 @@ export function DocumentTreeItem(props: Props) {
             >
               <Icon class="h-3 w-3 flex-none" name="lock-element" />
               <span class="overflow-hidden text-ellipsis whitespace-nowrap">
-                {docTitle(props.doc)}
+                {documentTitle(props.doc, lang)}
               </span>
             </div>
           }
@@ -121,7 +116,7 @@ export function DocumentTreeItem(props: Props) {
                 : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200"
             }`}
           >
-            <span>{docTitle(props.doc)}</span>
+            <span>{documentTitle(props.doc, lang)}</span>
             <Show when={props.doc.mentionCount && props.doc.mentionCount > 0}>
               <span class="ml-2 min-w-[1.25rem] rounded-full bg-primary-600 px-1.5 text-center font-medium text-size-extra-small text-white leading-[1.25rem]">
                 {props.doc.mentionCount}

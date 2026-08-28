@@ -1,10 +1,12 @@
 import { createSignal, onCleanup, Show } from "solid-js";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Actions } from "#utils/actions.ts";
-import { t } from "#utils/lang.ts";
 import { Dialog } from "./Dialog.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function CalDAVSetupDialog() {
+  const t = useTranslation();
+
   const [show, setShow] = createSignal(false);
   const [copied, setCopied] = createSignal<string | null>(null);
   const user = useUserProfile();

@@ -264,8 +264,9 @@ img[width] {
   height: auto;
 }
 
-/* Image wrapper styles */
-.image-wrapper {
+/* Image and video wrapper styles */
+.image-wrapper,
+.video-wrapper {
   display: block;
   position: relative;
   width: fit-content;
@@ -278,80 +279,44 @@ img[width] {
   pointer-events: none;
 }
 
-/* Selected image outline */
-.image-wrapper.ProseMirror-selectednode img {
+/* Selected media outline: on the wrapper, which is fit-content around the
+   media, so it does not depend on the child element type. */
+.image-wrapper.ProseMirror-selectednode,
+.video-wrapper.ProseMirror-selectednode {
   outline: 2px solid var(--color-primary, #3b82f6);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 
-/* Resize handle */
+/* Resize handle: the same corner bracket as the canvas resize control, kept
+   inside the element bounds so it never overlaps neighbouring content. */
 .resize-handle {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
-  width: 12px;
-  height: 12px;
-  background: #3b82f6;
-  border: 2px solid white;
-  border-radius: var(--radius-sm);
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
   cursor: nwse-resize;
   z-index: 10;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  color: white;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.45));
 }
 
-.resize-handle:hover {
-  background: #2563eb;
-  transform: scale(1.1);
+.resize-handle::after {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 16px;
+  height: 16px;
+  border-right: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  border-bottom-right-radius: 4px;
+  content: "";
 }
 
+.resize-handle:hover,
 .resize-handle:active {
-  background: #1d4ed8;
-}
-
-/* Match the canvas element resize control while retaining the document
-   editor's absolute positioning and drag interaction. */
-.image-resize-handle {
-  right: -20px;
-  bottom: -20px;
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
   color: var(--color-primary, #3b82f6);
-  box-shadow: none;
-}
-
-.image-resize-handle::before {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 3px;
-  height: 13px;
-  border-radius: 999px;
-  background: currentColor;
-  content: "";
-}
-
-.image-resize-handle::after {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  width: 13px;
-  height: 3px;
-  border-radius: 999px;
-  background: currentColor;
-  content: "";
-}
-
-.image-resize-handle:hover,
-.image-resize-handle:active {
-  background: transparent;
-  color: #1d4ed8;
-  transform: none;
 }
 
 /* Positioned relative to the host (not the viewport) so carets stay correct

@@ -122,27 +122,56 @@ describe("GET /api/v1/users (unscoped: the register)", () => {
     const seen: string[] = [];
     let cursor: string | null = null;
 
-    for (let page = 0; page < 50; page++) {
-      const query = cursor ? `?limit=1&cursor=${encodeURIComponent(cursor)}` : "?limit=1";
+    // Bounded by the rows walked rather than by a page count: the guard is
+    // against a cursor that never ends, not against how many accounts exist.
+    while (seen.length <= 20_000) {
+      const query = cursor
+        ? `?limit=500&cursor=${encodeURIComponent(cursor)}`
+        : "?limit=500";
       const res = await apiRequest(`/api/v1/users${query}`, admin.token);
       expect(res.status).toBe(200);
 
       const body: RegisterPage = await res.json();
-      expect(body.limit).toBe(1);
-      expect(body.users.length).toBeLessThanOrEqual(1);
+      expect(body.limit).toBe(500);
+      expect(body.users.length).toBeLessThanOrEqual(500);
       for (const entry of body.users) seen.push(entry.id);
 
       cursor = body.nextCursor;
       if (!cursor) break;
     }
 
-    // No cursor left means the walk reached the end rather than the loop's bound.
+    // No cursor left means the walk reached the end rather than the bound.
     expect(cursor).toBeNull();
     expect(new Set(seen).size).toBe(seen.length);
     // Both accounts this spec created are somewhere in that walk, so the pages
     // together are the register and not a prefix of it.
     expect(seen).toContain(admin.id);
     expect(seen).toContain(member.id);
+  });
+
+  // A page of one is the size a seek cursor gets wrong, since every request has
+  // to resume exactly where the last one stopped.
+  it("hands out the same rows one at a time as it does in a single page", async () => {
+    const stepped: string[] = [];
+    let cursor: string | null = null;
+
+    for (let page = 0; page < 5; page++) {
+      const query = cursor ? `?limit=1&cursor=${encodeURIComponent(cursor)}` : "?limit=1";
+      const res = await apiRequest(`/api/v1/users${query}`, admin.token);
+      expect(res.status).toBe(200);
+
+      const body: RegisterPage = await res.json();
+      expect(body.limit).toBe(1);
+      for (const entry of body.users) stepped.push(entry.id);
+
+      cursor = body.nextCursor;
+      if (!cursor) break;
+    }
+
+    const res = await apiRequest(`/api/v1/users?limit=${stepped.length}`, admin.token);
+    const page: RegisterPage = await res.json();
+    // Same rows in the same order, however they were asked for.
+    expect(stepped).toEqual(page.users.map((entry) => entry.id));
   });
 
   // A cursor is opaque and machine-made, so an undecodable one reads as the first

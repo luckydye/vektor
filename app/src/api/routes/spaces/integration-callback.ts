@@ -1,3 +1,4 @@
+import { isAccessDenied } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
@@ -159,9 +160,9 @@ export const GET: ApiRouteHandler = (context) =>
         statePayload.redirectTo,
       );
     } catch (error) {
-      // Guards and helpers signal refusal by throwing a Response. Turning one
-      // into a "something went wrong" redirect would hide the real status.
-      if (error instanceof Response) throw error;
+      // ACL failures and HTTP helper responses must reach the HTTP boundary;
+      // turning either into a redirect would hide the real refusal.
+      if (isAccessDenied(error) || error instanceof Response) throw error;
 
       appLogger.error("OAuth integration callback error", { error });
       const message = error instanceof Error ? error.message : "OAuth callback failed";

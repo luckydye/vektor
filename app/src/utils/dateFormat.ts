@@ -1,5 +1,4 @@
 import { normalizeTimestamp } from "#utils/datetime.ts";
-import { currentLang } from "#utils/lang.ts";
 
 export type RelativeTimeOptions = {
   style?: "long" | "short" | "narrow";
@@ -12,6 +11,7 @@ export type RelativeTimeOptions = {
 /** Localized relative time with an optional absolute-date fallback. */
 export function formatRelativeTime(
   value: string | number | Date,
+  locale: string,
   options: RelativeTimeOptions = {},
 ): string {
   const {
@@ -27,8 +27,6 @@ export function formatRelativeTime(
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
-    const locale = currentLang();
-
     if (diffDays >= maxDays) return date.toLocaleDateString(locale);
 
     const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style });
@@ -51,14 +49,21 @@ export function formatRelativeTime(
 }
 
 /** Day-granular list stamp: "Today", "Yesterday", "3 days ago", then a date. */
-export function formatDate(dateString: string | number | Date): string {
-  return formatRelativeTime(dateString, { dayOnly: true, maxDays: 7, capitalize: true });
+export function formatDate(dateString: string | number | Date, locale: string): string {
+  return formatRelativeTime(dateString, locale, {
+    dayOnly: true,
+    maxDays: 7,
+    capitalize: true,
+  });
 }
 
 /** Absolute calendar date without a time. */
-export function formatAbsoluteDate(value: string | number | Date): string {
+export function formatAbsoluteDate(
+  value: string | number | Date,
+  locale: string,
+): string {
   try {
-    return normalizeTimestamp(value).toLocaleDateString(currentLang(), {
+    return normalizeTimestamp(value).toLocaleDateString(locale, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -69,9 +74,9 @@ export function formatAbsoluteDate(value: string | number | Date): string {
 }
 
 /** Absolute date and time to the minute. */
-export function formatDateTime(value: string | number | Date): string {
+export function formatDateTime(value: string | number | Date, locale: string): string {
   try {
-    return normalizeTimestamp(value).toLocaleString(currentLang(), {
+    return normalizeTimestamp(value).toLocaleString(locale, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -83,9 +88,9 @@ export function formatDateTime(value: string | number | Date): string {
 }
 
 /** Clock time only, for a stamp whose date is already established. */
-export function formatTime(value: string | number | Date): string {
+export function formatTime(value: string | number | Date, locale: string): string {
   try {
-    return normalizeTimestamp(value).toLocaleTimeString(currentLang(), {
+    return normalizeTimestamp(value).toLocaleTimeString(locale, {
       hour: "2-digit",
       minute: "2-digit",
     });

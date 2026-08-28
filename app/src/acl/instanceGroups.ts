@@ -1,16 +1,16 @@
 /**
- * The two gates that cannot be ACL grants, because neither has a resource to
- * hang off: who may create a space that does not exist yet, and who administers
- * every space at once. Both are operator configuration — a comma-separated
- * allow list of OAuth group ids — and both resolve membership through
- * `getUserGroups`, so the same staleness bound and name validation apply as to
- * every other authorization decision.
+ * The gates that cannot be ACL grants, because none has a resource to hang off:
+ * who may create a space that does not exist yet, how many they may end up
+ * owning, and who administers every space at once. All three are operator
+ * configuration — a comma-separated allow list of OAuth group ids, or a count.
+ *
+ * Configuration only: whether a caller is in one of these lists is asked in
+ * `#acl/identity.ts`, so the resolution path can read this without it depending
+ * on the resolution path in turn.
  */
 
 import { GROUP_NAME_PATTERN, PUBLIC_GROUP } from "#acl/permissions.ts";
-import { getUserGroups } from "#acl/userGroups.ts";
-import { forbiddenResponse } from "#api/http.ts";
-import { config, isNoAuthMode, LOCAL_USER_ID } from "#config";
+import { config } from "#config";
 
 /**
  * The group ids a raw setting names, or `null` when it names nothing. An empty
@@ -40,6 +40,21 @@ export function spaceCreationGroups(): string[] | null {
   return configuredGroups(config().SPACE_CREATION_GROUPS);
 }
 
+/** Spaces one user may have created, when the operator configured no other. */
+const DEFAULT_MAX_SPACES_PER_USER = 50;
+
+/**
+ * How many spaces one user may have created and still own; `0` lifts the cap.
+ * Unset cannot mean "unlimited" the way it does above: every space allocates a
+ * database of its own, so no ceiling is a disk and file-descriptor budget
+ * handed to whoever can sign up.
+ */
+export function maxSpacesPerUser(): number {
+  const configured = config().MAX_SPACES_PER_USER?.trim();
+  if (!configured || !/^\d+$/.test(configured)) return DEFAULT_MAX_SPACES_PER_USER;
+  return Number.parseInt(configured, 10);
+}
+
 /**
  * The groups whose members administer the instance. Unset means nobody, the
  * opposite of {@link spaceCreationGroups} — an absent setting cannot hand
@@ -50,51 +65,12 @@ export function adminGroups(): string[] {
 }
 
 /**
- * The admin groups this user is actually in. Only their own: the configured list
- * is the operator's, and a client that has to name a group when it writes a
- * grant needs no more than the ones it already belongs to.
+ * Which of `groups` administer the instance. Pure: it decides nothing about a
+ * caller on its own, it reads the operator's list against a group set someone
+ * else resolved.
  */
-export async function userAdminGroups(userId: string): Promise<string[]> {
+export function adminGroupsIn(groups: readonly string[]): string[] {
   const admins = adminGroups();
   if (admins.length === 0) return [];
-
-  const groups = await getUserGroups(userId);
   return admins.filter((group) => groups.includes(group));
-}
-
-/**
- * Whether `userId` administers the instance, which is owner on every space that
- * exists — see {@link import("#acl/guards.ts").canAccess}. Only a user identity
- * can be one: a credential's id belongs to no user and so carries no groups,
- * which is why a token minted by an admin is not a skeleton key.
- */
-export async function isInstanceAdmin(
-  userId: string | null | undefined,
-): Promise<boolean> {
-  if (!userId) return false;
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) return true;
-
-  return (await userAdminGroups(userId)).length > 0;
-}
-
-/**
- * Whether `userId` may create a space. An instance admin always may: they can
- * already delete and re-own every space that exists.
- */
-export async function canCreateSpace(userId: string): Promise<boolean> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) return true;
-
-  const allowed = spaceCreationGroups();
-  if (allowed === null) return true;
-
-  const groups = await getUserGroups(userId);
-  if (allowed.length > 0 && groups.some((group) => allowed.includes(group))) return true;
-
-  return await isInstanceAdmin(userId);
-}
-
-/** The enforcement form of {@link canCreateSpace}; throws 403 like the guards. */
-export async function verifyCanCreateSpace(userId: string): Promise<void> {
-  if (await canCreateSpace(userId)) return;
-  throw forbiddenResponse("You are not allowed to create spaces");
 }

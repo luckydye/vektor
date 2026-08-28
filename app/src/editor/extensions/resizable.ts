@@ -18,6 +18,7 @@
 //   }
 
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { NodeSelection } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
 
 export interface ResizableAttrs {
@@ -43,6 +44,9 @@ export abstract class ResizableNodeView implements NodeView {
   startHeight = 0;
   aspectRatio?: number;
   resizeMode: ResizeMode = "width";
+  /* Set by subclasses whose content has its own controls (e.g. a <video>): the
+     content keeps pointer events and its events are hidden from ProseMirror. */
+  interactiveContent = false;
 
   constructor(node: ProseMirrorNode, view: EditorView, getPos: () => number | undefined) {
     this.node = node;
@@ -67,6 +71,10 @@ export abstract class ResizableNodeView implements NodeView {
       this.dom.style.width = "100%";
     }
 
+    if (this.interactiveContent) {
+      contentEl.addEventListener("mousedown", this.selectOnContentPointerDown);
+    }
+
     this.dom.appendChild(contentEl);
     this.updateSize();
   }
@@ -74,12 +82,9 @@ export abstract class ResizableNodeView implements NodeView {
   selectNode(): void {
     this.dom.classList.add("ProseMirror-selectednode");
 
-    if (this.node.attrs.display !== "full" && !this.handle) {
+    if (!this.handle) {
       this.handle = document.createElement("div");
       this.handle.classList.add("resize-handle");
-      if (this.dom.classList.contains("image-wrapper")) {
-        this.handle.classList.add("image-resize-handle");
-      }
       this.handle.style.cursor =
         this.resizeMode === "height" ? "ns-resize" : "nwse-resize";
 
@@ -101,7 +106,7 @@ export abstract class ResizableNodeView implements NodeView {
   updateSize(): void {
     if (!this.contentEl) return;
 
-    this.contentEl.style.pointerEvents = "none";
+    this.contentEl.style.pointerEvents = this.interactiveContent ? "auto" : "none";
 
     if (this.node.attrs.display === "full") {
       this.contentEl.style.width = "100%";
@@ -198,6 +203,8 @@ export abstract class ResizableNodeView implements NodeView {
   abstract updateContent(): void;
 
   destroy(): void {
+    this.contentEl?.removeEventListener("mousedown", this.selectOnContentPointerDown);
+
     if (this.handle) {
       this.handle.removeEventListener("mousedown", this.handleMouseDown);
     }
@@ -206,11 +213,24 @@ export abstract class ResizableNodeView implements NodeView {
   }
 
   stopEvent(event: Event): boolean {
-    return (
-      event.type === "mousedown" &&
-      (event.target as HTMLElement).classList.contains("resize-handle")
-    );
+    const target = event.target as HTMLElement | null;
+
+    if (event.type === "mousedown" && target?.classList.contains("resize-handle")) {
+      return true;
+    }
+
+    return this.interactiveContent && !!this.contentEl && this.contentEl === target;
   }
+
+  /* Clicking interactive content is hidden from ProseMirror by stopEvent, so
+     select the node here to keep the resize handle reachable. */
+  selectOnContentPointerDown = (): void => {
+    const pos = this.getPos();
+    if (pos === undefined) return;
+
+    const { tr } = this.view.state;
+    this.view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, pos)));
+  };
 
   ignoreMutation(): boolean {
     return true;

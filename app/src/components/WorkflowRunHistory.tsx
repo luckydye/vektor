@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { Icon } from "./Icon.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
@@ -36,6 +37,7 @@ function runTitle(run: RunSummary): string {
 }
 
 export function WorkflowRunHistory(props: Props) {
+  const lang = useLocale();
   return (
     <section class="min-w-0">
       <Show
@@ -64,7 +66,7 @@ export function WorkflowRunHistory(props: Props) {
                 </span>
                 <span class="flex w-full items-center justify-between gap-2">
                   <span class="truncate text-neutral-400 text-size-small tabular-nums">
-                    {formatDateTime(run.createdAt)}
+                    {formatDateTime(run.createdAt, lang)}
                   </span>
                   <span
                     class={`inline-flex flex-none items-center gap-1 rounded-sm px-1.5 py-0.5 font-medium text-size-extra-small capitalize ${

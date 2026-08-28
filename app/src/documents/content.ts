@@ -1,5 +1,5 @@
 import { marked } from "marked";
-import { escapeHtml } from "#utils/html.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 // Custom renderer so task lists produce TipTap-compatible markup:
 //   <ul data-type="taskList">
@@ -55,22 +55,11 @@ const MARKDOWN_TYPES = new Set([
   "application/x-markdown",
 ]);
 
-export const CSV_TYPES: readonly string[] = [
-  "text/csv",
-  "application/csv",
-  "text/x-csv",
-  "application/vnd.ms-excel",
-] as const;
-const CSV_TYPE_SET = new Set<string>(CSV_TYPES);
-const APP_TYPES = new Set<string>(["application/vnd.wiki.app+html"]);
-
 export function getDocumentTypeForContentType(
   contentType: string | null,
 ): string | undefined {
   const mimeType = getMimeType(contentType);
   if (!mimeType) return undefined;
-  if (CSV_TYPE_SET.has(mimeType)) return "csv";
-  if (APP_TYPES.has(mimeType)) return "app";
   if (mimeType === "text/html" || MARKDOWN_TYPES.has(mimeType)) return "document";
   return undefined;
 }
@@ -80,129 +69,18 @@ export function getMimeType(contentType: string | null): string | null {
   return contentType.split(";")[0]?.trim().toLowerCase() || null;
 }
 
-function parseCsv(content: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  const pushField = () => {
-    row.push(field);
-    field = "";
-  };
-
-  const pushRow = () => {
-    // Ignore trailing empty rows.
-    if (row.length === 1 && row[0] === "") {
-      row = [];
-      return;
-    }
-    rows.push(row);
-    row = [];
-  };
-
-  for (let i = 0; i < content.length; i++) {
-    const char = content[i];
-
-    if (inQuotes) {
-      if (char === '"') {
-        if (content[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += char;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inQuotes = true;
-      continue;
-    }
-
-    if (char === ",") {
-      pushField();
-      continue;
-    }
-
-    if (char === "\r") {
-      pushField();
-      pushRow();
-      if (content[i + 1] === "\n") i++;
-      continue;
-    }
-
-    if (char === "\n") {
-      pushField();
-      pushRow();
-      continue;
-    }
-
-    field += char;
-  }
-
-  pushField();
-  if (row.length > 1 || row[0] !== "") {
-    pushRow();
-  }
-
-  return rows;
-}
-
-function csvToHtmlTable(content: string): string {
-  const rows = parseCsv(content);
-  if (rows.length === 0) {
-    return "<table><tbody></tbody></table>";
-  }
-
-  const [header, ...dataRows] = rows;
-
-  const thead = `<thead><tr>${header
-    .map((cell) => `<th>${escapeHtml(cell)}</th>`)
-    .join("")}</tr></thead>`;
-  const tbody = `<tbody>${dataRows
-    .map(
-      (cells) =>
-        `<tr>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
-    )
-    .join("")}</tbody>`;
-
-  return `<table>${thead}${tbody}</table>`;
-}
-
-/**
- * Whether `content` is CSV text that needs converting to the stored table.
- *
- * The request's own content type is the better witness and wins where it says
- * anything definite. The document's type is a fallback, for the callers that
- * send CSV text without labelling it — creating a spreadsheet posts a JSON body
- * whose content type describes the envelope, not the grid.
- */
-function isCsvContent(contentType: string | null, documentType?: string | null): boolean {
-  const mimeType = getMimeType(contentType);
-  if (mimeType && CSV_TYPE_SET.has(mimeType)) return true;
-  // `text/html` outranks the document's type. A csv document's stored content
-  // *is* HTML, so converting it again would treat the markup as CSV text and
-  // bury the whole table inside one escaped cell of a new one.
-  if (mimeType === "text/html") return false;
-  return typeof documentType === "string" && documentType.toLowerCase() === "csv";
-}
-
-export function toHtmlIfMarkdown(
+/** Converts Markdown when requested, then sanitizes the submitted HTML. */
+export function prepareDocumentContent(
   content: string,
   contentType: string | null,
-  documentType?: string | null,
 ): string {
-  if (isCsvContent(contentType, documentType)) {
-    return csvToHtmlTable(content);
+  const mimeType = getMimeType(contentType);
+  const markdown = MARKDOWN_TYPES.has(mimeType ?? "");
+
+  let prepared = content;
+  if (markdown) {
+    prepared = marked.parse(content, { breaks: true, gfm: true }) as string;
   }
 
-  const mimeType = getMimeType(contentType);
-  if (!MARKDOWN_TYPES.has(mimeType ?? "")) {
-    return content;
-  }
-  return marked.parse(content, { breaks: true, gfm: true }) as string;
+  return sanitizeDocumentHtml(prepared);
 }

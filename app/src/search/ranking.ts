@@ -165,8 +165,12 @@ function buildSearchSnippet(query: string, text: string): string {
 export interface SearchCandidate {
   /** Title text, already decoded from its stored property value. */
   title: string;
-  searchText: string | null;
-  content: string;
+  /**
+   * The document's indexed text, or its body where the index is missing, capped
+   * by the caller. Ranking reads whatever it is given: a document runs to
+   * megabytes, and scoring all of it is the caller's cost to bound.
+   */
+  scoringText: string;
   searchEmbedding: string | null;
   searchEmbeddingModel: string | null;
 }
@@ -177,12 +181,23 @@ export interface RankedCandidate<T> {
   snippet: string;
 }
 
-/** The title is scored separately: `searchText` lags a title edit, and is
+/** The title is scored separately: the indexed text lags a title edit, and is
  * missing entirely while the embedding runtime cannot index a document. */
 function textForScoring(candidate: SearchCandidate): string {
-  return [candidate.title, candidate.searchText ?? candidate.content]
-    .filter(Boolean)
-    .join("\n\n");
+  return [candidate.title, candidate.scoringText].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Candidates scored between yields to the event loop. Scoring a document is a
+ * full pass over its text, so a large corpus would otherwise hold the loop for
+ * the whole ranking and stall every other request on the process.
+ */
+const SCORING_CHUNK = 50;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 /**
@@ -190,15 +205,26 @@ function textForScoring(candidate: SearchCandidate): string {
  * above the corpus baseline. `queryEmbedding` is null when the embedding
  * runtime is unavailable, leaving keyword matching on its own.
  */
-export function rankSearchCandidates<T extends SearchCandidate>(
+export async function rankSearchCandidates<T extends SearchCandidate>(
   query: string,
   queryEmbedding: number[] | null,
   candidates: T[],
   options: RankingOptions = {},
-): RankedCandidate<T>[] {
+): Promise<RankedCandidate<T>[]> {
   const embeddingModel = getEmbeddingModel();
 
-  const scored = candidates.map((candidate) => {
+  const scored: {
+    candidate: T;
+    text: string;
+    keywordScore: number;
+    similarity: number | null;
+  }[] = [];
+
+  for (const candidate of candidates) {
+    if (scored.length > 0 && scored.length % SCORING_CHUNK === 0) {
+      await yieldToEventLoop();
+    }
+
     let similarity: number | null = null;
     if (queryEmbedding !== null && candidate.searchEmbeddingModel === embeddingModel) {
       const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
@@ -208,13 +234,13 @@ export function rankSearchCandidates<T extends SearchCandidate>(
     }
 
     const text = textForScoring(candidate);
-    return {
+    scored.push({
       candidate,
       text,
       keywordScore: scoreKeywordOverlap(query, text),
       similarity,
-    };
-  });
+    });
+  }
 
   // A property of the corpus, so it needs every candidate scored first.
   const threshold = semanticMatchThreshold(
@@ -228,6 +254,10 @@ export function rankSearchCandidates<T extends SearchCandidate>(
   const ranked: RankedCandidate<T>[] = [];
 
   for (const { candidate, text, keywordScore, similarity } of scored) {
+    if (ranked.length > 0 && ranked.length % SCORING_CHUNK === 0) {
+      await yieldToEventLoop();
+    }
+
     const semanticBoost = semanticRelevance(similarity, threshold);
     const hasKeywordMatch = keywordScore > 0 && keywordScore >= minKeywordScore;
     if (!hasKeywordMatch && semanticBoost === 0) {

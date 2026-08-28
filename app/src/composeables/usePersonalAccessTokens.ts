@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { api, type PersonalAccessToken } from "#api/client.ts";
-import { t } from "#utils/lang.ts";
+import { useTranslation } from "./useTranslation.ts";
 
 export interface CreatePersonalTokenInput {
   name: string;
@@ -13,6 +13,7 @@ export interface CreatePersonalTokenInput {
  * here until dismissed — the server hands it over once and never again.
  */
 export function usePersonalAccessTokens() {
+  const t = useTranslation();
   const [tokens, setTokens] = createSignal<PersonalAccessToken[]>([]);
   // Starts true so the list shows loading rather than "no tokens" before the
   // first load runs — the caller loads lazily, when the tab is opened.

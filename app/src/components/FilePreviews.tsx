@@ -11,9 +11,9 @@ import {
 import { twMerge } from "tailwind-merge";
 import { useSpace } from "#composeables/useSpace.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
-import { t } from "#utils/lang.ts";
 import { formatFileSize } from "#utils/utils.ts";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 export interface FilePreviewItem {
   id: string;
@@ -176,6 +176,8 @@ function FilePreviewTile(props: TileProps) {
 
 /** Image uploads as a grid of thumbnails, one tile per file. */
 export function FilePreviews(props: Props) {
+  const t = useTranslation();
+
   const visible = createMemo(() =>
     props.expanded ? props.items : props.items.slice(0, COLLAPSED_TILES),
   );

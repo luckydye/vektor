@@ -50,16 +50,16 @@ async function upload(
   filename: string,
   documentId?: string,
 ): Promise<Response> {
-  const form = new FormData();
-  form.set("file", new File([content], filename, { type: "text/plain" }));
-  form.set("filename", filename);
-  if (documentId) form.set("documentId", documentId);
+  const query = new URLSearchParams({ filename });
+  if (documentId) query.set("documentId", documentId);
 
-  return fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
+  return fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads?${query}`, {
     method: "POST",
-    // FormData sets its own multipart Content-Type, so this bypasses the JSON helpers.
-    headers: token ? { Cookie: `vektor.session_token=${token}` } : {},
-    body: form,
+    headers: {
+      "Content-Type": "text/plain",
+      ...(token ? { Cookie: `vektor.session_token=${token}` } : {}),
+    },
+    body: content,
   });
 }
 
@@ -174,7 +174,7 @@ describe("attachments of a publicly shared document", () => {
     const url = await ownerUpload("PRIVATE ATTACHMENT", documentId);
 
     const response = await fetch(`${BASE_URL}${url}`);
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
     expect(await response.text()).not.toContain("PRIVATE ATTACHMENT");
   });
 
@@ -211,7 +211,7 @@ describe("attachments of a publicly shared document", () => {
     expect(archived.status).toBe(200);
 
     // Archive raises the bar to `editor` for the attachment as for the document.
-    expect((await fetch(`${BASE_URL}${url}`)).status).toBe(401);
+    expect((await fetch(`${BASE_URL}${url}`)).status).toBe(404);
     const asSpaceViewer = await apiRequest(url, spaceViewerToken);
     expect(asSpaceViewer.status).toBe(403);
   });
@@ -247,17 +247,17 @@ describe("attachments for a document-scoped grantee", () => {
     const documentId = await createDocument("Carol's Agent Uploads Here");
     await grantOnDocument(documentId, "editor", { userId: scopedUserId });
 
-    const form = new FormData();
-    form.set("file", new File(["AGENT UPLOAD"], "agent.txt", { type: "text/plain" }));
-    form.set("filename", "agent.txt");
-    form.set("documentId", documentId);
-    const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
-      method: "POST",
-      headers: {
-        "X-Job-Token": createJobToken(spaceId, String(Date.now()), scopedUserId),
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/uploads?filename=agent.txt&documentId=${documentId}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          "X-Job-Token": createJobToken(spaceId, String(Date.now()), scopedUserId),
+        },
+        body: "AGENT UPLOAD",
       },
-      body: form,
-    });
+    );
     expect(response.status).toBe(200);
 
     const url = (await response.json()).url as string;

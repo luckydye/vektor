@@ -7,7 +7,7 @@ import { FormField } from "./FormField.tsx";
 import { Input } from "./Input.tsx";
 
 interface Props {
-  lang?: string;
+  lang: string;
 }
 
 export function Login(props: Props) {

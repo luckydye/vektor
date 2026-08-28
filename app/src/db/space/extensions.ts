@@ -46,6 +46,100 @@ interface ExtensionQueryOptions {
   includeDisabled?: boolean;
 }
 
+/** Everything a listing needs from a row; the package blob is read separately. */
+const extensionMetaColumns = {
+  id: extension.id,
+  enabled: extension.enabled,
+  source: extension.source,
+  sourceRef: extension.sourceRef,
+  sourcePublisher: extension.sourcePublisher,
+  createdAt: extension.createdAt,
+  updatedAt: extension.updatedAt,
+  createdBy: extension.createdBy,
+};
+
+interface ExtensionRowMeta {
+  id: string;
+  enabled: boolean;
+  source: string | null;
+  sourceRef: string | null;
+  sourcePublisher: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+interface LoadedManifest {
+  manifest: ExtensionManifest | null;
+  error?: string;
+}
+
+interface CachedManifest extends LoadedManifest {
+  /** The row version this was read from, so a newer row is not served stale. */
+  updatedAt: number;
+}
+
+/**
+ * One manifest per space and extension. Listing extensions is an
+ * editor-reachable request, and without this each one re-reads and re-inflates
+ * every installed package.
+ */
+const manifestCache = new Map<string, CachedManifest>();
+const MANIFEST_CACHE_MAX_ENTRIES = 512;
+
+function manifestCacheKey(spaceId: string, extensionId: string): string {
+  return `${spaceId}:${extensionId}`;
+}
+
+/**
+ * Drop the cached manifest of an extension that was just written. `updatedAt`
+ * has second resolution, so two writes in the same second would otherwise look
+ * like the same version.
+ */
+function invalidateManifest(s: SpaceStore, extensionId: string): void {
+  manifestCache.delete(manifestCacheKey(s.spaceId, extensionId));
+}
+
+async function loadManifest(
+  s: SpaceStore,
+  row: ExtensionRowMeta,
+): Promise<LoadedManifest> {
+  const key = manifestCacheKey(s.spaceId, row.id);
+  const cached = manifestCache.get(key);
+  if (cached && cached.updatedAt === row.updatedAt.getTime()) return cached;
+
+  const rows = await s.db
+    .select({ package: extension.package })
+    .from(extension)
+    .where(eq(extension.id, row.id));
+
+  const packageBuffer = rows[0]?.package;
+  const result: LoadedManifest = packageBuffer
+    ? safeExtractManifest(packageBuffer, row.id)
+    : { manifest: null, error: "Extension package is missing" };
+
+  manifestCache.set(key, { ...result, updatedAt: row.updatedAt.getTime() });
+  if (manifestCache.size > MANIFEST_CACHE_MAX_ENTRIES) {
+    const oldest = manifestCache.keys().next().value;
+    if (oldest !== undefined) manifestCache.delete(oldest);
+  }
+  return result;
+}
+
+function toExtension(row: ExtensionRowMeta, manifest: ExtensionManifest): Extension {
+  return {
+    id: row.id,
+    manifest,
+    enabled: row.enabled,
+    source: (row.source as ExtensionSource) ?? "upload",
+    sourceRef: row.sourceRef ?? null,
+    sourcePublisher: row.sourcePublisher ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    createdBy: row.createdBy,
+  };
+}
+
 export async function listExtensions(
   s: SpaceStore,
   options: ExtensionQueryOptions = {},
@@ -58,7 +152,7 @@ export async function listExtensionsWithErrors(
   s: SpaceStore,
   options: ExtensionQueryOptions = {},
 ): Promise<{ extensions: Extension[]; errors: ExtensionManifestLoadError[] }> {
-  const rows = await s.db.select().from(extension);
+  const rows = await s.db.select(extensionMetaColumns).from(extension);
 
   const extensions: Extension[] = [];
   const errors: ExtensionManifestLoadError[] = [];
@@ -66,7 +160,7 @@ export async function listExtensionsWithErrors(
     if (!options.includeDisabled && !row.enabled) {
       continue;
     }
-    const result = safeExtractManifest(row.package, row.id);
+    const result = await loadManifest(s, row);
     if (!result.manifest) {
       errors.push({
         id: row.id,
@@ -74,17 +168,7 @@ export async function listExtensionsWithErrors(
       });
       continue;
     }
-    extensions.push({
-      id: row.id,
-      manifest: result.manifest,
-      enabled: row.enabled,
-      source: (row.source as ExtensionSource) ?? "upload",
-      sourceRef: row.sourceRef ?? null,
-      sourcePublisher: row.sourcePublisher ?? null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      createdBy: row.createdBy,
-    });
+    extensions.push(toExtension(row, result.manifest));
   }
 
   const local = getLocalExtension();
@@ -105,7 +189,7 @@ export async function getExtension(
     conditions.push(eq(extension.enabled, true));
   }
   const rows = await s.db
-    .select()
+    .select(extensionMetaColumns)
     .from(extension)
     .where(and(...conditions));
 
@@ -114,21 +198,11 @@ export async function getExtension(
   }
 
   const row = rows[0];
-  const result = safeExtractManifest(row.package, row.id);
+  const result = await loadManifest(s, row);
   if (!result.manifest) {
     return null;
   }
-  return {
-    id: row.id,
-    manifest: result.manifest,
-    enabled: row.enabled,
-    source: (row.source as ExtensionSource) ?? "upload",
-    sourceRef: row.sourceRef ?? null,
-    sourcePublisher: row.sourcePublisher ?? null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    createdBy: row.createdBy,
-  };
+  return toExtension(row, result.manifest);
 }
 
 export async function getExtensionPackage(
@@ -180,6 +254,7 @@ export async function createExtension(
     createdBy: userId,
   });
 
+  invalidateManifest(s, extensionId);
   s.emit({ kind: "extensions" });
 
   return {
@@ -228,6 +303,7 @@ export async function updateExtension(
     })
     .where(eq(extension.id, extensionId));
 
+  invalidateManifest(s, extensionId);
   s.emit({ kind: "extensions" });
 
   const manifest = extractManifest(packageBuffer);
@@ -278,6 +354,7 @@ export async function setExtensionEnabled(
     })
     .where(eq(extension.id, extensionId));
 
+  invalidateManifest(s, extensionId);
   s.emit({ kind: "extensions" });
 
   const result = safeExtractManifest(existing.package, extensionId);
@@ -323,6 +400,7 @@ export async function deleteExtension(
     .where(eq(extension.id, extensionId))
     .returning({ id: extension.id });
 
+  invalidateManifest(s, extensionId);
   if (result.length > 0) {
     s.emit({ kind: "extensions" });
   }

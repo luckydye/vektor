@@ -1,4 +1,5 @@
 ---
+import { isAccessDenied } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { SpaceApp } from "#components/SpaceApp.tsx";
@@ -14,10 +15,22 @@ import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 const { spaceSlug } = Astro.params;
 if (!spaceSlug) return Astro.redirect("/");
 
-// Unauthenticated callers are not redirected to /login here: a space that
-// grants viewer to the `public` group must render without a session.
+/**
+ * The one answer a caller who may not see this space gets, whether the slug is
+ * refused or resolves to nothing: telling those apart lets anyone enumerate
+ * private space slugs, which are creator-chosen and often guessable.
+ */
+function spaceUnavailableResponse(): Response {
+  if (!Astro.locals.session) {
+    return new Response(null, { status: 302, headers: { Location: "/login" } });
+  }
+  return new Response(null, { status: 403, statusText: "Forbidden" });
+}
+
+// Missing the session is not itself the refusal: a space that grants viewer to
+// the `public` group must render without one, so only the checks below decide.
 const space = await getSpaceBySlug(spaceSlug);
-if (!space) return new Response(null, { status: 404, statusText: "Space not found" });
+if (!space) return spaceUnavailableResponse();
 
 const store = await openSpaceStore(space.id);
 
@@ -27,12 +40,7 @@ const settingsPath =
   Astro.url.pathname.startsWith(`/${space.slug}/settings/`);
 
 if (settingsPath) {
-  if (!Astro.locals.session) {
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "/login" },
-    });
-  }
+  if (!Astro.locals.session) return spaceUnavailableResponse();
 
   try {
     await verifyAccess(
@@ -42,8 +50,9 @@ if (settingsPath) {
       Permission.OWNER,
     );
   } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
+    if (!isAccessDenied(error)) throw error;
+    // Use the page boundary's deliberately opaque response for every refusal.
+    return spaceUnavailableResponse();
   }
 }
 
@@ -52,8 +61,8 @@ const storedDocumentRecord = docSlugMatch
   : null;
 
 /**
- * Viewer verdict for one document, swallowing the Response `verifyAccess`
- * throws: answering with it would leak the guard's 403/404 distinction.
+ * Viewer verdict for one document, swallowing the ACL failure: answering with
+ * transport-specific detail would leak whether the document exists.
  */
 async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
   try {
@@ -65,7 +74,7 @@ async function holdsDocumentViewerRole(documentId: string): Promise<boolean> {
     );
     return true;
   } catch (error) {
-    if (!(error instanceof Response)) throw error;
+    if (!isAccessDenied(error)) throw error;
     return false;
   }
 }
@@ -93,14 +102,8 @@ if (!readableDocumentRecord) {
       Permission.VIEWER,
     );
   } catch (error) {
-    if (!(error instanceof Response)) throw error;
-    if (!Astro.locals.session) {
-      return new Response(null, {
-        status: 302,
-        headers: { Location: "/login" },
-      });
-    }
-    return new Response(null, { status: 403, statusText: "Forbidden" });
+    if (!isAccessDenied(error)) throw error;
+    return spaceUnavailableResponse();
   }
 }
 

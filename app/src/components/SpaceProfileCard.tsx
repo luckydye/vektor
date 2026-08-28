@@ -70,14 +70,7 @@ export function SpaceProfileCard(props: Props) {
                 </span>
               }
             >
-              <Show
-                when={props.logo.startsWith("<")}
-                fallback={
-                  <img src={props.logo} alt="" class="h-full w-full object-cover" />
-                }
-              >
-                <Icon svg={props.logo} class="h-full w-full p-1.5" />
-              </Show>
+              <img src={props.logo} alt="" class="h-full w-full object-cover" />
             </Show>
             <div class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
               <Icon class="h-4 w-4 text-white" name="edit-entry" />

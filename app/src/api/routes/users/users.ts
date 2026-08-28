@@ -1,13 +1,13 @@
 import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { getSpaceMemberIds } from "#acl/directory.ts";
 import { verifyAccess } from "#acl/guards.ts";
-import { isInstanceAdmin } from "#acl/instanceGroups.ts";
+import { isInstanceAdmin } from "#acl/identity.ts";
 import {
   GROUP_NAME_PATTERN,
   Permission,
   PUBLIC_GROUP,
   ResourceType,
 } from "#acl/permissions.ts";
-import { getSpaceMemberIds } from "#acl/store.ts";
 import {
   badRequestResponse,
   jsonResponse,

@@ -25,6 +25,7 @@ import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { config, getLocalOrigin } from "#config";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import {
   isPrivateOrBlockedIp,
@@ -48,20 +49,13 @@ const MAX_SLEEP_MS = 5 * 60 * 1000;
 const EXEC_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
- * Binaries a job may run. These are document-conversion tools that jobs have
- * always needed and cannot reasonably be reimplemented in-process. The list is
- * deliberately a fixed set of names — never a path, never guest-supplied — so
- * `exec` is a door to specific tools rather than to the shell.
+ * Binaries a job may run: the document-conversion tools jobs need and cannot
+ * reasonably reimplement in-process. Fixed names, never a path and never
+ * guest-supplied, so `exec` is a door to specific tools rather than to the
+ * shell — and only to the three the image installs, since allowlisting a tool
+ * that does not ship buys nothing and would admit it the day it does.
  */
-const EXEC_ALLOWLIST = new Set([
-  "htmlq",
-  "pandoc",
-  "rsvg-convert",
-  "qpdf",
-  "gs",
-  "libreoffice",
-  "soffice",
-]);
+const EXEC_ALLOWLIST = new Set(["htmlq", "pandoc", "rsvg-convert"]);
 
 export interface CapabilityContext {
   spaceId: string;
@@ -202,6 +196,12 @@ async function describeResponse(
 // Scratch directory
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** True when an already-resolved path is the scratch root or sits under it. */
+function isInside(root: string, resolved: string): boolean {
+  const rel = relative(root, resolved);
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+}
+
 /** A private directory per run, created on first use and removed at dispose. */
 class Scratch {
   private root: string | null = null;
@@ -219,11 +219,45 @@ class Scratch {
       throw new Error(`scratch: "${requested}" must be a relative path`);
     }
     const resolved = normalize(join(root, requested));
-    const rel = relative(root, resolved);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+    if (!isInside(root, resolved)) {
       throw new Error(`scratch: "${requested}" escapes the scratch directory`);
     }
     return resolved;
+  }
+
+  /**
+   * Vet one `exec` argument. Allowlisting the binary keeps guest input from
+   * becoming a command, but the converters take input and output paths, so an
+   * unchecked argument would read or write anywhere the server process can —
+   * every argument is treated as a candidate location and has to resolve inside
+   * the scratch tree, which ordinary flags and values do unchanged.
+   */
+  async assertArgAllowed(cwd: string, arg: string): Promise<void> {
+    const root = await this.dir();
+    // Unwrapping only, and only ever narrowing: `--flag=value` and `@argfile`
+    // hide a path one level in, and a flag's value may be a `:`-separated
+    // search path. An argument that matches neither shape is checked whole,
+    // which is the stricter reading, so a missed shape cannot pass a path.
+    const flag = /^-{1,2}[^=]*=/.exec(arg);
+    const candidates = flag
+      ? arg.slice(flag[0].length).split(":")
+      : [arg.replace(/^@/, "")];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      // Both decisions are a parser's, not a pattern's. A URL names a location
+      // no path check would see — `file:///etc/passwd`, and gio and libreoffice
+      // answer to schemes not worth enumerating — and the URL parser sees
+      // through the tabs, newlines and leading spaces a pattern trips over. The
+      // slash keeps CSS selectors out of it: `a:hover` parses as a URL, and
+      // htmlq takes selectors as arguments.
+      if (candidate.includes("/") && URL.canParse(candidate)) {
+        throw new Error(`exec: argument "${arg}" names a URL, not a scratch path`);
+      }
+      if (isAbsolute(candidate) || !isInside(root, normalize(join(cwd, candidate)))) {
+        throw new Error(`exec: argument "${arg}" points outside the scratch directory`);
+      }
+    }
   }
 
   async destroy(): Promise<void> {
@@ -316,13 +350,6 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     }
     return response;
   }
-
-  const contentTypeFor = (type: unknown): string =>
-    type === "csv"
-      ? "text/csv; charset=utf-8"
-      : type === "app"
-        ? "application/vnd.wiki.app+html; charset=utf-8"
-        : "text/markdown; charset=utf-8";
 
   const table: CapabilityTable = {
     // ── timing ───────────────────────────────────────────────────────────────
@@ -514,8 +541,9 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     // ── tools ────────────────────────────────────────────────────────────────
     /**
      * Run one of a fixed set of conversion tools. The command must be an
-     * allowlisted name, the working directory is always the scratch root, and no
-     * shell is involved, so guest input cannot become a command.
+     * allowlisted name and no shell is involved, so guest input cannot become a
+     * command; every argument is confined to the scratch tree, so it cannot
+     * become a path to another tenant's data either.
      */
     exec: (async (rawCommand: unknown, rawArgs: unknown, rawOptions: unknown) => {
       const command = String(rawCommand ?? "");
@@ -525,6 +553,7 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       const args = (Array.isArray(rawArgs) ? rawArgs : []).map(String);
       const options = asRecord(rawOptions);
       const cwd = options.cwd ? await scratch.resolve(options.cwd) : await scratch.dir();
+      for (const arg of args) await scratch.assertArgAllowed(cwd, arg);
 
       onLog(`exec ${command} ${args.join(" ")}`);
       return await new Promise((resolve, reject) => {
@@ -567,19 +596,15 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     uploadArtifact: (async (filename: unknown, content: unknown, mimeType: unknown) => {
       const data = asBuffer(content);
       checkPayloadSize(data.byteLength, `artifact ${String(filename)}`);
-      const form = new FormData();
-      form.append(
-        "file",
-        new Blob([data], {
-          type: mimeType ? String(mimeType) : "application/octet-stream",
-        }),
-      );
-      form.append("filename", String(filename));
+      const query = new URLSearchParams({ filename: String(filename) });
       onLog(`upload ${String(filename)} (${data.byteLength} bytes)`);
-      const response = await api("/uploads", {
+      const response = await api(`/uploads?${query}`, {
         method: "POST",
-        body: form,
-        headers: { Origin: origin },
+        body: data,
+        headers: {
+          Origin: origin,
+          "Content-Type": mimeType ? String(mimeType) : "application/octet-stream",
+        },
       });
       return ((await response.json()) as { url: string }).url;
     }) as never,
@@ -591,10 +616,16 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     }) as never,
 
     writeDocument: (async (documentId: unknown, content: unknown, type: unknown) => {
+      const text = asText(content);
+      const serialized = isSerializedDocumentType(type);
       await api(`/documents/${encodeURIComponent(String(documentId))}`, {
         method: "PUT",
-        headers: { "Content-Type": contentTypeFor(type) },
-        body: asText(content),
+        headers: {
+          "Content-Type": serialized
+            ? "application/json"
+            : "text/markdown; charset=utf-8",
+        },
+        body: serialized ? JSON.stringify({ content: text }) : text,
       });
       return null;
     }) as never,
@@ -602,14 +633,29 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
     createDocument: (async (content: unknown, rawOptions: unknown) => {
       const options =
         typeof rawOptions === "string" ? { title: rawOptions } : asRecord(rawOptions);
-      const headers: Record<string, string> = {
-        "Content-Type": contentTypeFor(options.type),
-      };
-      if (options.title) headers["X-Document-Title"] = String(options.title);
+      const text = asText(content);
+      const serialized = isSerializedDocumentType(options.type);
+      const headers: Record<string, string> = serialized
+        ? { "Content-Type": "application/json" }
+        : { "Content-Type": "text/markdown; charset=utf-8" };
+      if (!serialized && options.title) {
+        headers["X-Document-Title"] = String(options.title);
+      }
+      if (!serialized && typeof options.type === "string") {
+        headers["X-Document-Type"] = options.type;
+      }
       const response = await api("/documents", {
         method: "POST",
         headers,
-        body: asText(content),
+        body: serialized
+          ? JSON.stringify({
+              content: text,
+              type: options.type,
+              ...(options.title
+                ? { properties: { title: String(options.title) } }
+                : {}),
+            })
+          : text,
       });
       return ((await response.json()) as { document: unknown }).document;
     }) as never,

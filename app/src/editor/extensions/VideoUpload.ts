@@ -2,6 +2,7 @@ import { type Editor, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { reportUploadFailure, useUploads } from "#composeables/useUploads.ts";
 import { isVideoFile } from "#files/fileTypes.ts";
 import { ResizableNodeView } from "./resizable.ts";
 import { nodeFromSpec } from "./specSchema.ts";
@@ -18,11 +19,6 @@ async function uploadVideo(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  // Loaded on demand: uploading only ever happens in the browser, and this
-  // extension is part of `contentExtensions`, which the server builds to
-  // (de)serialize documents. A static import would pull the framework runtime
-  // into the server (and every serialization worker) just to build a schema.
-  const { useUploads } = await import("#composeables/useUploads.ts");
   // The editor owns the inline placeholder; the manager owns all toasts,
   // including the error one — a failed upload must never leave text behind
   // in the document, since that would sync to every collaborator.
@@ -72,8 +68,8 @@ function replacePlaceholderWithVideo(editor: Editor, url: string): void {
   }
 }
 
-// The failure is reported by the upload manager's error toast; here we only
-// clean up, so a failed upload leaves the document exactly as it was.
+// Cleanup only: the caller reports the failure, so a failed upload leaves the
+// document exactly as it was.
 function removePlaceholder(editor: Editor): void {
   const range = findPlaceholder(editor);
   if (range) {
@@ -95,7 +91,10 @@ function insertPlaceholderAndUpload(
 
   uploadVideo(file, spaceId, documentId)
     .then((url) => replacePlaceholderWithVideo(editor, url))
-    .catch(() => removePlaceholder(editor));
+    .catch((error) => {
+      reportUploadFailure(error, file.name);
+      removePlaceholder(editor);
+    });
 }
 
 export function insertVideoFilesAt(
@@ -130,6 +129,7 @@ class ResizableVideoView extends ResizableNodeView {
     super(node, view, getPos);
 
     this.dom.classList.add("video-wrapper");
+    this.interactiveContent = true;
 
     this.video = document.createElement("video");
     this.video.src = node.attrs.src;
@@ -267,7 +267,8 @@ export async function handleVideoUpload(
     try {
       const url = await uploadVideo(file, spaceId, documentId);
       replacePlaceholderWithVideo(editor, url);
-    } catch {
+    } catch (error) {
+      reportUploadFailure(error, file.name);
       removePlaceholder(editor);
     }
   };

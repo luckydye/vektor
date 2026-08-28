@@ -1,26 +1,23 @@
 import { sql } from "drizzle-orm";
+import { PermissionDeniedError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import {
   allFeatures,
   allPermissions,
-  highestPermission,
   isFeature,
   isPermission,
   isResourceType,
-  meetsPermissionLevel,
   Permission,
-  permissionLevel,
   ResourceType,
 } from "#acl/permissions.ts";
+import { writeRolePermission } from "#acl/roleWrites.ts";
 import {
   denyFeature,
   grantFeature,
-  grantPermission,
   listAllRolePermissions,
   listFeaturePermissions,
   listPermissions,
   revokeFeature,
-  revokePermission,
 } from "#acl/store.ts";
 import {
   badRequestResponse,
@@ -35,7 +32,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAuthDb } from "#db/client/db.ts";
 import { one } from "#db/client/query.ts";
-import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
@@ -93,74 +90,6 @@ export const GET: ApiRouteHandler = (context) =>
 const ROLE_ACTIONS: readonly string[] = ["grant", "revoke"];
 const FEATURE_ACTIONS: readonly string[] = ["grant", "deny", "revoke"];
 
-// Space scope is absent on purpose: who the space admits is space-wide
-// configuration, next to renaming and deletion, so it stays owner-only.
-const EDITOR_DELEGABLE_SCOPES: readonly ResourceType[] = [
-  ResourceType.DOCUMENT,
-  ResourceType.DOCUMENT_TREE,
-  ResourceType.CATEGORY,
-];
-
-const EDITOR_WITHDRAWABLE_SCOPES: readonly ResourceType[] = [
-  ResourceType.DOCUMENT,
-  ResourceType.DOCUMENT_TREE,
-];
-
-async function currentRoleOnResource(
-  resourceType: ResourceType,
-  resourceId: string,
-  grantee: { userId?: string; groupId?: string },
-  store: SpaceStore,
-): Promise<Permission | undefined> {
-  const entries = await listPermissions(store, resourceType, resourceId);
-  return highestPermission(
-    entries
-      .filter(
-        (entry) =>
-          (grantee.userId && entry.userId === grantee.userId && !entry.groupId) ||
-          (grantee.groupId && entry.groupId === grantee.groupId && !entry.userId),
-      )
-      .map((entry) => entry.permission),
-  );
-}
-
-async function requiredRoleForRoleWrite(
-  resourceType: ResourceType,
-  resourceId: string,
-  grantee: { userId?: string; groupId?: string },
-  role: Permission | undefined,
-  store: SpaceStore,
-): Promise<Permission> {
-  if (meetsPermissionLevel(role, Permission.OWNER)) {
-    return Permission.OWNER;
-  }
-
-  if (!EDITOR_DELEGABLE_SCOPES.includes(resourceType)) {
-    return Permission.OWNER;
-  }
-
-  // A group is a class of people the space admits, not a per-resource share —
-  // the synthetic `public` group most of all. Owners decide who is in reach.
-  if (grantee.groupId) {
-    return Permission.OWNER;
-  }
-
-  const displaced = await currentRoleOnResource(resourceType, resourceId, grantee, store);
-
-  if (meetsPermissionLevel(displaced, Permission.OWNER)) {
-    return Permission.OWNER;
-  }
-
-  const withdraws =
-    !role ||
-    (displaced !== undefined && permissionLevel(role) < permissionLevel(displaced));
-  if (withdraws && !EDITOR_WITHDRAWABLE_SCOPES.includes(resourceType)) {
-    return Permission.OWNER;
-  }
-
-  return Permission.EDITOR;
-}
-
 async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
   try {
     await verifyAccess(
@@ -171,45 +100,8 @@ async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
     );
     return true;
   } catch (error) {
-    if (error instanceof Response && error.status === 403) return false;
+    if (error instanceof PermissionDeniedError) return false;
     throw error;
-  }
-}
-
-async function refuseLastOwnerRemoval(
-  spaceId: string,
-  resourceType: ResourceType,
-  resourceId: string,
-  grantee: { userId?: string; groupId?: string },
-  resultingRole: Permission | undefined,
-  store: SpaceStore,
-): Promise<void> {
-  if (
-    resourceType !== ResourceType.SPACE ||
-    resourceId !== spaceId ||
-    resultingRole === Permission.OWNER
-  ) {
-    return;
-  }
-
-  const ownerEntries = (await listPermissions(store, ResourceType.SPACE, spaceId)).filter(
-    (entry) => entry.permission === Permission.OWNER && !entry.kind,
-  );
-  const targetsOwner = (entry: (typeof ownerEntries)[number]) => {
-    if (resultingRole === undefined) {
-      return (
-        (grantee.userId === undefined || entry.userId === grantee.userId) &&
-        (grantee.groupId === undefined || entry.groupId === grantee.groupId)
-      );
-    }
-    if (grantee.userId !== undefined) {
-      return entry.userId === grantee.userId && entry.groupId === undefined;
-    }
-    return entry.groupId === grantee.groupId && entry.userId === undefined;
-  };
-
-  if (ownerEntries.some(targetsOwner) && ownerEntries.every(targetsOwner)) {
-    throw badRequestResponse("A space must have at least one owner");
   }
 }
 
@@ -294,6 +186,8 @@ export const POST: ApiRouteHandler = (context) =>
       userId = match.id;
     }
 
+    const grantee = { userId, groupId };
+
     if (type === "role") {
       if (!isPermission(roleOrFeature)) {
         throw badRequestResponse(
@@ -302,8 +196,6 @@ export const POST: ApiRouteHandler = (context) =>
       }
 
       const targetResourceId = resourceId || spaceId;
-      const grantee = { userId, groupId };
-
       const resultingRole = action === "grant" ? roleOrFeature : undefined;
 
       // Owner is authority over the space — the configuration, the members, the
@@ -316,51 +208,26 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("owner can only be granted on the space itself");
       }
 
-      const store = await openSpaceStore(spaceId);
-      return store.tx(async (transaction) => {
-        const requiredRole = await requiredRoleForRoleWrite(
-          targetResourceType,
-          targetResourceId,
-          grantee,
-          resultingRole,
-          transaction,
-        );
-        if (requiredRole === Permission.OWNER && !callerIsOwner) {
-          throw forbiddenResponse();
-        }
-
-        await refuseLastOwnerRemoval(
-          spaceId,
-          targetResourceType,
-          targetResourceId,
-          grantee,
-          resultingRole,
-          transaction,
-        );
-
-        if (resultingRole) {
-          const entry = await grantPermission(
-            transaction,
-            targetResourceType,
-            targetResourceId,
-            userId,
-            resultingRole,
-            groupId,
-            user.id,
-          );
-          return jsonResponse({ permission: entry });
-        }
-
-        await revokePermission(
-          transaction,
-          targetResourceType,
-          targetResourceId,
-          userId,
-          groupId,
-          user.id,
-        );
-        return jsonResponse({ success: true });
+      const result = await writeRolePermission({
+        spaceId,
+        resourceType: targetResourceType,
+        resourceId: targetResourceId,
+        grantee,
+        role: resultingRole,
+        actorUserId: user.id,
+        actorIsOwner: callerIsOwner,
       });
+
+      // The refusals the write reached inside its transaction, translated. The
+      // domain operation answers with a result; what that looks like over HTTP
+      // is this route's business and nobody else's.
+      if (result.outcome === "needs-owner") throw forbiddenResponse();
+      if (result.outcome === "last-owner") {
+        throw badRequestResponse("A space must have at least one owner");
+      }
+      return result.outcome === "granted"
+        ? jsonResponse({ permission: result.entry })
+        : jsonResponse({ success: true });
     }
 
     // type === "feature"; owner already verified above
@@ -371,16 +238,16 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     if (action === "grant") {
-      const entry = await grantFeature(spaceId, roleOrFeature, userId, groupId, user.id);
+      const entry = await grantFeature(spaceId, roleOrFeature, grantee, user.id);
       return jsonResponse({ permission: entry });
     }
 
     if (action === "deny") {
-      const entry = await denyFeature(spaceId, roleOrFeature, userId, groupId, user.id);
+      const entry = await denyFeature(spaceId, roleOrFeature, grantee, user.id);
       return jsonResponse({ permission: entry });
     }
 
     // action === "revoke"
-    await revokeFeature(spaceId, roleOrFeature, userId, groupId, user.id);
+    await revokeFeature(spaceId, roleOrFeature, grantee, user.id);
     return jsonResponse({ success: true });
   }, "Failed to update permissions");

@@ -136,7 +136,6 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
   const commentsSQL = generateCreateTableSQL(spaceSchema.comment);
   await exec(spaceDb, sql.raw(commentsSQL));
 
-  // Access tokens live in `acl`: a token is a grant that carries a credential.
   const aclSQL = generateCreateTableSQL(spaceSchema.acl);
   await exec(spaceDb, sql.raw(aclSQL));
   await renameColumnIfNeeded(spaceDb, spaceSchema.acl.secret, "token");

@@ -809,7 +809,7 @@ export const POST: ApiRouteHandler = (context) =>
         } else {
           // Session cookie or Bearer token: server mints the job token.
           const auth = await authenticateJobTokenOrSpaceRole(
-            context,
+            context.var.credentials,
             spaceId,
             Permission.VIEWER,
           );
@@ -945,7 +945,7 @@ export const POST: ApiRouteHandler = (context) =>
           }
         } else {
           const auth = await authenticateJobTokenOrSpaceRole(
-            context,
+            context.var.credentials,
             spaceId,
             Permission.VIEWER,
           );

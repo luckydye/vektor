@@ -140,6 +140,9 @@ describe("upload image dimensions", () => {
     async put() {
       throw new Error("unused");
     },
+    async putHashed() {
+      throw new Error("unused");
+    },
     async read(_spaceId, key) {
       reads++;
       return files.get(key) ?? null;

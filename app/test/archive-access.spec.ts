@@ -80,6 +80,9 @@ async function documentGrants(documentId: string): Promise<Grant[]> {
 const readDocument = (documentId: string, token: string) =>
   apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`, token);
 
+const breadcrumbs = (documentId: string, token: string) =>
+  apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}/breadcrumbs`, token);
+
 const archive = (documentId: string, token = ownerToken) =>
   apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`, token, {
     method: "DELETE",
@@ -184,7 +187,7 @@ describe("archiving a publicly shared document", () => {
     const afterArchive = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
-    expect(afterArchive.status).toBe(401);
+    expect(afterArchive.status).toBe(404);
     const body = await afterArchive.text();
     expect(body).not.toContain("archive must end this");
   });
@@ -210,7 +213,7 @@ describe("archiving a publicly shared document", () => {
     await archive(documentId);
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
-    ).toBe(401);
+    ).toBe(404);
 
     const restored = await restore(documentId);
     expect(restored.status).toBe(200);
@@ -240,7 +243,7 @@ describe("archiving a publicly shared document", () => {
     const afterArchive = await anonRequest(
       `/api/v1/spaces/${spaceId}/documents/${documentId}`,
     );
-    expect(afterArchive.status).toBe(401);
+    expect(afterArchive.status).toBe(404);
   });
 
   it("honours a public grant at editor level, which clears the raised bar", async () => {
@@ -291,6 +294,28 @@ describe("archiving locks out space viewers", () => {
     expect((await readDocument(documentId, viewerToken)).status).toBe(200);
   });
 
+  it("withholds an archived document's title and path from a space viewer", async () => {
+    const parentId = await createDocument("Archived Parent", "<p>parent</p>");
+    const documentId = await createDocument("Archived Title Secret", "<p>child</p>");
+    await apiRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`, ownerToken, {
+      method: "PATCH",
+      body: JSON.stringify({ parentId }),
+    });
+
+    const beforeArchive = await breadcrumbs(documentId, viewerToken);
+    expect(beforeArchive.status).toBe(200);
+
+    await archive(documentId);
+
+    const afterArchive = await breadcrumbs(documentId, viewerToken);
+    expect(afterArchive.status).toBe(403);
+    // The titles are the disclosure: a viewer may see them in the space at
+    // large, but the archive withdraws this document from them.
+    expect(await afterArchive.text()).not.toContain("Archived Title Secret");
+
+    expect((await breadcrumbs(documentId, editorToken)).status).toBe(200);
+  });
+
   it("keeps the trash listing to editors", async () => {
     const documentId = await createDocument("Trash Listed", "<p>trash listed</p>");
     await archive(documentId);
@@ -315,14 +340,14 @@ describe("archiving locks out space viewers", () => {
 
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
-    ).toBe(401);
+    ).toBe(404);
     expect(await documentGrants(documentId)).toHaveLength(0);
 
     expect((await archive(documentId)).status).toBe(200);
 
     expect(
       (await anonRequest(`/api/v1/spaces/${spaceId}/documents/${documentId}`)).status,
-    ).toBe(401);
+    ).toBe(404);
     expect(await documentGrants(documentId)).toHaveLength(0);
 
     const owner = await readDocument(documentId, ownerToken);

@@ -3,7 +3,8 @@
 Vektor uses libSQL through `@libsql/client`. `VEKTOR_DATABASE_URL` points to the
 auth database and its URL scheme selects the storage mode. When it is omitted,
 Vektor uses `file:./data/auth.db` and keeps one database per space in
-`data/spaces/`.
+`data/spaces/`. `VEKTOR_DATA_DIR` moves both, for running more than one instance
+from one working copy.
 
 ```sh
 # Explicit local mode

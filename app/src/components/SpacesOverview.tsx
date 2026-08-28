@@ -1,11 +1,11 @@
 import { createMemo, For, Show } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { memberCountLabel } from "#utils/utils.ts";
 import { Button } from "./Button.tsx";
 import { ContextMenu, ContextMenuSeparator } from "./ContextMenu.tsx";
 import { ContextMenuItem } from "./ContextMenuItem.tsx";
 import { Icon } from "./Icon.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface OverviewSpace {
   id: string;
@@ -37,6 +37,9 @@ function SpaceCard(props: {
   onDelete?: (space: OverviewSpace) => void;
   onGainAccess?: (space: OverviewSpace) => void;
 }) {
+  const t = useTranslation();
+  const lang = useLocale();
+
   return (
     <div class="group relative flex flex-col rounded-xl border border-neutral-400/25 bg-neutral-25 transition-colors hover:border-neutral-400/70">
       {/* Rounded here rather than clipped on the card, which would cut the
@@ -121,7 +124,7 @@ function SpaceCard(props: {
         </Show>
 
         <p class="mt-auto flex items-center pt-4xs text-neutral-500 text-size-small">
-          <span>{memberCountLabel(props.space.members)}</span>
+          <span>{memberCountLabel(props.space.members, lang)}</span>
 
           {/* An admin's role here is owner, but printing that on a space they do
               not belong to would read as membership. */}
@@ -175,6 +178,8 @@ function SpaceGrid(props: {
 }
 
 export function SpacesOverview(props: Props) {
+  const t = useTranslation();
+
   const pinned = createMemo(() => props.spaces.filter((space) => space.pinned));
   const unpinned = createMemo(() => props.spaces.filter((space) => !space.pinned));
 

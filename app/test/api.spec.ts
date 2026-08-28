@@ -1829,7 +1829,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       expect(data.error).toBeDefined();
     });
 
-    it("should return 400 for document creation with empty content", async () => {
+    it("should accept document creation with empty content", async () => {
       const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
         method: "POST",
         body: JSON.stringify({
@@ -1837,7 +1837,8 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
           properties: { title: "Empty Content" },
         }),
       });
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(201);
+      expect((await response.json()).document.content).toBe("");
     });
 
     it("should return 400 for category creation without slug", async () => {

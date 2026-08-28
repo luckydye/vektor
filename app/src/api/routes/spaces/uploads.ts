@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import {
   authenticateJobTokenOrSpaceRole,
@@ -10,7 +9,6 @@ import {
   badRequestResponse,
   errorResponse,
   jsonResponse,
-  parseFormBody,
   requireParam,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -25,7 +23,19 @@ import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { updateDocumentEmbedding } from "#search/indexing.ts";
 
-const MAX_FILE_SIZE = 1280 * 1024 * 1024; // 1.25GB
+/**
+ * Files above this are stored without extracting their text. Extraction is
+ * synchronous and decompresses the whole document in memory, so it runs only on
+ * inputs small enough not to stall the event loop. It bounds the indexing, not
+ * the upload: a file over it is stored in full, just not searched by content.
+ */
+const MAX_TEXT_EXTRACTION_SIZE = 25 * 1024 * 1024;
+
+/** The extension a key is built from, or `bin` for a name that carries none. */
+function safeExtension(originalName: string): string {
+  const candidate = originalName.split(".").pop()?.toLowerCase() ?? "";
+  return /^[a-z0-9]{1,16}$/.test(candidate) ? candidate : "bin";
+}
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
@@ -33,9 +43,14 @@ export const GET: ApiRouteHandler = (context) =>
       const spaceId = requireParam(context.var.params, "spaceId");
       // Admitted on a resource grant alone, since every row is then filtered
       // against the documents it reaches.
-      const access = await authenticateSpaceAccess(context, spaceId, Permission.VIEWER, {
-        allowResourceGrants: true,
-      });
+      const access = await authenticateSpaceAccess(
+        context.var.credentials,
+        spaceId,
+        Permission.VIEWER,
+        {
+          allowResourceGrants: true,
+        },
+      );
 
       const storage = getFileStorage();
       const files = await storage.list(spaceId);
@@ -74,23 +89,22 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      // The real gate is below, on the document the body names. This one runs
+      // The real gate is below, on the document the query names. This one runs
       // first so a caller with no editor reach into the space at all cannot
-      // stream a gigabyte into the parser.
-      await authenticateSpaceAccess(context, spaceId, Permission.EDITOR, {
+      // stream a gigabyte at the disk.
+      await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.EDITOR, {
         allowResourceGrants: true,
       });
 
-      // Parse the form data
-      const formData = await parseFormBody(context.req.raw);
-      const file = formData.get("file") as Blob | null;
-      const originalName =
-        (formData.get("filename") as string | null) ??
-        (file instanceof File ? file.name : null) ??
-        "upload";
-      const documentId = formData.get("documentId") as string | null;
+      // The file is the request body, not a multipart part: the body streams
+      // straight to storage, so an upload costs a chunk of memory rather than
+      // its own size however large it is.
+      const query = new URL(context.req.raw.url).searchParams;
+      const originalName = query.get("filename") ?? "upload";
+      const documentId = query.get("documentId");
+      const body = context.req.raw.body;
 
-      if (!file) {
+      if (!body) {
         return badRequestResponse("No file provided");
       }
 
@@ -100,37 +114,29 @@ export const POST: ApiRouteHandler = (context) =>
 
       // Editor on the document being attached to, or on the space itself for
       // an upload that belongs to no document.
-      const auth = await authenticateJobTokenOrSpaceRole(
-        context,
+      await authenticateJobTokenOrSpaceRole(
+        context.var.credentials,
         spaceId,
         Permission.EDITOR,
         documentId ? { type: ResourceType.DOCUMENT, id: documentId } : undefined,
       );
-      const isJobAuth = auth.type === "job";
 
-      // Validate file size (user uploads only; job uploads are trusted)
-      if (!isJobAuth && file.size > MAX_FILE_SIZE) {
-        return badRequestResponse(
-          `File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
-        );
-      }
-
-      const buffer = Buffer.from(await file.arrayBuffer());
-
-      // Content-addressable key: SHA-256 hash with 2-char prefix directory
-      const hash = createHash("sha256").update(buffer).digest("hex");
-      const fileExtension = originalName.split(".").pop()?.toLowerCase() ?? "bin";
-      const key = `${hash.slice(0, 2)}/${hash}.${fileExtension}`;
-
+      const contentType = context.req.raw.headers.get("content-type") ?? undefined;
       const storage = getFileStorage();
-      const url = await storage.put(spaceId, key, buffer, file.type || undefined);
-
-      // Extract text synchronously (buffer is in memory already)
-      const extractedText = extractFileTextFromBuffer(
-        buffer,
-        originalName,
-        file.type || undefined,
+      const { key, url, size } = await storage.putHashed(
+        spaceId,
+        safeExtension(originalName),
+        body,
+        contentType,
       );
+
+      // Read back rather than keeping the bytes: only files small enough to
+      // extract are held in memory at all.
+      const stored =
+        size > MAX_TEXT_EXTRACTION_SIZE ? null : await storage.read(spaceId, key);
+      const extractedText = stored
+        ? extractFileTextFromBuffer(stored, originalName, contentType)
+        : null;
 
       // Insert full metadata to file table for all uploads
       const db = await getSpaceDb(spaceId);
@@ -140,8 +146,8 @@ export const POST: ApiRouteHandler = (context) =>
           path: key,
           documentId: documentId ?? null,
           originalName,
-          mimeType: file.type || null,
-          size: buffer.byteLength,
+          mimeType: contentType ?? null,
+          size,
           url,
           updatedAt: new Date(),
           extractedText,
@@ -156,8 +162,8 @@ export const POST: ApiRouteHandler = (context) =>
             // already showing it. Only an unclaimed row takes the new parent.
             documentId: sql`COALESCE(${fileTable.documentId}, ${documentId ?? null})`,
             originalName,
-            mimeType: file.type || null,
-            size: buffer.byteLength,
+            mimeType: contentType ?? null,
+            size,
             url,
             updatedAt: new Date(),
             extractedText,

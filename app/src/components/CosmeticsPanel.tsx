@@ -5,10 +5,11 @@ import type {
   CosmeticSlot,
   PublicUserAppearance,
 } from "#cosmetics/types.ts";
-import { t } from "#utils/lang.ts";
 import "#cosmetics/CosmeticElement.ts";
 import "#components/AvatarElement.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import { Icon } from "./Icon.tsx";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   inventory: readonly CosmeticAsset[];
@@ -36,23 +37,23 @@ const pointerGlyph = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.
 const slots = [
   {
     id: "avatarFrame",
-    label: t("Avatar frame"),
-    description: t("Shown around your avatar across Vektor."),
+    label: "Avatar frame",
+    description: "Shown around your avatar across Vektor.",
   },
   {
     id: "cursorCompanion",
-    label: t("Cursor companion"),
-    description: t("Follows your pointer on shared canvases."),
+    label: "Cursor companion",
+    description: "Follows your pointer on shared canvases.",
   },
   {
     id: "caret",
-    label: t("Caret"),
-    description: t("Replaces your caret while editing."),
+    label: "Caret",
+    description: "Replaces your caret while editing.",
   },
 ] as const satisfies readonly {
   id: CosmeticSlot;
-  label: string;
-  description: string;
+  label: TranslationKey;
+  description: TranslationKey;
 }[];
 
 interface InventoryEntry {
@@ -63,6 +64,8 @@ interface InventoryEntry {
 }
 
 export function CosmeticsPanel(props: Props) {
+  const t = useTranslation();
+
   const [activeSlot, setActiveSlot] = createSignal<CosmeticSlot>(slots[0].id);
   const [preview, setPreview] = createSignal<{
     slot: CosmeticSlot;
@@ -226,7 +229,7 @@ export function CosmeticsPanel(props: Props) {
                     </span>
                     <span class="min-w-0 flex-1">
                       <span class="block truncate font-medium text-foreground text-size-small">
-                        {slot.label}
+                        {t(slot.label)}
                       </span>
                       <span class="block truncate text-neutral-500 text-size-small">
                         {equipped()?.name ?? t("None")}
@@ -245,19 +248,19 @@ export function CosmeticsPanel(props: Props) {
         >
           <div class="flex items-center justify-between gap-2">
             <h3 class="truncate font-semibold text-foreground text-size-small">
-              {activeDefinition().label}
+              {t(activeDefinition().label)}
             </h3>
             <span class="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 font-medium text-neutral-500 text-size-small tabular-nums">
               {entries().length - 1}
             </span>
           </div>
           <p class="mt-0.5 text-neutral-500 text-size-small">
-            {activeDefinition().description}
+            {t(activeDefinition().description)}
           </p>
 
           <div
             role="radiogroup"
-            aria-label={activeDefinition().label}
+            aria-label={t(activeDefinition().label)}
             class="mt-3 grid grid-cols-3 gap-2"
             onMouseLeave={() => setPreview(null)}
             onFocusOut={(event) => {

@@ -1,10 +1,12 @@
 import { createEffect, createSignal, For, on, onMount, Show } from "solid-js";
 import { api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale } from "#composeables/useTranslation.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 
 export function SpaceSecretsSettings() {
+  const lang = useLocale();
   const { currentSpace, currentSpaceId } = useSpace();
 
   const [secrets, setSecrets] = createSignal<SpaceSecret[]>([]);
@@ -282,10 +284,12 @@ export function SpaceSecretsSettings() {
                       {secret.description || "—"}
                     </td>
                     <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                      {secret.lastUsedAt ? formatAbsoluteDate(secret.lastUsedAt) : "—"}
+                      {secret.lastUsedAt
+                        ? formatAbsoluteDate(secret.lastUsedAt, lang)
+                        : "—"}
                     </td>
                     <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                      {formatAbsoluteDate(secret.updatedAt)}
+                      {formatAbsoluteDate(secret.updatedAt, lang)}
                     </td>
                     <td class="space-x-2 whitespace-nowrap px-4 py-2.5 text-right">
                       <button

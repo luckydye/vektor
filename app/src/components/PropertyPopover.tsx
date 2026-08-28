@@ -8,11 +8,11 @@ import {
   Show,
   Switch,
 } from "solid-js";
-import { t } from "#utils/lang.ts";
 import { Button } from "./Button.tsx";
 import { SelectMenu, type SelectMenuItem } from "./SelectMenu.tsx";
 import "@atrium-ui/elements/blur";
 import type { Property, SpaceProperty } from "#documents/properties.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   property?: Property | null;
@@ -34,6 +34,8 @@ interface Props {
 type Mode = "select" | "create";
 
 export function PropertyPopover(props: Props) {
+  const t = useTranslation();
+
   const [mode, setMode] = createSignal<Mode>("select");
   let inputElement: HTMLInputElement | undefined;
   const [propertyName, setPropertyName] = createSignal("");

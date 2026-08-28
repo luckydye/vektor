@@ -1,4 +1,4 @@
-import { getUsersInSharedGroups } from "#acl/store.ts";
+import { getUsersInSharedGroups } from "#acl/directory.ts";
 import { jsonResponse, requireUser, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 
