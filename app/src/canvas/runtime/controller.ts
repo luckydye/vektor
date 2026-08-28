@@ -2856,232 +2856,317 @@ export function createCanvasController(
       return;
     }
 
-    if (dragState.type === "pan") {
-      // `const drag` captured so the narrowing survives the closures below.
-      const drag = dragState;
-      state.camera = panCameraByScreenDelta({
-        camera: drag.startCamera,
-        screen: state.screen,
-        fit: FIT_REFERENCE,
-        dxPx: drag.startPointer.x - event.clientX,
-        dyPx: drag.startPointer.y - event.clientY,
-      });
-      schedulePresenceUpdate();
-      return;
-    }
-
-    if (dragState.type === "marquee") {
-      const drag = dragState;
-      const rect: Rect = {
-        x: Math.min(drag.startScreen.x, point.x),
-        y: Math.min(drag.startScreen.y, point.y),
-        width: Math.abs(point.x - drag.startScreen.x),
-        height: Math.abs(point.y - drag.startScreen.y),
-      };
-      state.marqueeRect = rect;
-      applyMarqueeSelection(dragState, rect);
-      schedulePresenceUpdate();
-      return;
-    }
-
-    const world = screenToWorld(point);
-    if (dragState.type === "resize") {
-      const drag = dragState;
-      const shape = shapesById().get(drag.shapeId);
-      if (!shape || !canMoveShape(shape)) return;
-      const resized = resizeRotatedShapeFromBottomRight({
-        fixedTopLeft: drag.fixedTopLeft,
-        pointer: world,
-        rotation: drag.initial.rotation,
-        minSize: drag.minSize,
-        aspect: drag.aspect,
-      });
-      if (drag.resizeMode === "font") {
-        // Text has no stored box; translate the drag into a proportional font
-        // scale and let the node re-measure its own width/height. Top-left stays
-        // put, so it grows toward the corner being dragged.
-        const ratio = drag.initial.width > 0 ? resized.width / drag.initial.width : 1;
-        const nextScale = clampFontScale((drag.initialScale ?? 1) * ratio);
-        updateShapeData(
-          drag.shapeId,
-          {
-            fontScale: Math.round(nextScale * 1000) / 1000,
-          },
-          { transform: true },
-        );
-        return;
-      }
-      updateShapeFrame(drag.shapeId, {
-        x: Math.round(resized.x),
-        y: Math.round(resized.y),
-        width: Math.round(resized.width),
-        height: Math.round(resized.height),
-      });
-      return;
-    }
-
-    if (dragState.type === "selection-scale") {
-      const drag = dragState;
-      const resized = resizeRotatedShapeFromBottomRight({
-        fixedTopLeft: drag.origin,
-        pointer: world,
-        rotation: 0,
-        minSize: drag.minSize,
-        aspect: drag.startBounds.width / drag.startBounds.height,
-      });
-      const scale = resized.width / drag.startBounds.width;
-      ydoc.transact(() => {
-        for (const shape of drag.shapes) {
-          const nextFrame = {
-            x: drag.origin.x + (shape.frame.x - drag.origin.x) * scale,
-            y: drag.origin.y + (shape.frame.y - drag.origin.y) * scale,
-          };
-          if (shape.resizeMode === "font") {
-            updateShapeFrame(shape.id, nextFrame);
-            updateShapeData(
-              shape.id,
-              {
-                fontScale:
-                  Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000,
-              },
-              { transform: true },
-            );
-            continue;
-          }
-          updateShapeFrame(shape.id, {
-            ...nextFrame,
-            width: Math.round(shape.frame.width * scale),
-            height: Math.round(shape.frame.height * scale),
-          });
-        }
-        for (const stroke of drag.strokes) {
-          updateStrokePoints(
-            stroke.id,
-            stroke.points.map((point) => ({
-              ...point,
-              x: drag.origin.x + (point.x - drag.origin.x) * scale,
-              y: drag.origin.y + (point.y - drag.origin.y) * scale,
-            })),
-          );
-        }
-      });
-      return;
-    }
-
-    if (dragState.type === "rotate") {
-      const drag = dragState;
-      const shape = shapesById().get(drag.shapeId);
-      if (!shape || !canMoveShape(shape)) return;
-      const rawRotation = rotationFromPointer(drag.center, world);
-      const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-      updateShapeFrame(drag.shapeId, { rotation: Math.round(rotation * 10) / 10 });
-      return;
-    }
-
-    if (dragState.type === "stroke-resize") {
-      const drag = dragState;
-      const stroke = strokesById().get(drag.strokeId);
-      if (!stroke || !canMoveStroke(stroke)) return;
-      const resized = resizeRotatedShapeFromBottomRight({
-        fixedTopLeft: drag.fixedTopLeft,
-        pointer: world,
-        rotation: 0,
-        minSize: { width: 32, height: 32 },
-      });
-      const scaleX = resized.width / drag.startBounds.width;
-      const scaleY = resized.height / drag.startBounds.height;
-      updateStrokeTransformInteraction([
-        strokeFromTransformedPoints(
-          stroke,
-          drag.initialPoints.map((point) => ({
-            ...point,
-            x: resized.x + (point.x - drag.startBounds.x) * scaleX,
-            y: resized.y + (point.y - drag.startBounds.y) * scaleY,
-          })),
-        ),
-      ]);
-      return;
-    }
-
-    if (dragState.type === "stroke-rotate") {
-      const drag = dragState;
-      const stroke = strokesById().get(drag.strokeId);
-      if (!stroke || !canMoveStroke(stroke)) return;
-      const rawRotation = rotationFromPointer(drag.center, world);
-      const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-      const delta = ((rotation - drag.startRotation + 540) % 360) - 180;
-      const normalizedRotation = normalizeRotation(drag.initialRotation + delta);
-      updateStrokeTransformInteraction([
-        strokeFromTransformedPoints(
-          stroke,
-          drag.initialPoints.map((point) => {
-            const rotated = rotateVector(
-              { x: point.x - drag.center.x, y: point.y - drag.center.y },
-              delta,
-            );
-            return {
-              ...point,
-              x: drag.center.x + rotated.x,
-              y: drag.center.y + rotated.y,
-            };
-          }),
-          normalizedRotation,
-        ),
-      ]);
-      return;
-    }
-
     const drag = dragState;
-    // A few pixels of travel (in screen space) promotes this from a click to a
-    // drag, so a click on a document card opens it instead of nudging it.
-    if (
-      !dragMoved &&
-      Math.hypot(world.x - drag.startPointer.x, world.y - drag.startPointer.y) *
-        transform().scale >
-        3
-    ) {
-      dragMoved = true;
-    }
-    const { dx, dy } = snapDragOffset(
-      drag,
-      world.x - drag.startPointer.x,
-      world.y - drag.startPointer.y,
-      event.metaKey,
-    );
-    ydoc.transact(() => {
-      for (const moved of drag.shapes) {
-        const shape = shapesById().get(moved.id);
-        if (!shape || !canMoveShape(shape)) continue;
-        updateShapeFrame(moved.id, {
-          x: Math.round(moved.x + dx),
-          y: Math.round(moved.y + dy),
-        });
-      }
+    dragBehavior(drag).move(drag, {
+      event,
+      screen: point,
+      world: screenToWorld(point),
     });
-    offsetStrokeTransformInteraction(dx, dy);
-    // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
-    // this explicit render.
-    scheduleInkRender();
   }
 
-  function commitStrokeTransformInteraction(drag: DragState) {
+  type DragMove = {
+    event: PointerEvent;
+    /** Pointer in viewport pixels. */
+    screen: { x: number; y: number };
+    /** The same point in world coordinates. */
+    world: { x: number; y: number };
+  };
+
+  /**
+   * What one kind of drag does, in one place.
+   *
+   * A drag used to be spelled out four times — in the `DragState` union, in its
+   * `startX`, in a branch of `handlePointerMove`, and again in the commit and
+   * cancel paths — several hundred lines apart, so adding a gesture meant
+   * finding all four. Here a gesture is a `DragState` variant and one entry.
+   */
+  type DragBehavior<S> = {
+    move: (drag: S, at: DragMove) => void;
+    /** Applied when the pointer is released. */
+    commit?: (drag: S) => void;
+    /** Puts back what the gesture changed. Present only where Escape aborts it. */
+    revert?: (drag: S) => void;
+    /** Runs however the gesture ended, before `dragState` is cleared. */
+    end?: (drag: S) => void;
+  };
+
+  const DRAG_BEHAVIORS: {
+    [K in DragState["type"]]: DragBehavior<Extract<DragState, { type: K }>>;
+  } = {
+    pan: {
+      move(drag, { event }) {
+        state.camera = panCameraByScreenDelta({
+          camera: drag.startCamera,
+          screen: state.screen,
+          fit: FIT_REFERENCE,
+          dxPx: drag.startPointer.x - event.clientX,
+          dyPx: drag.startPointer.y - event.clientY,
+        });
+        schedulePresenceUpdate();
+      },
+      end() {
+        state.isPanning = false;
+      },
+    },
+
+    marquee: {
+      move(drag, { screen }) {
+        const rect: Rect = {
+          x: Math.min(drag.startScreen.x, screen.x),
+          y: Math.min(drag.startScreen.y, screen.y),
+          width: Math.abs(screen.x - drag.startScreen.x),
+          height: Math.abs(screen.y - drag.startScreen.y),
+        };
+        state.marqueeRect = rect;
+        applyMarqueeSelection(drag, rect);
+        schedulePresenceUpdate();
+      },
+      end() {
+        state.marqueeRect = null;
+      },
+    },
+
+    shape: {
+      move(drag, { event, world }) {
+        // A few pixels of travel (in screen space) promotes this from a click to
+        // a drag, so a click on a document card opens it instead of nudging it.
+        if (
+          !dragMoved &&
+          Math.hypot(world.x - drag.startPointer.x, world.y - drag.startPointer.y) *
+            transform().scale >
+            3
+        ) {
+          dragMoved = true;
+        }
+        const { dx, dy } = snapDragOffset(
+          drag,
+          world.x - drag.startPointer.x,
+          world.y - drag.startPointer.y,
+          event.metaKey,
+        );
+        ydoc.transact(() => {
+          for (const moved of drag.shapes) {
+            const shape = shapesById().get(moved.id);
+            if (!shape || !canMoveShape(shape)) continue;
+            updateShapeFrame(moved.id, {
+              x: Math.round(moved.x + dx),
+              y: Math.round(moved.y + dy),
+            });
+          }
+        });
+        offsetStrokeTransformInteraction(dx, dy);
+        // Yjs shape edits don't trigger an ink redraw, so guides won't appear
+        // without this explicit render.
+        scheduleInkRender();
+      },
+      commit(drag) {
+        const preview = takeStrokePreview();
+        if (!preview) return;
+        // Only the strokes this drag captured move; `state.strokes` would sweep
+        // up every stroke on the canvas.
+        ydoc.transact(() => {
+          for (const stroke of drag.strokes) {
+            translateStroke(stroke.id, stroke.points, preview.dx, preview.dy);
+          }
+        });
+      },
+      end() {
+        strokePreview = null;
+      },
+    },
+
+    resize: {
+      move(drag, { world }) {
+        const shape = shapesById().get(drag.shapeId);
+        if (!shape || !canMoveShape(shape)) return;
+        const resized = resizeRotatedShapeFromBottomRight({
+          fixedTopLeft: drag.fixedTopLeft,
+          pointer: world,
+          rotation: drag.initial.rotation,
+          minSize: drag.minSize,
+          aspect: drag.aspect,
+        });
+        if (drag.resizeMode === "font") {
+          // Text has no stored box; translate the drag into a proportional font
+          // scale and let the node re-measure its own width/height. Top-left
+          // stays put, so it grows toward the corner being dragged.
+          const ratio = drag.initial.width > 0 ? resized.width / drag.initial.width : 1;
+          const nextScale = clampFontScale((drag.initialScale ?? 1) * ratio);
+          updateShapeData(
+            drag.shapeId,
+            { fontScale: Math.round(nextScale * 1000) / 1000 },
+            { transform: true },
+          );
+          return;
+        }
+        updateShapeFrame(drag.shapeId, {
+          x: Math.round(resized.x),
+          y: Math.round(resized.y),
+          width: Math.round(resized.width),
+          height: Math.round(resized.height),
+        });
+      },
+      revert: revertShapeFrameDrag,
+    },
+
+    rotate: {
+      move(drag, { event, world }) {
+        const shape = shapesById().get(drag.shapeId);
+        if (!shape || !canMoveShape(shape)) return;
+        const rawRotation = rotationFromPointer(drag.center, world);
+        const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
+        updateShapeFrame(drag.shapeId, { rotation: Math.round(rotation * 10) / 10 });
+      },
+      revert: revertShapeFrameDrag,
+    },
+
+    "selection-scale": {
+      move(drag, { world }) {
+        const resized = resizeRotatedShapeFromBottomRight({
+          fixedTopLeft: drag.origin,
+          pointer: world,
+          rotation: 0,
+          minSize: drag.minSize,
+          aspect: drag.startBounds.width / drag.startBounds.height,
+        });
+        const scale = resized.width / drag.startBounds.width;
+        ydoc.transact(() => {
+          for (const shape of drag.shapes) {
+            const nextFrame = {
+              x: drag.origin.x + (shape.frame.x - drag.origin.x) * scale,
+              y: drag.origin.y + (shape.frame.y - drag.origin.y) * scale,
+            };
+            if (shape.resizeMode === "font") {
+              updateShapeFrame(shape.id, nextFrame);
+              updateShapeData(
+                shape.id,
+                {
+                  fontScale:
+                    Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000,
+                },
+                { transform: true },
+              );
+              continue;
+            }
+            updateShapeFrame(shape.id, {
+              ...nextFrame,
+              width: Math.round(shape.frame.width * scale),
+              height: Math.round(shape.frame.height * scale),
+            });
+          }
+          for (const stroke of drag.strokes) {
+            updateStrokePoints(
+              stroke.id,
+              stroke.points.map((point) => ({
+                ...point,
+                x: drag.origin.x + (point.x - drag.origin.x) * scale,
+                y: drag.origin.y + (point.y - drag.origin.y) * scale,
+              })),
+            );
+          }
+        });
+      },
+      revert(drag) {
+        ydoc.transact(() => {
+          for (const shape of drag.shapes) {
+            updateShapeFrame(shape.id, shape.frame);
+            if (shape.resizeMode === "font") {
+              updateShapeData(
+                shape.id,
+                { fontScale: shape.fontScale },
+                { transform: true },
+              );
+            }
+          }
+          for (const stroke of drag.strokes) {
+            updateStrokePoints(stroke.id, stroke.points);
+          }
+        });
+      },
+    },
+
+    "stroke-resize": {
+      move(drag, { world }) {
+        const stroke = strokesById().get(drag.strokeId);
+        if (!stroke || !canMoveStroke(stroke)) return;
+        const resized = resizeRotatedShapeFromBottomRight({
+          fixedTopLeft: drag.fixedTopLeft,
+          pointer: world,
+          rotation: 0,
+          minSize: { width: 32, height: 32 },
+        });
+        const scaleX = resized.width / drag.startBounds.width;
+        const scaleY = resized.height / drag.startBounds.height;
+        updateStrokeTransformInteraction([
+          strokeFromTransformedPoints(
+            stroke,
+            drag.initialPoints.map((point) => ({
+              ...point,
+              x: resized.x + (point.x - drag.startBounds.x) * scaleX,
+              y: resized.y + (point.y - drag.startBounds.y) * scaleY,
+            })),
+          ),
+        ]);
+      },
+      commit: commitStrokeShape,
+      revert: cancelStrokeTransformInteraction,
+      end() {
+        strokePreview = null;
+      },
+    },
+
+    "stroke-rotate": {
+      move(drag, { event, world }) {
+        const stroke = strokesById().get(drag.strokeId);
+        if (!stroke || !canMoveStroke(stroke)) return;
+        const rawRotation = rotationFromPointer(drag.center, world);
+        const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
+        const delta = ((rotation - drag.startRotation + 540) % 360) - 180;
+        const normalizedRotation = normalizeRotation(drag.initialRotation + delta);
+        updateStrokeTransformInteraction([
+          strokeFromTransformedPoints(
+            stroke,
+            drag.initialPoints.map((point) => {
+              const rotated = rotateVector(
+                { x: point.x - drag.center.x, y: point.y - drag.center.y },
+                delta,
+              );
+              return {
+                ...point,
+                x: drag.center.x + rotated.x,
+                y: drag.center.y + rotated.y,
+              };
+            }),
+            normalizedRotation,
+          ),
+        ]);
+      },
+      commit: commitStrokeShape,
+      revert: cancelStrokeTransformInteraction,
+      end() {
+        strokePreview = null;
+      },
+    },
+  };
+
+  // One cast, so every call site below stays type-safe: the table is keyed by
+  // the same discriminant the state carries, which TypeScript cannot follow
+  // through an index on a union.
+  function dragBehavior<S extends DragState>(drag: S): DragBehavior<S> {
+    return DRAG_BEHAVIORS[drag.type] as DragBehavior<S>;
+  }
+
+  /** The pending preview, cleared, or null when the gesture changed nothing. */
+  function takeStrokePreview() {
     const preview = strokePreview;
     strokePreview = null;
-    if (!preview?.changed) return;
+    return preview?.changed ? preview : null;
+  }
 
-    if (drag.type === "shape") {
-      // Only the strokes this drag captured move; `state.strokes` would sweep
-      // up every stroke on the canvas.
-      ydoc.transact(() => {
-        for (const stroke of drag.strokes) {
-          translateStroke(stroke.id, stroke.points, preview.dx, preview.dy);
-        }
-      });
-      return;
-    }
-
-    if (drag.type !== "stroke-resize" && drag.type !== "stroke-rotate") return;
-    const stroke = preview.strokes[0];
+  function commitStrokeShape(
+    drag: Extract<DragState, { type: "stroke-resize" | "stroke-rotate" }>,
+  ) {
+    const stroke = takeStrokePreview()?.strokes[0];
     if (!stroke) return;
     ydoc.transact(() => {
       updateStrokePoints(
@@ -3092,52 +3177,39 @@ export function createCanvasController(
     });
   }
 
-  function handlePointerUp(event: PointerEvent) {
-    if (endToolPointerGesture(event)) event.preventDefault();
-    if (dragState?.pointerId === event.pointerId) {
-      commitStrokeTransformInteraction(dragState);
-      if (dragState.type === "marquee") state.marqueeRect = null;
-      if (dragState.type === "pan") state.isPanning = false;
-      if (activeSnapGuides.length > 0) {
-        activeSnapGuides = [];
-        renderInk();
-      }
-      dragState = null;
+  function revertShapeFrameDrag(drag: Extract<DragState, { type: "resize" | "rotate" }>) {
+    const shape = shapesById().get(drag.shapeId);
+    if (shape && canMoveShape(shape)) updateShapeFrame(drag.shapeId, drag.initial);
+  }
+
+  /** Ends the active drag, clearing the transient state every gesture leaves. */
+  function endDrag(drag: DragState) {
+    dragBehavior(drag).end?.(drag);
+    dragState = null;
+    if (activeSnapGuides.length > 0) {
+      activeSnapGuides = [];
+      renderInk();
     }
   }
 
+  function handlePointerUp(event: PointerEvent) {
+    if (endToolPointerGesture(event)) event.preventDefault();
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const drag = dragState;
+    dragBehavior(drag).commit?.(drag);
+    endDrag(drag);
+  }
+
+  /**
+   * Aborts a drag that changed the document, putting it back. Reports whether
+   * there was one, so Escape can fall through to whatever else it does.
+   */
   function cancelTransformDrag() {
-    if (dragState?.type === "resize" || dragState?.type === "rotate") {
-      const shape = shapesById().get(dragState.shapeId);
-      if (shape && canMoveShape(shape)) {
-        updateShapeFrame(dragState.shapeId, dragState.initial);
-      }
-    } else if (dragState?.type === "selection-scale") {
-      const drag = dragState;
-      ydoc.transact(() => {
-        for (const shape of drag.shapes) {
-          updateShapeFrame(shape.id, shape.frame);
-          if (shape.resizeMode === "font") {
-            updateShapeData(
-              shape.id,
-              { fontScale: shape.fontScale },
-              { transform: true },
-            );
-          }
-        }
-        for (const stroke of drag.strokes) {
-          updateStrokePoints(stroke.id, stroke.points);
-        }
-      });
-    } else if (
-      dragState?.type === "stroke-resize" ||
-      dragState?.type === "stroke-rotate"
-    ) {
-      cancelStrokeTransformInteraction();
-    } else {
-      return false;
-    }
-    dragState = null;
+    const drag = dragState;
+    const revert = drag && dragBehavior(drag).revert;
+    if (!drag || !revert) return false;
+    revert(drag);
+    endDrag(drag);
     return true;
   }
 
@@ -3150,14 +3222,7 @@ export function createCanvasController(
     }
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     if (cancelTransformDrag()) return;
-    if (dragState.type === "marquee") state.marqueeRect = null;
-    if (dragState.type === "pan") state.isPanning = false;
-    cancelStrokeTransformInteraction();
-    dragState = null;
-    if (activeSnapGuides.length > 0) {
-      activeSnapGuides = [];
-      renderInk();
-    }
+    endDrag(dragState);
   }
 
   function handlePointerLeave() {
