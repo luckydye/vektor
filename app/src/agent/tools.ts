@@ -31,21 +31,6 @@ export function assertObject(value: unknown, label: string): Record<string, unkn
   return value as Record<string, unknown>;
 }
 
-export function parseLooseObject(value: unknown, label: string): Record<string, unknown> {
-  if (value === undefined || value === null) {
-    return {};
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return {};
-    }
-    const parsed = JSON.parse(trimmed) as unknown;
-    return assertObject(parsed, label);
-  }
-  return assertObject(value, label);
-}
-
 export function expectString(args: Record<string, unknown>, key: string): string;
 export function expectString(
   args: Record<string, unknown>,
