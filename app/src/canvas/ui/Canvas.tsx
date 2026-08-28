@@ -150,7 +150,8 @@ export function Canvas(props: Props) {
     host.spaces = () => spaces();
     host.uploadfile = (file, target) => uploadFile(file, target);
     host.createcollaboration = createCollaboration;
-    host.save = (snapshot) => saveDocument(snapshot as string);
+    host.save = (snapshot) =>
+      saveDocument(snapshot as string, { format: "serialized" });
     host.error = (message) => toast.error(message);
     host.onpresence = (states) => props.onPresence?.(states);
     host.onframe = chrome.onFrame;

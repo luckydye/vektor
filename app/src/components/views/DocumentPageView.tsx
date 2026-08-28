@@ -4,27 +4,19 @@ import {
   createMemo,
   createSignal,
   type JSX,
-  Match,
   on,
   onCleanup,
   onMount,
   Show,
-  Switch,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
-import { AppView } from "#components/AppView.tsx";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
-import { CanvasView } from "#components/CanvasView.tsx";
-import { CsvView } from "#components/CsvView.tsx";
-import {
-  DatabaseDocumentView,
-  type DatabaseExtensionView,
-} from "#components/DatabaseDocumentView.tsx";
 import { DocumentActions } from "#components/DocumentActions.tsx";
+import { DocumentBody } from "#components/DocumentBody.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
 import { DocumentExtensionViews } from "#components/DocumentExtensionViews.tsx";
 import { DocumentProperties } from "#components/DocumentProperties.tsx";
@@ -34,7 +26,6 @@ import { RestoreButton } from "#components/RestoreButton.tsx";
 import { RevisionsSidebar } from "#components/RevisionsSidebar.tsx";
 import { RevisionView } from "#components/RevisionView.tsx";
 import { TitleEditor } from "#components/TitleEditor.tsx";
-import { WorkflowView } from "#components/WorkflowView.tsx";
 import { useQuery } from "#composeables/query.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { editing, resetEditingState } from "#composeables/useEditor.ts";
@@ -45,7 +36,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
-import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
+import { placeholderDocumentTitle } from "#documents/types.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
@@ -59,8 +50,14 @@ interface Props {
   ssrNow?: number;
 }
 
-const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
-  database: { title: placeholderDocumentTitle("database"), content: "<p></p>" },
+const AUTO_CREATE_TYPES: Record<
+  string,
+  { title: string; content: string }
+> = {
+  database: {
+    title: placeholderDocumentTitle("database"),
+    content: "",
+  },
   canvas: {
     title: placeholderDocumentTitle("canvas"),
     content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
@@ -74,7 +71,6 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
       "",
     ].join("\n"),
   },
-  csv: { title: placeholderDocumentTitle("csv"), content: "A,B,C\n,,\n,,\n,,\n" },
 };
 
 export function DocumentPageView(props: Props) {
@@ -193,11 +189,10 @@ export function DocumentPageView(props: Props) {
 
   const isCanvas = createMemo(() => documentType() === "canvas");
   const isApp = createMemo(() => documentType() === "app");
-  const isCsv = createMemo(() => documentType() === "csv");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
   const isRegularDocument = createMemo(() => documentType() === "document");
-  const isFullHeightView = createMemo(() => isCsv() || isDatabase() || isWorkflow());
+  const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
   );
@@ -224,34 +219,6 @@ export function DocumentPageView(props: Props) {
     },
   );
 
-  const databaseViews = createMemo<DatabaseExtensionView[], undefined>(
-    () => {
-      if (isDraft() || !isDatabase()) return [];
-
-      return extensions().flatMap((extension) =>
-        (extension.routes || [])
-          .filter((route) => route.placements?.includes("database"))
-          .map((route) => ({
-            extensionId: extension.id,
-            extensionName: extension.name,
-            route,
-          })),
-      );
-    },
-    undefined,
-    {
-      equals: (a, b) =>
-        a.length === b.length &&
-        a.every(
-          (view, index) =>
-            view.extensionId === b[index]?.extensionId &&
-            view.extensionName === b[index]?.extensionName &&
-            view.route.path === b[index]?.route.path &&
-            view.route.title === b[index]?.route.title,
-        ),
-    },
-  );
-
   const userCanEdit = createMemo(() => {
     const access = realtimeAccess();
     return (
@@ -268,8 +235,7 @@ export function DocumentPageView(props: Props) {
           isCanvas() ||
           isApp() ||
           isWorkflow() ||
-          isDatabase() ||
-          readOnlyDocumentTypes.includes(documentType())
+          isDatabase()
         ),
   );
 
@@ -519,7 +485,7 @@ export function DocumentPageView(props: Props) {
               class={twMerge(
                 "relative mx-auto h-full w-full",
                 isFullHeightView() && "flex min-h-0 flex-1 flex-col",
-                isCsv() || isDatabase() || effectiveLayout() === "full"
+                isDatabase() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
               )}
@@ -621,15 +587,13 @@ export function DocumentPageView(props: Props) {
                     {documentActions()}
                   </div>
 
-                  <Show when={!isCsv()}>
-                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                      {titleRow()}
-                    </inset-view>
-                  </Show>
+                  <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
+                    {titleRow()}
+                  </inset-view>
 
                   <inset-view
                     id="document-properties"
-                    class={`block px-xs md:px-m print:px-0 ${isCsv() ? "mb-3xs" : "mb-xl"}`}
+                    class="mb-xl block px-xs md:px-m print:px-0"
                   >
                     {documentPropertiesBlock()}
                   </inset-view>
@@ -656,7 +620,6 @@ export function DocumentPageView(props: Props) {
                           ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                           : "h-full overflow-x-auto",
                         isPaddedDocument() && "px-xs md:px-m print:px-0",
-                        isCsv() && "pb-4",
                       )}
                     >
                       <Show
@@ -679,51 +642,15 @@ export function DocumentPageView(props: Props) {
                           spaceId={currentSpace()?.id as string}
                         />
 
-                        <Switch
-                          fallback={
-                            <DocumentContent
-                              spaceId={currentSpace()?.id as string}
-                              documentId={doc()?.id}
-                              initialHtml={doc()?.content}
-                              documentType={documentType()}
-                              readonly={isReadonly()}
-                            />
-                          }
-                        >
-                          <Match when={isApp()}>
-                            <AppView html={doc()?.content || ""} />
-                          </Match>
-                          <Match when={isWorkflow()}>
-                            <WorkflowView
-                              documentId={doc()?.id as string}
-                              spaceId={currentSpace()?.id as string}
-                            />
-                          </Match>
-                          <Match when={isDatabase()}>
-                            <DatabaseDocumentView
-                              databaseDocumentId={doc()?.id as string}
-                              spaceId={currentSpace()?.id as string}
-                              views={databaseViews()}
-                              viewConfig={doc()?.properties._databaseViews}
-                              schemaJson={
-                                optionalPropertyValueToText(doc()?.properties._schema) ??
-                                undefined
-                              }
-                            />
-                          </Match>
-                          <Match when={isCanvas()}>
-                            <CanvasView
-                              documentId={doc()?.id}
-                              spaceId={currentSpace()?.id as string}
-                            />
-                          </Match>
-                          <Match when={isCsv()}>
-                            <CsvView
-                              documentId={doc()?.id as string}
-                              initialHtml={doc()?.content}
-                            />
-                          </Match>
-                        </Switch>
+                        <DocumentBody
+                          content={doc()?.content ?? ""}
+                          documentId={doc()?.id as string}
+                          documentType={documentType()}
+                          extensions={extensions()}
+                          properties={doc()?.properties ?? {}}
+                          readonly={isReadonly()}
+                          spaceId={currentSpace()?.id as string}
+                        />
                       </Show>
                     </div>
 
@@ -732,7 +659,6 @@ export function DocumentPageView(props: Props) {
                         !isDraft() &&
                         !editing() &&
                         !isCanvas() &&
-                        !isCsv() &&
                         !isWorkflow()
                       }
                     >

@@ -49,16 +49,15 @@ import {
   resolvePublishedDocumentContent,
 } from "#db/space/revisions.ts";
 import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
-import { getMimeType, toHtmlIfMarkdown } from "#documents/content.ts";
+import { getMimeType, prepareDocumentContent } from "#documents/content.ts";
 import {
   type DocumentPropertyPatch,
   InvalidDocumentPropertyPatchError,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
 import {
-  contentIsHtml,
   documentIsReadonly,
-  readOnlyDocumentTypes,
+  isSerializedDocumentType,
   workflowRunDocumentType,
 } from "#documents/types.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
@@ -73,7 +72,6 @@ import {
   roomKey,
   setYRoomWriteBlocked,
 } from "#realtime/yjsRooms.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { htmlToMarkdown } from "#utils/markdown.ts";
 
 type DocumentPatchBody = {
@@ -158,7 +156,7 @@ async function handlePublishedRevisionPatch(
     revToPublish === null
       ? null
       : await getRevisionContent(await openSpaceStore(spaceId), documentId, revToPublish);
-  if (revToPublish !== null && !revisionContent) {
+  if (revToPublish !== null && revisionContent === null) {
     throw notFoundResponse("Revision");
   }
 
@@ -185,7 +183,7 @@ async function handlePublishedRevisionPatch(
     return;
   }
 
-  if (!revisionContent) throw notFoundResponse("Revision");
+  if (revisionContent === null) throw notFoundResponse("Revision");
 
   // Publishing a revision also loads it into the draft, so the editor (which
   // always reads doc.content) reflects the revision that is now published.
@@ -206,7 +204,8 @@ async function handlePublishedRevisionPatch(
       publicationId: auditEntry.id,
       revision: revToPublish,
       previousPublishedRevision: existing?.publishedRev ?? null,
-      publishedHtml: revisionContent,
+      documentType: existing?.type,
+      publishedContent: revisionContent,
       actorId: userId,
     });
   } catch (error) {
@@ -323,7 +322,7 @@ export const GET: ApiRouteHandler = (context) =>
       }
 
       const content = await getRevisionContent(await openSpaceStore(spaceId), id, rev);
-      if (!content) {
+      if (content === null) {
         throw notFoundResponse("Revision");
       }
 
@@ -366,11 +365,21 @@ export const GET: ApiRouteHandler = (context) =>
 
     const accept = context.req.raw.headers.get("Accept") ?? "";
     if (accept.includes("text/markdown") || accept.includes("text/plain")) {
+      const serialized = isSerializedDocumentType(document.type);
       return withCors(
-        new Response(htmlToMarkdown(document.content ?? ""), {
-          status: 200,
-          headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        }),
+        new Response(
+          serialized
+            ? (document.content ?? "")
+            : htmlToMarkdown(document.content ?? ""),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": serialized
+                ? "text/plain; charset=utf-8"
+                : "text/markdown; charset=utf-8",
+            },
+          },
+        ),
       );
     }
 
@@ -446,7 +455,6 @@ export const PUT: ApiRouteHandler = (context) =>
 
     const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     let content: string;
-    let nextType: string | null | undefined;
 
     if (contentType === "application/json") {
       const body = await parseJsonBody(context.req.raw);
@@ -485,58 +493,48 @@ export const PUT: ApiRouteHandler = (context) =>
         throw forbiddenResponse("Cannot update readonly document");
       }
 
-      if (!jsonContent || typeof jsonContent !== "string") {
+      if (typeof jsonContent !== "string") {
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
-      nextType = existingDoc.type;
+      content = isSerializedDocumentType(existingDoc.type)
+        ? jsonContent
+        : prepareDocumentContent(jsonContent, null);
     } else {
       if (documentIsReadonly(existingDoc)) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
       const rawContent = await context.req.raw.text();
-      if (!rawContent) {
-        throw badRequestResponse("Content is required and must be a string");
-      }
-
-      nextType = existingDoc.type;
-      content = toHtmlIfMarkdown(rawContent, contentType, nextType);
+      content = isSerializedDocumentType(existingDoc.type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
     }
 
-    // Canvas/app documents store serialized JSON, not HTML — parsing it as
-    // markup is meaningless and, on tens-of-MB canvases, an expensive
-    // event-loop-blocking scan, so skip it for non-HTML types.
-    const contentSanitized = contentIsHtml(nextType)
-      ? sanitizeDocumentHtml(content)
-      : content;
-
-    // createRevision records the canonical content-save audit event, including
-    // its revision ID. Do not also record the draft write or the activity feed
-    // shows a duplicate edit without revision actions.
-    let document = await updateDocument(store, id, contentSanitized, nextType);
+    let document = await updateDocument(store, id, content, existingDoc.type);
     if (!document) {
       throw notFoundResponse("Document");
     }
 
-    replaceLiveDocumentContent(spaceId, id, nextType, contentSanitized);
+    replaceLiveDocumentContent(spaceId, id, existingDoc.type, content);
 
+    // Revisions are representation-agnostic snapshots. Collaborative draft
+    // persistence remains revisionless; an explicit replacement does not.
     if (userId) {
-      const revision = await createRevision(store, id, contentSanitized, userId, {
+      const revision = await createRevision(store, id, content, userId, {
         message: "Document updated",
       });
       if (publish === true) {
         await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev);
-        // updateDocument returns before the newly-created revision is assigned
-        // to publishedRev. Return the final canonical document so clients can
-        // replace their optimistic publish state with the real revision number.
-        const publishedDocument = await getDocument(store, id);
-        if (!publishedDocument) {
-          throw notFoundResponse("Document");
-        }
-        document = publishedDocument;
       }
+
+      // updateDocument returned before the revision pointers changed. Return
+      // their final canonical values so clients do not cache stale history.
+      const savedDocument = await getDocument(store, id);
+      if (!savedDocument) {
+        throw notFoundResponse("Document");
+      }
+      document = savedDocument;
     }
 
     // Omit `content` from the response. Echoing the (potentially tens-of-MB)
@@ -649,11 +647,6 @@ export const PATCH: ApiRouteHandler = (context) =>
       }
 
       if (readonly !== undefined) {
-        if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
-          throw badRequestResponse(
-            `Documents of type "${existingDoc.type}" are readonly`,
-          );
-        }
         await handleReadonlyPatch(spaceId, id, userId, readonly);
       }
 
@@ -769,9 +762,12 @@ export const POST: ApiRouteHandler = (context) =>
     // A non-JSON body carries content and nothing else, so it can only ever be
     // a full revision.
     const body = isJson
-      ? await parseJsonBody<{ html?: unknown; message?: unknown; mode?: unknown }>(
-          context.req.raw,
-        )
+      ? await parseJsonBody<{
+          html?: unknown;
+          contentType?: unknown;
+          message?: unknown;
+          mode?: unknown;
+        }>(context.req.raw)
       : { mode: "revision" as const };
 
     // `null` and scalars parse as valid JSON, and reading `mode` off them throws
@@ -793,15 +789,25 @@ export const POST: ApiRouteHandler = (context) =>
     // rather than a critique of their payload. Only `mode` is read first.
     await verifyRevisionWrite(spaceId, documentId, user.id, mode);
 
-    let html: string;
+    let revisionContent: string;
     let message: string | undefined;
 
     if (isJson) {
       if (!body.html || typeof body.html !== "string") {
-        throw badRequestResponse("HTML content is required and must be a string");
+        throw badRequestResponse(
+          "Revision content is required and must be a string",
+        );
       }
 
-      html = toHtmlIfMarkdown(body.html, contentType, document.type);
+      if (body.contentType !== undefined && typeof body.contentType !== "string") {
+        throw badRequestResponse("Content type must be a string");
+      }
+      revisionContent = isSerializedDocumentType(document.type)
+        ? body.html
+        : prepareDocumentContent(
+            body.html,
+            typeof body.contentType === "string" ? body.contentType : "text/html",
+          );
       message = typeof body.message === "string" ? body.message : undefined;
     } else {
       const rawContent = await context.req.raw.text();
@@ -809,13 +815,23 @@ export const POST: ApiRouteHandler = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      html = toHtmlIfMarkdown(rawContent, contentType, document.type);
+      revisionContent = isSerializedDocumentType(document.type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
     }
 
     const revision =
       mode === "suggestion"
-        ? await createSuggestion(store, documentId, html, user.id, message)
-        : await createRevision(store, documentId, html, user.id, { message });
+        ? await createSuggestion(
+            store,
+            documentId,
+            revisionContent,
+            user.id,
+            message,
+          )
+        : await createRevision(store, documentId, revisionContent, user.id, {
+            message,
+          });
 
     if (!revision) {
       // Only createSuggestion answers null: no revision to base one on, or the

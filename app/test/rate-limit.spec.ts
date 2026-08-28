@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  checkAddressRateLimit,
   checkRateLimit,
   DEFAULT_MAX,
   DEFAULT_WINDOW_SECONDS,
@@ -102,79 +103,37 @@ describe("RateLimiter", () => {
 });
 
 describe("rateLimitKey", () => {
-  it("keys on the access token when one is presented", () => {
-    expect(rateLimitKey("Bearer at_secret", undefined, "1.2.3.4")).toBe(
-      rateLimitKey("Bearer at_secret", undefined, "5.6.7.8"),
+  it("keys on the resolved session user, wherever they call from", () => {
+    expect(rateLimitKey("1.2.3.4", { userId: "user-1" })).toBe(
+      rateLimitKey("5.6.7.8", { userId: "user-1" }),
     );
   });
 
-  it("separates distinct tokens", () => {
-    expect(rateLimitKey("Bearer at_one", undefined, "1.2.3.4")).not.toBe(
-      rateLimitKey("Bearer at_two", undefined, "1.2.3.4"),
+  it("gives each user their own bucket, so one cannot spend another's", () => {
+    expect(rateLimitKey("1.2.3.4", { userId: "user-1" })).not.toBe(
+      rateLimitKey("1.2.3.4", { userId: "user-2" }),
     );
   });
 
-  it("never puts the raw token in the key", () => {
-    const key = rateLimitKey("Bearer at_secret", undefined, "1.2.3.4");
-    expect(key.startsWith("token:")).toBe(true);
-    expect(key).not.toContain("at_secret");
+  it("ignores every credential the caller presents", () => {
+    const key = rateLimitKey("1.2.3.4", { userId: "user-1" });
+    expect(key).toBe("user:user-1");
+    expect(rateLimitKey("1.2.3.4", { userId: "user-1", jobToken: null })).toBe(key);
   });
 
-  it("accepts the scheme case-insensitively", () => {
-    expect(rateLimitKey("bearer at_secret", undefined, "1.2.3.4")).toBe(
-      rateLimitKey("Bearer at_secret", undefined, "1.2.3.4"),
-    );
-  });
-
-  it("falls back to the caller IP with neither token nor session", () => {
-    expect(rateLimitKey(undefined, undefined, "1.2.3.4")).toBe("ip:1.2.3.4");
-    // An empty bearer is not an identity, and must not share one bucket.
-    expect(rateLimitKey("Bearer   ", undefined, "1.2.3.4")).toBe("ip:1.2.3.4");
+  it("falls back to the caller IP when nobody was resolved", () => {
+    expect(rateLimitKey("1.2.3.4")).toBe("ip:1.2.3.4");
+    expect(rateLimitKey("1.2.3.4", { userId: null, jobToken: null })).toBe("ip:1.2.3.4");
   });
 
   it("still produces a key when the IP is unavailable", () => {
-    expect(rateLimitKey(undefined, undefined, "")).toBe("ip:unknown");
+    expect(rateLimitKey("")).toBe("ip:unknown");
   });
 
-  it("gives each session its own bucket, so one user cannot spend another's", () => {
-    const alice = rateLimitKey(undefined, "vektor.session_token=alice-token", "1.2.3.4");
-    const bob = rateLimitKey(undefined, "vektor.session_token=bob-token", "1.2.3.4");
-    expect(alice).not.toBe(bob);
-    expect(alice.startsWith("session:")).toBe(true);
-  });
-
-  it("keys the same session identically from a different address", () => {
-    expect(rateLimitKey(undefined, "vektor.session_token=alice", "1.2.3.4")).toBe(
-      rateLimitKey(undefined, "vektor.session_token=alice", "5.6.7.8"),
-    );
-  });
-
-  it("never puts the raw session token in the key", () => {
-    const key = rateLimitKey(undefined, "vektor.session_token=s3cret", "1.2.3.4");
-    expect(key).not.toContain("s3cret");
-  });
-
-  it("finds the session cookie among others, and under the Secure prefix", () => {
-    const plain = rateLimitKey(undefined, "vektor.session_token=abc", "1.2.3.4");
-    expect(
-      rateLimitKey(undefined, "theme=dark; vektor.session_token=abc; tz=UTC", "1.2.3.4"),
-    ).toBe(plain);
-    expect(rateLimitKey(undefined, "__Secure-vektor.session_token=abc", "1.2.3.4")).toBe(
-      plain,
-    );
-  });
-
-  it("prefers the access token over the session cookie", () => {
-    expect(
-      rateLimitKey("Bearer at_secret", "vektor.session_token=alice", "1.2.3.4"),
-    ).toBe(rateLimitKey("Bearer at_secret", undefined, "9.9.9.9"));
-  });
-
-  it("falls back to the IP when the session cookie carries no value", () => {
-    expect(rateLimitKey(undefined, "vektor.session_token=", "1.2.3.4")).toBe(
-      "ip:1.2.3.4",
-    );
-    expect(rateLimitKey(undefined, "theme=dark", "1.2.3.4")).toBe("ip:1.2.3.4");
+  it("prefers a verified job token over the session user", () => {
+    const key = rateLimitKey("127.0.0.1", { jobToken: "job-token", userId: "user-1" });
+    expect(key.startsWith("job:")).toBe(true);
+    expect(key).not.toContain("job-token");
   });
 });
 
@@ -224,8 +183,6 @@ describe("checkRateLimit", () => {
   const request = {
     pattern: "/api/v1/spaces/[spaceId]/documents",
     method: "GET",
-    authorization: undefined,
-    cookie: undefined,
     ip: "1.2.3.4",
   };
 
@@ -259,16 +216,50 @@ describe("checkRateLimit", () => {
     });
   });
 
-  it("blocks a token key by its hash, as the 429 log line reports it", () => {
-    const key = rateLimitKey("Bearer at_abusive", undefined, "1.2.3.4");
-    process.env.VEKTOR_RATE_LIMIT_BLOCK = key;
+  it("blocks a user key as the 429 log line reports it", () => {
+    process.env.VEKTOR_RATE_LIMIT_BLOCK = rateLimitKey("1.2.3.4", { userId: "abusive" });
 
     expect(
-      checkRateLimit(
-        { ...request, authorization: "Bearer at_abusive" },
-        new RateLimiter(),
-      ),
+      checkRateLimit({ ...request, userId: "abusive" }, new RateLimiter()),
     ).toMatchObject({ allowed: false, blocked: true });
+    // The same address, someone else: untouched.
+    expect(
+      checkRateLimit({ ...request, userId: "innocent" }, new RateLimiter()),
+    ).toMatchObject({ allowed: true, blocked: false });
+  });
+
+  it("keeps one caller in one bucket however their credentials vary", () => {
+    const limiter = new RateLimiter();
+    const run = {
+      ...request,
+      pattern: "/api/v1/spaces/[spaceId]/jobs/run",
+      method: "POST",
+      userId: "user-1",
+    };
+
+    // The regression: an unvalidated credential used to key a window of its own.
+    for (let i = 0; i < 30; i++) {
+      expect(checkRateLimit({ ...run, jobToken: `junk-${i}` }, limiter)?.allowed).toBe(
+        true,
+      );
+    }
+    expect(checkRateLimit(run, limiter)).toMatchObject({ allowed: false });
+  });
+
+  it("counts an unauthenticated caller against their address", () => {
+    const limiter = new RateLimiter();
+    const completions = {
+      ...request,
+      pattern: "/api/v1/chat/completions",
+      method: "POST",
+    };
+
+    for (let i = 0; i < 30; i++)
+      expect(checkRateLimit(completions, limiter)?.allowed).toBe(true);
+    expect(checkRateLimit(completions, limiter)).toMatchObject({ allowed: false });
+    expect(checkRateLimit({ ...completions, ip: "5.5.5.5" }, limiter)).toMatchObject({
+      allowed: true,
+    });
   });
 
   it("does not spend a tight route ceiling on ordinary browsing", () => {
@@ -290,7 +281,7 @@ describe("checkRateLimit", () => {
     const limiter = new RateLimiter();
     const create = { ...request, pattern: "/api/v1/spaces", method: "POST" };
     // A fresh account is a caller key away, so the ceiling has to be shared.
-    const other = { ...create, ip: "9.9.9.9", cookie: "vektor.session_token=someone" };
+    const other = { ...create, ip: "9.9.9.9", userId: "someone-else" };
 
     for (let i = 0; i < 10; i++) {
       expect(checkRateLimit(i % 2 ? create : other, limiter)?.allowed).toBe(true);
@@ -353,8 +344,6 @@ describe("checkRateLimit", () => {
     const run = {
       pattern: "/api/v1/spaces/[spaceId]/jobs/run",
       method: "POST",
-      authorization: undefined,
-      cookie: undefined,
       // Jobs reach the API over loopback, so every one of them shares this ip.
       ip: "127.0.0.1",
       spaceId,
@@ -385,8 +374,6 @@ describe("checkRateLimit", () => {
     const completions = {
       pattern: "/api/v1/chat/completions",
       method: "POST",
-      authorization: undefined,
-      cookie: undefined,
       ip: "127.0.0.1",
       spaceId,
       jobToken: createJobToken(spaceId, String(Date.now()), "user-1"),
@@ -424,5 +411,63 @@ describe("checkRateLimit", () => {
       allowed: false,
       blocked: false,
     });
+  });
+});
+
+describe("checkAddressRateLimit", () => {
+  const request = { ip: "1.2.3.4" };
+
+  it("keys on the address alone, ahead of any identity", () => {
+    expect(checkAddressRateLimit(request, new RateLimiter())).toMatchObject({
+      key: "ip:1.2.3.4",
+      allowed: true,
+    });
+  });
+
+  it("sheds a flooding address well above the per-caller ceiling", () => {
+    process.env.VEKTOR_RATE_LIMIT_MAX = "10";
+    const limiter = new RateLimiter();
+
+    for (let i = 0; i < 100; i++)
+      expect(checkAddressRateLimit(request, limiter)?.allowed).toBe(true);
+
+    expect(checkAddressRateLimit(request, limiter)).toMatchObject({ allowed: false });
+    expect(checkAddressRateLimit({ ip: "5.5.5.5" }, limiter)).toMatchObject({
+      allowed: true,
+    });
+  });
+
+  it("counts every route against the one address window", () => {
+    process.env.VEKTOR_RATE_LIMIT_MAX = "10";
+    const limiter = new RateLimiter();
+
+    for (let i = 0; i < 100; i++) checkAddressRateLimit(request, limiter);
+    expect(checkAddressRateLimit(request, limiter)).toMatchObject({ allowed: false });
+  });
+
+  it("honours the killswitch before the session lookup it guards", () => {
+    process.env.VEKTOR_RATE_LIMIT_BLOCK = "ip:1.2.3.4";
+
+    expect(checkAddressRateLimit(request, new RateLimiter())).toMatchObject({
+      allowed: false,
+      blocked: true,
+    });
+  });
+
+  it("gives a verified job its own window, not the loopback one", () => {
+    const spaceId = "space-1";
+    const limiter = new RateLimiter();
+    const job = {
+      ip: "127.0.0.1",
+      spaceId,
+      jobToken: createJobToken(spaceId, String(Date.now()), "user-1"),
+    };
+
+    expect(checkAddressRateLimit(job, limiter)?.key.startsWith("job:")).toBe(true);
+  });
+
+  it("returns null when limiting is switched off", () => {
+    process.env.VEKTOR_RATE_LIMIT = "0";
+    expect(checkAddressRateLimit(request, new RateLimiter())).toBeNull();
   });
 });

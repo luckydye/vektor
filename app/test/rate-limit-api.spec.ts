@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { rateLimitKey } from "#api/rateLimit.ts";
 import {
   createApiRequest,
   startTestServer,
@@ -22,10 +21,7 @@ const apiRequest = createApiRequest(BASE_URL);
 /** Low enough to reach in a test, high enough for the server's own readiness probe. */
 const MAX = 20;
 
-/** The killswitch names a derived key, so derive it as the router will. */
-const BLOCKED_TOKEN = "at_blocked_integration_probe";
-const ALLOWED_TOKEN = "at_allowed_integration_probe";
-const BLOCKED_KEY = rateLimitKey(`Bearer ${BLOCKED_TOKEN}`, undefined, "127.0.0.1");
+const BLOCKED_IP = "9.9.9.9";
 
 let serverProcess: TestServerProcess;
 
@@ -37,7 +33,8 @@ beforeAll(async () => {
     VEKTOR_RATE_LIMIT: "1",
     VEKTOR_RATE_LIMIT_MAX: String(MAX),
     VEKTOR_RATE_LIMIT_WINDOW: "60",
-    VEKTOR_RATE_LIMIT_BLOCK: BLOCKED_KEY,
+    VEKTOR_RATE_LIMIT_BLOCK: `ip:${BLOCKED_IP}`,
+    VEKTOR_TRUST_PROXY: "1",
     AUTH_SECRET: process.env.AUTH_SECRET ?? "rate-limit-test-secret",
   });
   await waitForServer(BASE_URL);
@@ -47,25 +44,18 @@ afterAll(() => {
   serverProcess?.kill();
 });
 
-function withToken(token: string): Promise<Response> {
-  return fetch(`${BASE_URL}/api/v1/spaces`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+function request(headers: Record<string, string> = {}): Promise<Response> {
+  return fetch(`${BASE_URL}/api/v1/spaces`, { headers });
+}
+
+async function remainingBudget(): Promise<number> {
+  const response = await request();
+  return Number(response.headers.get("X-Limit-Remaining"));
 }
 
 describe("API rate limiting", () => {
-  it("advertises the remaining budget on a normal response", async () => {
-    const response = await apiRequest("/api/v1/spaces");
-
-    expect(response.status).toBe(200);
-    const remaining = response.headers.get("X-Limit-Remaining");
-    expect(remaining).not.toBeNull();
-    expect(Number(remaining)).toBeGreaterThanOrEqual(0);
-    expect(Number(remaining)).toBeLessThan(MAX);
-  });
-
   it("refuses a killswitched key with its own message", async () => {
-    const blocked = await withToken(BLOCKED_TOKEN);
+    const blocked = await request({ "X-Forwarded-For": BLOCKED_IP });
 
     expect(blocked.status).toBe(429);
     expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
@@ -74,62 +64,52 @@ describe("API rate limiting", () => {
     );
   });
 
-  it("leaves every other token alone", async () => {
-    const allowed = await withToken(ALLOWED_TOKEN);
-
-    expect(allowed.status).not.toBe(429);
+  it("leaves every other address alone", async () => {
+    expect((await request({ "X-Forwarded-For": "9.9.9.8" })).status).not.toBe(429);
   });
 
-  it("admits exactly the budget under a concurrent burst, never more", async () => {
-    // A fresh token is a fresh key, so the arithmetic is exact.
-    const token = "at_burst_probe";
-    const burst = MAX * 3;
+  it("advertises the remaining budget on a normal response", async () => {
+    const response = await request();
 
+    expect(response.status).toBe(200);
+    const remaining = Number(response.headers.get("X-Limit-Remaining"));
+    expect(remaining).toBeGreaterThanOrEqual(0);
+    expect(remaining).toBeLessThan(MAX);
+  });
+
+  it("counts one caller in one bucket however their credentials vary", async () => {
+    const budget = await remainingBudget();
+    const burst = budget + MAX;
+
+    // The bypass this guards: a bearer nobody validated used to key its own
+    // window, so every ceiling was one header away from advisory.
     const responses = await Promise.all(
-      Array.from({ length: burst }, () => withToken(token)),
+      Array.from({ length: burst }, (_, i) =>
+        request({
+          Authorization: `Bearer junk-${i}`,
+          Cookie: `junk-${i}.session_token=junk-${i}`,
+        }),
+      ),
     );
     const statuses = responses.map((response) => response.status);
     const admitted = statuses.filter((status) => status !== 429);
 
-    // Parallel arrivals must not over-admit: a counter read and written across
-    // an await would let more than MAX through here.
-    expect(admitted).toHaveLength(MAX);
-    expect(statuses.filter((status) => status === 429)).toHaveLength(burst - MAX);
+    expect(admitted).toHaveLength(budget);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(burst - budget);
 
-    // Each admitted request consumed exactly one slot; a lost update would not
-    // produce MAX-1 … 0 with no repeats.
+    // Each admitted request consumed exactly one slot; a lost update across an
+    // await would not produce budget-1 … 0 with no repeats.
     const remaining = responses
       .filter((response) => response.status !== 429)
       .map((response) => Number(response.headers.get("X-Limit-Remaining")))
       .sort((a, b) => a - b);
-    expect(remaining).toEqual(Array.from({ length: MAX }, (_, i) => i));
-  });
-
-  it("keeps concurrent callers on separate budgets", async () => {
-    const [first, second] = await Promise.all([
-      Promise.all(Array.from({ length: MAX }, () => withToken("at_burst_a"))),
-      Promise.all(Array.from({ length: MAX }, () => withToken("at_burst_b"))),
-    ]);
-
-    // Interleaved in one event loop, but counted apart.
-    expect(first.filter((r) => r.status === 429)).toHaveLength(0);
-    expect(second.filter((r) => r.status === 429)).toHaveLength(0);
+    expect(remaining).toEqual(Array.from({ length: budget }, (_, i) => i));
   });
 
   it("answers 429 with Retry-After once the window is spent", async () => {
-    let limited: Response | undefined;
+    const limited = await apiRequest("/api/v1/spaces");
 
-    // Earlier specs already spent part of the window, so drive well past MAX.
-    for (let i = 0; i < MAX * 2; i++) {
-      const response = await apiRequest("/api/v1/spaces");
-      if (response.status === 429) {
-        limited = response;
-        break;
-      }
-    }
-
-    if (!limited) throw new Error(`No 429 within ${MAX * 2} requests`);
-
+    expect(limited.status).toBe(429);
     expect(Number(limited.headers.get("Retry-After"))).toBeGreaterThan(0);
     expect(limited.headers.get("X-Limit-Remaining")).toBe("0");
     expect((await limited.json()).error).toBe("Too many requests");

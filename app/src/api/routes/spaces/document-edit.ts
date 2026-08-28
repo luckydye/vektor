@@ -15,7 +15,6 @@ import { getDocument, updateDocument } from "#db/space/documents.ts";
 import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
 import { documentIsReadonly } from "#documents/types.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";
-import { sanitizeDocumentHtml } from "#utils/html.ts";
 
 /**
  * Applies partial edit operations to a document through the collaboration
@@ -66,7 +65,7 @@ export const POST: ApiRouteHandler = (context) =>
       result = await transformDocumentContent(
         spaceId,
         id,
-        (content) => sanitizeDocumentHtml(applyEditOperations(content, operations)),
+        (content) => applyEditOperations(content, operations),
         operations,
       );
     } catch (error) {

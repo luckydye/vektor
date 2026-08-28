@@ -165,45 +165,26 @@ export function windowKey(
   return rule.instance ? `instance|${bucket}` : `${callerKey}|${bucket}`;
 }
 
-const BEARER_PREFIX = "bearer ";
-
-function sessionCookieValue(cookie: string | undefined): string | null {
-  if (!cookie) return null;
-  for (const part of cookie.split(";")) {
-    const separator = part.indexOf("=");
-    if (separator < 0) continue;
-    const name = part.slice(0, separator).trim();
-    if (!name.endsWith("session_token")) continue;
-    const value = part.slice(separator + 1).trim();
-    if (value) return value;
-  }
-  return null;
+/**
+ * Which caller a request counts against: a verified job token, then the session
+ * user, then the address. Only identities the server resolved may reach a key —
+ * keying on a credential nobody validated hands out a window per invented
+ * value, escaping every ceiling and `VEKTOR_RATE_LIMIT_BLOCK` with it.
+ *
+ * The job token precedes the user because a job's call to this instance's own
+ * API carries no session, and would otherwise land on the loopback address
+ * every job in the process shares.
+ */
+export function rateLimitKey(ip: string, caller: ResolvedCaller = {}): string {
+  if (caller.jobToken) return `job:${shortHash(caller.jobToken)}`;
+  if (caller.userId) return `user:${caller.userId}`;
+  return `ip:${ip || "unknown"}`;
 }
 
-/**
- * The access token when one is presented, otherwise the caller's IP. Derived
- * from headers alone so the check can run before the session lookup and bound
- * it too; the token is hashed because these keys reach the log on a 429.
- *
- * `jobToken` must already be verified: it precedes the other credentials
- * because a job's call to this instance's own API carries neither a session
- * nor a bearer, and would otherwise land on the loopback address every job in
- * the process shares.
- */
-export function rateLimitKey(
-  authorization: string | undefined,
-  cookie: string | undefined,
-  ip: string,
-  jobToken?: string | null,
-): string {
-  if (jobToken) return `job:${shortHash(jobToken)}`;
-  if (authorization?.toLowerCase().startsWith(BEARER_PREFIX)) {
-    const token = authorization.slice(BEARER_PREFIX.length).trim();
-    if (token) return `token:${shortHash(token)}`;
-  }
-  const session = sessionCookieValue(cookie);
-  if (session) return `session:${shortHash(session)}`;
-  return `ip:${ip || "unknown"}`;
+/** The identities a key may be derived from, each already verified. */
+export interface ResolvedCaller {
+  jobToken?: string | null;
+  userId?: string | null;
 }
 
 /**
@@ -323,34 +304,70 @@ export interface RateLimitCheck extends RateLimitDecision {
   key: string;
 }
 
-/** Null when limiting is disabled, so callers skip the headers entirely. */
-export function checkRateLimit(
-  request: {
-    pattern: string;
-    method: string;
-    authorization: string | undefined;
-    cookie: string | undefined;
-    ip: string;
-    jobToken?: string | undefined;
-    /** Scope the job token is checked against, from the header or the route. */
-    spaceId?: string | undefined;
-  },
+interface RateLimitRequest {
+  ip: string;
+  jobToken?: string | undefined;
+  /** Scope the job token is checked against, from the header or the route. */
+  spaceId?: string | undefined;
+  /** The session user; absent on the pre-auth check, which has none yet. */
+  userId?: string | null | undefined;
+}
+
+/**
+ * How much wider the address window is than a caller's own. One address is a
+ * whole office behind a NAT, so it has to sit clear of the per-caller ceilings.
+ */
+const ADDRESS_WINDOW_FACTOR = 10;
+
+function blockedCheck(key: string): RateLimitCheck {
+  return {
+    key,
+    allowed: false,
+    remaining: 0,
+    retryAfterSeconds: DEFAULT_WINDOW_SECONDS,
+    blocked: true,
+  };
+}
+
+/**
+ * The pre-auth check: one window per address, sized to shed floods rather than
+ * to bound a caller. Running before the session lookup is what lets it bound
+ * that lookup, and the address is all it can key on there. Null when limiting
+ * is disabled, so callers skip the headers entirely.
+ */
+export function checkAddressRateLimit(
+  request: RateLimitRequest,
   limiter: RateLimiter = apiRateLimiter,
 ): RateLimitCheck | null {
   if (!isRateLimitEnabled()) return null;
 
   const jobToken = verifiedJobToken(request.jobToken, request.spaceId);
-  const key = rateLimitKey(request.authorization, request.cookie, request.ip, jobToken);
+  const key = rateLimitKey(request.ip, { jobToken });
+  if (blockedKeys().has(key)) return blockedCheck(key);
 
-  if (blockedKeys().has(key)) {
-    return {
-      key,
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: DEFAULT_WINDOW_SECONDS,
-      blocked: true,
-    };
-  }
+  const rule = defaultRateLimitRule();
+  const decision = limiter.check(`${key}|address`, {
+    max: rule.max * ADDRESS_WINDOW_FACTOR,
+    windowMs: rule.windowMs,
+  });
+  return { key, ...decision };
+}
+
+/**
+ * The route ceiling, counted against whoever the request turned out to be: the
+ * session user once the context is hydrated, the address for a caller that
+ * resolved to nobody. Null when limiting is disabled.
+ */
+export function checkRateLimit(
+  request: RateLimitRequest & { pattern: string; method: string },
+  limiter: RateLimiter = apiRateLimiter,
+): RateLimitCheck | null {
+  if (!isRateLimitEnabled()) return null;
+
+  const jobToken = verifiedJobToken(request.jobToken, request.spaceId);
+  const key = rateLimitKey(request.ip, { jobToken, userId: request.userId });
+
+  if (blockedKeys().has(key)) return blockedCheck(key);
 
   const job = jobToken !== null;
   const decision = limiter.check(
