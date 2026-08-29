@@ -18,29 +18,6 @@ import { uploadKeyFromUrl } from "#files/uploads.ts";
 const ID_CHUNK = 500;
 
 /**
- * The document an upload is attached to. A standalone upload, a key with no
- * index row, and an unknown space all answer `null` — the first two because
- * only a space-wide role reaches such a file, the last because this runs ahead
- * of the route's guard, which is what owes that caller its refusal. Hence the
- * `spaceId` rather than a store: there may not be a database to open.
- */
-export async function getFileDocumentId(
-  spaceId: string,
-  path: string,
-): Promise<string | null> {
-  if (!(await getSpace(spaceId))) return null;
-
-  const { db } = await openSpaceStore(spaceId);
-  const row = await one(
-    db
-      .select({ documentId: fileTable.documentId })
-      .from(fileTable)
-      .where(eq(fileTable.path, path)),
-  );
-  return row?.documentId ?? null;
-}
-
-/**
  * What the index knows about a stored file, beyond the bytes on disk.
  *
  * A key alone says nothing a person recognises: it is a content hash. The name
@@ -50,6 +27,38 @@ export interface FileIndexEntry {
   documentId: string | null;
   originalName: string | null;
   mimeType: string | null;
+}
+
+/**
+ * What the index holds for one upload. A key with no index row and an unknown
+ * space both answer `null` — the first because only a space-wide role reaches
+ * such a file, the second because this runs ahead of the route's guard, which
+ * is what owes that caller its refusal. Hence the `spaceId` rather than a
+ * store: there may not be a database to open.
+ */
+export async function getFileIndexEntry(
+  spaceId: string,
+  path: string,
+): Promise<FileIndexEntry | null> {
+  if (!(await getSpace(spaceId))) return null;
+
+  const { db } = await openSpaceStore(spaceId);
+  const row = await one(
+    db
+      .select({
+        documentId: fileTable.documentId,
+        originalName: fileTable.originalName,
+        mimeType: fileTable.mimeType,
+      })
+      .from(fileTable)
+      .where(eq(fileTable.path, path)),
+  );
+  if (!row) return null;
+  return {
+    documentId: row.documentId ?? null,
+    originalName: row.originalName ?? null,
+    mimeType: row.mimeType ?? null,
+  };
 }
 
 /**
@@ -130,7 +139,7 @@ export async function filterAccessibleFiles<T extends { documentId: string | nul
  * did before the file was indexed.
  *
  * Takes a `spaceId` rather than a store for the same reason as
- * {@link getFileDocumentId}: callers reach this before any database is open.
+ * {@link getFileIndexEntry}: callers reach this before any database is open.
  */
 export async function getUploadImageDimensions(
   spaceId: string,

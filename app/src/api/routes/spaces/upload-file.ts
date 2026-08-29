@@ -9,7 +9,7 @@ import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { getFileDocumentId } from "#db/space/files.ts";
+import { getFileIndexEntry } from "#db/space/files.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
@@ -64,7 +64,8 @@ export const GET: ApiRouteHandler = (context) =>
       // a resource grant and an archive all reach the file through its document
       // and not through a space role. A file that belongs to none — a workflow
       // artifact, say — keeps the space check.
-      const documentId = await getFileDocumentId(spaceId, path);
+      const indexed = await getFileIndexEntry(spaceId, path);
+      const documentId = indexed?.documentId ?? null;
       if (documentId) {
         await authenticateDocumentAccess(
           context.var.credentials,
@@ -130,7 +131,10 @@ export const GET: ApiRouteHandler = (context) =>
         "Accept-Ranges": "bytes",
         // Prevent stored XSS: force download for active types (svg/html),
         // disallow MIME sniffing, and sandbox any rendered content.
-        ...servedFileSecurityHeaders(extension),
+        // The stored key is a content hash, so without the uploaded name a
+        // download saves as one. The name is advisory: it does not affect the
+        // inline/attachment decision, which is a security control.
+        ...servedFileSecurityHeaders(extension, indexed?.originalName),
       };
 
       const rangeHeader = context.req.raw.headers.get("range");
@@ -201,7 +205,7 @@ export const DELETE: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      const documentId = await getFileDocumentId(spaceId, path);
+      const documentId = (await getFileIndexEntry(spaceId, path))?.documentId ?? null;
       await authenticateJobTokenOrSpaceRole(
         context.var.credentials,
         spaceId,
