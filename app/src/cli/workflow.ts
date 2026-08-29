@@ -13,7 +13,7 @@
  *   vektor workflow abc123 --json
  */
 
-import { resolveConfig } from "./resolve.ts";
+import { apiFetch, apiJson, resolveConfig } from "./request.ts";
 
 type RunResponse = {
   status: string;
@@ -93,49 +93,26 @@ export function parseArgs(argv: string[]): CliOptions {
   };
 }
 
-async function apiFetch(
-  url: string,
-  token: string | undefined,
-  path: string,
-  init?: RequestInit,
-): Promise<unknown> {
-  const res = await fetch(`${url.replace(/\/$/, "")}${path}`, {
-    ...init,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers as Record<string, string> | undefined),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => String(res.status));
-    throw new Error(
-      `API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${text}`,
-    );
-  }
-  return res.json();
+function apiUrl(host: string, path: string): string {
+  return `${host.replace(/\/$/, "")}${path}`;
 }
 
 async function uploadFile(
   url: string,
   spaceId: string,
-  token: string | undefined,
   filePath: string,
 ): Promise<string> {
   const file = Bun.file(filePath);
   const name = filePath.split("/").pop() ?? "upload";
   const query = new URLSearchParams({ filename: name });
-  const res = await fetch(
-    `${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads?${query}`,
-    {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        Origin: new URL(url).origin,
-        "Content-Type": file.type || "application/octet-stream",
-      },
-      body: file,
+  const res = await apiFetch(apiUrl(url, `/api/v1/spaces/${spaceId}/uploads?${query}`), {
+    method: "POST",
+    headers: {
+      Origin: new URL(url).origin,
+      "Content-Type": file.type || "application/octet-stream",
     },
-  );
+    body: file,
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
     throw new Error(`File upload failed (${res.status}): ${text}`);
@@ -145,12 +122,10 @@ async function uploadFile(
 }
 
 export async function commandLogs(runId: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
 
-  const run = (await apiFetch(
-    host,
-    token,
-    `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+  const run = (await apiJson(
+    apiUrl(host, `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`),
   )) as RunResponse;
 
   for (const line of run.logs) {
@@ -160,18 +135,16 @@ export async function commandLogs(runId: string): Promise<void> {
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
   const { documentId, inputs, filePaths, json } = options;
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
 
   for (const [key, filePath] of Object.entries(filePaths)) {
     if (!json) process.stderr.write(`Uploading ${filePath}…\n`);
-    inputs[key] = await uploadFile(host, spaceId, token, filePath);
+    inputs[key] = await uploadFile(host, spaceId, filePath);
     if (!json) process.stderr.write(`Uploaded: ${inputs[key]}\n`);
   }
 
-  const { runId } = (await apiFetch(
-    host,
-    token,
-    `/api/v1/spaces/${spaceId}/workflows/runs`,
+  const { runId } = (await apiJson(
+    apiUrl(host, `/api/v1/spaces/${spaceId}/workflows/runs`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -189,10 +162,8 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
   while (true) {
     await new Promise((r) => setTimeout(r, 2000));
 
-    const run = (await apiFetch(
-      host,
-      token,
-      `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+    const run = (await apiJson(
+      apiUrl(host, `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`),
     )) as RunResponse;
 
     if (!json) {

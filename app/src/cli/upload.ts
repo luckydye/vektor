@@ -1,15 +1,11 @@
 import { existsSync, statSync } from "node:fs";
 import { basename } from "node:path";
-import { resolveConfig } from "./resolve.ts";
+import { apiFetch, resolveConfig } from "./request.ts";
 
 type UploadResult = {
   key: string;
   url: string;
 };
-
-function authHeaders(token: string | undefined): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 export function toAbsoluteUrl(host: string, url: string): string {
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
@@ -32,7 +28,7 @@ export async function commandUploadFile(flags: {
     throw new Error(`Not a file: ${flags.source}`);
   }
 
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
   const file = Bun.file(flags.source);
   const filename = flags.filename ?? basename(flags.source);
   const contentType = flags.contentType ?? file.type ?? "application/octet-stream";
@@ -41,13 +37,9 @@ export async function commandUploadFile(flags: {
   if (flags.documentId) query.set("documentId", flags.documentId);
 
   const url = `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads?${query}`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: "POST",
-    headers: {
-      ...authHeaders(token),
-      Origin: new URL(host).origin,
-      "Content-Type": contentType,
-    },
+    headers: { Origin: new URL(host).origin, "Content-Type": contentType },
     body: file,
   });
 

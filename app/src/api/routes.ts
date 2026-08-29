@@ -2,8 +2,6 @@ import * as personalAccessToken from "./routes/access-token.ts";
 import * as personalAccessTokens from "./routes/access-tokens.ts";
 import * as authAll from "./routes/auth/all.ts";
 import * as authCli from "./routes/auth/cli.ts";
-import * as authCliSsh from "./routes/auth/cli-ssh.ts";
-import * as authCliSshToken from "./routes/auth/cli-ssh-token.ts";
 import * as authCliToken from "./routes/auth/cli-token.ts";
 import * as caldavCalendar from "./routes/caldav/calendar.ts";
 import * as caldavCalendars from "./routes/caldav/calendars.ts";
@@ -98,8 +96,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/auth/cli", module: authCli },
   { pattern: "/api/v1/auth/cli/token", module: authCliToken },
-  { pattern: "/api/v1/auth/cli/ssh/challenge", module: authCliSsh },
-  { pattern: "/api/v1/auth/cli/ssh/token", module: authCliSshToken },
 
   { pattern: "/api/v1/chat/acp", module: chatAcp },
   { pattern: "/api/v1/chat/completions", module: chatCompletions },

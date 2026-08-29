@@ -1,10 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { config } from "#config";
 import { escapeHtml } from "#utils/html.ts";
+import { apiFetch } from "./request.ts";
 import {
   clearStoredConfig,
   DEFAULT_HOST,
   resolveHost,
+  writeSshLogin,
   writeStoredConfig,
 } from "./resolve.ts";
 import { discoverSshSigners, type SshSigner } from "./sshAgent.ts";
@@ -189,12 +191,12 @@ function storeLogin(host: string, result: CliTokenResult): void {
 }
 
 /**
- * Log in by proving possession of an SSH key, with no browser anywhere in it.
+ * Choose the SSH key this machine signs with, and check the server agrees.
  *
- * The server names which key it wants by rejecting the ones it does not know,
- * so this offers the available keys in turn rather than making the user say
- * which one is registered. Each attempt takes its own challenge: a challenge is
- * spent by the attempt that uses it, successful or not.
+ * There is no token to fetch: a signed request carries its own proof, so all
+ * this does is settle *which* key — the agent may hold several and only some are
+ * registered — and record that choice. What it writes is a fingerprint and a
+ * space id, neither of them secret.
  */
 async function loginWithSsh(host: string, keyPath?: string): Promise<void> {
   const signers = await discoverSshSigners(keyPath);
@@ -204,19 +206,31 @@ async function loginWithSsh(host: string, keyPath?: string): Promise<void> {
     );
   }
 
-  // Only an explicit choice: the stored space belongs to the previous login,
-  // and the server picks for a user who has just one space anyway.
-  const spaceId = config().CLI_SPACE_ID;
   const rejected: string[] = [];
 
   for (const signer of signers) {
     process.stderr.write(`Trying SSH key ${describeSigner(signer)}…\n`);
 
-    const { challenge, namespace } = await requestSshChallenge(host);
-
-    let signature: string;
+    let identity: { name?: string; email?: string };
     try {
-      signature = await signer.sign(challenge, namespace);
+      const response = await apiFetch(
+        `${host}/api/v1/users/me`,
+        {},
+        {
+          kind: "ssh",
+          signer,
+        },
+      );
+      if (response.status === 401 || response.status === 403) {
+        // The server knows nothing of this key. Another one may still work.
+        rejected.push(`${describeSigner(signer)}: not registered on ${host}`);
+        continue;
+      }
+      if (!response.ok) {
+        const text = await response.text().catch(() => String(response.status));
+        throw new Error(`Server refused the signature (${response.status}): ${text}`);
+      }
+      identity = (await response.json()) as { name?: string; email?: string };
     } catch (error) {
       // A key that cannot sign — no ssh-keygen, a declined passphrase — is worth
       // saying out loud, but the next key may still work.
@@ -224,16 +238,45 @@ async function loginWithSsh(host: string, keyPath?: string): Promise<void> {
       continue;
     }
 
-    const result = await exchangeSshSignature(host, { challenge, signature, spaceId });
-    if (result.kind === "token") {
-      storeLogin(host, result.token);
-      return;
-    }
-    rejected.push(`${describeSigner(signer)}: ${result.message}`);
+    // Only an explicit choice is stored; without one every command discovers a
+    // space for itself, which is what an unconfigured install already does.
+    const spaceId = config().CLI_SPACE_ID;
+    const path = writeSshLogin({
+      spaceId,
+      ...(signer.fingerprint
+        ? { fingerprint: signer.fingerprint }
+        : { keyPath: signer.label }),
+    });
+
+    process.stdout.write(
+      [
+        "",
+        `Signed in to ${host} as ${identity.name ?? identity.email ?? "you"}.`,
+        `Requests are signed with ${describeSigner(signer)}.`,
+        `Key choice stored in ${path} — no token is kept anywhere.`,
+        ...(host === DEFAULT_HOST
+          ? []
+          : ["", `Keep VEKTOR_HOST=${host} in your shell profile — it is not stored.`]),
+        // An env token would win over the signature and quietly change identity.
+        ...(process.env.VEKTOR_ACCESS_TOKEN
+          ? [
+              "",
+              "Note: VEKTOR_ACCESS_TOKEN is set and takes precedence — unset it to sign with your key.",
+            ]
+          : []),
+        "",
+      ].join("\n"),
+    );
+    return;
   }
 
   throw new Error(
-    ["SSH login failed.", ...rejected.map((line) => `  ${line}`)].join("\n"),
+    [
+      "SSH login failed.",
+      ...rejected.map((line) => `  ${line}`),
+      "",
+      "Register the public key under user settings → Access Tokens → SSH Keys.",
+    ].join("\n"),
   );
 }
 
@@ -243,77 +286,6 @@ function describeSigner(signer: SshSigner): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-async function requestSshChallenge(
-  host: string,
-): Promise<{ challenge: string; namespace: string }> {
-  const response = await fetch(`${host}/api/v1/auth/cli/ssh/challenge`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => String(response.status));
-    throw new Error(`Could not start SSH login (${response.status}): ${text}`);
-  }
-  return (await response.json()) as { challenge: string; namespace: string };
-}
-
-interface SpaceChoice {
-  id: string;
-  name: string;
-  slug: string;
-  role?: string;
-}
-
-/**
- * A rejected key is the expected answer for all but one of the keys offered, so
- * it comes back as a value to report; everything else — no spaces, an ambiguous
- * one, a server that is not answering — ends the login where it happens.
- */
-async function exchangeSshSignature(
-  host: string,
-  body: { challenge: string; signature: string; spaceId?: string },
-): Promise<
-  { kind: "token"; token: CliTokenResult } | { kind: "rejected"; message: string }
-> {
-  const response = await fetch(`${host}/api/v1/auth/cli/ssh/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (response.ok) {
-    return { kind: "token", token: (await response.json()) as CliTokenResult };
-  }
-
-  const failure = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    spaces?: SpaceChoice[];
-  };
-
-  if (failure.error === "space_required" && failure.spaces) {
-    throw new Error(
-      [
-        "Your SSH key opens more than one space — name the one to log in to:",
-        ...failure.spaces.map(
-          (space) => `  vektor --space ${space.id} login --ssh   # ${space.name}`,
-        ),
-      ].join("\n"),
-    );
-  }
-  if (failure.error === "no_spaces" || failure.error === "no_space_roles") {
-    throw new Error(loginErrorMessage(failure.error));
-  }
-  // Only an unrecognised key is worth trying the next one for.
-  if (response.status === 401) {
-    return { kind: "rejected", message: failure.error ?? "key was rejected" };
-  }
-
-  throw new Error(
-    `SSH login failed (${response.status}): ${failure.error ?? response.statusText}`,
-  );
 }
 
 export function commandLogout(): void {

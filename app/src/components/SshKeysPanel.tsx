@@ -51,7 +51,7 @@ export function SshKeysPanel(props: Props) {
           <h2 class="font-semibold text-foreground text-size-medium">{t("SSH Keys")}</h2>
           <p class="mt-1 text-neutral-500 text-size-small">
             {t(
-              "Log the CLI in without a browser: vektor login --ssh signs in with a key registered here.",
+              "The CLI signs each request with a key registered here — no token is stored on the machine.",
             )}
           </p>
         </div>

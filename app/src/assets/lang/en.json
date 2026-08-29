@@ -494,7 +494,7 @@
   "Failed to revoke access token": "Failed to revoke access token",
   "Failed to delete access token": "Failed to delete access token",
   "SSH Keys": "SSH Keys",
-  "Log the CLI in without a browser: vektor login --ssh signs in with a key registered here.": "Log the CLI in without a browser: vektor login --ssh signs in with a key registered here.",
+  "The CLI signs each request with a key registered here — no token is stored on the machine.": "The CLI signs each request with a key registered here — no token is stored on the machine.",
   "+ New SSH key": "+ New SSH key",
   "No SSH keys yet.": "No SSH keys yet.",
   "Public key": "Public key",

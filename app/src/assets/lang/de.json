@@ -490,7 +490,7 @@
   "Failed to revoke access token": "Zugriffstoken konnte nicht widerrufen werden",
   "Failed to delete access token": "Zugriffstoken konnte nicht gelöscht werden",
   "SSH Keys": "SSH-Schlüssel",
-  "Log the CLI in without a browser: vektor login --ssh signs in with a key registered here.": "Die CLI ohne Browser anmelden: vektor login --ssh meldet sich mit einem hier registrierten Schlüssel an.",
+  "The CLI signs each request with a key registered here — no token is stored on the machine.": "Die CLI signiert jede Anfrage mit einem hier registrierten Schlüssel — auf dem Rechner wird kein Token gespeichert.",
   "+ New SSH key": "+ Neuer SSH-Schlüssel",
   "No SSH keys yet.": "Noch keine SSH-Schlüssel.",
   "Public key": "Öffentlicher Schlüssel",

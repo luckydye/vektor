@@ -48,7 +48,8 @@ import {
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { commandLogin, commandLogout } from "./src/cli/login.ts";
 import { commandMcp } from "./src/cli/mcp.ts";
-import { configPath, resolveConfig } from "./src/cli/resolve.ts";
+import { resolveConfig } from "./src/cli/request.ts";
+import { configPath } from "./src/cli/resolve.ts";
 import {
   commandSpaceAttach,
   commandSpaceEnable,
@@ -133,10 +134,11 @@ Configuration:
   ${configPath()}
   The server URL is never stored — set VEKTOR_HOST yourself.
 
-  vektor login --ssh signs a challenge with an SSH key instead of opening a
-  browser — for servers and CI, where there is none. Register the public key
-  under user settings first; --key <path> picks one key instead of trying the
-  ssh-agent identities and ~/.ssh defaults in turn.
+  vektor login --ssh picks an SSH key to sign requests with, for servers and CI
+  where there is no browser. No token is stored: every request is signed with
+  the key as it goes out. Register the public key under user settings first;
+  --key <path> names one key instead of trying the ssh-agent identities and
+  ~/.ssh defaults in turn.
 
 Env vars (override the stored config):
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
@@ -277,17 +279,12 @@ async function main(): Promise<void> {
     }
 
     if (subcommand === "upload") {
-      const { host, token, spaceId } = await resolveConfig();
-
-      if (!token) {
-        throw new Error("Access Token required — run: vektor login");
-      }
+      const { host, spaceId } = await resolveConfig();
 
       await commandUpload(
         extensionId?.startsWith("--") ? undefined : extensionId,
         host,
         spaceId,
-        token,
       );
       return;
     }

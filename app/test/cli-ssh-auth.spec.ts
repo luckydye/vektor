@@ -1,17 +1,23 @@
 /**
- * The CLI's ssh-agent client, against an agent that answers the way OpenSSH's
- * does. The point is the wire protocol: the agent signs bytes, and what makes
- * those bytes a Vektor login — the SSHSIG envelope, the namespace, the hash —
- * is assembled on this side.
+ * How the CLI authenticates: an ssh-agent that answers the way OpenSSH's does,
+ * and the signature the CLI puts on each request from what that agent signs.
+ *
+ * Two things are being checked. That the agent protocol is spoken correctly —
+ * the agent signs bytes, and the SSHSIG envelope around them is assembled on
+ * this side — and that a signed request carries a signature the server will
+ * accept for that request and no other.
  */
 
 import { createHash, generateKeyPairSync, type KeyObject, sign } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { apiFetch, resetCredential } from "#cli/request.ts";
+import { writeSshLogin } from "#cli/resolve.ts";
 import { discoverSshSigners } from "#cli/sshAgent.ts";
 import { verifySshSignature } from "#utils/sshKeys.ts";
+import { canonicalRequest, parseAuthorization } from "#utils/sshRequestSignature.ts";
 
 const SOCKET_DIR = "/tmp/vektor-ssh-agent-spec";
 const CHALLENGE = "0d1c2b3a49586776";
@@ -132,11 +138,16 @@ let agent: StubAgent | undefined;
 beforeEach(() => {
   rmSync(SOCKET_DIR, { recursive: true, force: true });
   mkdirSync(SOCKET_DIR, { recursive: true });
-  // Otherwise the developer's own ~/.ssh keys join the list.
+  // Otherwise the developer's own ~/.ssh keys and stored login join in.
   process.env.HOME = SOCKET_DIR;
+  process.env.XDG_CONFIG_HOME = join(SOCKET_DIR, "config");
+  delete process.env.VEKTOR_ACCESS_TOKEN;
+  delete process.env.VEKTOR_SSH_KEY;
+  resetCredential();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   agent?.server.close();
   agent = undefined;
   rmSync(SOCKET_DIR, { recursive: true, force: true });
@@ -194,5 +205,127 @@ describe("discoverSshSigners", () => {
     process.env.SSH_AUTH_SOCK = join(SOCKET_DIR, "missing.sock");
 
     expect(await discoverSshSigners()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signed requests
+// ---------------------------------------------------------------------------
+
+const HOST = "https://vektor.example.com";
+
+/** Captures what `apiFetch` put on the wire, and answers with an empty 200. */
+function captureRequest(): { seen: Array<{ url: string; init?: RequestInit }> } {
+  const seen: Array<{ url: string; init?: RequestInit }> = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({ url: String(input), init });
+      return Promise.resolve(Response.json({ ok: true }));
+    },
+  );
+  return { seen };
+}
+
+function authorizationOf(init: RequestInit | undefined): string {
+  const value = new Headers(init?.headers).get("Authorization");
+  expect(value).toBeTruthy();
+  return value as string;
+}
+
+describe("signed requests", () => {
+  it("signs the method, path and body of the request it is sent with", async () => {
+    agent = await startStubAgent();
+    process.env.SSH_AUTH_SOCK = agent.socketPath;
+    const [signer] = await discoverSshSigners();
+    writeSshLogin({ fingerprint: signer.fingerprint });
+    resetCredential();
+
+    const { seen } = captureRequest();
+    const body = JSON.stringify({ title: "Signed" });
+    await apiFetch(`${HOST}/api/v1/spaces/space_1/documents?draft=1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+
+    const presented = parseAuthorization(authorizationOf(seen[0].init));
+    expect(presented).toBeDefined();
+
+    const verified = verifySshSignature({
+      signature: (presented as NonNullable<typeof presented>).signature,
+      message: canonicalRequest({
+        method: "POST",
+        path: "/api/v1/spaces/space_1/documents?draft=1",
+        body,
+        timestamp: (presented as NonNullable<typeof presented>).timestamp,
+        nonce: (presented as NonNullable<typeof presented>).nonce,
+      }),
+    });
+    expect(verified.fingerprint).toBe(signer.fingerprint);
+  });
+
+  /** The whole point of signing the request rather than holding a token. */
+  it("makes a signature that does not verify for another path", async () => {
+    agent = await startStubAgent();
+    process.env.SSH_AUTH_SOCK = agent.socketPath;
+    const [signer] = await discoverSshSigners();
+    writeSshLogin({ fingerprint: signer.fingerprint });
+    resetCredential();
+
+    const { seen } = captureRequest();
+    await apiFetch(`${HOST}/api/v1/spaces/space_1/documents`);
+
+    const presented = parseAuthorization(authorizationOf(seen[0].init));
+    expect(() =>
+      verifySshSignature({
+        signature: (presented as NonNullable<typeof presented>).signature,
+        message: canonicalRequest({
+          method: "DELETE",
+          path: "/api/v1/spaces/space_1/documents/doc_1",
+          body: "",
+          timestamp: (presented as NonNullable<typeof presented>).timestamp,
+          nonce: (presented as NonNullable<typeof presented>).nonce,
+        }),
+      }),
+    ).toThrow();
+  });
+
+  it("gives every request its own nonce", async () => {
+    agent = await startStubAgent();
+    process.env.SSH_AUTH_SOCK = agent.socketPath;
+    const [signer] = await discoverSshSigners();
+    writeSshLogin({ fingerprint: signer.fingerprint });
+    resetCredential();
+
+    const { seen } = captureRequest();
+    await apiFetch(`${HOST}/api/v1/spaces`);
+    await apiFetch(`${HOST}/api/v1/spaces`);
+
+    const [first, second] = seen.map(({ init }) =>
+      parseAuthorization(authorizationOf(init)),
+    );
+    expect(first?.nonce).not.toBe(second?.nonce);
+  });
+
+  /** A token beats a key: an existing login must not change meaning silently. */
+  it("sends a stored access token as a bearer token instead of signing", async () => {
+    agent = await startStubAgent();
+    process.env.SSH_AUTH_SOCK = agent.socketPath;
+    process.env.VEKTOR_ACCESS_TOKEN = "at_from_env";
+    resetCredential();
+
+    const { seen } = captureRequest();
+    await apiFetch(`${HOST}/api/v1/spaces`);
+
+    expect(authorizationOf(seen[0].init)).toBe("Bearer at_from_env");
+  });
+
+  it("refuses to sign as a different key than the one that was chosen", async () => {
+    agent = await startStubAgent();
+    process.env.SSH_AUTH_SOCK = agent.socketPath;
+    writeSshLogin({ fingerprint: "SHA256:akeythatisnolongerloaded" });
+    resetCredential();
+
+    await expect(apiFetch(`${HOST}/api/v1/spaces`)).rejects.toThrow(/not available/);
   });
 });

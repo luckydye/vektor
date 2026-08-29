@@ -5,7 +5,7 @@ import {
   listTools,
   type VektorMcpConfig,
 } from "#agent/tools.ts";
-import { resolveConfig } from "./resolve.ts";
+import { authorizeRequest, resolveConfig, resolveCredential } from "./request.ts";
 
 /**
  * Stateless JSON-RPC 2.0 / MCP protocol layer. Only the CLI speaks MCP over
@@ -194,11 +194,17 @@ export async function handleMcpRequest(
     case "tools/list": {
       const params = assertObject(request.params, "tools/list params");
       if (Object.keys(params).some((key) => key !== "_meta" && key !== "cursor")) {
-        return createInvalidParamsError(request.id, "tools/list contains an unknown parameter");
+        return createInvalidParamsError(
+          request.id,
+          "tools/list contains an unknown parameter",
+        );
       }
       if (params.cursor !== undefined) {
         if (typeof params.cursor !== "string") {
-          return createInvalidParamsError(request.id, "tools/list cursor must be a string");
+          return createInvalidParamsError(
+            request.id,
+            "tools/list cursor must be a string",
+          );
         }
         return createInvalidParamsError(request.id, "Invalid tools/list cursor");
       }
@@ -223,7 +229,10 @@ export async function handleMcpRequest(
           "requestState",
         ]);
         if (Object.keys(params).some((key) => !allowedParams.has(key))) {
-          return createInvalidParamsError(request.id, "tools/call contains an unknown parameter");
+          return createInvalidParamsError(
+            request.id,
+            "tools/call contains an unknown parameter",
+          );
         }
         name = expectString(params, "name");
         args =
@@ -333,11 +342,15 @@ async function handleLine(
 }
 
 export async function commandMcp(): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
+  const credential = await resolveCredential();
   const mcpConfig: VektorMcpConfig = {
     apiUrl: host,
     spaceId,
-    accessToken: token,
+    ...(credential.kind === "token"
+      ? { accessToken: credential.token }
+      : // No token to hand over: the key signs each request as it goes out.
+        { authorize: (request) => authorizeRequest(request, credential) }),
     connectedProviders: [],
   };
 

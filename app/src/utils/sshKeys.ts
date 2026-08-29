@@ -11,9 +11,7 @@
  */
 
 import { createHash, createPublicKey, type KeyObject, verify } from "node:crypto";
-
-/** What CLI logins sign under. A signature made for anything else will not verify here. */
-export const SSH_SIGNATURE_NAMESPACE = "vektor-cli";
+import { SSH_SIGNATURE_NAMESPACE } from "#utils/sshRequestSignature.ts";
 
 /** Below this an RSA key is not worth accepting as a standing credential. */
 const MIN_RSA_MODULUS_BITS = 2048;

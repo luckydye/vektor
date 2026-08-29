@@ -9,7 +9,7 @@
 import {
   notFoundResponse,
   requireParam,
-  requireUser,
+  requireSessionUser,
   successResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
@@ -18,7 +18,7 @@ import { deleteUserSshKey } from "#db/auth/sshKeys.ts";
 
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
+    const user = requireSessionUser(context);
     const keyId = requireParam(context.var.params, "keyId");
 
     if (!(await deleteUserSshKey(user.id, keyId))) {

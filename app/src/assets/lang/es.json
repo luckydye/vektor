@@ -494,7 +494,7 @@
   "Failed to revoke access token": "Error al revocar el token de acceso",
   "Failed to delete access token": "Error al eliminar el token de acceso",
   "SSH Keys": "Claves SSH",
-  "Log the CLI in without a browser: vektor login --ssh signs in with a key registered here.": "Inicia sesión en la CLI sin navegador: vektor login --ssh usa una clave registrada aquí.",
+  "The CLI signs each request with a key registered here — no token is stored on the machine.": "La CLI firma cada solicitud con una clave registrada aquí; no se guarda ningún token en la máquina.",
   "+ New SSH key": "+ Nueva clave SSH",
   "No SSH keys yet.": "Aún no hay claves SSH.",
   "Public key": "Clave pública",

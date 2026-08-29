@@ -13,7 +13,7 @@ import {
   createdResponse,
   jsonResponse,
   parseJsonBody,
-  requireUser,
+  requireSessionUser,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
@@ -25,7 +25,7 @@ const MAX_KEY_LINE_LENGTH = 16_384;
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
+    const user = requireSessionUser(context);
     return jsonResponse({ keys: await listUserSshKeys(user.id) });
   }, "Failed to list SSH keys");
 
@@ -36,7 +36,7 @@ export const GET: ApiRouteHandler = (context) =>
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
+    const user = requireSessionUser(context);
     const body = await parseJsonBody(context.req.raw);
     const { publicKey, name } = body;
 

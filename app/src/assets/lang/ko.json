@@ -494,7 +494,7 @@
   "Failed to revoke access token": "액세스 토큰을 취소하지 못했습니다",
   "Failed to delete access token": "액세스 토큰을 삭제하지 못했습니다",
   "SSH Keys": "SSH 키",
-  "Log the CLI in without a browser: vektor login --ssh signs in with a key registered here.": "브라우저 없이 CLI에 로그인합니다. vektor login --ssh는 여기에 등록한 키로 로그인합니다.",
+  "The CLI signs each request with a key registered here — no token is stored on the machine.": "CLI는 여기에 등록한 키로 각 요청에 서명합니다. 기기에 토큰을 저장하지 않습니다.",
   "+ New SSH key": "+ 새 SSH 키",
   "No SSH keys yet.": "아직 SSH 키가 없습니다.",
   "Public key": "공개 키",

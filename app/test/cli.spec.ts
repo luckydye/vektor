@@ -9,11 +9,11 @@ import {
 } from "#cli/category.ts";
 import { commandCreate, commandSet } from "#cli/document.ts";
 import { commandLogout, loginErrorMessage } from "#cli/login.ts";
+import { resetCredential, resolveConfig, resolveCredential } from "#cli/request.ts";
 import {
   clearStoredConfig,
   configPath,
   readStoredConfig,
-  resolveConfig,
   resolveHost,
   writeStoredConfig,
 } from "#cli/resolve.ts";
@@ -66,6 +66,12 @@ beforeEach(() => {
   // Keep the developer's real ~/.config/vektor/config.json out of the tests.
   process.env.XDG_CONFIG_HOME = join(TMP, "config");
   delete process.env.VEKTOR_ACCESS_TOKEN;
+  // Neither the developer's ssh-agent nor their ~/.ssh may answer for these
+  // specs: a key on the machine running them would change what resolves.
+  process.env.SSH_AUTH_SOCK = "";
+  process.env.HOME = TMP;
+  // The credential is resolved once per process; each spec starts fresh.
+  resetCredential();
 });
 
 afterEach(() => {
@@ -537,14 +543,17 @@ describe("stored config", () => {
     expect(configPath()).toBe(join(TMP, "config", "vektor", "config.json"));
   });
 
-  test("resolves space and token from the file when no env vars are set", async () => {
+  test("resolves the space and the token from the file when no env vars are set", async () => {
     delete process.env.VEKTOR_SPACE_ID;
     writeStoredConfig({ spaceId: "space-stored", accessToken: "at_stored" });
 
     await expect(resolveConfig()).resolves.toEqual({
       host: HOST,
-      token: "at_stored",
       spaceId: "space-stored",
+    });
+    await expect(resolveCredential()).resolves.toEqual({
+      kind: "token",
+      token: "at_stored",
     });
   });
 
@@ -552,10 +561,10 @@ describe("stored config", () => {
     process.env.VEKTOR_ACCESS_TOKEN = "at_from_env";
     writeStoredConfig({ spaceId: "space-stored", accessToken: "at_stored" });
 
-    await expect(resolveConfig()).resolves.toEqual({
-      host: HOST,
+    await expect(resolveConfig()).resolves.toEqual({ host: HOST, spaceId: SPACE_ID });
+    await expect(resolveCredential()).resolves.toEqual({
+      kind: "token",
       token: "at_from_env",
-      spaceId: SPACE_ID,
     });
   });
 
@@ -592,13 +601,10 @@ describe("stored config", () => {
     expect(resolveHost()).toBe(HOST);
   });
 
-  test("resolves no token with neither env var nor file", async () => {
+  test("resolves no credential with neither env var, file, nor SSH key", async () => {
     expect(readStoredConfig()).toEqual({});
-    await expect(resolveConfig()).resolves.toEqual({
-      host: HOST,
-      token: undefined,
-      spaceId: SPACE_ID,
-    });
+    await expect(resolveConfig()).resolves.toEqual({ host: HOST, spaceId: SPACE_ID });
+    await expect(resolveCredential()).resolves.toEqual({ kind: "none" });
   });
 
   test("writes credentials owner-readable only", () => {
@@ -621,7 +627,7 @@ describe("stored config", () => {
     writeFileSync(configPath(), "{not json");
 
     expect(readStoredConfig()).toEqual({});
-    await expect(resolveConfig()).resolves.toMatchObject({ token: undefined });
+    await expect(resolveCredential()).resolves.toEqual({ kind: "none" });
   });
 
   test("logout removes the file, and says so only when there was one", async () => {

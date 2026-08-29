@@ -5,7 +5,14 @@
  * itself.
  */
 
-import { createHash, generateKeyPairSync, type KeyObject, sign } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  type KeyObject,
+  randomBytes,
+  sign,
+} from "node:crypto";
+import { canonicalRequest, formatAuthorization } from "#utils/sshRequestSignature.ts";
 
 export interface TestSshKey {
   /** One authorized_keys line, ready to POST. */
@@ -224,4 +231,24 @@ export function reattributeSignature(armored: string, publicKey: string): string
     hashAlgorithm,
     signature,
   });
+}
+
+/** The `Authorization` value a signed request carries, built the CLI's way. */
+export function signRequest(
+  key: TestSshKey,
+  request: { method: string; path: string; body?: string },
+  options: { timestamp?: number; nonce?: string } = {},
+): string {
+  const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000);
+  const nonce = options.nonce ?? randomBytes(16).toString("hex");
+  const signature = key.sign(
+    canonicalRequest({
+      method: request.method,
+      path: request.path,
+      body: request.body ?? "",
+      timestamp,
+      nonce,
+    }),
+  );
+  return formatAuthorization({ timestamp, nonce, signature });
 }
