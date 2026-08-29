@@ -1,7 +1,8 @@
-import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { isServer } from "solid-js/web";
 import type { GitTreeEntry } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
+import { useQuery } from "#composeables/query.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
@@ -105,56 +106,58 @@ export function RepositoryView(props: Props) {
   const [path, setPath] = createSignal("");
   const [copyState, setCopyState] = createSignal<"idle" | "copied" | "failed">("idle");
 
-  // None of this is server-rendered. Reading a repository means materializing
-  // its cache from object storage, and doing that on the render path would make
-  // a page wait on a git checkout for content that is below the fold and
-  // changes on its own schedule.
-  const [overview] = createResource(
-    () => (isServer ? null : { spaceId: props.spaceId, documentId: props.documentId }),
-    (key) => api.git.overview(key.spaceId, key.documentId),
-    // Without this the client waits for a value the server was never asked to
-    // produce, and the view stays on its fallback for good.
-    { ssrLoadFrom: "initial" },
-  );
+  /**
+   * Everything here goes through the shared query cache.
+   *
+   * The document body is unmounted and remounted while a page loads, which is
+   * invisible for a view whose content came with the document — and very
+   * visible for one that re-runs three requests and renders a skeleton until
+   * they land. Cached by key, a remount paints the previous answer at once.
+   *
+   * None of it runs during server rendering either: reading a repository means
+   * materializing its cache from object storage, which is not work a page load
+   * should wait on.
+   */
+  const overview = useQuery({
+    queryKey: () => ["git", props.spaceId, props.documentId, "overview"],
+    queryFn: () => api.git.overview(props.spaceId, props.documentId),
+    enabled: () => !isServer,
+  });
+
+  /** The branch a browse follows, once the summary says which one it is. */
+  const branch = () => overview.data()?.branch ?? "";
 
   /**
    * What is at `path`: a listing, or a file.
    *
-   * One resource rather than two, because a path is only known to be a file
-   * once the tree request for it comes back empty — and two resources reading
-   * each other made the second one's key depend on the first one's loading
-   * state.
+   * One query rather than two, because a path is only known to be a file once
+   * the tree request for it comes back empty.
    */
-  const [node] = createResource(
-    () => {
-      const summary = overview.latest;
-      if (isServer || !summary || summary.empty) return null;
-      return { rev: summary.branch, path: path() };
-    },
-    async (key) => {
+  const node = useQuery({
+    queryKey: () => ["git", props.spaceId, props.documentId, "node", branch(), path()],
+    queryFn: async () => {
       const listing = await api.git
-        .tree(props.spaceId, props.documentId, key.rev, key.path)
+        .tree(props.spaceId, props.documentId, branch(), path())
         .catch(() => null);
       if (listing) return { kind: "tree" as const, entries: listing.entries };
 
       const blob = await api.git
-        .blob(props.spaceId, props.documentId, key.rev, key.path)
+        .blob(props.spaceId, props.documentId, branch(), path())
         .catch(() => null);
       return blob ? { kind: "blob" as const, ...blob } : null;
     },
-    { ssrLoadFrom: "initial" },
-  );
+    enabled: () => !isServer && branch() !== "",
+    // The previous listing stays on screen while the next one loads, so
+    // navigating into a folder never empties the box.
+    placeholderData: (previous) => previous,
+  });
 
-  // `.latest` throughout: reading a pending resource suspends, and the router
-  // wraps a route in a boundary with no fallback — so every navigation blanked
-  // the whole page until the request came back. The previous listing stays up
-  // instead.
   const entries = () => {
-    const current = node.latest;
+    const current = node.data();
     return current?.kind === "tree" ? current.entries : null;
   };
   const file = () => {
-    const current = node.latest;
+    const current = node.data();
     return current?.kind === "blob" ? current : null;
   };
 
@@ -164,32 +167,30 @@ export function RepositoryView(props: Props) {
     ),
   );
 
-  const [readme] = createResource(
-    () => {
-      const summary = overview.latest;
+  const readme = useQuery({
+    queryKey: () => [
+      "git",
+      props.spaceId,
+      props.documentId,
+      "readme",
+      branch(),
+      readmeEntry()?.path ?? "",
+    ],
+    queryFn: async () => {
       const entry = readmeEntry();
-      if (isServer || !summary || !entry) return null;
-      return { rev: summary.branch, path: entry.path };
-    },
-    async (key) => {
+      if (!entry) return null;
       const result = await api.git
-        .blob(props.spaceId, props.documentId, key.rev, key.path)
+        .blob(props.spaceId, props.documentId, branch(), entry.path)
         .catch(() => null);
       return result?.text ? renderMessageMarkdown(result.text) : null;
     },
-    { ssrLoadFrom: "initial" },
-  );
+    enabled: () => !isServer && !!readmeEntry(),
+  });
 
-  // The clone URL is the document's own address in git's namespace, so it
-  // follows a rename the way every other link to the document does. The origin
-  // is read defensively: this runs during server rendering too, where there is
-  // no window, and a relative path is what that pass has to show.
-  // A memo, not a plain function: `documentSlug()` reads router primitives,
-  // which throw outside a tracking context — and the copy handler is exactly
-  // that. Resolving it here keeps the click reading a value.
-  // The origin is a signal rather than a direct read: there is no window during
-  // server rendering, and a memo over a plain read would cache that empty
-  // answer for the life of the page.
+  // A memo rather than a plain function: `documentSlug()` reads router
+  // primitives, which throw outside a tracking context — and the copy handler
+  // is exactly that. The origin is a signal because there is no window during
+  // server rendering, and a memo over a direct read would cache that emptiness.
   const [origin, setOrigin] = createSignal("");
   onMount(() => setOrigin(window.location.origin));
   const cloneUrl = createMemo(
@@ -210,7 +211,7 @@ export function RepositoryView(props: Props) {
           header is there from the first paint and the branch and commit fill in
           beside it rather than the whole row appearing at once. */}
       <div class="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-2">
-        <Show when={overview.latest}>
+        <Show when={overview.data()}>
           {(summary) => (
             <>
               <span class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-500/10 px-2 py-1 font-medium text-size-small">
@@ -266,11 +267,7 @@ export function RepositoryView(props: Props) {
         </button>
       </div>
 
-      {/* No Suspense boundary: every read below goes through `.latest`, which
-          never suspends, and a boundary that hydrates into a tree the server
-          resolved differently makes Solid re-render the whole island — which is
-          the entire page, not this corner of it. */}
-      <Show when={overview.latest} fallback={<Skeleton />}>
+      <Show when={overview.data()} fallback={<Skeleton />}>
         {(summary) => (
           <Show
             when={!summary().empty}
@@ -373,7 +370,7 @@ export function RepositoryView(props: Props) {
               </div>
             </Show>
 
-            <Show when={readme.latest}>
+            <Show when={readme.data()}>
               {(html) => (
                 <div class="mt-4 overflow-hidden rounded-lg border border-neutral-500/15">
                   <div class="flex items-center gap-2 border-neutral-500/15 border-b bg-neutral-500/5 px-3 py-2 text-neutral-500 text-size-small">
