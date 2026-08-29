@@ -367,3 +367,33 @@ a-lightbox-blur {
 a-lightbox-blur[enabled] {
   backdrop-filter: blur(2px);
 }
+
+/*
+ * A repository README is a document, not a chat message: `.markdown-content` is
+ * tuned for the latter and gives headings weight but no size, which flattens a
+ * README into undifferentiated prose. These rules sit on top of it.
+ */
+.readme-content > :first-child {
+  margin-top: 0;
+}
+.readme-content :is(h1, h2, h3, h4) {
+  margin: 1.25rem 0 0.5rem;
+  line-height: 1.25;
+}
+.readme-content h1 {
+  font-size: var(--text-size-title);
+}
+.readme-content h2 {
+  font-size: var(--text-size-large);
+}
+.readme-content :is(h3, h4) {
+  font-size: var(--text-size-medium);
+}
+.readme-content :is(p, ul, ol, blockquote) {
+  margin: 0.5rem 0;
+}
+/* A README carries long install commands as inline code; without this they
+   push the whole column sideways rather than wrapping. */
+.readme-content code {
+  overflow-wrap: anywhere;
+}
