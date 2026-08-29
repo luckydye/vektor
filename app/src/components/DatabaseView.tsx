@@ -1,7 +1,7 @@
 import "@atrium-ui/elements/popover";
 import { createEffect, createSignal, For, type JSX, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.ts";
+import { useDatabaseFileImport } from "#composeables/useDatabaseFileImport.ts";
 import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -151,25 +151,25 @@ export function DatabaseView(props: Props) {
     }
   }
 
-  let csvInputRef: HTMLInputElement | undefined;
-  const { isImportingCsv, importCsvFile } = useDatabaseCsvImport({
+  let importInputRef: HTMLInputElement | undefined;
+  const { isImporting, importFile } = useDatabaseFileImport({
     derivedColumns,
     addColumns,
     addRow,
     refreshRows,
   });
 
-  function openCsvPicker() {
-    if (isImportingCsv()) return;
-    csvInputRef?.click();
+  function openImportPicker() {
+    if (isImporting()) return;
+    importInputRef?.click();
   }
 
-  async function onCsvFileChange(event: Event) {
+  async function onImportFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
-    await importCsvFile(file);
+    await importFile(file);
   }
 
   const [hasMounted, setHasMounted] = createSignal(false);
@@ -182,18 +182,18 @@ export function DatabaseView(props: Props) {
           <span class="text-neutral-500 text-size-small">{rows().length} rows</span>
           <div class="flex items-center gap-1.5">
             <input
-              ref={csvInputRef}
+              ref={importInputRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,text/csv,.ics,text/calendar"
               class="hidden"
-              onChange={(event) => void onCsvFileChange(event)}
+              onChange={(event) => void onImportFileChange(event)}
             />
             <button
               type="button"
               class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-neutral-500 text-size-small transition-colors hover:bg-neutral-100 hover:text-neutral-800 disabled:pointer-events-none disabled:opacity-50"
               title="Import CSV"
-              disabled={isImportingCsv()}
-              onClick={openCsvPicker}
+              disabled={isImporting()}
+              onClick={openImportPicker}
             >
               <Icon class="h-3.5 w-3.5" name="csv-file" />
               Import CSV
