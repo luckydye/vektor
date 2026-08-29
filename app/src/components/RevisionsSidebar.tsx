@@ -3,6 +3,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -57,7 +58,7 @@ export function RevisionsSidebar(props: Props) {
     hasNextPage: hasNextAuditPage,
     nextPage: nextAuditPage,
     prevPage: prevAuditPage,
-  } = useAuditLogs(props.documentId);
+  } = useAuditLogs(() => props.documentId);
 
   const { currentSpaceId } = useSpace();
   const navigate = useNavigate();
@@ -243,6 +244,14 @@ export function RevisionsSidebar(props: Props) {
       : showRevisionDiff(urlRevision.rev, urlRevision.base));
   });
 
+  createEffect(
+    on(
+      () => props.documentId,
+      () => setPublishedRev(null),
+      { defer: true },
+    ),
+  );
+
   onMount(() => {
     window.addEventListener("revision:close", onRevisionClose);
     onCleanup(() => window.removeEventListener("revision:close", onRevisionClose));
@@ -252,7 +261,9 @@ export function RevisionsSidebar(props: Props) {
   createEffect(() => {
     const open = isOpen();
     const spaceId = currentSpaceId();
-    if (open && spaceId) void refresh();
+    // Tracked so switching documents while the panel is open refetches.
+    const documentId = props.documentId;
+    if (open && spaceId && documentId) void refresh();
     if (open !== previousOpen) {
       previousOpen = open;
       dispatchWindowEvent(
