@@ -509,6 +509,8 @@ export interface GitCommit {
   subject: string;
   author: string;
   authoredAt: string;
+  /** Parent object ids, first-parent first; empty for a root commit. */
+  parents: string[];
 }
 
 export interface AuditLog {

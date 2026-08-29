@@ -26,6 +26,8 @@ export interface Commit {
   subject: string;
   author: string;
   authoredAt: string;
+  /** Parent object ids, first-parent first; empty for a root commit. */
+  parents: string[];
 }
 
 export interface RepositoryOverview {
@@ -82,7 +84,7 @@ export async function log(
   const output = await git(dir, [
     "log",
     `--max-count=${limit}`,
-    `--format=%H${UNIT}%h${UNIT}%s${UNIT}%an${UNIT}%aI`,
+    `--format=%H${UNIT}%h${UNIT}%s${UNIT}%an${UNIT}%aI${UNIT}%P`,
     rev,
     "--",
   ]).catch(() => null);
@@ -91,8 +93,15 @@ export async function log(
   const commits: Commit[] = [];
   for (const line of output.split("\n")) {
     if (!line) continue;
-    const [oid, shortOid, subject, author, authoredAt] = line.split(UNIT);
-    commits.push({ oid, shortOid, subject, author, authoredAt });
+    const [oid, shortOid, subject, author, authoredAt, parents] = line.split(UNIT);
+    commits.push({
+      oid,
+      shortOid,
+      subject,
+      author,
+      authoredAt,
+      parents: parents ? parents.split(" ").filter(Boolean) : [],
+    });
   }
   return commits;
 }

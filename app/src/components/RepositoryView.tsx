@@ -343,7 +343,9 @@ export function RepositoryView(props: Props) {
     const update = () => {
       if (!panes) return;
       const top = panes.getBoundingClientRect().top;
-      setPanesHeight(`${Math.max(320, window.innerHeight - top - 16)}px`);
+      // Leaves room for the page's own bottom padding, so a view that already
+      // reaches the fold does not add a scrollbar for empty space.
+      setPanesHeight(`${Math.max(320, window.innerHeight - top - 56)}px`);
     };
     update();
     if (window.innerWidth < 768) setTreeOpen(false);
