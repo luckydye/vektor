@@ -10,8 +10,10 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { Readable } from "node:stream";
+import { config } from "#config";
+import { createS3FileStorage } from "./s3Storage.ts";
 
 export interface StoredFileInfo {
   key: string;
@@ -39,6 +41,32 @@ export interface StoredUpload {
   key: string;
   url: string;
   size: number;
+}
+
+/**
+ * A space id that can safely be a path or key segment. Ids are generated, but
+ * they also arrive from URLs, so the one that reaches an adapter is checked
+ * rather than trusted.
+ */
+export function isSafeSpaceId(spaceId: string): boolean {
+  return (
+    spaceId.length > 0 && !spaceId.includes("/") && spaceId !== "." && spaceId !== ".."
+  );
+}
+
+/**
+ * The storage-relative key for `key` within `spaceId`, or null when it would
+ * escape the space.
+ *
+ * Shared by both adapters: a key reaches them from a URL, from the `file` table
+ * and from a listing, and an object key traverses on `..` exactly as a path
+ * does — S3 stores `space_1/../space_2/x` under whatever the client resolved.
+ */
+export function containedKey(spaceId: string, key: string): string | null {
+  if (!isSafeSpaceId(spaceId)) return null;
+  const root = `/${spaceId}`;
+  const target = posix.resolve(root, key);
+  return target.startsWith(`${root}/`) ? target.slice(1) : null;
 }
 
 /**
@@ -111,19 +139,10 @@ export interface FileStorageAdapter {
 class LocalFileStorageAdapter implements FileStorageAdapter {
   constructor(private readonly root: string) {}
 
-  /**
-   * Where a key lives, or null when it would land outside the space's own
-   * directory.
-   *
-   * The containment check belongs here rather than at the callers: a key
-   * reaches this adapter from a URL, from the `file` table and from a disk
-   * listing, and only one of those paths used to be checked. Resolving first
-   * and comparing after also catches what a `..` check on the raw key misses.
-   */
+  /** Where a key lives, or null when it would land outside the space. */
   private resolvePath(spaceId: string, key: string): string | null {
-    const spaceRoot = resolve(this.root, spaceId);
-    const target = resolve(spaceRoot, key);
-    return target === spaceRoot || target.startsWith(`${spaceRoot}/`) ? target : null;
+    const contained = containedKey(spaceId, key);
+    return contained ? join(this.root, contained) : null;
   }
 
   url(spaceId: string, key: string): string {
@@ -271,10 +290,33 @@ export function createLocalFileStorage(root: string): FileStorageAdapter {
 
 let _adapter: FileStorageAdapter | null = null;
 
+/**
+ * The configured adapter: S3-compatible object storage when a bucket is set,
+ * and `data/uploads` otherwise. Resolved on first use rather than at import so
+ * the environment is read after config.
+ */
 export function getFileStorage(): FileStorageAdapter {
-  if (!_adapter) {
-    _adapter = new LocalFileStorageAdapter(join(process.cwd(), "data", "uploads"));
+  if (_adapter) return _adapter;
+
+  const env = config();
+  const bucket = env.S3_BUCKET?.trim();
+  if (bucket) {
+    _adapter = createS3FileStorage({
+      bucket,
+      endpoint: env.S3_ENDPOINT?.trim() || undefined,
+      region: env.S3_REGION?.trim() || undefined,
+      accessKeyId: env.S3_ACCESS_KEY_ID?.trim() || undefined,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY?.trim() || undefined,
+      sessionToken: env.S3_SESSION_TOKEN?.trim() || undefined,
+      virtualHostedStyle:
+        env.S3_VIRTUAL_HOSTED_STYLE === "1" || env.S3_VIRTUAL_HOSTED_STYLE === "true",
+      prefix: env.S3_PREFIX?.trim() || undefined,
+      stagingDir: join(process.cwd(), "data", "s3-staging"),
+    });
+    return _adapter;
   }
+
+  _adapter = new LocalFileStorageAdapter(join(process.cwd(), "data", "uploads"));
   return _adapter;
 }
 

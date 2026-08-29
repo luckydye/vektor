@@ -52,6 +52,26 @@ export function config() {
        * a developer accumulated in the working copy.
        */
       DATA_DIR: process.env.VEKTOR_DATA_DIR,
+
+      /**
+       * Bucket for uploaded files. Set it to store them in S3-compatible object
+       * storage instead of under DATA_DIR; everything below is then read too.
+       */
+      S3_BUCKET: process.env.VEKTOR_S3_BUCKET,
+      /** Endpoint of a non-AWS S3 service (MinIO, RustFS, R2, Ceph). */
+      S3_ENDPOINT: process.env.VEKTOR_S3_ENDPOINT,
+      S3_REGION: process.env.VEKTOR_S3_REGION,
+      /** Falls back to the instance/task credentials Bun's S3 client finds. */
+      S3_ACCESS_KEY_ID: process.env.VEKTOR_S3_ACCESS_KEY_ID,
+      S3_SECRET_ACCESS_KEY: process.env.VEKTOR_S3_SECRET_ACCESS_KEY,
+      S3_SESSION_TOKEN: process.env.VEKTOR_S3_SESSION_TOKEN,
+      /**
+       * Set to "1"/"true" for `bucket.host` addressing. Path-style is the
+       * default because self-hosted services generally only speak it.
+       */
+      S3_VIRTUAL_HOSTED_STYLE: process.env.VEKTOR_S3_VIRTUAL_HOSTED_STYLE,
+      /** Key prefix, for a bucket shared with something else. */
+      S3_PREFIX: process.env.VEKTOR_S3_PREFIX,
       NODE_ENV: process.env.NODE_ENV,
 
       /**
