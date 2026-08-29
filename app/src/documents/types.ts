@@ -3,6 +3,13 @@ import { slugify } from "#utils/slug.ts";
 /** Hidden, immutable system document created for each workflow execution. */
 export const workflowRunDocumentType = "workflow-run";
 
+/**
+ * A git repository, which is a document so that it lives in the tree with
+ * everything else rather than in a section of its own. The row carries its
+ * name and placement; the git objects live under its id in storage.
+ */
+export const repositoryDocumentType = "repository";
+
 const serializedDocumentTypes = new Set(["app", "canvas", "workflow"]);
 
 export function isSerializedDocumentType(type: unknown): type is string {
@@ -25,6 +32,8 @@ export const allowedChildDocumentTypes: ReadonlyMap<string, readonly string[]> =
   ["workflow", [workflowRunDocumentType]],
   ["database", ["record"]],
   [workflowRunDocumentType, []],
+  // A repository's contents are files in git, not documents in the tree.
+  [repositoryDocumentType, []],
 ]);
 
 export function allowsChildDocumentType(
@@ -62,6 +71,7 @@ const placeholderDocumentTitles: Readonly<Record<string, string>> = {
   canvas: "Untitled Canvas",
   database: "Untitled Database",
   workflow: "Untitled Workflow",
+  repository: "Untitled Repository",
 };
 
 export function placeholderDocumentTitle(type: string | null | undefined): string {

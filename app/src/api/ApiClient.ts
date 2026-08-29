@@ -496,6 +496,23 @@ export interface AuditDetails {
   resourceId?: string;
 }
 
+export interface GitTreeEntry {
+  name: string;
+  path: string;
+  type: "blob" | "tree";
+  size: number | null;
+}
+
+export interface GitCommit {
+  oid: string;
+  shortOid: string;
+  subject: string;
+  author: string;
+  authoredAt: string;
+  /** Parent object ids, first-parent first; empty for a root commit. */
+  parents: string[];
+}
+
 export interface AuditLog {
   id: string;
   docId: string;
@@ -1696,6 +1713,40 @@ export class ApiClient {
         nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/audit-logs`, query);
     },
+  };
+
+  /** Reading a repository document: what the browser renders. */
+  git = {
+    overview: (spaceId: string, documentId: string) =>
+      this.apiGet<{
+        empty: boolean;
+        branch: string;
+        branches: string[];
+        head: GitCommit | null;
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}/git`, {
+        view: "overview",
+      }),
+
+    tree: (spaceId: string, documentId: string, rev: string, path: string) =>
+      this.apiGet<{ entries: GitTreeEntry[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
+        { view: "tree", rev, path },
+      ),
+
+    blob: (spaceId: string, documentId: string, rev: string, path: string) =>
+      this.apiGet<{ text: string | null; size: number }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
+        { view: "blob", rev, path },
+      ),
+
+    log: (spaceId: string, documentId: string, rev: string, limit = 30) =>
+      this.apiGet<{ commits: GitCommit[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
+        { view: "log", rev, limit },
+      ),
   };
 
   uploads = {

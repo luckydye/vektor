@@ -9,6 +9,7 @@ import * as caldavEvent from "./routes/caldav/event.ts";
 import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
+import * as gitSmart from "./routes/git/smart.ts";
 import * as proxyMedia from "./routes/proxy-media.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
@@ -26,6 +27,7 @@ import * as documentChildren from "./routes/spaces/document-children.ts";
 import * as documentContributors from "./routes/spaces/document-contributors.ts";
 import * as documentDiff from "./routes/spaces/document-diff.ts";
 import * as documentEdit from "./routes/spaces/document-edit.ts";
+import * as documentGit from "./routes/spaces/document-git.ts";
 import * as documentRevisions from "./routes/spaces/document-revisions.ts";
 import * as documents from "./routes/spaces/documents.ts";
 import * as documentsArchived from "./routes/spaces/documents-archived.ts";
@@ -83,6 +85,10 @@ export interface ApiRoute {
 export const apiRoutes: ApiRoute[] = [
   { pattern: "/.well-known/caldav", module: wellKnownCaldav },
   { pattern: "/.well-known/vektor", module: wellKnownVektor },
+
+  // Not under /api: the clone URL is the repository's own address. The literal
+  // `git` segment is what separates it from a document path — see `isGitPath`.
+  { pattern: "/[spaceSlug]/git/[repo]/[...gitPath]", module: gitSmart },
 
   { pattern: "/api/auth/[...all]", module: authAll },
 
@@ -147,6 +153,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",
     module: documentEdit,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/git",
+    module: documentGit,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions",

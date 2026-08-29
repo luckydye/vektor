@@ -710,5 +710,7 @@
   "Access to grant": "부여할 접근 권한",
   "When the link expires": "링크 만료 시점",
   "Link password": "링크 비밀번호",
-  "Install an extension that provides an integration.": "통합을 제공하는 확장을 설치하세요."
+  "Install an extension that provides an integration.": "통합을 제공하는 확장을 설치하세요.",
+  "Repository": "저장소",
+  "Host code with git, and browse it here.": "git으로 코드를 호스팅하고 여기서 살펴보세요."
 }

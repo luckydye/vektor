@@ -710,5 +710,7 @@
   "Access to grant": "Access to grant",
   "When the link expires": "When the link expires",
   "Link password": "Link password",
-  "Install an extension that provides an integration.": "Install an extension that provides an integration."
+  "Install an extension that provides an integration.": "Install an extension that provides an integration.",
+  "Repository": "Repository",
+  "Host code with git, and browse it here.": "Host code with git, and browse it here."
 }

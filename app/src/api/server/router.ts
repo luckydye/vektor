@@ -87,8 +87,24 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   });
 }
 
+/**
+ * Git smart HTTP lives under a literal `git` segment inside a space: the second
+ * segment is the whole test. It runs on every request the server handles, so it
+ * is two index operations rather than a pattern match, and `//git/x` and a space
+ * whose own slug is `git` both fall out of the arithmetic rather than needing a
+ * case of their own.
+ *
+ * Kept beside `isApiPath` because both copies of that check must agree: miss
+ * one and a clone either 404s as an unknown API path or falls through to Astro.
+ */
+export function isGitPath(pathname: string): boolean {
+  const spaceEnd = pathname.indexOf("/", 1);
+  return spaceEnd > 1 && pathname.startsWith("/git/", spaceEnd);
+}
+
 function isApiPath(pathname: string): boolean {
   return (
+    isGitPath(pathname) ||
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
     pathname === "/.well-known/caldav" ||

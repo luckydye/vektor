@@ -710,5 +710,7 @@
   "Access to grant": "付与するアクセス権",
   "When the link expires": "リンクの有効期限",
   "Link password": "リンクのパスワード",
-  "Install an extension that provides an integration.": "連携機能を提供する拡張機能をインストールしてください。"
+  "Install an extension that provides an integration.": "連携機能を提供する拡張機能をインストールしてください。",
+  "Repository": "リポジトリ",
+  "Host code with git, and browse it here.": "Git でコードをホストし、ここで閲覧できます。"
 }

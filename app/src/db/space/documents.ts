@@ -31,6 +31,7 @@ import {
   documentIsReadonly,
   fallbackDocumentSlug,
   isSerializedDocumentType,
+  repositoryDocumentType,
 } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import {
@@ -38,6 +39,7 @@ import {
   readImageDimensions,
 } from "#files/imageDimensions.ts";
 import { getFileStorage, listAllFiles } from "#files/storage.ts";
+import { deleteRepositoryObjects } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
@@ -537,6 +539,13 @@ export async function deleteDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
+  // Read before the row goes: afterwards nothing says this document was a
+  // repository, and its objects would stay in storage forever.
+  const existing = await one(
+    s.db.select({ type: document.type }).from(document).where(eq(document.id, id)),
+  );
+  const wasRepository = existing?.type === repositoryDocumentType;
+
   const storedFiles = await s.tx(async (tx) => {
     if (userId) {
       await createAuditLog(tx, {
@@ -568,6 +577,15 @@ export async function deleteDocument(
   });
 
   const storage = getFileStorage();
+  if (wasRepository) {
+    await deleteRepositoryObjects(storage, s.spaceId, id).catch((error) => {
+      appLogger.warn("Failed to delete repository objects", {
+        error,
+        spaceId: s.spaceId,
+        documentId: id,
+      });
+    });
+  }
   for (const { path } of storedFiles) {
     try {
       await storage.delete(s.spaceId, path);

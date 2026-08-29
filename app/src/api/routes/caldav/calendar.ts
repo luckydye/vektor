@@ -3,7 +3,7 @@ import {
   caldavRoute,
   documentToICal,
   optionsPreflight,
-  requireCalDAVUserAndAccess,
+  requireBasicAuthUserAndAccess,
   xmlResponse,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
@@ -19,7 +19,7 @@ export const ALL: ApiRouteHandler = caldavRoute(async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();
   const { userId, spaceId } = context.var.params;
   if (!spaceId) return new Response("Bad Request", { status: 400 });
-  const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
+  const caldavUser = await requireBasicAuthUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
 
   const method = context.req.raw.method.toUpperCase();

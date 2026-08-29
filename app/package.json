@@ -67,6 +67,7 @@
     "#realtime/*": "./src/realtime/*",
     "#search/*": "./src/search/*",
     "#files/*": "./src/files/*",
+    "#git/*": "./src/git/*",
     "#styles/*": "./src/styles/*",
     "#utils/*": "./src/utils/*",
     "#native/*": "./native/*",

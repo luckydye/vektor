@@ -1,4 +1,4 @@
-import { createMemo, type Component } from "solid-js";
+import { type Component, createMemo } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { ExtensionInfo } from "#api/client.ts";
 import { AppView } from "#components/AppView.tsx";
@@ -8,6 +8,7 @@ import {
   type DatabaseExtensionView,
 } from "#components/DatabaseDocumentView.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
+import { RepositoryView } from "#components/RepositoryView.tsx";
 import { WorkflowView } from "#components/WorkflowView.tsx";
 import {
   type DocumentProperties,
@@ -66,19 +67,18 @@ const DatabaseView: Component<Props> = (props) => {
       spaceId={props.spaceId}
       views={views()}
       viewConfig={props.properties._databaseViews}
-      schemaJson={
-        optionalPropertyValueToText(props.properties._schema) ?? undefined
-      }
+      schemaJson={optionalPropertyValueToText(props.properties._schema) ?? undefined}
     />
   );
 };
 
 const documentViews: Readonly<Record<string, Component<Props>>> = {
   app: (props) => <AppView html={props.content} />,
-  canvas: (props) => (
-    <CanvasView documentId={props.documentId} spaceId={props.spaceId} />
-  ),
+  canvas: (props) => <CanvasView documentId={props.documentId} spaceId={props.spaceId} />,
   database: DatabaseView,
+  repository: (props) => (
+    <RepositoryView documentId={props.documentId} spaceId={props.spaceId} />
+  ),
   workflow: (props) => (
     <WorkflowView documentId={props.documentId} spaceId={props.spaceId} />
   ),
