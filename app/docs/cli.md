@@ -13,6 +13,8 @@ src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
 src/cli/mcp.ts          MCP stdio server
+src/cli/login.ts        login (browser and --ssh), logout
+src/cli/sshAgent.ts     ssh-agent client and ssh-keygen fallback, for login --ssh
 src/cli/resolve.ts      stored config file, resolveConfig(), resolveHost()
 ```
 
@@ -87,6 +89,45 @@ the default.
 Env vars win over the file, so `VEKTOR_ACCESS_TOKEN` in a shell profile keeps shadowing
 a fresh `vektor login` — the command warns when that env var is set. Writes merge into
 the existing file, and an unreadable or corrupt file is ignored rather than fatal.
+
+### SSH login
+
+`vektor login --ssh` replaces the browser round trip with an SSH signature, for
+machines that have no browser to open — servers, containers, CI.
+
+```sh
+vektor login --ssh                       # ssh-agent identities, then ~/.ssh defaults
+vektor login --ssh --key ~/.ssh/id_work  # one specific key
+vektor --space space_4f2b… login --ssh   # required when you hold a role on several spaces
+```
+
+The key has to be registered first, under user settings → Access Tokens → SSH Keys
+(`POST /api/v1/users/ssh-keys`, session-authenticated). A key is registered by its
+owner and only by its owner: an access token cannot register one, because a key logs
+in to every space its owner can reach and a token is scoped to one.
+
+Three steps, all in `src/cli/login.ts`:
+
+1. `POST /api/v1/auth/cli/ssh/challenge` returns a nonce. It is anonymous on purpose —
+   asking for a challenge proves nothing and reveals nothing, in particular not whether
+   a key is registered.
+2. The CLI signs the nonce as SSHSIG under namespace `vektor-cli`, via the agent on
+   `SSH_AUTH_SOCK` or `ssh-keygen -Y sign` for a key file (`src/cli/sshAgent.ts`).
+3. `POST /api/v1/auth/cli/ssh/token` verifies the signature, looks the key's fingerprint
+   up, and mints the same token the browser flow does — the caller's own role on the
+   space, expiring in 30 days.
+
+The challenge is single-use and spent by the attempt that presents it, so the CLI takes
+a fresh one per key while it tries the identities in turn. The namespace is what stops a
+signature made for something else (git commit signing, `ssh-keygen -Y sign` for another
+service) from being replayed as a login.
+
+Supported key types: `ssh-ed25519`, `ssh-rsa` (2048 bits or more, SHA-2 signatures only),
+and `ecdsa-sha2-nistp256/384/521`. The formats are parsed in `src/utils/sshKeys.ts` —
+the server never shells out to `ssh-keygen`, which keeps the single binary self-contained.
+
+Deleting a key stops further logins with it; tokens it already minted keep working until
+they expire or are revoked in the token list.
 
 ## MCP
 

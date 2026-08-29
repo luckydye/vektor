@@ -4,7 +4,7 @@
  * Vektor CLI
  *
  * Usage:
- *   vektor login
+ *   vektor login [--ssh] [--key <path>]
  *   vektor logout
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
  *   vektor mcp
@@ -103,7 +103,7 @@ Usage:
   vektor [--space <id>] <command> [args]
 
 Commands:
-  vektor login
+  vektor login [--ssh] [--key <path>]
   vektor logout
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor mcp
@@ -132,6 +132,11 @@ Configuration:
   vektor login stores the space and access token in
   ${configPath()}
   The server URL is never stored — set VEKTOR_HOST yourself.
+
+  vektor login --ssh signs a challenge with an SSH key instead of opening a
+  browser — for servers and CI, where there is none. Register the public key
+  under user settings first; --key <path> picks one key instead of trying the
+  ssh-agent identities and ~/.ssh defaults in turn.
 
 Env vars (override the stored config):
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
@@ -187,7 +192,8 @@ async function main(): Promise<void> {
   }
 
   if (command === "login") {
-    await commandLogin();
+    const { flags } = parseFlags(rest);
+    await commandLogin({ ssh: flags.ssh === "true", keyPath: flags.key });
     return;
   }
 

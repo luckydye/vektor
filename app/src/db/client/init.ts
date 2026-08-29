@@ -16,17 +16,25 @@ export async function prepareAuthDb(authDb: Database) {
   const accountSQL = generateCreateTableSQL(authSchema.account);
   const verificationSQL = generateCreateTableSQL(authSchema.verification);
   const spaceIndexSQL = generateCreateTableSQL(authSchema.spaceIndex);
+  const userSshKeySQL = generateCreateTableSQL(authSchema.userSshKey);
 
   await exec(authDb, sql.raw(userSQL));
   await exec(authDb, sql.raw(sessionSQL));
   await exec(authDb, sql.raw(accountSQL));
   await exec(authDb, sql.raw(verificationSQL));
   await exec(authDb, sql.raw(spaceIndexSQL));
+  await exec(authDb, sql.raw(userSshKeySQL));
   await renameColumnIfNeeded(authDb, authSchema.spaceIndex.location, "database_url");
   await exec(
     authDb,
     sql.raw(
       "CREATE UNIQUE INDEX IF NOT EXISTS space_index_active_slug_unique ON space_index (slug) WHERE status = 'active'",
+    ),
+  );
+  await exec(
+    authDb,
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS user_ssh_key_user_id_idx ON user_ssh_key (user_id)",
     ),
   );
 }

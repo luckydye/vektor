@@ -123,6 +123,10 @@ const ROUTE_RULES: readonly RouteRule[] = [
     authenticatedMax: 10_000,
     windowMs: MINUTE,
   },
+  // Unauthenticated, and each attempt costs a signature verification. Sized for
+  // a CLI trying its agent's identities in turn, not for guessing at them.
+  { pattern: "/api/v1/auth/cli/ssh/challenge", max: 30, windowMs: MINUTE },
+  { pattern: "/api/v1/auth/cli/ssh/token", max: 30, windowMs: MINUTE },
   // Astro route; password verification makes this more expensive than a normal page.
   { pattern: SHARE_LINK_ROUTE_PATTERN, max: 120, windowMs: MINUTE },
 ];
