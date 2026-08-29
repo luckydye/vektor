@@ -1042,14 +1042,17 @@ export async function hasPermission(
   );
 
   if (!userPermission) {
-    // Extensions and categories fall back to space-level permission, as
-    // documents do through `getDocumentPermission`: a grant on the space
-    // reaches what the space contains. Every principal, so a space-scoped
-    // token and the `public` group reach a category at their own level —
-    // never above it, since the space grant is still level-checked below.
+    // Extensions, categories and repositories fall back to space-level
+    // permission, as documents do through `getDocumentPermission`: a grant on
+    // the space reaches what the space contains. Every principal, so a
+    // space-scoped token and the `public` group reach a category at their own
+    // level — never above it, since the space grant is still level-checked
+    // below. Repositories hold no rows of their own until someone grants one,
+    // so without this nothing could ever reach them.
     if (
       resourceType === ResourceType.EXTENSION ||
-      resourceType === ResourceType.CATEGORY
+      resourceType === ResourceType.CATEGORY ||
+      resourceType === ResourceType.REPOSITORY
     ) {
       const spacePermission = await getPermission(
         spaceId,

@@ -6,7 +6,7 @@ import {
   documentToICal,
   optionsPreflight,
   parseICalEvent,
-  requireCalDAVUserAndAccess,
+  requireBasicAuthUserAndAccess,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -25,7 +25,7 @@ export const OPTIONS: ApiRouteHandler = () => optionsPreflight();
 export const GET: ApiRouteHandler = caldavRoute(async (context) => {
   const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
-  const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
+  const caldavUser = await requireBasicAuthUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
 
   const docId = eventId.replace(/\.ics$/, "");
@@ -52,7 +52,7 @@ export const GET: ApiRouteHandler = caldavRoute(async (context) => {
 export const PUT: ApiRouteHandler = caldavRoute(async (context) => {
   const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
-  const caldavUser = await requireCalDAVUserAndAccess(context, {
+  const caldavUser = await requireBasicAuthUserAndAccess(context, {
     userId,
     spaceId,
     requiredRole: Permission.EDITOR,

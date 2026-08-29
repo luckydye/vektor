@@ -11,6 +11,7 @@ export const ResourceType = {
   DOCUMENT_TREE: "document_tree",
   CATEGORY: "category",
   EXTENSION: "extension",
+  REPOSITORY: "repository",
   FEATURE: "feature",
 } as const;
 

@@ -1,115 +1,31 @@
-import { eq } from "drizzle-orm";
 import { ResourceUnavailableError } from "#acl/errors.ts";
 import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import {
+  type BasicAuthToken,
+  type BasicAuthUser,
+  verifyBasicAuth,
+} from "#api/basicAuth.ts";
 import { withApiErrorHandling } from "#api/http.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
-import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#config";
-import { getAuthDb } from "#db/client/db.ts";
-import { one } from "#db/client/query.ts";
-import { openSpaceStore } from "#db/client/store.ts";
-import { user } from "#db/schema/auth.ts";
-import { type ValidateTokenResult, validateAccessToken } from "#db/space/accessTokens.ts";
 import type { DocumentWithProperties } from "#db/space/documents.ts";
-import { listUserSpaces } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 
-/**
- * The access token a Basic-auth CalDAV client authenticated with.
- *
- * `spaceId` is the space whose store holds the token row. Access tokens live in
- * exactly one space's database, so that space is the only one a token can ever
- * reach — every other space the user belongs to is out of the token's scope by
- * construction, and `result` carries the ACL identity — the token's id — that says
- * what it may do *within* that space.
- */
-export interface CalDAVToken {
-  spaceId: string;
-  result: ValidateTokenResult;
-}
-
-export interface CalDAVUser {
-  id: string;
-  email: string;
-  name: string;
-  /**
-   * Set only for callers that authenticated with an access token over Basic
-   * auth. Its presence means the caller's authority is the *token's* ACL
-   * grants, not the user's own access — the user identity only records who
-   * delegated the token (and whose name new documents are attributed to).
-   * Session callers leave it undefined and keep being authorized against their
-   * own ACL.
-   */
-  token?: CalDAVToken;
-}
+export { type BasicAuthUser, verifyBasicAuth };
 
 /**
  * Authenticate a CalDAV request using either session cookies or HTTP Basic auth.
  * Session auth is checked first (for browser-based clients), then Basic auth
  * with email:access_token (for external CalDAV clients).
  */
-export async function verifyCalDAVUser(context: ApiContext): Promise<CalDAVUser | null> {
+export async function verifyBasicAuthUser(
+  context: ApiContext,
+): Promise<BasicAuthUser | null> {
   const sessionUser = context.var.user;
   if (sessionUser) {
     return { id: sessionUser.id, email: sessionUser.email, name: sessionUser.name };
   }
   return verifyBasicAuth(context.req.raw.headers.get("Authorization"));
-}
-
-/**
- * Authenticate a CalDAV request using HTTP Basic auth.
- * Username is the user's email, password is an access token (at_...).
- *
- * The returned identity carries the token that authenticated it: the token is
- * NOT merely a way to look the user up. Callers must authorize against
- * {@link CalDAVUser.token} (see {@link requireCalDAVUserAndAccess}), otherwise a
- * token scoped to one space at viewer level would grant the user's full access
- * to every space they belong to.
- */
-export async function verifyBasicAuth(
-  authHeader: string | null,
-): Promise<CalDAVUser | null> {
-  if (!authHeader?.startsWith("Basic ")) return null;
-
-  let decoded: string;
-  try {
-    decoded = atob(authHeader.slice(6));
-  } catch {
-    return null;
-  }
-
-  const colonIdx = decoded.indexOf(":");
-  if (colonIdx === -1) return null;
-
-  const email = decoded.slice(0, colonIdx);
-  const token = decoded.slice(colonIdx + 1);
-
-  if (isNoAuthMode() && email === LOCAL_USER.email) {
-    return { id: LOCAL_USER_ID, email: LOCAL_USER.email, name: LOCAL_USER.name };
-  }
-
-  const authDb = getAuthDb();
-  const foundUser = await one(authDb.select().from(user).where(eq(user.email, email)));
-  if (!foundUser) return null;
-
-  // A token row exists only in the database of the space it was created in, so
-  // this search establishes *which* space the token belongs to — it can never
-  // "find" a space-A token by probing space B. The space it is found in is
-  // carried out as the token's scope.
-  const spaces = await listUserSpaces(foundUser.id);
-  for (const space of spaces) {
-    const result = await validateAccessToken(await openSpaceStore(space.id), token);
-    if (result && result.token.createdBy === foundUser.id) {
-      return {
-        id: foundUser.id,
-        email: foundUser.email,
-        name: foundUser.name,
-        token: { spaceId: space.id, result },
-      };
-    }
-  }
-
-  return null;
 }
 
 export interface ParsedICalEvent {
@@ -425,13 +341,13 @@ export function calDavForbidden(): Response {
  * calendar-home collections — those are authorized against the token's own
  * space, so a credential that holds nothing there cannot browse at all.
  */
-async function authorizeCalDAVToken(
-  caldavUser: CalDAVUser,
-  token: CalDAVToken,
+async function authorizeBasicAuthToken(
+  caldavUser: BasicAuthUser,
+  token: BasicAuthToken,
   spaceId: string | undefined,
   requiredRole: Permission,
-): Promise<CalDAVUser | Response> {
-  // The token reaches exactly one space (see CalDAVToken). Any other space in
+): Promise<BasicAuthUser | Response> {
+  // The token reaches exactly one space (see BasicAuthToken). Any other space in
   // the URL is outside its scope, whatever the user themselves may access.
   if (spaceId && spaceId !== token.spaceId) {
     return calDavForbidden();
@@ -452,11 +368,11 @@ async function authorizeCalDAVToken(
   return caldavUser;
 }
 
-export async function requireCalDAVUserAndAccess(
+export async function requireBasicAuthUserAndAccess(
   context: ApiContext,
   options: { userId?: string; spaceId?: string; requiredRole?: Permission },
-): Promise<CalDAVUser | Response> {
-  const caldavUser = await verifyCalDAVUser(context);
+): Promise<BasicAuthUser | Response> {
+  const caldavUser = await verifyBasicAuthUser(context);
   if (!caldavUser) {
     return calDavUnauthorized();
   }
@@ -473,7 +389,7 @@ export async function requireCalDAVUserAndAccess(
   // user who created it. Checked before anything space-scoped so that even the
   // collections without a space in their URL stay inside the token's scope.
   if (caldavUser.token) {
-    return authorizeCalDAVToken(
+    return authorizeBasicAuthToken(
       caldavUser,
       caldavUser.token,
       options.spaceId,
@@ -502,12 +418,12 @@ export async function requireCalDAVUserAndAccess(
  * space-level check for. Space access is not document access: without this the
  * route hands out documents a per-document ACL withholds, and misses the
  * archived-document rule the guard layer raises. Token callers are authorized
- * against the token's grants, matching {@link authorizeCalDAVToken}.
+ * against the token's grants, matching {@link authorizeBasicAuthToken}.
  *
  * @returns The refusal to return, or null when the caller may proceed.
  */
 export async function authorizeCalDAVDocument(
-  caldavUser: CalDAVUser,
+  caldavUser: BasicAuthUser,
   spaceId: string,
   documentId: string,
   requiredRole: Permission,
