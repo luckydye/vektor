@@ -144,6 +144,89 @@ export function describeFileStorageContract(
       });
     });
 
+    describe("putConditional", () => {
+      it("creates a key that is absent, and refuses one that is not", async () => {
+        const { storage, space } = context();
+        const key = `cas/${name}-create.json`;
+
+        const created = await storage.putConditional(space, key, Buffer.from("first"), {
+          ifNoneMatch: true,
+        });
+        expect(created.ok).toBe(true);
+
+        const again = await storage.putConditional(space, key, Buffer.from("second"), {
+          ifNoneMatch: true,
+        });
+        expect(again.ok).toBe(false);
+        expect(await storage.read(space, key)).toEqual(Buffer.from("first"));
+      });
+
+      it("applies a write naming the current tag, and reports the new one", async () => {
+        const { storage, space } = context();
+        const key = `cas/${name}-match.json`;
+        await storage.put(space, key, Buffer.from("one"));
+
+        const before = await storage.stat(space, key);
+        const written = await storage.putConditional(space, key, Buffer.from("two"), {
+          ifMatch: before?.etag as string,
+        });
+
+        expect(written).toEqual({ ok: true, etag: expect.any(String) });
+        expect(await storage.read(space, key)).toEqual(Buffer.from("two"));
+        // The tag has to move, or the next writer would be allowed to act on
+        // what it read before this write happened.
+        expect(written.ok && written.etag).not.toBe(before?.etag);
+        expect((await storage.stat(space, key))?.etag).toBe(written.ok && written.etag);
+      });
+
+      it("refuses a write naming a tag that has moved on", async () => {
+        const { storage, space } = context();
+        const key = `cas/${name}-stale.json`;
+        await storage.put(space, key, Buffer.from("one"));
+        const stale = (await storage.stat(space, key))?.etag as string;
+
+        await storage.putConditional(space, key, Buffer.from("two"), { ifMatch: stale });
+        const late = await storage.putConditional(space, key, Buffer.from("three"), {
+          ifMatch: stale,
+        });
+
+        expect(late.ok).toBe(false);
+        expect(await storage.read(space, key)).toEqual(Buffer.from("two"));
+      });
+
+      it("refuses a write against a key that is not there", async () => {
+        const { storage, space } = context();
+        const absent = await storage.putConditional(
+          space,
+          `cas/${name}-absent.json`,
+          Buffer.from("x"),
+          { ifMatch: '"9c-1a-2b"' },
+        );
+        expect(absent.ok).toBe(false);
+      });
+
+      it("lets exactly one of several racing writers through", async () => {
+        // The property the whole primitive exists for: concurrent writers that
+        // all read the same state must not silently resolve last-writer-wins.
+        const { storage, space } = context();
+        const key = `cas/${name}-race.json`;
+        await storage.put(space, key, Buffer.from("start"));
+        const shared = (await storage.stat(space, key))?.etag as string;
+
+        const results = await Promise.all(
+          [0, 1, 2, 3, 4].map((n) =>
+            storage.putConditional(space, key, Buffer.from(`writer-${n}`), {
+              ifMatch: shared,
+            }),
+          ),
+        );
+
+        expect(results.filter((result) => result.ok)).toHaveLength(1);
+        const winner = results.findIndex((result) => result.ok);
+        expect(await storage.read(space, key)).toEqual(Buffer.from(`writer-${winner}`));
+      });
+    });
+
     describe("list", () => {
       it("reports the content-addressable keys of that space alone", async () => {
         const { storage, space } = context();

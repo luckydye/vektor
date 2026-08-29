@@ -64,6 +64,23 @@ export interface ByteRange {
   end: number;
 }
 
+/**
+ * What a conditional write requires of the key's current state. A write with
+ * neither condition is an ordinary {@link FileStorageAdapter.put}, so the two
+ * are exclusive rather than optional.
+ */
+export type PutCondition =
+  /** Apply only while the stored object still carries this entity tag. */
+  | { ifMatch: string }
+  /** Apply only while nothing is stored under the key. */
+  | { ifNoneMatch: true };
+
+/**
+ * A conflict is an outcome, not a failure: losing a race is the expected way
+ * for a concurrent writer to find out it has to re-read and try again.
+ */
+export type ConditionalPutResult = { ok: true; etag: string } | { ok: false };
+
 /** A file that has landed in storage under its content-addressed key. */
 export interface StoredUpload {
   key: string;
@@ -110,6 +127,21 @@ export interface FileStorageAdapter {
     buffer: Buffer,
     contentType?: string,
   ): Promise<string>;
+  /**
+   * Store a buffer only while `condition` holds, reporting a conflict rather
+   * than throwing when it does not.
+   *
+   * The primitive behind optimistic concurrency on a stored object: read it
+   * with its entity tag, decide, then write back naming the tag you decided
+   * from. Without it two writers to one key silently resolve last-writer-wins.
+   */
+  putConditional(
+    spaceId: string,
+    key: string,
+    buffer: Buffer,
+    condition: PutCondition,
+    contentType?: string,
+  ): Promise<ConditionalPutResult>;
   /**
    * Store a stream under the SHA-256 of its own bytes, never holding the whole
    * file in memory. The key follows from the content, so it is only known once
@@ -171,15 +203,22 @@ export interface FileStorageAdapter {
 }
 
 /**
- * A filesystem stand-in for an object store's entity tag. Size and mtime are
- * what change when the bytes do, and both come from the `stat` a caller already
- * needed.
+ * A filesystem stand-in for an object store's entity tag.
+ *
+ * The inode is in it because mtime and size alone are not enough: two writes in
+ * the same millisecond that happen to produce the same length would otherwise
+ * be indistinguishable, and a conditional write would accept a stale tag.
+ * {@link LocalFileStorageAdapter.putConditional} renames into place, so a new
+ * version always lands on a new inode.
  */
 function fileEtag(info: Stats): string {
-  return `"${info.size.toString(36)}-${Math.floor(info.mtimeMs).toString(36)}"`;
+  const parts = [info.size, Math.floor(info.mtimeMs), info.ino];
+  return `"${parts.map((part) => part.toString(36)).join("-")}"`;
 }
 
 class LocalFileStorageAdapter implements FileStorageAdapter {
+  private readonly locks = new Map<string, Promise<void>>();
+
   constructor(private readonly root: string) {}
 
   /** Where a key lives, or null when it would land outside the space. */
@@ -205,6 +244,75 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, buffer);
     return this.url(spaceId, key);
+  }
+
+  /**
+   * Emulated with a serialized check-then-rename.
+   *
+   * The lock is per process, which is the whole scope this adapter serves: a
+   * local filesystem backs one node, and two of them sharing a directory is not
+   * a supported deployment. Create-if-absent needs no lock at all — `wx` is
+   * atomic in the kernel.
+   */
+  async putConditional(
+    spaceId: string,
+    key: string,
+    buffer: Buffer,
+    condition: PutCondition,
+    _contentType?: string,
+  ): Promise<ConditionalPutResult> {
+    const filePath = this.resolvePath(spaceId, key);
+    if (!filePath) throw new Error(`Refusing to write outside the space: ${key}`);
+    await mkdir(dirname(filePath), { recursive: true });
+
+    if ("ifNoneMatch" in condition) {
+      try {
+        const handle = await open(filePath, "wx");
+        try {
+          await handle.write(buffer);
+        } finally {
+          await handle.close();
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") return { ok: false };
+        throw error;
+      }
+      const written = await this.stat(spaceId, key);
+      return written ? { ok: true, etag: written.etag } : { ok: false };
+    }
+
+    return this.serialize(filePath, async () => {
+      const current = await this.stat(spaceId, key);
+      if (!current || current.etag !== condition.ifMatch) return { ok: false };
+
+      // Renamed rather than overwritten so the new version lands on its own
+      // inode, which is what makes the entity tag change every time.
+      const stagingPath = join(dirname(filePath), `.${randomUUID()}.tmp`);
+      try {
+        await writeFile(stagingPath, buffer);
+        await rename(stagingPath, filePath);
+      } catch (error) {
+        await unlink(stagingPath).catch(() => {});
+        throw error;
+      }
+
+      const written = await this.stat(spaceId, key);
+      return written ? { ok: true, etag: written.etag } : { ok: false };
+    });
+  }
+
+  /** Run `work` with no other conditional write to `filePath` interleaved. */
+  private serialize<T>(filePath: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.locks.get(filePath) ?? Promise.resolve();
+    const next = previous.then(work, work);
+    this.locks.set(
+      filePath,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return next;
   }
 
   async putHashed(

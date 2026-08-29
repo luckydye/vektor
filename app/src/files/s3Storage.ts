@@ -3,10 +3,12 @@ import { mkdir, open, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   type ByteRange,
+  type ConditionalPutResult,
   containedKey,
   type FileStorageAdapter,
   isSafeSpaceId,
   type ListOptions,
+  type PutCondition,
   type StoredFileInfo,
   type StoredFileListing,
   type StoredFileStat,
@@ -72,6 +74,55 @@ class S3FileStorageAdapter implements FileStorageAdapter {
     if (!objectKey) throw new Error(`Refusing to write outside the space: ${key}`);
     await this.client.file(objectKey).write(buffer, { type: contentType });
     return this.url(spaceId, key);
+  }
+
+  /**
+   * Bun's S3 client has no conditional-write option, so the request is
+   * presigned and the condition attached as a header. The signature covers the
+   * query string rather than these headers, and the server still enforces them
+   * — verified against AWS's own semantics and a RustFS instance.
+   */
+  async putConditional(
+    spaceId: string,
+    key: string,
+    buffer: Buffer,
+    condition: PutCondition,
+    contentType?: string,
+  ): Promise<ConditionalPutResult> {
+    const objectKey = this.objectKey(spaceId, key);
+    if (!objectKey) throw new Error(`Refusing to write outside the space: ${key}`);
+
+    const headers: Record<string, string> =
+      "ifMatch" in condition
+        ? { "If-Match": condition.ifMatch }
+        : { "If-None-Match": "*" };
+    if (contentType) headers["Content-Type"] = contentType;
+
+    const url = this.client.presign(objectKey, {
+      method: "PUT",
+      expiresIn: 60,
+      type: contentType,
+    });
+    const response = await fetch(url, {
+      method: "PUT",
+      headers,
+      body: new Uint8Array(buffer),
+    });
+
+    // 412 is the condition failing. 404 is `If-Match` against a key that is no
+    // longer there, which is the same answer: what the caller read is gone.
+    if (response.status === 412 || response.status === 404) return { ok: false };
+    if (!response.ok) {
+      throw new Error(
+        `Conditional write failed with ${response.status}: ${await response.text()}`,
+      );
+    }
+
+    const etag = response.headers.get("etag");
+    if (etag) return { ok: true, etag };
+    // Some implementations omit it on the response; ask rather than guess.
+    const written = await this.stat(spaceId, key);
+    return written ? { ok: true, etag: written.etag } : { ok: false };
   }
 
   /**
