@@ -57,7 +57,15 @@ export default defineConfig({
         // to match on — a regex key is the only way to reach them. Without it
         // a clone gets this dev server's HTML and reports that the URL is not
         // a git repository.
-        "^/[^/]+/git/": { target: "http://127.0.0.1:8080", changeOrigin: true },
+        //
+        // The lookahead keeps this away from Vite's own module paths: without
+        // it `/src/git/graph.ts` reads as a repository URL, gets proxied, and
+        // 404s — which breaks hydration for the whole app rather than for one
+        // import.
+        "^/(?!src/|node_modules/|@id/|@fs/|@vite/)[^/]+/git/": {
+          target: "http://127.0.0.1:8080",
+          changeOrigin: true,
+        },
         "/auth": { target: "http://127.0.0.1:8080", changeOrigin: true },
         "/sync": { target: "http://127.0.0.1:8080", changeOrigin: true, ws: true },
         "/collaboration": {

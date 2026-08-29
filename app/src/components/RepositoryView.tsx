@@ -15,9 +15,11 @@ import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { ensureLanguage, highlightToHtml, normalizeLanguage } from "#editor/prism.ts";
+import { type GraphRow, layoutGraph } from "#git/graph.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { Icon } from "./Icon.tsx";
+import { Tab, Tabs } from "./Tabs.tsx";
 
 interface Props {
   documentId: string;
@@ -46,6 +48,24 @@ function languageFor(path: string): string | null {
   const name = path.split("/").pop() ?? "";
   const dot = name.lastIndexOf(".");
   return normalizeLanguage(dot > 0 ? name.slice(dot + 1) : name);
+}
+
+/** Extensions a browser can draw; anything else stays a download. */
+const VIEWABLE_IMAGES = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "avif",
+  "svg",
+  "ico",
+]);
+
+function isImage(path: string): boolean {
+  const name = path.split("/").pop() ?? "";
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && VIEWABLE_IMAGES.has(name.slice(dot + 1).toLowerCase());
 }
 
 function isReadme(name: string): boolean {
@@ -103,6 +123,60 @@ function TreeSkeleton() {
         )}
       </For>
     </div>
+  );
+}
+
+/** The views this document offers, in the order their tabs appear. */
+const TABS = [
+  { id: "files", label: "Files", icon: "file" },
+  { id: "history", label: "History", icon: "activity" },
+] as const;
+
+/** Lane pitch and row height, shared by the layout and the drawing. */
+const LANE = 14;
+const ROW = 34;
+
+function laneX(lane: number): number {
+  return lane * LANE + LANE / 2;
+}
+
+/**
+ * One row of the commit graph.
+ *
+ * Every edge is drawn as a full-height curve from the lane it enters at to the
+ * lane it leaves at, so a straight lane is a straight line and a branch or a
+ * merge bends once. The dot marks the commit's own lane.
+ */
+function GraphCell(props: { row: GraphRow }) {
+  return (
+    <svg
+      class="shrink-0 text-neutral-400"
+      width={props.row.width * LANE}
+      height={ROW}
+      aria-hidden="true"
+    >
+      <For each={props.row.edges}>
+        {(edge) => (
+          <path
+            d={
+              edge.from === edge.to
+                ? `M ${laneX(edge.from)} 0 V ${ROW}`
+                : `M ${laneX(edge.from)} 0 C ${laneX(edge.from)} ${ROW / 2}, ${laneX(edge.to)} ${ROW / 2}, ${laneX(edge.to)} ${ROW}`
+            }
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          />
+        )}
+      </For>
+      <circle
+        cx={laneX(props.row.lane)}
+        cy={ROW / 2}
+        r="4"
+        class="fill-primary-400 stroke-background"
+        stroke-width="2"
+      />
+    </svg>
   );
 }
 
@@ -220,6 +294,12 @@ export function RepositoryView(props: Props) {
   // Open by default, and closed on a narrow window — decided in `onMount`
   // rather than at first render, so the server and the client agree on what
   // they drew.
+  const [tab, setTab] = createSignal<(typeof TABS)[number]["id"]>("files");
+
+  function onTabSelected(index: number) {
+    const selected = TABS[index];
+    if (selected) setTab(selected.id);
+  }
   const [treeOpen, setTreeOpen] = createSignal(true);
   const [copyState, setCopyState] = createSignal<"idle" | "copied" | "failed">("idle");
 
@@ -313,6 +393,35 @@ export function RepositoryView(props: Props) {
     });
   });
 
+  const history = useQuery({
+    queryKey: () => ["git", props.spaceId, props.documentId, "log", repo().branch],
+    queryFn: () => api.git.log(props.spaceId, props.documentId, repo().branch, 100),
+    // Only asked for once the tab is open: a log is a separate walk of the
+    // history, and the files view never needs it.
+    enabled: () => !isServer && repo().branch !== "" && tab() === "history",
+  });
+
+  const graph = createMemo(() => {
+    const commits = history.data()?.commits ?? [];
+    return { commits, rows: layoutGraph(commits) };
+  });
+
+  /**
+   * The bytes of the open file, straight from the API.
+   *
+   * An image is fetched by the browser rather than carried through JSON: the
+   * endpoint sends it with its real content type and the same hardening
+   * uploads get, so nothing here has to decode or re-encode it.
+   */
+  const rawUrl = createMemo(() => {
+    const params = new URLSearchParams({
+      view: "raw",
+      rev: repo().branch,
+      path: openPath(),
+    });
+    return `/api/v1/spaces/${props.spaceId}/documents/${props.documentId}/git?${params}`;
+  });
+
   // A memo rather than a plain function: `documentSlug()` reads router
   // primitives, which throw outside a tracking context — and the copy handler
   // is exactly that. The origin is a signal because there is no window during
@@ -345,7 +454,7 @@ export function RepositoryView(props: Props) {
       const top = panes.getBoundingClientRect().top;
       // Leaves room for the page's own bottom padding, so a view that already
       // reaches the fold does not add a scrollbar for empty space.
-      setPanesHeight(`${Math.max(320, window.innerHeight - top - 56)}px`);
+      setPanesHeight(`${Math.max(320, window.innerHeight - top - 42)}px`);
     };
     update();
     if (window.innerWidth < 768) setTreeOpen(false);
@@ -366,7 +475,9 @@ export function RepositoryView(props: Props) {
     // draws both, and repeating them boxes the view inside a page that is
     // itself the box.
     <div class="flex w-full min-w-0 flex-col">
-      <div class="flex flex-col gap-2 border-neutral-500/15 border-b pb-3">
+      {/* Clear of the properties above, and clear of the tabs below: this line
+          belongs to neither. */}
+      <div class="mt-4xs mb-2xs flex flex-col gap-2">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-2 text-neutral-500 text-size-small">
           <span class="rounded-md bg-neutral-500/10 px-1.5 py-0.5 text-size-extra-small">
             {overview.data()?.branch ?? "main"}
@@ -431,9 +542,22 @@ export function RepositoryView(props: Props) {
           </div>
         }
       >
+        {/* The app's own tabs element, so selection, keyboard handling and the
+            pill styling are the ones used everywhere else. */}
+        <Tabs class="mb-4xs" onSelect={onTabSelected}>
+          <For each={TABS}>
+            {(view, index) => (
+              <Tab selected={index() === 0} icon={view.icon}>
+                {view.label}
+              </Tab>
+            )}
+          </For>
+        </Tabs>
+
         <div
           ref={panes}
-          class="flex items-stretch overflow-hidden"
+          class="flex items-stretch overflow-hidden rounded-lg border border-neutral-500/15"
+          classList={{ hidden: tab() !== "files" }}
           style={{ height: panesHeight() }}
         >
           <Show when={treeOpen()}>
@@ -493,10 +617,25 @@ export function RepositoryView(props: Props) {
                   <Show
                     when={blob().text !== null}
                     fallback={
-                      <p class="px-4 py-16 text-center text-neutral-500 text-size-small">
-                        {formatSize(blob().size)} — not text, or too large to show. Clone
-                        the repository to read it.
-                      </p>
+                      <Show
+                        when={isImage(openPath())}
+                        fallback={
+                          <p class="px-4 py-16 text-center text-neutral-500 text-size-small">
+                            {formatSize(blob().size)} — not text, or too large to show.
+                            Clone the repository to read it.
+                          </p>
+                        }
+                      >
+                        <div class="flex items-center justify-center p-6">
+                          <img
+                            src={rawUrl()}
+                            alt={openPath()}
+                            // Checkered behind it, so a transparent image reads
+                            // as transparent rather than as white.
+                            class="max-h-full max-w-full rounded border border-neutral-500/15 bg-[length:16px_16px] bg-[repeating-conic-gradient(theme(colors.neutral.500/10)_0_25%,transparent_0_50%)] object-contain"
+                          />
+                        </div>
+                      </Show>
                     }
                   >
                     <Show
@@ -529,6 +668,36 @@ export function RepositoryView(props: Props) {
             </Show>
           </div>
         </div>
+
+        <Show when={tab() === "history"}>
+          <div
+            class="overflow-auto rounded-lg border border-neutral-500/15"
+            style={{ height: panesHeight() }}
+          >
+            <For
+              each={graph().commits}
+              fallback={
+                <p class="px-3 py-16 text-center text-neutral-500 text-size-small">
+                  Loading history…
+                </p>
+              }
+            >
+              {(commit, index) => (
+                <div class="flex items-center gap-3 border-neutral-500/10 border-b px-3 text-size-small last:border-b-0 hover:bg-neutral-500/5">
+                  <GraphCell row={graph().rows[index()]} />
+                  <code class="shrink-0 font-mono text-neutral-500">
+                    {commit.shortOid}
+                  </code>
+                  <span class="min-w-0 flex-1 truncate">{commit.subject}</span>
+                  <span class="shrink-0 text-neutral-500">{commit.author}</span>
+                  <span class="shrink-0 text-neutral-400">
+                    {formatDateTime(commit.authoredAt, locale)}
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
       </Show>
     </div>
   );

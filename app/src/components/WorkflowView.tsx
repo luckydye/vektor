@@ -26,6 +26,7 @@ import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import "@atrium-ui/elements/tabs";
 import { DataTable } from "./DataTable.tsx";
 import { Icon } from "./Icon.tsx";
+import { Tab, TabsList } from "./Tabs.tsx";
 import { WorkflowRunHistory } from "./WorkflowRunHistory.tsx";
 
 interface Props {
@@ -614,23 +615,11 @@ export function WorkflowView(props: Props) {
               ref={workflowTabsEl as never}
               on:tab-selected={handleWorkflowTabSelected}
             >
-              <a-tabs-list class="block overflow-clip border-neutral-100 border-b py-4xs">
-                <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                    Results
-                  </span>
-                </a-tabs-tab>
-                <a-tabs-tab class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                    Run Details
-                  </span>
-                </a-tabs-tab>
-                <a-tabs-tab class="inline-flex @4xl/workflow:hidden h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200">
-                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                    History
-                  </span>
-                </a-tabs-tab>
-              </a-tabs-list>
+              <TabsList class="border-neutral-100 border-b">
+                <Tab>Results</Tab>
+                <Tab>Run Details</Tab>
+                <Tab class="@4xl/workflow:hidden">History</Tab>
+              </TabsList>
 
               <a-tabs-panel>
                 <div class="space-y-4 pt-4">

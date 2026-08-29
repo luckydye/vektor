@@ -8,7 +8,7 @@
 
 import type { FileStorageAdapter } from "#files/storage.ts";
 import { ensureCache } from "./cache.ts";
-import { git } from "./run.ts";
+import { git, gitBytes } from "./run.ts";
 
 /** Field separator for `--format`; a byte no ref, path or subject contains. */
 const UNIT = "\x1f";
@@ -208,4 +208,24 @@ export async function blob(
   // A NUL byte is git's own test for "binary", and the one that matters here:
   // it is what cannot be shown as text.
   return { text: content.includes("\0") ? null : content, size };
+}
+
+/**
+ * A file's bytes, undecoded.
+ *
+ * Separate from {@link blob} because that one answers "can this be shown as
+ * text"; this one answers "hand it over as it is", which is what an image
+ * needs.
+ */
+export async function raw(
+  storage: FileStorageAdapter,
+  spaceId: string,
+  documentId: string,
+  defaultBranch: string,
+  rev: string,
+  path: string,
+): Promise<Buffer | null> {
+  const dir = await repoDir(storage, spaceId, documentId, defaultBranch);
+  if (!dir) return null;
+  return gitBytes(dir, ["cat-file", "blob", `${rev}:${path}`]);
 }

@@ -9,6 +9,7 @@ import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useToast } from "#composeables/useToast.ts";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
 import { animateTabPanel } from "#utils/animate.ts";
+import { TabButton } from "./Tabs.tsx";
 
 export interface DatabaseExtensionView {
   extensionId: string;
@@ -26,9 +27,6 @@ interface Props {
 
 const TABLE_VIEW_ID = "table";
 const DATABASE_VIEWS_PROPERTY = "_databaseViews";
-
-const TAB_CLASS =
-  "inline-flex h-9 items-center justify-center rounded-sm px-1 text-label opacity-60 transition-opacity [&[aria-selected=true]:hover>span]:bg-gray-100 [&[aria-selected=true]]:opacity-100 [&[aria-selected=true]>span]:bg-gray-100 hover:[&>span]:bg-gray-200";
 
 function parseConfiguredViewIds(value: DocumentPropertyValue | undefined): string[] {
   if (!value) return [];
@@ -219,44 +217,28 @@ export function DatabaseDocumentView(props: Props) {
     <div class="flex h-full min-h-0 flex-1 flex-col">
       <div class="flex shrink-0 items-center overflow-x-auto px-xs py-2xs lg:px-m">
         <div role="tablist" aria-label="Database views" onKeyDown={onTabKeyDown}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedViewId() === TABLE_VIEW_ID}
-            tabIndex={selectedViewId() === TABLE_VIEW_ID ? 0 : -1}
-            class={TAB_CLASS}
+          <TabButton
+            selected={selectedViewId() === TABLE_VIEW_ID}
+            icon="table"
             onClick={() => selectView(TABLE_VIEW_ID)}
           >
-            <span class="inline-flex h-8 items-center gap-2 rounded-md px-3 transition-colors">
-              <Icon class="h-4 w-4" name="table" />
-              Table
-            </span>
-          </button>
+            Table
+          </TabButton>
           <For each={configuredExtensionViews()}>
             {(view) => {
               const viewId = extensionViewId(view);
+              // No background of its own: the tab paints the pill, and a
+              // second one behind it doubles the tone and spreads it under the
+              // menu button.
               return (
-                <span
-                  class="group/view inline-flex h-8 items-center rounded-md transition-colors"
-                  classList={{
-                    "bg-gray-100": selectedViewId() === viewId,
-                    "hover:bg-gray-100": selectedViewId() === viewId,
-                    "hover:bg-gray-200": selectedViewId() !== viewId,
-                  }}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={selectedViewId() === viewId}
-                    tabIndex={selectedViewId() === viewId ? 0 : -1}
-                    class={TAB_CLASS}
+                <span class="group/view inline-flex h-8 items-center rounded-md">
+                  <TabButton
+                    selected={selectedViewId() === viewId}
+                    icon="grid-grid"
                     onClick={() => selectView(viewId)}
                   >
-                    <span class="inline-flex h-8 items-center gap-2 rounded-md px-3 transition-colors">
-                      <Icon class="h-4 w-4" name="grid-grid" />
-                      {extensionViewTitle(view)}
-                    </span>
-                  </button>
+                    {extensionViewTitle(view)}
+                  </TabButton>
 
                   <ContextMenu
                     ariaLabel={`Manage ${extensionViewTitle(view)} view`}
@@ -265,7 +247,10 @@ export function DatabaseDocumentView(props: Props) {
                         type="button"
                         slot="trigger"
                         aria-label={`Manage ${extensionViewTitle(view)} view`}
-                        class="flex h-8 w-7 items-center justify-center rounded-r-md text-neutral-400 transition-colors hover:bg-gray-200 hover:text-neutral-700 group-hover/view:opacity-100"
+                        // No background of its own: it used to sit flush
+                        // against one the wrapper drew behind the whole tab,
+                        // and alone it reads as a second, darker control.
+                        class="flex h-8 w-7 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700 group-hover/view:opacity-100"
                         classList={{
                           "opacity-100": selectedViewId() === viewId,
                           "opacity-0": selectedViewId() !== viewId,

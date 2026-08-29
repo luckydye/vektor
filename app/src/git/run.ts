@@ -20,6 +20,21 @@ export async function gitExecPath(): Promise<string> {
   return execPath;
 }
 
+/**
+ * Run git in `dir`, returning stdout as bytes.
+ *
+ * Separate from {@link git} because that one decodes as UTF-8, which mangles
+ * anything that is not text — an image read back through it is corrupt.
+ */
+export async function gitBytes(dir: string, args: string[]): Promise<Buffer | null> {
+  const proc = Bun.spawn(["git", ...args], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+  const [bytes, code] = await Promise.all([
+    new Response(proc.stdout).arrayBuffer(),
+    proc.exited,
+  ]);
+  return code === 0 ? Buffer.from(bytes) : null;
+}
+
 /** Run git in `dir`, returning stdout. Throws with stderr on a non-zero exit. */
 export async function git(dir: string, args: string[]): Promise<string> {
   const proc = Bun.spawn(["git", ...args], {

@@ -83,3 +83,47 @@ export function toAbsoluteUploadUrl(url: string): string {
   if (!url) return url;
   return url.startsWith("/") ? `${window.location.origin}${url}` : url;
 }
+
+/**
+ * Content type for a file extension, for the routes that serve stored bytes.
+ *
+ * Shared rather than per-route: an upload and a file read out of a repository
+ * are the same question, and answering it differently in two places is how one
+ * of them ends up serving `application/octet-stream` for a PNG.
+ */
+export const MIME_TYPES: Record<string, string> = {
+  // Images
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  // Videos
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  m4v: "video/x-m4v",
+  ogv: "video/ogg",
+  // Documents
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  doc: "application/msword",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ppt: "application/vnd.ms-powerpoint",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+  // Text
+  md: "text/markdown",
+  txt: "text/plain",
+  csv: "text/csv",
+  json: "application/json",
+  // Archive
+  zip: "application/zip",
+  // 3D models
+  obj: "model/obj",
+};
+
+export function mimeTypeForExtension(extension: string | undefined): string {
+  return (extension && MIME_TYPES[extension.toLowerCase()]) || "application/octet-stream";
+}

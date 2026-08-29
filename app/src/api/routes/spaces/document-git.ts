@@ -20,8 +20,10 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument } from "#db/space/documents.ts";
 import { repositoryDocumentType } from "#documents/types.ts";
+import { mimeTypeForExtension } from "#files/fileTypes.ts";
 import { getFileStorage } from "#files/storage.ts";
-import { blob, isSafePath, isSafeRev, log, overview, tree } from "#git/plumbing.ts";
+import { blob, isSafePath, isSafeRev, log, overview, raw, tree } from "#git/plumbing.ts";
+import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
 /** Commits a single request will return, however many are asked for. */
 const MAX_LOG = 100;
@@ -70,6 +72,25 @@ export const GET: ApiRouteHandler = (context) =>
         const file = await blob(storage, spaceId, documentId, branch, rev, path);
         if (!file) throw notFoundResponse("File");
         return jsonResponse(file);
+      }
+      case "raw": {
+        if (path === "") throw badRequestResponse("A file needs a path");
+        const bytes = await raw(storage, spaceId, documentId, branch, rev, path);
+        if (!bytes) throw notFoundResponse("File");
+
+        const name = path.split("/").pop() ?? "";
+        const extension = name.includes(".") ? name.split(".").pop() : undefined;
+        // The same hardening uploads get: repository content is written by
+        // whoever can push, so an SVG or HTML file must not be able to run as
+        // a document on this origin.
+        return new Response(new Uint8Array(bytes), {
+          headers: {
+            "Content-Type": mimeTypeForExtension(extension),
+            "Content-Length": String(bytes.byteLength),
+            "Cache-Control": "private, max-age=300",
+            ...servedFileSecurityHeaders(extension, name),
+          },
+        });
       }
       case "log": {
         const requested = Number(query.get("limit") ?? "30");

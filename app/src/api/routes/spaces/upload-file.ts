@@ -10,44 +10,12 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileIndexEntry } from "#db/space/files.ts";
+import { mimeTypeForExtension } from "#files/fileTypes.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
-
-const MIME_TYPES: Record<string, string> = {
-  // Images
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-  // Videos
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
-  m4v: "video/x-m4v",
-  ogv: "video/ogg",
-  // Documents
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  doc: "application/msword",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ppt: "application/vnd.ms-powerpoint",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  xls: "application/vnd.ms-excel",
-  // Text
-  md: "text/markdown",
-  txt: "text/plain",
-  csv: "text/csv",
-  json: "application/json",
-  // Archive
-  zip: "application/zip",
-  // 3D models
-  obj: "model/obj",
-};
 
 /**
  * Whether an `If-None-Match` header names this entity tag. The header is a
@@ -99,7 +67,7 @@ export const GET: ApiRouteHandler = (context) =>
         return new Response("Missing file extension", { status: 400 });
       }
 
-      const mimeType = MIME_TYPES[extension] || "application/octet-stream";
+      const mimeType = mimeTypeForExtension(extension);
       const storage = getFileStorage();
 
       // If transform params are present, serve via the transform+cache path.
