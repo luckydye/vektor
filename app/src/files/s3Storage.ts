@@ -6,7 +6,9 @@ import {
   containedKey,
   type FileStorageAdapter,
   isSafeSpaceId,
+  type ListOptions,
   type StoredFileInfo,
+  type StoredFileListing,
   type StoredFileStat,
   type StoredUpload,
 } from "./storage.ts";
@@ -132,7 +134,7 @@ class S3FileStorageAdapter implements FileStorageAdapter {
     if (!objectKey) return null;
     try {
       const info = await this.client.file(objectKey).stat();
-      return { size: info.size, updatedAt: info.lastModified };
+      return { size: info.size, updatedAt: info.lastModified, etag: info.etag };
     } catch {
       return null;
     }
@@ -163,25 +165,35 @@ class S3FileStorageAdapter implements FileStorageAdapter {
       .catch(() => {});
   }
 
-  async list(spaceId: string): Promise<StoredFileInfo[]> {
-    if (!isSafeSpaceId(spaceId)) return [];
-    const prefix = `${this.prefix}${spaceId}/`;
-    const results: StoredFileInfo[] = [];
-    let continuationToken: string | undefined;
-    do {
-      const page = await this.client.list({ prefix, continuationToken });
-      for (const object of page.contents ?? []) {
-        const key = object.key.slice(prefix.length);
-        if (!CONTENT_ADDRESSED_KEY.test(key)) continue;
-        results.push({
-          key,
-          size: object.size ?? 0,
-          updatedAt: object.lastModified ? new Date(object.lastModified) : new Date(0),
-        });
-      }
-      continuationToken = page.isTruncated ? page.nextContinuationToken : undefined;
-    } while (continuationToken);
-    return results;
+  async list(spaceId: string, options: ListOptions = {}): Promise<StoredFileListing> {
+    if (!isSafeSpaceId(spaceId)) return { files: [] };
+    const base = `${this.prefix}${spaceId}/`;
+    const prefix = options.prefix === undefined ? base : `${base}${options.prefix}`;
+
+    const page = await this.client.list({
+      prefix,
+      continuationToken: options.cursor,
+      maxKeys: options.limit,
+    });
+
+    const files: StoredFileInfo[] = [];
+    for (const object of page.contents ?? []) {
+      const key = object.key.slice(base.length);
+      // Without an explicit prefix the listing is the uploads layout alone, so
+      // anything a space stores under its own prefixes is filtered back out.
+      if (options.prefix === undefined && !CONTENT_ADDRESSED_KEY.test(key)) continue;
+      files.push({
+        key,
+        size: object.size ?? 0,
+        updatedAt: object.lastModified ? new Date(object.lastModified) : new Date(0),
+      });
+    }
+
+    // `maxKeys` counts objects before that filter, so a page can come back
+    // short while more remain — the cursor, not the count, says whether it did.
+    return page.isTruncated && page.nextContinuationToken
+      ? { files, cursor: page.nextContinuationToken }
+      : { files };
   }
 }
 

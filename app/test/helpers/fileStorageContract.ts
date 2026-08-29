@@ -60,6 +60,22 @@ export function describeFileStorageContract(
         expect(info?.updatedAt).toBeInstanceOf(Date);
       });
 
+      it("reports a quoted entity tag, stable across calls", async () => {
+        const { storage, space } = context();
+        const first = await storage.stat(space, KEY);
+        const second = await storage.stat(space, KEY);
+        expect(first?.etag).toMatch(/^"..*"$/);
+        expect(second?.etag).toBe(first?.etag);
+      });
+
+      it("reports a different entity tag for different bytes", async () => {
+        const { storage, space } = context();
+        const mine = await storage.stat(space, KEY);
+        await storage.put(space, "ab/other.bin", Buffer.from("a different body"));
+        const theirs = await storage.stat(space, "ab/other.bin");
+        expect(theirs?.etag).not.toBe(mine?.etag);
+      });
+
       it("is null for a key that is not stored", async () => {
         const { storage, space } = context();
         expect(await storage.stat(space, "ab/missing.bin")).toBeNull();
@@ -131,10 +147,53 @@ export function describeFileStorageContract(
     describe("list", () => {
       it("reports the content-addressable keys of that space alone", async () => {
         const { storage, space } = context();
-        const listed = await storage.list(space);
-        const entry = listed.find((file) => file.key === KEY);
+        const { files } = await storage.list(space);
+        const entry = files.find((file) => file.key === KEY);
         expect(entry?.size).toBe(BODY.byteLength);
-        expect(listed.some((file) => file.key === NEIGHBOUR_KEY)).toBe(false);
+        expect(files.some((file) => file.key === NEIGHBOUR_KEY)).toBe(false);
+      });
+
+      it("lists an explicit prefix, including keys outside the uploads layout", async () => {
+        const { storage, space } = context();
+        await storage.put(space, "zz/nested/deep.bin", Buffer.from("deep"));
+        const { files } = await storage.list(space, { prefix: "zz/" });
+        expect(files.map((file) => file.key)).toContain("zz/nested/deep.bin");
+      });
+
+      it("keeps a prefixed listing out of the default one", async () => {
+        // `zz/nested/deep.bin` is two levels down, so it is not the uploads
+        // layout — a default listing must not pick it up.
+        const { storage, space } = context();
+        const { files } = await storage.list(space);
+        expect(files.some((file) => file.key === "zz/nested/deep.bin")).toBe(false);
+      });
+
+      it("pages through every key without repeating one", async () => {
+        const { storage, space } = context();
+        const prefix = "pg/";
+        for (let i = 0; i < 5; i++) {
+          await storage.put(space, `${prefix}file-${i}.bin`, Buffer.from(String(i)));
+        }
+
+        const seen: string[] = [];
+        let cursor: string | undefined;
+        let pages = 0;
+        do {
+          const page = await storage.list(space, { prefix, cursor, limit: 2 });
+          seen.push(...page.files.map((file) => file.key));
+          cursor = page.cursor;
+          pages++;
+          expect(pages).toBeLessThan(20);
+        } while (cursor);
+
+        expect(new Set(seen).size).toBe(seen.length);
+        expect(seen.sort()).toEqual([
+          "pg/file-0.bin",
+          "pg/file-1.bin",
+          "pg/file-2.bin",
+          "pg/file-3.bin",
+          "pg/file-4.bin",
+        ]);
       });
     });
 

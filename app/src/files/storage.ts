@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Stats } from "node:fs";
 import { createReadStream } from "node:fs";
 import {
   mkdir,
@@ -21,10 +22,37 @@ export interface StoredFileInfo {
   updatedAt: Date;
 }
 
+export interface ListOptions {
+  /**
+   * Key prefix to list under. Omitted, only the content-addressable uploads
+   * layout (`<2 hex>/<name>`) is listed — everything else a space stores under
+   * its own prefixes stays out of an upload listing.
+   */
+  prefix?: string;
+  /** Continue a previous page: the `cursor` it returned, opaque to callers. */
+  cursor?: string;
+  /** Ceiling on entries per page. A backend may return fewer and still have more. */
+  limit?: number;
+}
+
+export interface StoredFileListing {
+  files: StoredFileInfo[];
+  /** Set while more entries remain; pass it back as `cursor`. */
+  cursor?: string;
+}
+
 /** What a stored object is, without its bytes. */
 export interface StoredFileStat {
   size: number;
   updatedAt: Date;
+  /**
+   * The object's HTTP entity tag, quotes included, for conditional requests.
+   *
+   * An object store returns one of its own; a filesystem has none, so the local
+   * adapter derives it from size and mtime. Either way it only has to change
+   * when the bytes do, which is all a caller comparing two of them needs.
+   */
+  etag: string;
 }
 
 /**
@@ -125,8 +153,14 @@ export interface FileStorageAdapter {
   ): Promise<ReadableStream<Uint8Array> | null>;
   /** Delete a file by key. */
   delete(spaceId: string, key: string): Promise<void>;
-  /** List all content-addressable (hash-prefix) files for a space. */
-  list(spaceId: string): Promise<StoredFileInfo[]>;
+  /**
+   * One page of the space's stored objects.
+   *
+   * Paged rather than whole: a space's uploads are unbounded, and against an
+   * object store a full listing is a loop of requests whose result a caller
+   * would otherwise have to hold entirely in memory.
+   */
+  list(spaceId: string, options?: ListOptions): Promise<StoredFileListing>;
   /** Compute the serving URL for a key (no I/O). */
   url(spaceId: string, key: string): string;
   /**
@@ -134,6 +168,15 @@ export interface FileStorageAdapter {
    * Return null or omit to serve through the API route.
    */
   redirectUrl?(spaceId: string, key: string): Promise<string | null>;
+}
+
+/**
+ * A filesystem stand-in for an object store's entity tag. Size and mtime are
+ * what change when the bytes do, and both come from the `stat` a caller already
+ * needed.
+ */
+function fileEtag(info: Stats): string {
+  return `"${info.size.toString(36)}-${Math.floor(info.mtimeMs).toString(36)}"`;
 }
 
 class LocalFileStorageAdapter implements FileStorageAdapter {
@@ -221,7 +264,7 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
       // A directory is not a stored object, and answering with its size would
       // send a caller on to request bytes that do not exist.
       if (!info.isFile()) return null;
-      return { size: info.size, updatedAt: info.mtime };
+      return { size: info.size, updatedAt: info.mtime, etag: fileEtag(info) };
     } catch {
       return null;
     }
@@ -249,31 +292,70 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
     await unlink(filePath).catch(() => {});
   }
 
-  async list(spaceId: string): Promise<StoredFileInfo[]> {
-    const spaceRoot = join(this.root, spaceId);
-    const results: StoredFileInfo[] = [];
-    try {
-      const entries = await readdir(spaceRoot, { withFileTypes: true });
+  async list(spaceId: string, options: ListOptions = {}): Promise<StoredFileListing> {
+    const spaceRoot = containedKey(spaceId, options.prefix ?? ".");
+    if (spaceRoot === null && options.prefix !== undefined) {
+      return { files: [] };
+    }
+    const root = join(this.root, spaceId);
+    const keys = await this.collectKeys(root, options.prefix);
+    // Sorted so a cursor can be a key: the page after `cursor` is well defined
+    // only if the order is, and lexical order is the one S3 also lists in.
+    keys.sort();
+
+    const after = options.cursor;
+    const page = after ? keys.filter((key) => key > after) : keys;
+    const limited = options.limit ? page.slice(0, options.limit) : page;
+
+    const files: StoredFileInfo[] = [];
+    for (const key of limited) {
+      const info = await stat(join(root, key)).catch(() => null);
+      if (!info) continue;
+      files.push({ key, size: info.size, updatedAt: info.mtime });
+    }
+
+    const more = limited.length < page.length;
+    return more ? { files, cursor: limited.at(-1) } : { files };
+  }
+
+  /**
+   * Keys under `prefix`, or every content-addressable key when it is omitted.
+   *
+   * The `.staging` directory is skipped: an upload in flight is not a stored
+   * object, and it disappears again either way.
+   */
+  private async collectKeys(root: string, prefix?: string): Promise<string[]> {
+    const walk = async (dir: string, base: string): Promise<string[]> => {
+      const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+      const found: string[] = [];
       for (const entry of entries) {
-        // Only scan 2-char hex prefix directories (content-addressable format)
-        if (!entry.isDirectory() || !/^[0-9a-f]{2}$/.test(entry.name)) continue;
-        const subDir = join(spaceRoot, entry.name);
-        const subEntries = await readdir(subDir, { withFileTypes: true });
-        for (const sub of subEntries) {
-          if (!sub.isFile()) continue;
-          const fileStat = await stat(join(subDir, sub.name)).catch(() => null);
-          if (!fileStat) continue;
-          results.push({
-            key: `${entry.name}/${sub.name}`,
-            size: fileStat.size,
-            updatedAt: fileStat.mtime,
-          });
+        if (entry.name === ".staging") continue;
+        const key = base ? `${base}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          found.push(...(await walk(join(dir, entry.name), key)));
+        } else if (entry.isFile()) {
+          found.push(key);
         }
       }
-    } catch {
-      // Space dir doesn't exist yet
+      return found;
+    };
+
+    if (prefix === undefined) {
+      const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+      const found: string[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !/^[0-9a-f]{2}$/.test(entry.name)) continue;
+        found.push(...(await walk(join(root, entry.name), entry.name)));
+      }
+      return found;
     }
-    return results;
+
+    // A prefix is a key prefix, not necessarily a directory: list its parent
+    // and keep what starts with it, the way an object store would.
+    const slash = prefix.lastIndexOf("/");
+    const parent = slash === -1 ? "" : prefix.slice(0, slash);
+    const keys = await walk(join(root, parent), parent);
+    return keys.filter((key) => key.startsWith(prefix));
   }
 }
 
@@ -286,6 +368,26 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
  */
 export function createLocalFileStorage(root: string): FileStorageAdapter {
   return new LocalFileStorageAdapter(root);
+}
+
+/**
+ * Every page of a listing, for the callers that genuinely need the whole set —
+ * rebuilding an index, reconciling against the database. Anything serving a
+ * request should page instead.
+ */
+export async function listAllFiles(
+  storage: FileStorageAdapter,
+  spaceId: string,
+  options: Omit<ListOptions, "cursor"> = {},
+): Promise<StoredFileInfo[]> {
+  const files: StoredFileInfo[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await storage.list(spaceId, { ...options, cursor });
+    files.push(...page.files);
+    cursor = page.cursor;
+  } while (cursor);
+  return files;
 }
 
 let _adapter: FileStorageAdapter | null = null;

@@ -56,7 +56,19 @@ export const GET: ApiRouteHandler = (context) =>
       );
 
       const storage = getFileStorage();
-      const files = await storage.list(spaceId);
+      // `limit` is opt-in: without it the response stays the whole listing it
+      // has always been, and a caller that asks for a page gets a cursor back.
+      const query = new URL(context.req.raw.url).searchParams;
+      const limitParam = query.get("limit");
+      const limit = limitParam === null ? undefined : Number(limitParam);
+      if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+        return badRequestResponse("Invalid limit");
+      }
+      const listing = await storage.list(spaceId, {
+        limit,
+        cursor: query.get("cursor") ?? undefined,
+      });
+      const files = listing.files;
 
       const index = await getFileIndexEntries(
         spaceId,
@@ -89,6 +101,8 @@ export const GET: ApiRouteHandler = (context) =>
             ...f,
             url: storage.url(spaceId, f.key),
           })),
+          // Only present on a paged request, and only while more remain.
+          ...(listing.cursor ? { cursor: listing.cursor } : {}),
         },
         200,
       );

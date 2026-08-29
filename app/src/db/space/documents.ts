@@ -37,7 +37,7 @@ import {
   DIMENSION_READABLE_EXTENSIONS,
   readImageDimensions,
 } from "#files/imageDimensions.ts";
-import { getFileStorage } from "#files/storage.ts";
+import { getFileStorage, listAllFiles } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
@@ -586,7 +586,7 @@ export async function deleteDocument(
 
 async function syncFileIndex(s: SpaceStore): Promise<void> {
   const storage = getFileStorage();
-  const diskFiles = await storage.list(s.spaceId);
+  const diskFiles = await listAllFiles(storage, s.spaceId);
   if (diskFiles.length === 0) return;
 
   const indexed = new Map(

@@ -49,6 +49,17 @@ const MIME_TYPES: Record<string, string> = {
   obj: "model/obj",
 };
 
+/**
+ * Whether an `If-None-Match` header names this entity tag. The header is a
+ * comma-separated list or `*`, and a cache may weaken a tag it stored, so the
+ * `W/` prefix is ignored on both sides as the comparison for 304 requires.
+ */
+function etagMatches(header: string, etag: string): boolean {
+  const strip = (value: string) => value.trim().replace(/^W\//, "");
+  if (header.trim() === "*") return true;
+  return header.split(",").some((candidate) => strip(candidate) === strip(etag));
+}
+
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -123,12 +134,25 @@ export const GET: ApiRouteHandler = (context) =>
       }
       const fileSize = info.size;
 
+      // A stored object never changes under its key — uploads are content
+      // addressed — so a matching validator can always answer 304, and the
+      // browser stops re-fetching whole images and videos once its cache entry
+      // goes stale.
+      const ifNoneMatch = context.req.raw.headers.get("if-none-match");
+      if (ifNoneMatch && etagMatches(ifNoneMatch, info.etag)) {
+        return new Response(null, {
+          status: 304,
+          headers: { ETag: info.etag, "Cache-Control": "private, max-age=3600" },
+        });
+      }
+
       const baseHeaders: Record<string, string> = {
         "Content-Type": mimeType,
         "Cache-Control": "private, max-age=3600",
         // Range support is required for video playback (Safari probes with
         // a byte-range request and refuses to play without a 206 response).
         "Accept-Ranges": "bytes",
+        ETag: info.etag,
         // Prevent stored XSS: force download for active types (svg/html),
         // disallow MIME sniffing, and sandbox any rendered content.
         // The stored key is a content hash, so without the uploaded name a
