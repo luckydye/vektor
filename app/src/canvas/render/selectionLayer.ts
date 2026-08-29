@@ -16,7 +16,8 @@ import type { WorldTransform } from "#canvas/runtime/geometry.ts";
 
 type CanvasSelectionSnapshot = {
   strokes: CanvasStroke[];
-  selectedStrokeIds: Set<string>;
+  /** Every selected id; the ones that name a stroke get an ink outline. */
+  selectedIds: Set<string>;
   remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
   // Present for a multi-item local selection, adding one axis-aligned bounds
   // box around the individual item outlines for group transforms.
@@ -55,7 +56,7 @@ export function drawCanvasSelections(params: CanvasSelectionRenderParams) {
     context,
     transform,
     strokes,
-    selectedStrokeIds,
+    selectedIds,
     remoteSelectedStrokeIds = [],
     selectionBounds,
     selectedShapeBounds = [],
@@ -65,7 +66,7 @@ export function drawCanvasSelections(params: CanvasSelectionRenderParams) {
   context.setLineDash([]);
   drawRetainedFreehandSelection(
     context,
-    retainCanvasSelectionStrokes({ strokes, selectedStrokeIds }, transform),
+    retainCanvasSelectionStrokes({ strokes, selectedIds }, transform),
     transform,
   );
 
@@ -80,7 +81,7 @@ export function drawCanvasSelections(params: CanvasSelectionRenderParams) {
   drawRetainedFreehandSelection(
     context,
     retainCanvasSelectionStrokes(
-      { strokes, selectedStrokeIds: new Set(), remoteSelectedStrokeIds },
+      { strokes, selectedIds: new Set(), remoteSelectedStrokeIds },
       transform,
     ),
     transform,
@@ -94,7 +95,7 @@ export function drawCanvasSelections(params: CanvasSelectionRenderParams) {
 function retainCanvasSelectionStrokes(
   selection: Pick<
     CanvasSelectionSnapshot,
-    "strokes" | "selectedStrokeIds" | "remoteSelectedStrokeIds"
+    "strokes" | "selectedIds" | "remoteSelectedStrokeIds"
   >,
   transform: WorldTransform,
 ) {
@@ -110,7 +111,7 @@ function retainCanvasSelectionStrokes(
     if (outlines.length > 0) groups.push({ outlines, color });
   };
 
-  retainGroup(selection.selectedStrokeIds, "#2563eb");
+  retainGroup(selection.selectedIds, "#2563eb");
   for (const remote of selection.remoteSelectedStrokeIds ?? []) {
     retainGroup(remote.ids, remote.color);
   }

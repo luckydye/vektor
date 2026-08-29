@@ -337,8 +337,6 @@ export function createCanvasController(
         initialPoints: FreehandPoint[];
       };
 
-  type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
-
   const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
   type ToolDef = CanvasToolDef & {
     id: CanvasToolId;
@@ -381,7 +379,7 @@ export function createCanvasController(
     selectedIds: new Set<string>(),
     // Locked elements are intentionally excluded from normal hit testing. Keep a
     // separate hover target so their small unlock control remains reachable.
-    hoveredLockedElement: null as LockedCanvasElement | null,
+    hoveredLockedElement: null as string | null,
     // Section chrome is painted on the canvas. This transient input only appears
     // while its title is actively being edited.
     editingChromeId: null as string | null,
@@ -764,7 +762,7 @@ export function createCanvasController(
         renderScene();
         return;
       }
-      if (!host.canEdit || draggingShapeId() === id || !canMoveShape(shape)) {
+      if (!host.canEdit || draggingElementId() === id || !canMoveShape(shape)) {
         return;
       }
       const normalized = extension.behavior.measurement?.normalize
@@ -862,21 +860,23 @@ export function createCanvasController(
     return !stroke.locked && canMoveUserScopedElement(stroke.authorId);
   }
 
+  // Screen position of the unlock control: the element's top-right corner. A
+  // shape's box can be rotated and the control rides the rotated corner; ink
+  // bakes its rotation into its points, so its box is already axis-aligned.
   const hoveredLockedElementPosition = () => {
-    const element = state.hoveredLockedElement;
-    if (!element) return null;
+    const id = state.hoveredLockedElement;
+    const element = id ? elementHandle(id) : null;
+    if (!element?.locked || !element.bounds) return null;
 
-    if (element.type === "shape") {
-      const shape = shapesById().get(element.id);
-      if (!shape?.locked) return null;
+    const shape = element.kind === "shape" ? shapesById().get(element.id) : null;
+    if (shape) {
       const bounds = shapeBounds(shape);
       return worldToScreen(pointOnRotatedShape(bounds, { x: bounds.width, y: 0 }));
     }
-
-    const stroke = strokesById().get(element.id);
-    const bounds = stroke ? strokeBounds(stroke) : null;
-    if (!stroke?.locked || !bounds) return null;
-    return worldToScreen({ x: bounds.x + bounds.width, y: bounds.y });
+    return worldToScreen({
+      x: element.bounds.x + element.bounds.width,
+      y: element.bounds.y,
+    });
   };
 
   function isElementLocked(id: string): boolean {
@@ -1364,7 +1364,7 @@ export function createCanvasController(
       canvasClipboardToDocumentHtml(payload, { includeMetadata: true }),
     );
     event.clipboardData?.setData("text/plain", canvasClipboardToPlainText(payload));
-    deleteSelectedShape();
+    deleteSelection();
   }
 
   function copySelectionToClipboard() {
@@ -1403,7 +1403,7 @@ export function createCanvasController(
     } else {
       navigator.clipboard?.writeText(text).catch(() => {});
     }
-    deleteSelectedShape();
+    deleteSelection();
   }
 
   /**
@@ -1619,7 +1619,7 @@ export function createCanvasController(
 
   const selectionSnapshot = () => ({
     strokes: renderedStrokes(),
-    selectedStrokeIds: state.selectedIds,
+    selectedIds: state.selectedIds,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections(),
     selectionBounds: selectedGroupBounds() ?? undefined,
     selectedShapeBounds: [...state.selectedIds]
@@ -2054,13 +2054,13 @@ export function createCanvasController(
     state.activeColors = { ...state.activeColors, [type]: color };
   }
 
-  // Recolors only the selected shape. Creation defaults remain owned by the
-  // active-tool toolbar.
   /** The element a resize/rotate drag is acting on, if either is in progress. */
-  function draggingShapeId(): string | undefined {
+  function draggingElementId(): string | undefined {
     return dragState && "elementId" in dragState ? dragState.elementId : undefined;
   }
 
+  // Recolors only the selected shape. Creation defaults remain owned by the
+  // active-tool toolbar.
   function setSelectedElementColor(type: CanvasShapeType, color: string) {
     const shape = selectedShape();
     if (shape?.type === type) updateShapeStyle(shape.id, { color });
@@ -2161,20 +2161,12 @@ export function createCanvasController(
     }
   }
 
-  function setShapeLocked(id: string, locked: boolean) {
-    const shape = yShapes.get(id);
-    if (!shape) return;
-    shape.set("updatedAt", Date.now());
-    if (locked) shape.set("locked", true);
-    else shape.delete("locked");
-  }
-
-  function setStrokeLocked(id: string, locked: boolean) {
-    const stroke = yStrokes.get(id);
-    if (!stroke) return;
-    stroke.set("updatedAt", Date.now());
-    if (locked) stroke.set("locked", true);
-    else stroke.delete("locked");
+  function setElementLocked(id: string, locked: boolean) {
+    const entry = yShapes.get(id) ?? yStrokes.get(id);
+    if (!entry) return;
+    entry.set("updatedAt", Date.now());
+    if (locked) entry.set("locked", true);
+    else entry.delete("locked");
   }
 
   function lockSelectedElements() {
@@ -2197,21 +2189,19 @@ export function createCanvasController(
     }
 
     ydoc.transact(() => {
-      for (const id of shapeIds) setShapeLocked(id, true);
-      for (const id of strokeIds) setStrokeLocked(id, true);
+      for (const id of [...shapeIds, ...strokeIds]) setElementLocked(id, true);
     });
     clearSelection();
   }
 
   function unlockHoveredElement() {
-    const element = state.hoveredLockedElement;
-    if (!element) return;
-    if (element.type === "shape") setShapeLocked(element.id, false);
-    else setStrokeLocked(element.id, false);
+    const id = state.hoveredLockedElement;
+    if (!id) return;
+    setElementLocked(id, false);
     state.hoveredLockedElement = null;
   }
 
-  function deleteSelectedShape() {
+  function deleteSelection() {
     if (state.selectedIds.size === 0) return;
     ydoc.transact(() => {
       for (const id of state.selectedIds) {
@@ -2227,7 +2217,7 @@ export function createCanvasController(
   // drag: the whole current selection, plus the contents of any selected
   // section. Strokes are deduped against section contents so a stroke that is
   // both selected and inside a dragged section only moves once.
-  function buildShapeDragState(
+  function buildElementDragState(
     event: PointerEvent,
   ): Extract<DragState, { type: "shape" }> {
     const moveShapes = new Map<string, { id: string; x: number; y: number }>();
@@ -2297,7 +2287,7 @@ export function createCanvasController(
     );
   }
 
-  function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
+  function startElementDrag(shape: CanvasShape, event: PointerEvent) {
     if (event.button !== 0) return;
     if (shape.locked) {
       event.preventDefault();
@@ -2323,7 +2313,7 @@ export function createCanvasController(
     }
 
     dragMoved = false;
-    dragState = buildShapeDragState(event);
+    dragState = buildElementDragState(event);
     beginDragStrokeTransform(dragState);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     if (suppressesNativePointer(shape)) {
@@ -2676,7 +2666,7 @@ export function createCanvasController(
           return;
         }
         dragMoved = false;
-        dragState = buildShapeDragState(event);
+        dragState = buildElementDragState(event);
         beginDragStrokeTransform(dragState);
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         event.preventDefault();
@@ -2709,7 +2699,7 @@ export function createCanvasController(
           return;
         }
         dragMoved = false;
-        dragState = buildShapeDragState(event);
+        dragState = buildElementDragState(event);
         beginDragStrokeTransform(dragState);
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         event.preventDefault();
@@ -2718,7 +2708,7 @@ export function createCanvasController(
 
       const paintedHit = hitTestPaintedShape(worldPoint);
       if (paintedHit) {
-        startShapeDrag(paintedHit.shape, event);
+        startElementDrag(paintedHit.shape, event);
         return;
       }
 
@@ -2823,13 +2813,13 @@ export function createCanvasController(
     return { dx: snap.dx, dy: snap.dy };
   }
 
-  function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null {
+  function lockedElementAtPointer(event: PointerEvent): string | null {
     const target = event.target;
     if (target instanceof Element) {
       const shapeElement = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
       const shapeId = shapeElement?.dataset.shapeId;
       if (shapeId) {
-        return isElementLocked(shapeId) ? { type: "shape", id: shapeId } : null;
+        return isElementLocked(shapeId) ? shapeId : null;
       }
     }
 
@@ -2846,15 +2836,15 @@ export function createCanvasController(
 
     const worldPoint = screenToWorld(screenPoint(event));
     const image = hitTestRasterShape(worldPoint);
-    if (image?.locked) return { type: "shape", id: image.id };
+    if (image?.locked) return image.id;
 
     if (hasLockedStrokes()) {
       const strokeId = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
-      if (strokeId && isElementLocked(strokeId)) return { type: "stroke", id: strokeId };
+      if (strokeId && isElementLocked(strokeId)) return strokeId;
     }
 
     const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
-    if (paintedShape?.locked) return { type: "shape", id: paintedShape.id };
+    if (paintedShape?.locked) return paintedShape.id;
     return null;
   }
 
@@ -2863,8 +2853,7 @@ export function createCanvasController(
     if (target instanceof Element && target.closest(".canvas-unlock-button")) return;
 
     const next = lockedElementAtPointer(event);
-    const current = state.hoveredLockedElement;
-    if (current?.type === next?.type && current?.id === next?.id) return;
+    if (state.hoveredLockedElement === next) return;
     state.hoveredLockedElement = next;
   }
 
@@ -3574,7 +3563,7 @@ export function createCanvasController(
       "canvas:delete",
       t("Delete selection"),
       t("Delete the selected elements"),
-      deleteSelectedShape,
+      deleteSelection,
       ["delete", "backspace"],
     );
     registerAction(
@@ -3803,13 +3792,13 @@ export function createCanvasController(
     cutSelectionToClipboard,
     pasteFromContextMenu,
     uploadFromContextMenu,
-    deleteSelectedShape,
+    deleteSelection,
     stopActiveEdit,
     finishChromeEditing,
     setActiveEditorRef,
 
     // pointer / drag entry points
-    startShapeDrag,
+    startElementDrag,
     startRotation,
     startResize,
     startSelectionScale,

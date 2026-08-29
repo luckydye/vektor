@@ -412,7 +412,7 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
       .context=${view.hostContext()}
       .data=${view.elementDataForShape(shape)}
       @request-drag=${(event: Event) =>
-        view.startShapeDrag(shape, (event as CustomEvent).detail)}
+        view.startElementDrag(shape, (event as CustomEvent).detail)}
       @document-click=${(event: Event) =>
         view.onElementActivate(shape, (event as CustomEvent).detail)}
       @open-document=${(event: Event) => view.onElementOpen(shape, event)}
@@ -431,7 +431,7 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
         view.setActiveEditorRef(instance ?? null);
       })}
       @drag-start=${(event: Event) =>
-        view.startShapeDrag(shape, (event as CustomEvent).detail[0])}
+        view.startElementDrag(shape, (event as CustomEvent).detail[0])}
       @exit-edit=${() => view.stopActiveEdit()}
     ></${element}>`;
   }
@@ -632,7 +632,7 @@ function contextMenu(view: CanvasView) {
                 type="button"
                 class="canvas-tool danger"
                 aria-label=${t("Delete")}
-                @click=${run(() => view.deleteSelectedShape())}
+                @click=${run(() => view.deleteSelection())}
               >
                 ${svgIcon(iconMarkup("delete-element"), "svg-icon canvas-tool-icon")}
               </button>
