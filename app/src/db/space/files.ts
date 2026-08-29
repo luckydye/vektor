@@ -40,22 +40,47 @@ export async function getFileDocumentId(
   return row?.documentId ?? null;
 }
 
-/** As above for many keys at once. Keys the index does not know are absent. */
-export async function getFileDocumentIds(
+/**
+ * What the index knows about a stored file, beyond the bytes on disk.
+ *
+ * A key alone says nothing a person recognises: it is a content hash. The name
+ * the file was uploaded under, and the document it belongs to, live only here.
+ */
+export interface FileIndexEntry {
+  documentId: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+}
+
+/**
+ * Index entries for many keys at once. Keys the index does not know are absent
+ * from the map rather than present and empty, so a caller can tell "no row" from
+ * "a row that records nothing".
+ */
+export async function getFileIndexEntries(
   spaceId: string,
   paths: string[],
-): Promise<Map<string, string | null>> {
+): Promise<Map<string, FileIndexEntry>> {
   const { db } = await openSpaceStore(spaceId);
-  const byPath = new Map<string, string | null>();
+  const byPath = new Map<string, FileIndexEntry>();
   for (let i = 0; i < paths.length; i += ID_CHUNK) {
     const rows = await many(
       db
-        .select({ path: fileTable.path, documentId: fileTable.documentId })
+        .select({
+          path: fileTable.path,
+          documentId: fileTable.documentId,
+          originalName: fileTable.originalName,
+          mimeType: fileTable.mimeType,
+        })
         .from(fileTable)
         .where(inArray(fileTable.path, paths.slice(i, i + ID_CHUNK))),
     );
     for (const row of rows) {
-      byPath.set(row.path, row.documentId ?? null);
+      byPath.set(row.path, {
+        documentId: row.documentId ?? null,
+        originalName: row.originalName ?? null,
+        mimeType: row.mimeType ?? null,
+      });
     }
   }
   return byPath;

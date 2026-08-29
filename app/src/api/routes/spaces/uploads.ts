@@ -15,7 +15,7 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
+import { filterAccessibleFiles, getFileIndexEntries } from "#db/space/files.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import {
   readImageDimensions,
@@ -58,19 +58,34 @@ export const GET: ApiRouteHandler = (context) =>
       const storage = getFileStorage();
       const files = await storage.list(spaceId);
 
-      const parentIds = await getFileDocumentIds(
+      const index = await getFileIndexEntries(
         spaceId,
         files.map((f) => f.key),
       );
       const visible = await filterAccessibleFiles(
         spaceId,
-        files.map((f) => ({ ...f, documentId: parentIds.get(f.key) ?? null })),
+        files.map((f) => {
+          // A file on disk with no index row is still a real file; it lists
+          // with nulls rather than disappearing.
+          const entry = index.get(f.key);
+          return {
+            ...f,
+            documentId: entry?.documentId ?? null,
+            originalName: entry?.originalName ?? null,
+            mimeType: entry?.mimeType ?? null,
+          };
+        }),
         spaceAccessToViewer(access),
       );
 
+      // `documentId` is returned rather than stripped: every row here has
+      // already been filtered against the document that authorizes it, so
+      // naming that document tells the caller nothing it cannot already read.
+      // A client listing uploads needs it — and `originalName` — to show a file
+      // as anything other than the content hash it is stored under.
       return jsonResponse(
         {
-          files: visible.map(({ documentId, ...f }) => ({
+          files: visible.map((f) => ({
             ...f,
             url: storage.url(spaceId, f.key),
           })),
