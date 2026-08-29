@@ -115,6 +115,23 @@ export function requireUser(context: ApiContext) {
   return user;
 }
 
+/**
+ * The caller, and only when a browser session is what authenticated it.
+ *
+ * An SSH signature resolves to a user but opens no session, which is the line
+ * this draws: a key must not be able to register another key, or a stolen one
+ * would outlive the removal of the key that was stolen.
+ */
+export function requireSessionUser(context: ApiContext) {
+  const user = requireUser(context);
+  if (!context.var.session) {
+    throw forbiddenResponse(
+      "This endpoint needs a signed-in session — sign in through the web app.",
+    );
+  }
+  return user;
+}
+
 export function requireParam(
   params: Record<string, string | undefined>,
   key: string,

@@ -13,6 +13,7 @@ import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.t
 import { useSpace } from "#composeables/useSpace.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { useUserSshKeys } from "#composeables/useUserSshKeys.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 import {
@@ -25,6 +26,7 @@ import { AccessTokensPanel } from "./AccessTokensPanel.tsx";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
+import { SshKeysPanel } from "./SshKeysPanel.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
 interface Props {
@@ -95,6 +97,7 @@ export function UserPreferencesPanel(props: Props) {
   >(null);
   const { currentSpace, currentSpaceId, spaces } = useSpace();
   const accessTokens = usePersonalAccessTokens();
+  const sshKeys = useUserSshKeys();
 
   // A token delegates its issuer's role on the space, so a space reached only
   // through a document grant has no role to delegate and cannot mint one.
@@ -217,6 +220,11 @@ export function UserPreferencesPanel(props: Props) {
     void accessTokens.remove(tokenId);
   };
 
+  const deleteSshKey = (keyId: string) => {
+    if (!confirm(t("Delete this SSH key? It can no longer be used to log in."))) return;
+    void sshKeys.remove(keyId);
+  };
+
   const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
@@ -305,7 +313,10 @@ export function UserPreferencesPanel(props: Props) {
       <SettingsLayout
         tabs={tabs.map((tab) => ({ ...tab, label: t(tab.label) }))}
         onTabChange={(id) => {
-          if (id === "tokens") void accessTokens.load();
+          if (id === "tokens") {
+            void accessTokens.load();
+            void sshKeys.load();
+          }
         }}
         class="min-h-[200px] w-[620px] max-w-[calc(100vw-2rem)]"
         panels={{
@@ -481,21 +492,34 @@ export function UserPreferencesPanel(props: Props) {
             </section>
           ),
 
+          // Both are ways of letting something act as you outside the browser,
+          // so they share a tab rather than splitting the CLI across two.
           tokens: () => (
-            <AccessTokensPanel
-              tokens={accessTokens.tokens()}
-              spaces={tokenSpaces()}
-              defaultSpaceId={currentSpaceId()}
-              isLoading={accessTokens.isLoading()}
-              isCreating={accessTokens.isCreating()}
-              pendingTokenId={accessTokens.pendingTokenId()}
-              createdToken={accessTokens.createdToken()}
-              error={accessTokens.error()}
-              onCreate={accessTokens.create}
-              onDismissCreatedToken={accessTokens.dismissCreatedToken}
-              onRevoke={revokeToken}
-              onDelete={deleteToken}
-            />
+            <div class="space-y-8">
+              <AccessTokensPanel
+                tokens={accessTokens.tokens()}
+                spaces={tokenSpaces()}
+                defaultSpaceId={currentSpaceId()}
+                isLoading={accessTokens.isLoading()}
+                isCreating={accessTokens.isCreating()}
+                pendingTokenId={accessTokens.pendingTokenId()}
+                createdToken={accessTokens.createdToken()}
+                error={accessTokens.error()}
+                onCreate={accessTokens.create}
+                onDismissCreatedToken={accessTokens.dismissCreatedToken}
+                onRevoke={revokeToken}
+                onDelete={deleteToken}
+              />
+              <SshKeysPanel
+                keys={sshKeys.keys()}
+                isLoading={sshKeys.isLoading()}
+                isAdding={sshKeys.isAdding()}
+                pendingKeyId={sshKeys.pendingKeyId()}
+                error={sshKeys.error()}
+                onAdd={sshKeys.add}
+                onDelete={deleteSshKey}
+              />
+            </div>
           ),
 
           integrations: () => (

@@ -10,6 +10,7 @@ import {
   type RateLimitCheck,
 } from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
+import { isSshSignedRequest, resolveSshSignedUser } from "#api/sshRequestAuth.ts";
 import { authTrustedOrigins } from "#auth";
 import { getPublicEnv } from "#config";
 import { appLogger } from "#observability/logger.ts";
@@ -72,7 +73,13 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
     headers.delete("x-forwarded-for");
   }
 
-  const { user, session } = await resolveRequestIdentity(headers);
+  const isSigned = isSshSignedRequest(headers);
+  const { user: sessionUser, session } = await resolveRequestIdentity(headers);
+  // A signature is only consulted where a session did not answer, and it leaves
+  // `session` null: it authenticates one request rather than opening one, and
+  // the routes that insist on a real session — SSH key management above all —
+  // read that difference.
+  const user = sessionUser ?? (isSigned ? await resolveSshSignedUser(c.req.raw) : null);
 
   c.set("publicEnv", getPublicEnv());
   c.set("requestHeaders", headers);
@@ -81,7 +88,10 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   // The seam with `#acl`: guards read this struct and never the context itself.
   c.set("credentials", {
     jobToken: headers.get("X-Job-Token"),
-    authorization: headers.get("Authorization"),
+    // An SSH signature is spent here, on the identity above — leaving it in
+    // would have every guard read it as a malformed access token and refuse the
+    // request it just authenticated.
+    authorization: isSigned ? null : headers.get("Authorization"),
     cookie: headers.get("Cookie"),
     user,
   });

@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import type { ChatMessage } from "#api/provider/types.ts";
-import { resolveConfig } from "./resolve.ts";
+import { apiFetch, resolveConfig } from "./request.ts";
 
 const useColor = process.stdout.isTTY === true;
 const c = {
@@ -26,12 +26,10 @@ export type AgentCliOptions = {
 async function resolveDocument(
   host: string,
   spaceId: string,
-  headers: Record<string, string>,
   docArg: string,
 ): Promise<{ id: string; type: string | null }> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${host}/api/v1/spaces/${spaceId}/documents/${encodeURIComponent(docArg)}`,
-    { headers },
   );
   if (res.ok) {
     const data = (await res.json()) as {
@@ -42,7 +40,7 @@ async function resolveDocument(
     }
   }
 
-  const listRes = await fetch(`${host}/api/v1/spaces/${spaceId}/documents`, { headers });
+  const listRes = await apiFetch(`${host}/api/v1/spaces/${spaceId}/documents`);
   if (listRes.ok) {
     const data = (await listRes.json()) as {
       documents?: Array<{ id: string; slug?: string; type?: string | null }>;
@@ -98,15 +96,14 @@ async function runTurn(
   host: string,
   spaceId: string,
   sessionId: string,
-  authHeaders: Record<string, string>,
   history: ChatMessage[],
   userText: string,
   documentId: string | undefined,
   signal: AbortSignal,
 ): Promise<ChatMessage[]> {
-  const res = await fetch(`${host}/api/v1/chat/acp`, {
+  const res = await apiFetch(`${host}/api/v1/chat/acp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: randomUUID(),
@@ -187,15 +184,12 @@ async function runTurn(
 }
 
 export async function commandAgent(options: AgentCliOptions): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
-  const authHeaders: Record<string, string> = token
-    ? { Authorization: `Bearer ${token}` }
-    : {};
+  const { host, spaceId } = await resolveConfig();
   const sessionId = randomUUID();
 
   let documentId: string | undefined;
   if (options.doc) {
-    const resolved = await resolveDocument(host, spaceId, authHeaders, options.doc);
+    const resolved = await resolveDocument(host, spaceId, options.doc);
     documentId = resolved.id;
   }
 
@@ -216,7 +210,6 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
         host,
         spaceId,
         sessionId,
-        authHeaders,
         history,
         userText,
         documentId,

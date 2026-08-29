@@ -13,7 +13,10 @@ src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
 src/cli/mcp.ts          MCP stdio server
-src/cli/resolve.ts      stored config file, resolveConfig(), resolveHost()
+src/cli/login.ts        login (browser and --ssh), logout
+src/cli/sshAgent.ts     ssh-agent client and ssh-keygen fallback
+src/cli/request.ts      credential resolution, apiFetch(), resolveConfig()
+src/cli/resolve.ts      stored config file, resolveHost()
 ```
 
 ## Adding a Command
@@ -23,48 +26,61 @@ src/cli/resolve.ts      stored config file, resolveConfig(), resolveHost()
 Use the pattern from `document.ts`:
 
 ```typescript
-import { resolveConfig } from "./resolve.ts";
+import { apiFetch, resolveConfig } from "./request.ts";
 
 export async function commandFoo(flags: { ... }): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
   // ...
 }
 ```
 
-`resolveConfig()` is the only way in: it layers env vars over the stored config file and
-discovers a space when none is configured. Call it once per command — the space lookup
-can cost a request. `resolveHost()` is exported for `login`, which needs the host before
-a space exists.
+`resolveConfig()` (in `request.ts`) is the only way in: it layers env vars over the
+stored config file and discovers a space when none is configured. Call it once per
+command — the space lookup can cost a request. `resolveHost()` is exported for
+`login`, which needs the host before a space exists.
+
+Requests go through `apiFetch()` from the same module, which attaches whatever
+credential this machine has. Never build the header at a call site: a token is one
+line, but an SSH key signs each request individually and only `apiFetch` knows how.
 
 ### 2. Route in `vektor.ts`
 
 Add a block in `main()`, import the function, and update `printUsage()` and the final `throw new Error(...)`.
 
-### 3. Check the API route uses Bearer auth
+### 3. Check what the API route accepts
 
-API routes must use `authenticateJobTokenOrSpaceRole` (not `requireUser`) for CLI Bearer token access to work. `requireUser` only works for browser session auth.
+A route reached with `VEKTOR_ACCESS_TOKEN` must use `authenticateJobTokenOrSpaceRole`
+(not `requireUser`): a token is not a session, and `requireUser` only sees sessions.
 
 ```typescript
-// Wrong — blocks CLI
+// Wrong — blocks a token-authenticated CLI
 const user = requireUser(context);
 
 // Correct — works with VEKTOR_ACCESS_TOKEN
 await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 ```
 
-If you're adding commands for an area where the routes still use `requireUser`, update them first.
+A signature resolves to a real user, so `requireUser` accepts it either way. Only
+`requireSessionUser` refuses one, and that is reserved for endpoints where a key must
+not answer for its owner — registering another SSH key above all.
+
+If you're adding commands for an area where the routes still use `requireUser`, update
+them first.
 
 ## Auth
 
-The CLI authenticates with a Bearer token. Never create job tokens locally — the server mints them when needed (like for agent sessions). The browser does the same thing.
+The CLI has two credentials and picks the first it finds: an access token
+(`VEKTOR_ACCESS_TOKEN`, or one stored by the browser login) or an SSH key, which signs
+each request as it goes out. Never create job tokens locally — the server mints them
+when needed (like for agent sessions). The browser does the same thing.
 
 ```typescript
-const { token } = await resolveConfig();
-const headers = token ? { Authorization: `Bearer ${token}` } : {};
+const { host, spaceId } = await resolveConfig();
+const response = await apiFetch(`${host}/api/v1/spaces/${spaceId}/documents`);
 ```
 
-Never read `config().CLI_ACCESS_TOKEN` directly — `resolveConfig()` is what honors the
-stored config file as well as the env var.
+Never read `config().CLI_ACCESS_TOKEN` directly — `resolveCredential()` is what honors
+the stored config file, the env var, and the SSH key in that order.
 
 ### Stored config
 
@@ -79,6 +95,15 @@ stored config file as well as the env var.
 }
 ```
 
+An SSH login writes no token — only the key it chose:
+
+```json
+{
+  "spaceId": "space_4f2b…",
+  "sshKey": "SHA256:2f8c…"
+}
+```
+
 `VEKTOR_HOST` is the exception: `resolveHost()` reads the env var (or the localhost
 default) and never the file, so the server URL stays a property of the shell, not of the
 stored login. `vektor login` prints a reminder to keep the export when the host is not
@@ -87,6 +112,73 @@ the default.
 Env vars win over the file, so `VEKTOR_ACCESS_TOKEN` in a shell profile keeps shadowing
 a fresh `vektor login` — the command warns when that env var is set. Writes merge into
 the existing file, and an unreadable or corrupt file is ignored rather than fatal.
+
+### SSH login
+
+`vektor login --ssh` is for machines with no browser to open — servers,
+containers, CI. It does not fetch a token: with an SSH key configured the CLI
+signs **every request** with it, so nothing standing is stored on the machine.
+
+```sh
+vektor login --ssh                       # picks the ssh-agent identity the server knows
+vektor login --ssh --key ~/.ssh/id_work  # one specific key
+```
+
+The key has to be registered first, under user settings → Access Tokens → SSH
+Keys (`POST /api/v1/users/ssh-keys`). Registration needs a browser session and
+takes no other credential: a key authenticates every space its owner can reach,
+so a signature must not be able to add another one.
+
+`login --ssh` only settles *which* key — the agent may hold several and the
+server knows some of them — by signing a request to `/api/v1/users/me` with each
+in turn. What it writes to the config file is a fingerprint and a space id,
+neither of them secret; a token left there by an earlier browser login is
+removed.
+
+#### What a signature covers
+
+`src/utils/sshRequestSignature.ts` defines the scheme; both sides build the
+string from it, which is what makes them agree.
+
+```
+VEKTOR-SSH-V1
+POST
+/api/v1/spaces/space_4f2b/documents?draft=1
+<sha256 of the body, hex>
+<unix seconds>
+<nonce>
+```
+
+Signed as SSHSIG under namespace `vektor-cli` and sent as one header:
+
+```
+Authorization: SSH-SIG t=1756500000,n=<nonce>,s=<base64 of the armored signature>
+```
+
+So a captured signature is worth the one request it was made for: another path,
+another body, or a second use of the same nonce all fail. The server accepts a
+five-minute clock skew and remembers spent nonces for that long.
+
+`src/api/sshRequestAuth.ts` verifies it in `hydrateRequestContext` and resolves
+the fingerprint to a user. From there the request is authorized exactly as a
+browser session's is — the key carries an identity, never permissions of its
+own, so a signed CLI call reaches what the person reaches and no more.
+
+`session` stays null for a signed request. That difference is the one thing
+routes may read: `requireSessionUser` (used by the SSH key endpoints) refuses a
+signature where `requireUser` accepts it.
+
+Supported key types: `ssh-ed25519`, `ssh-rsa` (2048 bits or more, SHA-2
+signatures only) and `ecdsa-sha2-nistp256/384/521`. The formats are parsed in
+`src/utils/sshKeys.ts` — the server never shells out to `ssh-keygen`, which
+keeps the single binary self-contained.
+
+Signing costs one ssh-agent round trip per request. Without an agent the CLI
+falls back to `ssh-keygen -Y sign` on a key file, which prompts for a passphrase
+every time — use an agent for anything chatty, `vektor mcp` above all.
+
+Deleting a key takes effect on the next request; there is no token left over to
+revoke.
 
 ## MCP
 

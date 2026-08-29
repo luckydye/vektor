@@ -1,11 +1,15 @@
 import { randomBytes } from "node:crypto";
+import { config } from "#config";
 import { escapeHtml } from "#utils/html.ts";
+import { apiFetch } from "./request.ts";
 import {
   clearStoredConfig,
   DEFAULT_HOST,
   resolveHost,
+  writeSshLogin,
   writeStoredConfig,
 } from "./resolve.ts";
+import { discoverSshSigners, type SshSigner } from "./sshAgent.ts";
 
 function openBrowser(url: string): void {
   const cmd =
@@ -39,8 +43,20 @@ export function loginErrorMessage(code: string): string {
   return LOGIN_ERRORS[code] ?? `Login failed: ${code}`;
 }
 
-export async function commandLogin(): Promise<void> {
+export interface LoginOptions {
+  /** Authenticate with an SSH key instead of opening a browser. */
+  ssh?: boolean;
+  /** A specific key file to sign with; implies `ssh`. */
+  keyPath?: string;
+}
+
+export async function commandLogin(options: LoginOptions = {}): Promise<void> {
   const host = resolveHost();
+
+  if (options.ssh || options.keyPath) {
+    await loginWithSsh(host, options.keyPath);
+    return;
+  }
 
   // Random port in a range unlikely to clash with common dev servers.
   const port = 51000 + Math.floor(Math.random() * 8999);
@@ -134,39 +150,142 @@ export async function commandLogin(): Promise<void> {
   );
 
   try {
-    const { token, spaceId, permission, expiresAt } = await callbackPromise;
+    storeLogin(host, await callbackPromise);
+  } finally {
+    clearTimeout(timeout);
+    server.stop();
+  }
+}
 
-    const scope = [
-      permission ? `${permission} access` : undefined,
-      expiresAt ? `expires ${expiresAt.slice(0, 10)}` : undefined,
-    ].filter((part): part is string => part !== undefined);
+/** Persist what a login returned and tell the user what it is good for. */
+function storeLogin(host: string, result: CliTokenResult): void {
+  const { token, spaceId, permission, expiresAt } = result;
 
-    const path = writeStoredConfig({ spaceId, accessToken: token });
+  const scope = [
+    permission ? `${permission} access` : undefined,
+    expiresAt ? `expires ${expiresAt.slice(0, 10)}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+
+  const path = writeStoredConfig({ spaceId, accessToken: token });
+
+  process.stdout.write(
+    [
+      "",
+      `Logged in to ${host} (space ${spaceId}).`,
+      ...(scope.length > 0 ? [`Token scope: ${scope.join(", ")}`] : []),
+      `Credentials stored in ${path}`,
+      // The host is env-only, so without the export the next command hits localhost.
+      ...(host === DEFAULT_HOST
+        ? []
+        : ["", `Keep VEKTOR_HOST=${host} in your shell profile — it is not stored.`]),
+      // Env vars still win, so a stale export would silently shadow this token.
+      ...(process.env.VEKTOR_ACCESS_TOKEN
+        ? [
+            "",
+            "Note: VEKTOR_ACCESS_TOKEN is set and takes precedence — unset it to use the stored token.",
+          ]
+        : []),
+      "",
+    ].join("\n"),
+  );
+}
+
+/**
+ * Choose the SSH key this machine signs with, and check the server agrees.
+ *
+ * There is no token to fetch: a signed request carries its own proof, so all
+ * this does is settle *which* key — the agent may hold several and only some are
+ * registered — and record that choice. What it writes is a fingerprint and a
+ * space id, neither of them secret.
+ */
+async function loginWithSsh(host: string, keyPath?: string): Promise<void> {
+  const signers = await discoverSshSigners(keyPath);
+  if (signers.length === 0) {
+    throw new Error(
+      "No SSH keys found. Add one to your agent (ssh-add ~/.ssh/id_ed25519) or pass --key <path>.",
+    );
+  }
+
+  const rejected: string[] = [];
+
+  for (const signer of signers) {
+    process.stderr.write(`Trying SSH key ${describeSigner(signer)}…\n`);
+
+    let identity: { name?: string; email?: string };
+    try {
+      const response = await apiFetch(
+        `${host}/api/v1/users/me`,
+        {},
+        {
+          kind: "ssh",
+          signer,
+        },
+      );
+      if (response.status === 401 || response.status === 403) {
+        // The server knows nothing of this key. Another one may still work.
+        rejected.push(`${describeSigner(signer)}: not registered on ${host}`);
+        continue;
+      }
+      if (!response.ok) {
+        const text = await response.text().catch(() => String(response.status));
+        throw new Error(`Server refused the signature (${response.status}): ${text}`);
+      }
+      identity = (await response.json()) as { name?: string; email?: string };
+    } catch (error) {
+      // A key that cannot sign — no ssh-keygen, a declined passphrase — is worth
+      // saying out loud, but the next key may still work.
+      rejected.push(`${describeSigner(signer)}: ${errorMessage(error)}`);
+      continue;
+    }
+
+    // Only an explicit choice is stored; without one every command discovers a
+    // space for itself, which is what an unconfigured install already does.
+    const spaceId = config().CLI_SPACE_ID;
+    const path = writeSshLogin({
+      spaceId,
+      ...(signer.fingerprint
+        ? { fingerprint: signer.fingerprint }
+        : { keyPath: signer.label }),
+    });
 
     process.stdout.write(
       [
         "",
-        `Logged in to ${host} (space ${spaceId}).`,
-        ...(scope.length > 0 ? [`Token scope: ${scope.join(", ")}`] : []),
-        `Credentials stored in ${path}`,
-        // The host is env-only, so without the export the next command hits localhost.
+        `Signed in to ${host} as ${identity.name ?? identity.email ?? "you"}.`,
+        `Requests are signed with ${describeSigner(signer)}.`,
+        `Key choice stored in ${path} — no token is kept anywhere.`,
         ...(host === DEFAULT_HOST
           ? []
           : ["", `Keep VEKTOR_HOST=${host} in your shell profile — it is not stored.`]),
-        // Env vars still win, so a stale export would silently shadow this token.
+        // An env token would win over the signature and quietly change identity.
         ...(process.env.VEKTOR_ACCESS_TOKEN
           ? [
               "",
-              "Note: VEKTOR_ACCESS_TOKEN is set and takes precedence — unset it to use the stored token.",
+              "Note: VEKTOR_ACCESS_TOKEN is set and takes precedence — unset it to sign with your key.",
             ]
           : []),
         "",
       ].join("\n"),
     );
-  } finally {
-    clearTimeout(timeout);
-    server.stop();
+    return;
   }
+
+  throw new Error(
+    [
+      "SSH login failed.",
+      ...rejected.map((line) => `  ${line}`),
+      "",
+      "Register the public key under user settings → Access Tokens → SSH Keys.",
+    ].join("\n"),
+  );
+}
+
+function describeSigner(signer: SshSigner): string {
+  return signer.fingerprint ? `${signer.label} (${signer.fingerprint})` : signer.label;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function commandLogout(): void {

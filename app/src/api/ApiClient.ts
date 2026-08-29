@@ -349,6 +349,19 @@ export interface PersonalAccessToken extends AccessToken {
   spaceName: string;
 }
 
+/** An SSH public key the caller can log the CLI in with. */
+export interface UserSshKey {
+  id: string;
+  name: string;
+  keyType: string;
+  /** The base64 key blob, without the type prefix or the comment. */
+  publicKey: string;
+  /** `SHA256:…`, the string `ssh-keygen -lf` prints. */
+  fingerprint: string;
+  createdAt: Date | string;
+  lastUsedAt: Date | string | null;
+}
+
 export interface ShareLink {
   id: string;
   name: string | null;
@@ -1933,6 +1946,33 @@ export class ApiClient {
 
     delete: async (tokenId: string) => {
       await this.apiDelete(this.baseUrl, `/api/v1/access-tokens/${tokenId}`);
+    },
+  };
+
+  /**
+   * The caller's own SSH keys, which `vektor login --ssh` authenticates against.
+   * A key is registered by its owner and nobody else, so these are session-only
+   * endpoints — no access token opens them.
+   */
+  sshKeys = {
+    get: async () => {
+      return await this.apiGet<{ keys: UserSshKey[] }>(
+        this.baseUrl,
+        "/api/v1/users/ssh-keys",
+      );
+    },
+
+    /** `publicKey` is one authorized_keys line; the name defaults to its comment. */
+    create: async (body: { publicKey: string; name?: string }) => {
+      return await this.apiPost<{ key: UserSshKey }>(
+        this.baseUrl,
+        "/api/v1/users/ssh-keys",
+        body,
+      );
+    },
+
+    delete: async (keyId: string) => {
+      await this.apiDelete(this.baseUrl, `/api/v1/users/ssh-keys/${keyId}`);
     },
   };
 

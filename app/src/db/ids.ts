@@ -13,6 +13,7 @@ const idPrefixes = {
   secret: "secret",
   shareLink: "share",
   space: "space",
+  sshKey: "sshkey",
   workflowSchedule: "sched",
 } as const;
 

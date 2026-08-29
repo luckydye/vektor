@@ -20,6 +20,16 @@ export type VektorMcpConfig = {
   spaceId: string;
   jobToken?: string;
   accessToken?: string;
+  /**
+   * Builds an `Authorization` value per request, for a caller that holds no
+   * standing credential — `vektor mcp` signing each request with an SSH key.
+   * Consulted only when neither token is set.
+   */
+  authorize?: (request: {
+    method: string;
+    path: string;
+    body: string;
+  }) => Promise<string | undefined>;
   documentId?: string;
   connectedProviders?: string[];
 };
@@ -124,10 +134,19 @@ async function apiRequest(
   init: RequestInit = {},
 ): Promise<unknown> {
   const headers = new Headers(init.headers);
+  const url = new URL(path, config.apiUrl);
   if (config.jobToken) {
     headers.set("X-Job-Token", config.jobToken);
   } else if (config.accessToken) {
     headers.set("Authorization", `Bearer ${config.accessToken}`);
+  } else if (config.authorize) {
+    // Every body on this path is a JSON string; a signature covers it verbatim.
+    const authorization = await config.authorize({
+      method: init.method ?? "GET",
+      path: `${url.pathname}${url.search}`,
+      body: typeof init.body === "string" ? init.body : "",
+    });
+    if (authorization) headers.set("Authorization", authorization);
   }
   headers.set("X-Space-Id", config.spaceId);
   headers.set("X-Requested-With", "XMLHttpRequest");
@@ -138,10 +157,7 @@ async function apiRequest(
     headers.set("Accept", "application/json");
   }
 
-  const response = await fetch(new URL(path, config.apiUrl), {
-    ...init,
-    headers,
-  });
+  const response = await fetch(url, { ...init, headers });
 
   const text = await response.text();
   if (!response.ok) {

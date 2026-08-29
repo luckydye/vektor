@@ -1,9 +1,5 @@
 import { slugify } from "#utils/slug.ts";
-import { resolveConfig } from "./resolve.ts";
-
-function authHeaders(token: string | undefined): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+import { apiFetch, resolveConfig } from "./request.ts";
 
 type Category = {
   id: string;
@@ -17,13 +13,11 @@ type Category = {
 
 async function fetchCategory(
   host: string,
-  token: string | undefined,
   spaceId: string,
   idOrSlug: string,
 ): Promise<Category> {
-  const listRes = await fetch(
+  const listRes = await apiFetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories`,
-    { headers: authHeaders(token) },
   );
   if (!listRes.ok) throw new Error(`Failed to list categories (${listRes.status})`);
   const { categories } = (await listRes.json()) as { categories: Category[] };
@@ -33,10 +27,9 @@ async function fetchCategory(
 }
 
 export async function commandCategoryLs(): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
-  const res = await fetch(
+  const { host, spaceId } = await resolveConfig();
+  const res = await apiFetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories`,
-    { headers: authHeaders(token) },
   );
   if (!res.ok)
     throw new Error(`Failed to list categories (${res.status}): ${await res.text()}`);
@@ -54,14 +47,14 @@ export async function commandCategoryCreate(flags: {
   color?: string;
   icon?: string;
 }): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
   const slug = flags.slug ?? slugify(flags.name);
 
-  const res = await fetch(
+  const res = await apiFetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders(token) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: flags.name,
         slug,
@@ -87,17 +80,17 @@ export async function commandCategoryEdit(
     icon?: string;
   },
 ): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
-  const existing = await fetchCategory(host, token, spaceId, idOrSlug);
+  const { host, spaceId } = await resolveConfig();
+  const existing = await fetchCategory(host, spaceId, idOrSlug);
 
   const name = flags.name ?? existing.name;
   const slug = flags.slug ?? (flags.name ? slugify(flags.name) : existing.slug);
 
-  const res = await fetch(
+  const res = await apiFetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories/${existing.id}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders(token) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name,
         slug,
@@ -114,12 +107,12 @@ export async function commandCategoryEdit(
 }
 
 export async function commandCategoryRm(idOrSlug: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
-  const existing = await fetchCategory(host, token, spaceId, idOrSlug);
+  const { host, spaceId } = await resolveConfig();
+  const existing = await fetchCategory(host, spaceId, idOrSlug);
 
-  const res = await fetch(
+  const res = await apiFetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories/${existing.id}`,
-    { method: "DELETE", headers: authHeaders(token) },
+    { method: "DELETE" },
   );
   if (!res.ok)
     throw new Error(`Failed to delete category (${res.status}): ${await res.text()}`);

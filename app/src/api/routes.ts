@@ -64,6 +64,8 @@ import * as workflowSchedule from "./routes/spaces/workflow-schedule.ts";
 import * as workflowSchedules from "./routes/spaces/workflow-schedules.ts";
 import * as urlMetadata from "./routes/url-metadata.ts";
 import * as usersMe from "./routes/users/me.ts";
+import * as usersSshKey from "./routes/users/ssh-key.ts";
+import * as usersSshKeys from "./routes/users/ssh-keys.ts";
 import * as usersSuggestions from "./routes/users/suggestions.ts";
 import * as users from "./routes/users/users.ts";
 import * as wellKnownCaldav from "./routes/well-known/caldav.ts";
@@ -229,5 +231,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/url-metadata", module: urlMetadata },
   { pattern: "/api/v1/users", module: users },
   { pattern: "/api/v1/users/me", module: usersMe },
+  { pattern: "/api/v1/users/ssh-keys", module: usersSshKeys },
+  { pattern: "/api/v1/users/ssh-keys/[keyId]", module: usersSshKey },
   { pattern: "/api/v1/users/suggestions", module: usersSuggestions },
 ];

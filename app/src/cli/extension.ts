@@ -10,6 +10,7 @@ import {
 import { basename, join } from "node:path";
 import { kebabToTitle } from "#utils/utils.ts";
 import { createZipBuffer, type ZipEntry } from "#utils/zip.ts";
+import { apiFetch } from "./request.ts";
 
 // Default location for extensions, relative to cwd (i.e. the repo root).
 const EXTENSIONS_DIR = "extensions";
@@ -182,7 +183,6 @@ export async function commandUpload(
   extensionId: string | undefined,
   wikiUrl: string,
   spaceId: string,
-  token: string,
 ): Promise<void> {
   const { id, dir: extensionDir } = resolveExtension(extensionId);
   const zipPath = join(extensionDir, `${id}.zip`);
@@ -201,9 +201,9 @@ export async function commandUpload(
   form.append("file", new Blob([zipData], { type: "application/zip" }), `${id}.zip`);
 
   const origin = new URL(url).origin;
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, Origin: origin },
+    headers: { Origin: origin },
     body: form,
   });
 

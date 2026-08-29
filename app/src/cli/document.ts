@@ -12,47 +12,21 @@
  *   document search <query>                    full-text search, prints matching docs
  */
 
-import { resolveConfig } from "./resolve.ts";
+import { apiFetch, apiJson, resolveConfig } from "./request.ts";
 
 function apiUrl(host: string, path: string): string {
   return `${host.replace(/\/$/, "")}${path}`;
 }
 
-function authHeaders(token: string | undefined): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function apiFetch(
-  host: string,
-  token: string | undefined,
-  path: string,
-  init?: RequestInit,
-): Promise<unknown> {
-  const res = await fetch(apiUrl(host, path), {
-    ...init,
-    headers: {
-      ...authHeaders(token),
-      ...(init?.headers as Record<string, string> | undefined),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => String(res.status));
-    throw new Error(
-      `API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${text}`,
-    );
-  }
-  return res.json();
-}
-
 export async function commandCat(docId: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
 
-  const res = await fetch(apiUrl(host, `/api/v1/spaces/${spaceId}/documents/${docId}`), {
-    headers: {
-      ...authHeaders(token),
-      Accept: "text/markdown",
+  const res = await apiFetch(
+    apiUrl(host, `/api/v1/spaces/${spaceId}/documents/${docId}`),
+    {
+      headers: { Accept: "text/markdown" },
     },
-  });
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
@@ -117,11 +91,11 @@ export async function commandWrite(
   source?: string,
   contentType?: string,
 ): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
   const raw = await readSource(source);
   const { content } = parseFrontmatter(raw);
 
-  await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents/${docId}`, {
+  await apiJson(apiUrl(host, `/api/v1/spaces/${spaceId}/documents/${docId}`), {
     method: "PUT",
     headers: { "Content-Type": contentType ?? inferContentType(source) },
     body: content,
@@ -145,7 +119,7 @@ export async function commandCreate(flags: {
   contentType?: string;
   properties?: Record<string, string>;
 }): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
   const raw = await readSource(flags.source);
   const { meta, content } = parseFrontmatter(raw);
   const contentType = flags.contentType ?? inferContentType(flags.source);
@@ -168,7 +142,7 @@ export async function commandCreate(flags: {
     }
   }
 
-  const data = (await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents`, {
+  const data = (await apiJson(apiUrl(host, `/api/v1/spaces/${spaceId}/documents`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -187,13 +161,11 @@ export async function commandCreate(flags: {
 }
 
 export async function commandLs(flags: { limit?: string }): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
 
   const limit = flags.limit ? `?limit=${flags.limit}` : "";
-  const data = (await apiFetch(
-    host,
-    token,
-    `/api/v1/spaces/${spaceId}/documents${limit}`,
+  const data = (await apiJson(
+    apiUrl(host, `/api/v1/spaces/${spaceId}/documents${limit}`),
   )) as { documents: Array<{ id: string; slug: string; title?: string }> };
 
   for (const doc of data.documents) {
@@ -213,7 +185,7 @@ export async function commandSet(
   assignments: string[],
   opts: { parent?: string; title?: string; category?: string },
 ): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
   const base = `/api/v1/spaces/${spaceId}/documents/${docId}`;
 
   // Merge --title/--category shorthands into property assignments.
@@ -236,7 +208,7 @@ export async function commandSet(
         properties[arg.slice(0, eq)] = arg.slice(eq + 1);
       }
     }
-    await apiFetch(host, token, base, {
+    await apiJson(apiUrl(host, base), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ properties }),
@@ -246,7 +218,7 @@ export async function commandSet(
   // Send parent patch separately (API does not allow combining with properties).
   if (opts.parent !== undefined) {
     const parentId = opts.parent === "-" || opts.parent === "none" ? null : opts.parent;
-    await apiFetch(host, token, base, {
+    await apiJson(apiUrl(host, base), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ parentId }),
@@ -257,12 +229,10 @@ export async function commandSet(
 }
 
 export async function commandSearch(query: string): Promise<void> {
-  const { host, token, spaceId } = await resolveConfig();
+  const { host, spaceId } = await resolveConfig();
 
-  const data = (await apiFetch(
-    host,
-    token,
-    `/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(query)}`,
+  const data = (await apiJson(
+    apiUrl(host, `/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(query)}`),
   )) as {
     results: Array<{ id: string; slug: string; title?: string; snippet?: string }>;
   };
