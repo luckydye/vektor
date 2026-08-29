@@ -267,14 +267,14 @@ export function createCanvasController(
     | {
         type: "resize";
         pointerId: number;
-        shapeId: string;
+        elementId: string;
         fixedTopLeft: { x: number; y: number };
         minSize: { width: number; height: number };
         // Locked width/height ratio for media; undefined lets the axes move freely.
         aspect?: number;
-        resizeMode: "box" | "font";
-        initialScale?: number;
+        // The box the gesture started from; `rotation` is the frame's own.
         initial: CanvasFrame;
+        target: ResizeTarget;
       }
     | {
         type: "selection-scale";
@@ -293,26 +293,10 @@ export function createCanvasController(
     | {
         type: "rotate";
         pointerId: number;
-        shapeId: string;
+        elementId: string;
         center: { x: number; y: number };
         initial: CanvasFrame;
-      }
-    | {
-        type: "stroke-resize";
-        pointerId: number;
-        strokeId: string;
-        fixedTopLeft: { x: number; y: number };
-        startBounds: Rect;
-        initialPoints: FreehandPoint[];
-      }
-    | {
-        type: "stroke-rotate";
-        pointerId: number;
-        strokeId: string;
-        center: { x: number; y: number };
-        startRotation: number;
-        initialRotation: number;
-        initialPoints: FreehandPoint[];
+        target: RotateTarget;
       }
     | {
         type: "pan";
@@ -326,6 +310,31 @@ export function createCanvasController(
         additive: boolean;
         startScreen: { x: number; y: number };
         baseIds: Set<string>;
+      };
+
+  /**
+   * Where a resize or rotate writes its result.
+   *
+   * The pointer maths is the same whichever store the element came from — it is
+   * a box and an angle either way — so the two gestures are one drag each, and
+   * only the write is dispatched. Nesting the discriminant keeps the per-store
+   * start data from leaking into the other branch as optional fields.
+   */
+  type ResizeTarget =
+    // "font" scales the type size and lets the element re-measure; text has no
+    // stored box to resize.
+    | { store: "shape"; mode: "box" | "font"; initialScale: number }
+    | { store: "stroke"; initialPoints: FreehandPoint[] };
+
+  type RotateTarget =
+    | { store: "shape" }
+    | {
+        store: "stroke";
+        // Ink bakes rotation into its points, so the gesture tracks the angle it
+        // started from and applies the delta.
+        startRotation: number;
+        initialRotation: number;
+        initialPoints: FreehandPoint[];
       };
 
   type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
@@ -2047,9 +2056,9 @@ export function createCanvasController(
 
   // Recolors only the selected shape. Creation defaults remain owned by the
   // active-tool toolbar.
-  /** The shape a resize/rotate drag is acting on, if either is in progress. */
+  /** The element a resize/rotate drag is acting on, if either is in progress. */
   function draggingShapeId(): string | undefined {
-    return dragState && "shapeId" in dragState ? dragState.shapeId : undefined;
+    return dragState && "elementId" in dragState ? dragState.elementId : undefined;
   }
 
   function setSelectedElementColor(type: CanvasShapeType, color: string) {
@@ -2327,24 +2336,27 @@ export function createCanvasController(
     selectOnly(shape.id);
     // Text auto-sizes to its content, so drive off its measured box.
     const bounds = shapeBounds(shape);
-    const resizeMode = extensionManager.get(shape.type).behavior.transform;
-    const usesIntrinsicScale = resizeMode?.resize === "font";
-    const keepAspect = Boolean(resizeMode?.aspectLocked) || usesIntrinsicScale;
+    const transform = extensionManager.get(shape.type).behavior.transform;
+    const usesIntrinsicScale = transform?.resize === "font";
+    const keepAspect = Boolean(transform?.aspectLocked) || usesIntrinsicScale;
     dragState = {
       type: "resize",
       pointerId: event.pointerId,
-      shapeId: shape.id,
+      elementId: shape.id,
       fixedTopLeft: rotatedShapeCorners(bounds)[0],
       minSize: extensionManager.get(shape.type).defaults.minSize,
       aspect: keepAspect && bounds.height > 0 ? bounds.width / bounds.height : undefined,
-      resizeMode: usesIntrinsicScale ? "font" : "box",
-      initialScale: Number(shape.data.fontScale) || 1,
       initial: {
         x: shape.frame.x,
         y: shape.frame.y,
         width: bounds.width,
         height: bounds.height,
         rotation: shape.frame.rotation,
+      },
+      target: {
+        store: "shape",
+        mode: usesIntrinsicScale ? "font" : "box",
+        initialScale: Number(shape.data.fontScale) || 1,
       },
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2432,7 +2444,7 @@ export function createCanvasController(
     dragState = {
       type: "rotate",
       pointerId: event.pointerId,
-      shapeId: shape.id,
+      elementId: shape.id,
       center: {
         x: shape.frame.x + bounds.width / 2,
         y: shape.frame.y + bounds.height / 2,
@@ -2444,6 +2456,7 @@ export function createCanvasController(
         height: bounds.height,
         rotation: shape.frame.rotation,
       },
+      target: { store: "shape" },
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     event.preventDefault();
@@ -2454,12 +2467,15 @@ export function createCanvasController(
     const bounds = strokeBounds(stroke);
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
     dragState = {
-      type: "stroke-resize",
+      type: "resize",
       pointerId: event.pointerId,
-      strokeId: stroke.id,
+      elementId: stroke.id,
       fixedTopLeft: { x: bounds.x, y: bounds.y },
-      startBounds: bounds,
-      initialPoints: stroke.points.map(cloneFreehandPoint),
+      // Ink has no declared minimum; this keeps a stroke grabbable after it has
+      // been scaled all the way down.
+      minSize: { width: 32, height: 32 },
+      initial: { ...bounds, rotation: 0 },
+      target: { store: "stroke", initialPoints: stroke.points.map(cloneFreehandPoint) },
     };
     startStrokeTransformInteraction([stroke]);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2472,13 +2488,17 @@ export function createCanvasController(
     if (!bounds) return;
     const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
     dragState = {
-      type: "stroke-rotate",
+      type: "rotate",
       pointerId: event.pointerId,
-      strokeId: stroke.id,
+      elementId: stroke.id,
       center,
-      startRotation: rotationFromPointer(center, screenToWorld(screenPoint(event))),
-      initialRotation: stroke.rotation ?? 0,
-      initialPoints: stroke.points.map(cloneFreehandPoint),
+      initial: { ...bounds, rotation: stroke.rotation ?? 0 },
+      target: {
+        store: "stroke",
+        startRotation: rotationFromPointer(center, screenToWorld(screenPoint(event))),
+        initialRotation: stroke.rotation ?? 0,
+        initialPoints: stroke.points.map(cloneFreehandPoint),
+      },
     };
     startStrokeTransformInteraction([stroke]);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2995,47 +3015,96 @@ export function createCanvasController(
 
     resize: {
       move(drag, { world }) {
-        const shape = shapesById().get(drag.shapeId);
-        if (!shape || !canMoveShape(shape)) return;
-        const resized = resizeRotatedShapeFromBottomRight({
+        const box = resizeRotatedShapeFromBottomRight({
           fixedTopLeft: drag.fixedTopLeft,
           pointer: world,
           rotation: drag.initial.rotation,
           minSize: drag.minSize,
           aspect: drag.aspect,
         });
-        if (drag.resizeMode === "font") {
+
+        if (drag.target.store === "stroke") {
+          const stroke = strokesById().get(drag.elementId);
+          if (!stroke || !canMoveStroke(stroke)) return;
+          const scaleX = box.width / drag.initial.width;
+          const scaleY = box.height / drag.initial.height;
+          updateStrokeTransformInteraction([
+            strokeFromTransformedPoints(
+              stroke,
+              drag.target.initialPoints.map((point) => ({
+                ...point,
+                x: box.x + (point.x - drag.initial.x) * scaleX,
+                y: box.y + (point.y - drag.initial.y) * scaleY,
+              })),
+            ),
+          ]);
+          return;
+        }
+
+        const shape = shapesById().get(drag.elementId);
+        if (!shape || !canMoveShape(shape)) return;
+        if (drag.target.mode === "font") {
           // Text has no stored box; translate the drag into a proportional font
           // scale and let the node re-measure its own width/height. Top-left
           // stays put, so it grows toward the corner being dragged.
-          const ratio = drag.initial.width > 0 ? resized.width / drag.initial.width : 1;
-          const nextScale = clampFontScale((drag.initialScale ?? 1) * ratio);
+          const ratio = drag.initial.width > 0 ? box.width / drag.initial.width : 1;
+          const nextScale = clampFontScale(drag.target.initialScale * ratio);
           updateShapeData(
-            drag.shapeId,
+            drag.elementId,
             { fontScale: Math.round(nextScale * 1000) / 1000 },
             { transform: true },
           );
           return;
         }
-        updateShapeFrame(drag.shapeId, {
-          x: Math.round(resized.x),
-          y: Math.round(resized.y),
-          width: Math.round(resized.width),
-          height: Math.round(resized.height),
+        updateShapeFrame(drag.elementId, {
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
         });
       },
-      revert: revertShapeFrameDrag,
+      commit: commitElementTransform,
+      revert: revertElementTransform,
+      end: clearStrokePreview,
     },
 
     rotate: {
       move(drag, { event, world }) {
-        const shape = shapesById().get(drag.shapeId);
+        const raw = rotationFromPointer(drag.center, world);
+        const rotation = event.shiftKey ? snapRotation(raw) : raw;
+
+        if (drag.target.store === "stroke") {
+          const stroke = strokesById().get(drag.elementId);
+          if (!stroke || !canMoveStroke(stroke)) return;
+          const { startRotation, initialRotation, initialPoints } = drag.target;
+          const delta = ((rotation - startRotation + 540) % 360) - 180;
+          updateStrokeTransformInteraction([
+            strokeFromTransformedPoints(
+              stroke,
+              initialPoints.map((point) => {
+                const rotated = rotateVector(
+                  { x: point.x - drag.center.x, y: point.y - drag.center.y },
+                  delta,
+                );
+                return {
+                  ...point,
+                  x: drag.center.x + rotated.x,
+                  y: drag.center.y + rotated.y,
+                };
+              }),
+              normalizeRotation(initialRotation + delta),
+            ),
+          ]);
+          return;
+        }
+
+        const shape = shapesById().get(drag.elementId);
         if (!shape || !canMoveShape(shape)) return;
-        const rawRotation = rotationFromPointer(drag.center, world);
-        const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-        updateShapeFrame(drag.shapeId, { rotation: Math.round(rotation * 10) / 10 });
+        updateShapeFrame(drag.elementId, { rotation: Math.round(rotation * 10) / 10 });
       },
-      revert: revertShapeFrameDrag,
+      commit: commitElementTransform,
+      revert: revertElementTransform,
+      end: clearStrokePreview,
     },
 
     "selection-scale": {
@@ -3102,69 +3171,6 @@ export function createCanvasController(
         });
       },
     },
-
-    "stroke-resize": {
-      move(drag, { world }) {
-        const stroke = strokesById().get(drag.strokeId);
-        if (!stroke || !canMoveStroke(stroke)) return;
-        const resized = resizeRotatedShapeFromBottomRight({
-          fixedTopLeft: drag.fixedTopLeft,
-          pointer: world,
-          rotation: 0,
-          minSize: { width: 32, height: 32 },
-        });
-        const scaleX = resized.width / drag.startBounds.width;
-        const scaleY = resized.height / drag.startBounds.height;
-        updateStrokeTransformInteraction([
-          strokeFromTransformedPoints(
-            stroke,
-            drag.initialPoints.map((point) => ({
-              ...point,
-              x: resized.x + (point.x - drag.startBounds.x) * scaleX,
-              y: resized.y + (point.y - drag.startBounds.y) * scaleY,
-            })),
-          ),
-        ]);
-      },
-      commit: commitStrokeShape,
-      revert: cancelStrokeTransformInteraction,
-      end() {
-        strokePreview = null;
-      },
-    },
-
-    "stroke-rotate": {
-      move(drag, { event, world }) {
-        const stroke = strokesById().get(drag.strokeId);
-        if (!stroke || !canMoveStroke(stroke)) return;
-        const rawRotation = rotationFromPointer(drag.center, world);
-        const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-        const delta = ((rotation - drag.startRotation + 540) % 360) - 180;
-        const normalizedRotation = normalizeRotation(drag.initialRotation + delta);
-        updateStrokeTransformInteraction([
-          strokeFromTransformedPoints(
-            stroke,
-            drag.initialPoints.map((point) => {
-              const rotated = rotateVector(
-                { x: point.x - drag.center.x, y: point.y - drag.center.y },
-                delta,
-              );
-              return {
-                ...point,
-                x: drag.center.x + rotated.x,
-                y: drag.center.y + rotated.y,
-              };
-            }),
-            normalizedRotation,
-          ),
-        ]);
-      },
-      commit: commitStrokeShape,
-      revert: cancelStrokeTransformInteraction,
-      end() {
-        strokePreview = null;
-      },
-    },
   };
 
   // One cast, so every call site below stays type-safe: the table is keyed by
@@ -3181,23 +3187,39 @@ export function createCanvasController(
     return preview?.changed ? preview : null;
   }
 
-  function commitStrokeShape(
-    drag: Extract<DragState, { type: "stroke-resize" | "stroke-rotate" }>,
+  function clearStrokePreview() {
+    strokePreview = null;
+  }
+
+  /**
+   * Writes a finished resize or rotate back to whichever store it came from.
+   *
+   * A shape has been written to Yjs throughout the drag and needs nothing here;
+   * ink was only previewed, so this is where its new points land.
+   */
+  function commitElementTransform(
+    drag: Extract<DragState, { type: "resize" | "rotate" }>,
   ) {
     const stroke = takeStrokePreview()?.strokes[0];
-    if (!stroke) return;
+    if (!stroke || drag.target.store !== "stroke") return;
     ydoc.transact(() => {
       updateStrokePoints(
-        drag.strokeId,
+        drag.elementId,
         stroke.points,
-        drag.type === "stroke-rotate" ? stroke.rotation : undefined,
+        drag.type === "rotate" ? stroke.rotation : undefined,
       );
     });
   }
 
-  function revertShapeFrameDrag(drag: Extract<DragState, { type: "resize" | "rotate" }>) {
-    const shape = shapesById().get(drag.shapeId);
-    if (shape && canMoveShape(shape)) updateShapeFrame(drag.shapeId, drag.initial);
+  function revertElementTransform(
+    drag: Extract<DragState, { type: "resize" | "rotate" }>,
+  ) {
+    if (drag.target.store === "stroke") {
+      cancelStrokeTransformInteraction();
+      return;
+    }
+    const shape = shapesById().get(drag.elementId);
+    if (shape && canMoveShape(shape)) updateShapeFrame(drag.elementId, drag.initial);
   }
 
   /** Ends the active drag, clearing the transient state every gesture leaves. */
