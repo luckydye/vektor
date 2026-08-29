@@ -1,99 +1,97 @@
-import type { CanvasShape, CanvasStroke } from "#canvas/runtime/extensionApi.ts";
+import type { CanvasElementTransform } from "#canvas/runtime/extensionApi.ts";
 import type { Rect } from "#canvas/runtime/geometry.ts";
 import { unionBounds } from "#canvas/runtime/geometry.ts";
-import type { CanvasExtensionManager } from "#canvas/runtime/registry.ts";
 
 /**
  * What is selected, and what the selection can be asked to do.
  *
- * Touches neither the DOM nor a framework — it is a question about two id sets
- * and two element maps, so it can be answered the same way from a component,
- * the custom-element host, or a test.
+ * Shapes and strokes live in separate stores — a board holds tens of shapes and
+ * can hold thousands of strokes, and the stroke list is deliberately kept cheap
+ * — but nothing here cares which store an id came from. The engine resolves an
+ * id to a `CanvasElementHandle`, and this asks the handle.
+ *
+ * Touches neither the DOM nor a framework: it is a question about a set of ids
+ * and a lookup, so it can be answered the same way from a component, the
+ * custom-element host, or a test.
  */
 
-export interface SelectionContext {
-  shapesById: ReadonlyMap<string, CanvasShape>;
-  strokesById: ReadonlyMap<string, CanvasStroke>;
-  selectedShapeIds: ReadonlySet<string>;
-  selectedStrokeIds: ReadonlySet<string>;
-  extensions: CanvasExtensionManager;
+export type CanvasElementKind = "shape" | "stroke";
+
+/** One selectable thing, whichever store it came from. */
+export interface CanvasElementHandle {
+  id: string;
+  kind: CanvasElementKind;
+  /** The extension type for a shape; the stroke's own kind for ink. */
+  type: string;
+  locked: boolean;
+  /** False when locked, and when the element belongs to another user. */
+  canMove: boolean;
+  /** Axis-aligned world bounds, rotation included. Null when it has none. */
+  bounds: Rect | null;
+  /** Degrees. Strokes bake rotation into their points and record it here. */
+  rotation: number;
+  transform: CanvasElementTransform;
   /**
-   * Permission and lock checks. Passed in rather than derived here: they depend
-   * on the current user and the space role, which the selection has no business
-   * knowing.
+   * Whether selecting this alone offers grab handles.
+   *
+   * Separate from `transform` because the two are not the same question:
+   * freehand ink scales perfectly well as part of a group but has no box of its
+   * own worth grabbing, so it is scalable without being handled.
    */
-  canMoveShape: (shape: CanvasShape) => boolean;
-  canMoveStroke: (stroke: CanvasStroke) => boolean;
-  /** A shape's axis-aligned world box, rotation included. */
-  shapeAabb: (shape: CanvasShape) => Rect;
-  strokeBounds: (stroke: Pick<CanvasStroke, "points">) => Rect | null;
+  handles: boolean;
 }
 
-interface SelectedCanvasItems {
-  shapes: CanvasShape[];
-  strokes: CanvasStroke[];
+export interface SelectionContext {
+  selectedIds: ReadonlySet<string>;
+  element: (id: string) => CanvasElementHandle | null;
 }
 
-export interface ScalableSelection extends SelectedCanvasItems {
+export interface ScalableSelection {
+  elements: CanvasElementHandle[];
   bounds: Rect;
 }
 
-/**
- * The single selected shape, or null when nothing — or more than one thing — is
- * selected. Drives the affordances that only make sense for one shape at a time.
- */
-export function selectedShape(context: SelectionContext): CanvasShape | null {
-  if (context.selectedShapeIds.size !== 1 || context.selectedStrokeIds.size > 0) {
-    return null;
-  }
-  const [id] = context.selectedShapeIds;
-  return context.shapesById.get(id) ?? null;
+/** The selected ids resolved, dropping any that no longer exist. */
+export function selectedElements(context: SelectionContext): CanvasElementHandle[] {
+  return [...context.selectedIds]
+    .map(context.element)
+    .filter((element): element is CanvasElementHandle => element != null);
 }
 
 /**
- * The selected shape when it offers full rotate+resize controls.
+ * The single selected element, or null when nothing — or more than one thing —
+ * is selected. Drives the affordances that only make sense one at a time.
+ */
+export function selectedElement(context: SelectionContext): CanvasElementHandle | null {
+  if (context.selectedIds.size !== 1) return null;
+  const [id] = context.selectedIds;
+  return context.element(id);
+}
+
+/**
+ * The selected element when it offers full rotate+resize controls.
  *
  * Transform affordances are declared per type on the extension: notes, text and
  * media rotate; sections and embedded documents declare resize without rotate,
- * so they land in `selectedResizeOnlyShape` instead. Everything else is
+ * so they land in `selectedResizeOnlyElement` instead. Everything else is
  * move-only and appears in neither.
  */
-export function selectedTransformShape(context: SelectionContext): CanvasShape | null {
-  const shape = selectedShape(context);
-  if (!shape || !context.canMoveShape(shape)) return null;
-  return context.extensions.get(shape.type).behavior.transform.rotate ? shape : null;
+export function selectedTransformElement(
+  context: SelectionContext,
+): CanvasElementHandle | null {
+  const element = selectedElement(context);
+  if (!element?.canMove || !element.handles) return null;
+  return element.transform.rotate ? element : null;
 }
 
 /** Types that resize but do not rotate get a lone resize handle. */
-export function selectedResizeOnlyShape(context: SelectionContext): CanvasShape | null {
-  const shape = selectedShape(context);
-  if (!shape || !context.canMoveShape(shape)) return null;
-  const transform = context.extensions.get(shape.type).behavior.transform;
-  return transform && transform.resize !== "none" && !transform.rotate ? shape : null;
-}
-
-/** The selected ids resolved to elements, dropping any that no longer exist. */
-export function selectedCanvasItems(context: SelectionContext): SelectedCanvasItems {
-  return {
-    shapes: [...context.selectedShapeIds]
-      .map((id) => context.shapesById.get(id))
-      .filter((shape): shape is CanvasShape => shape != null),
-    strokes: [...context.selectedStrokeIds]
-      .map((id) => context.strokesById.get(id))
-      .filter((stroke): stroke is CanvasStroke => stroke != null),
-  };
-}
-
-function boundsForCanvasItems(
-  items: SelectedCanvasItems,
-  context: Pick<SelectionContext, "shapeAabb" | "strokeBounds">,
-): Rect | null {
-  return unionBounds([
-    ...items.shapes.map(context.shapeAabb),
-    ...items.strokes
-      .map(context.strokeBounds)
-      .filter((bounds): bounds is Rect => bounds != null),
-  ]);
+export function selectedResizeOnlyElement(
+  context: SelectionContext,
+): CanvasElementHandle | null {
+  const element = selectedElement(context);
+  if (!element?.canMove || !element.handles) return null;
+  const { transform } = element;
+  return transform.resize !== "none" && !transform.rotate ? element : null;
 }
 
 /**
@@ -103,9 +101,11 @@ function boundsForCanvasItems(
  * keeps its type-specific controls, including rotation where supported.
  */
 export function selectedGroupBounds(context: SelectionContext): Rect | null {
-  const items = selectedCanvasItems(context);
-  if (items.shapes.length + items.strokes.length < 2) return null;
-  return boundsForCanvasItems(items, context);
+  const elements = selectedElements(context);
+  if (elements.length < 2) return null;
+  return unionBounds(
+    elements.map((element) => element.bounds).filter((bounds) => bounds != null),
+  );
 }
 
 /**
@@ -120,14 +120,11 @@ export function selectedScalableSelection(
   context: SelectionContext,
 ): ScalableSelection | null {
   const bounds = selectedGroupBounds(context);
-  const items = selectedCanvasItems(context);
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
-  const blocked =
-    items.shapes.some((shape) => {
-      const transform = context.extensions.get(shape.type).behavior.transform;
-      return (
-        !context.canMoveShape(shape) || !transform.move || transform.resize === "none"
-      );
-    }) || items.strokes.some((stroke) => !context.canMoveStroke(stroke));
-  return blocked ? null : { bounds, ...items };
+  const elements = selectedElements(context);
+  const blocked = elements.some(
+    (element) =>
+      !element.canMove || !element.transform.move || element.transform.resize === "none",
+  );
+  return blocked ? null : { bounds, elements };
 }

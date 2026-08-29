@@ -12,7 +12,7 @@ export function CanvasProperties(props: { chrome: CanvasChrome }) {
   const shapePalette = frame(() => view()?.selectedShapeColorPalette());
   const selectedColor = frame(() => view()?.selectedShape()?.style.color);
   const strokeColor = frame(() => view()?.selectedStrokeColor());
-  const hasStrokes = frame(() => (view()?.state.selectedStrokeIds.size ?? 0) > 0);
+  const hasStrokes = frame(() => view()?.selectedStrokeColor() != null);
 
   return (
     <Show when={visible()}>
