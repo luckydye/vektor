@@ -39,6 +39,7 @@ let editor: Awaited<ReturnType<typeof createTestUser>>;
 let viewer: Awaited<ReturnType<typeof createTestUser>>;
 let outsider: Awaited<ReturnType<typeof createTestUser>>;
 let repoSlug: string;
+let repoDocumentId: string;
 
 /** A git command that reports its exit code rather than throwing. */
 async function git(
@@ -91,14 +92,16 @@ async function mintToken(
   return (await response.json()).token;
 }
 
-async function createRepositoryDocument(title: string): Promise<string> {
+async function createRepositoryDocument(
+  title: string,
+): Promise<{ slug: string; id: string }> {
   const response = await apiRequest(`/api/v1/spaces/${spaceId}/documents`, owner.token, {
     method: "POST",
     body: JSON.stringify({ content: "", type: "repository", properties: { title } }),
   });
   if (!response.ok) throw new Error(`Failed to create repository: ${response.status}`);
   const created = await response.json();
-  return created.document.slug;
+  return { slug: created.document.slug, id: created.document.id };
 }
 
 async function grantSpaceRole(userId: string, role: string): Promise<void> {
@@ -157,7 +160,9 @@ beforeAll(async () => {
   await grantSpaceRole(editor.userId, "editor");
   await grantSpaceRole(viewer.userId, "viewer");
 
-  repoSlug = await createRepositoryDocument("Piano");
+  const repository = await createRepositoryDocument("Piano");
+  repoSlug = repository.slug;
+  repoDocumentId = repository.id;
   await seed(await mintToken("editor"));
 }, 90_000);
 
@@ -227,6 +232,53 @@ describe("space roles reach the repository", () => {
     const push = await git(dir, ["push", cloneUrl(token), "main"]);
     expect(push.code).toBe(0);
   }, 30_000);
+});
+
+describe("browsing the repository document", () => {
+  const browse = (token: string, query: string) =>
+    apiRequest(
+      `/api/v1/spaces/${spaceId}/documents/${repoDocumentId}/git?${query}`,
+      token,
+    );
+
+  it("reports the branch and the commit at its head", async () => {
+    const response = await browse(owner.token, "view=overview");
+    expect(response.status).toBe(200);
+    const summary = await response.json();
+    expect(summary.empty).toBe(false);
+    expect(summary.branch).toBe("main");
+    expect(summary.head.oid).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("lists the tree at the root", async () => {
+    const response = await browse(owner.token, "view=tree&rev=main&path=");
+    const { entries } = await response.json();
+    expect(entries.map((entry: { name: string }) => entry.name)).toContain("README.md");
+  });
+
+  it("returns a file's text", async () => {
+    const response = await browse(owner.token, "view=blob&rev=main&path=README.md");
+    expect((await response.json()).text).toBe("# seeded\n");
+  });
+
+  it("shows the same repository to a space viewer", async () => {
+    // The browser is the document, so a viewer reaches it exactly as they reach
+    // any other document in the space.
+    const response = await browse(viewer.token, "view=tree&rev=main&path=");
+    expect(response.status).toBe(200);
+  });
+
+  it("refuses a caller with no access to the space", async () => {
+    expect((await browse(outsider.token, "view=overview")).status).not.toBe(200);
+  });
+
+  it("refuses a rev that is not one", async () => {
+    // Revs reach a command line, so anything option-shaped is turned away
+    // before git ever sees it.
+    expect((await browse(owner.token, "view=log&rev=--output%3D%2Ftmp%2Fx")).status).toBe(
+      400,
+    );
+  });
 });
 
 describe("callers with no reach", () => {

@@ -710,5 +710,7 @@
   "Access to grant": "Acceso que se concederá",
   "When the link expires": "Cuándo caduca el enlace",
   "Link password": "Contraseña del enlace",
-  "Install an extension that provides an integration.": "Instala una extensión que proporcione una integración."
+  "Install an extension that provides an integration.": "Instala una extensión que proporcione una integración.",
+  "Repository": "Repositorio",
+  "Host code with git, and browse it here.": "Aloja código con git y explóralo aquí."
 }

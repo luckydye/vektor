@@ -27,6 +27,7 @@ import * as documentChildren from "./routes/spaces/document-children.ts";
 import * as documentContributors from "./routes/spaces/document-contributors.ts";
 import * as documentDiff from "./routes/spaces/document-diff.ts";
 import * as documentEdit from "./routes/spaces/document-edit.ts";
+import * as documentGit from "./routes/spaces/document-git.ts";
 import * as documentRevisions from "./routes/spaces/document-revisions.ts";
 import * as documents from "./routes/spaces/documents.ts";
 import * as documentsArchived from "./routes/spaces/documents-archived.ts";
@@ -152,6 +153,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",
     module: documentEdit,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/git",
+    module: documentGit,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions",

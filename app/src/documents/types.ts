@@ -71,6 +71,7 @@ const placeholderDocumentTitles: Readonly<Record<string, string>> = {
   canvas: "Untitled Canvas",
   database: "Untitled Database",
   workflow: "Untitled Workflow",
+  repository: "Untitled Repository",
 };
 
 export function placeholderDocumentTitle(type: string | null | undefined): string {
