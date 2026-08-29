@@ -36,7 +36,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
-import { placeholderDocumentTitle } from "#documents/types.ts";
+import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
@@ -195,6 +195,13 @@ export function DocumentPageView(props: Props) {
   const isDatabase = createMemo(() => documentType() === "database");
   const isRecord = createMemo(() => documentType() === "record");
   const isRegularDocument = createMemo(() => documentType() === "document");
+  const isRepository = createMemo(() => documentType() === repositoryDocumentType);
+  /**
+   * Views that carry their own name and their own sense of when they changed:
+   * repeating the document title above them, or a footer saying how long ago
+   * they were updated, only says it twice.
+   */
+  const isSelfTitled = createMemo(() => isDatabase() || isRepository());
   const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
@@ -557,7 +564,7 @@ export function DocumentPageView(props: Props) {
                     />
 
                     <div class="flex min-w-0 flex-1 flex-col">
-                      <Show when={!isDatabase()}>
+                      <Show when={!isSelfTitled()}>
                         <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
                           {titleRow()}
                         </inset-view>
@@ -567,7 +574,7 @@ export function DocumentPageView(props: Props) {
                         id="document-properties"
                         class={twMerge(
                           "block print:px-0",
-                          isDatabase() ? "mt-2xs mb-2xs" : "mb-l",
+                          isSelfTitled() ? "mt-2xs mb-2xs" : "mb-l",
                         )}
                       >
                         {documentPropertiesBlock("labeled")}
@@ -597,7 +604,7 @@ export function DocumentPageView(props: Props) {
                     {documentActions()}
                   </div>
 
-                  <Show when={!isDatabase()}>
+                  <Show when={!isSelfTitled()}>
                     <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
                       {titleRow()}
                     </inset-view>
@@ -607,7 +614,7 @@ export function DocumentPageView(props: Props) {
                     id="document-properties"
                     class={twMerge(
                       "block px-xs md:px-m print:px-0",
-                      isDatabase() ? "mt-2xs mb-2xs" : "mb-xl",
+                      isSelfTitled() ? "mt-2xs mb-2xs" : "mb-xl",
                     )}
                   >
                     {documentPropertiesBlock()}
@@ -669,7 +676,21 @@ export function DocumentPageView(props: Props) {
                       </Show>
                     </div>
 
-                    <Show when={!isDraft() && !editing() && !isCanvas() && !isWorkflow()}>
+                    {/* The footer used to be what kept a view off the bottom
+                        of the window; without it these need the room back. */}
+                    <Show when={isSelfTitled()}>
+                      <div class="h-l" />
+                    </Show>
+
+                    <Show
+                      when={
+                        !isDraft() &&
+                        !editing() &&
+                        !isCanvas() &&
+                        !isWorkflow() &&
+                        !isSelfTitled()
+                      }
+                    >
                       <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
                         <Show when={doc()?.updatedAt}>
                           <div class="mb-4 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
