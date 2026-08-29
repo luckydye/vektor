@@ -1,112 +1,78 @@
 /**
- * Repositories as they are named and listed.
+ * Repositories as the product sees them: documents.
  *
- * A repository is its prefix in storage and nothing else: no row identifies it,
- * and the slug in the URL is the prefix, so resolving one costs a single read
- * rather than a lookup.
+ * A repository is a document of type `repository`, so it is created, renamed,
+ * moved, archived and deleted through the endpoints that already do those
+ * things. Nothing here duplicates them — this only resolves one to the prefix
+ * holding its git objects, and cleans that prefix up when the document goes.
  */
 
+import type { SpaceStore } from "#db/client/store.ts";
+import { getDocumentBySlug } from "#db/space/documents.ts";
+import { repositoryDocumentType } from "#documents/types.ts";
 import type { FileStorageAdapter } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { invalidateCache } from "./cache.ts";
-import { createState, type RepoState, readState, repoPrefix } from "./state.ts";
+import { repoPrefix } from "./state.ts";
 
-/**
- * Slugs are path segments, prefixes and directory names at once, so they are
- * held to what is safe in all three rather than to what any one would allow.
- */
-export function isValidSlug(slug: string): boolean {
-  return /^[a-z0-9][a-z0-9._-]{0,63}$/.test(slug) && !slug.includes("..");
-}
-
-export interface CreateRepoOptions {
+export interface RepositoryDocument {
+  id: string;
   slug: string;
-  defaultBranch?: string;
-  createdBy: string;
-}
-
-/** Creates the repository, or null when the slug is already taken. */
-export async function createRepo(
-  storage: FileStorageAdapter,
-  spaceId: string,
-  options: CreateRepoOptions,
-): Promise<RepoState | null> {
-  const state: RepoState = {
-    version: 1,
-    slug: options.slug,
-    defaultBranch: options.defaultBranch ?? "main",
-    createdAt: new Date().toISOString(),
-    createdBy: options.createdBy,
-    refs: {},
-    packs: [],
-    seq: 0,
-    log: [],
-  };
-  return (await createState(storage, spaceId, state)) ? state : null;
-}
-
-export async function getRepo(
-  storage: FileStorageAdapter,
-  spaceId: string,
-  slug: string,
-): Promise<RepoState | null> {
-  if (!isValidSlug(slug)) return null;
-  return (await readState(storage, spaceId, slug))?.state ?? null;
+  /** Pushes are refused to an archived or locked repository. */
+  writable: boolean;
+  defaultBranch: string;
 }
 
 /**
- * Every repository in the space, found by listing the one object each of them
- * is guaranteed to have.
- */
-export async function listRepos(
-  storage: FileStorageAdapter,
-  spaceId: string,
-): Promise<RepoState[]> {
-  const slugs = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const page = await storage.list(spaceId, { prefix: "git/", cursor });
-    for (const file of page.files) {
-      const [, slug, tail] = file.key.split("/");
-      if (slug && tail === "state.json") slugs.add(slug);
-    }
-    cursor = page.cursor;
-  } while (cursor);
-
-  const repos: RepoState[] = [];
-  for (const slug of slugs) {
-    const state = await getRepo(storage, spaceId, slug);
-    if (state) repos.push(state);
-  }
-  return repos.sort((a, b) => a.slug.localeCompare(b.slug));
-}
-
-/**
- * Remove a repository and everything it owns.
+ * The repository a clone URL names, or null when the slug is not one.
  *
- * Through the storage adapter rather than by touching the cache directory: the
- * cache is a copy, and deleting only that would leave every object behind in
- * the bucket with nothing failing to say so.
+ * Slugs are unique within a space, so this is the same single lookup a document
+ * URL already does — no index of repositories to keep beside it.
  */
-export async function deleteRepo(
+export async function resolveRepository(
+  store: SpaceStore,
+  slug: string,
+): Promise<RepositoryDocument | null> {
+  const doc = await getDocumentBySlug(store, slug);
+  if (!doc || doc.type !== repositoryDocumentType) return null;
+
+  return {
+    id: doc.id,
+    slug: doc.slug,
+    writable: !doc.archived && !doc.readonly,
+    // Every repository starts on `main`; the branch a client pushed first is
+    // what HEAD follows afterwards, recorded in the stored state.
+    defaultBranch: "main",
+  };
+}
+
+/**
+ * Delete every object a repository owns.
+ *
+ * Called when its document is deleted. Through the storage adapter rather than
+ * by removing the cache directory: the cache is a copy, and dropping only that
+ * would leave the objects in the bucket with nothing failing to say so.
+ */
+export async function deleteRepositoryObjects(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
-): Promise<boolean> {
-  if (!isValidSlug(slug)) return false;
-  if (!(await getRepo(storage, spaceId, slug))) return false;
-
-  const prefix = `${repoPrefix(slug)}/`;
+  documentId: string,
+): Promise<number> {
+  const prefix = `${repoPrefix(documentId)}/`;
+  let removed = 0;
   let cursor: string | undefined;
   do {
     const page = await storage.list(spaceId, { prefix, cursor });
     for (const file of page.files) {
       await storage.delete(spaceId, file.key);
+      removed++;
     }
     cursor = page.cursor;
   } while (cursor);
 
-  await invalidateCache(spaceId, slug);
-  appLogger.info("Deleted repository", { spaceId, slug });
-  return true;
+  await invalidateCache(spaceId, documentId);
+  if (removed > 0) {
+    appLogger.info("Deleted repository objects", { spaceId, documentId, removed });
+  }
+  return removed;
 }

@@ -23,6 +23,7 @@ import {
   type RefUpdate,
   type RepoState,
   readState,
+  repoPrefix,
 } from "./state.ts";
 
 /** Packs beyond which a repository is consolidated. */
@@ -61,14 +62,14 @@ export function diffRefs(
 async function uploadPacks(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
   dir: string,
   names: string[],
 ): Promise<void> {
   for (const name of names) {
     for (const extension of ["pack", "idx"]) {
       const body = await readFile(join(dir, "objects", "pack", `${name}.${extension}`));
-      await storage.put(spaceId, packPath(slug, name, extension), body);
+      await storage.put(spaceId, packPath(documentId, name, extension), body);
     }
   }
 }
@@ -83,7 +84,7 @@ async function uploadPacks(
 async function commit(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
   loaded: LoadedState,
   packs: string[],
   refUpdates: RefUpdate[],
@@ -96,7 +97,7 @@ async function commit(
     const etag = await commitState(storage, spaceId, next, current.etag);
     if (etag) return { etag, state: next };
 
-    const reread = await readState(storage, spaceId, slug);
+    const reread = await readState(storage, spaceId, documentId);
     if (!reread) return { conflict: true };
     current = reread;
   }
@@ -113,7 +114,7 @@ async function commit(
 async function repack(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
   dir: string,
   loaded: LoadedState,
 ): Promise<LoadedState> {
@@ -122,7 +123,7 @@ async function repack(
   await git(dir, ["repack", "-a", "-d", "-q"]);
   const names = await localPackNames(dir);
   const added = names.filter((name) => !loaded.state.packs.includes(name));
-  await uploadPacks(storage, spaceId, slug, dir, added);
+  await uploadPacks(storage, spaceId, documentId, dir, added);
 
   const superseded = loaded.state.packs.filter((name) => !names.includes(name));
   const next: RepoState = { ...loaded.state, packs: names };
@@ -130,7 +131,9 @@ async function repack(
   if (!etag) {
     // Someone pushed while this ran. The new pack is uploaded and unreferenced,
     // which the orphan sweep collects; the old ones stay live and correct.
-    appLogger.info("Repack lost the race, leaving packs consolidated locally", { slug });
+    appLogger.info("Repack lost the race, leaving packs consolidated locally", {
+      documentId,
+    });
     return loaded;
   }
 
@@ -139,7 +142,7 @@ async function repack(
   setTimeout(() => {
     for (const name of superseded) {
       for (const extension of ["pack", "idx"]) {
-        void storage.delete(spaceId, packPath(slug, name, extension));
+        void storage.delete(spaceId, packPath(documentId, name, extension));
       }
     }
   }, SUPERSEDED_GRACE_MS).unref?.();
@@ -160,7 +163,7 @@ export interface PublishResult {
 export async function publishPush(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
   dir: string,
   loaded: LoadedState,
   before: Record<string, string>,
@@ -172,13 +175,16 @@ export async function publishPush(
   const packs = (await localPackNames(dir)).filter(
     (name) => !loaded.state.packs.includes(name),
   );
-  await uploadPacks(storage, spaceId, slug, dir, packs);
+  await uploadPacks(storage, spaceId, documentId, dir, packs);
 
-  const result = await commit(storage, spaceId, slug, loaded, packs, refUpdates);
+  const result = await commit(storage, spaceId, documentId, loaded, packs, refUpdates);
   if ("conflict" in result) return { published: false, refUpdates };
 
   await markCache(dir, result.etag);
-  await repack(storage, spaceId, slug, dir, { state: result.state, etag: result.etag });
+  await repack(storage, spaceId, documentId, dir, {
+    state: result.state,
+    etag: result.etag,
+  });
   return { published: true, refUpdates };
 }
 
@@ -192,16 +198,18 @@ export async function publishPush(
 export async function sweepOrphanedPacks(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
 ): Promise<number> {
-  const loaded = await readState(storage, spaceId, slug);
+  const loaded = await readState(storage, spaceId, documentId);
   if (!loaded) return 0;
 
   const live = new Set(loaded.state.packs);
   const cutoff = Date.now() - SUPERSEDED_GRACE_MS;
   let removed = 0;
 
-  const { files } = await storage.list(spaceId, { prefix: `git/${slug}/pack/` });
+  const { files } = await storage.list(spaceId, {
+    prefix: `${repoPrefix(documentId)}/pack/`,
+  });
   for (const file of files) {
     const name = file.key
       .split("/")

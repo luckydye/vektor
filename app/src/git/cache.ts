@@ -12,7 +12,7 @@ import { config } from "#config";
 import type { FileStorageAdapter } from "#files/storage.ts";
 import { appLogger } from "#observability/logger.ts";
 import { git } from "./run.ts";
-import { type LoadedState, packPath, readState } from "./state.ts";
+import { ensureState, type LoadedState, packPath } from "./state.ts";
 
 /** Which stored state a cache directory was built from. */
 const MARKER = ".vektor-state";
@@ -22,8 +22,8 @@ export function cacheRoot(): string {
   return join(resolve(config().DATA_DIR?.trim() || "data"), "git-cache");
 }
 
-export function cachePath(spaceId: string, slug: string): string {
-  return join(cacheRoot(), spaceId, `${slug}.git`);
+export function cachePath(spaceId: string, documentId: string): string {
+  return join(cacheRoot(), spaceId, `${documentId}.git`);
 }
 
 const locks = new Map<string, Promise<unknown>>();
@@ -36,10 +36,10 @@ const locks = new Map<string, Promise<unknown>>();
  */
 export function withRepoLock<T>(
   spaceId: string,
-  slug: string,
+  documentId: string,
   work: () => Promise<T>,
 ): Promise<T> {
-  const key = `${spaceId}/${slug}`;
+  const key = `${spaceId}/${documentId}`;
   const previous = locks.get(key) ?? Promise.resolve();
   const next = previous.then(work, work);
   locks.set(
@@ -74,13 +74,13 @@ export async function localPackNames(dir: string): Promise<string[]> {
 async function downloadPack(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
   dir: string,
   name: string,
 ): Promise<void> {
   for (const extension of ["pack", "idx"]) {
-    const body = await storage.read(spaceId, packPath(slug, name, extension));
-    if (!body) throw new Error(`Missing ${name}.${extension} for ${slug}`);
+    const body = await storage.read(spaceId, packPath(documentId, name, extension));
+    if (!body) throw new Error(`Missing ${name}.${extension} for ${documentId}`);
     await writeFile(join(dir, "objects", "pack", `${name}.${extension}`), body);
   }
 }
@@ -116,12 +116,16 @@ async function writeRefs(dir: string, loaded: LoadedState): Promise<void> {
 export async function ensureCache(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
+  defaultBranch: string,
 ): Promise<{ dir: string; loaded: LoadedState } | null> {
-  const loaded = await readState(storage, spaceId, slug);
+  // Created on first sight rather than when the document is: the row already
+  // says the repository exists, so there is nothing to race and no prefix left
+  // behind by a creation that half-succeeded.
+  const loaded = await ensureState(storage, spaceId, documentId, defaultBranch);
   if (!loaded) return null;
 
-  const dir = cachePath(spaceId, slug);
+  const dir = cachePath(spaceId, documentId);
   const marker = await readFile(join(dir, MARKER), "utf8").catch(() => null);
   if (marker === loaded.etag) return { dir, loaded };
 
@@ -133,7 +137,7 @@ export async function ensureCache(
   const present = new Set(await localPackNames(dir));
   for (const name of loaded.state.packs) {
     if (present.has(name)) continue;
-    await downloadPack(storage, spaceId, slug, dir, name);
+    await downloadPack(storage, spaceId, documentId, dir, name);
   }
 
   await writeRefs(dir, loaded);
@@ -153,8 +157,17 @@ export async function markCache(dir: string, etag: string): Promise<void> {
  * whose refs could not be published, the cache is the only copy of a ref update
  * nobody accepted.
  */
-export async function invalidateCache(spaceId: string, slug: string): Promise<void> {
-  await rm(cachePath(spaceId, slug), { recursive: true, force: true }).catch((error) => {
-    appLogger.warn("Failed to drop git cache", { spaceId, slug, error: String(error) });
-  });
+export async function invalidateCache(
+  spaceId: string,
+  documentId: string,
+): Promise<void> {
+  await rm(cachePath(spaceId, documentId), { recursive: true, force: true }).catch(
+    (error) => {
+      appLogger.warn("Failed to drop git cache", {
+        spaceId,
+        documentId,
+        error: String(error),
+      });
+    },
+  );
 }

@@ -20,8 +20,14 @@ import { createLocalFileStorage, type FileStorageAdapter } from "#files/storage.
 import { cachePath, ensureCache, withRepoLock } from "#git/cache.ts";
 import { runHttpBackend } from "#git/httpBackend.ts";
 import { publishPush, readRefs, sweepOrphanedPacks } from "#git/publish.ts";
-import { createRepo, deleteRepo, getRepo, listRepos } from "#git/repos.ts";
-import { applyEntry, conflictsWith, type RepoState, readState } from "#git/state.ts";
+import { deleteRepositoryObjects } from "#git/repos.ts";
+import {
+  applyEntry,
+  conflictsWith,
+  ensureState,
+  type RepoState,
+  readState,
+} from "#git/state.ts";
 import {
   startTestServer,
   type TestServerProcess,
@@ -30,7 +36,10 @@ import {
 } from "./helpers/server.ts";
 
 const SPACE = "space_git";
-const SLUG = "piano";
+// The git layer knows repositories only by their document id; that the id
+// belongs to a document of type `repository` is the route's business.
+const DOC = "doc_piano";
+const BRANCH = "main";
 
 let root: string;
 let work: string;
@@ -50,7 +59,7 @@ async function serveRepo(slug: string, request: Request): Promise<Response> {
   const write = path === "git-receive-pack" || query.includes("service=git-receive-pack");
 
   const run = async () => {
-    const cache = await ensureCache(storage, SPACE, slug);
+    const cache = await ensureCache(storage, SPACE, slug, BRANCH);
     if (!cache) return new Response("Not found", { status: 404 });
 
     const before = write ? await readRefs(cache.dir) : {};
@@ -75,7 +84,7 @@ async function serveRepo(slug: string, request: Request): Promise<Response> {
     const result = await publishPush(
       storage,
       SPACE,
-      SLUG,
+      DOC,
       cache.dir,
       cache.loaded,
       before,
@@ -118,9 +127,9 @@ beforeAll(async () => {
   work = mkdtempSync(join(tmpdir(), "vektor-git-work-"));
   storage = createLocalFileStorage(root);
 
-  await createRepo(storage, SPACE, { slug: SLUG, createdBy: "tester" });
+  await ensureState(storage, SPACE, DOC, BRANCH);
 
-  server = Bun.serve({ port: 0, fetch: (request) => serveRepo(SLUG, request) });
+  server = Bun.serve({ port: 0, fetch: (request) => serveRepo(DOC, request) });
   origin = `http://127.0.0.1:${server.port}`;
 });
 
@@ -130,28 +139,10 @@ afterAll(() => {
   rmSync(work, { recursive: true, force: true });
 });
 
-describe("creating a repository", () => {
-  it("claims the slug exactly once", async () => {
-    expect(
-      await createRepo(storage, SPACE, { slug: SLUG, createdBy: "someone" }),
-    ).toBeNull();
-  });
-
-  it("is listed and readable by slug", async () => {
-    expect((await getRepo(storage, SPACE, SLUG))?.slug).toBe(SLUG);
-    expect((await listRepos(storage, SPACE)).map((repo) => repo.slug)).toContain(SLUG);
-  });
-
-  it("refuses a slug that would escape its prefix", async () => {
-    expect(await getRepo(storage, SPACE, "../other")).toBeNull();
-  });
-});
-
 describe("an empty repository", () => {
   it("clones, with HEAD pointing at the branch it was created for", async () => {
     // A fresh bare repo's HEAD follows git's own default unless told
     // otherwise, so an empty clone is where a wrong default first shows up.
-    await createRepo(storage, SPACE, { slug: "hollow", createdBy: "tester" });
     const empty = Bun.serve({
       port: 0,
       fetch: (request) => serveRepo("hollow", request),
@@ -179,10 +170,10 @@ describe("push and clone", () => {
     await git(dir, ["config", "user.name", "Tester"]);
     await git(dir, ["config", "commit.gpgsign", "false"]);
     await commit(dir, "README.md", "# piano\n");
-    await git(dir, ["remote", "add", "origin", `${origin}/${SPACE}/git/${SLUG}.git`]);
+    await git(dir, ["remote", "add", "origin", `${origin}/${SPACE}/git/${DOC}.git`]);
     await git(dir, ["push", "-q", "origin", "main"]);
 
-    const state = (await readState(storage, SPACE, SLUG))?.state;
+    const state = (await readState(storage, SPACE, DOC))?.state;
     expect(state?.refs["refs/heads/main"]).toMatch(/^[0-9a-f]{40}$/);
     expect(state?.packs).toHaveLength(1);
     expect(state?.log.at(-1)?.refUpdates).toEqual([
@@ -191,15 +182,15 @@ describe("push and clone", () => {
   });
 
   it("serves a clone of what was pushed", async () => {
-    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${SLUG}.git`, "reader"]);
+    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${DOC}.git`, "reader"]);
     expect(await Bun.file(join(work, "reader", "README.md")).text()).toBe("# piano\n");
   });
 
   it("clones from object storage alone, with the cache deleted", async () => {
     // The acceptance test for the whole phase: nothing but the bucket is left.
-    await rm(cachePath(SPACE, SLUG), { recursive: true, force: true });
+    await rm(cachePath(SPACE, DOC), { recursive: true, force: true });
 
-    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${SLUG}.git`, "cold"]);
+    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${DOC}.git`, "cold"]);
     expect(await Bun.file(join(work, "cold", "README.md")).text()).toBe("# piano\n");
 
     const authored = await git(join(work, "author"), ["rev-parse", "HEAD"]);
@@ -212,14 +203,14 @@ describe("push and clone", () => {
     await commit(dir, "SONG.md", "chorus\n");
     await git(dir, ["push", "-q", "origin", "main"]);
 
-    await rm(cachePath(SPACE, SLUG), { recursive: true, force: true });
-    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${SLUG}.git`, "cold2"]);
+    await rm(cachePath(SPACE, DOC), { recursive: true, force: true });
+    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${DOC}.git`, "cold2"]);
     expect(await Bun.file(join(work, "cold2", "SONG.md")).text()).toBe("chorus\n");
   });
 
   it("keeps every pushed pack in storage", async () => {
-    const state = (await readState(storage, SPACE, SLUG))?.state;
-    const { files } = await storage.list(SPACE, { prefix: `git/${SLUG}/pack/` });
+    const state = (await readState(storage, SPACE, DOC))?.state;
+    const { files } = await storage.list(SPACE, { prefix: `git/${DOC}/pack/` });
     for (const name of state?.packs ?? []) {
       expect(files.some((file) => file.key.endsWith(`${name}.pack`))).toBe(true);
       expect(files.some((file) => file.key.endsWith(`${name}.idx`))).toBe(true);
@@ -229,7 +220,7 @@ describe("push and clone", () => {
   it("writes no loose objects, only packs", async () => {
     // `receive.unpackLimit=0` is what makes the storage model work: loose
     // objects would be thousands of small keys instead of one immutable blob.
-    const objects = join(cachePath(SPACE, SLUG), "objects");
+    const objects = join(cachePath(SPACE, DOC), "objects");
     const entries = await readdir(objects);
     expect(entries.filter((entry) => /^[0-9a-f]{2}$/.test(entry))).toEqual([]);
   });
@@ -238,7 +229,7 @@ describe("push and clone", () => {
 describe("a lost compare-and-swap", () => {
   const base = (refs: Record<string, string>): RepoState => ({
     version: 1,
-    slug: SLUG,
+    slug: DOC,
     defaultBranch: "main",
     createdAt: "",
     createdBy: "",
@@ -285,7 +276,7 @@ describe("a lost compare-and-swap", () => {
 
   it("rejects a second push built on a ref that has moved", async () => {
     const dir = join(work, "author");
-    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${SLUG}.git`, "stale"]);
+    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${DOC}.git`, "stale"]);
     const stale = join(work, "stale");
     await git(stale, ["config", "user.email", "other@example.com"]);
     await git(stale, ["config", "user.name", "Other"]);
@@ -311,11 +302,11 @@ describe("repack", () => {
 
     // Cold-start cost is proportional to pack count, so it must not simply
     // grow with every push.
-    const state = (await readState(storage, SPACE, SLUG))?.state;
+    const state = (await readState(storage, SPACE, DOC))?.state;
     expect(state?.packs.length).toBeLessThanOrEqual(12);
 
-    await rm(cachePath(SPACE, SLUG), { recursive: true, force: true });
-    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${SLUG}.git`, "packed"]);
+    await rm(cachePath(SPACE, DOC), { recursive: true, force: true });
+    await git(work, ["clone", "-q", `${origin}/${SPACE}/git/${DOC}.git`, "packed"]);
     expect(await Bun.file(join(work, "packed", "track-13.md")).text()).toBe("track 13\n");
     // Fourteen real pushes through a real git client; the default 5s is for
     // tests that do not spawn a process per assertion.
@@ -383,15 +374,18 @@ describe("the clone URL", () => {
 
 describe("housekeeping", () => {
   it("leaves live packs alone when sweeping orphans", async () => {
-    expect(await sweepOrphanedPacks(storage, SPACE, SLUG)).toBe(0);
+    expect(await sweepOrphanedPacks(storage, SPACE, DOC)).toBe(0);
   });
 
   it("deletes a repository's objects, not just its cache", async () => {
-    await createRepo(storage, SPACE, { slug: "doomed", createdBy: "tester" });
-    expect(await deleteRepo(storage, SPACE, "doomed")).toBe(true);
+    // What deleting the document triggers. Removing only the cache would leave
+    // every object in the bucket with nothing failing to say so.
+    await ensureState(storage, SPACE, "doc_doomed", BRANCH);
+    const removed = await deleteRepositoryObjects(storage, SPACE, "doc_doomed");
+    expect(removed).toBeGreaterThan(0);
 
-    const { files } = await storage.list(SPACE, { prefix: "git/doomed/" });
+    const { files } = await storage.list(SPACE, { prefix: "git/doc_doomed/" });
     expect(files).toEqual([]);
-    expect(await getRepo(storage, SPACE, "doomed")).toBeNull();
+    expect(await readState(storage, SPACE, "doc_doomed")).toBeNull();
   });
 });

@@ -11,12 +11,13 @@ import { canAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { type BasicAuthUser, verifyBasicAuth } from "#api/basicAuth.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { getSpaceBySlug } from "#db/space/spaces.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { ensureCache, invalidateCache, withRepoLock } from "#git/cache.ts";
 import { runHttpBackend } from "#git/httpBackend.ts";
 import { publishPush, readRefs } from "#git/publish.ts";
-import { isValidSlug } from "#git/repos.ts";
+import { resolveRepository } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
 
 /**
@@ -68,10 +69,12 @@ async function authenticate(context: ApiContext): Promise<BasicAuthUser | null> 
 async function mayReach(
   caller: BasicAuthUser,
   spaceId: string,
-  slug: string,
+  documentId: string,
   required: Permission,
 ): Promise<boolean> {
-  const target = { type: ResourceType.REPOSITORY, id: slug };
+  // The repository is a document, so this is document access: grants inherit
+  // down the tree and a share link reaches it, exactly as for anything else.
+  const target = { type: ResourceType.DOCUMENT, id: documentId };
   if (caller.token) {
     if (caller.token.spaceId !== spaceId) return false;
     return canAccess(spaceId, target, caller.token.result.tokenId, required);
@@ -88,10 +91,12 @@ export const ALL: ApiRouteHandler = async (context) => {
   const slug = repoParam.endsWith(GIT_SUFFIX)
     ? repoParam.slice(0, -GIT_SUFFIX.length)
     : repoParam;
-  if (!isValidSlug(slug)) return notFound();
 
   const space = await getSpaceBySlug(spaceSlug);
   if (!space) return notFound();
+
+  const repository = await resolveRepository(await openSpaceStore(space.id), slug);
+  if (!repository) return notFound();
 
   const caller = await authenticate(context);
   if (!caller) return unauthorized();
@@ -102,7 +107,7 @@ export const ALL: ApiRouteHandler = async (context) => {
 
   let allowed = false;
   try {
-    allowed = await mayReach(caller, space.id, slug, required);
+    allowed = await mayReach(caller, space.id, repository.id, required);
   } catch (error) {
     if (!(error instanceof AclFailure)) throw error;
   }
@@ -110,15 +115,29 @@ export const ALL: ApiRouteHandler = async (context) => {
   // different answers: the second already knows it exists.
   if (!allowed) {
     if (!write) return notFound();
-    return (await mayReach(caller, space.id, slug, Permission.VIEWER))
+    return (await mayReach(caller, space.id, repository.id, Permission.VIEWER))
       ? new Response("Write access required\n", { status: 403 })
       : notFound();
+  }
+
+  // Archiving or locking a repository stops it accepting history without
+  // hiding the history it already has.
+  if (write && !repository.writable) {
+    return new Response("Repository is archived or read-only\n", {
+      status: 403,
+      headers: { "Content-Type": "text/plain" },
+    });
   }
 
   const storage = getFileStorage();
 
   if (!write) {
-    const cache = await ensureCache(storage, space.id, slug);
+    const cache = await ensureCache(
+      storage,
+      space.id,
+      repository.id,
+      repository.defaultBranch,
+    );
     if (!cache) return notFound();
     const response = await runHttpBackend({
       dir: cache.dir,
@@ -137,8 +156,13 @@ export const ALL: ApiRouteHandler = async (context) => {
 
   // A push mutates published state, so it runs alone for this repository and
   // its response is held until that state is actually published.
-  return withRepoLock(space.id, slug, async () => {
-    const cache = await ensureCache(storage, space.id, slug);
+  return withRepoLock(space.id, repository.id, async () => {
+    const cache = await ensureCache(
+      storage,
+      space.id,
+      repository.id,
+      repository.defaultBranch,
+    );
     if (!cache) return notFound();
 
     const before = await readRefs(cache.dir);
@@ -168,7 +192,7 @@ export const ALL: ApiRouteHandler = async (context) => {
     const result = await publishPush(
       storage,
       space.id,
-      slug,
+      repository.id,
       cache.dir,
       cache.loaded,
       before,
@@ -177,10 +201,10 @@ export const ALL: ApiRouteHandler = async (context) => {
     if (!result.published) {
       // Local refs moved and nothing accepted them, so the cache is the only
       // copy of an update that never happened. Drop it.
-      await invalidateCache(space.id, slug);
+      await invalidateCache(space.id, repository.id);
       appLogger.warn("Push rejected: refs moved underneath it", {
         spaceId: space.id,
-        slug,
+        documentId: repository.id,
         refs: result.refUpdates.map((update) => update.name),
       });
       return new Response(

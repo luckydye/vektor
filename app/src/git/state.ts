@@ -29,10 +29,10 @@ export interface LogEntry {
 
 export interface RepoState {
   version: 1;
-  slug: string;
+  /** The repository document this belongs to. */
+  documentId: string;
   defaultBranch: string;
   createdAt: string;
-  createdBy: string;
   /** Ref name to object id. The complete set; absent means deleted. */
   refs: Record<string, string>;
   /** Base names of the live packs, without extension. */
@@ -47,24 +47,29 @@ export interface LoadedState {
   etag: string;
 }
 
-export function repoPrefix(slug: string): string {
-  return `git/${slug}`;
+/**
+ * Keyed on the repository document's id rather than its slug: the id survives a
+ * rename, so renaming a repository is a single row update instead of copying
+ * every object it owns.
+ */
+export function repoPrefix(documentId: string): string {
+  return `git/${documentId}`;
 }
 
-export function statePath(slug: string): string {
-  return `${repoPrefix(slug)}/state.json`;
+export function statePath(documentId: string): string {
+  return `${repoPrefix(documentId)}/state.json`;
 }
 
-export function packPath(slug: string, name: string, extension: string): string {
-  return `${repoPrefix(slug)}/pack/${name}.${extension}`;
+export function packPath(documentId: string, name: string, extension: string): string {
+  return `${repoPrefix(documentId)}/pack/${name}.${extension}`;
 }
 
 export async function readState(
   storage: FileStorageAdapter,
   spaceId: string,
-  slug: string,
+  documentId: string,
 ): Promise<LoadedState | null> {
-  const key = statePath(slug);
+  const key = statePath(documentId);
   const info = await storage.stat(spaceId, key);
   if (!info) return null;
 
@@ -83,25 +88,42 @@ function serialize(state: RepoState): Buffer {
 }
 
 /**
- * Create the state object, and with it the repository.
+ * The repository's state, created empty on first sight.
  *
- * Create-if-absent is the uniqueness constraint: two requests claiming one slug
- * race on this write, and the loser is told the name is taken. Nothing else
- * enforces it, and nothing else has to.
+ * The document row already says the repository exists, so this object only ever
+ * describes its contents — and creating it lazily means there is nothing to
+ * race on, and no prefix left behind by a creation that half-succeeded. Two
+ * concurrent first requests both try; create-if-absent settles it and the loser
+ * simply reads what the winner wrote.
  */
-export async function createState(
+export async function ensureState(
   storage: FileStorageAdapter,
   spaceId: string,
-  state: RepoState,
-): Promise<boolean> {
+  documentId: string,
+  defaultBranch: string,
+): Promise<LoadedState | null> {
+  const existing = await readState(storage, spaceId, documentId);
+  if (existing) return existing;
+
+  const state: RepoState = {
+    version: 1,
+    documentId,
+    defaultBranch,
+    createdAt: new Date().toISOString(),
+    refs: {},
+    packs: [],
+    seq: 0,
+    log: [],
+  };
   const written = await storage.putConditional(
     spaceId,
-    statePath(state.slug),
+    statePath(documentId),
     serialize(state),
     { ifNoneMatch: true },
     "application/json",
   );
-  return written.ok;
+  if (written.ok) return { state, etag: written.etag };
+  return readState(storage, spaceId, documentId);
 }
 
 /** Publish a new state, but only while the stored one is still `etag`. */
@@ -113,7 +135,7 @@ export async function commitState(
 ): Promise<string | null> {
   const written = await storage.putConditional(
     spaceId,
-    statePath(state.slug),
+    statePath(state.documentId),
     serialize(state),
     { ifMatch: etag },
     "application/json",
