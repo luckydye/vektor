@@ -57,6 +57,17 @@ interface RouteRule extends RateLimitRule {
    * can sign up for another identity.
    */
   instance?: boolean;
+  /**
+   * Ceiling for a caller the server resolved to a user or a job, where `max`
+   * then applies only to anonymous ones.
+   *
+   * Set where the tight ceiling exists to bound strangers rather than cost: a
+   * signed-in caller is accountable, can be switched off individually through
+   * `VEKTOR_RATE_LIMIT_BLOCK`, and is the one whose ordinary use — a video
+   * player seeking through a file, a client walking a large listing — looks
+   * like a flood from a fixed window's point of view.
+   */
+  authenticatedMax?: number;
 }
 
 export const SHARE_LINK_ROUTE_PATTERN = "/[spaceSlug]/s/[linkId]";
@@ -101,7 +112,17 @@ const ROUTE_RULES: readonly RouteRule[] = [
   { pattern: "/api/v1/url-metadata", max: 120, windowMs: MINUTE },
   { pattern: "/api/v1/proxy-media", max: 120, windowMs: MINUTE },
   // Image decode/resize per request.
-  { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", max: 300, windowMs: MINUTE },
+  // Serving an upload streams bytes that are already stored; it costs the
+  // instance almost nothing per request. The ceiling is here to stop a stranger
+  // enumerating a space, so it lifts for a caller who has signed in — a media
+  // player seeking through a video, or any client reading a file in ranges,
+  // issues far more requests than a person browsing and is not abuse.
+  {
+    pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]",
+    max: 300,
+    authenticatedMax: 10_000,
+    windowMs: MINUTE,
+  },
   // Astro route; password verification makes this more expensive than a normal page.
   { pattern: SHARE_LINK_ROUTE_PATTERN, max: 120, windowMs: MINUTE },
 ];
@@ -139,9 +160,13 @@ export function ruleForRoute(
   pattern: string,
   method: string,
   job = false,
+  authenticated = false,
 ): RateLimitRule {
   const rule = matchRule(pattern, method, job);
-  return rule ? { max: rule.max, windowMs: rule.windowMs } : defaultRateLimitRule();
+  if (!rule) return defaultRateLimitRule();
+
+  const max = authenticated ? (rule.authenticatedMax ?? rule.max) : rule.max;
+  return { max, windowMs: rule.windowMs };
 }
 
 /**
@@ -370,9 +395,13 @@ export function checkRateLimit(
   if (blockedKeys().has(key)) return blockedCheck(key);
 
   const job = jobToken !== null;
+  // Whether the server resolved this caller to someone, rather than only to an
+  // address. An invented credential never gets here: `key` is built from
+  // identities that were already verified.
+  const authenticated = job || Boolean(request.userId);
   const decision = limiter.check(
     windowKey(key, request.pattern, request.method, job),
-    ruleForRoute(request.pattern, request.method, job),
+    ruleForRoute(request.pattern, request.method, job, authenticated),
   );
   return { key, ...decision };
 }

@@ -170,6 +170,25 @@ describe("ruleForRoute", () => {
     });
   });
 
+  it("lifts the uploads ceiling for a caller the server resolved", () => {
+    const uploads = "/api/v1/spaces/[spaceId]/uploads/[...path]";
+    const anonymous = ruleForRoute(uploads, "GET");
+    const signedIn = ruleForRoute(uploads, "GET", false, true);
+
+    // A stranger enumerating a space stays bounded; a signed-in client reading
+    // a file in ranges does not, since that is ordinary use and not abuse.
+    expect(anonymous.max).toBe(300);
+    expect(signedIn.max).toBeGreaterThan(anonymous.max);
+    expect(signedIn.windowMs).toBe(anonymous.windowMs);
+  });
+
+  it("leaves a route without an authenticated ceiling unchanged", () => {
+    const rebuild = "/api/v1/spaces/[spaceId]/search/rebuild";
+    expect(ruleForRoute(rebuild, "POST", false, true)).toEqual(
+      ruleForRoute(rebuild, "POST"),
+    );
+  });
+
   it("ignores a non-numeric or zero override rather than disabling the limit", () => {
     process.env.VEKTOR_RATE_LIMIT_MAX = "not-a-number";
     expect(ruleForRoute("/api/v1/users/me", "GET").max).toBe(DEFAULT_MAX);
