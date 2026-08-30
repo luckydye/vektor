@@ -21,22 +21,43 @@ database-pool table. In local mode Vektor reconciles existing
 are discovered automatically.
 
 Vektor does not provision hosted databases or depend on a provider API. Create
-space databases externally, then register their credential-free libSQL URLs as
-available capacity:
+space databases externally, then register them as available capacity, each with
+its own token:
 
 ```sh
 VEKTOR_DATABASE_URL='libsql://auth.example.com?authToken=TOKEN' \
-  vektor space register 'libsql://space-001.example.com'
+  vektor space register 'libsql://space-001.example.com' --token 'SPACE_001_TOKEN'
 
 VEKTOR_DATABASE_URL='libsql://auth.example.com?authToken=TOKEN' \
   vektor space ls
 ```
 
-Creating a space claims one registered database. Space database connections
-inherit the `authToken` from `VEKTOR_DATABASE_URL`; this requires one credential
-that is valid for the auth database and every registered space database. Vektor
-removes credentials from registered URLs before storing them. If no database is
-available, space creation returns HTTP 503.
+Creating a space claims one registered database. Vektor removes credentials from
+registered URLs before storing them; the token is stored separately, encrypted
+with `VEKTOR_SECRETS_ENCRYPTION_KEY`, and is used only for that one database. If no database is available, space creation returns
+HTTP 503.
+
+A token may also be given inside the registered URL — `vektor space register
+'libsql://space-001.example.com?authToken=SPACE_001_TOKEN'` — which is captured
+and encrypted the same way. Registering without either is refused: a token valid
+for every database would make one leak readable across tenants, so
+`VEKTOR_DATABASE_URL`'s own credential is never used for a space database. Scope
+each token to its one database when you issue it.
+
+### Rotating a space database token
+
+Issue a new token with your provider, then store it. Vektor verifies the token
+against the database before writing it and closes the cached connection, so the
+next open uses the new one:
+
+```sh
+VEKTOR_DATABASE_URL='libsql://auth.example.com?authToken=TOKEN' \
+  vektor space token database_0f3c… 'NEW_SPACE_TOKEN'
+```
+
+Revoke the old token afterwards, and restart the server: a process that already
+has the space open keeps the old token on its cached connection. Rotating the auth database's own
+credential is a `VEKTOR_DATABASE_URL` change and a restart.
 
 If initialization of a claimed database fails, Vektor marks that record
 `disabled` so it cannot be handed to another space accidentally. After the
@@ -53,8 +74,10 @@ instead. Vektor reads its `space_metadata` and preserves the existing space ID:
 
 ```sh
 VEKTOR_DATABASE_URL='libsql://auth.example.com?authToken=TOKEN' \
-  vektor space attach 'libsql://imported-space.example.com'
+  vektor space attach 'libsql://imported-space.example.com' --token 'IMPORTED_TOKEN'
 ```
+
+`attach` requires `--token` (or a token in the URL) for the same reason.
 
 Deleting a hosted space marks its database record deleted and archives its
 local uploads under `data/deleted/uploads/`. Database retention or removal

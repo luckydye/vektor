@@ -25,9 +25,10 @@
  *   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
  *   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
  *   vektor category rm <slug>
- *   vektor space register <libsql-url>
- *   vektor space attach <libsql-url>
+ *   vektor space register <libsql-url> [--token <auth-token>]
+ *   vektor space attach <libsql-url> [--token <auth-token>]
  *   vektor space enable <database-id>
+ *   vektor space token <database-id> <auth-token>
  *   vektor space ls
  */
 
@@ -60,6 +61,7 @@ import {
   commandSpaceEnable,
   commandSpaceList,
   commandSpaceRegister,
+  commandSpaceToken,
 } from "./src/cli/space.ts";
 import { commandUploadFile } from "./src/cli/upload.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
@@ -130,9 +132,10 @@ Commands:
   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
   vektor category rm <slug>
-  vektor space register <libsql-url>
-  vektor space attach <libsql-url>
+  vektor space register <libsql-url> [--token <auth-token>]
+  vektor space attach <libsql-url> [--token <auth-token>]
   vektor space enable <database-id>
+  vektor space token <database-id> <auth-token>
   vektor space ls
 
 Configuration:
@@ -425,17 +428,19 @@ async function main(): Promise<void> {
   }
 
   if (command === "space") {
-    const [subcommand, value] = rest;
+    const [subcommand, ...subArgs] = rest;
+    const { positional, flags } = parseFlags(subArgs);
+    const value = positional[0];
 
     if (subcommand === "register") {
       if (!value) throw new Error("space register requires a <libsql-url>");
-      await commandSpaceRegister(value);
+      await commandSpaceRegister(value, flags.token);
       return;
     }
 
     if (subcommand === "attach") {
       if (!value) throw new Error("space attach requires a <libsql-url>");
-      await commandSpaceAttach(value);
+      await commandSpaceAttach(value, flags.token);
       return;
     }
 
@@ -445,13 +450,22 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (subcommand === "token") {
+      const token = positional[1];
+      if (!value || !token) {
+        throw new Error("space token requires a <database-id> and an <auth-token>");
+      }
+      await commandSpaceToken(value, token);
+      return;
+    }
+
     if (subcommand === "ls" || subcommand === "list") {
       await commandSpaceList();
       return;
     }
 
     throw new Error(
-      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, ls`,
+      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, token, ls`,
     );
   }
 

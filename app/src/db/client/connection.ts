@@ -37,7 +37,8 @@ function ensureLocalDatabaseDirectory(databaseUrl: string): void {
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true });
 }
 
-function authTokenFromUrl(databaseUrl: string): string | undefined {
+/** The `?authToken=` a connection string carries, if any. */
+export function authTokenFromDatabaseUrl(databaseUrl: string): string | undefined {
   if (databaseUrl.startsWith("file:")) return undefined;
   try {
     return new URL(databaseUrl).searchParams.get("authToken") ?? undefined;
@@ -115,13 +116,24 @@ export function withoutDatabaseCredentials(databaseUrl: string): string {
  */
 const memoryBacked = new WeakSet<object>();
 
-export function createDatabase(databaseUrl: string): Database {
+/**
+ * What a connection authenticates with. Passed explicitly at every call site so
+ * that no database silently inherits another tenant's credential.
+ */
+export type DatabaseCredentials = {
+  authToken?: string;
+};
+
+export function createDatabase(
+  databaseUrl: string,
+  credentials: DatabaseCredentials = {},
+): Database {
   ensureLocalDatabaseDirectory(databaseUrl);
   const client = createClient({
     url: databaseUrl,
-    // Space URLs in the auth index intentionally contain no credentials. A
-    // shared credential embedded in VEKTOR_DATABASE_URL is inherited here.
-    authToken: authTokenFromUrl(getAuthDatabaseUrl()),
+    // Locations stored in the auth index carry no credentials, so an empty
+    // token here means an unauthenticated connection rather than a shared one.
+    authToken: credentials.authToken ?? authTokenFromDatabaseUrl(databaseUrl),
   });
   const database = drizzle(client);
   if (databaseUrl.startsWith("file::memory:") || databaseUrl === ":memory:") {

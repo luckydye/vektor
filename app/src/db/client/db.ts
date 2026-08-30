@@ -3,6 +3,7 @@ import { config, isInMemoryDb } from "#config";
 import {
   getAssignedSpaceDatabase,
   reconcileLocalSpaceIndex,
+  spaceDatabaseCredentials,
 } from "#db/auth/spaceIndex.ts";
 import {
   closeDatabase,
@@ -88,7 +89,10 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
       throw new Error(`Space database file not found: ${spaceId}`);
     }
 
-    const spaceDb = createDatabase(location.url);
+    const spaceDb = createDatabase(
+      location.url,
+      spaceDatabaseCredentials(databaseRecord),
+    );
     // Cache before applying schema so concurrent first requests share both the
     // connection and its preparation promise.
     touch(spaceId, spaceDb);

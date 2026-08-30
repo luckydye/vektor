@@ -23,6 +23,9 @@ export async function prepareAuthDb(authDb: Database) {
   await exec(authDb, sql.raw(verificationSQL));
   await exec(authDb, sql.raw(spaceIndexSQL));
   await renameColumnIfNeeded(authDb, authSchema.spaceIndex.location, "database_url");
+  await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenCiphertext);
+  await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenIv);
+  await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenAuthTag);
   await exec(
     authDb,
     sql.raw(

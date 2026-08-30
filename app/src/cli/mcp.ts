@@ -194,11 +194,17 @@ export async function handleMcpRequest(
     case "tools/list": {
       const params = assertObject(request.params, "tools/list params");
       if (Object.keys(params).some((key) => key !== "_meta" && key !== "cursor")) {
-        return createInvalidParamsError(request.id, "tools/list contains an unknown parameter");
+        return createInvalidParamsError(
+          request.id,
+          "tools/list contains an unknown parameter",
+        );
       }
       if (params.cursor !== undefined) {
         if (typeof params.cursor !== "string") {
-          return createInvalidParamsError(request.id, "tools/list cursor must be a string");
+          return createInvalidParamsError(
+            request.id,
+            "tools/list cursor must be a string",
+          );
         }
         return createInvalidParamsError(request.id, "Invalid tools/list cursor");
       }
@@ -223,7 +229,10 @@ export async function handleMcpRequest(
           "requestState",
         ]);
         if (Object.keys(params).some((key) => !allowedParams.has(key))) {
-          return createInvalidParamsError(request.id, "tools/call contains an unknown parameter");
+          return createInvalidParamsError(
+            request.id,
+            "tools/call contains an unknown parameter",
+          );
         }
         name = expectString(params, "name");
         args =

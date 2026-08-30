@@ -3,8 +3,11 @@ import path from "node:path";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { isInMemoryDb } from "#config";
 import {
+  authTokenFromDatabaseUrl,
   closeDatabase,
   createDatabase,
+  type Database,
+  type DatabaseCredentials,
   getAuthDatabaseUrl,
   getAuthDb,
   getLocalSpaceDatabaseUrl,
@@ -16,6 +19,7 @@ import {
 import { many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
+import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 import { appLogger } from "#observability/logger.ts";
 
 export type SpaceIndexRecord = typeof spaceIndex.$inferSelect;
@@ -88,10 +92,66 @@ function sanitizeRemoteSpaceDatabaseUrl(databaseUrl: string): string {
   return sanitizedUrl;
 }
 
+/** The `space_index` columns holding an encrypted per-database token. */
+type EncryptedSpaceDatabaseToken = Pick<
+  SpaceIndexRecord,
+  "authTokenCiphertext" | "authTokenIv" | "authTokenAuthTag"
+>;
+
+/** Column values holding `token`, encrypted. */
+export function encryptSpaceDatabaseToken(token: string): EncryptedSpaceDatabaseToken {
+  const encrypted = encryptSecret(token);
+  return {
+    authTokenCiphertext: encrypted.ciphertext,
+    authTokenIv: encrypted.iv,
+    authTokenAuthTag: encrypted.authTag,
+  };
+}
+
+/**
+ * The stored token, or undefined when the row has none. A row written under a
+ * different secrets key throws rather than decrypting to the wrong token.
+ */
+function decryptSpaceDatabaseToken(row: EncryptedSpaceDatabaseToken): string | undefined {
+  if (!row.authTokenCiphertext || !row.authTokenIv || !row.authTokenAuthTag) {
+    return undefined;
+  }
+  return decryptSecret({
+    ciphertext: row.authTokenCiphertext,
+    iv: row.authTokenIv,
+    authTag: row.authTokenAuthTag,
+  });
+}
+
+/**
+ * What to authenticate a space's connection with.
+ *
+ * Every hosted database carries its own token, so a leaked credential reads one
+ * tenant rather than all of them. A hosted record without one is refused rather
+ * than falling back to the auth database's credential, which would read every space.
+ */
+export function spaceDatabaseCredentials(
+  record: Pick<
+    SpaceIndexRecord,
+    "id" | "location" | "authTokenCiphertext" | "authTokenIv" | "authTokenAuthTag"
+  >,
+): DatabaseCredentials {
+  if (resolveSpaceLocation(record.location).url.startsWith("file:")) return {};
+
+  const authToken = decryptSpaceDatabaseToken(record);
+  if (!authToken) {
+    throw new Error(
+      `Space database ${record.id} has no token; set one with \`vektor space token ${record.id} <token>\``,
+    );
+  }
+  return { authToken };
+}
+
 async function inspectSpaceDatabase(
   location: string,
+  credentials: DatabaseCredentials,
 ): Promise<IndexedSpaceMetadata | null> {
-  const database = createDatabase(resolveSpaceLocation(location).url);
+  const database = createDatabase(resolveSpaceLocation(location).url, credentials);
   try {
     const schemaObjects = await many<{ name: string }>(
       database,
@@ -121,11 +181,31 @@ async function inspectSpaceDatabase(
   }
 }
 
+/**
+ * The token a registration stores: the explicit one, else the credential
+ * embedded in the URL the operator supplied. The URL itself is stored stripped,
+ * so this is the only chance to capture it.
+ */
+function registrationAuthToken(
+  databaseUrl: string,
+  authToken: string | undefined,
+): string {
+  const token = authToken?.trim() || authTokenFromDatabaseUrl(databaseUrl.trim());
+  if (!token) {
+    throw new Error(
+      "A hosted space database requires its own token; pass --token or include ?authToken= in the URL",
+    );
+  }
+  return token;
+}
+
 export async function registerAvailableSpaceDatabase(
   databaseUrl: string,
+  authToken?: string,
 ): Promise<SpaceIndexRecord> {
   const sanitizedUrl = sanitizeRemoteSpaceDatabaseUrl(databaseUrl);
-  const metadata = await inspectSpaceDatabase(sanitizedUrl);
+  const token = registrationAuthToken(databaseUrl, authToken);
+  const metadata = await inspectSpaceDatabase(sanitizedUrl, { authToken: token });
   if (metadata) {
     throw new Error(
       "The database already contains a space; use `vektor space attach <url>` instead",
@@ -140,7 +220,15 @@ export async function registerAvailableSpaceDatabase(
     if (existing.status !== "available") {
       throw new Error(`Database is already registered with status "${existing.status}"`);
     }
-    return existing;
+    return (
+      (await one(
+        authDb
+          .update(spaceIndex)
+          .set({ ...encryptSpaceDatabaseToken(token), updatedAt: new Date() })
+          .where(eq(spaceIndex.id, existing.id))
+          .returning(),
+      )) ?? existing
+    );
   }
 
   const now = new Date();
@@ -151,6 +239,7 @@ export async function registerAvailableSpaceDatabase(
         id: databaseRecordId(),
         location: sanitizedUrl,
         status: "available",
+        ...encryptSpaceDatabaseToken(token),
         createdAt: now,
         updatedAt: now,
       })
@@ -164,9 +253,11 @@ export async function registerAvailableSpaceDatabase(
 
 export async function attachExistingSpaceDatabase(
   databaseUrl: string,
+  authToken?: string,
 ): Promise<ActiveSpaceIndexRecord> {
   const sanitizedUrl = sanitizeRemoteSpaceDatabaseUrl(databaseUrl);
-  const database = createDatabase(sanitizedUrl);
+  const token = registrationAuthToken(databaseUrl, authToken);
+  const database = createDatabase(sanitizedUrl, { authToken: token });
   let metadata: IndexedSpaceMetadata | undefined;
   try {
     metadata = await one(database.select().from(spaceMetadata));
@@ -188,6 +279,7 @@ export async function attachExistingSpaceDatabase(
 
   const existing = byUrl ?? bySpace;
   const recordId = existing?.id ?? databaseRecordId();
+  const tokenColumns = encryptSpaceDatabaseToken(token);
   if (existing) {
     await authDb
       .update(spaceIndex)
@@ -195,6 +287,7 @@ export async function attachExistingSpaceDatabase(
         location: sanitizedUrl,
         status: "claimed",
         spaceId: metadata.id,
+        ...tokenColumns,
         updatedAt: new Date(),
       })
       .where(eq(spaceIndex.id, existing.id));
@@ -205,6 +298,7 @@ export async function attachExistingSpaceDatabase(
       location: sanitizedUrl,
       status: "claimed",
       spaceId: metadata.id,
+      ...tokenColumns,
       createdAt: now,
       updatedAt: now,
     });
@@ -230,7 +324,10 @@ export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexR
     );
   }
 
-  const metadata = await inspectSpaceDatabase(existing.location);
+  const metadata = await inspectSpaceDatabase(
+    existing.location,
+    spaceDatabaseCredentials(existing),
+  );
   if (metadata) {
     if (existing.spaceId !== metadata.id) {
       throw new Error(
@@ -380,6 +477,51 @@ export async function allocateSpaceDatabase(spaceId: string): Promise<SpaceIndex
     );
     if (claimed) return claimed;
   }
+}
+
+/**
+ * Store `authToken` as this database's own credential.
+ *
+ * Verified against the database before it is persisted, so a typo fails here
+ * rather than at the next space open.
+ */
+export async function setSpaceDatabaseAuthToken(
+  recordId: string,
+  authToken: string,
+): Promise<SpaceIndexRecord> {
+  const authDb = getAuthDb();
+  const existing = await one(
+    authDb.select().from(spaceIndex).where(eq(spaceIndex.id, recordId)),
+  );
+  if (!existing) throw new Error(`Database record not found: ${recordId}`);
+
+  const location = resolveSpaceLocation(existing.location);
+  if (location.url.startsWith("file:")) {
+    throw new Error("Local space databases do not authenticate with a token");
+  }
+
+  const database = createDatabase(location.url, { authToken });
+  try {
+    await many(database, sql.raw("SELECT 1"));
+  } catch (error) {
+    throw new Error(
+      `The token was rejected by ${withoutDatabaseCredentials(existing.location)}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  } finally {
+    closeDatabase(database);
+  }
+
+  const updated = await one(
+    authDb
+      .update(spaceIndex)
+      .set({ ...encryptSpaceDatabaseToken(authToken), updatedAt: new Date() })
+      .where(eq(spaceIndex.id, recordId))
+      .returning(),
+  );
+  if (!updated) throw new Error(`Failed to store the token for ${recordId}`);
+  return updated;
 }
 
 export async function disableSpaceDatabase(
@@ -550,27 +692,71 @@ async function indexLocalSpace(
       .where(or(eq(spaceIndex.location, location), eq(spaceIndex.spaceId, metadata.id))),
   );
   const recordId = existing?.id ?? databaseRecordId();
+  const values = {
+    location,
+    status: "active" as const,
+    spaceId: metadata.id,
+    name: metadata.name,
+    slug: metadata.slug,
+    createdBy: metadata.createdBy,
+    createdAt: metadata.createdAt,
+    updatedAt: metadata.updatedAt,
+  };
   if (existing) {
-    await authDb
-      .update(spaceIndex)
-      .set({
-        location,
-        status: "claimed",
-        spaceId: metadata.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(spaceIndex.id, existing.id));
+    await authDb.update(spaceIndex).set(values).where(eq(spaceIndex.id, existing.id));
   } else {
     await authDb.insert(spaceIndex).values({
       id: recordId,
-      location,
-      status: "claimed",
-      spaceId: metadata.id,
-      createdAt: metadata.createdAt,
-      updatedAt: metadata.updatedAt,
+      ...values,
     });
   }
-  await upsertSpaceIndex(metadata, recordId, metadata.id);
+}
+
+/**
+ * A copied local database is still useful even when its original slug is
+ * already present. Give the copy the first free URL and persist that choice in
+ * the space database, which remains the authority for its metadata. Hosted
+ * attachments stay strict because silently changing a remote database would
+ * be surprising and may race another Vektor instance.
+ */
+export async function resolveLocalSpaceSlugCollision(
+  authDb: Database,
+  spaceDb: Database,
+  metadata: IndexedSpaceMetadata,
+): Promise<IndexedSpaceMetadata> {
+  const owner = await one(
+    authDb
+      .select({ spaceId: spaceIndex.spaceId })
+      .from(spaceIndex)
+      .where(and(eq(spaceIndex.slug, metadata.slug), eq(spaceIndex.status, "active"))),
+  );
+  if (!owner || owner.spaceId === metadata.id) return metadata;
+
+  let counter = 2;
+  let slug: string;
+  for (;;) {
+    slug = `${metadata.slug}-${counter}`;
+    const candidateOwner = await one(
+      authDb
+        .select({ spaceId: spaceIndex.spaceId })
+        .from(spaceIndex)
+        .where(and(eq(spaceIndex.slug, slug), eq(spaceIndex.status, "active"))),
+    );
+    if (!candidateOwner || candidateOwner.spaceId === metadata.id) break;
+    counter++;
+  }
+
+  const updatedAt = new Date();
+  await spaceDb
+    .update(spaceMetadata)
+    .set({ slug, updatedAt })
+    .where(eq(spaceMetadata.id, metadata.id));
+  appLogger.warn("Renamed a local space whose slug was already in use", {
+    spaceId: metadata.id,
+    previousSlug: metadata.slug,
+    slug,
+  });
+  return { ...metadata, slug, updatedAt };
 }
 
 export async function reconcileLocalSpaceIndex(): Promise<void> {
@@ -590,6 +776,9 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
     let metadata: IndexedSpaceMetadata | undefined;
     try {
       metadata = await one(database.select().from(spaceMetadata));
+      if (metadata) {
+        metadata = await resolveLocalSpaceSlugCollision(getAuthDb(), database, metadata);
+      }
     } catch {
       // Ignore files that are not initialized space databases. They remain on
       // disk for an operator to inspect and are never added to the live index.
