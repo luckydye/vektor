@@ -14,6 +14,7 @@
  *   vektor extension create <id>
  *   vektor extension package [id]
  *   vektor extension upload [id]
+ *   vektor extension install <id> [version]
  *   vektor cat <docId>
  *   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
  *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>] [--content-type <mime>]
@@ -45,7 +46,12 @@ import {
   commandSet,
   commandWrite,
 } from "./src/cli/document.ts";
-import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
+import {
+  commandCreate,
+  commandInstall,
+  commandPackage,
+  commandUpload,
+} from "./src/cli/extension.ts";
 import { commandLogin, commandLogout } from "./src/cli/login.ts";
 import { commandMcp } from "./src/cli/mcp.ts";
 import { configPath, resolveConfig } from "./src/cli/resolve.ts";
@@ -113,6 +119,7 @@ Commands:
   vektor extension create <id>
   vektor extension package [id]
   vektor extension upload [id]
+  vektor extension install <id> [version]
   vektor cat <docId>
   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>] [--content-type <mime>]
@@ -270,6 +277,16 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (subcommand === "install") {
+      if (!extensionId) throw new Error("extension install requires an <id>");
+      const { host, token, spaceId } = await resolveConfig();
+      if (!token) throw new Error("Access Token required — run: vektor login");
+
+      const version = rest[2]?.startsWith("--") ? undefined : rest[2];
+      await commandInstall(extensionId, host, spaceId, token, version);
+      return;
+    }
+
     if (subcommand === "upload") {
       const { host, token, spaceId } = await resolveConfig();
 
@@ -287,7 +304,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-      `Unknown extension subcommand: ${subcommand}\n\nTry: create, package, upload`,
+      `Unknown extension subcommand: ${subcommand}\n\nTry: create, package, upload, install`,
     );
   }
 

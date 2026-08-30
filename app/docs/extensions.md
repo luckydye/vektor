@@ -626,6 +626,7 @@ The CLI scaffolds, builds and uploads. All three take the extension id, and
 vektor extension create  <extension-id>   # scaffolds the folder
 vektor extension package <extension-id>   # runs the build, bumps the version, zips
 vektor extension upload  <extension-id>   # uploads the zip to a space
+vektor extension install <extension-id>   # installs from the server's store
 ```
 
 `upload` takes its token and space from whatever `vektor login` stored in
@@ -633,6 +634,37 @@ vektor extension upload  <extension-id>   # uploads the zip to a space
 (required) and `VEKTOR_SPACE_ID` (otherwise the first space you can see). The server
 comes from `VEKTOR_HOST` alone and defaults to localhost. A zip can also be uploaded
 through the extensions management UI.
+
+## Installing from the store
+
+`install` is the other direction: instead of pushing a local zip, it asks the
+server to fetch a published one from its configured extension store. Only the id
+and an optional version cross the wire — the server resolves the version through
+the registry, verifies the SHA-256 the registry published, and re-validates the
+manifest inside the package before anything is stored. The result records where
+it came from (`source: "marketplace"`, `sourceRef: "<id>@<version>"`,
+`sourcePublisher`), which is what lets a space tell later which of its
+extensions were reviewed and which were side-loaded.
+
+```bash
+vektor extension install kanban          # latest published version
+vektor extension install kanban 1.1.33   # a specific one
+```
+
+The same thing happens from **Settings → Extensions → Store** in the app.
+Installing needs the space-wide `manage_extensions` capability, exactly as
+uploading does: either way the extension's code ends up running in every
+member's browser.
+
+Two environment variables govern this:
+
+| Variable | |
+|---|---|
+| `VEKTOR_MARKETPLACE_URL` | Base URL of the store to browse. Anyone can host one; unset, it is `https://www.vektorapp.org`. Only the origin is used, and every request is pinned to it. Set it empty to turn the store off. |
+| `VEKTOR_EXTENSION_ALLOWED_SOURCES` | Which origins a space accepts extensions from: `upload`, `marketplace`, `system`. All three unless set. `marketplace` alone disables direct zip uploads. |
+
+The registry contract, and how to run your own, is in
+[extension-registry.md](./extension-registry.md).
 
 The build is one line in `package.json` and needs no bundler config:
 

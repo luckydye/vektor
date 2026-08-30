@@ -226,6 +226,14 @@ export function config() {
       OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
 
       /**
+       * Base URL of the extension store this server browses and installs from.
+       * Defaults to the official registry; set it empty to turn the in-app store
+       * off, or point it at a mirror or a private registry. Only the origin is
+       * used, and every registry request is pinned to it.
+       */
+      MARKETPLACE_URL: process.env.VEKTOR_MARKETPLACE_URL,
+
+      /**
        * Comma-separated list of extension sources the server will accept.
        * Valid values: upload, marketplace, system.
        * Defaults to all sources when unset.
@@ -245,6 +253,7 @@ export function config() {
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
     GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
+    MARKETPLACE_ENABLED: publicEnv.VEKTOR_MARKETPLACE_ENABLED,
   } as const;
 }
 
@@ -316,7 +325,35 @@ export function getPublicEnv(): App.PublicEnv {
         : undefined,
     VEKTOR_NO_AUTH: appConfig.NO_AUTH,
     VEKTOR_EXTENSION_ALLOWED_SOURCES: appConfig.EXTENSION_ALLOWED_SOURCES,
+    // Only whether a store exists reaches the browser: the UI needs it to decide
+    // whether to offer the store tab, and the server proxies every actual call.
+    VEKTOR_MARKETPLACE_ENABLED: marketplaceOrigin() ? "1" : undefined,
   };
+}
+
+/**
+ * The registry a server browses when the operator names none.
+ *
+ * A store is just an HTTP contract (see `docs/extension-registry.md`), so
+ * anyone may run one and `VEKTOR_MARKETPLACE_URL` points a server at it. This
+ * default is only which store ships configured — the canonical host, not the
+ * apex that redirects to it.
+ */
+export const DEFAULT_MARKETPLACE_URL = "https://www.vektorapp.org";
+
+/**
+ * Origin of the configured extension store, or null when the operator turned it
+ * off with an empty `VEKTOR_MARKETPLACE_URL`. Only the origin survives: every
+ * registry request is pinned to it, so a path here would be misleading.
+ */
+export function marketplaceOrigin(): string | null {
+  const value = (config().MARKETPLACE_URL ?? DEFAULT_MARKETPLACE_URL).trim();
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
 }
 
 export function getLocalOrigin(): string {

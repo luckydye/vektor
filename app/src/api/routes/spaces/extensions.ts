@@ -1,13 +1,5 @@
-import {
-  authenticateJobTokenOrSpaceRole,
-  authenticateRequest,
-  canAccess,
-  verifyFeatureAccess,
-  verifyTokenFeature,
-} from "#acl/guards.ts";
-import { resolveIdentity } from "#acl/identity.ts";
-import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
-import { hasFeature } from "#acl/store.ts";
+import { authenticateJobTokenOrSpaceRole, canAccess } from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -18,6 +10,7 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#api/http.ts";
+import { authorizeExtensionInstall } from "#api/routes/spaces/extensionAuth.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
@@ -28,7 +21,6 @@ import {
   listExtensionsWithErrors,
   updateExtension,
 } from "#db/space/extensions.ts";
-import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 
 /**
@@ -96,58 +88,9 @@ export const POST: ApiRouteHandler = (context) =>
     async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
 
-      // Authorize before touching the body. The gate below is the space-wide
-      // `manage_extensions` capability and never looks at which extension is
-      // being installed, so nothing here needs the manifest — and an
-      // unauthorized caller must not be able to make the server parse a
-      // multipart upload and unzip an archive.
-      let createdBy: string;
-      const jobTokenHeader = context.req.raw.headers.get("X-Job-Token");
-      if (jobTokenHeader) {
-        const parsed = parseJobToken(jobTokenHeader, spaceId);
-        if (!parsed) throw forbiddenResponse("Invalid job token");
-        // A job token is a delegated credential. Installing an extension is a
-        // privileged, space-wide action (the new extension's code runs in
-        // every member's browser), so anonymous system tokens are rejected
-        // outright and user-scoped tokens must actually hold the
-        // `manage_extensions` capability — the same gate the access-token
-        // branch enforces below.
-        if (!parsed.userId) {
-          throw forbiddenResponse(
-            "Anonymous job tokens are not allowed to install extensions",
-          );
-        }
-        const canManage = await hasFeature(
-          spaceId,
-          Feature.MANAGE_EXTENSIONS,
-          await resolveIdentity(parsed.userId),
-        );
-        if (!canManage) {
-          throw forbiddenResponse(
-            "Job token user does not have the manage_extensions capability",
-          );
-        }
-        createdBy = parsed.userId;
-      } else {
-        const auth = await authenticateRequest(context.var.credentials, spaceId);
-        if (auth.type === "user") {
-          // Installing an extension runs its code in every member's browser, so
-          // it is gated on the space-wide `manage_extensions` capability rather
-          // than on being the space creator. The `owner` role holds this by
-          // default (see DEFAULT_FEATURES in #acl/permissions.ts, which the
-          // client-side gate reads too) — so a granted co-owner, not only the
-          // original creator, may upload.
-          await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, auth.user.id);
-          createdBy = auth.user.id;
-        } else {
-          // Tokens may install/update extensions only with the space-wide
-          // `manage_extensions` capability — not a plain viewer/editor token.
-          // It's space-scoped (no resource id), so it can publish NEW
-          // extensions too. Space owners install via the user-session branch.
-          await verifyTokenFeature(auth.token, spaceId, Feature.MANAGE_EXTENSIONS);
-          createdBy = auth.token.token.createdBy;
-        }
-      }
+      // Authorize before touching the body: the gate is space-wide and never
+      // looks at the manifest, so nothing here needs the upload parsed first.
+      const createdBy = await authorizeExtensionInstall(context, spaceId);
 
       // Enforce the server-wide allowed-sources policy
       const allowedSources = getExtensionSourcePolicy();

@@ -78,6 +78,12 @@ const PUBLIC_ROUTES: Record<string, string> = {
  */
 const USER_SCOPED_ROUTES: Record<string, string> = {
   "/api/v1/access-tokens": "the caller's own tokens, in the spaces it belongs to",
+  // Instance-level, not space-level: the store catalogue this server is
+  // configured to browse. It carries no space data — the same listing the
+  // registry publishes to anyone — and installing from it is a separate,
+  // space-scoped route with its own capability gate.
+  "/api/v1/marketplace/extensions": "the configured store catalogue; no space data",
+  "/api/v1/marketplace/extensions/[extensionId]": "one store listing; no space data",
   "/api/v1/access-tokens/[tokenId]": "reaches only a token the caller issued",
   "/api/v1/search":
     "searches only the spaces the caller can read; empty without a session",
@@ -342,6 +348,10 @@ beforeAll(async () => {
     VEKTOR_IN_MEMORY_DB: "1",
     VEKTOR_EMAIL_AUTH: "1",
     AUTH_SECRET: process.env.AUTH_SECRET ?? "matrix-test-secret-do-not-use",
+    // No extension store: the marketplace routes would otherwise fetch a real
+    // outbound host, and this suite has no business making outbound requests.
+    // Unconfigured, they answer from local state and their cells stay stable.
+    VEKTOR_MARKETPLACE_URL: "",
   });
   await waitForServer(BASE_URL);
 

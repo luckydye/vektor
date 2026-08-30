@@ -41,3 +41,4 @@ api-example
 # Generated platform-specific native embedding addon and its loader.
 /app/src/search/native/
 
+/app/test

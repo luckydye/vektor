@@ -147,6 +147,10 @@ tasks:
     env:
       NODE_ENV: test
       VEKTOR_JOB_FETCH_ALLOW_PRIVATE: "0"
+      # No extension store under test. The registry is a real outbound host, and
+      # the route-access matrix in particular has no business reaching one — an
+      # unreachable network would otherwise turn access cells into 5xx.
+      VEKTOR_MARKETPLACE_URL: ""
       VEKTOR_TEST_S3_BUCKET: vektor-test
       VEKTOR_TEST_S3_ACCESS_KEY_ID: vektor
       VEKTOR_TEST_S3_SECRET_ACCESS_KEY: vektorsecret

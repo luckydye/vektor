@@ -323,6 +323,59 @@ export interface ExtensionInfo {
   createdBy: string;
 }
 
+/** What a store listing says an extension would add to a space. */
+export interface StoreCapabilities {
+  views: boolean;
+  jobs: boolean;
+  integrations: boolean;
+}
+
+export interface StoreExtension {
+  id: string;
+  name: string;
+  description?: string;
+  version: string;
+  publisher: string;
+  categories: string[];
+  keywords: string[];
+  icon?: string;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  capabilities: StoreCapabilities;
+  size: number;
+  sha256: string;
+  publishedAt: string;
+}
+
+export interface StoreExtensionVersion {
+  version: string;
+  size: number;
+  sha256: string;
+  publishedAt: string;
+  manifest: {
+    routes: Array<{ path: string; title?: string; description?: string }>;
+    jobs: Array<{ id: string; name?: string }>;
+    integrations: Array<{ id: string; label?: string; description?: string }>;
+  };
+}
+
+export interface StoreExtensionDetail extends StoreExtension {
+  latest: string;
+  /** Short curated store copy in markdown, or null when there is none. */
+  about: string | null;
+  screenshots: string[];
+  versions: StoreExtensionVersion[];
+}
+
+/** `enabled: false` means the server has no store configured, not that it failed. */
+export interface StoreCatalogue {
+  enabled: boolean;
+  registry: string | null;
+  generatedAt?: string;
+  extensions: StoreExtension[];
+}
+
 export interface ExtensionManifestError {
   id: string;
   error: string;
@@ -2169,6 +2222,24 @@ export class ApiClient {
       await this.replica.removeExtension(spaceId, extensionId);
     },
 
+    /**
+     * Install a store extension into a space. Only an id and an optional version
+     * cross the wire — the server resolves and verifies the package itself.
+     */
+    install: async (
+      spaceId: string,
+      extensionId: string,
+      options: { version?: string } = {},
+    ): Promise<ExtensionInfo> => {
+      const extension = await this.apiPost<ExtensionInfo>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/extensions/install`,
+        { extensionId, version: options.version },
+      );
+      await this.replica.writeExtension(spaceId, extension);
+      return extension;
+    },
+
     downloadPackage: async (spaceId: string, extensionId: string): Promise<Blob> => {
       const response = await fetch(
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}/package`,
@@ -2178,6 +2249,28 @@ export class ApiClient {
         throw new Error(error.error || `Download failed: ${response.status}`);
       }
       return await response.blob();
+    },
+  };
+
+  /**
+   * The extension store. The server fronts the registry rather than the browser
+   * calling it directly: the registry may be an internal mirror, its catalogue
+   * is cached once per instance, and the browser then needs no cross-origin
+   * access to install.
+   */
+  store = {
+    list: async (): Promise<StoreCatalogue> => {
+      return await this.apiGet<StoreCatalogue>(
+        this.baseUrl,
+        `/api/v1/marketplace/extensions`,
+      );
+    },
+
+    get: async (extensionId: string): Promise<StoreExtensionDetail> => {
+      return await this.apiGet<StoreExtensionDetail>(
+        this.baseUrl,
+        `/api/v1/marketplace/extensions/${extensionId}`,
+      );
     },
   };
 

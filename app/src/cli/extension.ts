@@ -178,6 +178,52 @@ export async function commandPackage(extensionId: string | undefined): Promise<v
   console.log(`Package created: ${zipPath}`);
 }
 
+/**
+ * Install an extension from the server's configured store.
+ *
+ * The id (and optional version) is all that is sent: the server resolves it
+ * through the registry, verifies the published checksum, and installs the
+ * result — so the CLI never handles the package at all.
+ */
+export async function commandInstall(
+  extensionId: string,
+  wikiUrl: string,
+  spaceId: string,
+  token: string,
+  version?: string,
+): Promise<void> {
+  validateExtensionId(extensionId);
+
+  const url = `${wikiUrl.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/extensions/install`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Origin: new URL(url).origin,
+    },
+    body: JSON.stringify({ extensionId, version }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Install failed: ${response.status} ${response.statusText}${body ? `\n${body}` : ""}`,
+    );
+  }
+
+  const result = (await response.json()) as {
+    id: string;
+    name: string;
+    version: string;
+    sourcePublisher: string | null;
+  };
+  console.log(
+    `Installed: ${result.name} v${result.version} (${result.id})` +
+      (result.sourcePublisher ? ` from ${result.sourcePublisher}` : ""),
+  );
+}
+
 export async function commandUpload(
   extensionId: string | undefined,
   wikiUrl: string,

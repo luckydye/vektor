@@ -10,6 +10,8 @@ import * as caldavPrincipal from "./routes/caldav/principal.ts";
 import * as chatAcp from "./routes/chat/acp.ts";
 import * as chatCompletions from "./routes/chat/completions.ts";
 import * as gitSmart from "./routes/git/smart.ts";
+import * as marketplaceExtension from "./routes/marketplace/extension.ts";
+import * as marketplaceExtensions from "./routes/marketplace/extensions.ts";
 import * as proxyMedia from "./routes/proxy-media.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
@@ -33,6 +35,7 @@ import * as documents from "./routes/spaces/documents.ts";
 import * as documentsArchived from "./routes/spaces/documents-archived.ts";
 import * as extension from "./routes/spaces/extension.ts";
 import * as extensionAsset from "./routes/spaces/extension-assets.ts";
+import * as extensionInstall from "./routes/spaces/extension-install.ts";
 import * as extensionPackage from "./routes/spaces/extension-package.ts";
 import * as extensions from "./routes/spaces/extensions.ts";
 import * as integration from "./routes/spaces/integration.ts";
@@ -163,7 +166,14 @@ export const apiRoutes: ApiRoute[] = [
     module: documentRevisions,
   },
 
+  { pattern: "/api/v1/marketplace/extensions", module: marketplaceExtensions },
+  {
+    pattern: "/api/v1/marketplace/extensions/[extensionId]",
+    module: marketplaceExtension,
+  },
+
   { pattern: "/api/v1/spaces/[spaceId]/extensions", module: extensions },
+  { pattern: "/api/v1/spaces/[spaceId]/extensions/install", module: extensionInstall },
   { pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]", module: extension },
   {
     pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]/package",

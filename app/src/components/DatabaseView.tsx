@@ -191,12 +191,12 @@ export function DatabaseView(props: Props) {
             <button
               type="button"
               class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-neutral-500 text-size-small transition-colors hover:bg-neutral-100 hover:text-neutral-800 disabled:pointer-events-none disabled:opacity-50"
-              title="Import CSV"
+              title="Import"
               disabled={isImporting()}
               onClick={openImportPicker}
             >
               <Icon class="h-3.5 w-3.5" name="csv-file" />
-              Import CSV
+              Import
             </button>
           </div>
         </div>

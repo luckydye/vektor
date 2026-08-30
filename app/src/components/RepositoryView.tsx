@@ -657,7 +657,7 @@ export function RepositoryView(props: Props) {
                         // Sanitized by `renderMessageMarkdown`: a README is
                         // untrusted content from whoever pushed it.
                         <div
-                          class="markdown-content readme-content px-4 py-3"
+                          class="markdown-content readme-content"
                           innerHTML={html()}
                         />
                       )}

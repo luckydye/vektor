@@ -368,32 +368,210 @@ a-lightbox-blur[enabled] {
   backdrop-filter: blur(2px);
 }
 
-/*
- * A repository README is a document, not a chat message: `.markdown-content` is
- * tuned for the latter and gives headings weight but no size, which flattens a
- * README into undifferentiated prose. These rules sit on top of it.
- */
+/* A repository README is long-form reading, while `.markdown-content` is
+   primarily tuned for compact chat messages. Keep a comfortable measure and
+   restore the hierarchy and rhythm expected from a document. */
+.readme-content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 68rem;
+  margin-inline: auto;
+  padding: 1.5rem clamp(1rem, 2.5vw, 2rem) 2.5rem;
+  color: var(--color-neutral-700);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
 .readme-content > :first-child {
   margin-top: 0;
 }
-.readme-content :is(h1, h2, h3, h4) {
-  margin: 1.25rem 0 0.5rem;
-  line-height: 1.25;
+
+.readme-content > :last-child {
+  margin-bottom: 0;
 }
+
+.readme-content :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--color-neutral-900);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+
 .readme-content h1 {
-  font-size: var(--text-size-title);
+  margin: 0 0 1rem;
+  font-size: clamp(1.75rem, 3vw, 2rem);
+  letter-spacing: -0.03em;
 }
+
 .readme-content h2 {
-  font-size: var(--text-size-large);
+  margin: 2.5rem 0 0.875rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--color-neutral-500, #6e6e6e);
+  border-bottom-color: color-mix(in srgb, var(--color-neutral-500) 22%, transparent);
+  font-size: 1.375rem;
 }
-.readme-content :is(h3, h4) {
-  font-size: var(--text-size-medium);
+
+.readme-content h3 {
+  margin: 2rem 0 0.625rem;
+  font-size: 1.125rem;
 }
-.readme-content :is(p, ul, ol, blockquote) {
-  margin: 0.5rem 0;
+
+.readme-content h4 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1rem;
 }
-/* A README carries long install commands as inline code; without this they
-   push the whole column sideways rather than wrapping. */
-.readme-content code {
+
+.readme-content :is(h5, h6) {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.readme-content h1 + p {
+  margin-top: 0;
+  color: var(--color-neutral-600);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.readme-content p {
+  margin: 0.875rem 0;
+}
+
+.readme-content :is(ul, ol) {
+  margin: 0.875rem 0;
+  padding-left: 1.5rem;
+}
+
+.readme-content li {
+  margin: 0.3rem 0;
+  padding-left: 0.2rem;
+}
+
+.readme-content li::marker {
+  color: var(--color-neutral-400);
+}
+
+.readme-content li > :is(p, ul, ol) {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.readme-content a {
+  font-weight: 500;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+
+.readme-content a:hover {
+  color: var(--color-primary-700);
+  text-decoration-color: currentColor;
+}
+
+.readme-content :not(pre) > code {
+  border: 1px solid color-mix(in srgb, var(--color-neutral-500) 14%, transparent);
+  background: var(--color-neutral-500, #6e6e6e);
+  background: color-mix(in srgb, var(--color-neutral-500) 10%, transparent);
+  color: var(--color-neutral-800);
   overflow-wrap: anywhere;
+  padding: 0.12em 0.35em;
+  font-size: 0.86em;
+  font-weight: 500;
+}
+
+.readme-content pre {
+  margin: 1.25rem 0;
+  padding: 1rem 1.125rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-500) 18%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+.readme-content pre code {
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.readme-content blockquote {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--color-primary-400);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--color-primary-500) 6%, transparent);
+  color: var(--color-neutral-600);
+}
+
+.readme-content blockquote > :first-child {
+  margin-top: 0;
+}
+
+.readme-content blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.readme-content hr {
+  margin: 2.5rem 0;
+  border-color: color-mix(in srgb, var(--color-neutral-500) 20%, transparent);
+}
+
+.readme-content table {
+  margin: 1.25rem 0;
+  border-color: color-mix(in srgb, var(--color-neutral-500) 20%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.readme-content :is(th, td) {
+  padding: 0.625rem 0.75rem;
+  border-color: color-mix(in srgb, var(--color-neutral-500) 16%, transparent);
+}
+
+.readme-content th {
+  background: color-mix(in srgb, var(--color-neutral-500) 8%, transparent);
+  color: var(--color-neutral-800);
+}
+
+.readme-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem auto;
+  border-radius: var(--radius-md);
+}
+
+.readme-content input[type="checkbox"] {
+  margin-right: 0.45rem;
+  accent-color: var(--color-primary-600);
+}
+
+.readme-content details {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-500) 18%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.readme-content summary {
+  color: var(--color-neutral-800);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (width <= 40rem) {
+  .readme-content {
+    padding: 1.25rem 1rem 2rem;
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+
+  .readme-content h1 {
+    font-size: 1.625rem;
+  }
+
+  .readme-content h2 {
+    margin-top: 2rem;
+    font-size: 1.25rem;
+  }
 }
