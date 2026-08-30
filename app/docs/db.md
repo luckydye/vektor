@@ -44,6 +44,31 @@ for every database would make one leak readable across tenants, so
 `VEKTOR_DATABASE_URL`'s own credential is never used for a space database. Scope
 each token to its one database when you issue it.
 
+### Schema migrations
+
+Each space database records the highest migration it has applied in its own
+`schema_migration` table, so opening one that is already current costs a single
+version read rather than the whole schema. `src/db/client/migrations.ts` holds
+the ordered list; because a database is stamped, adding a table to
+`src/db/schema/space.ts` reaches new databases only — an existing one needs a
+new entry appended with the next id.
+
+A server migrates a space the first time it opens it. On a hosted deployment
+that spreads the cost over the first request to each space and surfaces a bad
+migration one space at a time, so roll a release's migrations out up front:
+
+```sh
+VEKTOR_DATABASE_URL='libsql://auth.example.com?authToken=TOKEN' \
+  vektor space migrate            # every active space
+VEKTOR_DATABASE_URL='libsql://auth.example.com?authToken=TOKEN' \
+  vektor space migrate space_0f3c…
+```
+
+Each space prints `current`, `migrated` with the ids applied, or `error` with
+the reason; one failure does not stop the rest, and the command exits non-zero
+if any failed. Migrations are stamped one at a time, so a rerun after a failure
+resumes at the one that failed.
+
 ### Rotating a space database token
 
 Issue a new token with your provider, then store it. Vektor verifies the token

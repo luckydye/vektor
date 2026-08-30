@@ -29,6 +29,7 @@
  *   vektor space attach <libsql-url> [--token <auth-token>]
  *   vektor space enable <database-id>
  *   vektor space token <database-id> <auth-token>
+ *   vektor space migrate [<space-id>]
  *   vektor space ls
  */
 
@@ -60,6 +61,7 @@ import {
   commandSpaceAttach,
   commandSpaceEnable,
   commandSpaceList,
+  commandSpaceMigrate,
   commandSpaceRegister,
   commandSpaceToken,
 } from "./src/cli/space.ts";
@@ -136,6 +138,7 @@ Commands:
   vektor space attach <libsql-url> [--token <auth-token>]
   vektor space enable <database-id>
   vektor space token <database-id> <auth-token>
+  vektor space migrate [<space-id>]
   vektor space ls
 
 Configuration:
@@ -459,13 +462,18 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (subcommand === "migrate") {
+      await commandSpaceMigrate(value);
+      return;
+    }
+
     if (subcommand === "ls" || subcommand === "list") {
       await commandSpaceList();
       return;
     }
 
     throw new Error(
-      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, token, ls`,
+      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, token, migrate, ls`,
     );
   }
 

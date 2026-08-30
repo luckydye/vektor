@@ -97,14 +97,15 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
     // connection and its preparation promise.
     touch(spaceId, spaceDb);
 
-    const preparation = initSpaceDbSchema(spaceDb, {
-      local: location.localFile,
-    }).catch((error) => {
-      spaceDbCache.delete(spaceId);
-      spaceDbPreparation.delete(spaceId);
-      closeDatabase(spaceDb);
-      throw error;
-    });
+    const preparation = initSpaceDbSchema(spaceDb, { local: location.localFile }).then(
+      () => undefined,
+      (error: unknown) => {
+        spaceDbCache.delete(spaceId);
+        spaceDbPreparation.delete(spaceId);
+        closeDatabase(spaceDb);
+        throw error;
+      },
+    );
     spaceDbPreparation.set(spaceId, preparation);
     await preparation;
     evictIdleSpaceDbs();
