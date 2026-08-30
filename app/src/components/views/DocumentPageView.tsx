@@ -610,15 +610,17 @@ export function DocumentPageView(props: Props) {
                     </inset-view>
                   </Show>
 
-                  <inset-view
-                    id="document-properties"
-                    class={twMerge(
-                      "block px-xs md:px-m print:px-0",
-                      isSelfTitled() ? "mt-2xs mb-2xs" : "mb-xl",
-                    )}
-                  >
-                    {documentPropertiesBlock()}
-                  </inset-view>
+                  <Show when={!isSelfTitled()}>
+                    <inset-view
+                      id="document-properties"
+                      class={twMerge(
+                        "block px-xs md:px-m print:px-0",
+                        isSelfTitled() ? "mt-2xs mb-2xs" : "mb-xl",
+                      )}
+                    >
+                      {documentPropertiesBlock()}
+                    </inset-view>
+                  </Show>
                 </Show>
 
                 <div

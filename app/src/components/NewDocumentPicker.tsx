@@ -40,7 +40,7 @@ const documentOptions: Array<{
     type: "repository",
     title: "Repository",
     description: "Host code with git, and browse it here.",
-    icon: "folder",
+    icon: "repository",
   },
 ];
 

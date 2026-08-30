@@ -87,7 +87,7 @@ function TabPill(props: { icon?: IconName; children: JSX.Element }) {
 }
 
 const TAB_CLASS =
-  "group/tab inline-flex h-9 items-center justify-center rounded-sm px-1 text-label opacity-60 transition-opacity [&[aria-selected=true]]:opacity-100 [&[selected]]:opacity-100";
+  "group/tab inline-flex h-9 items-center justify-center rounded-sm text-label opacity-60 transition-opacity [&[aria-selected=true]]:opacity-100 [&[selected]]:opacity-100";
 
 interface TabProps {
   /** Only the initially selected tab needs this; the element takes over after. */

@@ -9,8 +9,9 @@ import {
 } from "#documents/properties.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
-import { Icon, type IconName } from "./Icon.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
+import { documentTypeIcon } from "#documents/icons.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   spaceId: string;
@@ -30,18 +31,6 @@ const CHIP_IDLE =
 const CHIP_ACTIVE = "border-primary-200 bg-primary-50 text-primary-700";
 const CHIP_REMOVE =
   "-mr-1 flex-none rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100";
-
-/* Types come from the documents in the space, so an extension can introduce one
- * this map has never heard of — hence the generic fallback. */
-const TYPE_ICONS: Record<string, IconName> = {
-  app: "extension",
-  canvas: "canvas",
-  database: "database",
-  document: "document",
-  file: "file",
-  record: "record",
-  workflow: "bolt",
-};
 
 export function SearchFilters(props: Props) {
   const t = useTranslation();
@@ -207,10 +196,7 @@ export function SearchFilters(props: Props) {
                 : CHIP_IDLE
             }`}
           >
-            <Icon
-              class="h-3.5 w-3.5 flex-none opacity-60"
-              name={TYPE_ICONS[tv] ?? "document"}
-            />
+            <Icon class="h-3.5 w-3.5 flex-none opacity-60" name={documentTypeIcon(tv)} />
             {tv}
           </button>
         )}

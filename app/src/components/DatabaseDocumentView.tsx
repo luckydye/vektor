@@ -216,7 +216,7 @@ export function DatabaseDocumentView(props: Props) {
   return (
     <div class="flex h-full min-h-0 flex-1 flex-col">
       <div class="flex shrink-0 items-center overflow-x-auto px-xs py-2xs lg:px-m">
-        <div role="tablist" aria-label="Database views" onKeyDown={onTabKeyDown}>
+        <div role="tablist" class="space-x-1" aria-label="Database views" onKeyDown={onTabKeyDown}>
           <TabButton
             selected={selectedViewId() === TABLE_VIEW_ID}
             icon="table"
