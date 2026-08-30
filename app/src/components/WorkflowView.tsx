@@ -570,7 +570,7 @@ export function WorkflowView(props: Props) {
             </div>
           </aside>
 
-          <div class="min-h-0 min-w-0 flex-1 space-y-8 overflow-y-auto px-xs pt-1 pb-12 md:px-m">
+          <div class="min-h-0 min-w-0 flex-1 space-y-8 overflow-y-auto px-xs pt-1 pb-12 md:px-s">
             <div class="flex justify-between gap-4">
               <h2 class="font-semibold text-neutral-800 text-size-title">
                 {selectedRunTitle() || "Untitled"}

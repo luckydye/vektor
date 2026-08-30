@@ -534,14 +534,14 @@ export function DocumentPageView(props: Props) {
 
                 <Show when={isCanvas()}>
                   <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
-                    <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-m">
+                    <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-s">
                       <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                       <DocumentActions title={title()} headerImage={headerImageSrc()} />
                     </div>
 
                     <inset-view
                       id="document-properties"
-                      class="mb-l block px-xs md:px-m print:px-0"
+                      class="mb-l block px-xs md:px-s print:px-0"
                     >
                       {documentPropertiesBlock()}
                     </inset-view>
@@ -605,7 +605,7 @@ export function DocumentPageView(props: Props) {
                   </div>
 
                   <Show when={!isSelfTitled()}>
-                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
+                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-s print:px-0">
                       {titleRow()}
                     </inset-view>
                   </Show>
@@ -614,7 +614,7 @@ export function DocumentPageView(props: Props) {
                     <inset-view
                       id="document-properties"
                       class={twMerge(
-                        "block px-xs md:px-m print:px-0",
+                        "block px-xs md:px-s print:px-0",
                         isSelfTitled() ? "mt-2xs mb-2xs" : "mb-xl",
                       )}
                     >
@@ -643,7 +643,7 @@ export function DocumentPageView(props: Props) {
                         isFullHeightView()
                           ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                           : "h-full overflow-x-auto",
-                        isPaddedDocument() && "px-xs md:px-m print:px-0",
+                        isPaddedDocument() && "px-xs md:px-s print:px-0",
                       )}
                     >
                       <Show
@@ -693,7 +693,7 @@ export function DocumentPageView(props: Props) {
                         !isSelfTitled()
                       }
                     >
-                      <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
+                      <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-s print:px-0">
                         <Show when={doc()?.updatedAt}>
                           <div class="mb-4 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
                             <Show when={hasMounted() && updatedAtStr()}>
