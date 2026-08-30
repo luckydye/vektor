@@ -205,9 +205,51 @@ export function DatabaseView(props: Props) {
           <Show
             when={!isLoading()}
             fallback={
-              <div class="flex h-24 items-center justify-center text-neutral-400 text-size-small">
-                Loading…
-              </div>
+              <table
+                class="animate-pulse border-separate border-spacing-0 overflow-hidden rounded-b-[var(--radius-md)] border border-neutral-100 [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
+                style={{ "table-layout": "fixed", width: "100%" }}
+              >
+                <thead>
+                  <tr class="bg-neutral-50">
+                    <th class="px-3 py-2.5" style={{ width: `${NAME_COL_WIDTH}px` }}>
+                      <div class="h-2.5 w-16 rounded-full bg-neutral-200" />
+                    </th>
+                    <For each={[0, 1]}>
+                      {() => (
+                        <th class="px-3 py-2.5" style={{ width: `${DEFAULT_COL_WIDTH}px` }}>
+                          <div class="h-2.5 w-14 rounded-full bg-neutral-200" />
+                        </th>
+                      )}
+                    </For>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={[0.9, 0.6, 0.75]}>
+                    {(width) => (
+                      <tr>
+                        <td class="px-3 py-2.5">
+                          <div
+                            class="h-2.5 rounded-full bg-neutral-100"
+                            style={{ width: `${width * 100}%` }}
+                          />
+                        </td>
+                        <For each={[0.5, 0.7]}>
+                          {(cellWidth) => (
+                            <td class="px-3 py-2.5">
+                              <div
+                                class="h-2.5 rounded-full bg-neutral-100"
+                                style={{ width: `${cellWidth * 100}%` }}
+                              />
+                            </td>
+                          )}
+                        </For>
+                        <td />
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
             }
           >
             <table
