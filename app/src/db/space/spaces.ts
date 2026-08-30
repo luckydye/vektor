@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import { countSpaceMembers, resolveGranteeName } from "#acl/directory.ts";
 import { canAccess } from "#acl/guards.ts";
@@ -10,19 +10,25 @@ import {
   hasAnyResourceScopedAccess,
   listUserPermissions,
 } from "#acl/store.ts";
-import { isInMemoryDb } from "#config";
+import { config, isInMemoryDb } from "#config";
 import {
   allocateSpaceDatabase,
+  deletionTime,
   disableSpaceDatabase,
+  forgetSpaceDatabase,
   getAssignedSpaceDatabase,
   getIndexedSpace,
   getIndexedSpaceBySlug,
+  getSpaceDatabaseRecord,
+  listDeletedSpaceDatabases,
   listIndexedSpaces,
   markSpaceDeleted,
+  recycleSpaceDatabase,
   updateIndexedSpaceMetadata,
   upsertSpaceIndex,
+  wipeSpaceDatabase,
 } from "#db/auth/spaceIndex.ts";
-import { resolveSpaceLocation } from "#db/client/connection.ts";
+import { dataDirectory, resolveSpaceLocation } from "#db/client/connection.ts";
 import {
   closeSpaceDb,
   createAllocatedSpaceDb,
@@ -33,12 +39,34 @@ import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { preference, spaceMetadata } from "#db/schema/space.ts";
 import { getUserPreferences } from "#db/space/userPreferences.ts";
+import { getFileStorage } from "#files/storage.ts";
+import { appLogger } from "#observability/logger.ts";
 import { canonicalSpaceSlug, spaceSlugRejection } from "#utils/slug.ts";
 import { spacePreferenceKeys } from "#utils/spacePreferences.ts";
 
-const DATA_DIR = "./data";
-const DELETED_DIR = join(DATA_DIR, "deleted");
-const UPLOADS_DIR = join(DATA_DIR, "uploads");
+/** Default retention for a deleted space, in days. */
+const DEFAULT_SPACE_RETENTION_DAYS = 30;
+
+/**
+ * Where a deleted local space database waits out its retention window.
+ *
+ * Outside `data/spaces`, because that directory is the local index:
+ * `reconcileLocalSpaceIndex` indexes every database file it finds there, so a
+ * deleted one left in place comes back as an active space on the next start.
+ */
+function archivedSpaceDatabasePath(spaceId: string): string {
+  return join(dataDirectory(), "deleted", "spaces", `${spaceId}.db`);
+}
+
+/** How long deleted data is kept, `0` when a delete should purge at once. */
+function retentionMs(): number {
+  const configured = config().SPACE_RETENTION_DAYS?.trim();
+  const days =
+    configured && /^\d+$/.test(configured)
+      ? Number.parseInt(configured, 10)
+      : DEFAULT_SPACE_RETENTION_DAYS;
+  return days * 24 * 60 * 60 * 1000;
+}
 
 export interface Space {
   id: string;
@@ -451,40 +479,144 @@ export async function updateSpace(
   };
 }
 
-export async function deleteSpace(id: string): Promise<boolean> {
+/**
+ * The space was taken out of service, but reclaiming its data did not finish.
+ *
+ * Distinct from a failed delete, and the reason a purge failure is not
+ * swallowed: the space is gone from the instance either way, so a caller that
+ * asked for a hard delete has to learn that some of the data is still there and
+ * that the retention sweep will try again.
+ */
+export class SpacePurgeFailedError extends Error {
+  constructor(spaceId: string, cause: unknown) {
+    super(`Space ${spaceId} was deleted, but its data could not be reclaimed`, {
+      cause,
+    });
+    this.name = "SpacePurgeFailedError";
+  }
+}
+
+/**
+ * Take a space out of service, and start the retention window on its data.
+ *
+ * Nothing is reclaimed here beyond the local database file, which has to leave
+ * `data/spaces` or the local index resurrects it. The uploads stay where they
+ * are: they are already unreachable — no route can open a deleted space — and
+ * moving them would mean copying every object in the space on an object store,
+ * where there is no rename. {@link purgeSpace} deletes them once the window has
+ * passed, or immediately when `purge` is set.
+ */
+export async function deleteSpace(
+  id: string,
+  options: { purge?: boolean } = {},
+): Promise<boolean> {
   await initializeDatabases();
   const databaseRecord = await getAssignedSpaceDatabase(id);
   if (!databaseRecord) return false;
 
   closeSpaceDb(id);
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   let databaseExisted = true;
-
   const spacePath = resolveSpaceLocation(databaseRecord.location).filePath;
   if (!isInMemoryDb() && spacePath) {
     databaseExisted = existsSync(spacePath);
     if (databaseExisted) {
-      const deletedSpacesDir = join(DELETED_DIR, "spaces");
-      if (!existsSync(deletedSpacesDir)) {
-        mkdirSync(deletedSpacesDir, { recursive: true });
+      const archivePath = archivedSpaceDatabasePath(id);
+      mkdirSync(dirname(archivePath), { recursive: true });
+      renameSync(spacePath, archivePath);
+      // The journal files belong to the database that just moved; left behind
+      // they are a stale WAL against whatever takes that name next.
+      for (const suffix of ["-wal", "-shm"]) {
+        rmSync(`${spacePath}${suffix}`, { force: true });
       }
-      const deletedSpacePath = join(deletedSpacesDir, `${id}_${timestamp}.db`);
-      renameSync(spacePath, deletedSpacePath);
     }
-  }
-
-  const uploadsPath = join(UPLOADS_DIR, id);
-  if (existsSync(uploadsPath)) {
-    const deletedUploadsDir = join(DELETED_DIR, "uploads");
-    if (!existsSync(deletedUploadsDir)) {
-      mkdirSync(deletedUploadsDir, { recursive: true });
-    }
-    const deletedUploadsPath = join(deletedUploadsDir, `${id}_${timestamp}`);
-    renameSync(uploadsPath, deletedUploadsPath);
   }
 
   await markSpaceDeleted(id);
+  if (options.purge || retentionMs() === 0) {
+    try {
+      await purgeSpace(id);
+    } catch (error) {
+      // Logged here because the cause is what an operator needs and a caller
+      // only sees which half failed.
+      appLogger.error("Failed to purge a space during its delete", {
+        spaceId: id,
+        error,
+      });
+      throw new SpacePurgeFailedError(id, error);
+    }
+  }
 
   return databaseExisted;
+}
+
+/**
+ * Delete everything a deleted space still occupies: its uploads, its database,
+ * and its identity in the index. Idempotent, and the hard-delete path a data
+ * subject request needs — after it there is nothing left to hand anyone.
+ */
+export async function purgeSpace(spaceId: string): Promise<void> {
+  await initializeDatabases();
+  const record = await getSpaceDatabaseRecord(spaceId);
+  // A live space has to be deleted first: this reclaims its storage, and the
+  // status is the only thing standing between an operator's typo and the data.
+  if (record && record.status !== "deleted") {
+    throw new Error(`Space ${spaceId} is ${record.status}, not deleted; delete it first`);
+  }
+  closeSpaceDb(spaceId);
+
+  // Every prefix, not just the uploads layout: a space also stores git
+  // repositories and extension bundles under its own id.
+  await getFileStorage().deleteAll(spaceId);
+
+  const archivePath = archivedSpaceDatabasePath(spaceId);
+  for (const suffix of ["", "-wal", "-shm"]) {
+    rmSync(`${archivePath}${suffix}`, { force: true });
+  }
+
+  if (!record) return;
+
+  const location = resolveSpaceLocation(record.location);
+  if (location.filePath) {
+    // A local database is its file: the archive above was it, and the record
+    // has nothing left to point at.
+    rmSync(location.filePath, { force: true });
+    await forgetSpaceDatabase(record.id);
+  } else if (location.url.startsWith("file::memory:")) {
+    // The connection was the database, and closing it dropped it.
+    await forgetSpaceDatabase(record.id);
+  } else {
+    await wipeSpaceDatabase(record);
+    await recycleSpaceDatabase(record.id);
+  }
+
+  appLogger.info("Purged a deleted space", { spaceId, record: record.id });
+}
+
+/**
+ * Purge every deleted space whose retention window has passed, returning the
+ * ids reclaimed. One failure is logged and skipped rather than left to abort
+ * the sweep: a database that cannot be reached now is retried on the next one.
+ */
+export async function purgeExpiredSpaces(now: Date = new Date()): Promise<string[]> {
+  await initializeDatabases();
+  const retention = retentionMs();
+  const purged: string[] = [];
+
+  for (const record of await listDeletedSpaceDatabases()) {
+    if (!record.spaceId) continue;
+    if (deletionTime(record).getTime() + retention > now.getTime()) continue;
+    try {
+      await purgeSpace(record.spaceId);
+      purged.push(record.spaceId);
+    } catch (error) {
+      appLogger.error("Failed to purge a deleted space", {
+        spaceId: record.spaceId,
+        record: record.id,
+        error,
+      });
+    }
+  }
+
+  return purged;
 }

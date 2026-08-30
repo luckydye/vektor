@@ -30,6 +30,7 @@
  *   vektor space enable <database-id>
  *   vektor space token <database-id> <auth-token>
  *   vektor space migrate [<space-id>]
+ *   vektor space purge [<space-id>]
  *   vektor space ls
  */
 
@@ -62,6 +63,7 @@ import {
   commandSpaceEnable,
   commandSpaceList,
   commandSpaceMigrate,
+  commandSpacePurge,
   commandSpaceRegister,
   commandSpaceToken,
 } from "./src/cli/space.ts";
@@ -139,6 +141,7 @@ Commands:
   vektor space enable <database-id>
   vektor space token <database-id> <auth-token>
   vektor space migrate [<space-id>]
+  vektor space purge [<space-id>]      Reclaim deleted spaces (named: at once)
   vektor space ls
 
 Configuration:
@@ -467,13 +470,18 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (subcommand === "purge") {
+      await commandSpacePurge(value);
+      return;
+    }
+
     if (subcommand === "ls" || subcommand === "list") {
       await commandSpaceList();
       return;
     }
 
     throw new Error(
-      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, token, migrate, ls`,
+      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, token, migrate, purge, ls`,
     );
   }
 

@@ -8,7 +8,6 @@ import { eq, isNull, sql } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as spaceSchema from "#db/schema/space.ts";
 import { lastMessageRoleOf } from "#db/space/aiChatSessions.ts";
-import type { Database } from "./connection.ts";
 import type { Migration } from "./migrator.ts";
 import { exec } from "./query.ts";
 import {
@@ -16,14 +15,15 @@ import {
   generateCreateTableSQL,
   renameColumnIfNeeded,
 } from "./schemaUtils.ts";
+import type { SpaceDb } from "./store.ts";
 
-export async function createTables(db: Database, tables: SQLiteTable[]): Promise<void> {
+export async function createTables(db: SpaceDb, tables: SQLiteTable[]): Promise<void> {
   for (const table of tables) {
     await exec(db, sql.raw(generateCreateTableSQL(table)));
   }
 }
 
-async function run(db: Database, statements: string[]): Promise<void> {
+async function run(db: SpaceDb, statements: string[]): Promise<void> {
   for (const statement of statements) {
     await exec(db, sql.raw(statement));
   }
@@ -33,7 +33,7 @@ async function run(db: Database, statements: string[]): Promise<void> {
  * Derive `last_message_role` for sessions stored before the column existed. A
  * row with an empty or unreadable history keeps its null, which reads as no role.
  */
-async function backfillAIChatSessionRoles(db: Database): Promise<void> {
+async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
   const rows = await db
     .select({
       id: spaceSchema.aiChatSession.id,
@@ -63,7 +63,7 @@ async function backfillAIChatSessionRoles(db: Database): Promise<void> {
  * Every schema change made before databases were versioned. Idempotent, unlike
  * the migrations after it: a database predating the stamp replays it once.
  */
-async function baseline(db: Database): Promise<void> {
+async function baseline(db: SpaceDb): Promise<void> {
   await createTables(db, [
     spaceSchema.spaceMetadata,
     spaceSchema.document,

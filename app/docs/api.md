@@ -214,7 +214,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET | `/users/me` | Current user profile |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
-| GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space |
+| GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space (`?purge=1` skips the retention window) |
 | GET | `/spaces/:spaceId/members` | List space members with roles |
 | GET | `/spaces/:spaceId/properties` | List all document property keys/values in space |
 | GET | `/spaces/:spaceId/audit-logs` | Space-wide (or `?documentId=` scoped) audit log (paginated) |

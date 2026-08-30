@@ -106,6 +106,12 @@ export function config() {
        * closed; the next request for one reopens it.
        */
       MAX_OPEN_SPACE_DBS: process.env.VEKTOR_MAX_OPEN_SPACE_DBS,
+      /**
+       * How long a deleted space's database and uploads are kept before they
+       * are purged, in days; `30` when unset. `0` purges as part of the delete,
+       * which leaves no window to recover a space deleted by mistake.
+       */
+      SPACE_RETENTION_DAYS: process.env.VEKTOR_SPACE_RETENTION_DAYS,
 
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,

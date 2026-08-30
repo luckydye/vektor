@@ -216,6 +216,46 @@ class S3FileStorageAdapter implements FileStorageAdapter {
       .catch(() => {});
   }
 
+  /**
+   * Listed and deleted in pages, since a space's objects are unbounded and the
+   * bucket has no directory to unlink. Every prefix the space stores under is
+   * covered, not just the uploads layout `list` reports.
+   *
+   * A key that could not be deleted fails the call, unlike {@link delete}: this
+   * is what a caller reports as data reclaimed, and a partial delete announced
+   * as a complete one is the wrong answer to give anyone who asked to be
+   * forgotten. Whatever did go is gone, so a retry resumes.
+   */
+  async deleteAll(spaceId: string): Promise<void> {
+    if (!isSafeSpaceId(spaceId)) return;
+    const prefix = `${this.prefix}${spaceId}/`;
+    const failed: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.client.list({ prefix, continuationToken: cursor });
+      await Promise.all(
+        (page.contents ?? []).map(async (object) => {
+          try {
+            await this.client.file(object.key).delete();
+          } catch {
+            failed.push(object.key);
+          }
+        }),
+      );
+      // Without the token a truncated page would loop on the same keys forever.
+      cursor = page.isTruncated ? (page.nextContinuationToken ?? undefined) : undefined;
+    } while (cursor);
+
+    if (failed.length > 0) {
+      const listed = failed.slice(0, 5).join(", ");
+      throw new Error(
+        `Could not delete ${failed.length} object(s) under ${prefix}: ${listed}${
+          failed.length > 5 ? ", …" : ""
+        }`,
+      );
+    }
+  }
+
   async list(spaceId: string, options: ListOptions = {}): Promise<StoredFileListing> {
     if (!isSafeSpaceId(spaceId)) return { files: [] };
     const base = `${this.prefix}${spaceId}/`;

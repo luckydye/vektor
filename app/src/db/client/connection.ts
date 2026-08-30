@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { config, isInMemoryDb } from "#config";
 
 /** Resolved per call rather than at import, so `DATA_DIR` is read after config. */
-function dataDirectory(): string {
+export function dataDirectory(): string {
   return path.resolve(config().DATA_DIR?.trim() || "data");
 }
 
@@ -63,8 +63,14 @@ export function getLocalSpacesDirectory(): string {
   return path.join(dataDirectory(), "spaces");
 }
 
+/**
+ * Absolute, so it is the same file whatever the process's working directory is
+ * — and under `DATA_DIR`, which is where {@link getLocalSpacesDirectory} looks
+ * for the databases this names. Locations already stored relative keep
+ * resolving as they did.
+ */
 export function getLocalSpaceDatabaseUrl(spaceId: string): string {
-  return `file:./data/spaces/${spaceId}.db`;
+  return pathToFileURL(path.join(getLocalSpacesDirectory(), `${spaceId}.db`)).href;
 }
 
 /** A space location, read for the driver in use. */

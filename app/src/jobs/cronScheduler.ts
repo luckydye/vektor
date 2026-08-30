@@ -2,6 +2,7 @@ import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
 import { failStaleJobRuns } from "#db/space/jobRuns.ts";
+import { purgeExpiredSpaces } from "#db/space/spaces.ts";
 import {
   claimDueWorkflowSchedules,
   parseWorkflowScheduleInputs,
@@ -11,6 +12,14 @@ import { getLatestRunIdForDoc, getRunForRead } from "./runStore.ts";
 import { startWorkflowRun } from "./workflowRuns.ts";
 
 const TICK_INTERVAL_MS = 30_000;
+
+/**
+ * How often deleted spaces past their retention window are reclaimed. Far
+ * rarer than a tick: it is a housekeeping sweep over the space index, and a
+ * space that waited 30 days can wait another hour.
+ */
+const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+let lastPurgeAt = 0;
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let tickInProgress = false;
@@ -72,8 +81,27 @@ async function tick(): Promise<void> {
         appLogger.error("Cron tick failed for space", { spaceId, error });
       }
     }
+    await purgeExpiredSpacesIfDue(now);
   } finally {
     tickInProgress = false;
+  }
+}
+
+/**
+ * Reclaim deleted spaces whose retention window has passed. On this loop rather
+ * than its own timer: it is the process's one periodic sweep, and the purge has
+ * to run somewhere for storage to be freed without an operator.
+ */
+async function purgeExpiredSpacesIfDue(now: Date): Promise<void> {
+  if (now.getTime() - lastPurgeAt < PURGE_INTERVAL_MS) return;
+  lastPurgeAt = now.getTime();
+  try {
+    const purged = await purgeExpiredSpaces(now);
+    if (purged.length > 0) {
+      appLogger.info("Reclaimed deleted spaces", { spaces: purged.length });
+    }
+  } catch (error) {
+    appLogger.error("Space retention sweep failed", { error });
   }
 }
 

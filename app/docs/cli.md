@@ -8,7 +8,7 @@ The CLI is a single Bun-compiled binary built from `vektor.ts`. All commands are
 vektor.ts               routing, global flag parsing, help text
 src/cli/document.ts     cat, write, set, ls, query
 src/cli/category.ts     category ls/create/edit/rm
-src/cli/space.ts        space register/attach/enable/token/ls (direct auth database access)
+src/cli/space.ts        space register/attach/enable/token/migrate/purge/ls (direct auth database access)
 src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)

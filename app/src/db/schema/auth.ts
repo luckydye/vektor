@@ -81,4 +81,10 @@ export const spaceIndex = sqliteTable("space_index", {
   authTokenAuthTag: text("auth_token_auth_tag"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  /**
+   * When the space was deleted, which starts its retention window. Null on
+   * every other status; a purge reads it rather than `updatedAt`, which any
+   * later bookkeeping write would push forward.
+   */
+  deletedAt: integer("deleted_at", { mode: "timestamp" }),
 });

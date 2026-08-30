@@ -25,6 +25,10 @@ declare global {
   // biome-ignore lint: globalThis augmentation requires var
   var __vektor_space_db_opening: Map<string, Promise<Database>> | undefined;
   // biome-ignore lint: globalThis augmentation requires var
+  var __vektor_space_db_kind: Map<string, "file" | "remote"> | undefined;
+  // biome-ignore lint: globalThis augmentation requires var
+  var __vektor_migrated_space_dbs: Set<string> | undefined;
+  // biome-ignore lint: globalThis augmentation requires var
   var __vektor_database_initialization: Promise<void> | undefined;
 }
 
@@ -47,6 +51,34 @@ globalThis.__vektor_space_db_preparation = spaceDbPreparation;
 const spaceDbOpening =
   globalThis.__vektor_space_db_opening ?? new Map<string, Promise<Database>>();
 globalThis.__vektor_space_db_opening = spaceDbOpening;
+
+/** What each cached connection costs to keep open; see {@link ConnectionKind}. */
+const spaceDbKind =
+  globalThis.__vektor_space_db_kind ?? new Map<string, ConnectionKind>();
+globalThis.__vektor_space_db_kind = spaceDbKind;
+
+/**
+ * Databases this process has already migrated to the current schema.
+ *
+ * Reopening an evicted connection would otherwise re-read the migration version
+ * over the wire, which for a hosted space is the entire cost the eviction was
+ * meant to save. The version cannot go backwards, so what this process brought
+ * up to date stays that way.
+ *
+ * Keyed by space *and* location, because that pair is what a wipe invalidates
+ * and a location alone is not: a purged hosted database is emptied and returned
+ * to the pool under the same URL, and another process — a second replica, or the
+ * server the `purge` CLI ran beside — would otherwise still hold it as migrated
+ * and open the empty database with the check skipped. The next space to claim it
+ * has a fresh id, so it cannot hit that entry; attaching a different database to
+ * an existing space changes the location, so it cannot either.
+ */
+const migratedSpaceDbs = globalThis.__vektor_migrated_space_dbs ?? new Set<string>();
+globalThis.__vektor_migrated_space_dbs = migratedSpaceDbs;
+
+function migratedKey(spaceId: string, location: string): string {
+  return `${spaceId}\u0000${location}`;
+}
 
 export function initializeDatabases(): Promise<void> {
   if (!globalThis.__vektor_database_initialization) {
@@ -93,15 +125,28 @@ async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<D
       location.url,
       spaceDatabaseCredentials(databaseRecord),
     );
+    spaceDbKind.set(spaceId, location.filePath ? "file" : "remote");
     // Cache before applying schema so concurrent first requests share both the
     // connection and its preparation promise.
     touch(spaceId, spaceDb);
 
-    const preparation = initSpaceDbSchema(spaceDb, { local: location.localFile }).then(
-      () => undefined,
+    // Pragmas are connection state and always run; the migration check is per
+    // database, so a reopen of one this process already migrated skips it.
+    const preparation = initSpaceDbSchema(spaceDb, {
+      local: location.localFile,
+      migrations: !migratedSpaceDbs.has(migratedKey(spaceId, databaseRecord.location)),
+    }).then(
+      () => {
+        // Never for an in-memory location: every connection to one is its own
+        // empty database, so the next open has to migrate again.
+        if (!isMemoryBackedDatabase(spaceDb)) {
+          migratedSpaceDbs.add(migratedKey(spaceId, databaseRecord.location));
+        }
+      },
       (error: unknown) => {
         spaceDbCache.delete(spaceId);
         spaceDbPreparation.delete(spaceId);
+        spaceDbKind.delete(spaceId);
         closeDatabase(spaceDb);
         throw error;
       },
@@ -136,6 +181,7 @@ export function closeSpaceDb(spaceId: string): void {
   spaceDbCache.delete(spaceId);
   spaceDbLastUsed.delete(spaceId);
   spaceDbPreparation.delete(spaceId);
+  spaceDbKind.delete(spaceId);
 }
 
 /** Re-insert, so the cache order stays the least-recently-used order. */
@@ -152,38 +198,71 @@ function touch(spaceId: string, database: Database): void {
  */
 const IDLE_BEFORE_CLOSE_MS = 60_000;
 
-const DEFAULT_MAX_OPEN_SPACE_DBS = 128;
+/** One open file per connection, so the ceiling is a descriptor budget. */
+const DEFAULT_MAX_OPEN_FILE_SPACE_DBS = 128;
 
-/** How many space connections may stay open; `0` lifts the ceiling. */
-function maxOpenSpaceDbs(): number {
-  // An in-memory connection holds the space itself rather than a descriptor, so
-  // there is nothing to reclaim and closing one would drop the space.
-  if (isInMemoryDb()) return 0;
+/**
+ * A hosted connection is an HTTP client: it holds no descriptor between
+ * requests, and reopening one costs a round trip rather than an open. So the
+ * ceiling here bounds memory alone, and sits far higher than the descriptor
+ * budget a local file has to respect — evicting sooner would trade a few
+ * kilobytes for a query on the next request.
+ */
+const DEFAULT_MAX_OPEN_REMOTE_SPACE_DBS = 4096;
+
+/** What a cached connection costs to keep, which is what its ceiling bounds. */
+type ConnectionKind = "file" | "remote";
+
+/**
+ * How many space connections of each kind may stay open; `0` lifts the ceiling.
+ * `MAX_OPEN_SPACE_DBS` configures the descriptor budget, which is the one an
+ * operator has a reason to lower.
+ */
+function maxOpenSpaceDbs(kind: ConnectionKind): number {
+  if (kind === "remote") return DEFAULT_MAX_OPEN_REMOTE_SPACE_DBS;
 
   const configured = config().MAX_OPEN_SPACE_DBS?.trim();
-  if (!configured || !/^\d+$/.test(configured)) return DEFAULT_MAX_OPEN_SPACE_DBS;
+  if (!configured || !/^\d+$/.test(configured)) return DEFAULT_MAX_OPEN_FILE_SPACE_DBS;
   return Number.parseInt(configured, 10);
 }
 
 /**
- * Close the longest-idle connections once the cache is over its ceiling, so a
- * host with more spaces than file descriptors reopens rather than runs out.
- * Nothing is forced: when every connection is in use the cache is left over the
- * ceiling instead of a live handle being closed under its caller.
+ * Close the longest-idle connections once a kind is over its ceiling, so a host
+ * with more spaces than file descriptors reopens rather than runs out. Nothing
+ * is forced: when every connection is in use the cache is left over the ceiling
+ * instead of a live handle being closed under its caller.
+ *
+ * Counted per kind because the two bound different resources: 128 local files
+ * is a descriptor budget, while the same number of stateless HTTP clients is
+ * nothing to reclaim.
  */
 function evictIdleSpaceDbs(): void {
-  const limit = maxOpenSpaceDbs();
-  if (limit <= 0 || spaceDbCache.size <= limit) return;
+  // An in-memory connection *is* the space's data — dev and test only, and
+  // closing it would drop the space rather than free anything.
+  if (isInMemoryDb()) return;
+
+  const open = new Map<ConnectionKind, string[]>();
+  for (const [spaceId, database] of spaceDbCache) {
+    if (isMemoryBackedDatabase(database)) continue;
+    const kind = spaceDbKind.get(spaceId) ?? "remote";
+    const kindSpaces = open.get(kind);
+    if (kindSpaces) kindSpaces.push(spaceId);
+    else open.set(kind, [spaceId]);
+  }
 
   const idleSince = Date.now() - IDLE_BEFORE_CLOSE_MS;
-  for (const [spaceId, database] of spaceDbCache) {
-    if (spaceDbCache.size <= limit) return;
-    // An unrecorded last use is the other module instance's connection, which
-    // is unread here rather than long idle.
-    if ((spaceDbLastUsed.get(spaceId) ?? Date.now()) > idleSince) continue;
-    // A memory-backed connection *is* the space's data — dev and test only, and
-    // closing it would drop the space rather than free a descriptor.
-    if (isMemoryBackedDatabase(database)) continue;
-    closeSpaceDb(spaceId);
+  for (const [kind, kindSpaces] of open) {
+    const limit = maxOpenSpaceDbs(kind);
+    if (limit <= 0) continue;
+    // Least recently used first: the cache is kept in that order by `touch`.
+    let openCount = kindSpaces.length;
+    for (const spaceId of kindSpaces) {
+      if (openCount <= limit) break;
+      // An unrecorded last use is the other module instance's connection, which
+      // is unread here rather than long idle.
+      if ((spaceDbLastUsed.get(spaceId) ?? Date.now()) > idleSince) continue;
+      closeSpaceDb(spaceId);
+      openCount--;
+    }
   }
 }

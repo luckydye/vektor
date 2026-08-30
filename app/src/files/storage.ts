@@ -7,6 +7,7 @@ import {
   readdir,
   readFile,
   rename,
+  rm,
   stat,
   unlink,
   writeFile,
@@ -14,6 +15,7 @@ import {
 import { dirname, join, posix } from "node:path";
 import { Readable } from "node:stream";
 import { config } from "#config";
+import { dataDirectory } from "#db/client/connection.ts";
 import { createS3FileStorage } from "./s3Storage.ts";
 
 export interface StoredFileInfo {
@@ -185,6 +187,18 @@ export interface FileStorageAdapter {
   ): Promise<ReadableStream<Uint8Array> | null>;
   /** Delete a file by key. */
   delete(spaceId: string, key: string): Promise<void>;
+  /**
+   * Delete everything stored for the space, whatever prefix it lives under.
+   *
+   * Its own method rather than a listing the caller deletes from: locally the
+   * whole tree goes in one call, and against an object store the keys have to
+   * be enumerated and batched — neither of which a caller reclaiming a deleted
+   * space should have to know.
+   *
+   * Throws if anything is left behind. A caller reports this as the space's
+   * data reclaimed, so unlike {@link delete} it must not fail quietly.
+   */
+  deleteAll(spaceId: string): Promise<void>;
   /**
    * One page of the space's stored objects.
    *
@@ -400,6 +414,11 @@ class LocalFileStorageAdapter implements FileStorageAdapter {
     await unlink(filePath).catch(() => {});
   }
 
+  async deleteAll(spaceId: string): Promise<void> {
+    if (!isSafeSpaceId(spaceId)) return;
+    await rm(join(this.root, spaceId), { recursive: true, force: true });
+  }
+
   async list(spaceId: string, options: ListOptions = {}): Promise<StoredFileListing> {
     const spaceRoot = containedKey(spaceId, options.prefix ?? ".");
     if (spaceRoot === null && options.prefix !== undefined) {
@@ -521,12 +540,12 @@ export function getFileStorage(): FileStorageAdapter {
       virtualHostedStyle:
         env.S3_VIRTUAL_HOSTED_STYLE === "1" || env.S3_VIRTUAL_HOSTED_STYLE === "true",
       prefix: env.S3_PREFIX?.trim() || undefined,
-      stagingDir: join(process.cwd(), "data", "s3-staging"),
+      stagingDir: join(dataDirectory(), "s3-staging"),
     });
     return _adapter;
   }
 
-  _adapter = new LocalFileStorageAdapter(join(process.cwd(), "data", "uploads"));
+  _adapter = new LocalFileStorageAdapter(join(dataDirectory(), "uploads"));
   return _adapter;
 }
 

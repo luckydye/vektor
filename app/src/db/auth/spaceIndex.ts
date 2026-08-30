@@ -16,7 +16,7 @@ import {
   resolveSpaceLocation,
   withoutDatabaseCredentials,
 } from "#db/client/connection.ts";
-import { many, one } from "#db/client/query.ts";
+import { exec, many, one } from "#db/client/query.ts";
 import { spaceIndex } from "#db/schema/auth.ts";
 import { spaceMetadata } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
@@ -674,10 +674,118 @@ export async function listActiveSpaceIds(): Promise<string[]> {
 }
 
 export async function markSpaceDeleted(spaceId: string): Promise<void> {
+  const now = new Date();
   await getAuthDb()
     .update(spaceIndex)
-    .set({ status: "deleted", updatedAt: new Date() })
+    .set({ status: "deleted", deletedAt: now, updatedAt: now })
     .where(eq(spaceIndex.spaceId, spaceId));
+}
+
+/**
+ * Every deleted space still holding its data, oldest deletion first, so a purge
+ * reclaims in the order the retention window expires.
+ */
+export async function listDeletedSpaceDatabases(): Promise<SpaceIndexRecord[]> {
+  const records = await many(
+    getAuthDb().select().from(spaceIndex).where(eq(spaceIndex.status, "deleted")),
+  );
+  return records.sort((a, b) => deletionTime(a).getTime() - deletionTime(b).getTime());
+}
+
+/**
+ * When a deleted space's retention window started. Rows deleted before
+ * `deleted_at` existed fall back to `updatedAt`, which for a deleted row is
+ * the deletion itself.
+ */
+export function deletionTime(record: SpaceIndexRecord): Date {
+  return record.deletedAt ?? record.updatedAt;
+}
+
+/**
+ * Drop every object in a space database, releasing its storage.
+ *
+ * A hosted database belongs to the pool rather than to the space that borrowed
+ * it, and libSQL has no API to destroy one from a client connection — so a
+ * purge empties it instead and {@link recycleSpaceDatabase} returns it to the
+ * pool for the next space.
+ */
+export async function wipeSpaceDatabase(record: SpaceIndexRecord): Promise<void> {
+  const location = resolveSpaceLocation(record.location);
+  const database = createDatabase(location.url, spaceDatabaseCredentials(record));
+  try {
+    // Dropping in an arbitrary order otherwise trips a reference from a table
+    // that has not been dropped yet.
+    await exec(database, sql.raw("PRAGMA foreign_keys = OFF"));
+    const objects = await many<{ type: string; name: string }>(
+      database,
+      sql.raw(
+        "SELECT type, name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND type IN ('table', 'view')",
+      ),
+    );
+    for (const object of objects) {
+      const quoted = `"${object.name.replaceAll('"', '""')}"`;
+      await exec(
+        database,
+        sql.raw(
+          object.type === "view"
+            ? `DROP VIEW IF EXISTS ${quoted}`
+            : `DROP TABLE IF EXISTS ${quoted}`,
+        ),
+      );
+    }
+    // The dropped pages stay in the file until it is rebuilt. A host that
+    // refuses VACUUM keeps them as free space rather than as data, which is
+    // reclaimed by the next space to be allocated this database.
+    await exec(database, sql.raw("VACUUM")).catch((error: unknown) =>
+      appLogger.warn("Could not vacuum a purged space database", {
+        record: record.id,
+        error,
+      }),
+    );
+  } finally {
+    closeDatabase(database);
+  }
+}
+
+/**
+ * Return a purged database to the pool, forgetting which space held it. The
+ * token stays: it authenticates the database, not the space.
+ */
+export async function recycleSpaceDatabase(recordId: string): Promise<void> {
+  const now = new Date();
+  await getAuthDb()
+    .update(spaceIndex)
+    .set({
+      status: "available",
+      spaceId: null,
+      name: null,
+      slug: null,
+      createdBy: null,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .where(eq(spaceIndex.id, recordId));
+}
+
+/**
+ * Drop the record itself, for a database that no longer exists — a purged local
+ * file. A recycled hosted database keeps its row; there is nothing left here to
+ * hand the next space.
+ */
+export async function forgetSpaceDatabase(recordId: string): Promise<void> {
+  await getAuthDb().delete(spaceIndex).where(eq(spaceIndex.id, recordId));
+}
+
+/** The index row for a space whatever its status, for deletion bookkeeping. */
+export async function getSpaceDatabaseRecord(
+  spaceId: string,
+): Promise<SpaceIndexRecord | null> {
+  return (
+    (await one(
+      getAuthDb().select().from(spaceIndex).where(eq(spaceIndex.spaceId, spaceId)),
+    )) ?? null
+  );
 }
 
 async function indexLocalSpace(

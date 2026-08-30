@@ -15,6 +15,7 @@ import {
 } from "#db/client/connection.ts";
 import { initializeDatabases } from "#db/client/db.ts";
 import { initSpaceDbSchema } from "#db/client/init.ts";
+import { purgeExpiredSpaces, purgeSpace } from "#db/space/spaces.ts";
 
 export async function commandSpaceRegister(
   databaseUrl: string,
@@ -57,6 +58,23 @@ export async function commandSpaceToken(
   await initializeDatabases();
   await setSpaceDatabaseAuthToken(databaseId, authToken);
   process.stdout.write(`${databaseId}\tok\n`);
+}
+
+/**
+ * Reclaim deleted spaces. Named, one space is purged whatever its retention
+ * window says — the hard delete a data subject request needs; otherwise every
+ * space whose window has passed is swept, the same work the server does hourly.
+ */
+export async function commandSpacePurge(spaceId?: string): Promise<void> {
+  await initializeDatabases();
+  if (spaceId) {
+    await purgeSpace(spaceId);
+    process.stdout.write(`${spaceId}\tpurged\n`);
+    return;
+  }
+  const purged = await purgeExpiredSpaces();
+  for (const id of purged) process.stdout.write(`${id}\tpurged\n`);
+  process.stdout.write(`${purged.length} space(s) purged\n`);
 }
 
 /** Migrate space databases up front, rather than on their first open. */

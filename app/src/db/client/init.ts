@@ -26,6 +26,7 @@ export async function prepareAuthDb(authDb: Database) {
   await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenCiphertext);
   await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenIv);
   await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenAuthTag);
+  await addColumnIfMissing(authDb, authSchema.spaceIndex.deletedAt);
   await exec(
     authDb,
     sql.raw(
@@ -45,16 +46,20 @@ export async function applySpaceDbPragmas(spaceDb: Database) {
 
 /**
  * Ready a freshly opened space connection, and return the migrations it needed.
- * Pragmas are connection state; the schema costs one version read when current.
+ *
+ * Pragmas are connection state and belong to every open. The schema is the
+ * database's, and costs one version read when current — which a caller that
+ * already knows this database is migrated can skip with `migrations: false`.
  */
 export async function initSpaceDbSchema(
   spaceDb: Database,
-  options: { local: boolean },
+  options: { local: boolean; migrations?: boolean },
 ): Promise<number[]> {
   await exec(spaceDb, sql.raw("PRAGMA foreign_keys = ON"));
   // The integrity pragma above is needed for every SQLite connection; these
   // remaining pragmas tune durable local files only.
   if (options.local) await applySpaceDbPragmas(spaceDb);
 
+  if (options.migrations === false) return [];
   return runMigrations(spaceDb, spaceMigrations);
 }

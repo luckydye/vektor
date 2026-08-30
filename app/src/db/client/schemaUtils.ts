@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
-import type { Database } from "./connection.ts";
 import { exec } from "./query.ts";
+import type { SpaceDb } from "./store.ts";
 
 /** The subset of drizzle's internal column shape this generator reads. */
 interface ColumnInfo {
@@ -108,7 +108,7 @@ function columnConstraints(col: ColumnInfo): string {
  * database rejects an unknown column, and none of them agree on how to ask.
  */
 async function columnExists(
-  db: Database,
+  db: SpaceDb,
   table: string,
   column: string,
 ): Promise<boolean> {
@@ -127,7 +127,7 @@ async function columnExists(
  * the rows already there.
  */
 export async function addColumnIfMissing(
-  db: Database,
+  db: SpaceDb,
   column: SQLiteColumn,
 ): Promise<void> {
   const table = getTableConfig(column.table).name;
@@ -151,7 +151,7 @@ export async function addColumnIfMissing(
  * migration rather than an add-and-backfill.
  */
 export async function renameColumnIfNeeded(
-  db: Database,
+  db: SpaceDb,
   column: SQLiteColumn,
   formerName: string,
 ): Promise<void> {

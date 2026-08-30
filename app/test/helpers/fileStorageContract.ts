@@ -289,6 +289,23 @@ export function describeFileStorageContract(
       });
     });
 
+    describe("deleteAll", () => {
+      it("removes every prefix the space stored under", async () => {
+        const { storage, space, neighbour } = context();
+        // Its own space: the rest of the contract still expects this one's
+        // objects to be there.
+        const doomed = `${space}_purged`;
+        await storage.put(doomed, "ab/upload.bin", Buffer.from("x"));
+        await storage.put(doomed, "git/objects/pack.bin", Buffer.from("y"));
+
+        await storage.deleteAll(doomed);
+
+        expect(await storage.stat(doomed, "ab/upload.bin")).toBeNull();
+        expect(await storage.stat(doomed, "git/objects/pack.bin")).toBeNull();
+        expect(await storage.stat(neighbour, NEIGHBOUR_KEY)).not.toBeNull();
+      });
+    });
+
     describe("key containment", () => {
       const escapes = [
         "../space_2/secret.bin",
