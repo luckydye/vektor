@@ -587,7 +587,7 @@ export function DocumentContent(props: Props) {
       </Show>
 
       <Show when={editing() && canMountEditor()}>
-        <document-statusbar class="pointer-events-none fixed inset-x-0 bottom-0 z-10 mx-auto hidden max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs pb-5 md:right-(--inset-right) md:left-(--inset-left) md:block lg:px-xl" />
+        <document-statusbar class="pointer-events-none fixed inset-x-0 bottom-0 z-10 mx-auto hidden max-w-[calc(var(--document-width))] overflow-hidden px-xs pb-3xs md:right-(--inset-right) md:left-(--inset-left) md:block" />
       </Show>
 
       <document-toolbar
