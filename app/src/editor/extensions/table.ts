@@ -29,7 +29,7 @@ import {
   isSpreadsheetTable,
   normalTableNodeFromSpreadsheet,
   SPREADSHEET_TABLE_KIND,
-} from "#spreadsheet/documentTable.ts";
+} from "#editor/spreadsheet/documentTable.ts";
 import { SpreadsheetTableView } from "./SpreadsheetTableView.ts";
 import { nodeFromSpec } from "./specSchema.ts";
 

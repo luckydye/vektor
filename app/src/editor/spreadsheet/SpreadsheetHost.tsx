@@ -14,12 +14,15 @@
  */
 
 import type { Model } from "@ironcalc/wasm";
+import {
+  type RemoteSelection,
+  type SheetSelection,
+  Spreadsheet,
+  spreadsheetStyles,
+} from "@vektorapp/spreadsheet";
 import { onCleanup, onMount } from "solid-js";
 import { render } from "solid-js/web";
-import { LocaleContext } from "#composeables/useTranslation.ts";
-import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
-import { Spreadsheet } from "#spreadsheet/Spreadsheet.tsx";
-import styles from "#spreadsheet/spreadsheet.css?inline";
+import { createTranslator } from "#utils/lang.ts";
 
 interface Props {
   lang: string;
@@ -45,13 +48,13 @@ function adoptStyles(shadow: ShadowRoot): void {
   if (typeof CSSStyleSheet !== "undefined" && "replaceSync" in CSSStyleSheet.prototype) {
     if (!sheet) {
       sheet = new CSSStyleSheet();
-      sheet.replaceSync(styles);
+      sheet.replaceSync(spreadsheetStyles);
     }
     shadow.adoptedStyleSheets = [sheet];
     return;
   }
   const element = document.createElement("style");
-  element.textContent = styles;
+  element.textContent = spreadsheetStyles;
   shadow.append(element);
 }
 
@@ -61,24 +64,24 @@ export function SpreadsheetHost(props: Props) {
   onMount(() => {
     const shadow = host.attachShadow({ mode: "open" });
     adoptStyles(shadow);
+    const t = createTranslator(props.lang);
     const dispose = render(
       () => (
-        <LocaleContext.Provider value={props.lang}>
-          <Spreadsheet
-            model={props.model}
-            canEdit={props.canEdit}
-            onChange={props.onChange}
-            remoteRevision={props.remoteRevision}
-            remoteSelections={props.remoteSelections}
-            onSelectionChange={props.onSelectionChange}
-            onUndo={props.onUndo}
-            onRedo={props.onRedo}
-            // Focus and the context menu need to ask *this* root what is focused
-            // and where a click landed; `document.activeElement` and `event.target`
-            // both stop at the host once a shadow boundary is in the way.
-            shadowRoot={shadow}
-          />
-        </LocaleContext.Provider>
+        <Spreadsheet
+          t={t}
+          model={props.model}
+          canEdit={props.canEdit}
+          onChange={props.onChange}
+          remoteRevision={props.remoteRevision}
+          remoteSelections={props.remoteSelections}
+          onSelectionChange={props.onSelectionChange}
+          onUndo={props.onUndo}
+          onRedo={props.onRedo}
+          // Focus and the context menu need to ask *this* root what is focused
+          // and where a click landed; `document.activeElement` and `event.target`
+          // both stop at the host once a shadow boundary is in the way.
+          shadowRoot={shadow}
+        />
       ),
       shadow,
     );

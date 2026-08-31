@@ -2,25 +2,20 @@ import type { Model } from "@ironcalc/wasm";
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { NodeView } from "@tiptap/pm/view";
-import {
-  type Accessor,
-  createComponent,
-  createSignal,
-  type Setter,
-} from "solid-js";
+import type { RemoteSelection, SheetSelection } from "@vektorapp/spreadsheet/presence";
+import { type Accessor, createComponent, createSignal, type Setter } from "solid-js";
 import { render } from "solid-js/web";
+import {
+  SPREADSHEET_SELECTION_EVENT,
+  type SpreadsheetSelectionEventDetail,
+  subscribeToSpreadsheetPresence,
+} from "#editor/spreadsheet/documentPresence.ts";
 import {
   isSpreadsheetTable,
   spreadsheetTableFingerprint,
   spreadsheetTableHtml,
   spreadsheetTableNodeFromData,
-} from "#spreadsheet/documentTable.ts";
-import {
-  SPREADSHEET_SELECTION_EVENT,
-  type SpreadsheetSelectionEventDetail,
-  subscribeToSpreadsheetPresence,
-} from "#spreadsheet/documentPresence.ts";
-import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
+} from "#editor/spreadsheet/documentTable.ts";
 import { browserLang, createTranslator } from "#utils/lang.ts";
 
 type GetPos = () => number | undefined;
@@ -60,8 +55,9 @@ export class SpreadsheetTableView implements NodeView {
     this.mount.textContent = t("Loading spreadsheet…");
     this.dom.append(this.mount);
 
-    [this.remoteSelections, this.setRemoteSelections] =
-      createSignal<RemoteSelection[]>([]);
+    [this.remoteSelections, this.setRemoteSelections] = createSignal<RemoteSelection[]>(
+      [],
+    );
     this.unsubscribePresence = subscribeToSpreadsheetPresence(
       this.editor,
       this.getPos,
@@ -96,9 +92,7 @@ export class SpreadsheetTableView implements NodeView {
     const marginBottom = Number.parseFloat(getComputedStyle(this.dom).marginBottom) || 0;
     const available = Math.max(
       0,
-      Math.floor(
-        viewportBottom - top - marginBottom - SPREADSHEET_VIEWPORT_GAP,
-      ),
+      Math.floor(viewportBottom - top - marginBottom - SPREADSHEET_VIEWPORT_GAP),
     );
     const height = `${available}px`;
     if (this.dom.style.getPropertyValue("--spreadsheet-viewport-height") !== height) {
@@ -117,18 +111,15 @@ export class SpreadsheetTableView implements NodeView {
 
   private dispatchSelection(selection: SheetSelection | null): void {
     this.dom.dispatchEvent(
-      new CustomEvent<SpreadsheetSelectionEventDetail>(
-        SPREADSHEET_SELECTION_EVENT,
-        {
-          bubbles: true,
-          composed: true,
-          detail: {
-            source: this.dom,
-            getTablePosition: this.getPos,
-            selection,
-          },
+      new CustomEvent<SpreadsheetSelectionEventDetail>(SPREADSHEET_SELECTION_EVENT, {
+        bubbles: true,
+        composed: true,
+        detail: {
+          source: this.dom,
+          getTablePosition: this.getPos,
+          selection,
         },
-      ),
+      }),
     );
   }
 
@@ -161,12 +152,16 @@ export class SpreadsheetTableView implements NodeView {
     this.mount.textContent = t("Loading spreadsheet…");
 
     try {
-      const [{ initEngine }, { createModel }, { SpreadsheetHost }] = await Promise.all([
-        import("#spreadsheet/engine.ts"),
-        import("#spreadsheet/spreadsheetModel.ts"),
-        import("#spreadsheet/SpreadsheetHost.tsx"),
-      ]);
-      await initEngine();
+      const [{ initEngine, createModel }, { SpreadsheetHost }, { default: wasmUrl }] =
+        await Promise.all([
+          import("@vektorapp/spreadsheet/model"),
+          import("#editor/spreadsheet/SpreadsheetHost.tsx"),
+          // Vite owns the wasm asset URL, which is correct in both dev and
+          // production; the package takes it rather than guessing, because
+          // wasm-bindgen's own guess breaks once it has been pre-bundled.
+          import("@ironcalc/wasm/wasm_bg.wasm?url"),
+        ]);
+      await initEngine(wasmUrl);
       if (this.destroyed || version !== this.buildVersion) return;
 
       const model = createModel(spreadsheetTableHtml(this.node), "Table");
@@ -206,7 +201,7 @@ export class SpreadsheetTableView implements NodeView {
     if (!model) return;
     const version = ++this.publishVersion;
 
-    void import("#spreadsheet/spreadsheetModel.ts").then(({ readSheet }) => {
+    void import("@vektorapp/spreadsheet/model").then(({ readSheet }) => {
       if (this.destroyed || this.model !== model || version !== this.publishVersion) {
         return;
       }
@@ -266,10 +261,7 @@ export class SpreadsheetTableView implements NodeView {
     if (this.layoutFrame !== null) cancelAnimationFrame(this.layoutFrame);
     this.layoutFrame = null;
     window.removeEventListener("resize", this.scheduleViewportHeight);
-    window.visualViewport?.removeEventListener(
-      "resize",
-      this.scheduleViewportHeight,
-    );
+    window.visualViewport?.removeEventListener("resize", this.scheduleViewportHeight);
     this.dom.removeEventListener("focusin", this.handleFocusIn);
     this.dom.removeEventListener("focusout", this.handleFocusOut);
     this.clearModel();

@@ -3,7 +3,7 @@ import {
   cellsToHtmlTable,
   type TableCell,
   type TableLayout,
-} from "#documents/htmlTable.ts";
+} from "@vektorapp/spreadsheet/table";
 
 export const SPREADSHEET_TABLE_KIND = "spreadsheet";
 

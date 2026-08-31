@@ -24,6 +24,12 @@ import { viteAliases } from "./test/helpers/subpathImports.ts";
 // be restated. Shared with `server-frontend-imports.spec.ts`.
 const alias = viteAliases();
 
+// `@vektorapp/spreadsheet` carries the engine and Solid as peers, and both hold
+// state that only works if there is one copy: the wasm module the package calls
+// has to be the one the app booted. A linked checkout brings its own
+// node_modules, so say which packages resolve once.
+const dedupe = ["@ironcalc/wasm", "solid-js"];
+
 /**
  * `import x from "./f.txt" with { type: "text" }`, which Bun loads natively.
  *
@@ -58,7 +64,7 @@ export default defineConfig({
           // transform and resolves `react/jsx-runtime`.
           solid({ include: ["**/*.tsx", "**/*.jsx"] }),
         ],
-        resolve: { alias },
+        resolve: { alias, dedupe },
         test: {
           name: "frontend",
           environment: "happy-dom",
@@ -72,7 +78,7 @@ export default defineConfig({
       {
         // Server, API and integration specs. Real network, no DOM, no stubs.
         plugins: [textImports()],
-        resolve: { alias },
+        resolve: { alias, dedupe },
         test: {
           name: "server",
           environment: "node",

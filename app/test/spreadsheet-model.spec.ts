@@ -3,13 +3,13 @@ import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getDocumentTypeForContentType, prepareDocumentContent } from "#documents/content.ts";
+import { createModel, toTableHtml } from "@vektorapp/spreadsheet/model";
 import {
   cellsToHtmlTable,
   htmlTableToCells,
   htmlTableToCsv,
   rowsToHtmlTable,
-} from "#documents/htmlTable.ts";
-import { createModel, toTableHtml } from "#spreadsheet/spreadsheetModel.ts";
+} from "@vektorapp/spreadsheet/table";
 
 beforeAll(async () => {
   const require = createRequire(import.meta.url);

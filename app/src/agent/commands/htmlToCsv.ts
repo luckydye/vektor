@@ -1,5 +1,5 @@
+import { htmlTableToCsv } from "@vektorapp/spreadsheet/table";
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
-import { htmlTableToCsv } from "#documents/htmlTable.ts";
 
 async function readInput(
   args: string[],

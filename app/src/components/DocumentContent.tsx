@@ -48,7 +48,7 @@ import {
   SPREADSHEET_SELECTION_EVENT,
   setSpreadsheetPresenceProfiles,
   type SpreadsheetSelectionEventDetail,
-} from "#spreadsheet/documentPresence.ts";
+} from "#editor/spreadsheet/documentPresence.ts";
 import { Actions } from "#utils/actions.ts";
 import { CommentBubble, type CommentBubbleHandle } from "./CommentBubble.tsx";
 import { CommentOverlays } from "./CommentOverlays.tsx";

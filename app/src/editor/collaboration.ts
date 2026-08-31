@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
+import type { SheetSelection } from "@vektorapp/spreadsheet/presence";
 import {
   absolutePositionToRelativePosition,
   getRelativeSelection,
@@ -9,7 +10,6 @@ import {
 import * as Y from "yjs";
 import type { CanvasToolId } from "#canvas/index.ts";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
-import type { SheetSelection } from "#spreadsheet/presence.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;

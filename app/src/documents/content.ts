@@ -1,5 +1,5 @@
+import { rowsToHtmlTable } from "@vektorapp/spreadsheet/table";
 import { marked } from "marked";
-import { rowsToHtmlTable } from "#documents/htmlTable.ts";
 import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { parseCsvRows } from "#utils/xlsx.ts";
 

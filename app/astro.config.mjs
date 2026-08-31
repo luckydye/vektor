@@ -38,6 +38,13 @@ export default defineConfig({
         external: [/\.node$/],
       },
     },
+    // `@vektorapp/spreadsheet` carries the engine and Solid as peers, and both
+    // hold state that only works if there is one copy: the wasm module the
+    // package calls has to be the one the app booted. A linked checkout brings
+    // its own node_modules, so say which packages resolve once.
+    resolve: {
+      dedupe: ["@ironcalc/wasm", "solid-js"],
+    },
     envPrefix: "VEKTOR_",
     define: {
       "import.meta.env.VEKTOR_VERSION": `"${pkg.version}"`,

@@ -9,7 +9,7 @@ import {
   normalTableNodeFromSpreadsheet,
   spreadsheetTableData,
   spreadsheetTableNodeFromData,
-} from "#spreadsheet/documentTable.ts";
+} from "#editor/spreadsheet/documentTable.ts";
 
 const schema = getSchema(contentExtensions());
 

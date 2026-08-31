@@ -1,9 +1,9 @@
 import type { Editor } from "@tiptap/core";
+import type { RemoteSelection, SheetSelection } from "@vektorapp/spreadsheet/presence";
 import {
-  spreadsheetPresenceTablePosition,
   type DocumentPresenceProfile,
+  spreadsheetPresenceTablePosition,
 } from "#editor/collaboration.ts";
-import type { RemoteSelection, SheetSelection } from "#spreadsheet/presence.ts";
 
 export const SPREADSHEET_SELECTION_EVENT = "spreadsheet-selection-change";
 
