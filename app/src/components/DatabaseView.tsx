@@ -171,6 +171,7 @@ export function DatabaseView(props: Props) {
   let importInputRef: HTMLInputElement | undefined;
   const { isImporting, importFile } = useDatabaseFileImport({
     derivedColumns,
+    existingRows: rows,
     addColumns,
     addRow,
     refreshRows,

@@ -1,5 +1,6 @@
 import { type Accessor, createSignal } from "solid-js";
 import type { DocumentProperties } from "#documents/properties.ts";
+import { propertyValueToText, readDocumentProperty } from "#documents/properties.ts";
 import { type IcsEvent, parseIcsEvents } from "#utils/ics.ts";
 import { parseCsvRows } from "#utils/xlsx.ts";
 import type { DatabaseColumn } from "./useDatabaseRows.ts";
@@ -7,6 +8,8 @@ import { useToast } from "./useToast.ts";
 
 interface DatabaseFileImportOptions {
   derivedColumns: Accessor<DatabaseColumn[]>;
+  /** The rows already in the database, so an import cannot repeat one. */
+  existingRows: Accessor<{ properties: DocumentProperties }[]>;
   addColumns: (columns: DatabaseColumn[]) => Promise<void>;
   addRow: (
     properties?: DocumentProperties,
@@ -41,6 +44,21 @@ function titleHeaderIndex(headers: string[]): number {
   );
   if (titleIndex >= 0) return titleIndex;
   return headers.findIndex((header) => header.trim().toLowerCase() === "name");
+}
+
+/**
+ * Identifies a row by the values the import writes, so re-running a file adds
+ * nothing. Sorted, trimmed and case-folded: column order in the file and
+ * incidental whitespace do not make a new row.
+ */
+function rowFingerprint(properties: DocumentProperties, columns: string[]): string {
+  return columns
+    .map((column) => {
+      const value = readDocumentProperty(properties, column);
+      return `${column}=${(value ? propertyValueToText(value) : "").trim().toLowerCase()}`;
+    })
+    .sort()
+    .join("\u0000");
 }
 
 function isEmptyCsvRow(row: string[]): boolean {
@@ -141,6 +159,7 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
     });
     setIsImporting(true);
     let created = 0;
+    let skipped = 0;
     let total = 0;
 
     try {
@@ -156,6 +175,15 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
         columns.filter(
           (column, index) => index !== titleIndex && !existingColumns.has(column.name),
         ),
+      );
+
+      // Fingerprints cover the file's own columns, so an existing row counts as
+      // the same row even when it carries properties the file knows nothing of.
+      const fingerprintColumns = columns.map((column) => column.name);
+      const seen = new Set(
+        options
+          .existingRows()
+          .map((row) => rowFingerprint(row.properties, fingerprintColumns)),
       );
 
       updateToast(toastId, { message: `0/${total} created..`, progress: 0 });
@@ -185,11 +213,22 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
         // which fills in the placeholder.
         if (!properties.title && fallbackTitle) properties.title = fallbackTitle;
 
+        const fingerprint = rowFingerprint(properties, fingerprintColumns);
+        if (seen.has(fingerprint)) {
+          skipped++;
+          updateToast(toastId, {
+            message: `${created}/${total} created..`,
+            progress: (created + skipped) / total,
+          });
+          continue;
+        }
+        seen.add(fingerprint);
+
         await options.addRow(properties, { invalidate: false });
         created++;
         updateToast(toastId, {
           message: `${created}/${total} created..`,
-          progress: created / total,
+          progress: (created + skipped) / total,
         });
       }
 
@@ -206,7 +245,9 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
               cancel: undefined,
             }
           : {
-              message: `Imported ${created} ${created === 1 ? "row" : "rows"}`,
+              message: `Imported ${created} ${created === 1 ? "row" : "rows"}${
+                skipped > 0 ? `, skipped ${skipped} duplicate` : ""
+              }${skipped > 1 ? "s" : ""}`,
               type: "success",
               progress: 1,
               cancel: undefined,
