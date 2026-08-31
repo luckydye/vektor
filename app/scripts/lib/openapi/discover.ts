@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseRouteDoc } from "./comments.ts";
 import type { RouteDoc } from "./types.ts";
 
-const ROUTES_FILE = join(import.meta.dir, "../routes.ts");
+// `fileURLToPath(new URL(...))`, not Bun's `import.meta.dir`: this module is
+// also imported through Vite (vitest), which does not define it.
+const ROUTES_FILE = fileURLToPath(new URL("../../../src/api/routes.ts", import.meta.url));
+const API_DIR = dirname(ROUTES_FILE);
 
 const IMPORT_PATTERN = /import \* as (\w+) from "(\.\/routes\/[^"]+)";/g;
 const ENTRY_PATTERN = /pattern:\s*"([^"]+)"[\s\S]*?module:\s*(\w+)/g;
@@ -19,7 +23,7 @@ async function patternFilePaths(): Promise<Map<string, string>> {
 
   const localNameToPath = new Map<string, string>();
   for (const [, localName, importPath] of source.matchAll(IMPORT_PATTERN)) {
-    localNameToPath.set(localName, join(import.meta.dir, "..", importPath));
+    localNameToPath.set(localName, join(API_DIR, importPath));
   }
 
   const patternToPath = new Map<string, string>();
@@ -32,9 +36,10 @@ async function patternFilePaths(): Promise<Map<string, string>> {
 
 /**
  * Every `RouteDoc` this build can find, read live from each route file's own
- * handler comments. The dev server calls this on every process start (cheap:
- * ~75 small file reads), and the build script below calls it once to freeze
- * the result into the compiled binary.
+ * handler comments. Called by `scripts/generate-openapi.ts` — once ahead of
+ * time for a compiled instance (`task compile`), or once per dev-server start
+ * (`server.ts` shells out to that script) — so no doc-comment-parsing code
+ * has to live in the runtime image.
  */
 export async function loadRouteDocs(): Promise<Record<string, RouteDoc>> {
   const patternToPath = await patternFilePaths();

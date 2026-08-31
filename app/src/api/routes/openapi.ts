@@ -1,38 +1,21 @@
-import { loadRouteDocs } from "#api/openapi/discover.ts";
-import { buildOpenApiDocument } from "#api/openapi/document.ts";
-import type { OpenApiDocument } from "#api/openapi/types.ts";
-// `#api/routes.ts` imports this module, so importing the registry back is a
-// cycle: `apiRoutes` is read inside the handler, by which time both modules
-// have finished evaluating.
-import { apiRoutes } from "#api/routes.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 
 /**
  * The schema never changes within a process, so it is computed once and every
  * request after the first is a string copy — never a per-request rebuild.
  *
- * In a compiled instance it is computed once already, at the actual build
- * (`scripts/generate-openapi.ts`, run by `task compile`): this just reads that
- * frozen JSON back out. In dev and in tests, where the route files this reads
- * doc comments from are on disk and can change between requests, it is instead
- * read live — but still only on the first request each process serves, not
- * on every one.
+ * `generated/openapi.ts` is always expected to exist by the time a request
+ * lands here: `scripts/generate-openapi.ts` produces it, run ahead of time by
+ * `task compile` for a compiled instance and again at every dev-server start
+ * (see `server.ts`) — never lazily from inside a request handler.
  */
-let cachedDocument: Promise<string> | undefined;
-
-async function buildDocument(): Promise<OpenApiDocument> {
-  if (import.meta.env.DEV) {
-    return buildOpenApiDocument(apiRoutes, await loadRouteDocs());
-  }
-  const { embeddedOpenApiSchema } = await import("#generated/openapi.ts");
-  return embeddedOpenApiSchema as unknown as OpenApiDocument;
-}
+let cachedBody: Promise<string> | undefined;
 
 function openApiJson(): Promise<string> {
-  cachedDocument ??= buildDocument().then(
-    (document) => `${JSON.stringify(document, null, 2)}\n`,
+  cachedBody ??= import("#generated/openapi.ts").then(
+    ({ embeddedOpenApiSchema }) => `${JSON.stringify(embeddedOpenApiSchema, null, 2)}\n`,
   );
-  return cachedDocument;
+  return cachedBody;
 }
 
 const CORS_HEADERS = {

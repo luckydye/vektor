@@ -6,15 +6,16 @@
  * before `bun build --compile`, while the route files this reads still exist
  * as plain source on disk.
  *
- * Dev and test runs never call this: `#api/routes/openapi.ts` reads the same
- * doc comments live in that mode, so the schema always matches what is on
- * disk without a build step in the loop.
+ * `server.ts` shells out to this same script once at every dev-server start
+ * (before accepting requests), so `/api/v1/openapi.json` always matches what
+ * is on disk — without any doc-comment-parsing code living in the runtime
+ * image itself.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { loadRouteDocs } from "#api/openapi/discover.ts";
-import { buildOpenApiDocument } from "#api/openapi/document.ts";
 import { apiRoutes } from "#api/routes.ts";
+import { loadRouteDocs } from "./lib/openapi/discover.ts";
+import { buildOpenApiDocument } from "./lib/openapi/document.ts";
 
 export async function generateOpenApiModule(): Promise<void> {
   const routeDocs = await loadRouteDocs();

@@ -1,16 +1,27 @@
 /**
  * The OpenAPI document is generated from the route registry and the doc
- * comment above each handler (see `#api/openapi/comments.ts`), so the thing
- * worth testing is that the two cannot drift: a route with no doc comment, a
- * handler documented for a method it doesn't serve, or a served method with no
- * doc comment, fails here rather than shipping a schema that describes a
- * server nobody is running.
+ * comment above each handler (see `scripts/lib/openapi/comments.ts`), so the
+ * thing worth testing is that the two cannot drift: a route with no doc
+ * comment, a handler documented for a method it doesn't serve, or a served
+ * method with no doc comment, fails here rather than shipping a schema that
+ * describes a server nobody is running.
+ *
+ * The generator itself lives under `scripts/`, not `src/`: reading doc
+ * comments off route files on disk is build tooling, not something the
+ * running server does. `task compile` runs it once ahead of time for a
+ * compiled instance; anywhere else — dev, this suite's own spawned servers, a
+ * bare `bun ./src/server.ts` — `server.ts` shells out to it once at startup
+ * instead. This spec imports the tooling directly to check its output.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildOpenApiDocument, servesMethod, toOpenApiPath } from "#api/openapi/document.ts";
-import { loadRouteDocs } from "#api/openapi/discover.ts";
 import { apiRoutes } from "#api/routes.ts";
+import {
+  buildOpenApiDocument,
+  servesMethod,
+  toOpenApiPath,
+} from "../scripts/lib/openapi/document.ts";
+import { loadRouteDocs } from "../scripts/lib/openapi/discover.ts";
 import {
   createApiRequest,
   startTestServer,
@@ -25,8 +36,9 @@ const apiRequest = createApiRequest(BASE_URL);
 
 const HTTP_METHODS = ["GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH"] as const;
 
-// Read live from each route file's own doc comments — the same thing the dev
-// server does on every process start. There is no static table to import.
+// Read live from each route file's own doc comments — the same thing
+// `server.ts` shells out to `scripts/generate-openapi.ts` for whenever it
+// isn't running from a compiled instance. There is no static table to import.
 const routeDocs = await loadRouteDocs();
 const document = buildOpenApiDocument(apiRoutes, routeDocs);
 
