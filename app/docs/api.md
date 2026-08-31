@@ -611,14 +611,15 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE"
 
 - **Auth**: session. `name`/`slug` take `owner`. A preferences-only write takes the
   strongest role its keys ask for: `owner` for the `ai:` namespace and for
-  `workflowCreationEnabled`, `viewer` for the `user:` namespace (a member's own
+  `workflowCreationEnabled`/`repositoryCreationEnabled`, `viewer` for the `user:`
+  namespace (a member's own
   settings), `editor` for everything else.
 - **Body**: at least one of `name` (non-empty string), `slug` (non-empty string),
   `preferences` (object, ≤512KB serialized). A preference key is either a bare name or
   `namespace:name`; values are opaque text except for the keys the app renders as
   markup, CSS or a URL (`brandColor`, `description`, `logoSvg`, `pinnedDocumentId`,
-  `workflowCreationEnabled`), which are validated and may be stored sanitized. An empty
-  string clears a preference.
+  `workflowCreationEnabled`, `repositoryCreationEnabled`), which are validated and may
+  be stored sanitized. An empty string clears a preference.
 - **Behavior**: `user:`-namespaced preferences are stored against the caller rather than
   the space, and a write of nothing else leaves the space row (and its `updatedAt`)
   untouched.
@@ -2117,9 +2118,10 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/documents?limi
   Markdown. For a JSON body, the server otherwise selects the expected representation
   for known document types and falls back to HTML. A raw body's `Content-Type` describes
   its content. HTML, Markdown, and unknown inputs are sanitized as HTML; serialized
-  document content is stored unchanged. `type: "workflow"` additionally requires the
-  space's `workflowCreationEnabled` preference not to be `false` (else `403`). Content
-  must be a string but may be empty.
+  document content is stored unchanged. `type: "workflow"` and `type: "repository"`
+  additionally require the space's `workflowCreationEnabled` / `repositoryCreationEnabled`
+  preference to be `"true"` (else `403`); both features are off unless a space turns
+  them on. Content must be a string but may be empty.
 - **Returns**: `201 { document }`. `400` when JSON `content` is omitted or is not a
   string, or for an invalid parent or reserved property key.
 

@@ -35,12 +35,14 @@ describe("validateSpacePreferences", () => {
         logoSvg: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
         pinnedDocumentId: "document_abc123",
         workflowCreationEnabled: "false",
+        repositoryCreationEnabled: "false",
       }),
     ).toMatchObject({
       brandColor: "#1e293b",
       description: "A space",
       pinnedDocumentId: "document_abc123",
       workflowCreationEnabled: "false",
+      repositoryCreationEnabled: "false",
     });
   });
 
@@ -159,6 +161,9 @@ describe("validateSpacePreferences", () => {
     expect(refused({ workflowCreationEnabled: "yes" })).toContain(
       "must be 'true' or 'false'",
     );
+    expect(refused({ repositoryCreationEnabled: "yes" })).toContain(
+      "must be 'true' or 'false'",
+    );
   });
 });
 
@@ -240,6 +245,9 @@ describe("requiredPreferenceWriteRole", () => {
       Permission.OWNER,
     );
     expect(requiredPreferenceWriteRole({ workflowCreationEnabled: "false" })).toBe(
+      Permission.OWNER,
+    );
+    expect(requiredPreferenceWriteRole({ repositoryCreationEnabled: "false" })).toBe(
       Permission.OWNER,
     );
     // The highest role any one key asks for.

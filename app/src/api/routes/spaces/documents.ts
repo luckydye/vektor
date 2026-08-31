@@ -34,9 +34,12 @@ import {
   propertyValueToText,
   ReservedDocumentPropertyKeyError,
 } from "#documents/properties.ts";
-import { isSerializedDocumentType } from "#documents/types.ts";
+import { isSerializedDocumentType, repositoryDocumentType } from "#documents/types.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import {
+  isRepositoryCreationEnabled,
+  isWorkflowCreationEnabled,
+} from "#utils/spacePreferences.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
   if (value === undefined) return undefined;
@@ -253,10 +256,16 @@ export const POST: ApiRouteHandler = (context) =>
         };
     }
 
-    if (type === "workflow") {
+    if (type === "workflow" || type === repositoryDocumentType) {
       const space = await getSpace(spaceId);
-      if (!isWorkflowCreationEnabled(space?.preferences)) {
+      if (type === "workflow" && !isWorkflowCreationEnabled(space?.preferences)) {
         throw forbiddenResponse("Workflow creation is disabled for this space");
+      }
+      if (
+        type === repositoryDocumentType &&
+        !isRepositoryCreationEnabled(space?.preferences)
+      ) {
+        throw forbiddenResponse("Repository creation is disabled for this space");
       }
     }
 
@@ -265,13 +274,14 @@ export const POST: ApiRouteHandler = (context) =>
 
     // createDocument now handles slug uniqueness internally
     const store = await openSpaceStore(spaceId);
-    const document = await createDocument(
-      store,
-      userId,
-      slugBase,
-      content,
-      { properties, parentId, type, readonly, createdAt, updatedAt },
-    ).catch((error) => {
+    const document = await createDocument(store, userId, slugBase, content, {
+      properties,
+      parentId,
+      type,
+      readonly,
+      createdAt,
+      updatedAt,
+    }).catch((error) => {
       if (
         error instanceof InvalidDocumentParentError ||
         error instanceof ReservedDocumentPropertyKeyError

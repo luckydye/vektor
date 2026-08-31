@@ -140,7 +140,8 @@ export async function createSpace(
   let store: SpaceStore;
   const defaultPreferences = {
     brandColor: "#1e293b",
-    [spacePreferenceKeys.workflowCreationEnabled]: "true",
+    [spacePreferenceKeys.workflowCreationEnabled]: "false",
+    [spacePreferenceKeys.repositoryCreationEnabled]: "false",
     ...preferences,
   };
 

@@ -7,7 +7,10 @@ import { useTranslation } from "#composeables/useTranslation.ts";
 import type { DocumentTemplate } from "#documents/templates.ts";
 import { insertTemplateContent } from "#editor/templates.ts";
 import type { TranslationKey } from "#utils/lang.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import {
+  isRepositoryCreationEnabled,
+  isWorkflowCreationEnabled,
+} from "#utils/spacePreferences.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
 type DocumentType = "canvas" | "workflow" | "database" | "repository";
@@ -58,6 +61,9 @@ export function NewDocumentPicker() {
     documentOptions.filter((option) => {
       if (option.type === "workflow") {
         return isWorkflowCreationEnabled(currentSpace()?.preferences);
+      }
+      if (option.type === "repository") {
+        return isRepositoryCreationEnabled(currentSpace()?.preferences);
       }
       return true;
     }),

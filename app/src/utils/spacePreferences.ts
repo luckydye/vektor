@@ -29,17 +29,22 @@ export const spacePreferenceKeys = {
   description: "description",
   logoSvg: "logoSvg",
   pinnedDocumentId: "pinnedDocumentId",
+  repositoryCreationEnabled: "repositoryCreationEnabled",
   workflowCreationEnabled: "workflowCreationEnabled",
 } as const;
 
-/**
- * Workflows remain available for spaces created before this preference existed.
- * Only an explicit false value disables creating new workflow documents.
- */
+/** Off unless a space turned it on: only an explicit true enables it. */
 export function isWorkflowCreationEnabled(
   preferences: Record<string, string> | null | undefined,
 ): boolean {
-  return preferences?.[spacePreferenceKeys.workflowCreationEnabled] !== "false";
+  return preferences?.[spacePreferenceKeys.workflowCreationEnabled] === "true";
+}
+
+/** Off unless a space turned it on: only an explicit true enables it. */
+export function isRepositoryCreationEnabled(
+  preferences: Record<string, string> | null | undefined,
+): boolean {
+  return preferences?.[spacePreferenceKeys.repositoryCreationEnabled] === "true";
 }
 
 /** Longest a free-text preference may be. */
@@ -96,6 +101,13 @@ const PREFERENCE_RULES = new Map<string, PreferenceRule>([
       /^[\w-]{1,64}$/.test(value)
         ? { value }
         : { error: "pinnedDocumentId must be a document id" },
+  ],
+  [
+    spacePreferenceKeys.repositoryCreationEnabled,
+    (value) =>
+      value === "true" || value === "false"
+        ? { value }
+        : { error: "repositoryCreationEnabled must be 'true' or 'false'" },
   ],
   [
     spacePreferenceKeys.workflowCreationEnabled,
@@ -211,6 +223,7 @@ const PREFERENCE_NAMESPACES = new Map<string, PreferenceNamespaceRules>([
 
 /** Core preferences that decide something for the space rather than a member. */
 const OWNER_ONLY_CORE_PREFERENCES = new Set<string>([
+  spacePreferenceKeys.repositoryCreationEnabled,
   spacePreferenceKeys.workflowCreationEnabled,
 ]);
 

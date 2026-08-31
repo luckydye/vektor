@@ -40,7 +40,10 @@ import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import {
+  isRepositoryCreationEnabled,
+  isWorkflowCreationEnabled,
+} from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
 
 interface Props {
@@ -305,6 +308,13 @@ export function DocumentPageView(props: Props) {
     const space = currentSpace();
     if (!autoCreate || !space) return;
     if (documentType() === "workflow" && !isWorkflowCreationEnabled(space.preferences)) {
+      navigate("/new", { replace: true });
+      return;
+    }
+    if (
+      documentType() === repositoryDocumentType &&
+      !isRepositoryCreationEnabled(space.preferences)
+    ) {
       navigate("/new", { replace: true });
       return;
     }
