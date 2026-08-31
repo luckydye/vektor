@@ -608,9 +608,10 @@ with `srcdoc` and `sandbox="allow-scripts allow-modals allow-pointer-lock"`. Nev
 add `allow-same-origin` to a sandbox that also has `allow-scripts` — together they
 hand the content the app's origin. The frame inherits the app's CSP, which breaks
 two assumptions people bring from a local test page: `connect-src` has no `data:`,
-so a `fetch` rewritten to a `data:` URI is blocked, and `script-src` has no
-`'unsafe-eval'`, so `eval` and `new Function` throw. Both are silent failures
-outside the app, so test embedded content behind the same headers.
+so a `fetch` rewritten to a `data:` URI is blocked, and `script-src` permits
+WebAssembly through `'wasm-unsafe-eval'` but not JavaScript `'unsafe-eval'`, so
+`eval` and `new Function` throw. Both are silent failures outside the app, so test
+embedded content behind the same headers.
 
 **Persisted state.** Small preferences go to `localStorage` under
 `"<extension-id>:<key>"`. Anything a colleague should also see belongs in the

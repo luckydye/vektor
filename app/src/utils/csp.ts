@@ -19,6 +19,9 @@
  *    inline scripts) are plumbed end-to-end through Astro, this
  *    policy is defence-in-depth against cross-origin exfiltration /
  *    resource loading, NOT a full XSS fix.
+ *  - `'wasm-unsafe-eval'` permits WebAssembly modules used by the app and
+ *    extensions to compile. It does not permit JavaScript `eval` or
+ *    `new Function`; those would require the broader `'unsafe-eval'` source.
  *  - `connect-src` is closed down to same-origin + the AI providers the
  *    server/agent are wired to, plus `wss:`/`ws:` for the realtime socket.
  *    This blocks a same-origin-xss payload from shipping stolen cookies
@@ -36,7 +39,7 @@ export const APP_CSP = [
   "default-src 'self'",
   // `platform.twitter.com` is allowed so canvas X/Twitter link cards can load
   // widgets.js and hydrate a tweet into its live embed.
-  "script-src 'self' 'unsafe-inline' https://platform.twitter.com",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://platform.twitter.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   // `https:` is intentionally broad here — same rationale as `img-src https:`
