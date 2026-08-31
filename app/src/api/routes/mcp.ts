@@ -10,8 +10,6 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { handleMcpRequest, type JsonRpcRequest, type JsonRpcResponse } from "#cli/mcp.ts";
 import { getLocalOrigin } from "#config";
-import { openSpaceStore } from "#db/client/store.ts";
-import { listOAuthIntegrationsForUser } from "#db/space/oauthIntegrations.ts";
 import { createJobToken, parseJobToken } from "#jobs/jobToken.ts";
 
 function jsonRpcResponse(body: JsonRpcResponse): Response {
@@ -34,7 +32,7 @@ function jsonRpcResponse(body: JsonRpcResponse): Response {
 async function resolveMcpAuth(
   credentials: CallerCredentials,
   spaceId: string,
-): Promise<{ jobToken: string; userId: string | null }> {
+): Promise<{ jobToken: string }> {
   const providedJobToken = credentials.jobToken;
   if (providedJobToken) {
     // Job-to-job: another job driving this space's MCP surface on someone
@@ -42,7 +40,7 @@ async function resolveMcpAuth(
     // fresh one that would silently drop whatever user it carries.
     const parsed = parseJobToken(providedJobToken, spaceId);
     if (!parsed) throw unauthorizedResponse();
-    return { jobToken: providedJobToken, userId: parsed.userId };
+    return { jobToken: providedJobToken };
   }
 
   const auth = await authenticateJobTokenOrSpaceRole(
@@ -51,7 +49,7 @@ async function resolveMcpAuth(
     Permission.VIEWER,
   );
   const userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
-  return { jobToken: createJobToken(spaceId, Date.now().toString(), userId), userId };
+  return { jobToken: createJobToken(spaceId, Date.now().toString(), userId) };
 }
 
 /**
@@ -81,7 +79,7 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("X-Space-Id header is required");
     }
 
-    const { jobToken, userId } = await resolveMcpAuth(context.var.credentials, spaceId);
+    const { jobToken } = await resolveMcpAuth(context.var.credentials, spaceId);
 
     const request = await parseJsonBody<JsonRpcRequest>(context.req.raw);
     if (!request || typeof request !== "object" || Array.isArray(request)) {
@@ -96,17 +94,10 @@ export const POST: ApiRouteHandler = (context) =>
       return new Response(null, { status: 202 });
     }
 
-    const oauthIntegrations = userId
-      ? await listOAuthIntegrationsForUser(await openSpaceStore(spaceId), userId).catch(
-          () => [],
-        )
-      : [];
-
     const mcpConfig: VektorMcpConfig = {
       apiUrl: getLocalOrigin(),
       spaceId,
       jobToken,
-      connectedProviders: oauthIntegrations.map((integration) => integration.provider),
     };
 
     return jsonRpcResponse(await handleMcpRequest(mcpConfig, request));
