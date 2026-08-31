@@ -2308,8 +2308,7 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
     any), triggers "document published" email notifications plus a "mentioned you" one
     for each user newly mentioned, and is audit-logged.
   - `readonly: boolean` — lock/unlock the document. Persists the live draft before
-    locking.
-    Audit-logged.
+    locking. Audit-logged.
 - **Returns**: `200 { success: true }` for a parent/publish/readonly patch. A properties
   patch answers `200 {}`, or `200 { slug }` when a `title` patch also claimed a new
   slug. The slug is fixed when the document is created and does not follow later

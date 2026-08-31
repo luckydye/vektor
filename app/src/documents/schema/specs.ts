@@ -276,6 +276,83 @@ function dataAttr(attribute: string, fallback: unknown = null): AttrSpec {
   };
 }
 
+/** JSON metadata carried in a data attribute, ignored when malformed. */
+function jsonDataAttr(attribute: string): AttrSpec {
+  return {
+    default: null,
+    parse: (el) => {
+      const value = el.attr(attribute);
+      if (!value) return null;
+      try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+          ? parsed
+          : null;
+      } catch {
+        return null;
+      }
+    },
+    render: (value) =>
+      value && typeof value === "object" ? { [attribute]: JSON.stringify(value) } : {},
+  };
+}
+
+/** A positive pixel measurement stored in a data attribute. */
+function pixelDataAttr(attribute: string): AttrSpec {
+  return {
+    default: null,
+    parse: (el) => {
+      const value = Number.parseFloat(el.attr(attribute) ?? "");
+      return Number.isFinite(value) && value > 0 ? value : null;
+    },
+    render: (value) =>
+      typeof value === "number" && Number.isFinite(value) && value > 0
+        ? {
+            [attribute]: Math.round(value),
+            style: `height: ${Math.round(value)}px`,
+          }
+        : {},
+  };
+}
+
+function spreadsheetCellStyleAttr(): AttrSpec {
+  const stored = jsonDataAttr("data-style");
+  return {
+    ...stored,
+    render: (value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      const style = value as {
+        alignment?: { horizontal?: unknown };
+        fill?: { color?: unknown };
+        font?: { b?: unknown; color?: unknown; i?: unknown; sz?: unknown };
+      };
+      const declarations: string[] = [];
+      if (typeof style.fill?.color === "string") {
+        declarations.push(`background-color: ${style.fill.color}`);
+      }
+      if (typeof style.font?.color === "string") {
+        declarations.push(`color: ${style.font.color}`);
+      }
+      if (style.font?.b === true) declarations.push("font-weight: 700");
+      if (style.font?.i === true) declarations.push("font-style: italic");
+      if (typeof style.font?.sz === "number" && Number.isFinite(style.font.sz)) {
+        declarations.push(`font-size: ${style.font.sz}px`);
+      }
+      if (
+        style.alignment?.horizontal === "left" ||
+        style.alignment?.horizontal === "center" ||
+        style.alignment?.horizontal === "right"
+      ) {
+        declarations.push(`text-align: ${style.alignment.horizontal}`);
+      }
+      return {
+        "data-style": JSON.stringify(value),
+        ...(declarations.length > 0 ? { style: declarations.join("; ") } : {}),
+      };
+    },
+  };
+}
+
 /** An attribute carried in the model only, never written to HTML. */
 function hiddenAttr(fallback: unknown): AttrSpec {
   return { default: fallback, parse: () => null, render: () => ({}), rendered: false };
@@ -674,6 +751,14 @@ const NODES: NodeSpec[] = [
     group: "block",
     content: "tableRow+",
     isolating: true,
+    attrs: {
+      tableKind: {
+        default: null,
+        parse: (el) => el.attr("data-table-kind"),
+        render: (value) =>
+          value === "spreadsheet" ? { "data-table-kind": "spreadsheet" } : {},
+      },
+    },
     match: [{ tag: "table" }],
     needsNode: true,
     render: (ctx) => {
@@ -689,6 +774,9 @@ const NODES: NodeSpec[] = [
     kind: "node",
     name: "tableRow",
     content: "(tableCell | tableHeader)*",
+    attrs: {
+      dataHeight: pixelDataAttr("data-height"),
+    },
     match: [{ tag: "tr" }],
   },
   {
@@ -700,6 +788,8 @@ const NODES: NodeSpec[] = [
       colspan: spanAttr("colspan"),
       rowspan: spanAttr("rowspan"),
       colwidth: colwidthAttr,
+      dataSource: dataAttr("data-source"),
+      dataStyle: spreadsheetCellStyleAttr(),
     },
     match: [{ tag: "th" }],
   },
@@ -713,31 +803,10 @@ const NODES: NodeSpec[] = [
       rowspan: spanAttr("rowspan"),
       colwidth: colwidthAttr,
       backgroundColor: styleAttr("background-color"),
+      dataSource: dataAttr("data-source"),
+      dataStyle: spreadsheetCellStyleAttr(),
     },
     match: [{ tag: "td" }],
-  },
-  {
-    kind: "node",
-    name: "expressionCell",
-    group: "inline",
-    inline: true,
-    content: "text*",
-    attrs: {
-      "data-formula": {
-        default: "=",
-        parse: (el) => el.attr("data-formula") || el.text().trim() || "=",
-      },
-    },
-    match: [{ tag: "expression-cell" }],
-    needsNode: true,
-    render: (ctx) => {
-      const formula = ctx.attrs["data-formula"] || textOf(ctx.node);
-      return {
-        tag: "expression-cell",
-        attrs: { ...ctx.html, ...(formula ? { "data-formula": formula as string } : {}) },
-        children: [CONTENT_HOLE],
-      };
-    },
   },
   {
     kind: "node",

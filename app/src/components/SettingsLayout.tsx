@@ -81,7 +81,7 @@ export function SettingsLayout(props: Props) {
         }
       >
         <a-tabs ref={tabsEl} on:tab-selected={onTabSelected}>
-          <TabsList class="border-neutral-100 border-b">
+          <TabsList>
             <For each={props.tabs}>
               {(tab, index) => (
                 <TabItem selected={index() === initialIndex}>{tab.label}</TabItem>
@@ -91,7 +91,7 @@ export function SettingsLayout(props: Props) {
           <For each={props.tabs}>
             {(tab) => (
               <a-tabs-panel class="block min-w-0">
-                <div class="px-2 py-4">{props.panels[tab.id]?.()}</div>
+                <div class="px-2 pt-6 pb-4">{props.panels[tab.id]?.()}</div>
               </a-tabs-panel>
             )}
           </For>

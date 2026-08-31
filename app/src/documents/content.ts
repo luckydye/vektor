@@ -55,11 +55,14 @@ const MARKDOWN_TYPES = new Set([
   "application/x-markdown",
 ]);
 
+const APP_TYPES = new Set<string>(["application/vnd.wiki.app+html"]);
+
 export function getDocumentTypeForContentType(
   contentType: string | null,
 ): string | undefined {
   const mimeType = getMimeType(contentType);
   if (!mimeType) return undefined;
+  if (APP_TYPES.has(mimeType)) return "app";
   if (mimeType === "text/html" || MARKDOWN_TYPES.has(mimeType)) return "document";
   return undefined;
 }

@@ -69,7 +69,6 @@ const TAGS = [
   "figure",
   "user-mention",
   "html-block",
-  "expression-cell",
   "date-picker",
   "script",
   "label",

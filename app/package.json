@@ -13,6 +13,8 @@
     "@astrojs/solid-js": "7.0.1",
     "@atrium-ui/elements": "4.13.0",
     "@fontsource-variable/inter": "^5.2.8",
+    "@ironcalc/wasm": "0.8.4",
+    "@vektorapp/spreadsheet": "git+https://github.com/luckydye/sheets.git",
     "@libsql/client": "^0.17.4",
     "@solidjs/router": "1.0.0",
     "@tailwindcss/vite": "^4.1.16",

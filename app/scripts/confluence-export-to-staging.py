@@ -102,7 +102,6 @@ VOID_TAGS = {
 INLINE_TAGS = {
     "a", "strong", "em", "u", "s", "code", "sup", "sub", "span", "br",
     "user-mention", "document-mention", "date-picker", "ticket-link",
-    "expression-cell",
 }
 
 # Confluence status lozenge colour -> (background, foreground).

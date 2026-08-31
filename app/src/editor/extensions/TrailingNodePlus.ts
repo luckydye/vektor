@@ -72,6 +72,14 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
     {
+      title: t("Spreadsheet Table"),
+      description: t("Insert a spreadsheet inside the document"),
+      icon: iconMarkup("function"),
+      command: (editor) => {
+        editor.chain().focus().insertSpreadsheetTable().run();
+      },
+    },
+    {
       title: t("Image"),
       description: t("Upload and insert an image"),
       icon: iconMarkup("image"),

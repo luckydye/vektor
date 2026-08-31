@@ -4,24 +4,6 @@
   @apply outline outline-2 outline-blue-500 outline-offset-2;
 }
 
-.tiptap expression-cell {
-  @apply inline-flex items-center px-2 py-0.5 rounded-sm font-mono text-sm transition-colors;
-  cursor: text;
-  user-select: text;
-  @apply bg-blue-50 text-blue-800 border border-blue-200;
-}
-
-.tiptap expression-cell:hover {
-  @apply bg-blue-100 border-blue-300;
-}
-
-/* Show computed preview while editing */
-.tiptap expression-cell[data-result]::after {
-  content: " = " attr(data-result);
-  @apply ml-2 text-blue-600 font-semibold text-xs opacity-75;
-  white-space: nowrap;
-}
-
 .custom-drag-handle {
   z-index: 9999;
   /* Transparent hit area: the visible dots are drawn by ::after, but the

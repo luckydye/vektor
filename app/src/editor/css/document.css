@@ -174,7 +174,7 @@ mark {
   position: relative;
 }
 
-.tiptap > *:not(table),
+.tiptap.ProseMirror > *:not(table):not(.spreadsheet-table-wrapper),
 [part="content"] > *:not(table) {
   max-width: 1600px;
 }

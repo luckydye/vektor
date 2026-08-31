@@ -4,6 +4,7 @@ import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import { iconMarkup } from "#components/Icon.tsx";
 import { browserLang, createTranslator } from "#utils/lang.ts";
+
 const t = createTranslator(browserLang());
 
 const TEXT_COLOR_PRESETS = [
@@ -374,7 +375,9 @@ if (
 
         this.inColumnLayout = editor.isActive("columnLayout");
         this.imageActive = isImageSelected(editor);
-        this.tableActive = editor.isActive("table");
+        this.tableActive =
+          editor.isActive("table") &&
+          !editor.isActive("table", { tableKind: "spreadsheet" });
         this.updateHeadingLevel(editor);
         this.updateColors(editor);
         this.updateColumnInfo(editor);
@@ -1606,6 +1609,14 @@ if (
 
             <div class="menu-group">
               ${this.button(
+                this.icon(iconMarkup("function")),
+                t("Convert to Spreadsheet"),
+                () => this.chain()?.convertTableToSpreadsheet().run(),
+                {
+                  disabled: !this.editor?.can().convertTableToSpreadsheet(),
+                },
+              )}
+              ${this.button(
                 this.icon(iconMarkup("table")),
                 t("Toggle Header Cell"),
                 () => this.chain()?.toggleHeaderCell().run(),
@@ -1616,15 +1627,6 @@ if (
               )}
               ${this.button(this.icon(iconMarkup("split-cells")), t("Split Cell"), () =>
                 this.chain()?.splitCell().run(),
-              )}
-            </div>
-            <div class="menu-divider"></div>
-
-            <div class="menu-group">
-              ${this.button(
-                this.icon(iconMarkup("function")),
-                t("Insert Expression Cell"),
-                () => this.chain()?.insertExpressionCell({ formula: "=" }).run(),
               )}
             </div>
             <div class="menu-divider"></div>

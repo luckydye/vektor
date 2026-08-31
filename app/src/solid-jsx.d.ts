@@ -63,6 +63,7 @@ declare module "solid-js" {
       "attr:inline-document-references"?: string | undefined;
       "attr:space-id"?: string | undefined;
       "attr:document-id"?: string | undefined;
+      "attr:readonly"?: string | undefined;
       "attr:html"?: string | undefined;
       snap?: boolean;
       language?: string;

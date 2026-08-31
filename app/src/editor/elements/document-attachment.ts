@@ -6,6 +6,7 @@ import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { iconMarkup } from "#components/Icon.tsx";
 import { escapeHtml, sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { browserLang, createTranslator } from "#utils/lang.ts";
+
 const t = createTranslator(browserLang());
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";

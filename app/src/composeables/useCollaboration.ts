@@ -159,7 +159,7 @@ function getBrowserClientId() {
   return next;
 }
 
-const browserClientId = getBrowserClientId();
+export const browserClientId = getBrowserClientId();
 
 /**
  * Publishes a session as the active one.

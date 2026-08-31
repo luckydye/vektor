@@ -1,7 +1,14 @@
-import { Extension } from "@tiptap/core";
-import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import type { Slice } from "@tiptap/pm/model";
-import { Plugin, type Selection } from "@tiptap/pm/state";
+import { type Command, Extension, type NodeViewRenderer } from "@tiptap/core";
+import {
+  createTable,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+  TableView,
+} from "@tiptap/extension-table";
+import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
+import { NodeSelection, Plugin, Selection } from "@tiptap/pm/state";
 import {
   addColumn,
   addRow,
@@ -17,8 +24,24 @@ import {
   TableMap,
 } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
-import { ExpressionCell } from "./ExpressionCell.ts";
+import {
+  canConvertToSpreadsheet,
+  isSpreadsheetTable,
+  normalTableNodeFromSpreadsheet,
+  SPREADSHEET_TABLE_KIND,
+} from "#editor/spreadsheet/documentTable.ts";
+import { SpreadsheetTableView } from "./SpreadsheetTableView.ts";
 import { nodeFromSpec } from "./specSchema.ts";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    spreadsheetTable: {
+      insertSpreadsheetTable: (options?: { rows?: number; cols?: number }) => ReturnType;
+      convertTableToSpreadsheet: () => ReturnType;
+      convertSpreadsheetToTable: () => ReturnType;
+    };
+  }
+}
 
 function clearNativeSelection(view: EditorView) {
   const root = view.root;
@@ -199,6 +222,95 @@ const TableCellClipboard = Extension.create({
   },
 });
 
+function selectedTable(state: EditorView["state"]): {
+  node: Parameters<typeof canConvertToSpreadsheet>[0];
+  pos: number;
+} | null {
+  const { selection } = state;
+  if (selection instanceof NodeSelection && selection.node.type.name === "table") {
+    return { node: selection.node, pos: selection.from };
+  }
+  const { $from } = selection;
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth);
+    if (node.type.name === "table") return { node, pos: $from.before(depth) };
+  }
+  return null;
+}
+
+function positionOfNode(doc: ProseMirrorNode, target: ProseMirrorNode): number | null {
+  let found: number | null = null;
+  doc.descendants((node, pos) => {
+    if (node === target) found = pos;
+    return found === null;
+  });
+  return found;
+}
+
+const SpreadsheetTableCommands = Extension.create({
+  name: "spreadsheetTableCommands",
+
+  addCommands() {
+    return {
+      insertSpreadsheetTable:
+        (options: { rows?: number; cols?: number } = {}): Command =>
+        ({ tr, dispatch, editor }) => {
+          const table = createTable(
+            editor.schema,
+            options.rows ?? 6,
+            options.cols ?? 4,
+            true,
+          );
+          const spreadsheet = table.type.create(
+            { ...table.attrs, tableKind: SPREADSHEET_TABLE_KIND },
+            table.content,
+          );
+          if (dispatch) {
+            tr.replaceSelectionWith(spreadsheet);
+            const insertedAt = positionOfNode(tr.doc, spreadsheet);
+            if (insertedAt !== null) {
+              tr.setSelection(NodeSelection.create(tr.doc, insertedAt));
+            }
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
+        },
+      convertTableToSpreadsheet:
+        (): Command =>
+        ({ state, dispatch }) => {
+          const table = selectedTable(state);
+          if (!table || !canConvertToSpreadsheet(table.node)) return false;
+          if (dispatch) {
+            const tr = state.tr.setNodeMarkup(table.pos, undefined, {
+              ...table.node.attrs,
+              tableKind: SPREADSHEET_TABLE_KIND,
+            });
+            tr.setSelection(NodeSelection.create(tr.doc, table.pos));
+            dispatch(tr);
+          }
+          return true;
+        },
+      convertSpreadsheetToTable:
+        (): Command =>
+        ({ state, dispatch }) => {
+          const table = selectedTable(state);
+          if (!table || !isSpreadsheetTable(table.node)) return false;
+          if (dispatch) {
+            const next = normalTableNodeFromSpreadsheet(table.node);
+            const tr = state.tr.replaceWith(
+              table.pos,
+              table.pos + table.node.nodeSize,
+              next,
+            );
+            tr.setSelection(NodeSelection.create(tr.doc, table.pos));
+            dispatch(tr);
+          }
+          return true;
+        },
+    };
+  },
+});
+
 export const TableEditing = Extension.create({
   name: "tableEditing",
 
@@ -208,13 +320,35 @@ export const TableEditing = Extension.create({
     // navigation keymap. Its schema half is replaced with the shared spec
     // table, so the server serializes tables without it.
     return [
-      Table.extend(nodeFromSpec("table")).configure({
+      Table.extend({
+        ...nodeFromSpec("table"),
+
+        addNodeView(): NodeViewRenderer {
+          const cellMinWidth = this.options.cellMinWidth;
+          return ({ node, editor, getPos }) => {
+            if (isSpreadsheetTable(node)) {
+              return new SpreadsheetTableView(node, editor, getPos);
+            }
+
+            const table = new TableView(node, cellMinWidth);
+            return {
+              dom: table.dom,
+              contentDOM: table.contentDOM,
+              update(next) {
+                if (isSpreadsheetTable(next)) return false;
+                return table.update(next);
+              },
+              ignoreMutation: (mutation) => table.ignoreMutation(mutation),
+            };
+          };
+        },
+      }).configure({
         resizable: true,
       }),
       TableRow.extend(nodeFromSpec("tableRow")),
       TableHeader.extend(nodeFromSpec("tableHeader")),
       TableCell.extend(nodeFromSpec("tableCell")),
-      ExpressionCell,
+      SpreadsheetTableCommands,
       TableCellClipboard,
     ];
   },
