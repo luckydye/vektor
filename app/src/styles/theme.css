@@ -541,6 +541,24 @@
   }
 }
 
+/**
+ * Document metadata is inserted at its final height so the content below moves
+ * immediately. Only the rows themselves ease in; animating their height would
+ * make the document body visibly drift while a title or property is opened.
+ */
+@utility document-details-enter {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 150ms var(--emphasized-curve, ease-out),
+    transform 150ms var(--emphasized-curve, ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 /** The user preferences panel inside the profile popover. */
 @utility preferences-panel {
   position: static;
@@ -577,6 +595,7 @@
   .overlay-fade,
   .overlay-slide,
   .comment-thread-enter,
+  .document-details-enter,
   .preferences-panel,
   .dialog-layer,
   .dialog-layer .dialog-backdrop,
