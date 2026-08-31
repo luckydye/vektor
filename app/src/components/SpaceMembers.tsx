@@ -30,8 +30,8 @@ import { formatAbsoluteDate, formatDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
-import { Icon } from "./Icon.tsx";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { Icon } from "./Icon.tsx";
 
 /** Scope select values that carry the id of the resource a grant lands on. */
 const CATEGORY_SCOPE_PREFIX = "category:";
@@ -115,7 +115,6 @@ export function SpaceMembers() {
   const [copiedUserId, setCopiedUserId] = createSignal<string | null>(null);
   const [expandedMembers, setExpandedMembers] = createSignal(new Set<string>());
   const [inviteSuggestions, setInviteSuggestions] = createSignal<User[]>([]);
-  const [suggestionRowId, setSuggestionRowId] = createSignal<string | null>(null);
   const [accessTokens, setAccessTokens] = createSignal<AccessToken[]>([]);
   const [createdTokenValue, setCreatedTokenValue] = createSignal<string | null>(null);
   const [tokenCopied, setTokenCopied] = createSignal(false);
@@ -246,7 +245,6 @@ export function SpaceMembers() {
       void fetchInviteSuggestions();
       setInviteRows([]);
       setInviteError(null);
-      setSuggestionRowId(null);
     }),
   );
 
@@ -268,30 +266,25 @@ export function SpaceMembers() {
       ),
   );
 
-  function filteredInviteSuggestions(row: InviteRow): User[] {
-    const query = row.value.trim().toLowerCase();
+  /** Members already granted access, and people picked in another row, are out. */
+  function personOptions(row: InviteRow): FilterSelectOption[] {
     const members = existingMemberIds();
-    const selectedEmails = new Set(
+    const takenEmails = new Set(
       inviteRows()
         .filter((invite) => invite.id !== row.id && invite.type === "user")
         .map((invite) => invite.value.trim().toLowerCase()),
     );
     return inviteSuggestions()
       .filter((suggestion) => !members.has(suggestion.id))
-      .filter((suggestion) => !selectedEmails.has(suggestion.email.toLowerCase()))
-      .filter((suggestion) => {
-        if (!query) return true;
-        return (
-          suggestion.name.toLowerCase().includes(query) ||
-          suggestion.email.toLowerCase().includes(query)
-        );
-      })
-      .slice(0, 8);
-  }
-
-  function selectSuggestion(rowId: string, suggestion: User) {
-    updateInviteRow(rowId, { value: suggestion.email });
-    setSuggestionRowId(null);
+      .filter((suggestion) => !takenEmails.has(suggestion.email.toLowerCase()))
+      .map((suggestion) => ({
+        value: suggestion.email,
+        label: suggestion.name,
+        description: suggestion.email,
+        icon: () => (
+          <vektor-avatar size="28" attr:user-id={suggestion.id} prop:user={suggestion} />
+        ),
+      }));
   }
 
   function getMemberUser(perm: PermissionEntry): User | undefined {
@@ -376,7 +369,6 @@ export function SpaceMembers() {
       if (rows.length === 1) return [];
       return rows.filter((row) => row.id !== id);
     });
-    if (suggestionRowId() === id) setSuggestionRowId(null);
   }
 
   /** Turns an invite row's scope into the resource its grant is written to. */
@@ -740,7 +732,7 @@ export function SpaceMembers() {
       props.grant.permission.userId || props.grant.permission.groupId;
 
     return (
-      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 pl-6 pr-4 sm:pl-10">
+      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 pr-4 pl-6 sm:pl-10">
         <div class="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
           <span class="truncate font-medium text-neutral-900">
             {getResourceLabel(props.grant)}
@@ -975,7 +967,7 @@ export function SpaceMembers() {
               <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
               <div class="h-3 w-12 animate-pulse rounded bg-neutral-100" />
               <div class="h-3 w-10 animate-pulse rounded bg-neutral-100" />
-              <div class="justify-self-end h-3 w-12 animate-pulse rounded bg-neutral-100" />
+              <div class="h-3 w-12 animate-pulse justify-self-end rounded bg-neutral-100" />
             </div>
             <For each={[0, 1, 2]}>
               {() => (
@@ -993,7 +985,7 @@ export function SpaceMembers() {
                     <div class="h-2.5 w-28 animate-pulse rounded bg-neutral-100" />
                   </div>
                   <div class="h-5 w-14 animate-pulse rounded-full bg-neutral-100" />
-                  <div class="justify-self-end h-3 w-12 animate-pulse rounded bg-neutral-100" />
+                  <div class="h-3 w-12 animate-pulse justify-self-end rounded bg-neutral-100" />
                 </div>
               )}
             </For>
@@ -1014,88 +1006,49 @@ export function SpaceMembers() {
             <Index each={inviteRows()}>
               {(row) => (
                 <div class="grid grid-cols-[7.5rem_minmax(0,1fr)_2.5rem] items-center gap-y-3 px-4 py-3 lg:grid-cols-[6.5rem_minmax(12rem,2fr)_minmax(8rem,1fr)_7.5rem_7rem_2.5rem]">
-                  <div class="relative col-start-2 row-start-1 min-w-0 lg:col-start-2 lg:row-start-1">
-                    <Show when={row().type !== "token"}>
-                      <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center">
-                        <Show
-                          when={inviteSuggestions().find(
-                            (suggestion) =>
-                              suggestion.email.toLowerCase() ===
-                              row().value.trim().toLowerCase(),
-                          )}
-                          fallback={<Icon class="h-4 w-4 text-neutral-400" name="people" />}
-                        >
-                          {(suggestion) => (
-                            <vektor-avatar
-                              size="24"
-                              attr:user-id={suggestion().id}
-                              prop:user={suggestion()}
-                            />
-                          )}
-                        </Show>
-                      </div>
-                    </Show>
-                    <input
-                      value={row().value}
-                      onInput={(event) => {
-                        updateInviteRow(row().id, { value: event.currentTarget.value });
-                        setSuggestionRowId(row().type === "user" ? row().id : null);
-                      }}
-                      onFocus={() => row().type === "user" && setSuggestionRowId(row().id)}
-                      onBlur={() =>
-                        setTimeout(() => {
-                          if (suggestionRowId() === row().id) setSuggestionRowId(null);
-                        }, 150)
-                      }
-                      type={row().type === "user" ? "email" : "text"}
-                      autocomplete="off"
-                      placeholder={
-                        row().type === "user"
-                          ? t("person@example.com")
-                          : row().type === "group"
-                            ? t("e.g., admins, developers")
-                            : t("e.g., CI deploy token")
-                      }
-                      aria-label={t("Member")}
-                      class={`focus-ring h-9 w-full rounded-md rounded-l-none border border-neutral-200 border-l-0 bg-background py-0 pr-2.5 text-neutral-900 text-size-medium ${row().type === "token" ? "pl-2.5" : "pl-10"}`}
-                    />
+                  <div class="col-start-2 row-start-1 min-w-0 lg:col-start-2 lg:row-start-1">
                     <Show
-                      when={
-                        row().type === "user" &&
-                        suggestionRowId() === row().id &&
-                        filteredInviteSuggestions(row()).length > 0
+                      when={row().type === "user"}
+                      fallback={
+                        <input
+                          value={row().value}
+                          onInput={(event) =>
+                            updateInviteRow(row().id, {
+                              value: event.currentTarget.value,
+                            })
+                          }
+                          type="text"
+                          autocomplete="off"
+                          placeholder={
+                            row().type === "group"
+                              ? t("e.g., admins, developers")
+                              : t("e.g., CI deploy token")
+                          }
+                          aria-label={t("Member")}
+                          class="focus-ring h-9 w-full rounded-md rounded-l-none border border-neutral-200 border-l-0 bg-background px-2.5 py-0 text-neutral-900 text-size-medium"
+                        />
                       }
                     >
-                      <ul class="absolute z-10 mt-1 max-h-52 w-full overflow-y-auto rounded-md border border-neutral-200 bg-background py-1 shadow-lg">
-                        <For each={filteredInviteSuggestions(row())}>
-                          {(suggestion) => (
-                            <li>
-                              <button
-                                type="button"
-                                class="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left hover:bg-neutral-50"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  selectSuggestion(row().id, suggestion);
-                                }}
-                              >
-                                <vektor-avatar
-                                  size="28"
-                                  attr:user-id={suggestion.id}
-                                  prop:user={suggestion}
-                                />
-                                <span class="min-w-0">
-                                  <span class="block truncate text-neutral-900 text-size-medium">
-                                    {suggestion.name}
-                                  </span>
-                                  <span class="block truncate text-neutral-400 text-size-small">
-                                    {suggestion.email}
-                                  </span>
-                                </span>
-                              </button>
-                            </li>
-                          )}
-                        </For>
-                      </ul>
+                      <FilterSelect
+                        id={`member-person-${row().id}`}
+                        class="h-9 rounded-l-none border-l-0"
+                        value={row().value}
+                        options={personOptions(row())}
+                        placeholder={t("person@example.com")}
+                        filterPlaceholder={t("Search people or type an email…")}
+                        fallbackIcon={() => (
+                          <Icon class="h-4 w-4 text-neutral-400" name="people" />
+                        )}
+                        customValue={(query) =>
+                          query.includes("@")
+                            ? {
+                                value: query,
+                                label: t("Invite {email}").replace("{email}", query),
+                              }
+                            : null
+                        }
+                        onChange={(value) => updateInviteRow(row().id, { value })}
+                      />
                     </Show>
                   </div>
 
@@ -1167,7 +1120,9 @@ export function SpaceMembers() {
                         class="focus-ring w-full rounded-md border border-neutral-200 bg-background px-2.5 py-1.5 text-neutral-900 text-size-small"
                       >
                         <option value="single">{t("This document")}</option>
-                        <option value="tree">{t("This document and child documents")}</option>
+                        <option value="tree">
+                          {t("This document and child documents")}
+                        </option>
                       </select>
                     </Show>
                   </div>
@@ -1198,14 +1153,18 @@ export function SpaceMembers() {
                         </>
                       }
                     >
-                      <option value={Permission.VIEWER}>{roleLabel("viewer", lang)}</option>
-                      <option value={Permission.EDITOR}>{roleLabel("editor", lang)}</option>
+                      <option value={Permission.VIEWER}>
+                        {roleLabel("viewer", lang)}
+                      </option>
+                      <option value={Permission.EDITOR}>
+                        {roleLabel("editor", lang)}
+                      </option>
                       <option value="extensions">{t("Extensions")}</option>
                     </Show>
                   </select>
 
                   <div
-                    class={`col-start-3 row-start-1 flex items-center justify-self-end self-center lg:row-start-1 ${row().type === "token" ? "lg:col-span-1 lg:col-start-6" : "lg:col-span-2 lg:col-start-5"}`}
+                    class={`col-start-3 row-start-1 flex items-center self-center justify-self-end lg:row-start-1 ${row().type === "token" ? "lg:col-span-1 lg:col-start-6" : "lg:col-span-2 lg:col-start-5"}`}
                   >
                     <button
                       type="button"
@@ -1267,12 +1226,7 @@ export function SpaceMembers() {
           </div>
         </form>
 
-        <Show
-          when={
-            !isLoading() &&
-            !loadingUsers()
-          }
-        >
+        <Show when={!isLoading() && !loadingUsers()}>
           <div class="overflow-x-auto rounded-t-md border border-neutral-100">
             <table class="min-w-full text-size-medium">
               <thead class="bg-neutral-50">
@@ -1393,16 +1347,14 @@ export function SpaceMembers() {
                           <td colspan="5" class="p-0">
                             <div class="border-neutral-200 border-l-2 bg-neutral-50/60">
                               <Show when={member.spaceGrant}>
-                                {(spaceGrant) => (
-                                  <MemberGrantRow grant={spaceGrant()} />
-                                )}
+                                {(spaceGrant) => <MemberGrantRow grant={spaceGrant()} />}
                               </Show>
                               <Show when={getScopedGrants(member).length > 0}>
                                 <details
                                   open={!member.spaceGrant}
                                   class="group border-neutral-100 border-t"
                                 >
-                                  <summary class="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-100/50 py-2 pl-6 pr-4 text-size-small hover:bg-neutral-100 sm:pl-10">
+                                  <summary class="flex cursor-pointer list-none items-center justify-between gap-3 bg-neutral-100/50 py-2 pr-4 pl-6 text-size-small hover:bg-neutral-100 sm:pl-10">
                                     <span class="flex items-center gap-2 font-medium text-neutral-700">
                                       <span
                                         aria-hidden="true"

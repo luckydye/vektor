@@ -33,10 +33,12 @@ import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
 import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
@@ -145,6 +147,14 @@ export function DocumentPageView(props: Props) {
     },
     enabled: createMemo(() => !isDraft() && !!currentSpace()?.id && !!doc()?.id),
   });
+
+  // A move changes the trail of every document under it, not just the one that
+  // moved, so any tree change refetches rather than only a matching id.
+  useSync(
+    createMemo(() => currentSpace()?.id ?? null),
+    [realtimeTopics.documentTree],
+    () => void breadcrumbsQuery.refetch(),
+  );
 
   const categoriesQuery = useQuery({
     queryKey: createMemo(() => ["categories", currentSpace()?.id]),

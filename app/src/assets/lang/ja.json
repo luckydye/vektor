@@ -712,5 +712,7 @@
   "Link password": "リンクのパスワード",
   "Install an extension that provides an integration.": "連携機能を提供する拡張機能をインストールしてください。",
   "Repository": "リポジトリ",
-  "Host code with git, and browse it here.": "Git でコードをホストし、ここで閲覧できます。"
+  "Host code with git, and browse it here.": "Git でコードをホストし、ここで閲覧できます。",
+  "Search people or type an email…": "ユーザーを検索、またはメールアドレスを入力…",
+  "Invite {email}": "{email} を招待"
 }

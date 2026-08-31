@@ -3,17 +3,22 @@ import {
   createMemo,
   createSignal,
   For,
+  type JSX,
   on,
   onCleanup,
   Show,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { Icon } from "./Icon.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
+import { Icon } from "./Icon.tsx";
 
 export interface FilterSelectOption {
   value: string;
   label: string;
+  /** Second line under the label, searched along with it. */
+  description?: string;
+  /** Leading content such as an avatar, shown in the row and in the trigger. */
+  icon?: () => JSX.Element;
   /** Heading the option is listed under; ungrouped options come first. */
   group?: string;
 }
@@ -25,6 +30,14 @@ interface Props {
   options: FilterSelectOption[];
   placeholder?: string;
   filterPlaceholder?: string;
+  /** Leading content for the trigger while no listed option is selected. */
+  fallbackIcon?: () => JSX.Element;
+  /**
+   * Offers the typed text as its own entry, so a value the options do not hold
+   * yet — the email of someone who is not a member — can still be picked.
+   * Return null to reject the text.
+   */
+  customValue?: (query: string) => FilterSelectOption | null;
   onChange: (value: string) => void;
 }
 
@@ -38,6 +51,12 @@ const VISIBLE_LIMIT = 50;
 const PANEL_MAX_HEIGHT = 320;
 const PANEL_MIN_HEIGHT = 140;
 const PANEL_GAP = 4;
+/**
+ * The panel's own border plus padding. The filter input is inset by this much,
+ * so the panel is grown and shifted by it for the input to land exactly on the
+ * trigger it replaces.
+ */
+const PANEL_INSET = 5;
 
 /**
  * A select whose options are searched rather than scrolled. The panel is
@@ -51,12 +70,21 @@ export function FilterSelect(props: Props) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [query, setQuery] = createSignal("");
   const [activeIndex, setActiveIndex] = createSignal(0);
-  const [box, setBox] = createSignal({ left: 0, top: 0, width: 0, maxHeight: 0 });
+  const [box, setBox] = createSignal({
+    left: 0,
+    top: 0,
+    width: 0,
+    inputHeight: 0,
+    maxHeight: 0,
+  });
 
   let triggerElement: HTMLButtonElement | undefined;
   let panelElement: HTMLDivElement | undefined;
   let inputElement: HTMLInputElement | undefined;
-  let activeElement: HTMLButtonElement | undefined;
+  /** By index, so the active row is found again after the list re-renders. */
+  const itemElements: HTMLButtonElement[] = [];
+  /** Only keyboard moves scroll; a hover-driven move is already in view. */
+  let scrollActiveIntoView = false;
 
   const selected = createMemo(() =>
     props.options.find((option) => option.value === props.value),
@@ -65,10 +93,28 @@ export function FilterSelect(props: Props) {
   const matches = createMemo(() => {
     const needle = query().trim().toLowerCase();
     if (!needle) return props.options;
-    return props.options.filter((option) => option.label.toLowerCase().includes(needle));
+    return props.options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(needle) ||
+        !!option.description?.toLowerCase().includes(needle),
+    );
   });
 
-  const visible = createMemo(() => matches().slice(0, VISIBLE_LIMIT));
+  /** The typed text as an entry of its own, once it is not already listed. */
+  const custom = createMemo(() => {
+    const needle = query().trim();
+    if (!needle || !props.customValue) return null;
+    const option = props.customValue(needle);
+    if (!option) return null;
+    if (props.options.some((existing) => existing.value === option.value)) return null;
+    return option;
+  });
+
+  const visible = createMemo(() => {
+    const listed = matches().slice(0, VISIBLE_LIMIT);
+    const typed = custom();
+    return typed ? [...listed, typed] : listed;
+  });
 
   const groups = createMemo(() => {
     const byGroup = new Map<
@@ -91,22 +137,27 @@ export function FilterSelect(props: Props) {
   function measure() {
     const rect = triggerElement?.getBoundingClientRect();
     if (!rect) return;
-    const room = window.innerHeight - rect.top - PANEL_GAP;
+    const left = rect.left - PANEL_INSET;
+    const width = rect.width + PANEL_INSET * 2;
+    const top = rect.top - PANEL_INSET;
+    const room = window.innerHeight - top - PANEL_GAP;
     // Only a trigger too close to the bottom edge pulls the panel off it.
     if (room >= PANEL_MIN_HEIGHT) {
       setBox({
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
+        left,
+        top,
+        width,
+        inputHeight: rect.height,
         maxHeight: Math.min(PANEL_MAX_HEIGHT, room),
       });
       return;
     }
     const maxHeight = Math.min(PANEL_MAX_HEIGHT, window.innerHeight - PANEL_GAP * 2);
     setBox({
-      left: rect.left,
+      left,
       top: Math.max(PANEL_GAP, window.innerHeight - PANEL_GAP - maxHeight),
-      width: rect.width,
+      width,
+      inputHeight: rect.height,
       maxHeight,
     });
   }
@@ -124,7 +175,11 @@ export function FilterSelect(props: Props) {
 
   createEffect(on(matches, () => setActiveIndex(0)));
   createEffect(
-    on(activeIndex, () => activeElement?.scrollIntoView({ block: "nearest" })),
+    on(activeIndex, (index) => {
+      if (!scrollActiveIntoView) return;
+      scrollActiveIntoView = false;
+      itemElements[index]?.scrollIntoView({ block: "nearest" });
+    }),
   );
 
   createEffect(() => {
@@ -158,6 +213,7 @@ export function FilterSelect(props: Props) {
       const count = visible().length;
       if (count === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
+      scrollActiveIntoView = true;
       setActiveIndex((index) => (index + step + count) % count);
       return;
     }
@@ -189,14 +245,20 @@ export function FilterSelect(props: Props) {
         // around the panel's inset edge.
         classList={{ invisible: isOpen() }}
       >
+        <Show when={selected()?.icon ?? props.fallbackIcon}>
+          {(icon) => <span class="flex flex-none items-center">{icon()()}</span>}
+        </Show>
         <span
           class="min-w-0 flex-1 truncate text-size-medium"
           classList={{
-            "text-neutral-900": !!selected(),
-            "text-neutral-400": !selected(),
+            "text-neutral-900": !!selected() || !!props.value,
+            "text-neutral-400": !selected() && !props.value,
           }}
         >
-          {selected()?.label ?? props.placeholder ?? t("Select…")}
+          {selected()?.label ?? props.value ?? ""}
+          <Show when={!selected() && !props.value}>
+            {props.placeholder ?? t("Select…")}
+          </Show>
         </span>
         <Icon class="h-4 w-4 flex-none text-neutral-400" name="chevron-down" />
       </button>
@@ -213,7 +275,10 @@ export function FilterSelect(props: Props) {
               "max-height": `${box().maxHeight}px`,
             }}
           >
-            <div class="flex flex-none items-center gap-5xs rounded-md border border-black/15 bg-background px-4xs py-5xs">
+            <div
+              class="flex flex-none items-center gap-5xs rounded-md border border-black/15 bg-background px-4xs"
+              style={{ height: `${box().inputHeight}px` }}
+            >
               <Icon class="h-4 w-4 flex-none text-neutral-400" name="search" />
               <input
                 ref={inputElement}
@@ -223,7 +288,7 @@ export function FilterSelect(props: Props) {
                 type="text"
                 autocomplete="off"
                 placeholder={props.filterPlaceholder ?? t("Search…")}
-                class="min-w-0 flex-1 bg-transparent font-normal text-neutral-950 text-size-normal outline-none placeholder:opacity-40"
+                class="min-w-0 flex-1 bg-transparent font-normal text-neutral-950 text-size-medium outline-none placeholder:opacity-40"
               />
             </div>
 
@@ -250,8 +315,7 @@ export function FilterSelect(props: Props) {
                             <li>
                               <button
                                 ref={(element) => {
-                                  if (entry.index === activeIndex())
-                                    activeElement = element;
+                                  itemElements[entry.index] = element;
                                 }}
                                 type="button"
                                 // Keeps focus in the filter input, so the panel
@@ -259,13 +323,29 @@ export function FilterSelect(props: Props) {
                                 onMouseDown={(event) => event.preventDefault()}
                                 onMouseEnter={() => setActiveIndex(entry.index)}
                                 onClick={() => select(entry.option)}
-                                class="block w-full truncate rounded-md px-4xs py-4xs text-left font-normal text-neutral-950 text-size-normal leading-[1rem] transition-colors"
+                                class="flex w-full items-center gap-4xs rounded-md px-4xs py-4xs text-left font-normal text-neutral-950 text-size-normal transition-colors"
                                 classList={{
                                   "bg-primary-50": entry.index === activeIndex(),
                                   "font-medium": entry.option.value === props.value,
                                 }}
                               >
-                                {entry.option.label}
+                                <Show when={entry.option.icon}>
+                                  {(icon) => (
+                                    <span class="flex flex-none items-center">
+                                      {icon()()}
+                                    </span>
+                                  )}
+                                </Show>
+                                <span class="min-w-0 flex-1">
+                                  <span class="block truncate leading-[1rem]">
+                                    {entry.option.label}
+                                  </span>
+                                  <Show when={entry.option.description}>
+                                    <span class="mt-5xs block truncate text-neutral-400 text-size-small">
+                                      {entry.option.description}
+                                    </span>
+                                  </Show>
+                                </span>
                               </button>
                             </li>
                           )}
