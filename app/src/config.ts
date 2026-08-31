@@ -52,6 +52,26 @@ export function config() {
        * a developer accumulated in the working copy.
        */
       DATA_DIR: process.env.VEKTOR_DATA_DIR,
+
+      /**
+       * Bucket for uploaded files. Set it to store them in S3-compatible object
+       * storage instead of under DATA_DIR; everything below is then read too.
+       */
+      S3_BUCKET: process.env.VEKTOR_S3_BUCKET,
+      /** Endpoint of a non-AWS S3 service (MinIO, RustFS, R2, Ceph). */
+      S3_ENDPOINT: process.env.VEKTOR_S3_ENDPOINT,
+      S3_REGION: process.env.VEKTOR_S3_REGION,
+      /** Falls back to the instance/task credentials Bun's S3 client finds. */
+      S3_ACCESS_KEY_ID: process.env.VEKTOR_S3_ACCESS_KEY_ID,
+      S3_SECRET_ACCESS_KEY: process.env.VEKTOR_S3_SECRET_ACCESS_KEY,
+      S3_SESSION_TOKEN: process.env.VEKTOR_S3_SESSION_TOKEN,
+      /**
+       * Set to "1"/"true" for `bucket.host` addressing. Path-style is the
+       * default because self-hosted services generally only speak it.
+       */
+      S3_VIRTUAL_HOSTED_STYLE: process.env.VEKTOR_S3_VIRTUAL_HOSTED_STYLE,
+      /** Key prefix, for a bucket shared with something else. */
+      S3_PREFIX: process.env.VEKTOR_S3_PREFIX,
       NODE_ENV: process.env.NODE_ENV,
 
       /**
@@ -70,7 +90,7 @@ export function config() {
       RATE_LIMIT_WINDOW: process.env.VEKTOR_RATE_LIMIT_WINDOW,
       /**
        * Killswitch: comma-separated rate limit keys to refuse outright, as they
-       * appear in the 429 log line (`ip:<addr>`, `token:<hash>`).
+       * appear in the 429 log line (`ip:<addr>`, `user:<id>`).
        */
       RATE_LIMIT_BLOCK: process.env.VEKTOR_RATE_LIMIT_BLOCK,
       /**
@@ -86,6 +106,12 @@ export function config() {
        * closed; the next request for one reopens it.
        */
       MAX_OPEN_SPACE_DBS: process.env.VEKTOR_MAX_OPEN_SPACE_DBS,
+      /**
+       * How long a deleted space's database and uploads are kept before they
+       * are purged, in days; `30` when unset. `0` purges as part of the delete,
+       * which leaves no window to recover a space deleted by mistake.
+       */
+      SPACE_RETENTION_DAYS: process.env.VEKTOR_SPACE_RETENTION_DAYS,
 
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
@@ -175,23 +201,6 @@ export function config() {
       GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
       GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
 
-      GITLAB_OAUTH_BASE_URL: process.env.VEKTOR_GITLAB_OAUTH_BASE_URL,
-      GITLAB_OAUTH_CLIENT_ID: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_ID,
-      GITLAB_OAUTH_CLIENT_SECRET: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_SECRET,
-      GITLAB_OAUTH_SCOPES: process.env.VEKTOR_GITLAB_OAUTH_SCOPES,
-      GITLAB_OAUTH_AUTHORIZATION_URL: process.env.VEKTOR_GITLAB_OAUTH_AUTHORIZATION_URL,
-      GITLAB_OAUTH_TOKEN_URL: process.env.VEKTOR_GITLAB_OAUTH_TOKEN_URL,
-      GITLAB_OAUTH_USERINFO_URL: process.env.VEKTOR_GITLAB_OAUTH_USERINFO_URL,
-
-      YOUTRACK_OAUTH_CLIENT_ID: process.env.VEKTOR_YOUTRACK_OAUTH_CLIENT_ID,
-      YOUTRACK_OAUTH_CLIENT_SECRET: process.env.VEKTOR_YOUTRACK_OAUTH_CLIENT_SECRET,
-      YOUTRACK_OAUTH_SCOPES: process.env.VEKTOR_YOUTRACK_OAUTH_SCOPES,
-      YOUTRACK_OAUTH_BASE_URL: process.env.VEKTOR_YOUTRACK_OAUTH_BASE_URL,
-      YOUTRACK_OAUTH_AUTHORIZATION_URL:
-        process.env.VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL,
-      YOUTRACK_OAUTH_TOKEN_URL: process.env.VEKTOR_YOUTRACK_OAUTH_TOKEN_URL,
-      YOUTRACK_OAUTH_USERINFO_URL: process.env.VEKTOR_YOUTRACK_OAUTH_USERINFO_URL,
-
       SECRETS_ENCRYPTION_KEY: process.env.VEKTOR_SECRETS_ENCRYPTION_KEY,
 
       /**
@@ -223,6 +232,14 @@ export function config() {
       OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
 
       /**
+       * Base URL of the extension store this server browses and installs from.
+       * Defaults to the official registry; set it empty to turn the in-app store
+       * off, or point it at a mirror or a private registry. Only the origin is
+       * used, and every registry request is pinned to it.
+       */
+      MARKETPLACE_URL: process.env.VEKTOR_MARKETPLACE_URL,
+
+      /**
        * Comma-separated list of extension sources the server will accept.
        * Valid values: upload, marketplace, system.
        * Defaults to all sources when unset.
@@ -242,7 +259,38 @@ export function config() {
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
     GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
+    MARKETPLACE_ENABLED: publicEnv.VEKTOR_MARKETPLACE_ENABLED,
   } as const;
+}
+
+/** Env var suffix for a provider id: `my-tracker` reads VEKTOR_OAUTH_MY_TRACKER_*. */
+function integrationEnvPrefix(providerId: string): string {
+  return `VEKTOR_OAUTH_${providerId.toUpperCase().replace(/-/g, "_")}`;
+}
+
+/**
+ * Operator-supplied credentials for an extension-declared OAuth provider. The
+ * provider itself comes from the extension manifest, so these names are derived
+ * from its id rather than enumerated in `config()`.
+ */
+export function integrationOAuthEnv(providerId: string): {
+  clientId: string;
+  clientSecret: string;
+  baseUrl: string;
+  scopes: string[];
+  envPrefix: string;
+} {
+  const env = globalThis.process?.env ?? {};
+  const envPrefix = integrationEnvPrefix(providerId);
+  const scopesRaw = env[`${envPrefix}_SCOPES`] ?? "";
+
+  return {
+    clientId: (env[`${envPrefix}_CLIENT_ID`] ?? "").trim(),
+    clientSecret: (env[`${envPrefix}_CLIENT_SECRET`] ?? "").trim(),
+    baseUrl: (env[`${envPrefix}_BASE_URL`] ?? "").trim(),
+    scopes: scopesRaw.split(/[\s,]+/).filter(Boolean),
+    envPrefix,
+  };
 }
 
 /**
@@ -283,7 +331,35 @@ export function getPublicEnv(): App.PublicEnv {
         : undefined,
     VEKTOR_NO_AUTH: appConfig.NO_AUTH,
     VEKTOR_EXTENSION_ALLOWED_SOURCES: appConfig.EXTENSION_ALLOWED_SOURCES,
+    // Only whether a store exists reaches the browser: the UI needs it to decide
+    // whether to offer the store tab, and the server proxies every actual call.
+    VEKTOR_MARKETPLACE_ENABLED: marketplaceOrigin() ? "1" : undefined,
   };
+}
+
+/**
+ * The registry a server browses when the operator names none.
+ *
+ * A store is just an HTTP contract (see `docs/extension-registry.md`), so
+ * anyone may run one and `VEKTOR_MARKETPLACE_URL` points a server at it. This
+ * default is only which store ships configured — the canonical host, not the
+ * apex that redirects to it.
+ */
+export const DEFAULT_MARKETPLACE_URL = "https://www.vektorapp.org";
+
+/**
+ * Origin of the configured extension store, or null when the operator turned it
+ * off with an empty `VEKTOR_MARKETPLACE_URL`. Only the origin survives: every
+ * registry request is pinned to it, so a path here would be misleading.
+ */
+export function marketplaceOrigin(): string | null {
+  const value = (config().MARKETPLACE_URL ?? DEFAULT_MARKETPLACE_URL).trim();
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
 }
 
 export function getLocalOrigin(): string {

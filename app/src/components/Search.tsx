@@ -16,6 +16,9 @@ import { api, type PropertyFilter } from "#api/client.ts";
 import { useInfiniteQuery, useQuery } from "#composeables/query.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { canonicalPropertyKey, DOCUMENT_TYPE_FILTER_KEY } from "#documents/properties.ts";
+import { mergeFilters, parseSearchQuery } from "#search/query.ts";
 import { brandTextColor } from "#utils/color.ts";
 import { t as translate } from "#utils/lang.ts";
 import { DocumentGroupedList, type DocumentListItem } from "./DocumentGroupedList.tsx";
@@ -23,8 +26,8 @@ import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
 import { SearchFilters } from "./SearchFilters.tsx";
+import { type QueryProperty, SearchQueryInput } from "./SearchQueryInput.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
-import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   spaceId: string;
@@ -97,6 +100,32 @@ export function Search(props: Props) {
   const [searchQuery, setSearchQuery] = createSignal("");
   const [activeFilters, setActiveFilters] = createSignal<PropertyFilter[]>([]);
   const [hasSearched, setHasSearched] = createSignal(false);
+
+  // The box holds both halves of a query: `key:value` terms filter, the rest is
+  // full text. Everything downstream works on the split, never the raw string.
+  const parsedQuery = createMemo(() => parseSearchQuery(searchQuery()));
+  const queryFilters = createMemo(() =>
+    mergeFilters(activeFilters(), parsedQuery().filters),
+  );
+
+  // The same key the filter row reads, so the two share one request.
+  const { data: spaceProperties } = useQuery({
+    queryKey: createMemo(() => ["properties", props.spaceId]),
+    queryFn: () => api.properties.get(props.spaceId),
+  });
+
+  // What the box completes a filter term from. `_type` is offered under the name
+  // the query syntax spells it with; the other internal keys are not offered.
+  const completionProperties = createMemo<QueryProperty[]>(() =>
+    (spaceProperties() ?? [])
+      .filter((property) => canonicalPropertyKey(property.name) !== "title")
+      .map((property) =>
+        property.name === DOCUMENT_TYPE_FILTER_KEY
+          ? { name: "type", values: property.values }
+          : { name: property.name, values: property.values },
+      )
+      .filter((property) => !property.name.startsWith("_")),
+  );
 
   const [committedQuery, setCommittedQuery] = createSignal("");
   const [committedFilters, setCommittedFilters] = createSignal<PropertyFilter[]>([]);
@@ -356,18 +385,21 @@ export function Search(props: Props) {
           } catch {}
         }
 
+        // `q` is kept as it was typed, filter terms and all, so a shared link
+        // reopens the box the reader left rather than a rewritten version of it.
+        const parsed = parseSearchQuery(queryParam ?? "");
         setSearchQuery(queryParam ?? "");
         setActiveFilters(filters);
-        setCommittedQuery(queryParam ?? "");
-        setCommittedFilters(filters);
+        setCommittedQuery(parsed.text);
+        setCommittedFilters(mergeFilters(filters, parsed.filters));
         setHasSearched(Boolean(queryParam || filtersParam));
       },
     ),
   );
 
   const handleSearch = () => {
-    const hasQuery = searchQuery().trim().length > 0;
-    const hasFilters = activeFilters().length > 0;
+    const hasQuery = parsedQuery().text.length > 0;
+    const hasFilters = queryFilters().length > 0;
 
     if (!hasQuery && !hasFilters) {
       setHasSearched(false);
@@ -377,8 +409,8 @@ export function Search(props: Props) {
       return;
     }
 
-    setCommittedQuery(searchQuery());
-    setCommittedFilters([...activeFilters()]);
+    setCommittedQuery(parsedQuery().text);
+    setCommittedFilters(queryFilters());
     setHasSearched(true);
     updateUrlParams();
   };
@@ -397,7 +429,7 @@ export function Search(props: Props) {
   };
 
   const canSearch = createMemo(
-    () => searchQuery().trim().length > 0 || activeFilters().length > 0,
+    () => parsedQuery().text.length > 0 || queryFilters().length > 0,
   );
 
   // `isFetching`, not the pager's `isLoading`: that one covers the first search
@@ -548,27 +580,25 @@ export function Search(props: Props) {
         </Show>
 
         <div class="mb-3 flex gap-3">
-          <div class="relative flex-1">
+          <div class="relative flex-1 rounded-lg bg-background">
             <Icon
-              class="pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-neutral-400"
+              class="pointer-events-none absolute top-1/2 left-4 z-10 h-5 w-5 -translate-y-1/2 text-neutral-400"
               name="search"
             />
-            <input
+            <SearchQueryInput
               value={searchQuery()}
-              onInput={(e) => setSearchQuery(e.currentTarget.value)}
-              type="text"
+              segments={parsedQuery().segments}
+              properties={completionProperties()}
               placeholder={t("Find anything…")}
-              class="w-full rounded-lg border border-neutral-100 bg-background py-3 pr-12 pl-12 text-base focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
-              onKeyDown={(event) => {
-                if (event.key === "Enter") handleSearch();
-              }}
+              onInput={setSearchQuery}
+              onEnter={handleSearch}
             />
             {/* Neither control locks while a search runs: a query in flight is no
                 reason to stop the reader typing the next one or clearing this
                 one. */}
             <Show when={searchQuery()}>
               <IconButton
-                class="absolute top-1/2 right-3 -translate-y-1/2"
+                class="absolute top-1/2 right-3 z-10 -translate-y-1/2"
                 icon="cancel"
                 label={t("Clear search")}
                 onClick={clear}
@@ -727,12 +757,12 @@ export function Search(props: Props) {
           </h3>
           <p class="mb-8 text-neutral-600">
             <Show
-              when={searchQuery().trim()}
+              when={parsedQuery().text}
               fallback={<span>{t("No documents match your filters")}</span>}
             >
               <span>
                 {noMatchText()[0]}
-                <span class="font-semibold">{searchQuery()}</span>
+                <span class="font-semibold">{parsedQuery().text}</span>
                 {noMatchText()[1]}
               </span>
             </Show>

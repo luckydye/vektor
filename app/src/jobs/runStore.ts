@@ -1,7 +1,6 @@
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
-import { getSpaceDb } from "#db/client/db.ts";
 import { many } from "#db/client/query.ts";
-import { openSpaceStore } from "#db/client/store.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import {
@@ -221,32 +220,43 @@ function runProperties(
   ];
 }
 
-async function persistRunToDocument(runId: string, run: RunState): Promise<void> {
-  try {
-    const db = await getSpaceDb(run.spaceId);
-    const now = new Date();
-    await db
-      .update(document)
-      .set({ updatedAt: now })
-      .where(and(eq(document.id, runId), eq(document.type, workflowRunDocumentType)));
+async function writeRunToDocument(
+  store: SpaceStore,
+  runId: string,
+  run: RunState,
+): Promise<void> {
+  const now = new Date();
+  await store.db
+    .update(document)
+    .set({ updatedAt: now })
+    .where(and(eq(document.id, runId), eq(document.type, workflowRunDocumentType)));
 
-    for (const entry of runProperties(run)) {
-      await db
-        .insert(property)
-        .values({
-          id: createId("property"),
-          documentId: runId,
-          key: entry.key,
-          value: entry.value,
-          type: entry.type,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [property.documentId, property.key],
-          set: { value: entry.value, type: entry.type, updatedAt: now },
-        });
-    }
+  for (const entry of runProperties(run)) {
+    await store.db
+      .insert(property)
+      .values({
+        id: createId("property"),
+        documentId: runId,
+        key: entry.key,
+        value: entry.value,
+        type: entry.type,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [property.documentId, property.key],
+        set: { value: entry.value, type: entry.type, updatedAt: now },
+      });
+  }
+}
+
+async function persistRunToDocument(
+  store: SpaceStore,
+  runId: string,
+  run: RunState,
+): Promise<void> {
+  try {
+    await store.tx((tx) => writeRunToDocument(tx, runId, run));
   } catch (error) {
     appLogger.warn("Failed to persist workflow run document", { runId, error });
   }
@@ -262,7 +272,9 @@ function trackWrite(write: Promise<void>): void {
 
 function persistNow(runId: string, run: RunState): void {
   const previous = writeChains.get(runId) ?? Promise.resolve();
-  const write = previous.then(() => persistRunToDocument(runId, run));
+  const write = previous.then(async () =>
+    persistRunToDocument(await openSpaceStore(run.spaceId), runId, run),
+  );
   writeChains.set(runId, write);
   const tracked = write.finally(() => {
     if (writeChains.get(runId) === write) writeChains.delete(runId);
@@ -301,10 +313,10 @@ function decodeRunListCursor(cursor: string): { createdAt: Date; id: string } | 
 }
 
 async function listStoredRuns(
-  spaceId: string,
+  store: SpaceStore,
   options?: { documentId?: string | null; cursor?: string | null; limit?: number },
 ): Promise<{ runs: Array<{ runId: string; run: RunState }>; nextCursor: string | null }> {
-  const db = await getSpaceDb(spaceId);
+  const spaceId = store.spaceId;
   const conditions = [eq(document.type, workflowRunDocumentType)];
   if (options?.documentId) conditions.push(eq(document.parentId, options.documentId));
 
@@ -320,7 +332,7 @@ async function listStoredRuns(
   const limit = options?.limit ?? 50;
   const fetchLimit = limit + 1;
   const rows = await many(
-    db
+    store.db
       .select({ id: document.id, createdAt: document.createdAt })
       .from(document)
       .where(and(...conditions))
@@ -336,7 +348,7 @@ async function listStoredRuns(
 
   const runs = await Promise.all(
     pageRows.map(async ({ id }) => {
-      const doc = await getDocument(await openSpaceStore(spaceId), id);
+      const doc = await getDocument(store, id);
       const run = doc ? deserializeRun(id, doc) : undefined;
       return run ? { runId: id, run: { ...run, spaceId } } : undefined;
     }),
@@ -355,12 +367,13 @@ function applyRecovery(run: RunState, recoveredAt: Date): void {
   run.completedAt = recoveredAt;
 }
 
-async function recoverSpace(spaceId: string): Promise<void> {
+async function recoverSpace(store: SpaceStore): Promise<void> {
+  const { spaceId } = store;
   try {
     const recoveredAt = new Date();
     let cursor: string | null | undefined;
     do {
-      const { runs, nextCursor } = await listStoredRuns(spaceId, {
+      const { runs, nextCursor } = await listStoredRuns(store, {
         cursor,
         limit: RUN_LIST_RECOVERY_PAGE_SIZE,
       });
@@ -372,7 +385,7 @@ async function recoverSpace(spaceId: string): Promise<void> {
           continue;
         }
         applyRecovery(run, recoveredAt);
-        await persistRunToDocument(runId, run);
+        await persistRunToDocument(store, runId, run);
       }
       cursor = nextCursor;
     } while (cursor);
@@ -385,24 +398,26 @@ async function recoverSpace(spaceId: string): Promise<void> {
 }
 
 /** Repair interrupted script runs for a space once, before serving reads. */
-export async function ensureSpaceRecovered(spaceId: string): Promise<void> {
+export async function ensureSpaceRecovered(store: SpaceStore): Promise<void> {
+  const { spaceId } = store;
   if (recoveredSpaces.has(spaceId)) return;
   let promise = recoveryPromises.get(spaceId);
   if (!promise) {
-    promise = recoverSpace(spaceId);
+    promise = recoverSpace(store);
     recoveryPromises.set(spaceId, promise);
   }
   await promise;
 }
 
 export async function createRun(
-  spaceId: string,
+  store: SpaceStore,
   documentId: string,
   createdBy: string,
   initiatedByUserId: string | null = null,
   sourceExtensionId: string | null = null,
   runtimeInputs: Record<string, unknown> = {},
 ): Promise<string> {
+  const { spaceId } = store;
   const runId = createId("document");
   const now = new Date();
   const run: RunState = {
@@ -420,29 +435,25 @@ export async function createRun(
     createdAt: now,
     logs: [],
   };
-  const db = await getSpaceDb(spaceId);
-  await assertDocumentCanParent(
-    await openSpaceStore(spaceId),
-    documentId,
-    workflowRunDocumentType,
-  );
-  await db.insert(document).values({
-    id: runId,
-    slug: `workflow-run-${runId.slice("doc_".length)}`,
-    type: workflowRunDocumentType,
-    archived: true,
-    readonly: true,
-    content: "",
-    currentRev: 0,
-    publishedRev: null,
-    parentId: documentId,
-    createdAt: now,
-    updatedAt: now,
-    createdBy,
+  await store.tx(async (tx) => {
+    await assertDocumentCanParent(tx, documentId, workflowRunDocumentType);
+    await tx.db.insert(document).values({
+      id: runId,
+      slug: `workflow-run-${runId.slice("doc_".length)}`,
+      type: workflowRunDocumentType,
+      archived: true,
+      readonly: true,
+      content: "",
+      currentRev: 0,
+      publishedRev: null,
+      parentId: documentId,
+      createdAt: now,
+      updatedAt: now,
+      createdBy,
+    });
+    await writeRunToDocument(tx, runId, run);
   });
   activeRuns.set(runId, run);
-  persistNow(runId, run);
-  await writeChains.get(runId);
   emitRunChanged(runId, run);
   return runId;
 }
@@ -541,12 +552,13 @@ export async function cancelRun(runId: string): Promise<void> {
 }
 
 export async function getRunForRead(
-  spaceId: string,
+  store: SpaceStore,
   runId: string,
 ): Promise<RunState | undefined> {
+  const { spaceId } = store;
   const active = activeRuns.get(runId);
   if (active && active.spaceId === spaceId) return active;
-  const doc = await getDocument(await openSpaceStore(spaceId), runId);
+  const doc = await getDocument(store, runId);
   const run = doc ? deserializeRun(runId, doc) : undefined;
   return run ? { ...run, spaceId } : undefined;
 }
@@ -557,7 +569,7 @@ export async function getRunForRead(
  * flat regardless of how many runs a workflow has accumulated over time.
  */
 export async function listRuns(
-  spaceId: string,
+  store: SpaceStore,
   options?: {
     sourceExtensionId?: string | null;
     documentId?: string | null;
@@ -565,7 +577,8 @@ export async function listRuns(
     limit?: number;
   },
 ): Promise<{ runs: Array<{ runId: string; run: RunState }>; nextCursor: string | null }> {
-  const { runs: stored, nextCursor } = await listStoredRuns(spaceId, {
+  const { spaceId } = store;
+  const { runs: stored, nextCursor } = await listStoredRuns(store, {
     documentId: options?.documentId,
     cursor: options?.cursor,
     limit: options?.limit,
@@ -585,10 +598,11 @@ export async function listRuns(
 
 /** Newest run for a document — a bounded lookup, not a full history scan. */
 export async function getLatestRunIdForDoc(
-  spaceId: string,
+  store: SpaceStore,
   documentId: string,
 ): Promise<string | undefined> {
-  const { runs } = await listStoredRuns(spaceId, { documentId, limit: 1 });
+  const { spaceId } = store;
+  const { runs } = await listStoredRuns(store, { documentId, limit: 1 });
   let latestId = runs[0]?.runId;
   let latestCreatedAt = runs[0]?.run.createdAt;
   for (const [runId, run] of activeRuns) {

@@ -37,11 +37,11 @@ import {
   type DocumentPresenceProfile,
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
-import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "#editor/formattingActions.ts";
+import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
 import { extensions } from "#extensions/manager.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import {
@@ -419,7 +419,6 @@ export function DocumentContent(props: Props) {
     Actions.register("toolbar:dismiss", {
       title: "Dismiss toolbar",
       description: "Hide the editor toolbar",
-      group: "formatting",
       run: async () => {
         documentToolbar()?.dismiss?.();
       },
@@ -511,7 +510,7 @@ export function DocumentContent(props: Props) {
       const layout = Array.isArray(doc.properties?.layout)
         ? doc.properties.layout[0]
         : doc.properties?.layout;
-      const full = layout === "full";
+      const full = documentType() === "record" || layout === "full";
       const container = document.querySelector<HTMLElement>("[data-layout]");
       container?.classList.toggle("max-w-full", full);
       container?.classList.toggle("max-w-(--document-width)", !full);

@@ -4,7 +4,11 @@ import { withIdentityScope } from "#acl/identity.ts";
 import { resolveRequestIdentity } from "#acl/session.ts";
 import { resolveClientIp } from "#api/clientIp.ts";
 import { aclFailureResponse } from "#api/http.ts";
-import { checkRateLimit, type RateLimitCheck } from "#api/rateLimit.ts";
+import {
+  checkAddressRateLimit,
+  checkRateLimit,
+  type RateLimitCheck,
+} from "#api/rateLimit.ts";
 import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
 import { getPublicEnv } from "#config";
@@ -83,8 +87,24 @@ async function hydrateRequestContext(c: ApiContext): Promise<void> {
   });
 }
 
+/**
+ * Git smart HTTP lives under a literal `git` segment inside a space: the second
+ * segment is the whole test. It runs on every request the server handles, so it
+ * is two index operations rather than a pattern match, and `//git/x` and a space
+ * whose own slug is `git` both fall out of the arithmetic rather than needing a
+ * case of their own.
+ *
+ * Kept beside `isApiPath` because both copies of that check must agree: miss
+ * one and a clone either 404s as an unknown API path or falls through to Astro.
+ */
+export function isGitPath(pathname: string): boolean {
+  const spaceEnd = pathname.indexOf("/", 1);
+  return spaceEnd > 1 && pathname.startsWith("/git/", spaceEnd);
+}
+
 function isApiPath(pathname: string): boolean {
   return (
+    isGitPath(pathname) ||
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
     pathname === "/.well-known/caldav" ||
@@ -109,6 +129,16 @@ function withRateLimitHeaders(response: Response, limit: RateLimitCheck): Respon
     // an advisory hint is not worth reconstructing the body around.
   }
   return response;
+}
+
+/** The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK. */
+function logRateLimit(path: string, method: string, limit: RateLimitCheck): void {
+  appLogger.warn("API rate limit exceeded", {
+    path,
+    method,
+    key: limit.key,
+    blocked: limit.blocked,
+  });
 }
 
 function rateLimitedResponse(limit: RateLimitCheck): Response {
@@ -153,27 +183,19 @@ export async function apiRouter(
     return jsonError(403, "Cross-origin request rejected");
   }
 
-  // Ahead of `hydrateRequestContext` so an over-limit caller is turned away
-  // before the session lookup, and ahead of the 405 so a flood of unsupported
-  // methods is counted rather than routing freely.
-  const limit = checkRateLimit({
-    pattern: match.pattern,
-    method,
-    authorization: c.req.header("authorization"),
-    cookie: c.req.header("cookie"),
+  const caller = {
     ip: clientIp(c),
     jobToken: c.req.header("x-job-token"),
     spaceId: c.req.header("x-space-id") ?? match.params.spaceId,
-  });
-  if (limit && !limit.allowed) {
-    // The key is logged so an operator can name it in VEKTOR_RATE_LIMIT_BLOCK.
-    appLogger.warn("API rate limit exceeded", {
-      path: pathname,
-      method,
-      key: limit.key,
-      blocked: limit.blocked,
-    });
-    return rateLimitedResponse(limit);
+  };
+
+  // Ahead of `hydrateRequestContext` so a flooding address is turned away
+  // before the session lookup, and ahead of the 405 so unsupported methods are
+  // counted rather than routing freely. The route ceiling waits for a caller.
+  const address = checkAddressRateLimit(caller);
+  if (address && !address.allowed) {
+    logRateLimit(pathname, method, address);
+    return rateLimitedResponse(address);
   }
 
   const handler = resolveHandler(match.module, method);
@@ -190,9 +212,21 @@ export async function apiRouter(
   try {
     // One identity cache for the length of this request, so the IdP staleness
     // bound stays a per-request bound rather than a per-check one.
-    const result = await withIdentityScope(async () => {
+    const { limit, result } = await withIdentityScope(async () => {
       await hydrateRequestContext(c);
-      return await handler(c);
+      // Keyed on the resolved user: a credential the server never accepted
+      // must not buy a window of its own.
+      const limit = checkRateLimit({
+        ...caller,
+        pattern: match.pattern,
+        method,
+        userId: c.var.user?.id,
+      });
+      if (limit && !limit.allowed) {
+        logRateLimit(pathname, method, limit);
+        return { limit, result: rateLimitedResponse(limit) };
+      }
+      return { limit, result: await handler(c) };
     });
 
     if (!(result instanceof Response)) {

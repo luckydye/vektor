@@ -17,13 +17,10 @@ import {
 } from "#canvas/extensions/shape.ts";
 import { makeCanvasCursor } from "#canvas/render/cursor.ts";
 import type { FreehandPoint, FreehandStroke } from "#canvas/render/freehand.ts";
-import { FREEHAND_STYLE } from "#canvas/render/freehand.ts";
+import { FREEHAND_STYLE, translateFreehandStroke } from "#canvas/render/freehand.ts";
 import { drawWorldDots, drawWorldGrid } from "#canvas/render/grid.ts";
-import { createCanvasSelectionRenderer } from "#canvas/render/selectionLayer.ts";
-import {
-  createCanvasInkRenderer,
-  renderCanvasInkOverlay,
-} from "#canvas/render/strokeLayer.ts";
+import { drawCanvasSelections } from "#canvas/render/selectionLayer.ts";
+import { drawCanvasStrokes, renderCanvasInkOverlay } from "#canvas/render/strokeLayer.ts";
 import { readCanvasTheme, isDarkMode as resolveDarkMode } from "#canvas/render/theme.ts";
 import { type CanvasTileView, compositeTiles } from "#canvas/render/tiles.ts";
 import type { CanvasElementContext } from "#canvas/runtime/elementBase.ts";
@@ -93,7 +90,11 @@ import {
   type CanvasExtensionManager,
   createCanvasExtensionManager,
 } from "#canvas/runtime/registry.ts";
-import type { ScalableSelection, SelectionContext } from "#canvas/runtime/selection.ts";
+import type {
+  CanvasElementHandle,
+  ScalableSelection,
+  SelectionContext,
+} from "#canvas/runtime/selection.ts";
 import * as selection from "#canvas/runtime/selection.ts";
 import { createWatchers, indexById, registerCanvas } from "#canvas/runtime/state.ts";
 import { iconMarkup } from "#components/Icon.tsx";
@@ -266,14 +267,14 @@ export function createCanvasController(
     | {
         type: "resize";
         pointerId: number;
-        shapeId: string;
+        elementId: string;
         fixedTopLeft: { x: number; y: number };
         minSize: { width: number; height: number };
         // Locked width/height ratio for media; undefined lets the axes move freely.
         aspect?: number;
-        resizeMode: "box" | "font";
-        initialScale?: number;
+        // The box the gesture started from; `rotation` is the frame's own.
         initial: CanvasFrame;
+        target: ResizeTarget;
       }
     | {
         type: "selection-scale";
@@ -292,26 +293,10 @@ export function createCanvasController(
     | {
         type: "rotate";
         pointerId: number;
-        shapeId: string;
+        elementId: string;
         center: { x: number; y: number };
         initial: CanvasFrame;
-      }
-    | {
-        type: "stroke-resize";
-        pointerId: number;
-        strokeId: string;
-        fixedTopLeft: { x: number; y: number };
-        startBounds: Rect;
-        initialPoints: FreehandPoint[];
-      }
-    | {
-        type: "stroke-rotate";
-        pointerId: number;
-        strokeId: string;
-        center: { x: number; y: number };
-        startRotation: number;
-        initialRotation: number;
-        initialPoints: FreehandPoint[];
+        target: RotateTarget;
       }
     | {
         type: "pan";
@@ -324,11 +309,33 @@ export function createCanvasController(
         pointerId: number;
         additive: boolean;
         startScreen: { x: number; y: number };
-        baseShapeIds: Set<string>;
-        baseStrokeIds: Set<string>;
+        baseIds: Set<string>;
       };
 
-  type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
+  /**
+   * Where a resize or rotate writes its result.
+   *
+   * The pointer maths is the same whichever store the element came from — it is
+   * a box and an angle either way — so the two gestures are one drag each, and
+   * only the write is dispatched. Nesting the discriminant keeps the per-store
+   * start data from leaking into the other branch as optional fields.
+   */
+  type ResizeTarget =
+    // "font" scales the type size and lets the element re-measure; text has no
+    // stored box to resize.
+    | { store: "shape"; mode: "box" | "font"; initialScale: number }
+    | { store: "stroke"; initialPoints: FreehandPoint[] };
+
+  type RotateTarget =
+    | { store: "shape" }
+    | {
+        store: "stroke";
+        // Ink bakes rotation into its points, so the gesture tracks the angle it
+        // started from and applies the delta.
+        startRotation: number;
+        initialRotation: number;
+        initialPoints: FreehandPoint[];
+      };
 
   const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
   type ToolDef = CanvasToolDef & {
@@ -367,11 +374,12 @@ export function createCanvasController(
   const state = {
     shapes: [] as CanvasShape[],
     strokes: [] as CanvasStroke[],
-    selectedShapeIds: new Set<string>(),
-    selectedStrokeIds: new Set<string>(),
+    // One set for both stores: ids are prefixed and unique across them, and
+    // nothing that reads the selection cares which store an id came from.
+    selectedIds: new Set<string>(),
     // Locked elements are intentionally excluded from normal hit testing. Keep a
     // separate hover target so their small unlock control remains reachable.
-    hoveredLockedElement: null as LockedCanvasElement | null,
+    hoveredLockedElement: null as string | null,
     // Section chrome is painted on the canvas. This transient input only appears
     // while its title is actively being edited.
     editingChromeId: null as string | null,
@@ -436,7 +444,7 @@ export function createCanvasController(
 
   function insertNewShape(shape: CanvasShape) {
     yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
-    selectOnlyShape(shape.id);
+    selectOnly(shape.id);
     state.activeTool = "select";
     saveImmediately();
   }
@@ -466,8 +474,23 @@ export function createCanvasController(
   let themeObserver: MutationObserver | null = null;
   let colorSchemeMedia: MediaQueryList | null = null;
   let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-  let selectionLayerHidden = false;
-  let selectionDragActive = false;
+
+  /**
+   * Ink mid-gesture: the stored strokes are untouched until the pointer is
+   * released, and the scene paints this in their place meanwhile.
+   *
+   * `strokes` carries replacement geometry for a resize or rotate; a plain move
+   * leaves it as the originals and offsets them by `dx`/`dy` at paint time, so
+   * dragging a hundred strokes does not rebuild a hundred point arrays a frame.
+   */
+  let strokePreview: {
+    strokes: CanvasStroke[];
+    dx: number;
+    dy: number;
+    // False until the gesture actually moves something, so a click that lands on
+    // a transform handle without dragging commits nothing.
+    changed: boolean;
+  } | null = null;
 
   const extensionRuntime = extensionManager.createRuntime({
     spaceId: host.spaceId,
@@ -489,10 +512,8 @@ export function createCanvasController(
     },
     persistShape: (shape) => yShapes.set(shape.id, shapeToYMap(shape, extensionManager)),
     insertNewShape,
-    selectShape: selectOnlyShape,
-    selectShapes: (ids) => {
-      state.selectedShapeIds = new Set(ids);
-    },
+    selectShape: selectOnly,
+    selectShapes: (ids) => setSelection(new Set(ids)),
     setActiveTool: (tool) => {
       state.activeTool = tool;
     },
@@ -550,41 +571,88 @@ export function createCanvasController(
 
   let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Rebuilt per read so it always reflects the current maps and ids; the
-  // computeds below cache the answers, not this.
   /**
-   * Built once with getters: the selectors below run every frame, and this used
-   * to rebuild a nine-field object per call. It stays a separate object because
-   * that is the seam `canvas-selection.vitest.ts` drives the maths through.
+   * Resolves a selected id to the engine's uniform view of it.
+   *
+   * The two stores stay separate — a board holds tens of shapes and can hold
+   * thousands of strokes, and the stroke list is deliberately the cheap one —
+   * but selection, locking, permissions and transform handles do not care which
+   * store an id came from, so they come through here instead of branching.
+   */
+  function elementHandle(id: string): CanvasElementHandle | null {
+    const shape = shapesById().get(id);
+    if (shape) {
+      return {
+        id,
+        kind: "shape",
+        type: shape.type,
+        locked: shape.locked === true,
+        canMove: canMoveShape(shape),
+        bounds: shapeAabb(shape),
+        rotation: shape.frame.rotation,
+        transform: extensionManager.get(shape.type).behavior.transform,
+        handles: true,
+      };
+    }
+    const stroke = strokesById().get(id);
+    if (!stroke) return null;
+    return {
+      id,
+      kind: "stroke",
+      type: stroke.kind === "shape" ? "shape" : "ink",
+      locked: stroke.locked === true,
+      canMove: canMoveStroke(stroke),
+      bounds: strokeBounds(stroke),
+      rotation: stroke.rotation ?? 0,
+      // Ink scales as part of a group whatever it is, but only a stamped
+      // primitive has a box worth grabbing on its own.
+      transform: { move: true, resize: "box", rotate: stroke.kind === "shape" },
+      handles: stroke.kind === "shape",
+    };
+  }
+
+  /**
+   * Built once with getters: the selectors below run every frame. It stays a
+   * separate object because that is the seam `canvas-selection.vitest.ts`
+   * drives the maths through.
    */
   const selectionModel: SelectionContext = {
-    get shapesById() {
-      return shapesById();
+    get selectedIds() {
+      return state.selectedIds;
     },
-    get strokesById() {
-      return strokesById();
-    },
-    get selectedShapeIds() {
-      return state.selectedShapeIds;
-    },
-    get selectedStrokeIds() {
-      return state.selectedStrokeIds;
-    },
-    extensions: extensionManager,
-    canMoveShape,
-    canMoveStroke,
-    shapeAabb,
-    strokeBounds,
+    element: elementHandle,
   };
 
-  const selectedShape = () => selection.selectedShape(selectionModel);
-  const selectedTransformShape = () => selection.selectedTransformShape(selectionModel);
-  const selectedResizeOnlyShape = () => selection.selectedResizeOnlyShape(selectionModel);
+  const selectedElement = () => selection.selectedElement(selectionModel);
+  const selectedTransformElement = () =>
+    selection.selectedTransformElement(selectionModel);
+  const selectedResizeOnlyElement = () =>
+    selection.selectedResizeOnlyElement(selectionModel);
   const selectedGroupBounds = () => selection.selectedGroupBounds(selectionModel);
   const selectedScalableSelection = () =>
     selection.selectedScalableSelection(selectionModel);
 
-  function transformControlPositions(shape: CanvasShape) {
+  /** The single selected shape, when the selection is exactly one shape. */
+  const selectedShape = () => {
+    const element = selectedElement();
+    return element?.kind === "shape" ? (shapesById().get(element.id) ?? null) : null;
+  };
+
+  /**
+   * Screen positions of an element's rotate and resize handles.
+   *
+   * A shape's box can itself be rotated, so its handles ride around the rotated
+   * corners. A stroke bakes rotation into its points and its bounds are already
+   * axis-aligned, so its handles sit on the box.
+   */
+  function transformControlPositions(element: CanvasElementHandle) {
+    if (element.kind === "stroke") {
+      return element.bounds
+        ? axisAlignedHandles(element.bounds, transform().scale, worldToScreen)
+        : null;
+    }
+    const shape = shapesById().get(element.id);
+    if (!shape) return null;
     // Text auto-sizes, so anchor the handles to its measured box.
     const bounds = shapeBounds(shape);
     // Handles stay a comfortable fixed size in screen space. Convert their
@@ -639,7 +707,7 @@ export function createCanvasController(
   function beginEdit(session: CanvasEditSession) {
     if (state.activeEditSession?.shapeId === session.shapeId) return;
     stopActiveEdit();
-    selectOnlyShape(session.shapeId);
+    selectOnly(session.shapeId);
     state.activeEditSession = session;
   }
 
@@ -667,12 +735,9 @@ export function createCanvasController(
     removeShape: (id) => {
       if (shapesById().get(id)?.locked) return;
       yShapes.delete(id);
-      if (state.selectedShapeIds.has(id)) {
-        state.selectedShapeIds.delete(id);
-        state.selectedShapeIds = new Set(state.selectedShapeIds);
-      }
+      deselect(id);
     },
-    selectShape: (id) => selectOnlyShape(id),
+    selectShape: (id) => selectOnly(id),
     setFormattingEditor: (editor) => {
       const toolbar = dom.canvasToolbar;
       if (toolbar) toolbar.editor = editor;
@@ -694,10 +759,10 @@ export function createCanvasController(
         const next = new Map(state.intrinsicShapeSizes);
         next.set(id, measured);
         state.intrinsicShapeSizes = next;
-        renderSelections();
+        renderScene();
         return;
       }
-      if (!host.canEdit || draggingShapeId() === id || !canMoveShape(shape)) {
+      if (!host.canEdit || draggingElementId() === id || !canMoveShape(shape)) {
         return;
       }
       const normalized = extension.behavior.measurement?.normalize
@@ -764,9 +829,8 @@ export function createCanvasController(
   };
 
   const selectedStrokeColor = () => {
-    if (state.selectedStrokeIds.size === 0) return null;
     let color: string | null = null;
-    for (const id of state.selectedStrokeIds) {
+    for (const id of state.selectedIds) {
       const stroke = strokesById().get(id);
       if (!stroke) continue;
       if (color === null) color = stroke.style.color;
@@ -780,14 +844,6 @@ export function createCanvasController(
   const shapesById = () => shapeIndex(state.shapes);
   const strokesById = () => strokeIndex(state.strokes);
   const hasLockedStrokes = () => state.strokes.some((stroke) => stroke.locked);
-
-  function isShapeLocked(id: string): boolean {
-    return shapesById().get(id)?.locked === true;
-  }
-
-  function isStrokeLocked(id: string): boolean {
-    return strokesById().get(id)?.locked === true;
-  }
 
   function canMoveUserScopedElement(authorId: string | undefined): boolean {
     // `authorId` is an internal creation-time capability, not a user-facing
@@ -804,73 +860,69 @@ export function createCanvasController(
     return !stroke.locked && canMoveUserScopedElement(stroke.authorId);
   }
 
+  // Screen position of the unlock control: the element's top-right corner. A
+  // shape's box can be rotated and the control rides the rotated corner; ink
+  // bakes its rotation into its points, so its box is already axis-aligned.
   const hoveredLockedElementPosition = () => {
-    const element = state.hoveredLockedElement;
-    if (!element) return null;
+    const id = state.hoveredLockedElement;
+    const element = id ? elementHandle(id) : null;
+    if (!element?.locked || !element.bounds) return null;
 
-    if (element.type === "shape") {
-      const shape = shapesById().get(element.id);
-      if (!shape?.locked) return null;
+    const shape = element.kind === "shape" ? shapesById().get(element.id) : null;
+    if (shape) {
       const bounds = shapeBounds(shape);
       return worldToScreen(pointOnRotatedShape(bounds, { x: bounds.width, y: 0 }));
     }
-
-    const stroke = strokesById().get(element.id);
-    const bounds = stroke ? strokeBounds(stroke) : null;
-    if (!stroke?.locked || !bounds) return null;
-    return worldToScreen({ x: bounds.x + bounds.width, y: bounds.y });
+    return worldToScreen({
+      x: element.bounds.x + element.bounds.width,
+      y: element.bounds.y,
+    });
   };
 
-  const selectedBasicShapeStroke = () => {
-    if (state.selectedShapeIds.size > 0 || state.selectedStrokeIds.size !== 1)
-      return null;
-    const [id] = state.selectedStrokeIds;
-    const stroke = strokesById().get(id);
-    return stroke?.kind === "shape" && canMoveStroke(stroke) ? stroke : null;
-  };
-
-  const selectedBasicShapeStrokeControls = () => {
-    const stroke = selectedBasicShapeStroke();
-    return stroke ? strokeTransformControlPositions(stroke) : null;
-  };
-
-  function selectOnlyShape(id: string) {
-    if (isShapeLocked(id)) return;
-    state.selectedShapeIds = new Set([id]);
-    if (state.selectedStrokeIds.size > 0) {
-      state.selectedStrokeIds = new Set();
-      renderInk();
-    }
+  function isElementLocked(id: string): boolean {
+    return elementHandle(id)?.locked === true;
   }
 
-  function selectStroke(id: string, additive: boolean) {
-    if (isStrokeLocked(id)) return;
-    if (additive) {
-      const next = new Set(state.selectedStrokeIds);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      state.selectedStrokeIds = next;
-    } else {
-      state.selectedShapeIds = new Set();
-      state.selectedStrokeIds = new Set([id]);
-    }
-    renderInk();
+  /** Replaces the selection with one element. */
+  function selectOnly(id: string) {
+    if (isElementLocked(id)) return;
+    setSelection(new Set([id]));
   }
 
-  function toggleShapeSelection(id: string) {
-    if (isShapeLocked(id)) return;
-    const next = new Set(state.selectedShapeIds);
+  /** Adds or removes one element, leaving the rest of the selection alone. */
+  function toggleSelection(id: string) {
+    if (isElementLocked(id)) return;
+    const next = new Set(state.selectedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    state.selectedShapeIds = next;
+    setSelection(next);
   }
 
   function clearSelection() {
-    if (state.selectedShapeIds.size > 0) state.selectedShapeIds = new Set();
-    if (state.selectedStrokeIds.size > 0) {
-      state.selectedStrokeIds = new Set();
-      renderInk();
+    if (state.selectedIds.size > 0) setSelection(new Set());
+  }
+
+  // Selection outlines are painted, so every change to the set needs a frame.
+  function setSelection(ids: Set<string>) {
+    state.selectedIds = ids;
+    renderInk();
+  }
+
+  function deselect(id: string) {
+    if (!state.selectedIds.has(id)) return;
+    const next = new Set(state.selectedIds);
+    next.delete(id);
+    setSelection(next);
+  }
+
+  /** Drops ids that no longer resolve, or that have since been locked. */
+  function pruneSelection() {
+    const next = new Set<string>();
+    for (const id of state.selectedIds) {
+      const element = elementHandle(id);
+      if (element && !element.locked) next.add(id);
     }
+    if (next.size !== state.selectedIds.size) setSelection(next);
   }
 
   function intrinsicShapeSize(shape: CanvasShape) {
@@ -909,12 +961,6 @@ export function createCanvasController(
 
   function strokeBounds(stroke: Pick<CanvasStroke, "points">): Rect | null {
     return boundsOfPoints(stroke.points);
-  }
-
-  function strokeTransformControlPositions(stroke: CanvasStroke) {
-    const bounds = strokeBounds(stroke);
-    if (!bounds) return null;
-    return axisAlignedHandles(bounds, transform().scale, worldToScreen);
   }
 
   /** Binds the ambient page origin and space id; the parsing itself is shared. */
@@ -958,16 +1004,7 @@ export function createCanvasController(
           a.id.localeCompare(b.id),
       );
 
-    let pruned = false;
-    for (const id of state.selectedShapeIds) {
-      const source = yShapes.get(id);
-      const shape = source ? toShape(id, source) : null;
-      if (!shape || shape.locked) {
-        state.selectedShapeIds.delete(id);
-        pruned = true;
-      }
-    }
-    if (pruned) state.selectedShapeIds = new Set(state.selectedShapeIds);
+    pruneSelection();
     if (removedInvalid) {
       if (isReady) scheduleSave();
       else savePrunedInvalidShapesWhenReady = true;
@@ -992,50 +1029,19 @@ export function createCanvasController(
 
   function syncStrokesFromY() {
     const previous = new Map(state.strokes.map((stroke) => [stroke.id, stroke]));
-    const addedStrokes: CanvasStroke[] = [];
-    let hasContentChange = false;
+    // Unchanged strokes keep their object identity: `strokePointBounds` memoizes
+    // against it, and culling asks for those bounds on every frame.
     const next = [...yStrokes.entries()]
       .map(([id, value]) => {
         const existing = previous.get(id);
-        const updatedAt = value.get("updatedAt");
-        if (existing && existing.updatedAt === updatedAt) return existing;
-        const stroke = toStroke(id, value);
-        if (existing) hasContentChange = true;
-        else addedStrokes.push(stroke);
-        return stroke;
+        return existing && existing.updatedAt === value.get("updatedAt")
+          ? existing
+          : toStroke(id, value);
       })
       .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
 
-    // Purely additive when no existing stroke changed and none were removed — the
-    // common collaboration case of a peer drawing new strokes. Edits, moves and
-    // deletions fall through to a full raster rebuild.
-    const additiveOnly =
-      !hasContentChange && next.length === previous.size + addedStrokes.length;
-
-    let pruned = false;
-    for (const id of state.selectedStrokeIds) {
-      const source = yStrokes.get(id);
-      if (!source || source.get("locked") === true) {
-        state.selectedStrokeIds.delete(id);
-        pruned = true;
-      }
-    }
-    if (pruned) state.selectedStrokeIds = new Set(state.selectedStrokeIds);
-
-    // A local draw already patched the cache with its stroke via
-    // commitAddedStroke, so re-patching here would double-paint it. Remote
-    // additions arrive with no commit in flight — patch the cache incrementally
-    // instead of rebuilding the whole ink raster from every stroke (which made
-    // each incoming stroke O(total strokes), collapsing sync on dense canvases).
-    if (additiveOnly && addedStrokes.length > 0 && !inkRenderer.isCommittingCacheUpdate) {
-      inkRenderer.commitAddedStrokes(addedStrokes, () => {
-        state.strokes = next;
-        renderInk();
-      });
-      return;
-    }
-
     state.strokes = next;
+    pruneSelection();
     renderInk();
   }
 
@@ -1308,10 +1314,10 @@ export function createCanvasController(
     strokes: CanvasStrokeSnapshot[];
   } {
     const selShapes = state.shapes
-      .filter((shape) => state.selectedShapeIds.has(shape.id) && !shape.locked)
+      .filter((shape) => state.selectedIds.has(shape.id) && !shape.locked)
       .map((shape) => extensionManager.serialize(shape));
     const selStrokes = state.strokes
-      .filter((stroke) => state.selectedStrokeIds.has(stroke.id) && !stroke.locked)
+      .filter((stroke) => state.selectedIds.has(stroke.id) && !stroke.locked)
       .map((stroke) => ({
         id: stroke.id,
         points: stroke.points.map(cloneFreehandPoint),
@@ -1358,7 +1364,7 @@ export function createCanvasController(
       canvasClipboardToDocumentHtml(payload, { includeMetadata: true }),
     );
     event.clipboardData?.setData("text/plain", canvasClipboardToPlainText(payload));
-    deleteSelectedShape();
+    deleteSelection();
   }
 
   function copySelectionToClipboard() {
@@ -1397,7 +1403,7 @@ export function createCanvasController(
     } else {
       navigator.clipboard?.writeText(text).catch(() => {});
     }
-    deleteSelectedShape();
+    deleteSelection();
   }
 
   /**
@@ -1469,10 +1475,8 @@ export function createCanvasController(
       }
     });
 
-    state.selectedShapeIds = pastedShapeIds;
-    state.selectedStrokeIds = pastedStrokeIds;
+    setSelection(new Set([...pastedShapeIds, ...pastedStrokeIds]));
     state.activeTool = "select";
-    renderInk();
   }
 
   function insertConvertedShapes(nextShapes: CanvasShape[]): boolean {
@@ -1489,10 +1493,8 @@ export function createCanvasController(
       }
     });
 
-    state.selectedShapeIds = pastedShapeIds;
-    state.selectedStrokeIds = new Set();
+    setSelection(pastedShapeIds);
     state.activeTool = "select";
-    renderScene();
     return true;
   }
 
@@ -1596,25 +1598,31 @@ export function createCanvasController(
     return cssInkColor;
   }
 
-  const inkRenderer = createCanvasInkRenderer({
-    getDpr: () => dpr,
-    getScreen: () => state.screen,
-    getTransform: () => transform(),
-    getStrokes: () => state.strokes,
-    getDefaultInkColor: defaultInkColor,
-    invalidateScene: renderScene,
-  });
-  const selectionRenderer = createCanvasSelectionRenderer();
+  /**
+   * The strokes as the user currently sees them: stored geometry, with anything
+   * under an in-flight gesture swapped for its preview. Everything that paints
+   * or outlines ink reads this rather than `state.strokes`, so an outline can
+   * never be drawn a frame behind the stroke it surrounds.
+   */
+  function renderedStrokes(): CanvasStroke[] {
+    const preview = strokePreview;
+    if (!preview) return state.strokes;
+    const moved = preview.dx !== 0 || preview.dy !== 0;
+    const replacements = new Map(
+      preview.strokes.map((stroke) => [
+        stroke.id,
+        moved ? translateFreehandStroke(stroke, preview.dx, preview.dy) : stroke,
+      ]),
+    );
+    return state.strokes.map((stroke) => replacements.get(stroke.id) ?? stroke);
+  }
 
-  // This snapshot deliberately excludes camera state. Its identity therefore
-  // stays stable through pan/zoom frames and changes only when the selection
-  // geometry itself needs to be rebuilt.
   const selectionSnapshot = () => ({
-    strokes: state.strokes,
-    selectedStrokeIds: state.selectedStrokeIds,
+    strokes: renderedStrokes(),
+    selectedIds: state.selectedIds,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections(),
     selectionBounds: selectedGroupBounds() ?? undefined,
-    selectedShapeBounds: [...state.selectedShapeIds]
+    selectedShapeBounds: [...state.selectedIds]
       .map((id) => shapesById().get(id))
       .filter((shape) => shape != null)
       .map(shapeBounds),
@@ -1654,7 +1662,13 @@ export function createCanvasController(
     renderTileShapes(context);
     context.restore();
     context.save();
-    inkRenderer.renderStaticInk(context);
+    drawCanvasStrokes({
+      context,
+      screen: state.screen,
+      transform: transform(),
+      strokes: renderedStrokes(),
+      defaultInkColor: defaultInkColor(),
+    });
     context.restore();
   }
 
@@ -1742,14 +1756,13 @@ export function createCanvasController(
     }
   }
 
+  // Pointer events outrun frames; coalesce a gesture's repaints onto one.
   let inkRafId: number | null = null;
   function scheduleInkRender() {
     if (inkRafId !== null) return;
     inkRafId = requestAnimationFrame(() => {
       inkRafId = null;
-      inkRenderer.renderStrokeTransformCache();
-      renderActiveInk();
-      if (selectionDragActive) renderSelections();
+      renderInk();
     });
   }
 
@@ -1765,7 +1778,21 @@ export function createCanvasController(
   function renderInk() {
     renderScene();
     renderActiveInk();
-    renderSelections();
+    renderSelectionOverlay();
+  }
+
+  /**
+   * Selection outlines, on their own surface because it is the only layer that
+   * sits above the transformed DOM world — ink and shapes render below the
+   * cards, an outline around a card must not.
+   */
+  function renderSelectionOverlay() {
+    const canvas = dom.selection;
+    const context = canvas?.getContext("2d");
+    if (!context) return;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, state.screen.width, state.screen.height);
+    drawCanvasSelections({ ...selectionSnapshot(), context, transform: transform() });
   }
 
   function renderActiveInk() {
@@ -1782,41 +1809,6 @@ export function createCanvasController(
       snapGuides: activeSnapGuides,
       defaultInkColor: defaultInkColor(),
     });
-  }
-
-  function renderSelections(refresh = false) {
-    const canvas = dom.selection;
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    if (inkRenderer.isTransformingStroke && !selectionDragActive) {
-      hideSelectionLayer();
-      return;
-    }
-
-    if (selectionLayerHidden) {
-      canvas.style.visibility = "";
-      selectionLayerHidden = false;
-    }
-
-    selectionRenderer.render({
-      context,
-      dpr,
-      screen: state.screen,
-      transform: transform(),
-      selection: selectionSnapshot(),
-      refresh,
-      deferRefresh: state.marqueeRect !== null,
-    });
-  }
-
-  // Stroke transforms hide the selection outline while the selected ink is being
-  // replaced inside the raster cache. Camera movement keeps this layer visible
-  // and redraws it through renderInk with the current viewport transform.
-  function hideSelectionLayer() {
-    const canvas = dom.selection;
-    if (!canvas || selectionLayerHidden) return;
-    canvas.style.visibility = "hidden";
-    selectionLayerHidden = true;
   }
 
   function resize() {
@@ -1853,13 +1845,7 @@ export function createCanvasController(
 
   function presenceState(): CanvasPresenceState {
     const cam = state.camera;
-    // Use toRaw on reactive Sets/Maps to bypass per-element proxy overhead
-    // when iterating — these are snapshot reads, not reactive dependencies.
-    const rawIds = state.selectedShapeIds;
-    const rawStrokeIds = state.selectedStrokeIds;
-    const selectionIds: string[] = [];
-    for (const id of rawIds) selectionIds.push(id);
-    for (const id of rawStrokeIds) selectionIds.push(id);
+    const selectionIds = [...state.selectedIds];
     return {
       kind: "canvas",
       pointer: localPointer,
@@ -1909,7 +1895,7 @@ export function createCanvasController(
       renderActiveInk();
     },
     insertStroke: insertCanvasStroke,
-    selectStroke: (id) => selectStroke(id, false),
+    selectStroke: selectOnly,
     createElement: (type, at) => addShape(type, at),
     setActiveTool: (tool) => {
       state.activeTool = tool;
@@ -1917,10 +1903,7 @@ export function createCanvasController(
   };
 
   function insertCanvasStroke(stroke: CanvasStrokeSnapshot) {
-    const completedStroke = toCanvasStroke(stroke.id, stroke);
-    inkRenderer.commitAddedStroke(completedStroke, () => {
-      yStrokes.set(stroke.id, createStrokeMap(stroke));
-    });
+    yStrokes.set(stroke.id, createStrokeMap(stroke));
   }
 
   function pointerGestureEvent(event: PointerEvent): CanvasPointerGestureEvent {
@@ -1987,7 +1970,7 @@ export function createCanvasController(
     const shape = extension.creation?.create(at, { color: state.activeColors[type] });
     if (!shape) return;
     yShapes.set(shape.id, shapeToYMap(shape, extensionManager));
-    selectOnlyShape(shape.id);
+    selectOnly(shape.id);
     state.activeTool = "select";
 
     // Enter edit mode per the extension: a canvas-painted title overlay, or the
@@ -2071,13 +2054,13 @@ export function createCanvasController(
     state.activeColors = { ...state.activeColors, [type]: color };
   }
 
-  // Recolors only the selected shape. Creation defaults remain owned by the
-  // active-tool toolbar.
-  /** The shape a resize/rotate drag is acting on, if either is in progress. */
-  function draggingShapeId(): string | undefined {
-    return dragState && "shapeId" in dragState ? dragState.shapeId : undefined;
+  /** The element a resize/rotate drag is acting on, if either is in progress. */
+  function draggingElementId(): string | undefined {
+    return dragState && "elementId" in dragState ? dragState.elementId : undefined;
   }
 
+  // Recolors only the selected shape. Creation defaults remain owned by the
+  // active-tool toolbar.
   function setSelectedElementColor(type: CanvasShapeType, color: string) {
     const shape = selectedShape();
     if (shape?.type === type) updateShapeStyle(shape.id, { color });
@@ -2109,7 +2092,7 @@ export function createCanvasController(
     colorPalettes.find((entry) => entry.type === selectedShape()?.type);
 
   const hasSelectedElementProperties = () =>
-    selectedShapeColorPalette() !== undefined || state.selectedStrokeIds.size > 0;
+    selectedShapeColorPalette() !== undefined || selectedStrokeColor() !== null;
 
   const hasToolProperties = () =>
     activeToolProperties().length > 0 || activeToolColorPalettes().length > 0;
@@ -2125,10 +2108,8 @@ export function createCanvasController(
   }
 
   function setSelectedStrokeColor(color: string) {
-    if (state.selectedStrokeIds.size === 0) return;
-
     ydoc.transact(() => {
-      for (const id of state.selectedStrokeIds) {
+      for (const id of state.selectedIds) {
         const stroke = yStrokes.get(id);
         if (!stroke) continue;
         const style = strokeStyleFromUnknown(stroke.get("style"));
@@ -2180,30 +2161,26 @@ export function createCanvasController(
     }
   }
 
-  function setShapeLocked(id: string, locked: boolean) {
-    const shape = yShapes.get(id);
-    if (!shape) return;
-    shape.set("updatedAt", Date.now());
-    if (locked) shape.set("locked", true);
-    else shape.delete("locked");
-  }
-
-  function setStrokeLocked(id: string, locked: boolean) {
-    const stroke = yStrokes.get(id);
-    if (!stroke) return;
-    stroke.set("updatedAt", Date.now());
-    if (locked) stroke.set("locked", true);
-    else stroke.delete("locked");
+  function setElementLocked(id: string, locked: boolean) {
+    const entry = yShapes.get(id) ?? yStrokes.get(id);
+    if (!entry) return;
+    entry.set("updatedAt", Date.now());
+    if (locked) entry.set("locked", true);
+    else entry.delete("locked");
   }
 
   function lockSelectedElements() {
-    if (state.selectedShapeIds.size === 0 && state.selectedStrokeIds.size === 0) return;
-    const shapeIds = new Set(state.selectedShapeIds);
-    const strokeIds = new Set(state.selectedStrokeIds);
+    if (state.selectedIds.size === 0) return;
+    const shapeIds = new Set<string>();
+    const strokeIds = new Set<string>();
+    for (const id of state.selectedIds) {
+      if (shapesById().has(id)) shapeIds.add(id);
+      else if (strokesById().has(id)) strokeIds.add(id);
+    }
 
     // A container cascades locking to everything inside its bounds, including
     // elements already locked or user-scoped to someone else.
-    for (const id of state.selectedShapeIds) {
+    for (const id of state.selectedIds) {
       const container = shapesById().get(id);
       if (!isContainerShape(container) || !container) continue;
       const contents = getContainerContents(container, true);
@@ -2212,45 +2189,41 @@ export function createCanvasController(
     }
 
     ydoc.transact(() => {
-      for (const id of shapeIds) setShapeLocked(id, true);
-      for (const id of strokeIds) setStrokeLocked(id, true);
+      for (const id of [...shapeIds, ...strokeIds]) setElementLocked(id, true);
     });
     clearSelection();
   }
 
   function unlockHoveredElement() {
-    const element = state.hoveredLockedElement;
-    if (!element) return;
-    if (element.type === "shape") setShapeLocked(element.id, false);
-    else setStrokeLocked(element.id, false);
+    const id = state.hoveredLockedElement;
+    if (!id) return;
+    setElementLocked(id, false);
     state.hoveredLockedElement = null;
   }
 
-  function deleteSelectedShape() {
-    if (state.selectedShapeIds.size === 0 && state.selectedStrokeIds.size === 0) return;
+  function deleteSelection() {
+    if (state.selectedIds.size === 0) return;
     ydoc.transact(() => {
-      for (const id of state.selectedShapeIds) {
-        if (!isShapeLocked(id)) yShapes.delete(id);
-      }
-      for (const id of state.selectedStrokeIds) {
-        if (!isStrokeLocked(id)) yStrokes.delete(id);
+      for (const id of state.selectedIds) {
+        if (isElementLocked(id)) continue;
+        yShapes.delete(id);
+        yStrokes.delete(id);
       }
     });
-    state.selectedShapeIds = new Set();
-    state.selectedStrokeIds = new Set();
+    clearSelection();
   }
 
   // Snapshots the start positions of everything that should move with a shape
   // drag: the whole current selection, plus the contents of any selected
   // section. Strokes are deduped against section contents so a stroke that is
   // both selected and inside a dragged section only moves once.
-  function buildShapeDragState(
+  function buildElementDragState(
     event: PointerEvent,
   ): Extract<DragState, { type: "shape" }> {
     const moveShapes = new Map<string, { id: string; x: number; y: number }>();
     const moveStrokes = new Map<string, { id: string; points: FreehandPoint[] }>();
 
-    for (const id of state.selectedShapeIds) {
+    for (const id of state.selectedIds) {
       const shape = shapesById().get(id);
       if (!shape || !canMoveShape(shape)) continue;
       moveShapes.set(shape.id, { id: shape.id, x: shape.frame.x, y: shape.frame.y });
@@ -2262,7 +2235,7 @@ export function createCanvasController(
           if (!moveStrokes.has(s.id)) moveStrokes.set(s.id, s);
       }
     }
-    for (const id of state.selectedStrokeIds) {
+    for (const id of state.selectedIds) {
       if (moveStrokes.has(id)) continue;
       const stroke = strokesById().get(id);
       if (stroke && canMoveStroke(stroke)) {
@@ -2279,51 +2252,42 @@ export function createCanvasController(
     };
   }
 
-  function startStrokeTransformInteraction(
-    strokesToMove: CanvasStroke[],
-    hideSelection = true,
-  ) {
-    if (!inkRenderer.beginStrokeTransform(strokesToMove)) return;
-    if (hideSelection) hideSelectionLayer();
-    renderScene();
-    renderActiveInk();
+  function startStrokeTransformInteraction(strokesToMove: CanvasStroke[]) {
+    if (strokesToMove.length === 0) return;
+    strokePreview = { strokes: strokesToMove, dx: 0, dy: 0, changed: false };
+    renderInk();
   }
 
-  function updateStrokeTransformInteraction(
-    transformedStrokes: CanvasStroke[],
-    dx = 0,
-    dy = 0,
-  ) {
-    if (!inkRenderer.setStrokeTransform(transformedStrokes, dx, dy)) return;
+  /** Replacement geometry, for the gestures that reshape a stroke. */
+  function updateStrokeTransformInteraction(transformedStrokes: CanvasStroke[]) {
+    if (!strokePreview) return;
+    strokePreview = { strokes: transformedStrokes, dx: 0, dy: 0, changed: true };
+    scheduleInkRender();
+  }
+
+  /** A plain move, which leaves the captured geometry alone. */
+  function offsetStrokeTransformInteraction(dx: number, dy: number) {
+    if (!strokePreview) return;
+    strokePreview = { ...strokePreview, dx, dy, changed: true };
     scheduleInkRender();
   }
 
   function cancelStrokeTransformInteraction() {
-    const canceledStrokeTransform = inkRenderer.cancelStrokeTransform();
-    if (!canceledStrokeTransform && !selectionDragActive) return;
-    selectionDragActive = false;
-    selectionRenderer.setInteractionOffset(null);
-    renderActiveInk();
-    renderSelections();
-    if (canceledStrokeTransform) renderScene();
+    if (!strokePreview) return;
+    strokePreview = null;
+    renderInk();
   }
 
   function beginDragStrokeTransform(drag: Extract<DragState, { type: "shape" }>) {
-    // Capture the current selection once, then move its raster cache with the
-    // pointer instead of rebuilding or hiding it during the drag.
-    renderSelections();
-    selectionDragActive = true;
-    selectionRenderer.setInteractionOffset({ x: 0, y: 0 });
     startStrokeTransformInteraction(
       drag.strokes.flatMap((item) => {
         const stroke = strokesById().get(item.id);
         return stroke ? [stroke] : [];
       }),
-      false,
     );
   }
 
-  function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
+  function startElementDrag(shape: CanvasShape, event: PointerEvent) {
     if (event.button !== 0) return;
     if (shape.locked) {
       event.preventDefault();
@@ -2332,15 +2296,15 @@ export function createCanvasController(
 
     // Shift toggles membership and does not begin a drag.
     if (event.shiftKey) {
-      toggleShapeSelection(shape.id);
+      toggleSelection(shape.id);
       if (suppressesNativePointer(shape)) event.preventDefault();
       return;
     }
 
     // Clicking a shape outside the current selection collapses to just it;
     // clicking one already inside keeps the selection so the whole group drags.
-    if (!state.selectedShapeIds.has(shape.id)) {
-      selectOnlyShape(shape.id);
+    if (!state.selectedIds.has(shape.id)) {
+      selectOnly(shape.id);
     }
 
     if (!canMoveShape(shape)) {
@@ -2349,7 +2313,7 @@ export function createCanvasController(
     }
 
     dragMoved = false;
-    dragState = buildShapeDragState(event);
+    dragState = buildElementDragState(event);
     beginDragStrokeTransform(dragState);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     if (suppressesNativePointer(shape)) {
@@ -2359,27 +2323,30 @@ export function createCanvasController(
 
   function startShapeResize(shape: CanvasShape, event: PointerEvent) {
     if (event.button !== 0 || !canMoveShape(shape)) return;
-    selectOnlyShape(shape.id);
+    selectOnly(shape.id);
     // Text auto-sizes to its content, so drive off its measured box.
     const bounds = shapeBounds(shape);
-    const resizeMode = extensionManager.get(shape.type).behavior.transform;
-    const usesIntrinsicScale = resizeMode?.resize === "font";
-    const keepAspect = Boolean(resizeMode?.aspectLocked) || usesIntrinsicScale;
+    const transform = extensionManager.get(shape.type).behavior.transform;
+    const usesIntrinsicScale = transform?.resize === "font";
+    const keepAspect = Boolean(transform?.aspectLocked) || usesIntrinsicScale;
     dragState = {
       type: "resize",
       pointerId: event.pointerId,
-      shapeId: shape.id,
+      elementId: shape.id,
       fixedTopLeft: rotatedShapeCorners(bounds)[0],
       minSize: extensionManager.get(shape.type).defaults.minSize,
       aspect: keepAspect && bounds.height > 0 ? bounds.width / bounds.height : undefined,
-      resizeMode: usesIntrinsicScale ? "font" : "box",
-      initialScale: Number(shape.data.fontScale) || 1,
       initial: {
         x: shape.frame.x,
         y: shape.frame.y,
         width: bounds.width,
         height: bounds.height,
         rotation: shape.frame.rotation,
+      },
+      target: {
+        store: "shape",
+        mode: usesIntrinsicScale ? "font" : "box",
+        initialScale: Number(shape.data.fontScale) || 1,
       },
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2389,8 +2356,18 @@ export function createCanvasController(
   function startSelectionScale(selection: ScalableSelection, event: PointerEvent) {
     if (event.button !== 0) return;
     const { bounds } = selection;
+    const shapes = selection.elements.flatMap((element) => {
+      const shape = element.kind === "shape" ? shapesById().get(element.id) : undefined;
+      return shape ? [shape] : [];
+    });
+    const strokes = selection.elements.flatMap((element) => {
+      const stroke =
+        element.kind === "stroke" ? strokesById().get(element.id) : undefined;
+      return stroke ? [stroke] : [];
+    });
+
     let minimumScale = 0.05;
-    for (const shape of selection.shapes) {
+    for (const shape of shapes) {
       const transform = extensionManager.get(shape.type).behavior.transform;
       if (transform.resize === "font") {
         minimumScale = Math.max(
@@ -2416,7 +2393,7 @@ export function createCanvasController(
         width: Math.max(1, bounds.width * minimumScale),
         height: Math.max(1, bounds.height * minimumScale),
       },
-      shapes: selection.shapes.map((shape) => ({
+      shapes: shapes.map((shape) => ({
         id: shape.id,
         frame: { ...shape.frame },
         resizeMode: extensionManager.get(shape.type).behavior.transform.resize as
@@ -2424,7 +2401,7 @@ export function createCanvasController(
           | "font",
         fontScale: Number(shape.data.fontScale) || 1,
       })),
-      strokes: selection.strokes.map((stroke) => ({
+      strokes: strokes.map((stroke) => ({
         id: stroke.id,
         points: stroke.points.map(cloneFreehandPoint),
       })),
@@ -2433,15 +2410,31 @@ export function createCanvasController(
     event.preventDefault();
   }
 
+  /** Starts a rotate on whichever store the element lives in. */
+  function startRotation(element: CanvasElementHandle, event: PointerEvent) {
+    const stroke = strokesById().get(element.id);
+    if (stroke) return startStrokeRotation(stroke, event);
+    const shape = shapesById().get(element.id);
+    if (shape) startShapeRotation(shape, event);
+  }
+
+  /** Starts a resize on whichever store the element lives in. */
+  function startResize(element: CanvasElementHandle, event: PointerEvent) {
+    const stroke = strokesById().get(element.id);
+    if (stroke) return startStrokeResize(stroke, event);
+    const shape = shapesById().get(element.id);
+    if (shape) startShapeResize(shape, event);
+  }
+
   function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
     const canRotate = extensionManager.get(shape.type).behavior.transform.rotate;
     if (event.button !== 0 || !canRotate || !canMoveShape(shape)) return;
-    selectOnlyShape(shape.id);
+    selectOnly(shape.id);
     const bounds = shapeBounds(shape);
     dragState = {
       type: "rotate",
       pointerId: event.pointerId,
-      shapeId: shape.id,
+      elementId: shape.id,
       center: {
         x: shape.frame.x + bounds.width / 2,
         y: shape.frame.y + bounds.height / 2,
@@ -2453,6 +2446,7 @@ export function createCanvasController(
         height: bounds.height,
         rotation: shape.frame.rotation,
       },
+      target: { store: "shape" },
     };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     event.preventDefault();
@@ -2463,12 +2457,15 @@ export function createCanvasController(
     const bounds = strokeBounds(stroke);
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
     dragState = {
-      type: "stroke-resize",
+      type: "resize",
       pointerId: event.pointerId,
-      strokeId: stroke.id,
+      elementId: stroke.id,
       fixedTopLeft: { x: bounds.x, y: bounds.y },
-      startBounds: bounds,
-      initialPoints: stroke.points.map(cloneFreehandPoint),
+      // Ink has no declared minimum; this keeps a stroke grabbable after it has
+      // been scaled all the way down.
+      minSize: { width: 32, height: 32 },
+      initial: { ...bounds, rotation: 0 },
+      target: { store: "stroke", initialPoints: stroke.points.map(cloneFreehandPoint) },
     };
     startStrokeTransformInteraction([stroke]);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2481,13 +2478,17 @@ export function createCanvasController(
     if (!bounds) return;
     const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
     dragState = {
-      type: "stroke-rotate",
+      type: "rotate",
       pointerId: event.pointerId,
-      strokeId: stroke.id,
+      elementId: stroke.id,
       center,
-      startRotation: rotationFromPointer(center, screenToWorld(screenPoint(event))),
-      initialRotation: stroke.rotation ?? 0,
-      initialPoints: stroke.points.map(cloneFreehandPoint),
+      initial: { ...bounds, rotation: stroke.rotation ?? 0 },
+      target: {
+        store: "stroke",
+        startRotation: rotationFromPointer(center, screenToWorld(screenPoint(event))),
+        initialRotation: stroke.rotation ?? 0,
+        initialPoints: stroke.points.map(cloneFreehandPoint),
+      },
     };
     startStrokeTransformInteraction([stroke]);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2513,8 +2514,7 @@ export function createCanvasController(
       pointerId: event.pointerId,
       additive,
       startScreen: start,
-      baseShapeIds: new Set(state.selectedShapeIds),
-      baseStrokeIds: new Set(state.selectedStrokeIds),
+      baseIds: new Set(state.selectedIds),
     };
     state.marqueeRect = { x: start.x, y: start.y, width: 0, height: 0 };
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2539,27 +2539,23 @@ export function createCanvasController(
       height: Math.abs(bottomRight.y - topLeft.y),
     };
 
-    const shapeIds = new Set(drag.additive ? drag.baseShapeIds : []);
+    const ids = new Set(drag.additive ? drag.baseIds : []);
     for (const shape of state.shapes) {
       if (shape.locked) continue;
       const bounds = shapeAabb(shape);
       const hit = isContainerShape(shape)
         ? rectContains(worldRect, bounds)
         : rectsIntersect(worldRect, bounds);
-      if (hit) shapeIds.add(shape.id);
+      if (hit) ids.add(shape.id);
     }
-
-    const strokeIds = new Set(drag.additive ? drag.baseStrokeIds : []);
     for (const stroke of state.strokes) {
       if (stroke.locked) continue;
       if (stroke.points.some((point) => isPointInRect(point, worldRect))) {
-        strokeIds.add(stroke.id);
+        ids.add(stroke.id);
       }
     }
 
-    state.selectedShapeIds = shapeIds;
-    state.selectedStrokeIds = strokeIds;
-    renderInk();
+    setSelection(ids);
   }
 
   // Shared geometry the canvas-painted extensions' hitTest hooks need. The host
@@ -2606,7 +2602,7 @@ export function createCanvasController(
 
   function editElementChrome(shape: CanvasShape) {
     if (shape.locked) return;
-    selectOnlyShape(shape.id);
+    selectOnly(shape.id);
     state.editingChromeId = shape.id;
     renderScene();
     void Promise.resolve().then(() => {
@@ -2661,16 +2657,16 @@ export function createCanvasController(
           return;
         }
         if (additive) {
-          toggleShapeSelection(hitImage.id);
-        } else if (!state.selectedShapeIds.has(hitImage.id)) {
-          selectOnlyShape(hitImage.id);
+          toggleSelection(hitImage.id);
+        } else if (!state.selectedIds.has(hitImage.id)) {
+          selectOnly(hitImage.id);
         }
         if (!canMoveShape(hitImage)) {
           event.preventDefault();
           return;
         }
         dragMoved = false;
-        dragState = buildShapeDragState(event);
+        dragState = buildElementDragState(event);
         beginDragStrokeTransform(dragState);
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         event.preventDefault();
@@ -2679,7 +2675,7 @@ export function createCanvasController(
 
       const hitStroke = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
       if (hitStroke) {
-        if (isStrokeLocked(hitStroke)) {
+        if (isElementLocked(hitStroke)) {
           event.preventDefault();
           return;
         }
@@ -2687,15 +2683,15 @@ export function createCanvasController(
         // a normal pointerdown selects the stroke and starts a drag for the
         // current stroke selection.
         if (additive) {
-          selectStroke(hitStroke, true);
+          toggleSelection(hitStroke);
           event.preventDefault();
           return;
         }
         // Grabbing a stroke that's already part of the selection keeps the whole
         // group (including any selected shapes/text) so it all drags together;
         // grabbing an unselected stroke collapses to just it.
-        if (!state.selectedStrokeIds.has(hitStroke)) {
-          selectStroke(hitStroke, false);
+        if (!state.selectedIds.has(hitStroke)) {
+          selectOnly(hitStroke);
         }
         const stroke = strokesById().get(hitStroke);
         if (!stroke || !canMoveStroke(stroke)) {
@@ -2703,7 +2699,7 @@ export function createCanvasController(
           return;
         }
         dragMoved = false;
-        dragState = buildShapeDragState(event);
+        dragState = buildElementDragState(event);
         beginDragStrokeTransform(dragState);
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         event.preventDefault();
@@ -2712,7 +2708,7 @@ export function createCanvasController(
 
       const paintedHit = hitTestPaintedShape(worldPoint);
       if (paintedHit) {
-        startShapeDrag(paintedHit.shape, event);
+        startElementDrag(paintedHit.shape, event);
         return;
       }
 
@@ -2817,13 +2813,13 @@ export function createCanvasController(
     return { dx: snap.dx, dy: snap.dy };
   }
 
-  function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null {
+  function lockedElementAtPointer(event: PointerEvent): string | null {
     const target = event.target;
     if (target instanceof Element) {
       const shapeElement = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
       const shapeId = shapeElement?.dataset.shapeId;
       if (shapeId) {
-        return isShapeLocked(shapeId) ? { type: "shape", id: shapeId } : null;
+        return isElementLocked(shapeId) ? shapeId : null;
       }
     }
 
@@ -2840,15 +2836,15 @@ export function createCanvasController(
 
     const worldPoint = screenToWorld(screenPoint(event));
     const image = hitTestRasterShape(worldPoint);
-    if (image?.locked) return { type: "shape", id: image.id };
+    if (image?.locked) return image.id;
 
     if (hasLockedStrokes()) {
       const strokeId = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
-      if (strokeId && isStrokeLocked(strokeId)) return { type: "stroke", id: strokeId };
+      if (strokeId && isElementLocked(strokeId)) return strokeId;
     }
 
     const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
-    if (paintedShape?.locked) return { type: "shape", id: paintedShape.id };
+    if (paintedShape?.locked) return paintedShape.id;
     return null;
   }
 
@@ -2857,8 +2853,7 @@ export function createCanvasController(
     if (target instanceof Element && target.closest(".canvas-unlock-button")) return;
 
     const next = lockedElementAtPointer(event);
-    const current = state.hoveredLockedElement;
-    if (current?.type === next?.type && current?.id === next?.id) return;
+    if (state.hoveredLockedElement === next) return;
     state.hoveredLockedElement = next;
   }
 
@@ -2888,318 +2883,362 @@ export function createCanvasController(
       return;
     }
 
-    if (dragState.type === "pan") {
-      // `const drag` captured so the narrowing survives the closures below.
-      const drag = dragState;
-      state.camera = panCameraByScreenDelta({
-        camera: drag.startCamera,
-        screen: state.screen,
-        fit: FIT_REFERENCE,
-        dxPx: drag.startPointer.x - event.clientX,
-        dyPx: drag.startPointer.y - event.clientY,
-      });
-      schedulePresenceUpdate();
-      return;
-    }
-
-    if (dragState.type === "marquee") {
-      const drag = dragState;
-      const rect: Rect = {
-        x: Math.min(drag.startScreen.x, point.x),
-        y: Math.min(drag.startScreen.y, point.y),
-        width: Math.abs(point.x - drag.startScreen.x),
-        height: Math.abs(point.y - drag.startScreen.y),
-      };
-      state.marqueeRect = rect;
-      applyMarqueeSelection(dragState, rect);
-      schedulePresenceUpdate();
-      return;
-    }
-
-    const world = screenToWorld(point);
-    if (dragState.type === "resize") {
-      const drag = dragState;
-      const shape = shapesById().get(drag.shapeId);
-      if (!shape || !canMoveShape(shape)) return;
-      const resized = resizeRotatedShapeFromBottomRight({
-        fixedTopLeft: drag.fixedTopLeft,
-        pointer: world,
-        rotation: drag.initial.rotation,
-        minSize: drag.minSize,
-        aspect: drag.aspect,
-      });
-      if (drag.resizeMode === "font") {
-        // Text has no stored box; translate the drag into a proportional font
-        // scale and let the node re-measure its own width/height. Top-left stays
-        // put, so it grows toward the corner being dragged.
-        const ratio = drag.initial.width > 0 ? resized.width / drag.initial.width : 1;
-        const nextScale = clampFontScale((drag.initialScale ?? 1) * ratio);
-        updateShapeData(
-          drag.shapeId,
-          {
-            fontScale: Math.round(nextScale * 1000) / 1000,
-          },
-          { transform: true },
-        );
-        return;
-      }
-      updateShapeFrame(drag.shapeId, {
-        x: Math.round(resized.x),
-        y: Math.round(resized.y),
-        width: Math.round(resized.width),
-        height: Math.round(resized.height),
-      });
-      return;
-    }
-
-    if (dragState.type === "selection-scale") {
-      const drag = dragState;
-      const resized = resizeRotatedShapeFromBottomRight({
-        fixedTopLeft: drag.origin,
-        pointer: world,
-        rotation: 0,
-        minSize: drag.minSize,
-        aspect: drag.startBounds.width / drag.startBounds.height,
-      });
-      const scale = resized.width / drag.startBounds.width;
-      ydoc.transact(() => {
-        for (const shape of drag.shapes) {
-          const nextFrame = {
-            x: drag.origin.x + (shape.frame.x - drag.origin.x) * scale,
-            y: drag.origin.y + (shape.frame.y - drag.origin.y) * scale,
-          };
-          if (shape.resizeMode === "font") {
-            updateShapeFrame(shape.id, nextFrame);
-            updateShapeData(
-              shape.id,
-              {
-                fontScale:
-                  Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000,
-              },
-              { transform: true },
-            );
-            continue;
-          }
-          updateShapeFrame(shape.id, {
-            ...nextFrame,
-            width: Math.round(shape.frame.width * scale),
-            height: Math.round(shape.frame.height * scale),
-          });
-        }
-        for (const stroke of drag.strokes) {
-          updateStrokePoints(
-            stroke.id,
-            stroke.points.map((point) => ({
-              ...point,
-              x: drag.origin.x + (point.x - drag.origin.x) * scale,
-              y: drag.origin.y + (point.y - drag.origin.y) * scale,
-            })),
-          );
-        }
-      });
-      return;
-    }
-
-    if (dragState.type === "rotate") {
-      const drag = dragState;
-      const shape = shapesById().get(drag.shapeId);
-      if (!shape || !canMoveShape(shape)) return;
-      const rawRotation = rotationFromPointer(drag.center, world);
-      const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-      updateShapeFrame(drag.shapeId, { rotation: Math.round(rotation * 10) / 10 });
-      return;
-    }
-
-    if (dragState.type === "stroke-resize") {
-      const drag = dragState;
-      const stroke = strokesById().get(drag.strokeId);
-      if (!stroke || !canMoveStroke(stroke)) return;
-      const resized = resizeRotatedShapeFromBottomRight({
-        fixedTopLeft: drag.fixedTopLeft,
-        pointer: world,
-        rotation: 0,
-        minSize: { width: 32, height: 32 },
-      });
-      const scaleX = resized.width / drag.startBounds.width;
-      const scaleY = resized.height / drag.startBounds.height;
-      updateStrokeTransformInteraction([
-        strokeFromTransformedPoints(
-          stroke,
-          drag.initialPoints.map((point) => ({
-            ...point,
-            x: resized.x + (point.x - drag.startBounds.x) * scaleX,
-            y: resized.y + (point.y - drag.startBounds.y) * scaleY,
-          })),
-        ),
-      ]);
-      return;
-    }
-
-    if (dragState.type === "stroke-rotate") {
-      const drag = dragState;
-      const stroke = strokesById().get(drag.strokeId);
-      if (!stroke || !canMoveStroke(stroke)) return;
-      const rawRotation = rotationFromPointer(drag.center, world);
-      const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-      const delta = ((rotation - drag.startRotation + 540) % 360) - 180;
-      const normalizedRotation = normalizeRotation(drag.initialRotation + delta);
-      updateStrokeTransformInteraction([
-        strokeFromTransformedPoints(
-          stroke,
-          drag.initialPoints.map((point) => {
-            const rotated = rotateVector(
-              { x: point.x - drag.center.x, y: point.y - drag.center.y },
-              delta,
-            );
-            return {
-              ...point,
-              x: drag.center.x + rotated.x,
-              y: drag.center.y + rotated.y,
-            };
-          }),
-          normalizedRotation,
-        ),
-      ]);
-      return;
-    }
-
     const drag = dragState;
-    // A few pixels of travel (in screen space) promotes this from a click to a
-    // drag, so a click on a document card opens it instead of nudging it.
-    if (
-      !dragMoved &&
-      Math.hypot(world.x - drag.startPointer.x, world.y - drag.startPointer.y) *
-        transform().scale >
-        3
-    ) {
-      dragMoved = true;
-    }
-    const { dx, dy } = snapDragOffset(
-      drag,
-      world.x - drag.startPointer.x,
-      world.y - drag.startPointer.y,
-      event.metaKey,
-    );
-    selectionRenderer.setInteractionOffset({ x: dx, y: dy });
-    ydoc.transact(() => {
-      for (const moved of drag.shapes) {
-        const shape = shapesById().get(moved.id);
-        if (!shape || !canMoveShape(shape)) continue;
-        updateShapeFrame(moved.id, {
-          x: Math.round(moved.x + dx),
-          y: Math.round(moved.y + dy),
-        });
-      }
+    dragBehavior(drag).move(drag, {
+      event,
+      screen: point,
+      world: screenToWorld(point),
     });
-    const strokeTransform = inkRenderer.strokeTransform;
-    if (strokeTransform) {
-      updateStrokeTransformInteraction(strokeTransform.originalStrokes, dx, dy);
-    }
-    // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
-    // this explicit render.
-    scheduleInkRender();
   }
 
-  function commitStrokeTransformInteraction(drag: DragState) {
-    const transformState = inkRenderer.strokeTransform;
-    if (!transformState) {
-      if (selectionDragActive) {
-        selectionDragActive = false;
-        selectionRenderer.setInteractionOffset(null);
-        renderSelections();
-      }
-      return;
-    }
+  type DragMove = {
+    event: PointerEvent;
+    /** Pointer in viewport pixels. */
+    screen: { x: number; y: number };
+    /** The same point in world coordinates. */
+    world: { x: number; y: number };
+  };
 
-    const hasChange =
-      drag.type === "shape"
-        ? transformState.dx !== 0 || transformState.dy !== 0
-        : transformState.strokes.some(
-            (stroke, index) => stroke !== transformState.originalStrokes[index],
+  /**
+   * What one kind of drag does, in one place.
+   *
+   * A drag used to be spelled out four times — in the `DragState` union, in its
+   * `startX`, in a branch of `handlePointerMove`, and again in the commit and
+   * cancel paths — several hundred lines apart, so adding a gesture meant
+   * finding all four. Here a gesture is a `DragState` variant and one entry.
+   */
+  type DragBehavior<S> = {
+    move: (drag: S, at: DragMove) => void;
+    /** Applied when the pointer is released. */
+    commit?: (drag: S) => void;
+    /** Puts back what the gesture changed. Present only where Escape aborts it. */
+    revert?: (drag: S) => void;
+    /** Runs however the gesture ended, before `dragState` is cleared. */
+    end?: (drag: S) => void;
+  };
+
+  const DRAG_BEHAVIORS: {
+    [K in DragState["type"]]: DragBehavior<Extract<DragState, { type: K }>>;
+  } = {
+    pan: {
+      move(drag, { event }) {
+        state.camera = panCameraByScreenDelta({
+          camera: drag.startCamera,
+          screen: state.screen,
+          fit: FIT_REFERENCE,
+          dxPx: drag.startPointer.x - event.clientX,
+          dyPx: drag.startPointer.y - event.clientY,
+        });
+        schedulePresenceUpdate();
+      },
+      end() {
+        state.isPanning = false;
+      },
+    },
+
+    marquee: {
+      move(drag, { screen }) {
+        const rect: Rect = {
+          x: Math.min(drag.startScreen.x, screen.x),
+          y: Math.min(drag.startScreen.y, screen.y),
+          width: Math.abs(screen.x - drag.startScreen.x),
+          height: Math.abs(screen.y - drag.startScreen.y),
+        };
+        state.marqueeRect = rect;
+        applyMarqueeSelection(drag, rect);
+        schedulePresenceUpdate();
+      },
+      end() {
+        state.marqueeRect = null;
+      },
+    },
+
+    shape: {
+      move(drag, { event, world }) {
+        // A few pixels of travel (in screen space) promotes this from a click to
+        // a drag, so a click on a document card opens it instead of nudging it.
+        if (
+          !dragMoved &&
+          Math.hypot(world.x - drag.startPointer.x, world.y - drag.startPointer.y) *
+            transform().scale >
+            3
+        ) {
+          dragMoved = true;
+        }
+        const { dx, dy } = snapDragOffset(
+          drag,
+          world.x - drag.startPointer.x,
+          world.y - drag.startPointer.y,
+          event.metaKey,
+        );
+        ydoc.transact(() => {
+          for (const moved of drag.shapes) {
+            const shape = shapesById().get(moved.id);
+            if (!shape || !canMoveShape(shape)) continue;
+            updateShapeFrame(moved.id, {
+              x: Math.round(moved.x + dx),
+              y: Math.round(moved.y + dy),
+            });
+          }
+        });
+        offsetStrokeTransformInteraction(dx, dy);
+        // Yjs shape edits don't trigger an ink redraw, so guides won't appear
+        // without this explicit render.
+        scheduleInkRender();
+      },
+      commit(drag) {
+        const preview = takeStrokePreview();
+        if (!preview) return;
+        // Only the strokes this drag captured move; `state.strokes` would sweep
+        // up every stroke on the canvas.
+        ydoc.transact(() => {
+          for (const stroke of drag.strokes) {
+            translateStroke(stroke.id, stroke.points, preview.dx, preview.dy);
+          }
+        });
+      },
+      end() {
+        strokePreview = null;
+      },
+    },
+
+    resize: {
+      move(drag, { world }) {
+        const box = resizeRotatedShapeFromBottomRight({
+          fixedTopLeft: drag.fixedTopLeft,
+          pointer: world,
+          rotation: drag.initial.rotation,
+          minSize: drag.minSize,
+          aspect: drag.aspect,
+        });
+
+        if (drag.target.store === "stroke") {
+          const stroke = strokesById().get(drag.elementId);
+          if (!stroke || !canMoveStroke(stroke)) return;
+          const scaleX = box.width / drag.initial.width;
+          const scaleY = box.height / drag.initial.height;
+          updateStrokeTransformInteraction([
+            strokeFromTransformedPoints(
+              stroke,
+              drag.target.initialPoints.map((point) => ({
+                ...point,
+                x: box.x + (point.x - drag.initial.x) * scaleX,
+                y: box.y + (point.y - drag.initial.y) * scaleY,
+              })),
+            ),
+          ]);
+          return;
+        }
+
+        const shape = shapesById().get(drag.elementId);
+        if (!shape || !canMoveShape(shape)) return;
+        if (drag.target.mode === "font") {
+          // Text has no stored box; translate the drag into a proportional font
+          // scale and let the node re-measure its own width/height. Top-left
+          // stays put, so it grows toward the corner being dragged.
+          const ratio = drag.initial.width > 0 ? box.width / drag.initial.width : 1;
+          const nextScale = clampFontScale(drag.target.initialScale * ratio);
+          updateShapeData(
+            drag.elementId,
+            { fontScale: Math.round(nextScale * 1000) / 1000 },
+            { transform: true },
           );
-    if (!hasChange) {
+          return;
+        }
+        updateShapeFrame(drag.elementId, {
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+        });
+      },
+      commit: commitElementTransform,
+      revert: revertElementTransform,
+      end: clearStrokePreview,
+    },
+
+    rotate: {
+      move(drag, { event, world }) {
+        const raw = rotationFromPointer(drag.center, world);
+        const rotation = event.shiftKey ? snapRotation(raw) : raw;
+
+        if (drag.target.store === "stroke") {
+          const stroke = strokesById().get(drag.elementId);
+          if (!stroke || !canMoveStroke(stroke)) return;
+          const { startRotation, initialRotation, initialPoints } = drag.target;
+          const delta = ((rotation - startRotation + 540) % 360) - 180;
+          updateStrokeTransformInteraction([
+            strokeFromTransformedPoints(
+              stroke,
+              initialPoints.map((point) => {
+                const rotated = rotateVector(
+                  { x: point.x - drag.center.x, y: point.y - drag.center.y },
+                  delta,
+                );
+                return {
+                  ...point,
+                  x: drag.center.x + rotated.x,
+                  y: drag.center.y + rotated.y,
+                };
+              }),
+              normalizeRotation(initialRotation + delta),
+            ),
+          ]);
+          return;
+        }
+
+        const shape = shapesById().get(drag.elementId);
+        if (!shape || !canMoveShape(shape)) return;
+        updateShapeFrame(drag.elementId, { rotation: Math.round(rotation * 10) / 10 });
+      },
+      commit: commitElementTransform,
+      revert: revertElementTransform,
+      end: clearStrokePreview,
+    },
+
+    "selection-scale": {
+      move(drag, { world }) {
+        const resized = resizeRotatedShapeFromBottomRight({
+          fixedTopLeft: drag.origin,
+          pointer: world,
+          rotation: 0,
+          minSize: drag.minSize,
+          aspect: drag.startBounds.width / drag.startBounds.height,
+        });
+        const scale = resized.width / drag.startBounds.width;
+        ydoc.transact(() => {
+          for (const shape of drag.shapes) {
+            const nextFrame = {
+              x: drag.origin.x + (shape.frame.x - drag.origin.x) * scale,
+              y: drag.origin.y + (shape.frame.y - drag.origin.y) * scale,
+            };
+            if (shape.resizeMode === "font") {
+              updateShapeFrame(shape.id, nextFrame);
+              updateShapeData(
+                shape.id,
+                {
+                  fontScale:
+                    Math.round(clampFontScale(shape.fontScale * scale) * 1000) / 1000,
+                },
+                { transform: true },
+              );
+              continue;
+            }
+            updateShapeFrame(shape.id, {
+              ...nextFrame,
+              width: Math.round(shape.frame.width * scale),
+              height: Math.round(shape.frame.height * scale),
+            });
+          }
+          for (const stroke of drag.strokes) {
+            updateStrokePoints(
+              stroke.id,
+              stroke.points.map((point) => ({
+                ...point,
+                x: drag.origin.x + (point.x - drag.origin.x) * scale,
+                y: drag.origin.y + (point.y - drag.origin.y) * scale,
+              })),
+            );
+          }
+        });
+      },
+      revert(drag) {
+        ydoc.transact(() => {
+          for (const shape of drag.shapes) {
+            updateShapeFrame(shape.id, shape.frame);
+            if (shape.resizeMode === "font") {
+              updateShapeData(
+                shape.id,
+                { fontScale: shape.fontScale },
+                { transform: true },
+              );
+            }
+          }
+          for (const stroke of drag.strokes) {
+            updateStrokePoints(stroke.id, stroke.points);
+          }
+        });
+      },
+    },
+  };
+
+  // One cast, so every call site below stays type-safe: the table is keyed by
+  // the same discriminant the state carries, which TypeScript cannot follow
+  // through an index on a union.
+  function dragBehavior<S extends DragState>(drag: S): DragBehavior<S> {
+    return DRAG_BEHAVIORS[drag.type] as DragBehavior<S>;
+  }
+
+  /** The pending preview, cleared, or null when the gesture changed nothing. */
+  function takeStrokePreview() {
+    const preview = strokePreview;
+    strokePreview = null;
+    return preview?.changed ? preview : null;
+  }
+
+  function clearStrokePreview() {
+    strokePreview = null;
+  }
+
+  /**
+   * Writes a finished resize or rotate back to whichever store it came from.
+   *
+   * A shape has been written to Yjs throughout the drag and needs nothing here;
+   * ink was only previewed, so this is where its new points land.
+   */
+  function commitElementTransform(
+    drag: Extract<DragState, { type: "resize" | "rotate" }>,
+  ) {
+    const stroke = takeStrokePreview()?.strokes[0];
+    if (!stroke || drag.target.store !== "stroke") return;
+    ydoc.transact(() => {
+      updateStrokePoints(
+        drag.elementId,
+        stroke.points,
+        drag.type === "rotate" ? stroke.rotation : undefined,
+      );
+    });
+  }
+
+  function revertElementTransform(
+    drag: Extract<DragState, { type: "resize" | "rotate" }>,
+  ) {
+    if (drag.target.store === "stroke") {
       cancelStrokeTransformInteraction();
       return;
     }
+    const shape = shapesById().get(drag.elementId);
+    if (shape && canMoveShape(shape)) updateShapeFrame(drag.elementId, drag.initial);
+  }
 
-    inkRenderer.commitStrokeTransform((committedTransform) => {
-      ydoc.transact(() => {
-        if (drag.type === "shape") {
-          for (const stroke of state.strokes) {
-            translateStroke(
-              stroke.id,
-              stroke.points,
-              committedTransform.dx,
-              committedTransform.dy,
-            );
-          }
-          return;
-        }
-        if (drag.type !== "stroke-resize" && drag.type !== "stroke-rotate") return;
-        const stroke = committedTransform.strokes[0];
-        if (!stroke) return;
-        updateStrokePoints(
-          drag.strokeId,
-          stroke.points,
-          drag.type === "stroke-rotate" ? stroke.rotation : undefined,
-        );
-      });
-    });
-    selectionDragActive = false;
-    selectionRenderer.setInteractionOffset(null);
-    renderActiveInk();
-    renderSelections();
+  /** Ends the active drag, clearing the transient state every gesture leaves. */
+  function endDrag(drag: DragState) {
+    dragBehavior(drag).end?.(drag);
+    dragState = null;
+    if (activeSnapGuides.length > 0) {
+      activeSnapGuides = [];
+      renderInk();
+    }
   }
 
   function handlePointerUp(event: PointerEvent) {
     if (endToolPointerGesture(event)) event.preventDefault();
-    if (dragState?.pointerId === event.pointerId) {
-      commitStrokeTransformInteraction(dragState);
-      if (dragState.type === "marquee") {
-        state.marqueeRect = null;
-        renderSelections();
-      }
-      if (dragState.type === "pan") state.isPanning = false;
-      if (activeSnapGuides.length > 0) {
-        activeSnapGuides = [];
-        renderInk();
-      }
-      dragState = null;
-    }
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const drag = dragState;
+    dragBehavior(drag).commit?.(drag);
+    endDrag(drag);
   }
 
+  /**
+   * Aborts a drag that changed the document, putting it back. Reports whether
+   * there was one, so Escape can fall through to whatever else it does.
+   */
   function cancelTransformDrag() {
-    if (dragState?.type === "resize" || dragState?.type === "rotate") {
-      const shape = shapesById().get(dragState.shapeId);
-      if (shape && canMoveShape(shape)) {
-        updateShapeFrame(dragState.shapeId, dragState.initial);
-      }
-    } else if (dragState?.type === "selection-scale") {
-      const drag = dragState;
-      ydoc.transact(() => {
-        for (const shape of drag.shapes) {
-          updateShapeFrame(shape.id, shape.frame);
-          if (shape.resizeMode === "font") {
-            updateShapeData(
-              shape.id,
-              { fontScale: shape.fontScale },
-              { transform: true },
-            );
-          }
-        }
-        for (const stroke of drag.strokes) {
-          updateStrokePoints(stroke.id, stroke.points);
-        }
-      });
-    } else if (
-      dragState?.type === "stroke-resize" ||
-      dragState?.type === "stroke-rotate"
-    ) {
-      cancelStrokeTransformInteraction();
-    } else {
-      return false;
-    }
-    dragState = null;
+    const drag = dragState;
+    const revert = drag && dragBehavior(drag).revert;
+    if (!drag || !revert) return false;
+    revert(drag);
+    endDrag(drag);
     return true;
   }
 
@@ -3212,17 +3251,7 @@ export function createCanvasController(
     }
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     if (cancelTransformDrag()) return;
-    if (dragState.type === "marquee") {
-      state.marqueeRect = null;
-      renderSelections();
-    }
-    if (dragState.type === "pan") state.isPanning = false;
-    cancelStrokeTransformInteraction();
-    dragState = null;
-    if (activeSnapGuides.length > 0) {
-      activeSnapGuides = [];
-      renderInk();
-    }
+    endDrag(dragState);
   }
 
   function handlePointerLeave() {
@@ -3257,8 +3286,8 @@ export function createCanvasController(
       const shapeElement = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
       const shapeId = shapeElement?.dataset.shapeId;
       if (shapeId) {
-        if (isShapeLocked(shapeId)) clearSelection();
-        else if (!state.selectedShapeIds.has(shapeId)) selectOnlyShape(shapeId);
+        if (isElementLocked(shapeId)) clearSelection();
+        else if (!state.selectedIds.has(shapeId)) selectOnly(shapeId);
         return;
       }
     }
@@ -3267,22 +3296,21 @@ export function createCanvasController(
     const image = hitTestRasterShape(worldPoint);
     if (image) {
       if (image.locked) clearSelection();
-      else if (!state.selectedShapeIds.has(image.id)) selectOnlyShape(image.id);
+      else if (!state.selectedIds.has(image.id)) selectOnly(image.id);
       return;
     }
 
     const strokeId = hitTestCanvasStroke(state.strokes, worldPoint, transform().scale);
     if (strokeId) {
-      if (isStrokeLocked(strokeId)) clearSelection();
-      else if (!state.selectedStrokeIds.has(strokeId)) selectStroke(strokeId, false);
+      if (isElementLocked(strokeId)) clearSelection();
+      else if (!state.selectedIds.has(strokeId)) selectOnly(strokeId);
       return;
     }
 
     const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
     if (paintedShape) {
       if (paintedShape.locked) clearSelection();
-      else if (!state.selectedShapeIds.has(paintedShape.id))
-        selectOnlyShape(paintedShape.id);
+      else if (!state.selectedIds.has(paintedShape.id)) selectOnly(paintedShape.id);
       return;
     }
 
@@ -3313,8 +3341,8 @@ export function createCanvasController(
    * and a mixed or multiple selection has no single type to ask.
    */
   function contextMenuEntries() {
-    if (state.selectedShapeIds.size !== 1 || state.selectedStrokeIds.size > 0) return [];
-    const [id] = state.selectedShapeIds;
+    if (state.selectedIds.size !== 1) return [];
+    const [id] = state.selectedIds;
     const shape = shapesById().get(id);
     if (!shape) return [];
     return extensionManager.get(shape.type).contextMenu?.(shape, extHost) ?? [];
@@ -3403,19 +3431,18 @@ export function createCanvasController(
       if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
       cameraMoveTimer = setTimeout(() => {
         state.isCameraMoving = false;
-        renderSelections(true);
         invalidate();
       }, 150);
     });
 
-    watch("selection", state.selectedShapeIds, (ids) => {
+    watch("selection", state.selectedIds, (ids) => {
       if (state.editingChromeId && (ids.size !== 1 || !ids.has(state.editingChromeId))) {
         finishChromeEditing();
       }
       updatePresence();
     });
 
-    watch("selection:edit", state.selectedShapeIds, (ids) => {
+    watch("selection:edit", state.selectedIds, (ids) => {
       const editing = state.activeEditSession;
       if (editing && (ids.size !== 1 || !ids.has(editing.shapeId))) stopActiveEdit();
     });
@@ -3432,8 +3459,6 @@ export function createCanvasController(
       }
     });
 
-    watch("strokeSelection", state.selectedStrokeIds, () => updatePresence());
-
     watch("gridType", host.gridType, (value) => applyGridType(value), {
       immediate: true,
     });
@@ -3448,11 +3473,6 @@ export function createCanvasController(
       },
       { immediate: true },
     );
-
-    // Drawn every frame rather than watched: the selection overlay is part of
-    // painting, and the arrays a watch would compare are rebuilt on each read,
-    // so it would fire every frame anyway.
-    renderSelections();
   }
 
   /**
@@ -3463,19 +3483,17 @@ export function createCanvasController(
   function runPostRenderReactions(): void {
     watchPost("transform", transform(), () => dom.canvasToolbar?.reposition());
 
-    watchPost("shapes", state.shapes, () => {
-      renderScene();
-      renderSelections();
-    });
-
     watchPost(
       "viewport",
       `${state.camera.centerX}:${state.camera.centerY}:${state.camera.zoom}:${state.screen.width}:${state.screen.height}`,
-      () => {
-        renderInk();
-        updatePresence();
-      },
+      () => updatePresence(),
     );
+
+    // Painted every flush rather than watched. A flush only happens because
+    // something asked for a frame, and the values a watch would compare here —
+    // the selection snapshot, the visible stroke list — are rebuilt on each
+    // read, so it would fire every flush anyway.
+    renderInk();
   }
 
   // --- lifecycle ---------------------------------------------------------
@@ -3545,7 +3563,7 @@ export function createCanvasController(
       "canvas:delete",
       t("Delete selection"),
       t("Delete the selected elements"),
-      deleteSelectedShape,
+      deleteSelection,
       ["delete", "backspace"],
     );
     registerAction(
@@ -3690,8 +3708,6 @@ export function createCanvasController(
     if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
     if (inkRafId !== null) cancelAnimationFrame(inkRafId);
     if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
-    inkRenderer.dispose();
-    selectionRenderer.dispose();
   }
 
   // --- view --------------------------------------------------------------
@@ -3733,11 +3749,9 @@ export function createCanvasController(
     selectedShapeColorPalette,
     selectedShape,
     selectedStrokeColor,
-    selectedTransformShape,
-    selectedResizeOnlyShape,
+    selectedTransformElement,
+    selectedResizeOnlyElement,
     selectedScalableSelection,
-    selectedBasicShapeStroke,
-    selectedBasicShapeStrokeControls,
     hoveredLockedElementPosition,
     remoteCanvasPointerPresences,
     viewportCursor,
@@ -3778,18 +3792,16 @@ export function createCanvasController(
     cutSelectionToClipboard,
     pasteFromContextMenu,
     uploadFromContextMenu,
-    deleteSelectedShape,
+    deleteSelection,
     stopActiveEdit,
     finishChromeEditing,
     setActiveEditorRef,
 
     // pointer / drag entry points
-    startShapeDrag,
-    startShapeRotation,
-    startShapeResize,
+    startElementDrag,
+    startRotation,
+    startResize,
     startSelectionScale,
-    startStrokeRotation,
-    startStrokeResize,
     onElementActivate,
     onElementOpen,
     handleContextMenu,

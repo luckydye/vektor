@@ -130,21 +130,21 @@ describe("html ⇄ Y.XmlFragment parity with the editor schema", () => {
 describe("toCleanHtml", () => {
   it("keeps one top-level block per line", () => {
     const html = "<h1>Title</h1>\n<p>one</p>\n<p>two</p>\n<hr>\n<p>three</p>";
-    const out = toCleanHtml(docFromContent(null, html));
+    const out = toCleanHtml(docFromContent("html", html));
     expect(out.split("\n")).toHaveLength(5);
     expect(out).toBe(html);
   });
 
   it("round-trips through parse without drifting", () => {
     for (const [name, html] of Object.entries(CASES)) {
-      const once = toCleanHtml(docFromContent(null, html));
-      const twice = toCleanHtml(docFromContent(null, once));
+      const once = toCleanHtml(docFromContent("html", html));
+      const twice = toCleanHtml(docFromContent("html", once));
       expect(twice, name).toBe(once);
     }
   });
 
   it("gives empty content the one empty block the schema requires", () => {
-    expect(toCleanHtml(docFromContent(null, ""))).toBe("<p></p>");
+    expect(toCleanHtml(docFromContent("html", ""))).toBe("<p></p>");
   });
 
   it("returns an empty string when the fragment has no blocks at all", () => {
@@ -161,7 +161,7 @@ describe("toCleanHtml", () => {
       { length: 5000 },
       (_, i) => `<p>metrics line ${i} rss=123456789 heap=987654 conns=42</p>`,
     ).join("\n");
-    const doc = docFromContent(null, lines);
+    const doc = docFromContent("html", lines);
 
     const started = performance.now();
     const out = toCleanHtml(doc);
@@ -176,14 +176,14 @@ describe("toCleanHtml", () => {
       { length: 400 },
       (_, i) => `<p>2026-07-25T00:00:00Z rss=${i} conns=${i % 7} note=log line ${i}</p>`,
     ).join("\n");
-    expect(toCleanHtml(docFromContent(null, lines))).toBe(lines);
+    expect(toCleanHtml(docFromContent("html", lines))).toBe(lines);
   });
 });
 
 describe("workflow source", () => {
   it("round-trips code through a single code block", () => {
     const code = "export default async function () {\n  return 1 < 2;\n}\n";
-    const doc = docFromContent("workflow", code);
+    const doc = docFromContent("source-code", code);
     const fragment = doc.getXmlFragment("default");
     expect(fragment.length).toBe(1);
     expect((fragment.get(0) as Y.XmlElement).nodeName).toBe("codeBlock");

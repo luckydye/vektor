@@ -111,7 +111,7 @@ type CanvasElementSurface = "dom" | "canvas" | "dom+canvas";
 
 // Declarative transform capability, replacing the host's
 // selectedTransformShape / selectedResizable* branches.
-type CanvasElementTransform = {
+export type CanvasElementTransform = {
   move: boolean;
   // "box" resizes width/height; "font" scales fontScale (text); "none" hides
   // the resize handle entirely.

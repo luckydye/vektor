@@ -297,6 +297,49 @@ describe("attachments for a document-scoped grantee", () => {
   });
 });
 
+describe("conditional requests", () => {
+  it("answers 304 for a validator the caller already holds", async () => {
+    const documentId = await createDocument("Cached Media");
+    const url = await ownerUpload("CACHED ATTACHMENT", documentId);
+    await grantOnDocument(documentId, "viewer", { groupId: "public" });
+
+    const first = await fetch(`${BASE_URL}${url}`);
+    const etag = first.headers.get("etag");
+    expect(first.status).toBe(200);
+    expect(etag).toMatch(/^"..*"$/);
+
+    const revalidated = await fetch(`${BASE_URL}${url}`, {
+      headers: { "If-None-Match": etag as string },
+    });
+    expect(revalidated.status).toBe(304);
+    expect(await revalidated.text()).toBe("");
+  });
+
+  it("serves the bytes when the caller's validator is stale", async () => {
+    const documentId = await createDocument("Stale Media");
+    const url = await ownerUpload("FRESH ATTACHMENT", documentId);
+    await grantOnDocument(documentId, "viewer", { groupId: "public" });
+
+    const response = await fetch(`${BASE_URL}${url}`, {
+      headers: { "If-None-Match": '"not-the-stored-one"' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("FRESH ATTACHMENT");
+  });
+
+  it("revalidates before authorizing nothing — a 304 still needs access", async () => {
+    // The validator is not a capability: knowing the ETag of a private file
+    // must not turn into a way to confirm it exists.
+    const documentId = await createDocument("Private Cached Media");
+    const url = await ownerUpload("PRIVATE CACHED", documentId);
+
+    const response = await fetch(`${BASE_URL}${url}`, {
+      headers: { "If-None-Match": "*" },
+    });
+    expect(response.status).toBe(404);
+  });
+});
+
 describe("the upload listing", () => {
   it("shows an anonymous caller the shared documents' files and nothing else", async () => {
     const shared = await createDocument("Listed Publicly");

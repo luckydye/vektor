@@ -264,7 +264,6 @@
   "Light": "Light",
   "Dark": "Dark",
   "Canvas cursor color": "Canvas cursor color",
-  "Space:": "Space:",
   "None": "None",
   "Open a space to manage integrations.": "Open a space to manage integrations.",
   "Connected as": "Connected as",
@@ -411,8 +410,6 @@
   "Map steps and automate processes with ease.": "Map steps and automate processes with ease.",
   "Database": "Database",
   "Organize and manage data in structured tables.": "Organize and manage data in structured tables.",
-  "Spreadsheet": "Spreadsheet",
-  "Lay out numbers and records in rows and columns.": "Lay out numbers and records in rows and columns.",
   "Start from a template": "Start from a template",
   "Failed to insert the template": "Failed to insert the template",
   "Template": "Template",
@@ -712,5 +709,10 @@
   "What this share applies to": "What this share applies to",
   "Access to grant": "Access to grant",
   "When the link expires": "When the link expires",
-  "Link password": "Link password"
+  "Link password": "Link password",
+  "Install an extension that provides an integration.": "Install an extension that provides an integration.",
+  "Repository": "Repository",
+  "Host code with git, and browse it here.": "Host code with git, and browse it here.",
+  "Search people or type an email…": "Search people or type an email…",
+  "Invite {email}": "Invite {email}"
 }

@@ -8,7 +8,7 @@ The CLI is a single Bun-compiled binary built from `vektor.ts`. All commands are
 vektor.ts               routing, global flag parsing, help text
 src/cli/document.ts     cat, write, set, ls, query
 src/cli/category.ts     category ls/create/edit/rm
-src/cli/space.ts        space register/attach/enable/ls (direct auth database access)
+src/cli/space.ts        space register/attach/enable/token/migrate/purge/ls (direct auth database access)
 src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
@@ -138,9 +138,11 @@ Positional arguments that contain `=` (like `key=value`) are passed through corr
 
 ### Markdown conversion happens server-side
 
-`toHtmlIfMarkdown` in `src/utils/documentContent.ts` converts markdown to HTML when the document type is `markdown` or the `Content-Type` is a markdown MIME type.
+`prepareDocumentContent` in `src/documents/content.ts` converts markdown to HTML when the submitted content type is a markdown MIME type.
 
-Send `Content-Type: text/markdown` for raw markdown, or `Content-Type: application/json` with `{ type: "markdown", content: "..." }` to get conversion.
+`document create` sends JSON with `{ contentType: "text/markdown", content: "..." }`.
+`document write` sends a raw body with `Content-Type: text/markdown`; the update API
+does not read `contentType` from a JSON body.
 
 ### Frontmatter is parsed CLI-side
 

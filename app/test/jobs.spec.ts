@@ -195,8 +195,7 @@ describe("job runtime: protocol", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          type: "markdown",
-          content: "# Title\n\nSome body text.",
+          content: "<h1>Title</h1><p>Some body text.</p>",
           properties: { title: "Readable" },
         }),
       },

@@ -52,8 +52,8 @@ const brotliCompressAsync = promisify(brotliCompress);
 // payloads so effort scales sub-linearly with document size.
 const LARGE_PAYLOAD_BYTES = 512 * 1024;
 
-async function compressHtml(html: string): Promise<Buffer> {
-  const buffer = Buffer.from(html, "utf-8");
+async function compressRevisionContent(content: string): Promise<Buffer> {
+  const buffer = Buffer.from(content, "utf-8");
   const quality = buffer.byteLength > LARGE_PAYLOAD_BYTES ? 4 : 11;
   return await brotliCompressAsync(buffer, {
     params: {
@@ -63,18 +63,18 @@ async function compressHtml(html: string): Promise<Buffer> {
   });
 }
 
-export function decompressHtml(compressed: Buffer): string {
+export function decompressRevisionContent(compressed: Buffer): string {
   try {
     const decompressed = brotliDecompressSync(compressed);
     return decompressed.toString("utf-8");
   } catch (error) {
-    appLogger.error("Failed to decompress HTML", { error });
+    appLogger.error("Failed to decompress revision content", { error });
     throw new Error("Failed to decompress revision content");
   }
 }
 
-function calculateChecksum(html: string): string {
-  return createHash("sha256").update(html, "utf-8").digest("hex");
+function calculateChecksum(content: string): string {
+  return createHash("sha256").update(content, "utf-8").digest("hex");
 }
 
 async function getDocumentSlug(s: SpaceStore, documentId: string): Promise<string> {
@@ -159,11 +159,11 @@ async function insertRevision(
 export async function createRevision(
   s: SpaceStore,
   documentId: string,
-  html: string,
+  content: string,
   userId: string,
   options: CreateRevisionOptions = {},
 ): Promise<Revision> {
-  const checksum = calculateChecksum(html);
+  const checksum = calculateChecksum(content);
   const kind = options.kind ?? "save";
   const status = statusForKind(kind);
   const parentRev = options.parentRev ?? null;
@@ -208,7 +208,7 @@ export async function createRevision(
     coalescesWithPrevious(kind) &&
     (lastRevision.status ?? null) === null
   ) {
-    const compressed = await compressHtml(html);
+    const compressed = await compressRevisionContent(content);
     const updatedMessage = options.message ?? lastRevision.message;
     await s.db
       .update(revision)
@@ -232,7 +232,7 @@ export async function createRevision(
     };
   }
 
-  const compressed = await compressHtml(html);
+  const compressed = await compressRevisionContent(content);
   const id = createId("revision");
   const now = new Date();
   const slug = await getDocumentSlug(s, documentId);
@@ -338,7 +338,7 @@ export async function getRevisionContent(
     return null;
   }
   try {
-    return decompressHtml(revisionRecord.snapshot);
+    return decompressRevisionContent(revisionRecord.snapshot);
   } catch (error) {
     appLogger.error(`Failed to decompress revision ${rev} for document ${documentId}`, {
       error,
@@ -368,7 +368,7 @@ export async function restoreRevision(
   message?: string,
 ): Promise<{ revision: Revision; content: string } | null> {
   const content = await getRevisionContent(s, documentId, rev);
-  if (!content) {
+  if (content === null) {
     return null;
   }
 
@@ -468,7 +468,7 @@ export async function listRevisionMetadata(
 export async function createSuggestion(
   s: SpaceStore,
   documentId: string,
-  html: string,
+  content: string,
   userId: string,
   message?: string,
 ): Promise<Revision | null> {
@@ -501,7 +501,7 @@ export async function createSuggestion(
     return null;
   }
 
-  return createRevision(s, documentId, html, userId, {
+  return createRevision(s, documentId, content, userId, {
     message,
     kind: "suggestion",
     parentRev,

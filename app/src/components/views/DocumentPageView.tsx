@@ -4,26 +4,19 @@ import {
   createMemo,
   createSignal,
   type JSX,
-  Match,
   on,
   onCleanup,
   onMount,
   Show,
-  Switch,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { twMerge } from "tailwind-merge";
 import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
-import { AppView } from "#components/AppView.tsx";
 import { BottomBanner } from "#components/BottomBanner.tsx";
 import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
-import { CanvasView } from "#components/CanvasView.tsx";
-import {
-  DatabaseDocumentView,
-  type DatabaseExtensionView,
-} from "#components/DatabaseDocumentView.tsx";
 import { DocumentActions } from "#components/DocumentActions.tsx";
+import { DocumentBody } from "#components/DocumentBody.tsx";
 import { DocumentContent } from "#components/DocumentContent.tsx";
 import { DocumentExtensionViews } from "#components/DocumentExtensionViews.tsx";
 import { DocumentProperties } from "#components/DocumentProperties.tsx";
@@ -33,7 +26,6 @@ import { RestoreButton } from "#components/RestoreButton.tsx";
 import { RevisionsSidebar } from "#components/RevisionsSidebar.tsx";
 import { RevisionView } from "#components/RevisionView.tsx";
 import { TitleEditor } from "#components/TitleEditor.tsx";
-import { WorkflowView } from "#components/WorkflowView.tsx";
 import { useQuery } from "#composeables/query.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { editing, resetEditingState } from "#composeables/useEditor.ts";
@@ -41,12 +33,17 @@ import { useExtensions } from "#composeables/useExtensions.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
-import { placeholderDocumentTitle, readOnlyDocumentTypes } from "#documents/types.ts";
+import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { formatRelativeTime } from "#utils/dateFormat.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import {
+  isRepositoryCreationEnabled,
+  isWorkflowCreationEnabled,
+} from "#utils/spacePreferences.ts";
 import { spacePath } from "#utils/utils.ts";
 
 interface Props {
@@ -59,7 +56,15 @@ interface Props {
 }
 
 const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
-  database: { title: placeholderDocumentTitle("database"), content: "<p></p>" },
+  database: {
+    title: placeholderDocumentTitle("database"),
+    content: "",
+  },
+  repository: {
+    title: placeholderDocumentTitle("repository"),
+    // A repository's contents live in git, so the document carries none.
+    content: "",
+  },
   canvas: {
     title: placeholderDocumentTitle("canvas"),
     content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
@@ -146,6 +151,14 @@ export function DocumentPageView(props: Props) {
     enabled: createMemo(() => !isDraft() && !!currentSpace()?.id && !!doc()?.id),
   });
 
+  // A move changes the trail of every document under it, not just the one that
+  // moved, so any tree change refetches rather than only a matching id.
+  useSync(
+    createMemo(() => currentSpace()?.id ?? null),
+    [realtimeTopics.documentTree],
+    () => void breadcrumbsQuery.refetch(),
+  );
+
   const categoriesQuery = useQuery({
     queryKey: createMemo(() => ["categories", currentSpace()?.id]),
     queryFn: async () => {
@@ -193,7 +206,15 @@ export function DocumentPageView(props: Props) {
   const isApp = createMemo(() => documentType() === "app");
   const isWorkflow = createMemo(() => documentType() === "workflow");
   const isDatabase = createMemo(() => documentType() === "database");
+  const isRecord = createMemo(() => documentType() === "record");
   const isRegularDocument = createMemo(() => documentType() === "document");
+  const isRepository = createMemo(() => documentType() === repositoryDocumentType);
+  /**
+   * Views that carry their own name and their own sense of when they changed:
+   * repeating the document title above them, or a footer saying how long ago
+   * they were updated, only says it twice.
+   */
+  const isSelfTitled = createMemo(() => isDatabase() || isRepository());
   const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
@@ -221,34 +242,6 @@ export function DocumentPageView(props: Props) {
     },
   );
 
-  const databaseViews = createMemo<DatabaseExtensionView[], undefined>(
-    () => {
-      if (isDraft() || !isDatabase()) return [];
-
-      return extensions().flatMap((extension) =>
-        (extension.routes || [])
-          .filter((route) => route.placements?.includes("database"))
-          .map((route) => ({
-            extensionId: extension.id,
-            extensionName: extension.name,
-            route,
-          })),
-      );
-    },
-    undefined,
-    {
-      equals: (a, b) =>
-        a.length === b.length &&
-        a.every(
-          (view, index) =>
-            view.extensionId === b[index]?.extensionId &&
-            view.extensionName === b[index]?.extensionName &&
-            view.route.path === b[index]?.route.path &&
-            view.route.title === b[index]?.route.title,
-        ),
-    },
-  );
-
   const userCanEdit = createMemo(() => {
     const access = realtimeAccess();
     return (
@@ -265,8 +258,7 @@ export function DocumentPageView(props: Props) {
           isCanvas() ||
           isApp() ||
           isWorkflow() ||
-          isDatabase() ||
-          readOnlyDocumentTypes.includes(documentType())
+          isDatabase()
         ),
   );
 
@@ -316,6 +308,13 @@ export function DocumentPageView(props: Props) {
     const space = currentSpace();
     if (!autoCreate || !space) return;
     if (documentType() === "workflow" && !isWorkflowCreationEnabled(space.preferences)) {
+      navigate("/new", { replace: true });
+      return;
+    }
+    if (
+      documentType() === repositoryDocumentType &&
+      !isRepositoryCreationEnabled(space.preferences)
+    ) {
       navigate("/new", { replace: true });
       return;
     }
@@ -448,6 +447,9 @@ export function DocumentPageView(props: Props) {
         category={docCategory()}
         parents={parentBreadcrumbs()}
         currentTitle={title()}
+        documentId={doc()?.id}
+        spaceId={currentSpace()?.id}
+        canEdit={userCanEdit()}
       />
     </Show>
   );
@@ -516,7 +518,7 @@ export function DocumentPageView(props: Props) {
               class={twMerge(
                 "relative mx-auto h-full w-full",
                 isFullHeightView() && "flex min-h-0 flex-1 flex-col",
-                isDatabase() || effectiveLayout() === "full"
+                isDatabase() || isRecord() || effectiveLayout() === "full"
                   ? "max-w-full"
                   : "max-w-(--document-width)",
               )}
@@ -552,18 +554,14 @@ export function DocumentPageView(props: Props) {
 
                 <Show when={isCanvas()}>
                   <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
-                    <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-m">
+                    <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-s">
                       <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                       <DocumentActions title={title()} headerImage={headerImageSrc()} />
                     </div>
 
-                    <inset-view class="flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                      {titleRow()}
-                    </inset-view>
-
                     <inset-view
                       id="document-properties"
-                      class="mb-l block px-xs md:px-m print:px-0"
+                      class="mb-l block px-xs md:px-s print:px-0"
                     >
                       {documentPropertiesBlock()}
                     </inset-view>
@@ -571,7 +569,7 @@ export function DocumentPageView(props: Props) {
                 </Show>
 
                 <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
-                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
+                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-s">
                     <div class="min-w-0 flex-1">{breadcrumbs()}</div>
                     {documentActions()}
                   </div>
@@ -586,11 +584,19 @@ export function DocumentPageView(props: Props) {
                     />
 
                     <div class="flex min-w-0 flex-1 flex-col">
-                      <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
-                        {titleRow()}
-                      </inset-view>
+                      <Show when={!isSelfTitled()}>
+                        <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
+                          {titleRow()}
+                        </inset-view>
+                      </Show>
 
-                      <inset-view id="document-properties" class="mb-l block print:px-0">
+                      <inset-view
+                        id="document-properties"
+                        class={twMerge(
+                          "block print:px-0",
+                          isSelfTitled() ? "mt-2xs mb-2xs" : "mb-l",
+                        )}
+                      >
                         {documentPropertiesBlock("labeled")}
                       </inset-view>
                     </div>
@@ -608,7 +614,7 @@ export function DocumentPageView(props: Props) {
                     />
                   </Show>
 
-                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-m">
+                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-s">
                     <Show
                       when={isWorkflow()}
                       fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
@@ -618,16 +624,23 @@ export function DocumentPageView(props: Props) {
                     {documentActions()}
                   </div>
 
-                  <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-m print:px-0">
-                    {titleRow()}
-                  </inset-view>
+                  <Show when={!isSelfTitled()}>
+                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-s print:px-0">
+                      {titleRow()}
+                    </inset-view>
+                  </Show>
 
-                  <inset-view
-                    id="document-properties"
-                    class="mb-xl block px-xs md:px-m print:px-0"
-                  >
-                    {documentPropertiesBlock()}
-                  </inset-view>
+                  <Show when={!isSelfTitled()}>
+                    <inset-view
+                      id="document-properties"
+                      class={twMerge(
+                        "block px-xs md:px-s print:px-0",
+                        isSelfTitled() ? "mt-2xs mb-2xs" : "mb-xl",
+                      )}
+                    >
+                      {documentPropertiesBlock()}
+                    </inset-view>
+                  </Show>
                 </Show>
 
                 <div
@@ -650,7 +663,7 @@ export function DocumentPageView(props: Props) {
                         isFullHeightView()
                           ? "flex min-h-0 flex-1 flex-col overflow-hidden"
                           : "h-full overflow-x-auto",
-                        isPaddedDocument() && "px-xs md:px-m print:px-0",
+                        isPaddedDocument() && "px-xs md:px-s print:px-0",
                       )}
                     >
                       <Show
@@ -673,52 +686,36 @@ export function DocumentPageView(props: Props) {
                           spaceId={currentSpace()?.id as string}
                         />
 
-                        <Switch
-                          fallback={
-                            <DocumentContent
-                              spaceId={currentSpace()?.id as string}
-                              documentId={doc()?.id}
-                              initialHtml={doc()?.content}
-                              documentType={documentType()}
-                              readonly={isReadonly()}
-                            />
-                          }
-                        >
-                          <Match when={isApp()}>
-                            <AppView html={doc()?.content || ""} />
-                          </Match>
-                          <Match when={isWorkflow()}>
-                            <WorkflowView
-                              documentId={doc()?.id as string}
-                              spaceId={currentSpace()?.id as string}
-                            />
-                          </Match>
-                          <Match when={isDatabase()}>
-                            <DatabaseDocumentView
-                              databaseDocumentId={doc()?.id as string}
-                              spaceId={currentSpace()?.id as string}
-                              views={databaseViews()}
-                              viewConfig={doc()?.properties._databaseViews}
-                              schemaJson={
-                                optionalPropertyValueToText(doc()?.properties._schema) ??
-                                undefined
-                              }
-                            />
-                          </Match>
-                          <Match when={isCanvas()}>
-                            <CanvasView
-                              documentId={doc()?.id}
-                              spaceId={currentSpace()?.id as string}
-                            />
-                          </Match>
-                        </Switch>
+                        <DocumentBody
+                          content={doc()?.content ?? ""}
+                          documentId={doc()?.id as string}
+                          documentType={documentType()}
+                          extensions={extensions()}
+                          properties={doc()?.properties ?? {}}
+                          readonly={isReadonly()}
+                          spaceId={currentSpace()?.id as string}
+                        />
                       </Show>
                     </div>
 
-                    <Show when={!isDraft() && !editing() && !isCanvas() && !isWorkflow()}>
-                      <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-m print:px-0">
+                    {/* The footer used to be what kept a view off the bottom
+                        of the window; without it these need the room back. */}
+                    <Show when={isSelfTitled()}>
+                      <div class="h-l" />
+                    </Show>
+
+                    <Show
+                      when={
+                        !isDraft() &&
+                        !editing() &&
+                        !isCanvas() &&
+                        !isWorkflow() &&
+                        !isSelfTitled()
+                      }
+                    >
+                      <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-s print:px-0">
                         <Show when={doc()?.updatedAt}>
-                          <div class="mb-12 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
+                          <div class="mb-4 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
                             <Show when={hasMounted() && updatedAtStr()}>
                               <span>Updated {updatedAtStr()}</span>
                             </Show>

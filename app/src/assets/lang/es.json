@@ -264,7 +264,6 @@
   "Light": "Claro",
   "Dark": "Oscuro",
   "Canvas cursor color": "Color del cursor del lienzo",
-  "Space:": "Espacio:",
   "None": "Ninguno",
   "Open a space to manage integrations.": "Abre un espacio para gestionar las integraciones.",
   "Connected as": "Conectado como",
@@ -411,8 +410,6 @@
   "Map steps and automate processes with ease.": "Organiza los pasos y automatiza procesos fácilmente.",
   "Database": "Base de datos",
   "Organize and manage data in structured tables.": "Organiza y gestiona datos en tablas estructuradas.",
-  "Spreadsheet": "Hoja de cálculo",
-  "Lay out numbers and records in rows and columns.": "Distribuye números y registros en filas y columnas.",
   "Start from a template": "Empezar desde una plantilla",
   "Failed to insert the template": "Error al insertar la plantilla",
   "Template": "Plantilla",
@@ -712,5 +709,10 @@
   "What this share applies to": "A qué se aplica este recurso compartido",
   "Access to grant": "Acceso que se concederá",
   "When the link expires": "Cuándo caduca el enlace",
-  "Link password": "Contraseña del enlace"
+  "Link password": "Contraseña del enlace",
+  "Install an extension that provides an integration.": "Instala una extensión que proporcione una integración.",
+  "Repository": "Repositorio",
+  "Host code with git, and browse it here.": "Aloja código con git y explóralo aquí.",
+  "Search people or type an email…": "Busca personas o escribe un correo…",
+  "Invite {email}": "Invitar a {email}"
 }

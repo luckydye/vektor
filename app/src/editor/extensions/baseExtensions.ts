@@ -184,8 +184,12 @@ export const HardBreak = Node.create({
     };
   },
   addKeyboardShortcuts() {
+    // ProseMirror preventDefaults every Enter keydown, so the global shortcut
+    // handler never sees these — they only work from the editor's own keymap.
     return {
       "Shift-Enter": () => this.editor.commands.setHardBreak(),
+      "Mod-Enter": () => this.editor.commands.setHardBreak(),
+      "Ctrl-Enter": () => this.editor.commands.setHardBreak(),
     };
   },
 });

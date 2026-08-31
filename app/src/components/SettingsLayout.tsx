@@ -1,6 +1,7 @@
 import { createSignal, For, type JSX, onMount, Show } from "solid-js";
 import { animateTabPanel } from "#utils/animate.ts";
 import "@atrium-ui/elements/tabs";
+import { Tab as TabItem, TabsList } from "./Tabs.tsx";
 
 interface Tab {
   id: string;
@@ -80,20 +81,13 @@ export function SettingsLayout(props: Props) {
         }
       >
         <a-tabs ref={tabsEl} on:tab-selected={onTabSelected}>
-          <a-tabs-list class="block overflow-clip border-neutral-100 border-b py-4xs">
+          <TabsList class="border-neutral-100 border-b">
             <For each={props.tabs}>
               {(tab, index) => (
-                <a-tabs-tab
-                  attr:selected={index() === initialIndex ? "" : undefined}
-                  class="inline-flex h-[27px] items-center justify-center rounded-sm px-5xs text-label opacity-60 [&[selected]:hover_span]:bg-gray-100 [&[selected]]:opacity-100 [&[selected]_span]:bg-gray-100 hover:[&_span]:bg-gray-200"
-                >
-                  <span class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors">
-                    {tab.label}
-                  </span>
-                </a-tabs-tab>
+                <TabItem selected={index() === initialIndex}>{tab.label}</TabItem>
               )}
             </For>
-          </a-tabs-list>
+          </TabsList>
           <For each={props.tabs}>
             {(tab) => (
               <a-tabs-panel class="block min-w-0">

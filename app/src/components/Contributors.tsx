@@ -48,7 +48,7 @@ export function Contributors(props: Props) {
   const merged = mergeProps({ max: 5 }, props);
 
   const collaboration = useActiveCollaboration();
-  const { contributors } = useContributors(props.documentId);
+  const { contributors } = useContributors(() => props.documentId);
 
   // Presence is republished on every caret move, carrying a rebuilt profile
   // for every participant. This list shows who is here, not where their caret

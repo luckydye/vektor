@@ -30,6 +30,22 @@ export interface RealtimeTopicEvent {
 
 export type RealtimeEventInput = RealtimeTopic | RealtimeTopicEvent;
 
+/** How far through a space's event history a client has read. */
+export interface SyncCursor {
+  epoch: string;
+  seq: number;
+}
+
+/**
+ * A `Subscribe` frame. The cursor travels with the topics rather than in a
+ * frame of its own: frame handling is not serialised, so a separate frame could
+ * be answered against topics that had yet to be authorized.
+ */
+export interface RealtimeSubscribePayload {
+  topics: RealtimeTopic[];
+  cursor?: SyncCursor;
+}
+
 export interface RealtimeEventMessage {
   type: "event";
   topics: RealtimeTopic[];
@@ -41,6 +57,9 @@ export interface RealtimeEventMessage {
    * `data` must refetch on it regardless.
    */
   resync?: true;
+  /** Position in the space's history, and the process that numbered it. */
+  seq?: number;
+  epoch?: string;
 }
 
 export interface RealtimeAccessChangedMessage {

@@ -1,6 +1,6 @@
 {
   "name": "@vektorapp/app",
-  "version": "0.0.125",
+  "version": "0.0.135",
   "type": "module",
   "scripts": {
     "figma:parse": "figma connect parse --config figma.config.json",
@@ -69,6 +69,7 @@
     "#search/*": "./src/search/*",
     "#spreadsheet/*": "./src/spreadsheet/*",
     "#files/*": "./src/files/*",
+    "#git/*": "./src/git/*",
     "#styles/*": "./src/styles/*",
     "#utils/*": "./src/utils/*",
     "#native/*": "./native/*",

@@ -147,11 +147,51 @@ tasks:
     env:
       NODE_ENV: test
       VEKTOR_JOB_FETCH_ALLOW_PRIVATE: "0"
+      # No extension store under test. The registry is a real outbound host, and
+      # the route-access matrix in particular has no business reaching one — an
+      # unreachable network would otherwise turn access cells into 5xx.
+      VEKTOR_MARKETPLACE_URL: ""
+      VEKTOR_TEST_S3_BUCKET: vektor-test
+      VEKTOR_TEST_S3_ACCESS_KEY_ID: vektor
+      VEKTOR_TEST_S3_SECRET_ACCESS_KEY: vektorsecret
     cmds:
       - bash -c './vektor serve --email-auth --port 4321 --host 127.0.0.1 & echo $! > /tmp/vektor-test-server.pid'
       - defer: kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true
       - until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done
       - bunx --bun vitest run --project server {{.CLI_ARGS}}
+
+  s3:up:
+    desc: >
+      RustFS (S3-compatible) on :9010 for the S3 storage suite, with the test
+      bucket created. `task test -- test/s3-storage.spec.ts` skips without it.
+    cmds:
+      - docker rm -f vektor-rustfs 2>/dev/null || true
+      - >
+        docker run -d --name vektor-rustfs -p 9010:9000
+        -e RUSTFS_ACCESS_KEY=vektor -e RUSTFS_SECRET_KEY=vektorsecret
+        rustfs/rustfs:latest
+      - until curl -s -o /dev/null http://127.0.0.1:9010/; do sleep 0.2; done
+      # RustFS does not create a bucket on first write, and Bun's S3 client
+      # cannot sign a bucket-level request.
+      - >
+        curl -sf -X PUT http://127.0.0.1:9010/vektor-test
+        --aws-sigv4 "aws:amz:us-east-1:s3" --user "vektor:vektorsecret"
+
+  s3:down:
+    cmds:
+      - docker rm -f vektor-rustfs
+
+  test:s3:
+    desc: The S3 storage suite against the RustFS started by `task s3:up`.
+    dir: ./app
+    env:
+      NODE_ENV: test
+      VEKTOR_TEST_S3_ENDPOINT: http://127.0.0.1:9010
+      VEKTOR_TEST_S3_BUCKET: vektor-test
+      VEKTOR_TEST_S3_ACCESS_KEY_ID: vektor
+      VEKTOR_TEST_S3_SECRET_ACCESS_KEY: vektorsecret
+    cmds:
+      - bunx --bun vitest run --project server test/s3-storage.spec.ts
 
   test:frontend:
     desc: Frontend component suite (Vitest + happy-dom). No server needed.

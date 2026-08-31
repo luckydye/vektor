@@ -264,7 +264,6 @@
   "Light": "라이트",
   "Dark": "다크",
   "Canvas cursor color": "캔버스 커서 색상",
-  "Space:": "스페이스:",
   "None": "없음",
   "Open a space to manage integrations.": "연동을 관리하려면 스페이스를 여세요.",
   "Connected as": "연결된 계정",
@@ -411,8 +410,6 @@
   "Map steps and automate processes with ease.": "단계를 구성하고 프로세스를 손쉽게 자동화하세요.",
   "Database": "데이터베이스",
   "Organize and manage data in structured tables.": "구조화된 표에서 데이터를 정리하고 관리하세요.",
-  "Spreadsheet": "스프레드시트",
-  "Lay out numbers and records in rows and columns.": "숫자와 레코드를 행과 열로 정리하세요.",
   "Start from a template": "템플릿으로 시작하기",
   "Failed to insert the template": "템플릿을 삽입하지 못했습니다",
   "Template": "템플릿",
@@ -712,5 +709,10 @@
   "What this share applies to": "이 공유의 적용 대상",
   "Access to grant": "부여할 접근 권한",
   "When the link expires": "링크 만료 시점",
-  "Link password": "링크 비밀번호"
+  "Link password": "링크 비밀번호",
+  "Install an extension that provides an integration.": "통합을 제공하는 확장을 설치하세요.",
+  "Repository": "저장소",
+  "Host code with git, and browse it here.": "git으로 코드를 호스팅하고 여기서 살펴보세요.",
+  "Search people or type an email…": "사용자 검색 또는 이메일 입력…",
+  "Invite {email}": "{email} 초대"
 }

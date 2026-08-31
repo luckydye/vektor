@@ -9,6 +9,7 @@ import {
   createAgentShell,
   runAgentPrompt,
 } from "./core.ts";
+import { getIntegrationAgentSurface } from "./integrations.ts";
 
 export type { AgentEvent, AgentResult, ChatMessage };
 
@@ -149,6 +150,7 @@ async function getOrCreateSession(options: {
   documentId?: string;
   jobToken: string;
   connectedProviders: string[];
+  userId?: string | null;
   shellSnapshot?: string | null;
 }): Promise<AgentSession> {
   const now = Date.now();
@@ -170,12 +172,16 @@ async function getOrCreateSession(options: {
   const parsedShellState = options.shellSnapshot
     ? parseShellState(options.shellSnapshot)
     : null;
-  const bootstrap = parsedShellState
-    ? ({
-        cwd: parsedShellState.cwd,
-        env: parsedShellState.env,
-      } satisfies AgentShellBootstrap)
-    : undefined;
+  const integrationSurface = await getIntegrationAgentSurface(
+    options.spaceId,
+    options.connectedProviders,
+  );
+  const bootstrap = {
+    cwd: parsedShellState?.cwd,
+    env: parsedShellState?.env,
+    integrationCommands: integrationSurface.commands,
+    userId: options.userId ?? null,
+  } satisfies AgentShellBootstrap;
   const mcpConfigRef = {
     current: {
       apiUrl: options.apiUrl,
@@ -206,6 +212,7 @@ export async function runAgentInWorker(options: {
   documentId?: string;
   connectedProviders: string[];
   userProfile?: string;
+  userId?: string | null;
   jobToken: string;
   shellSnapshot?: string | null;
   signal?: AbortSignal;

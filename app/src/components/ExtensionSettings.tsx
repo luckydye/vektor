@@ -1,9 +1,9 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { config } from "#config";
 import { formatDate } from "#utils/dateFormat.ts";
-import { FileDrop } from "./FileDrop.tsx";
+import { AddExtensionDialog } from "./AddExtensionDialog.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 
 const AVATAR_COLORS = [
@@ -36,6 +36,9 @@ function avatarColor(id: string) {
 
 export function ExtensionSettings() {
   const lang = useLocale();
+  // Adding an extension happens in one dialog, whichever way it arrives.
+  const [showAdd, setShowAdd] = createSignal(false);
+
   const uploadAllowed = createMemo(() => {
     const raw = config().EXTENSION_ALLOWED_SOURCES;
     if (!raw) return true;
@@ -217,67 +220,46 @@ export function ExtensionSettings() {
               )}
             </For>
 
-            <Show when={uploadAllowed()}>
-              <FileDrop
-                accept=".zip,application/zip"
-                class="min-h-[168px] cursor-pointer text-center"
-                onSelect={(file) => void handleExtensionSelect(file)}
-              >
-                {({ isDragging, openPicker }) => (
-                  <>
-                    <div
-                      class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg transition-colors"
-                      classList={{
-                        "bg-neutral-200 text-neutral-600": isDragging(),
-                        "bg-neutral-100 text-neutral-400": !isDragging(),
-                      }}
-                    >
-                      <svg
-                        class="h-6 w-6"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="2"
-                        stroke="currentColor"
-                        role="img"
-                        aria-label="Upload"
-                      >
-                        <title>Upload</title>
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          d="M12 4.5v15m7.5-7.5h-15"
-                        />
-                      </svg>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isUploading()}
-                      class="text-neutral text-size-medium disabled:opacity-50"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openPicker();
-                      }}
-                    >
-                      {isUploading()
-                        ? "Uploading..."
-                        : "Drag & drop a .zip or choose file"}
-                    </button>
-                  </>
-                )}
-              </FileDrop>
-            </Show>
-          </div>
-        </Show>
-
-        <Show when={!isLoading() && !uploadAllowed()}>
-          <div class="rounded-md border border-neutral-200 bg-neutral-50 p-3">
-            <p class="text-neutral-500 text-size-medium">
-              Direct extension uploads are not allowed in this space. Extensions must be
-              installed from the marketplace.
-            </p>
+            {/* Adding is one action with two sources, so the tile opens the
+                dialog rather than being a drop target for one of them. */}
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              class="flex min-h-[168px] flex-col items-center justify-center gap-3 rounded-lg border border-neutral-200 border-dashed text-center transition-colors hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-400">
+                {/* Decorative: the button's own label already names it, and a
+                    titled icon made it read "Add extension Add extension". */}
+                <svg
+                  class="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 4.5v15m7.5-7.5h-15"
+                  />
+                </svg>
+              </span>
+              <span class="text-neutral text-size-medium">Add extension</span>
+            </button>
           </div>
         </Show>
       </div>
+
+      <AddExtensionDialog
+        show={showAdd()}
+        onUpdateShow={setShowAdd}
+        installed={extensions()}
+        uploadAllowed={uploadAllowed()}
+        isUploading={isUploading()}
+        uploadError={uploadError()}
+        onUpload={handleExtensionSelect}
+      />
     </div>
   );
 }

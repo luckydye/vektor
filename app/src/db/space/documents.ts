@@ -30,17 +30,23 @@ import {
   allowsChildDocumentType,
   documentIsReadonly,
   fallbackDocumentSlug,
-  readOnlyDocumentTypes,
+  isSerializedDocumentType,
+  repositoryDocumentType,
 } from "#documents/types.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
-import { getFileStorage } from "#files/storage.ts";
+import {
+  DIMENSION_READABLE_EXTENSIONS,
+  readImageDimensions,
+} from "#files/imageDimensions.ts";
+import { getFileStorage, listAllFiles } from "#files/storage.ts";
+import { deleteRepositoryObjects } from "#git/repos.ts";
 import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
-import { decompressHtml } from "./revisions.ts";
+import { decompressRevisionContent } from "./revisions.ts";
 import { fileRowToDocument, nonArchivedDocumentCondition } from "./search.ts";
 
 export interface DocumentWithProperties {
@@ -118,6 +124,15 @@ export type PropertyInit =
 
 export class InvalidDocumentParentError extends Error {}
 
+export interface CreateDocumentOptions {
+  properties?: Record<string, PropertyInit>;
+  parentId?: string | null;
+  type?: string;
+  readonly?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 /**
  * Enforce the generic parent document's child-type policy before creating or
  * reparenting a document.
@@ -143,12 +158,9 @@ export async function createDocument(
   createdBy: string,
   slug: string,
   content: string,
-  initialProperties?: Record<string, PropertyInit>,
-  parentId?: string | null,
-  type?: string,
-  createdAt?: Date,
-  updatedAt?: Date,
+  options: CreateDocumentOptions = {},
 ): Promise<DocumentWithProperties> {
+  const { properties: initialProperties, parentId, type, readonly = false } = options;
   if (parentId) await assertDocumentCanParent(s, parentId, type);
   // Every key up front, before the document row exists: the property inserts
   // below are not in one transaction with it, so rejecting halfway would leave a
@@ -158,9 +170,8 @@ export async function createDocument(
   }
   const id = createId("document");
   const now = new Date();
-  const documentCreatedAt = createdAt || now;
-  const documentUpdatedAt = updatedAt || now;
-  const isReadonly = readOnlyDocumentTypes.includes(type ?? "");
+  const documentCreatedAt = options.createdAt || now;
+  const documentUpdatedAt = options.updatedAt || now;
 
   // Generate a unique slug if the provided slug already exists
   const uniqueSlug = await generateUniqueSlug(s, slug);
@@ -175,7 +186,7 @@ export async function createDocument(
     createdBy: createdBy,
     parentId: parentId || null,
     archived: false,
-    readonly: isReadonly,
+    readonly,
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
   });
@@ -233,7 +244,7 @@ export async function createDocument(
     updatedAt: documentUpdatedAt,
     createdBy: createdBy,
     parentId: parentId || null,
-    readonly: isReadonly,
+    readonly,
     archived: false,
   };
 }
@@ -376,7 +387,7 @@ export async function documentIsReadonlyById(
 ): Promise<boolean> {
   const row = await one(
     s.db
-      .select({ readonly: document.readonly, type: document.type })
+      .select({ readonly: document.readonly })
       .from(document)
       .where(eq(document.id, id)),
   );
@@ -432,12 +443,10 @@ export async function updateDocument(
 
   const now = new Date();
   const nextType = type === undefined ? existing.type : type;
-  const nextReadonly =
-    existing.readonly || readOnlyDocumentTypes.includes(nextType ?? "");
 
   await s.db
     .update(document)
-    .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
+    .set({ content, updatedAt: now, type: nextType })
     .where(eq(document.id, id));
 
   scheduleDocumentSearchRefresh(s, id);
@@ -453,7 +462,7 @@ export async function updateDocument(
     updatedAt: now,
     createdBy: existing.createdBy,
     parentId: existing.parentId,
-    readonly: nextReadonly,
+    readonly: existing.readonly,
     type: nextType,
     archived: existing.archived,
   };
@@ -530,6 +539,13 @@ export async function deleteDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
+  // Read before the row goes: afterwards nothing says this document was a
+  // repository, and its objects would stay in storage forever.
+  const existing = await one(
+    s.db.select({ type: document.type }).from(document).where(eq(document.id, id)),
+  );
+  const wasRepository = existing?.type === repositoryDocumentType;
+
   const storedFiles = await s.tx(async (tx) => {
     if (userId) {
       await createAuditLog(tx, {
@@ -561,6 +577,15 @@ export async function deleteDocument(
   });
 
   const storage = getFileStorage();
+  if (wasRepository) {
+    await deleteRepositoryObjects(storage, s.spaceId, id).catch((error) => {
+      appLogger.warn("Failed to delete repository objects", {
+        error,
+        spaceId: s.spaceId,
+        documentId: id,
+      });
+    });
+  }
   for (const { path } of storedFiles) {
     try {
       await storage.delete(s.spaceId, path);
@@ -579,24 +604,53 @@ export async function deleteDocument(
 
 async function syncFileIndex(s: SpaceStore): Promise<void> {
   const storage = getFileStorage();
-  const diskFiles = await storage.list(s.spaceId);
+  const diskFiles = await listAllFiles(storage, s.spaceId);
   if (diskFiles.length === 0) return;
 
   const indexed = new Map(
     (
       await many(
-        s.db.select({ path: fileTable.path, size: fileTable.size }).from(fileTable),
+        s.db
+          .select({ path: fileTable.path, size: fileTable.size, width: fileTable.width })
+          .from(fileTable),
       )
-    ).map((r) => [r.path, r.size] as const),
+    ).map((r) => [r.path, r] as const),
   );
 
   const toIndex = diskFiles.filter((f) => !indexed.has(f.key)).slice(0, 200);
 
   // Rows indexed before the column existed, filled from the listing just read.
   // Capped like the insert below, so a large space converges over a few calls.
-  const toSize = diskFiles.filter((f) => indexed.get(f.key) === null).slice(0, 200);
+  const toSize = diskFiles.filter((f) => indexed.get(f.key)?.size === null).slice(0, 200);
   for (const { key, size } of toSize) {
     await s.db.update(fileTable).set({ size }).where(eq(fileTable.path, key));
+  }
+
+  // The same catch-up for `width`/`height`. Capped far below the rest because
+  // this runs inside a file listing and, unlike `size`, the values are not in
+  // the listing already — each one costs a read. The rows it fills already
+  // render, just without an intrinsic ratio, so this is the one pass here that
+  // is pure catch-up and it yields the request rather than converging fast.
+  // Restricted to the formats the header parser handles, so an unreadable file
+  // is skipped rather than re-fetched on every listing.
+  const DIMENSION_BACKFILL_PER_CALL = 25;
+  const toDimension = diskFiles
+    .filter((f) => {
+      const row = indexed.get(f.key);
+      if (!row || row.width !== null) return false;
+      return DIMENSION_READABLE_EXTENSIONS.has(
+        f.key.split(".").pop()?.toLowerCase() ?? "",
+      );
+    })
+    .slice(0, DIMENSION_BACKFILL_PER_CALL);
+  for (const { key } of toDimension) {
+    const buf = await storage.read(s.spaceId, key);
+    const dimensions = buf && readImageDimensions(buf);
+    if (!dimensions) continue;
+    await s.db
+      .update(fileTable)
+      .set({ width: dimensions.width, height: dimensions.height })
+      .where(eq(fileTable.path, key));
   }
 
   for (const { key, size, updatedAt } of toIndex) {
@@ -604,6 +658,7 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
     if (!buf) continue;
     const name = key.split("/").pop() ?? key;
     const extracted = extractFileTextFromBuffer(buf, name, undefined);
+    const dimensions = readImageDimensions(buf);
     const url = storage.url(s.spaceId, key);
     await s.db
       .insert(fileTable)
@@ -613,6 +668,8 @@ async function syncFileIndex(s: SpaceStore): Promise<void> {
         originalName: name,
         mimeType: null,
         size,
+        width: dimensions?.width ?? null,
+        height: dimensions?.height ?? null,
         url,
         updatedAt,
         extractedText: extracted,
@@ -939,12 +996,13 @@ async function countMentionsForUser(
     s.db
       .select({
         publishedRev: document.publishedRev,
+        type: document.type,
       })
       .from(document)
       .where(eq(document.id, documentId)),
   );
 
-  if (!doc?.publishedRev) {
+  if (!doc?.publishedRev || isSerializedDocumentType(doc.type)) {
     return 0;
   }
 
@@ -971,7 +1029,7 @@ async function countMentionsForUser(
   }
 
   try {
-    const html = decompressHtml(rev.snapshot);
+    const html = decompressRevisionContent(rev.snapshot);
     const mentions = extractMentionsFromHtml(html);
     const count = mentions.filter((m) => m.email === userEmail).length;
 

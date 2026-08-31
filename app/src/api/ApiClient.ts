@@ -21,6 +21,7 @@ import {
   type RealtimeEventMessage,
   type RealtimeTopic,
   realtimeTopics,
+  type SyncCursor,
   WS_CLOSE_FORBIDDEN,
   WsMsgType,
   wsDecode,
@@ -322,6 +323,59 @@ export interface ExtensionInfo {
   createdBy: string;
 }
 
+/** What a store listing says an extension would add to a space. */
+export interface StoreCapabilities {
+  views: boolean;
+  jobs: boolean;
+  integrations: boolean;
+}
+
+export interface StoreExtension {
+  id: string;
+  name: string;
+  description?: string;
+  version: string;
+  publisher: string;
+  categories: string[];
+  keywords: string[];
+  icon?: string;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  capabilities: StoreCapabilities;
+  size: number;
+  sha256: string;
+  publishedAt: string;
+}
+
+export interface StoreExtensionVersion {
+  version: string;
+  size: number;
+  sha256: string;
+  publishedAt: string;
+  manifest: {
+    routes: Array<{ path: string; title?: string; description?: string }>;
+    jobs: Array<{ id: string; name?: string }>;
+    integrations: Array<{ id: string; label?: string; description?: string }>;
+  };
+}
+
+export interface StoreExtensionDetail extends StoreExtension {
+  latest: string;
+  /** Short curated store copy in markdown, or null when there is none. */
+  about: string | null;
+  screenshots: string[];
+  versions: StoreExtensionVersion[];
+}
+
+/** `enabled: false` means the server has no store configured, not that it failed. */
+export interface StoreCatalogue {
+  enabled: boolean;
+  registry: string | null;
+  generatedAt?: string;
+  extensions: StoreExtension[];
+}
+
 export interface ExtensionManifestError {
   id: string;
   error: string;
@@ -436,11 +490,14 @@ export type AIConfigMeta =
       hasApiKey: boolean;
     };
 
-export type OAuthIntegrationProvider = "gitlab" | "youtrack";
+/** Provider ids are declared by installed extensions, not by the app. */
+export type OAuthIntegrationProvider = string;
 
 export interface OAuthIntegrationConnection {
   provider: OAuthIntegrationProvider;
   label: string;
+  description: string | null;
+  extensionId: string;
   configured: boolean;
   missingConfig: string[];
   connected: boolean;
@@ -490,6 +547,23 @@ export interface AuditDetails {
   targetName?: string;
   resourceType?: string;
   resourceId?: string;
+}
+
+export interface GitTreeEntry {
+  name: string;
+  path: string;
+  type: "blob" | "tree";
+  size: number | null;
+}
+
+export interface GitCommit {
+  oid: string;
+  shortOid: string;
+  subject: string;
+  author: string;
+  authoredAt: string;
+  /** Parent object ids, first-parent first; empty for a root commit. */
+  parents: string[];
 }
 
 export interface AuditLog {
@@ -682,8 +756,11 @@ interface RealtimeConnection {
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
-  /** True once a socket has opened; every later open is a reconnect. */
-  hasConnected: boolean;
+  /**
+   * How far through this space's event history the client has read. Outlives
+   * the socket, which is what lets a reconnect ask for only what it missed.
+   */
+  syncCursor: SyncCursor | null;
   reconnectAttempts: number;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   /** Pending idle teardown; see `REALTIME_IDLE_GRACE_MS`. */
@@ -1321,6 +1398,7 @@ export class ApiClient {
         slug?: string;
         type?: string;
         content: string;
+        readonly?: boolean;
         parentId?: string | null;
         categoryId?: string | null;
         properties?: Record<string, unknown>;
@@ -1376,7 +1454,7 @@ export class ApiClient {
       spaceId: string,
       documentId: string,
       content: string,
-      options?: { publish?: boolean },
+      options?: { publish?: boolean; format?: "html" | "serialized" },
     ) => {
       const detailPath = `/api/v1/spaces/${spaceId}/documents/${documentId}`;
       const requestPath = options?.publish ? `${detailPath}?publish=true` : detailPath;
@@ -1394,12 +1472,14 @@ export class ApiClient {
           const response = await fetch(`${this.baseUrl}${requestPath}`, {
             method: "PUT",
             headers: {
-              "Content-Type": "text/html",
+              "Content-Type":
+                options?.format === "serialized" ? "application/json" : "text/html",
               ...(this.accessToken
                 ? { Authorization: `Bearer ${this.accessToken}` }
                 : {}),
             },
-            body: content,
+            body:
+              options?.format === "serialized" ? JSON.stringify({ content }) : content,
           });
 
           if (!response.ok) {
@@ -1686,6 +1766,40 @@ export class ApiClient {
         nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/audit-logs`, query);
     },
+  };
+
+  /** Reading a repository document: what the browser renders. */
+  git = {
+    overview: (spaceId: string, documentId: string) =>
+      this.apiGet<{
+        empty: boolean;
+        branch: string;
+        branches: string[];
+        head: GitCommit | null;
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}/git`, {
+        view: "overview",
+      }),
+
+    tree: (spaceId: string, documentId: string, rev: string, path: string) =>
+      this.apiGet<{ entries: GitTreeEntry[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
+        { view: "tree", rev, path },
+      ),
+
+    blob: (spaceId: string, documentId: string, rev: string, path: string) =>
+      this.apiGet<{ text: string | null; size: number }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
+        { view: "blob", rev, path },
+      ),
+
+    log: (spaceId: string, documentId: string, rev: string, limit = 30) =>
+      this.apiGet<{ commits: GitCommit[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/git`,
+        { view: "log", rev, limit },
+      ),
   };
 
   uploads = {
@@ -2108,6 +2222,24 @@ export class ApiClient {
       await this.replica.removeExtension(spaceId, extensionId);
     },
 
+    /**
+     * Install a store extension into a space. Only an id and an optional version
+     * cross the wire — the server resolves and verifies the package itself.
+     */
+    install: async (
+      spaceId: string,
+      extensionId: string,
+      options: { version?: string } = {},
+    ): Promise<ExtensionInfo> => {
+      const extension = await this.apiPost<ExtensionInfo>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/extensions/install`,
+        { extensionId, version: options.version },
+      );
+      await this.replica.writeExtension(spaceId, extension);
+      return extension;
+    },
+
     downloadPackage: async (spaceId: string, extensionId: string): Promise<Blob> => {
       const response = await fetch(
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}/package`,
@@ -2117,6 +2249,28 @@ export class ApiClient {
         throw new Error(error.error || `Download failed: ${response.status}`);
       }
       return await response.blob();
+    },
+  };
+
+  /**
+   * The extension store. The server fronts the registry rather than the browser
+   * calling it directly: the registry may be an internal mirror, its catalogue
+   * is cached once per instance, and the browser then needs no cross-origin
+   * access to install.
+   */
+  store = {
+    list: async (): Promise<StoreCatalogue> => {
+      return await this.apiGet<StoreCatalogue>(
+        this.baseUrl,
+        `/api/v1/marketplace/extensions`,
+      );
+    },
+
+    get: async (extensionId: string): Promise<StoreExtensionDetail> => {
+      return await this.apiGet<StoreExtensionDetail>(
+        this.baseUrl,
+        `/api/v1/marketplace/extensions/${extensionId}`,
+      );
     },
   };
 
@@ -2560,7 +2714,7 @@ export class ApiClient {
       yjsRooms: new Map(),
       presenceJoinPayloads: new Map(),
       closed: false,
-      hasConnected: false,
+      syncCursor: null,
       reconnectAttempts: 0,
       reconnectTimer: null,
       idleTimer: null,
@@ -2598,11 +2752,10 @@ export class ApiClient {
       setTimeout(() => {
         if (connection.socket === socket) connection.reconnectAttempts = 0;
       }, RECONNECT_SETTLED_MS);
-      const isReconnect = connection.hasConnected;
-      connection.hasConnected = true;
+      // No blanket resync on reconnect: the `Subscribe` replayed below carries
+      // the cursor, and the server answers with what actually changed.
       this.resyncRealtimeConnection(connection);
       this.startRealtimeHeartbeat(connection);
-      if (isReconnect) this.notifyRealtimeResync(connection);
     });
 
     socket.addEventListener("message", (event) => {
@@ -2651,6 +2804,22 @@ export class ApiClient {
 
     if (type === WsMsgType.Event) {
       const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
+
+      // Advanced on a resync too, or every later reconnect would resync again.
+      // Only ever forwards: a catch-up answer computed before a live event can
+      // arrive after it.
+      if (msg.epoch !== undefined && msg.seq !== undefined) {
+        const held = connection.syncCursor;
+        if (!held || held.epoch !== msg.epoch || msg.seq > held.seq) {
+          connection.syncCursor = { epoch: msg.epoch, seq: msg.seq };
+        }
+      }
+
+      if (msg.resync) {
+        this.notifyRealtimeResync(connection);
+        return;
+      }
+
       for (const subscription of connection.subscriptions) {
         if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
         subscription.callback({ type: "event", ...msg });
@@ -2723,9 +2892,8 @@ export class ApiClient {
   }
 
   /**
-   * Replace the events that happened while the socket was down. The server
-   * keeps no per-connection backlog, so a subscriber's only way back to the
-   * truth is to refetch everything it holds for the topics it subscribes to.
+   * Refetch everything, for when the server cannot say what was missed. Per
+   * subscription, whose topics are narrower than the connection's.
    */
   private notifyRealtimeResync(connection: RealtimeConnection): void {
     for (const subscription of connection.subscriptions) {
@@ -2854,7 +3022,7 @@ export class ApiClient {
 
     const topics = [...connection.topicRefCounts.keys()];
     if (topics.length > 0) {
-      socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
+      socket.send(this.subscribeFrame(connection, topics));
     }
 
     for (const [documentId, entries] of connection.yjsRooms) {
@@ -2956,13 +3124,33 @@ export class ApiClient {
     });
   }
 
+  /**
+   * A `Subscribe` frame carrying the connection's cursor. Every subscribe sends
+   * it, not just the one after a reconnect, so an incremental one cannot
+   * advance the position past envelopes the client has yet to hear about.
+   */
+  private subscribeFrame(
+    connection: RealtimeConnection,
+    topics: RealtimeTopic[],
+  ): Uint8Array<ArrayBuffer> {
+    return wsEncode(WsMsgType.Subscribe, {
+      topics,
+      ...(connection.syncCursor ? { cursor: connection.syncCursor } : {}),
+    });
+  }
+
   private sendRealtimeMessage(
     connection: RealtimeConnection,
     type: typeof WsMsgType.Subscribe | typeof WsMsgType.Unsubscribe,
     topics: RealtimeTopic[],
   ) {
     if (topics.length === 0) return;
-    this.sendRealtimeState(connection, wsEncode(type, { topics }));
+    this.sendRealtimeState(
+      connection,
+      type === WsMsgType.Subscribe
+        ? this.subscribeFrame(connection, topics)
+        : wsEncode(type, { topics }),
+    );
   }
 
   subscribeToTopics(

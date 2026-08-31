@@ -1,7 +1,3 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
-import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
 import {
   authenticateDocumentAccess,
@@ -11,47 +7,26 @@ import {
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { getFileDocumentId } from "#db/space/files.ts";
+import { getFileIndexEntry } from "#db/space/files.ts";
+import { mimeTypeForExtension } from "#files/fileTypes.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
-import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
+import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
-const MIME_TYPES: Record<string, string> = {
-  // Images
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-  // Videos
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
-  m4v: "video/x-m4v",
-  ogv: "video/ogg",
-  // Documents
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  doc: "application/msword",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ppt: "application/vnd.ms-powerpoint",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  xls: "application/vnd.ms-excel",
-  // Text
-  md: "text/markdown",
-  txt: "text/plain",
-  csv: "text/csv",
-  json: "application/json",
-  // Archive
-  zip: "application/zip",
-  // 3D models
-  obj: "model/obj",
-};
+/**
+ * Whether an `If-None-Match` header names this entity tag. The header is a
+ * comma-separated list or `*`, and a cache may weaken a tag it stored, so the
+ * `W/` prefix is ignored on both sides as the comparison for 304 requires.
+ */
+function etagMatches(header: string, etag: string): boolean {
+  const strip = (value: string) => value.trim().replace(/^W\//, "");
+  if (header.trim() === "*") return true;
+  return header.split(",").some((candidate) => strip(candidate) === strip(etag));
+}
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
@@ -68,7 +43,8 @@ export const GET: ApiRouteHandler = (context) =>
       // a resource grant and an archive all reach the file through its document
       // and not through a space role. A file that belongs to none — a workflow
       // artifact, say — keeps the space check.
-      const documentId = await getFileDocumentId(spaceId, path);
+      const indexed = await getFileIndexEntry(spaceId, path);
+      const documentId = indexed?.documentId ?? null;
       if (documentId) {
         await authenticateDocumentAccess(
           context.var.credentials,
@@ -91,7 +67,7 @@ export const GET: ApiRouteHandler = (context) =>
         return new Response("Missing file extension", { status: 400 });
       }
 
-      const mimeType = MIME_TYPES[extension] || "application/octet-stream";
+      const mimeType = mimeTypeForExtension(extension);
       const storage = getFileStorage();
 
       // If transform params are present, serve via the transform+cache path.
@@ -117,25 +93,25 @@ export const GET: ApiRouteHandler = (context) =>
         });
       }
 
-      // Read file from data/uploads/{spaceId}/{path}
-      const uploadsRoot = getUploadsRoot(spaceId);
-      const filePath = resolve(uploadsRoot, path);
-      if (!isWithinUploadsRoot(spaceId, filePath)) {
-        return new Response("Invalid path", { status: 400 });
+      // Through the adapter, not the filesystem: the bytes may not be local,
+      // and a range must be asked for rather than seeked to. Containment of the
+      // key is the adapter's own business now.
+      const info = await storage.stat(spaceId, path);
+      if (!info) {
+        return new Response("File not found", { status: 404 });
       }
+      const fileSize = info.size;
 
-      let fileSize: number;
-      try {
-        const fileStat = await stat(filePath);
-        if (!fileStat.isFile()) {
-          return new Response("File not found", { status: 404 });
-        }
-        fileSize = fileStat.size;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return new Response("File not found", { status: 404 });
-        }
-        throw error;
+      // A stored object never changes under its key — uploads are content
+      // addressed — so a matching validator can always answer 304, and the
+      // browser stops re-fetching whole images and videos once its cache entry
+      // goes stale.
+      const ifNoneMatch = context.req.raw.headers.get("if-none-match");
+      if (ifNoneMatch && etagMatches(ifNoneMatch, info.etag)) {
+        return new Response(null, {
+          status: 304,
+          headers: { ETag: info.etag, "Cache-Control": "private, max-age=3600" },
+        });
       }
 
       const baseHeaders: Record<string, string> = {
@@ -144,9 +120,13 @@ export const GET: ApiRouteHandler = (context) =>
         // Range support is required for video playback (Safari probes with
         // a byte-range request and refuses to play without a 206 response).
         "Accept-Ranges": "bytes",
+        ETag: info.etag,
         // Prevent stored XSS: force download for active types (svg/html),
         // disallow MIME sniffing, and sandbox any rendered content.
-        ...servedFileSecurityHeaders(extension),
+        // The stored key is a content hash, so without the uploaded name a
+        // download saves as one. The name is advisory: it does not affect the
+        // inline/attachment decision, which is a security control.
+        ...servedFileSecurityHeaders(extension, indexed?.originalName),
       };
 
       const rangeHeader = context.req.raw.headers.get("range");
@@ -172,9 +152,10 @@ export const GET: ApiRouteHandler = (context) =>
           });
         }
 
-        const stream = Readable.toWeb(
-          createReadStream(filePath, { start, end }),
-        ) as unknown as ReadableStream;
+        const stream = await storage.readStream(spaceId, path, { start, end });
+        if (!stream) {
+          return new Response("File not found", { status: 404 });
+        }
         return new Response(stream, {
           status: 206,
           headers: {
@@ -185,9 +166,10 @@ export const GET: ApiRouteHandler = (context) =>
         });
       }
 
-      const stream = Readable.toWeb(
-        createReadStream(filePath),
-      ) as unknown as ReadableStream;
+      const stream = await storage.readStream(spaceId, path);
+      if (!stream) {
+        return new Response("File not found", { status: 404 });
+      }
       return new Response(stream, {
         status: 200,
         headers: {
@@ -215,7 +197,7 @@ export const DELETE: ApiRouteHandler = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      const documentId = await getFileDocumentId(spaceId, path);
+      const documentId = (await getFileIndexEntry(spaceId, path))?.documentId ?? null;
       await authenticateJobTokenOrSpaceRole(
         context.var.credentials,
         spaceId,
@@ -225,7 +207,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
       // Remove from storage (idempotent) and drop the ephemeral index row
       await getFileStorage().delete(spaceId, path);
-      const db = await getSpaceDb(spaceId);
+      const { db } = await openSpaceStore(spaceId);
       await db.delete(fileTable).where(eq(fileTable.path, path));
 
       return new Response(null, { status: 204 });

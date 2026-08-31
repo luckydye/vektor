@@ -31,21 +31,6 @@ export function assertObject(value: unknown, label: string): Record<string, unkn
   return value as Record<string, unknown>;
 }
 
-export function parseLooseObject(value: unknown, label: string): Record<string, unknown> {
-  if (value === undefined || value === null) {
-    return {};
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return {};
-    }
-    const parsed = JSON.parse(trimmed) as unknown;
-    return assertObject(parsed, label);
-  }
-  return assertObject(value, label);
-}
-
 export function expectString(args: Record<string, unknown>, key: string): string;
 export function expectString(
   args: Record<string, unknown>,
@@ -442,17 +427,15 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     ...(() => {
-      const allProviders = ["gitlab", "youtrack"];
-      const connected = config.connectedProviders;
-      const providers = connected
-        ? allProviders.filter((p) => connected.includes(p))
-        : allProviders;
+      // Providers are contributed by installed extensions, so the enum is the
+      // set this user has actually connected — there is no built-in list.
+      const providers = config.connectedProviders ?? [];
       if (providers.length === 0) return [];
       return [
         {
           name: "integration_api_request",
           description:
-            "Call a configured integration API using the current user's connected OAuth token. GitLab paths are relative to /api/v4, for example /user or /projects?membership=true.",
+            "Call a connected integration's API using the current user's OAuth token. Paths are relative to the provider's API base path.",
           inputSchema: {
             type: "object",
             properties: {
@@ -582,7 +565,9 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
               "Content-Type": "application/json",
               Origin: new URL(config.apiUrl).origin,
             },
-            body: JSON.stringify({ content }),
+            body: JSON.stringify({
+              content,
+            }),
           },
         );
       }
@@ -591,7 +576,9 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       const parentId = expectString(args, "parentId", { optional: true });
       const body: Record<string, unknown> = { content };
       if (title) body.properties = { title };
-      if (type) body.type = type;
+      if (type) {
+        body.type = type;
+      }
       if (parentId) body.parentId = parentId;
       return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/documents`, {
         method: "POST",

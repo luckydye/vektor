@@ -667,6 +667,8 @@ function providerConfig(instanceUrl: string): OAuthProviderConfiguration {
     tokenUrl: `${instanceUrl}/oauth/token`,
     userInfoUrl: `${instanceUrl}/api/users/me`,
     instanceUrl,
+    apiBasePath: null,
+    profile: { accountId: ["id"] },
   };
 }
 
@@ -675,16 +677,17 @@ describe("buildIntegrationApiUrl", () => {
   const gitlab: OAuthProviderConfiguration = {
     ...providerConfig("https://gitlab.example.com"),
     id: "gitlab",
+    apiBasePath: "/api/v4",
   };
 
   it("resolves a plain path against the configured origin", () => {
-    expect(buildIntegrationApiUrl("youtrack", youtrack, "/api/issues").href).toBe(
+    expect(buildIntegrationApiUrl(youtrack, "/api/issues").href).toBe(
       "https://youtrack.example.com/api/issues",
     );
-    expect(buildIntegrationApiUrl("youtrack", youtrack, "api/issues").href).toBe(
+    expect(buildIntegrationApiUrl(youtrack, "api/issues").href).toBe(
       "https://youtrack.example.com/api/issues",
     );
-    expect(buildIntegrationApiUrl("gitlab", gitlab, "/projects").href).toBe(
+    expect(buildIntegrationApiUrl(gitlab, "/projects").href).toBe(
       "https://gitlab.example.com/api/v4/projects",
     );
   });
@@ -706,7 +709,7 @@ describe("buildIntegrationApiUrl", () => {
     ] as const) {
       let thrown: unknown;
       try {
-        buildIntegrationApiUrl(provider, config, path);
+        buildIntegrationApiUrl(config, path);
       } catch (error) {
         thrown = error;
       }
@@ -719,11 +722,7 @@ describe("buildIntegrationApiUrl", () => {
 
   it("still allows an absolute URL on the configured origin", () => {
     expect(
-      buildIntegrationApiUrl(
-        "youtrack",
-        youtrack,
-        "https://youtrack.example.com/api/issues",
-      ).href,
+      buildIntegrationApiUrl(youtrack, "https://youtrack.example.com/api/issues").href,
     ).toBe("https://youtrack.example.com/api/issues");
   });
 });

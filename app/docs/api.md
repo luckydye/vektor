@@ -163,10 +163,15 @@ X-Limit-Remaining: 597
 ```
 
 Exceeding the window returns `429` with `Retry-After` in seconds; clients should wait that
-long before retrying. Requests are counted **per access token** when one is presented and
-**per IP** otherwise, so an integration has its own budget while browser sessions share
-the instance's per-IP budget. The token is hashed to form the key and is never stored or
-logged.
+long before retrying. Requests are counted **per signed-in user** once the request has been
+authenticated, and **per IP** for everything else — access tokens included, since a token is
+only validated inside the space it names. Keys come from identities the server resolved, not
+from the credentials presented: sending a different `Authorization` value per request does
+not buy a new budget.
+
+A second, much wider window per IP sits in front of authentication (ten times the default
+ceiling). It bounds the session lookup itself, so an address flooding the API is turned away
+before it costs a database read.
 
 Ordinary routes share one bucket — 600 requests per minute by default, configurable with
 `VEKTOR_RATE_LIMIT_MAX` and `VEKTOR_RATE_LIMIT_WINDOW`. Routes that do more work per call
@@ -209,7 +214,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET | `/users/me` | Current user profile |
 | GET | `/users/suggestions` | People the caller may invite (shared OAuth groups) |
 | GET/POST | `/spaces` | List spaces / create a space |
-| GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space |
+| GET/PATCH/DELETE | `/spaces/:spaceId` | Read / update / delete a space (`?purge=1` skips the retention window) |
 | GET | `/spaces/:spaceId/members` | List space members with roles |
 | GET | `/spaces/:spaceId/properties` | List all document property keys/values in space |
 | GET | `/spaces/:spaceId/audit-logs` | Space-wide (or `?documentId=` scoped) audit log (paginated) |
@@ -606,14 +611,15 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE"
 
 - **Auth**: session. `name`/`slug` take `owner`. A preferences-only write takes the
   strongest role its keys ask for: `owner` for the `ai:` namespace and for
-  `workflowCreationEnabled`, `viewer` for the `user:` namespace (a member's own
+  `workflowCreationEnabled`/`repositoryCreationEnabled`, `viewer` for the `user:`
+  namespace (a member's own
   settings), `editor` for everything else.
 - **Body**: at least one of `name` (non-empty string), `slug` (non-empty string),
   `preferences` (object, ≤512KB serialized). A preference key is either a bare name or
   `namespace:name`; values are opaque text except for the keys the app renders as
   markup, CSS or a URL (`brandColor`, `description`, `logoSvg`, `pinnedDocumentId`,
-  `workflowCreationEnabled`), which are validated and may be stored sanitized. An empty
-  string clears a preference.
+  `workflowCreationEnabled`, `repositoryCreationEnabled`), which are validated and may
+  be stored sanitized. An empty string clears a preference.
 - **Behavior**: `user:`-namespaced preferences are stored against the caller rather than
   the space, and a write of nothing else leaves the space row (and its `updatedAt`)
   untouched.
@@ -1486,12 +1492,15 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/settings/ai-provider"
 ## Integrations (OAuth)
 
 Connections are per user, not per space: each member connects their own account.
+Providers are contributed by installed extensions (`integrations` in the
+manifest); the operator supplies credentials as `VEKTOR_OAUTH_<PROVIDER_ID>_CLIENT_ID`,
+`_CLIENT_SECRET`, and — for a self-hosted instance — `_BASE_URL`.
 
 ### `GET /spaces/:spaceId/integrations`
 
 - **Auth**: session; `viewer` on the space.
-- **Returns**: `200 { connections }` — one entry per known provider, connected or not,
-  for the calling user.
+- **Returns**: `200 { connections }` — one entry per provider an installed
+  extension declares, connected or not, for the calling user.
 
 ```bash
 curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
@@ -1503,6 +1512,8 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
     {
       "provider": "github",
       "label": "GitHub",
+      "description": "Connect GitHub to work with your repositories.",
+      "extensionId": "github",
       "configured": true,
       "missingConfig": [],
       "connected": true,
@@ -1518,8 +1529,10 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
     {
       "provider": "gitlab",
       "label": "GitLab",
+      "description": "Connect GitLab to work with your projects and issues.",
+      "extensionId": "gitlab",
       "configured": false,
-      "missingConfig": ["VEKTOR_GITLAB_CLIENT_ID", "VEKTOR_GITLAB_CLIENT_SECRET"],
+      "missingConfig": ["VEKTOR_OAUTH_GITLAB_CLIENT_ID", "VEKTOR_OAUTH_GITLAB_CLIENT_SECRET"],
       "connected": false,
       "externalAccountId": null,
       "externalUsername": null,
@@ -1536,8 +1549,8 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/integrations"
 
 ### `GET /spaces/:spaceId/integrations/:provider`
 
-- **Auth**: session; `viewer` on the space. `provider` must be a known
-  `OAuthIntegrationProvider` (else `400`).
+- **Auth**: session; `viewer` on the space. `provider` must be declared by an
+  installed extension (else `400`).
 - **Returns**: `200 { connection }` (same shape as one list entry).
 
 ```bash
@@ -2097,14 +2110,20 @@ curl -sS -H "Authorization: Bearer $TOKEN" "$VEKTOR/spaces/$SPACE/documents?limi
   `properties?` (object of property inits, e.g. `{ title, slug, ... }`),
   `parentId?`, `type?`, `slug?`, `createdAt?`/`updatedAt?` (valid date strings;
   accepted only with access-token or job-token authentication, for imports),
+  `readonly?` (boolean, persisted as the document's initial lock),
   `contentType?` (source content type, e.g. `text/markdown`, converted to HTML).
-  Or raw body (any other `Content-Type`) with `X-Document-Type`,
+  Or a raw non-JSON body with `X-Document-Type`,
   `X-Document-Title`, `X-Document-Slug` headers.
-- **Behavior**: HTML-typed content is sanitized on the way in; canvas/app types store
-  serialized JSON and are left alone. `type: "workflow"` additionally requires the
-  space's `workflowCreationEnabled` preference not to be `false` (else `403`).
-- **Returns**: `201 { document }`. `400` for missing content, an invalid parent, or a
-  reserved property key.
+- **Behavior**: `contentType` is only needed when importing a source format such as
+  Markdown. For a JSON body, the server otherwise selects the expected representation
+  for known document types and falls back to HTML. A raw body's `Content-Type` describes
+  its content. HTML, Markdown, and unknown inputs are sanitized as HTML; serialized
+  document content is stored unchanged. `type: "workflow"` and `type: "repository"`
+  additionally require the space's `workflowCreationEnabled` / `repositoryCreationEnabled`
+  preference to be `"true"` (else `403`); both features are off unless a space turns
+  them on. Content must be a string but may be empty.
+- **Returns**: `201 { document }`. `400` when JSON `content` is omitted or is not a
+  string, or for an invalid parent or reserved property key.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -2181,9 +2200,10 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/documents/archived?limit=1"
 - **Query**: `rev?` (int ≥1 — fetch a specific revision instead of current content),
   `draft` (`"true"` — bypass published-revision resolution), `live` (`"true"` —
   read from the in-memory Yjs collaboration room if the doc is open).
-- **Behavior**: `Accept: text/markdown` or `text/plain` returns the content
-  converted to Markdown instead of JSON. Workflow-run-type documents (internal) are
-  hidden (`404`). CORS headers (`Access-Control-Allow-Origin: *`) are added for
+- **Behavior**: `Accept: text/markdown` or `text/plain` returns rich-text content
+  converted to Markdown instead of JSON. Serialized document content is returned
+  unchanged as `text/plain`. Workflow-run-type documents (internal) are hidden (`404`).
+  CORS headers (`Access-Control-Allow-Origin: *`) are added for
   cross-host embedding. `?rev=` serving exactly the published revision needs no extra
   privilege — the plain read already buys that content — but its metadata does: without
   the `view_history` feature the response carries only `{ rev, content, status: null }`.
@@ -2240,12 +2260,16 @@ Ship on the 21st.
 
 - **Auth**: session, access token or job token; `editor` on this document.
 - **Query**: `publish=true` — also publish the newly created revision.
-- **Body**: JSON — either `{ content: string }` (full content replacement, creates a
-  revision) or `{ restore: true }` (revert to the currently-published revision;
-  cannot combine with `content`). Or raw body (non-JSON content type).
-- **Behavior**: readonly documents (`document.readonly` or in
-  `readOnlyDocumentTypes`) always reject writes with `403`. HTML-typed content is
-  sanitized before saving.
+- **Body**: JSON — either `{ content: string }` (full content replacement) or
+  `{ restore: true }` (unarchive the document; cannot combine with `content`). Or send a
+  raw non-JSON body whose `Content-Type` describes the submitted input. JSON updates do
+  not accept `contentType`; use a raw body when the input needs content-type conversion.
+- **Behavior**: documents with `document.readonly` set always reject writes with
+  `403`. Every explicit replacement creates a revision and may be combined with
+  `publish=true`. Serialized document content is stored unchanged; other input is
+  normalized and sanitized as HTML. Either representation may be submitted as JSON or
+  a raw body. Replacement content may be an empty string, which deliberately clears the
+  document body.
 - **Returns**: `200 { document }` — **`content` is omitted** from the response to avoid
   re-serializing large payloads (the client already has what it sent). A restore
   answers `200 { success: true }`. `404` if the document is missing.
@@ -2283,8 +2307,7 @@ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
     `null`). Loads the revision into the draft (and into the open collaboration room, if
     any), triggers "document published" email notifications plus a "mentioned you" one
     for each user newly mentioned, and is audit-logged.
-  - `readonly: boolean` — lock/unlock the document. Immutable types in
-    `readOnlyDocumentTypes` must stay readonly. Persists the live draft before
+  - `readonly: boolean` — lock/unlock the document. Persists the live draft before
     locking. Audit-logged.
 - **Returns**: `200 { success: true }` for a parent/publish/readonly patch. A properties
   patch answers `200 {}`, or `200 { slug }` when a `title` patch also claimed a new
@@ -2340,12 +2363,15 @@ Creates a revision, or a suggestion against one.
   `editor` for a full revision, the `comment` feature on this document for
   `mode: "suggestion"`. Authorized before the content is validated, so a refused caller
   gets that verdict rather than a critique of their payload.
-- **Body**: JSON — `html` (string, required), `message?` (string), `mode?`
-  (`"revision"` | `"suggestion"`, default revision). Or raw body, which can only ever be
-  a full revision.
+- **Body**: JSON — `html` (string, required), `contentType?` (defaults to
+  `text/html`), `message?` (string), `mode?` (`"revision"` | `"suggestion"`,
+  default revision). Or an HTML/Markdown raw body, which can only ever be a full
+  revision. Other raw content types are treated as HTML.
 - **Behavior**: readonly documents reject with `403`. `mode: "suggestion"` creates a
   pending-status suggestion revision instead of a normal one, based on the published
-  revision or else the latest saved one; a document with neither is a `400`.
+  revision or else the latest saved one; a document with neither is a `400`. Input is
+  normalized and sanitized as HTML, except serialized document content, which is stored
+  unchanged.
 - **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, status,
   message, createdAt, createdBy } }`.
 
@@ -2502,10 +2528,11 @@ curl -sS -b "$COOKIE" \
 - **Query**: `rev` (int ≥1, required), `base?` (int ≥1 — defaults to the revision this
   one was meant to change: its parent for a suggestion, else the document's published
   revision), `format` (`"html"` for an inline `<ins>`/`<del>` redline; default a unified
-  diff patch via the `diff` package).
-- **Returns**: `200` `text/plain` unified patch, or `text/plain` inline HTML redline.
-  Either way the resolved base comes back in `X-Diff-Base-Rev`, so a caller that took
-  the default can name both sides. `400` if no comparable base revision/content exists.
+  diff patch via the `diff` package). Serialized document types use an escaped source
+  patch instead of an HTML redline.
+- **Returns**: `200` `text/plain` unified patch, or `text/html` for the rendered diff.
+  Either way the resolved base comes back in `X-Diff-Base-Rev`, so a caller that took the
+  default can name both sides. `400` if no comparable base revision/content exists.
 
 ```bash
 curl -sS -D - -H "Authorization: Bearer $TOKEN" \

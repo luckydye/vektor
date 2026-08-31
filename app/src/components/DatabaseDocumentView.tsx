@@ -1,6 +1,7 @@
-import "@atrium-ui/elements/popover";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { api, type ExtensionRoute } from "#api/client.ts";
+import { ContextMenu } from "#components/ContextMenu.tsx";
+import { ContextMenuItem } from "#components/ContextMenuItem.tsx";
 import { DatabaseView } from "#components/DatabaseView.tsx";
 import { ExtensionView } from "#components/ExtensionView.tsx";
 import { Icon } from "#components/Icon.tsx";
@@ -8,6 +9,7 @@ import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useToast } from "#composeables/useToast.ts";
 import type { DocumentPropertyValue } from "#documents/properties.ts";
 import { animateTabPanel } from "#utils/animate.ts";
+import { TabButton } from "./Tabs.tsx";
 
 export interface DatabaseExtensionView {
   extensionId: string;
@@ -25,9 +27,6 @@ interface Props {
 
 const TABLE_VIEW_ID = "table";
 const DATABASE_VIEWS_PROPERTY = "_databaseViews";
-
-const TAB_CLASS =
-  "inline-flex h-9 items-center justify-center rounded-sm px-1 text-label opacity-60 transition-opacity [&[aria-selected=true]:hover>span]:bg-gray-100 [&[aria-selected=true]]:opacity-100 [&[aria-selected=true]>span]:bg-gray-100 hover:[&>span]:bg-gray-200";
 
 function parseConfiguredViewIds(value: DocumentPropertyValue | undefined): string[] {
   if (!value) return [];
@@ -141,7 +140,7 @@ export function DatabaseDocumentView(props: Props) {
     }
   });
 
-  async function addExtensionView(view: DatabaseExtensionView, event: MouseEvent) {
+  async function addExtensionView(view: DatabaseExtensionView, event: Event) {
     const viewId = extensionViewId(view);
     const previous = configuredViewIds();
     const next = previous.includes(viewId) ? previous : [...previous, viewId];
@@ -167,7 +166,7 @@ export function DatabaseDocumentView(props: Props) {
     }
   }
 
-  async function removeExtensionView(view: DatabaseExtensionView, event: MouseEvent) {
+  async function removeExtensionView(view: DatabaseExtensionView, event: Event) {
     const viewId = extensionViewId(view);
     const previous = configuredViewIds();
     const next = previous.filter((configuredId) => configuredId !== viewId);
@@ -216,64 +215,58 @@ export function DatabaseDocumentView(props: Props) {
 
   return (
     <div class="flex h-full min-h-0 flex-1 flex-col">
-      <div class="flex shrink-0 items-center overflow-x-auto px-xs py-2xs lg:px-m">
-        <div role="tablist" aria-label="Database views" onKeyDown={onTabKeyDown}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={selectedViewId() === TABLE_VIEW_ID}
-            tabIndex={selectedViewId() === TABLE_VIEW_ID ? 0 : -1}
-            class={TAB_CLASS}
+      <div class="flex shrink-0 items-center overflow-x-auto px-xs py-2xs lg:px-s">
+        <div role="tablist" class="space-x-1" aria-label="Database views" onKeyDown={onTabKeyDown}>
+          <TabButton
+            selected={selectedViewId() === TABLE_VIEW_ID}
+            icon="table"
             onClick={() => selectView(TABLE_VIEW_ID)}
           >
-            <span class="inline-flex h-8 items-center gap-2 rounded-md px-3 transition-colors">
-              <Icon class="h-4 w-4" name="table" />
-              Table
-            </span>
-          </button>
+            Table
+          </TabButton>
           <For each={configuredExtensionViews()}>
             {(view) => {
               const viewId = extensionViewId(view);
+              // No background of its own: the tab paints the pill, and a
+              // second one behind it doubles the tone and spreads it under the
+              // menu button.
               return (
-                <span class="inline-flex items-center">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={selectedViewId() === viewId}
-                    tabIndex={selectedViewId() === viewId ? 0 : -1}
-                    class={TAB_CLASS}
+                <span class="group/view inline-flex h-8 items-center rounded-md">
+                  <TabButton
+                    selected={selectedViewId() === viewId}
+                    icon="grid-grid"
                     onClick={() => selectView(viewId)}
                   >
-                    <span class="inline-flex h-8 items-center gap-2 rounded-md px-3 transition-colors">
-                      <Icon class="h-4 w-4" name="grid-grid" />
-                      {extensionViewTitle(view)}
-                    </span>
-                  </button>
+                    {extensionViewTitle(view)}
+                  </TabButton>
 
-                  <a-popover-trigger class="inline-flex">
-                    <button
-                      type="button"
-                      slot="trigger"
-                      aria-label={`Manage ${extensionViewTitle(view)} view`}
-                      class="flex h-8 w-7 items-center justify-center rounded-md text-neutral-400 opacity-60 transition-colors hover:bg-gray-200 hover:text-neutral-700 hover:opacity-100"
+                  <ContextMenu
+                    ariaLabel={`Manage ${extensionViewTitle(view)} view`}
+                    trigger={
+                      <button
+                        type="button"
+                        slot="trigger"
+                        aria-label={`Manage ${extensionViewTitle(view)} view`}
+                        // No background of its own: it used to sit flush
+                        // against one the wrapper drew behind the whole tab,
+                        // and alone it reads as a second, darker control.
+                        class="flex h-8 w-7 items-center justify-center text-neutral-400 transition-colors hover:text-neutral-700 group-hover/view:opacity-100"
+                        classList={{
+                          "opacity-100": selectedViewId() === viewId,
+                          "opacity-0": selectedViewId() !== viewId,
+                        }}
+                      >
+                        <Icon class="h-4 w-4" name="context-menu-more" />
+                      </button>
+                    }
+                  >
+                    <ContextMenuItem
+                      onClick={(event) => void removeExtensionView(view, event)}
                     >
-                      <Icon class="h-4 w-4" name="context-menu-more" />
-                    </button>
-                    <a-popover class="group" placements="bottom-end">
-                      <div class="w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                        <div class="min-w-40 rounded-lg border border-neutral-100 bg-background p-1 shadow-large">
-                          <button
-                            type="button"
-                            class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-red-600 text-size-small transition-colors hover:bg-red-50"
-                            onClick={(event) => void removeExtensionView(view, event)}
-                          >
-                            <Icon class="h-4 w-4" name="delete-entry" />
-                            Remove view
-                          </button>
-                        </div>
-                      </div>
-                    </a-popover>
-                  </a-popover-trigger>
+                      <Icon class="h-4 w-4 flex-none text-red-600" name="delete-entry" />
+                      <span class="text-red-600">Remove view</span>
+                    </ContextMenuItem>
+                  </ContextMenu>
                 </span>
               );
             }}
@@ -283,54 +276,44 @@ export function DatabaseDocumentView(props: Props) {
         <Show when={availableExtensionViews().length > 0}>
           <div class="mx-3 h-6 w-px shrink-0 bg-neutral-100" />
 
-          <a-popover-trigger>
-            <button
-              type="button"
-              slot="trigger"
-              class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 font-medium text-neutral-500 text-size-medium transition-colors hover:bg-neutral-50 hover:text-neutral-800"
-            >
-              <Icon class="h-4 w-4" name="add" />
-              View
-            </button>
-            <a-popover class="group" placements="bottom-start">
-              <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                <div class="mt-1 w-80 rounded-xl border border-neutral-100 bg-background p-2 shadow-large">
-                  <div class="px-2 py-2 font-medium text-neutral-500 text-size-small">
-                    Add a new view
-                  </div>
-                  <For each={availableExtensionViews()}>
-                    {(view) => (
-                      <button
-                        type="button"
-                        class="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-neutral-50"
-                        onClick={(event) => void addExtensionView(view, event)}
-                      >
-                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-100 bg-background shadow-small">
-                          <Icon class="h-5 w-5 text-neutral-800" name="grid-grid" />
-                        </span>
-                        <span class="min-w-0">
-                          <span class="block truncate font-medium text-neutral-800">
-                            {extensionViewTitle(view)}
-                          </span>
-                          <span class="block truncate text-neutral-400 text-size-small">
-                            {view.route.description?.trim() ||
-                              `${extensionViewTitle(view)} view by ${view.extensionName}`}
-                          </span>
-                        </span>
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </div>
-            </a-popover>
-          </a-popover-trigger>
+          <ContextMenu
+            ariaLabel="Add database view"
+            placements="bottom-start"
+            trigger={
+              <button
+                type="button"
+                slot="trigger"
+                class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 font-medium text-neutral-500 text-size-medium transition-colors hover:bg-neutral-50 hover:text-neutral-800"
+              >
+                <Icon class="h-4 w-4" name="add" />
+                View
+              </button>
+            }
+          >
+            <div class="px-3xs py-5xs text-neutral-500 text-size-extra-small">
+              Add view
+            </div>
+            <For each={availableExtensionViews()}>
+              {(view) => (
+                <ContextMenuItem
+                  class="min-w-48"
+                  onClick={(event) => void addExtensionView(view, event)}
+                >
+                  <Icon class="h-4 w-4 flex-none" name="grid-grid" />
+                  <span class="min-w-0 truncate text-left text-neutral-900">
+                    {extensionViewTitle(view)}
+                  </span>
+                </ContextMenuItem>
+              )}
+            </For>
+          </ContextMenu>
         </Show>
       </div>
 
       <div
         ref={panelRef}
         role="tabpanel"
-        class="flex min-h-0 flex-1 flex-col px-xs lg:px-m"
+        class="flex min-h-0 flex-1 flex-col px-xs lg:px-s"
       >
         <Show
           when={selectedExtensionView()}

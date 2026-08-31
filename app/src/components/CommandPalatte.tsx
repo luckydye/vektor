@@ -10,6 +10,7 @@ import {
   useVisualViewport,
   viewportLayerStyle,
 } from "#composeables/useVisualViewport.ts";
+import { documentTypeIcon } from "#documents/icons.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { documentTitle } from "#documents/title.ts";
 import { Actions } from "#utils/actions.ts";
@@ -35,12 +36,16 @@ function sectionLabel(type: Result["type"], lang: string): string {
   return t("Create", lang);
 }
 
-const RESULT_ICONS: Record<Result["type"], IconName> = {
-  document: "document",
+const RESULT_ICONS: Record<Exclude<Result["type"], "document">, IconName> = {
   action: "bolt",
   search: "search",
   create: "new-document",
 };
+
+function resultIcon(result: Result): IconName {
+  if (result.type === "document") return documentTypeIcon(result.data.type);
+  return RESULT_ICONS[result.type];
+}
 
 const MAX_DOCUMENT_RESULTS = 50;
 
@@ -346,7 +351,7 @@ export function CommandPalatte() {
                             ? "text-primary-600"
                             : "text-neutral-400",
                         )}
-                        name={RESULT_ICONS[result.type]}
+                        name={resultIcon(result)}
                       />
                       <div class="flex min-w-0 flex-1 flex-col py-1.5">
                         <span class="truncate font-normal text-size-medium">

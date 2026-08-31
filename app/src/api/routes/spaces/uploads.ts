@@ -13,11 +13,14 @@ import {
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { getSpaceDb } from "#db/client/db.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { file as fileTable } from "#db/schema/space.ts";
-import { filterAccessibleFiles, getFileDocumentIds } from "#db/space/files.ts";
+import { filterAccessibleFiles, getFileIndexEntries } from "#db/space/files.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
+import {
+  readImageDimensions,
+  readStoredImageDimensions,
+} from "#files/imageDimensions.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -53,24 +56,53 @@ export const GET: ApiRouteHandler = (context) =>
       );
 
       const storage = getFileStorage();
-      const files = await storage.list(spaceId);
+      // `limit` is opt-in: without it the response stays the whole listing it
+      // has always been, and a caller that asks for a page gets a cursor back.
+      const query = new URL(context.req.raw.url).searchParams;
+      const limitParam = query.get("limit");
+      const limit = limitParam === null ? undefined : Number(limitParam);
+      if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+        return badRequestResponse("Invalid limit");
+      }
+      const listing = await storage.list(spaceId, {
+        limit,
+        cursor: query.get("cursor") ?? undefined,
+      });
+      const files = listing.files;
 
-      const parentIds = await getFileDocumentIds(
+      const index = await getFileIndexEntries(
         spaceId,
         files.map((f) => f.key),
       );
       const visible = await filterAccessibleFiles(
         spaceId,
-        files.map((f) => ({ ...f, documentId: parentIds.get(f.key) ?? null })),
+        files.map((f) => {
+          // A file on disk with no index row is still a real file; it lists
+          // with nulls rather than disappearing.
+          const entry = index.get(f.key);
+          return {
+            ...f,
+            documentId: entry?.documentId ?? null,
+            originalName: entry?.originalName ?? null,
+            mimeType: entry?.mimeType ?? null,
+          };
+        }),
         spaceAccessToViewer(access),
       );
 
+      // `documentId` is returned rather than stripped: every row here has
+      // already been filtered against the document that authorizes it, so
+      // naming that document tells the caller nothing it cannot already read.
+      // A client listing uploads needs it — and `originalName` — to show a file
+      // as anything other than the content hash it is stored under.
       return jsonResponse(
         {
-          files: visible.map(({ documentId, ...f }) => ({
+          files: visible.map((f) => ({
             ...f,
             url: storage.url(spaceId, f.key),
           })),
+          // Only present on a paged request, and only while more remain.
+          ...(listing.cursor ? { cursor: listing.cursor } : {}),
         },
         200,
       );
@@ -138,9 +170,16 @@ export const POST: ApiRouteHandler = (context) =>
         ? extractFileTextFromBuffer(stored, originalName, contentType)
         : null;
 
+      // Dimensions come from the file's first bytes, so an image too large to
+      // hold still gets them — and nothing has to fetch it again later to lay
+      // out the page that shows it.
+      const dimensions = stored
+        ? readImageDimensions(stored)
+        : await readStoredImageDimensions(storage, spaceId, key);
+
       // Insert full metadata to file table for all uploads
-      const db = await getSpaceDb(spaceId);
-      await db
+      const store = await openSpaceStore(spaceId);
+      await store.db
         .insert(fileTable)
         .values({
           path: key,
@@ -148,6 +187,8 @@ export const POST: ApiRouteHandler = (context) =>
           originalName,
           mimeType: contentType ?? null,
           size,
+          width: dimensions?.width ?? null,
+          height: dimensions?.height ?? null,
           url,
           updatedAt: new Date(),
           extractedText,
@@ -164,13 +205,14 @@ export const POST: ApiRouteHandler = (context) =>
             originalName,
             mimeType: contentType ?? null,
             size,
+            width: dimensions?.width ?? null,
+            height: dimensions?.height ?? null,
             url,
             updatedAt: new Date(),
             extractedText,
           },
         });
 
-      const store = await openSpaceStore(spaceId);
       if (documentId) {
         // Re-index the parent document (reads from file table, no FS scan)
         updateDocumentEmbedding(store, documentId).catch((err) => {

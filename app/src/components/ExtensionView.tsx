@@ -112,8 +112,10 @@ export function ExtensionView(props: Props) {
   return (
     <div class="w-full" classList={{ "relative h-full min-h-0 flex-1": props.fill }}>
       <Show when={loading()}>
-        <div class="flex items-center justify-center py-20">
-          <div class="h-8 w-8 animate-spin rounded-full border-primary-600 border-b-2" />
+        <div class="flex flex-col gap-3 p-6">
+          <div class="h-4 w-1/3 animate-pulse rounded bg-neutral-100" />
+          <div class="h-3 w-4/5 animate-pulse rounded bg-neutral-100" />
+          <div class="h-3 w-2/3 animate-pulse rounded bg-neutral-100" />
         </div>
       </Show>
 

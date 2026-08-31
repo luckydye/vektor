@@ -14,12 +14,10 @@ import { openSpaceStore } from "#db/client/store.ts";
 import {
   getOAuthIntegrationCredentialForUser,
   type OAuthIntegrationCredential,
-  type OAuthIntegrationProvider,
   updateOAuthIntegrationTokenSet,
 } from "#db/space/oauthIntegrations.ts";
 import {
   getOAuthProviderConfiguration,
-  isOAuthIntegrationProvider,
   type OAuthProviderConfiguration,
   refreshOAuthToken,
 } from "#integrations/oauthProviders.ts";
@@ -91,10 +89,10 @@ function getProviderBaseUrl(providerConfig: OAuthProviderConfiguration): URL {
 /**
  * Resolve the caller's `path` against the configured provider origin. Every
  * request built here carries the caller's OAuth access token, so the result is
- * checked against `base.origin` unconditionally, for every provider.
+ * checked against `base.origin` unconditionally, for every provider, and is
+ * confined to the manifest's `apiBasePath` when it declares one.
  */
 export function buildIntegrationApiUrl(
-  provider: OAuthIntegrationProvider,
   providerConfig: OAuthProviderConfiguration,
   rawPath: string,
 ): URL {
@@ -104,16 +102,19 @@ export function buildIntegrationApiUrl(
   }
 
   const base = getProviderBaseUrl(providerConfig);
+  const apiBasePath = providerConfig.apiBasePath?.replace(/\/$/, "") || null;
   let resolved: URL;
 
   if (/^https?:\/\//i.test(trimmed)) {
     resolved = new URL(trimmed);
     if (
-      provider === "gitlab" &&
-      !resolved.pathname.startsWith("/api/v4/") &&
-      resolved.pathname !== "/api/v4"
+      apiBasePath &&
+      !resolved.pathname.startsWith(`${apiBasePath}/`) &&
+      resolved.pathname !== apiBasePath
     ) {
-      throw badRequestResponse("GitLab request URL must target /api/v4");
+      throw badRequestResponse(
+        `${providerConfig.id} request URL must target ${apiBasePath}`,
+      );
     }
   } else {
     // `URL` strips tab/CR/LF itself, so `/\t/evil.example` would slip past the
@@ -123,14 +124,18 @@ export function buildIntegrationApiUrl(
     if (path[1] === "/" || path[1] === "\\") {
       throw badRequestResponse("path must be a plain absolute path");
     }
-    resolved =
-      provider === "gitlab"
-        ? new URL(path.startsWith("/api/v4") ? path : `/api/v4${path}`, base)
-        : new URL(path, base);
+    resolved = new URL(
+      apiBasePath && !path.startsWith(`${apiBasePath}/`) && path !== apiBasePath
+        ? `${apiBasePath}${path}`
+        : path,
+      base,
+    );
   }
 
   if (resolved.origin !== base.origin) {
-    throw badRequestResponse(`${provider} request URL must match configured origin`);
+    throw badRequestResponse(
+      `${providerConfig.id} request URL must match configured origin`,
+    );
   }
 
   return resolved;
@@ -182,10 +187,6 @@ export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const providerParam = requireParam(context.var.params, "provider");
-    if (!isOAuthIntegrationProvider(providerParam)) {
-      throw badRequestResponse("Unsupported integration provider");
-    }
-
     const userId = await resolveUserId(context, spaceId);
 
     const body = (await context.req.raw
@@ -206,7 +207,10 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse("body must be a string");
     }
 
-    const providerConfig = getOAuthProviderConfiguration(providerParam);
+    const providerConfig = await getOAuthProviderConfiguration(spaceId, providerParam);
+    if (!providerConfig) {
+      throw badRequestResponse("Unsupported integration provider");
+    }
     if (!providerConfig.configured) {
       throw badRequestResponse(
         `${providerParam} is not configured: missing ${providerConfig.missing.join(", ")}`,
@@ -236,7 +240,7 @@ export const POST: ApiRouteHandler = (context) =>
     headers.set("Authorization", `Bearer ${accessToken}`);
 
     const response = await fetch(
-      buildIntegrationApiUrl(providerParam, providerConfig.config, body.path),
+      buildIntegrationApiUrl(providerConfig.config, body.path),
       {
         method,
         headers,

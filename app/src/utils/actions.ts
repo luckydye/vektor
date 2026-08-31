@@ -4,6 +4,11 @@ export type ActionOptions = {
   icon?: () => string;
   group?: string;
   order?: number;
+  /**
+   * Whether the action applies to the current context. The statusbar hides the
+   * action while this returns false; omitting it means always available.
+   */
+  available?: () => boolean;
   run: () => Promise<void>;
 };
 

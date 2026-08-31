@@ -11,6 +11,7 @@ import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import type { TranslationKey } from "#utils/lang.ts";
@@ -25,7 +26,6 @@ import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   onClose?: () => void;
@@ -57,26 +57,6 @@ const themeOptions: {
   { value: "light", label: "Light", swatchClass: "bg-[#fff5b8]" },
   { value: "dark", label: "Dark", swatchClass: "bg-[#252525]" },
 ];
-
-const integrationProviders: OAuthIntegrationProvider[] = ["gitlab", "youtrack"];
-
-const integrationProviderDetails: Record<
-  OAuthIntegrationProvider,
-  { label: string; description: TranslationKey; initial: string; iconClass: string }
-> = {
-  gitlab: {
-    label: "GitLab",
-    description: "Connect GitLab to work with your projects and issues.",
-    initial: "G",
-    iconClass: "bg-[#fc6d26]",
-  },
-  youtrack: {
-    label: "YouTrack",
-    description: "Connect YouTrack to work with your issues and projects.",
-    initial: "Y",
-    iconClass: "bg-[#4c57e8]",
-  },
-};
 
 export function UserPreferencesPanel(props: Props) {
   const t = useTranslation();
@@ -122,21 +102,17 @@ export function UserPreferencesPanel(props: Props) {
     (spaces() ?? []).filter((space) => isPermission(space.userRole)),
   );
 
-  const activeSpaceName = createMemo(() => currentSpace()?.name || null);
-
+  // Providers come from the space's installed extensions, so the cards are
+  // whatever the API returned rather than a list the app knows in advance.
   const integrationCards = createMemo(() =>
-    integrationProviders.map((provider) => {
-      const details = integrationProviderDetails[provider];
-      return {
-        provider,
-        connection:
-          integrationConnections().find(
-            (connection) => connection.provider === provider,
-          ) ?? null,
-        ...details,
-        description: t(details.description),
-      };
-    }),
+    integrationConnections().map((connection) => ({
+      provider: connection.provider,
+      connection,
+      label: connection.label,
+      description: connection.description,
+      initial: connection.label.trim().charAt(0).toUpperCase() || "?",
+      iconColor: getAvatarColor(connection.provider),
+    })),
   );
 
   const applyThemePreferenceWithTransition = (preference: ThemePreference) => {
@@ -531,12 +507,6 @@ export function UserPreferencesPanel(props: Props) {
                 <p class="mt-1 text-neutral-500 text-size-small">
                   {t("Connect tools to make them available in this space.")}
                 </p>
-                <p class="mt-2 text-label text-neutral-500">
-                  {t("Space:")}{" "}
-                  <span class="font-medium text-foreground">
-                    {activeSpaceName() || t("None")}
-                  </span>
-                </p>
               </div>
 
               <Show when={integrationsError()}>
@@ -566,109 +536,121 @@ export function UserPreferencesPanel(props: Props) {
                     </div>
                   }
                 >
-                  <div class="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
-                    <For each={integrationCards()}>
-                      {(card) => (
-                        <div class="flex min-h-[254px] flex-col rounded-lg border border-neutral-200 bg-background p-4">
-                          <div class="flex items-start justify-between gap-3">
-                            <div
-                              class={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-semibold text-size-large text-white ${card.iconClass}`}
-                              aria-hidden="true"
-                            >
-                              {card.initial}
+                  <Show
+                    when={integrationCards().length > 0}
+                    fallback={
+                      <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
+                        {t("Install an extension that provides an integration.")}
+                      </div>
+                    }
+                  >
+                    <div class="grid grid-cols-1 gap-3 min-[560px]:grid-cols-2">
+                      <For each={integrationCards()}>
+                        {(card) => (
+                          <div class="flex min-h-[254px] flex-col rounded-lg border border-neutral-200 bg-background p-4">
+                            <div class="flex items-start justify-between gap-3">
+                              <div
+                                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-semibold text-size-large text-white"
+                                style={{ "background-color": card.iconColor }}
+                                aria-hidden="true"
+                              >
+                                {card.initial}
+                              </div>
+                              <span
+                                class="inline-flex rounded-full px-2 py-0.5 font-medium text-label"
+                                classList={{
+                                  "bg-green-50 text-green-700":
+                                    !!card.connection?.connected,
+                                  "bg-neutral-100 text-neutral-500":
+                                    !card.connection?.connected,
+                                }}
+                              >
+                                {card.connection?.connected
+                                  ? t("Connected")
+                                  : t("Not connected")}
+                              </span>
                             </div>
-                            <span
-                              class="inline-flex rounded-full px-2 py-0.5 font-medium text-label"
-                              classList={{
-                                "bg-green-50 text-green-700":
-                                  !!card.connection?.connected,
-                                "bg-neutral-100 text-neutral-500":
-                                  !card.connection?.connected,
-                              }}
-                            >
-                              {card.connection?.connected
-                                ? t("Connected")
-                                : t("Not connected")}
-                            </span>
-                          </div>
 
-                          <div class="mt-4">
-                            <h3 class="font-semibold text-foreground text-size-medium">
-                              {card.connection?.label || card.label}
-                            </h3>
-                            <p class="mt-1 text-neutral-500 text-size-small leading-5">
-                              {card.description}
-                            </p>
-                          </div>
+                            <div class="mt-4">
+                              <h3 class="font-semibold text-foreground text-size-medium">
+                                {card.label}
+                              </h3>
+                              <Show when={card.description}>
+                                <p class="mt-1 text-neutral-500 text-size-small leading-5">
+                                  {card.description}
+                                </p>
+                              </Show>
+                            </div>
 
-                          <div class="mt-3 min-h-10 text-label">
-                            <Show when={card.connection?.connected}>
-                              <p class="text-neutral-600">
-                                {t("Connected as")}{" "}
-                                {card.connection?.externalUsername ||
-                                  card.connection?.externalAccountId}
-                              </p>
-                            </Show>
-                            <Show
-                              when={
-                                !card.connection?.connected &&
-                                card.connection?.configured === false
-                              }
-                            >
-                              <p class="text-amber-700">{t("Not configured")}</p>
-                            </Show>
-                            <Show
-                              when={
-                                !card.connection?.connected &&
-                                card.connection?.configured !== false &&
-                                card.connection?.instanceUrl
-                              }
-                            >
-                              <p class="truncate text-neutral-500">
-                                {card.connection?.instanceUrl}
-                              </p>
-                            </Show>
-                          </div>
+                            <div class="mt-3 min-h-10 text-label">
+                              <Show when={card.connection?.connected}>
+                                <p class="text-neutral-600">
+                                  {t("Connected as")}{" "}
+                                  {card.connection?.externalUsername ||
+                                    card.connection?.externalAccountId}
+                                </p>
+                              </Show>
+                              <Show
+                                when={
+                                  !card.connection?.connected &&
+                                  card.connection?.configured === false
+                                }
+                              >
+                                <p class="text-amber-700">{t("Not configured")}</p>
+                              </Show>
+                              <Show
+                                when={
+                                  !card.connection?.connected &&
+                                  card.connection?.configured !== false &&
+                                  card.connection?.instanceUrl
+                                }
+                              >
+                                <p class="truncate text-neutral-500">
+                                  {card.connection?.instanceUrl}
+                                </p>
+                              </Show>
+                            </div>
 
-                          <div class="mt-auto border-neutral-100 border-t pt-3">
-                            <Show
-                              when={card.connection?.connected}
-                              fallback={
+                            <div class="mt-auto border-neutral-100 border-t pt-3">
+                              <Show
+                                when={card.connection?.connected}
+                                fallback={
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      connectingProvider() === card.provider ||
+                                      card.connection?.configured === false
+                                    }
+                                    onClick={() =>
+                                      void handleConnectIntegration(card.provider)
+                                    }
+                                    class="w-full rounded-md bg-blue-600 px-3 py-1.5 font-medium text-size-small text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {connectingProvider() === card.provider
+                                      ? t("Redirecting…")
+                                      : t("Connect")}
+                                  </button>
+                                }
+                              >
                                 <button
                                   type="button"
-                                  disabled={
-                                    connectingProvider() === card.provider ||
-                                    card.connection?.configured === false
-                                  }
+                                  disabled={disconnectingProvider() === card.provider}
                                   onClick={() =>
-                                    void handleConnectIntegration(card.provider)
+                                    void handleDisconnectIntegration(card.provider)
                                   }
-                                  class="w-full rounded-md bg-blue-600 px-3 py-1.5 font-medium text-size-small text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  class="w-full rounded-md border border-red-200 px-3 py-1.5 font-medium text-red-600 text-size-small transition-colors hover:bg-red-50 disabled:opacity-50"
                                 >
-                                  {connectingProvider() === card.provider
-                                    ? t("Redirecting…")
-                                    : t("Connect")}
+                                  {disconnectingProvider() === card.provider
+                                    ? t("Disconnecting…")
+                                    : t("Disconnect")}
                                 </button>
-                              }
-                            >
-                              <button
-                                type="button"
-                                disabled={disconnectingProvider() === card.provider}
-                                onClick={() =>
-                                  void handleDisconnectIntegration(card.provider)
-                                }
-                                class="w-full rounded-md border border-red-200 px-3 py-1.5 font-medium text-red-600 text-size-small transition-colors hover:bg-red-50 disabled:opacity-50"
-                              >
-                                {disconnectingProvider() === card.provider
-                                  ? t("Disconnecting…")
-                                  : t("Disconnect")}
-                              </button>
-                            </Show>
+                              </Show>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </For>
-                  </div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
                 </Show>
               </Show>
             </section>

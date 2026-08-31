@@ -264,7 +264,6 @@
   "Light": "ライト",
   "Dark": "ダーク",
   "Canvas cursor color": "キャンバスのカーソル色",
-  "Space:": "スペース：",
   "None": "なし",
   "Open a space to manage integrations.": "連携を管理するにはスペースを開いてください。",
   "Connected as": "接続アカウント",
@@ -411,8 +410,6 @@
   "Map steps and automate processes with ease.": "手順を整理し、プロセスを簡単に自動化します。",
   "Database": "データベース",
   "Organize and manage data in structured tables.": "構造化された表でデータを整理・管理します。",
-  "Spreadsheet": "スプレッドシート",
-  "Lay out numbers and records in rows and columns.": "数値やレコードを行と列に配置します。",
   "Start from a template": "テンプレートから開始",
   "Failed to insert the template": "テンプレートの挿入に失敗しました",
   "Template": "テンプレート",
@@ -712,5 +709,10 @@
   "What this share applies to": "この共有の適用先",
   "Access to grant": "付与するアクセス権",
   "When the link expires": "リンクの有効期限",
-  "Link password": "リンクのパスワード"
+  "Link password": "リンクのパスワード",
+  "Install an extension that provides an integration.": "連携機能を提供する拡張機能をインストールしてください。",
+  "Repository": "リポジトリ",
+  "Host code with git, and browse it here.": "Git でコードをホストし、ここで閲覧できます。",
+  "Search people or type an email…": "ユーザーを検索、またはメールアドレスを入力…",
+  "Invite {email}": "{email} を招待"
 }

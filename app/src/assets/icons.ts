@@ -81,6 +81,7 @@ export { default as justifyRightIcon } from "#assets/icons/justify-right.svg?raw
 export { default as linkIcon } from "#assets/icons/link.svg?raw";
 export { default as listIcon } from "#assets/icons/list.svg?raw";
 export { default as lockElementIcon } from "#assets/icons/lock-element.svg?raw";
+export { default as markdownIcon } from "#assets/icons/markdown.svg?raw";
 export { default as mergeCellsIcon } from "#assets/icons/merge-cells.svg?raw";
 export { default as missingIcon } from "#assets/icons/missing.svg?raw";
 export { default as muteNotificationsIcon } from "#assets/icons/mute-notifications.svg?raw";
@@ -100,6 +101,7 @@ export { default as publishIcon } from "./icons/publish.svg?raw";
 export { default as recordIcon } from "#assets/icons/record.svg?raw";
 export { default as redoIcon } from "#assets/icons/redo.svg?raw";
 export { default as refreshIcon } from "./icons/refresh.svg?raw";
+export { default as repositoryIcon } from "#assets/icons/repository.svg?raw";
 export { default as resizeHandleIcon } from "./icons/resize-handle.svg?raw";
 export { default as restoreArrowIcon } from "./icons/restore.svg?raw";
 export { default as searchIcon } from "#assets/icons/search.svg?raw";

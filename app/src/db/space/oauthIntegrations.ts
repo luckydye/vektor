@@ -5,7 +5,8 @@ import { createId } from "#db/ids.ts";
 import { oauthIntegration, oauthIntegrationState } from "#db/schema/space.ts";
 import { decryptSecret, encryptSecret } from "#db/secretsCrypto.ts";
 
-export type OAuthIntegrationProvider = "gitlab" | "youtrack";
+/** Provider ids come from installed extension manifests, so any slug is valid. */
+export type OAuthIntegrationProvider = string;
 
 export interface OAuthIntegrationConnection {
   id: string;
@@ -38,7 +39,7 @@ function rowToConnection(
 ): OAuthIntegrationConnection {
   return {
     id: row.id,
-    provider: row.provider as OAuthIntegrationProvider,
+    provider: row.provider,
     userId: row.userId,
     externalAccountId: row.externalAccountId,
     externalUsername: row.externalUsername ?? null,

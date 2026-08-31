@@ -10,7 +10,7 @@
 import { changeToEvents, type SpaceChange } from "#realtime/changes.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { type Database, supportsTransactions } from "./connection.ts";
-import { getSpaceDb } from "./db.ts";
+import { openSpaceDbForStore } from "./db.ts";
 
 /** A connection, or the transaction-scoped view of one. Both accept queries. */
 export type SpaceDb = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -72,5 +72,5 @@ function createStore(
 }
 
 export async function openSpaceStore(spaceId: string): Promise<SpaceStore> {
-  return createStore(spaceId, await getSpaceDb(spaceId), null);
+  return createStore(spaceId, await openSpaceDbForStore(spaceId), null);
 }

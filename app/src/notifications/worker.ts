@@ -20,6 +20,7 @@ import {
 import { getRevisionContent } from "#db/space/revisions.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import { propertyValueToText } from "#documents/properties.ts";
+import { isSerializedDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
 import { renderNotificationEmail } from "./render.ts";
@@ -107,11 +108,14 @@ async function deliver(
   const aboutPublication =
     notification.kind === "document_published" ||
     notification.kind === "document_mention";
+  const publicationHasHtmlContent =
+    aboutPublication && !isSerializedDocumentType(doc.type);
   const [commentRecord, publishedContent, previousPublishedContent] = await Promise.all([
     aboutComment ? getComment(store, notification.sourceId) : undefined,
-    aboutPublication && typeof notification.publishedRevision === "number"
+    publicationHasHtmlContent && typeof notification.publishedRevision === "number"
       ? getRevisionContent(store, notification.documentId, notification.publishedRevision)
       : undefined,
+    publicationHasHtmlContent &&
     notification.kind === "document_published" &&
     typeof notification.previousPublishedRevision === "number"
       ? getRevisionContent(

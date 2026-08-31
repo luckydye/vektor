@@ -40,6 +40,8 @@ An extension requires a `manifest.json` and at least one entry point:
 | `entries.frontend` | `string` | No | Path to frontend JS entry (actions, etc.) |
 | `entries.view` | `string` | No | Path to view JS entry (standalone views) |
 | `routes` | `array` | No | Custom view routes |
+| `jobs` | `array` | No | Sandboxed server-side jobs |
+| `integrations` | `array` | No | OAuth providers the extension contributes |
 
 ### Routes
 
@@ -624,6 +626,7 @@ The CLI scaffolds, builds and uploads. All three take the extension id, and
 vektor extension create  <extension-id>   # scaffolds the folder
 vektor extension package <extension-id>   # runs the build, bumps the version, zips
 vektor extension upload  <extension-id>   # uploads the zip to a space
+vektor extension install <extension-id>   # installs from the server's store
 ```
 
 `upload` takes its token and space from whatever `vektor login` stored in
@@ -631,6 +634,37 @@ vektor extension upload  <extension-id>   # uploads the zip to a space
 (required) and `VEKTOR_SPACE_ID` (otherwise the first space you can see). The server
 comes from `VEKTOR_HOST` alone and defaults to localhost. A zip can also be uploaded
 through the extensions management UI.
+
+## Installing from the store
+
+`install` is the other direction: instead of pushing a local zip, it asks the
+server to fetch a published one from its configured extension store. Only the id
+and an optional version cross the wire — the server resolves the version through
+the registry, verifies the SHA-256 the registry published, and re-validates the
+manifest inside the package before anything is stored. The result records where
+it came from (`source: "marketplace"`, `sourceRef: "<id>@<version>"`,
+`sourcePublisher`), which is what lets a space tell later which of its
+extensions were reviewed and which were side-loaded.
+
+```bash
+vektor extension install kanban          # latest published version
+vektor extension install kanban 1.1.33   # a specific one
+```
+
+The same thing happens from **Settings → Extensions → Store** in the app.
+Installing needs the space-wide `manage_extensions` capability, exactly as
+uploading does: either way the extension's code ends up running in every
+member's browser.
+
+Two environment variables govern this:
+
+| Variable | |
+|---|---|
+| `VEKTOR_MARKETPLACE_URL` | Base URL of the store to browse. Anyone can host one; unset, it is `https://www.vektorapp.org`. Only the origin is used, and every request is pinned to it. Set it empty to turn the store off. |
+| `VEKTOR_EXTENSION_ALLOWED_SOURCES` | Which origins a space accepts extensions from: `upload`, `marketplace`, `system`. All three unless set. `marketplace` alone disables direct zip uploads. |
+
+The registry contract, and how to run your own, is in
+[extension-registry.md](./extension-registry.md).
 
 The build is one line in `package.json` and needs no bundler config:
 
@@ -748,3 +782,72 @@ declare const jobCache: {
 Job globals do not exist under `bun test`. The workflow-builder extension
 preloads `test-setup.ts`, which installs equivalents backed by real libraries, so
 helpers can be unit-tested directly; copy that pattern for other extensions.
+
+## Integrations (OAuth)
+
+OAuth providers are not built into Vektor — an extension declares them, and the
+server runs the flow, stores the encrypted tokens, and proxies API calls. The
+manifest describes the provider; it never contains credentials.
+
+```json
+{
+  "id": "gitlab",
+  "name": "GitLab",
+  "version": "1.0.0",
+  "entries": {},
+  "integrations": [
+    {
+      "id": "gitlab",
+      "label": "GitLab",
+      "description": "Connect GitLab to work with your projects and issues.",
+      "authorizationUrl": "{instance}/oauth/authorize",
+      "tokenUrl": "{instance}/oauth/token",
+      "userInfoUrl": "{instance}/api/v4/user",
+      "scopes": ["api"],
+      "defaultInstanceUrl": "https://gitlab.com",
+      "apiBasePath": "/api/v4",
+      "profile": { "accountId": ["id"], "username": ["username", "name"] }
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Provider id; lowercase alphanumeric and hyphens. Appears in every `/integrations/:provider` route |
+| `label` | Yes | Shown on the settings card |
+| `authorizationUrl`, `tokenUrl`, `userInfoUrl` | Yes | Endpoints. `{instance}` is replaced with the configured instance URL |
+| `scopes` | No | Requested scopes, unless the operator overrides them |
+| `defaultInstanceUrl` | No | Used when the operator configures none — set it for a hosted-only service |
+| `apiBasePath` | No | Proxied requests are confined to this path and prefixed with it |
+| `profile` | Yes | Which userinfo fields hold the account id and display name, tried in order |
+| `agent` | No | `instructions` for the agent's system prompt, and a `command` naming a job in `jobs` |
+
+Credentials come from the environment, named after the provider id: for `gitlab`,
+`VEKTOR_OAUTH_GITLAB_CLIENT_ID`, `VEKTOR_OAUTH_GITLAB_CLIENT_SECRET`, and
+optionally `VEKTOR_OAUTH_GITLAB_BASE_URL` and `VEKTOR_OAUTH_GITLAB_SCOPES`. A
+provider whose id contains hyphens uses underscores in the variable name. Until
+both id and secret are set the settings card shows the provider as unconfigured
+and lists what is missing.
+
+### Agent commands
+
+`agent.command` gives the AI agent a shell command backed by one of the
+extension's jobs. The job receives `input.args` (the argument list) and
+`input.provider`, and returns `stdout`, `stderr` and `exitCode` text outputs. It
+reaches the provider through the integration proxy — the OAuth token stays on
+the server:
+
+```js
+const response = await apiFetch(
+  `/api/v1/spaces/${input.spaceId}/integrations/${input.provider}/proxy`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ method: "GET", path: "/user" }),
+  },
+);
+```
+
+The command is registered only for users who have that provider connected, as
+are the `agent.instructions` appended to the system prompt.

@@ -6,11 +6,14 @@ import { useToast } from "#composeables/useToast.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
 import type { DocumentTemplate } from "#documents/templates.ts";
 import { insertTemplateContent } from "#editor/templates.ts";
-import { type TranslationKey } from "#utils/lang.ts";
-import { isWorkflowCreationEnabled } from "#utils/spacePreferences.ts";
+import type { TranslationKey } from "#utils/lang.ts";
+import {
+  isRepositoryCreationEnabled,
+  isWorkflowCreationEnabled,
+} from "#utils/spacePreferences.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
-type DocumentType = "canvas" | "workflow" | "database";
+type DocumentType = "canvas" | "workflow" | "database" | "repository";
 
 const documentOptions: Array<{
   type: DocumentType;
@@ -36,6 +39,12 @@ const documentOptions: Array<{
     description: "Organize and manage data in structured tables.",
     icon: "database",
   },
+  {
+    type: "repository",
+    title: "Repository",
+    description: "Host code with git, and browse it here.",
+    icon: "repository",
+  },
 ];
 
 export function NewDocumentPicker() {
@@ -52,6 +61,9 @@ export function NewDocumentPicker() {
     documentOptions.filter((option) => {
       if (option.type === "workflow") {
         return isWorkflowCreationEnabled(currentSpace()?.preferences);
+      }
+      if (option.type === "repository") {
+        return isRepositoryCreationEnabled(currentSpace()?.preferences);
       }
       return true;
     }),

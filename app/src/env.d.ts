@@ -12,6 +12,7 @@ declare namespace App {
     GOOGLE_AUTH_ENABLED?: string;
     VEKTOR_NO_AUTH?: string;
     VEKTOR_EXTENSION_ALLOWED_SOURCES?: string;
+    VEKTOR_MARKETPLACE_ENABLED?: string;
   };
 
   interface Locals {

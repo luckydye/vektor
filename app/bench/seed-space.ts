@@ -43,7 +43,7 @@
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
-import type { Database } from "#db/client/connection.ts";
+import type { SpaceDb } from "#db/client/store.ts";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -300,7 +300,7 @@ function revisionCount(rng: () => number, maxRevisions: number): number {
 const ROWS_PER_INSERT = 400;
 
 async function insertChunked<Table extends SQLiteTable>(
-  db: Database,
+  db: SpaceDb,
   table: Table,
   rows: Table["$inferInsert"][],
   rowsPerInsert = ROWS_PER_INSERT,
@@ -354,7 +354,8 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   const { eq } = await import("drizzle-orm");
   const { LOCAL_USER, LOCAL_USER_ID, isNoAuthMode } = await import("#config");
   const { Permission, ResourceType } = await import("#acl/permissions.ts");
-  const { getAuthDb, getSpaceDb, initializeDatabases } = await import("#db/client/db.ts");
+  const { getAuthDb, initializeDatabases } = await import("#db/client/db.ts");
+  const { openSpaceStore } = await import("#db/client/store.ts");
   const { createSpace } = await import("#db/space/spaces.ts");
   const { createId } = await import("#db/ids.ts");
   const { buildDocumentSearchText } = await import("#search/embedding.ts");
@@ -429,7 +430,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
   // --- space ---------------------------------------------------------------
   const created = await createSpace(ownerId, options.name, options.slug);
   const spaceId = created.id;
-  const db = await getSpaceDb(spaceId);
+  const { db } = await openSpaceStore(spaceId);
   console.log(`Space:   ${spaceId} (/${created.slug})`);
 
   // --- categories ----------------------------------------------------------

@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/libsql";
 import { config, isInMemoryDb } from "#config";
 
 /** Resolved per call rather than at import, so `DATA_DIR` is read after config. */
-function dataDirectory(): string {
+export function dataDirectory(): string {
   return path.resolve(config().DATA_DIR?.trim() || "data");
 }
 
@@ -37,7 +37,8 @@ function ensureLocalDatabaseDirectory(databaseUrl: string): void {
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true });
 }
 
-function authTokenFromUrl(databaseUrl: string): string | undefined {
+/** The `?authToken=` a connection string carries, if any. */
+export function authTokenFromDatabaseUrl(databaseUrl: string): string | undefined {
   if (databaseUrl.startsWith("file:")) return undefined;
   try {
     return new URL(databaseUrl).searchParams.get("authToken") ?? undefined;
@@ -62,8 +63,14 @@ export function getLocalSpacesDirectory(): string {
   return path.join(dataDirectory(), "spaces");
 }
 
+/**
+ * Absolute, so it is the same file whatever the process's working directory is
+ * — and under `DATA_DIR`, which is where {@link getLocalSpacesDirectory} looks
+ * for the databases this names. Locations already stored relative keep
+ * resolving as they did.
+ */
 export function getLocalSpaceDatabaseUrl(spaceId: string): string {
-  return `file:./data/spaces/${spaceId}.db`;
+  return pathToFileURL(path.join(getLocalSpacesDirectory(), `${spaceId}.db`)).href;
 }
 
 /** A space location, read for the driver in use. */
@@ -115,13 +122,24 @@ export function withoutDatabaseCredentials(databaseUrl: string): string {
  */
 const memoryBacked = new WeakSet<object>();
 
-export function createDatabase(databaseUrl: string): Database {
+/**
+ * What a connection authenticates with. Passed explicitly at every call site so
+ * that no database silently inherits another tenant's credential.
+ */
+export type DatabaseCredentials = {
+  authToken?: string;
+};
+
+export function createDatabase(
+  databaseUrl: string,
+  credentials: DatabaseCredentials = {},
+): Database {
   ensureLocalDatabaseDirectory(databaseUrl);
   const client = createClient({
     url: databaseUrl,
-    // Space URLs in the auth index intentionally contain no credentials. A
-    // shared credential embedded in VEKTOR_DATABASE_URL is inherited here.
-    authToken: authTokenFromUrl(getAuthDatabaseUrl()),
+    // Locations stored in the auth index carry no credentials, so an empty
+    // token here means an unauthenticated connection rather than a shared one.
+    authToken: credentials.authToken ?? authTokenFromDatabaseUrl(databaseUrl),
   });
   const database = drizzle(client);
   if (databaseUrl.startsWith("file::memory:") || databaseUrl === ":memory:") {

@@ -655,6 +655,7 @@ function getOrStartActiveChatTurn(options: {
     messages: options.messages,
     userProfile: options.userProfile,
     connectedProviders: options.connectedProviders,
+    userId: options.userId,
     apiUrl: options.apiUrl,
     spaceId: options.spaceId,
     documentId: options.documentId,

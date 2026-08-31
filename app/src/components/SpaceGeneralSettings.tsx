@@ -4,6 +4,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { imageFileAsDataUrl } from "#utils/image.ts";
 import {
+  isRepositoryCreationEnabled,
   isWorkflowCreationEnabled,
   spacePreferenceKeys,
 } from "#utils/spacePreferences.ts";
@@ -29,33 +30,37 @@ export function SpaceGeneralSettings(props: Props) {
   const [localBrandColor, setLocalBrandColor] = createSignal("#1e293b");
   const [localLogoSvg, setLocalLogoSvg] = createSignal("");
   const [localWorkflowCreationEnabled, setLocalWorkflowCreationEnabled] =
-    createSignal(true);
-  const [isSaving, setIsSaving] = createSignal(false);
-  const [isSavingWorkflowCreationEnabled, setIsSavingWorkflowCreationEnabled] =
     createSignal(false);
+  const [localRepositoryCreationEnabled, setLocalRepositoryCreationEnabled] =
+    createSignal(false);
+  const [isSaving, setIsSaving] = createSignal(false);
+  /** The preference key being written, so its own toggle is the one disabled. */
+  const [savingFeature, setSavingFeature] = createSignal<string | null>(null);
   const [error, setError] = createSignal<string | null>(null);
 
-  async function saveWorkflowCreationEnabled(enabled: boolean) {
+  /** A feature toggle saves on its own, rather than waiting for Save Changes. */
+  async function saveFeature(
+    key: string,
+    enabled: boolean,
+    localValue: () => boolean,
+    setLocalValue: (value: boolean) => void,
+  ) {
     const space = currentSpace();
-    if (!space || isSavingWorkflowCreationEnabled()) return;
+    if (!space || savingFeature()) return;
 
-    const previousValue = localWorkflowCreationEnabled();
-    setLocalWorkflowCreationEnabled(enabled);
-    setIsSavingWorkflowCreationEnabled(true);
+    const previousValue = localValue();
+    setLocalValue(enabled);
+    setSavingFeature(key);
     setError(null);
 
     try {
-      await api.space.patch(space.id, {
-        preferences: {
-          [spacePreferenceKeys.workflowCreationEnabled]: String(enabled),
-        },
-      });
+      await api.space.patch(space.id, { preferences: { [key]: String(enabled) } });
       toast.success("Feature settings saved");
     } catch (err) {
-      setLocalWorkflowCreationEnabled(previousValue);
+      setLocalValue(previousValue);
       setError(err instanceof Error ? err.message : "Failed to update feature settings");
     } finally {
-      setIsSavingWorkflowCreationEnabled(false);
+      setSavingFeature(null);
     }
   }
 
@@ -86,6 +91,9 @@ export function SpaceGeneralSettings(props: Props) {
         [spacePreferenceKeys.workflowCreationEnabled]: String(
           localWorkflowCreationEnabled(),
         ),
+        [spacePreferenceKeys.repositoryCreationEnabled]: String(
+          localRepositoryCreationEnabled(),
+        ),
       });
       toast.success("Space settings saved");
       props.onSaved?.();
@@ -101,12 +109,13 @@ export function SpaceGeneralSettings(props: Props) {
   createEffect(() => {
     const space = currentSpace();
     if (!space) return;
-    if (!isSavingWorkflowCreationEnabled()) {
+    if (!savingFeature()) {
       setLocalName(space.name);
       setLocalDescription(space.preferences?.description || "");
       setLocalBrandColor(space.preferences?.brandColor || "#1e293b");
       setLocalLogoSvg(space.preferences?.logoSvg || "");
       setLocalWorkflowCreationEnabled(isWorkflowCreationEnabled(space.preferences));
+      setLocalRepositoryCreationEnabled(isRepositoryCreationEnabled(space.preferences));
     }
     setError(null);
   });
@@ -195,8 +204,35 @@ export function SpaceGeneralSettings(props: Props) {
             </div>
             <SwitchToggle
               value={localWorkflowCreationEnabled()}
-              disabled={isSavingWorkflowCreationEnabled()}
-              onInput={(enabled) => void saveWorkflowCreationEnabled(enabled)}
+              disabled={savingFeature() === spacePreferenceKeys.workflowCreationEnabled}
+              onInput={(enabled) =>
+                void saveFeature(
+                  spacePreferenceKeys.workflowCreationEnabled,
+                  enabled,
+                  localWorkflowCreationEnabled,
+                  setLocalWorkflowCreationEnabled,
+                )
+              }
+            />
+          </div>
+          <div class="mt-4 flex items-center justify-between gap-4">
+            <div>
+              <p class="font-medium text-neutral-900 text-size-medium">Repositories</p>
+              <p class="mt-0.5 text-neutral-500 text-size-small">
+                Allow members to create repository documents in this space.
+              </p>
+            </div>
+            <SwitchToggle
+              value={localRepositoryCreationEnabled()}
+              disabled={savingFeature() === spacePreferenceKeys.repositoryCreationEnabled}
+              onInput={(enabled) =>
+                void saveFeature(
+                  spacePreferenceKeys.repositoryCreationEnabled,
+                  enabled,
+                  localRepositoryCreationEnabled,
+                  setLocalRepositoryCreationEnabled,
+                )
+              }
             />
           </div>
         </section>

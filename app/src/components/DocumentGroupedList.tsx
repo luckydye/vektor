@@ -13,6 +13,8 @@ import {
 import { twMerge } from "tailwind-merge";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { documentTypeIcon } from "#documents/icons.ts";
 import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
 import { isTransformableImageUrl } from "#files/transformUrl.ts";
 import { formatDate } from "#utils/dateFormat.ts";
@@ -23,7 +25,6 @@ import { type FilePreviewItem, FilePreviews } from "./FilePreviews.tsx";
 import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { SearchSnippet } from "./SearchSnippet.tsx";
-import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export type DocumentListItem = DocumentWithProperties & {
   snippet?: string;
@@ -536,7 +537,7 @@ export function DocumentGroupedList(props: Props) {
                                     >
                                       <Icon
                                         class="h-4 w-4 shrink-0 text-neutral-300"
-                                        name="document"
+                                        name={documentTypeIcon(doc.type)}
                                       />
 
                                       <div class="min-w-0 flex-1">

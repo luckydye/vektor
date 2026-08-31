@@ -2,6 +2,7 @@ import { verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
+  errorResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
@@ -16,6 +17,7 @@ import {
   getSpace,
   getUserSpaceRole,
   InvalidSpaceSlugError,
+  SpacePurgeFailedError,
   SpaceSlugTakenError,
   updateSpace,
 } from "#db/space/spaces.ts";
@@ -97,6 +99,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       if (!space) {
         throw badRequestResponse("Space not found");
       }
+      const store = await openSpaceStore(spaceId);
 
       // A write of nothing but the member's own preferences does not touch the
       // space: `updateSpace` would restamp its `updatedAt` and reindex it, which
@@ -104,7 +107,7 @@ export const PATCH: ApiRouteHandler = (context) =>
       const writesSpace = updatesMetadata || Object.keys(spacePreferences).length > 0;
       const updated = writesSpace
         ? await updateSpace(
-            spaceId,
+            store,
             hasName ? name : space.name,
             hasSlug ? slug : space.slug,
             // Only the space's own half — `updateSpace` writes the rows with no
@@ -117,7 +120,6 @@ export const PATCH: ApiRouteHandler = (context) =>
         throw badRequestResponse("Space not found");
       }
 
-      const store = await openSpaceStore(spaceId);
       await setUserPreferences(store, user.id, userPreferences);
 
       return jsonResponse({
@@ -144,15 +146,30 @@ export const PATCH: ApiRouteHandler = (context) =>
   );
 
 export const DELETE: ApiRouteHandler = (context) =>
-  withApiErrorHandling(async () => {
-    const user = requireUser(context);
-    const spaceId = requireParam(context.var.params, "spaceId");
-    await verifyAccess(
-      spaceId,
-      { type: ResourceType.SPACE, id: spaceId },
-      user.id,
-      Permission.OWNER,
-    );
-    await deleteSpace(spaceId);
-    return successResponse();
-  }, "Failed to delete space");
+  withApiErrorHandling(
+    async () => {
+      const user = requireUser(context);
+      const spaceId = requireParam(context.var.params, "spaceId");
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.SPACE, id: spaceId },
+        user.id,
+        Permission.OWNER,
+      );
+      // `?purge=1` skips the retention window: the delete a data subject request
+      // asks for, where keeping a recoverable copy for 30 days is the thing being
+      // objected to. Owner-only, like the delete it strengthens.
+      const purge = new URL(context.req.url).searchParams.get("purge");
+      await deleteSpace(spaceId, { purge: purge === "1" || purge === "true" });
+      return successResponse();
+    },
+    {
+      fallbackMessage: "Failed to delete space",
+      onError: (error) =>
+        // The space is deleted; only the reclaim failed. Saying "failed to
+        // delete" would send the caller to retry a delete that already happened.
+        error instanceof SpacePurgeFailedError
+          ? errorResponse(error.message, 500)
+          : undefined,
+    },
+  );

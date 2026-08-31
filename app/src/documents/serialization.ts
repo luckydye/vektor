@@ -6,6 +6,11 @@ import { type DocNode, textOf } from "./schema/specs.ts";
 import { yDocToDoc } from "./schema/yDecode.ts";
 import { docToYDoc } from "./schema/yEncode.ts";
 
+export type CollaborationContentFormat =
+  | "html"
+  | "map-snapshot"
+  | "source-code";
+
 /**
  * Pure, dependency-light document (de)serialization primitives shared by the
  * main thread and the serialization worker pool. Nothing here touches the DB,
@@ -17,7 +22,7 @@ import { docToYDoc } from "./schema/yEncode.ts";
  * no DOM.
  */
 
-function loadCanvasYDoc(content: string): Y.Doc {
+function loadMapSnapshotYDoc(content: string): Y.Doc {
   const ydoc = new Y.Doc();
   // The server is the single source of truth for room state: it seeds the doc
   // from persisted content and sends it to clients on join. Clients never seed
@@ -27,13 +32,13 @@ function loadCanvasYDoc(content: string): Y.Doc {
   return ydoc;
 }
 
-function workflowCode(doc: Y.Doc): string {
+function sourceCode(doc: Y.Doc): string {
   const block = yDocToDoc(doc).content?.find((node) => node.type === "codeBlock");
   return textOf(block);
 }
 
-/** Serializes a canvas room doc back to the snapshot content format. */
-export function canvasSnapshotFromDoc(doc: Y.Doc): {
+/** Serializes a map-backed room doc to its persisted JSON snapshot. */
+export function mapSnapshotFromDoc(doc: Y.Doc): {
   version: 1;
   shapes: Record<string, unknown>[];
   strokes: Record<string, unknown>[];
@@ -59,27 +64,33 @@ export function toCleanHtml(doc: Y.Doc): string {
 }
 
 /**
- * Parses persisted content into the document tree its type describes. Canvas
- * content has no tree — it lives in Y.Maps rather than the `default` fragment.
+ * Parses persisted tree content into the shared document structure. Map
+ * snapshots have no tree and are handled directly by `docFromContent`.
  */
 export function docNodeFromContent(
-  type: string | null | undefined,
+  format: CollaborationContentFormat,
   content: string,
 ): DocNode {
-  if (type === "workflow") return codeToDoc(content, "javascript");
+  if (format === "source-code") return codeToDoc(content, "javascript");
   return htmlToDoc(content);
 }
 
-/** Builds a Y.Doc from persisted canvas, workflow-source, or HTML content. */
-export function docFromContent(type: string | null | undefined, content: string): Y.Doc {
-  if (type === "canvas") return loadCanvasYDoc(content);
-  return docToYDoc(docNodeFromContent(type, content));
+/** Builds a Y.Doc from persisted HTML, map-snapshot, or source-code content. */
+export function docFromContent(
+  format: CollaborationContentFormat,
+  content: string,
+): Y.Doc {
+  if (format === "map-snapshot") return loadMapSnapshotYDoc(content);
+  return docToYDoc(docNodeFromContent(format, content));
 }
 
-/** Serializes a Y.Doc to canvas JSON, workflow source, or HTML. */
-export function contentFromDoc(type: string | null | undefined, doc: Y.Doc): string {
-  if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
-  if (type === "workflow") return workflowCode(doc);
+/** Serializes a Y.Doc to HTML, a map snapshot, or source code. */
+export function contentFromDoc(
+  format: CollaborationContentFormat,
+  doc: Y.Doc,
+): string {
+  if (format === "map-snapshot") return JSON.stringify(mapSnapshotFromDoc(doc));
+  if (format === "source-code") return sourceCode(doc);
   return toCleanHtml(doc);
 }
 

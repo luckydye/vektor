@@ -1,32 +1,33 @@
-import { createEffect, createSignal } from "solid-js";
-import { api, type DocumentContributor } from "#api/client.ts";
+import { type Accessor, createMemo } from "solid-js";
+import { api } from "#api/client.ts";
+import { useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
-export function useContributors(documentId?: string) {
+/**
+ * The document id is an accessor: the document view is reused across
+ * same-type navigation, so a snapshotted id would keep serving the
+ * contributors of whichever document was open first.
+ */
+export function useContributors(documentId: Accessor<string | undefined>) {
   const { currentSpaceId } = useSpace();
-  const [contributors, setContributors] = createSignal<DocumentContributor[]>([]);
-  const [isLoading, setIsLoading] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
 
-  async function fetchContributors(): Promise<void> {
-    const spaceId = currentSpaceId();
-    if (!spaceId || !documentId) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      setContributors(await api.documentContributors.get(spaceId, documentId));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  createEffect(() => {
-    if (currentSpaceId() && documentId) void fetchContributors();
+  const {
+    data,
+    isPending: isLoading,
+    error,
+    refetch: refresh,
+  } = useQuery({
+    queryKey: createMemo(() => ["document_contributors", currentSpaceId(), documentId()]),
+    queryFn: async () => {
+      const spaceId = currentSpaceId();
+      const id = documentId();
+      if (!spaceId || !id) throw new Error("Space ID and Document ID are required");
+      return await api.documentContributors.get(spaceId, id);
+    },
+    enabled: createMemo(() => !!currentSpaceId() && !!documentId()),
   });
 
-  return { contributors, isLoading, error, fetchContributors };
+  const contributors = createMemo(() => data() ?? []);
+
+  return { contributors, isLoading, error, refresh };
 }

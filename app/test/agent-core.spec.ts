@@ -420,10 +420,11 @@ describe("agent model loop", () => {
     });
   });
 
-  it("tells the model that explicitly locked and immutable-type documents are readonly", async () => {
+  it("tells the model that locked documents are readonly", async () => {
     for (const documentContext of [
       { documentType: "document", documentReadonly: true },
-      { documentType: "workflow-run", documentReadonly: false },
+      // Workflow runs carry the lock on the row, not on their type.
+      { documentType: "workflow-run", documentReadonly: true },
     ]) {
       await runAgentPrompt({
         messages: [{ role: "user", content: "Edit this document" }],

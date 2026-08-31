@@ -9,12 +9,13 @@
 
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createDatabase } from "#db/client/connection.ts";
-import { prepareAuthDb } from "#db/client/init.ts";
+import { resolveLocalSpaceSlugCollision } from "#db/auth/spaceIndex.ts";
+import { closeDatabase, createDatabase } from "#db/client/connection.ts";
+import { initSpaceDbSchema, prepareAuthDb } from "#db/client/init.ts";
 import { one } from "#db/client/query.ts";
 import { generateCreateTableSQL } from "#db/client/schemaUtils.ts";
 import { account, spaceIndex, user } from "#db/schema/auth.ts";
-import { revision, workflowSchedule } from "#db/schema/space.ts";
+import { revision, spaceMetadata, workflowSchedule } from "#db/schema/space.ts";
 
 let authDb: ReturnType<typeof createDatabase>;
 
@@ -104,5 +105,39 @@ describe("active space slug uniqueness", () => {
     await expect(
       database.insert(spaceIndex).values(activeSpaceRow(2, "engineering")),
     ).rejects.toThrow();
+  });
+
+  it("renames a discovered local space when its slug is already active", async () => {
+    const database = createDatabase("file::memory:");
+    const localSpace = createDatabase("file::memory:");
+    await prepareAuthDb(database);
+    await initSpaceDbSchema(localSpace, { local: false });
+
+    const now = new Date();
+    await database.insert(spaceIndex).values([
+      activeSpaceRow(1, "demo"),
+      activeSpaceRow(2, "demo-2"),
+    ]);
+    const metadata = {
+      id: "space_local_copy",
+      name: "Demo copy",
+      slug: "demo",
+      createdBy: "local",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await localSpace.insert(spaceMetadata).values(metadata);
+
+    const resolved = await resolveLocalSpaceSlugCollision(
+      database,
+      localSpace,
+      metadata,
+    );
+    const stored = await one(localSpace.select().from(spaceMetadata));
+
+    expect(resolved.slug).toBe("demo-3");
+    expect(stored?.slug).toBe("demo-3");
+    closeDatabase(database);
+    closeDatabase(localSpace);
   });
 });

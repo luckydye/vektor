@@ -5,6 +5,9 @@
 | `/.well-known/caldav` | PROPFIND | 401 | 401 | 401 | 401 | 401 | public — service discovery, no space data |
 | `/.well-known/vektor` | GET | 200 | 200 | 200 | 200 | 200 | public — service discovery, no space data |
 | `/.well-known/vektor` | OPTIONS | 204 | 204 | 204 | 204 | 204 | public — service discovery, no space data |
+| `/[spaceSlug]/git/[repo]/[...gitPath]` | GET | 404 | 404 | 404 | 404 | 404 | no fixture for spaceSlug, repo, gitPath |
+| `/[spaceSlug]/git/[repo]/[...gitPath]` | POST | 404 | 404 | 404 | 404 | 404 | no fixture for spaceSlug, repo, gitPath |
+| `/[spaceSlug]/git/[repo]/[...gitPath]` | PROPFIND | 404 | 404 | 404 | 404 | 404 | no fixture for spaceSlug, repo, gitPath |
 | `/api/auth/[...all]` | GET | 404 | 404 | 404 | 404 | 404 | public — better-auth: sign-in/sign-up must be reachable |
 | `/api/auth/[...all]` | POST | 404 | 404 | 404 | 404 | 404 | public — better-auth: sign-in/sign-up must be reachable |
 | `/api/auth/[...all]` | PROPFIND | 404 | 404 | 404 | 404 | 404 | public — better-auth: sign-in/sign-up must be reachable |
@@ -29,6 +32,8 @@
 | `/api/v1/auth/cli/token` | POST | 400 | 400 | 400 | 400 | 400 | public — CLI pairing: authenticated by the one-time code |
 | `/api/v1/chat/acp` | POST | 400 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/chat/completions` | POST | 400 | 400 | 400 | 400 | 400 |  |
+| `/api/v1/marketplace/extensions` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — the configured store catalogue; no space data |
+| `/api/v1/marketplace/extensions/[extensionId]` | GET | 401 | 404 | 404 | 404 | 404 | caller-scoped — one store listing; no space data |
 | `/api/v1/proxy-media` | GET | 401 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/search` | GET | 200 | 200 | 200 | 200 | 200 | caller-scoped — searches only the spaces the caller can read; empty without a session |
 | `/api/v1/spaces` | GET | 200 | 200 | 200 | 200 | 200 | caller-scoped — lists only spaces the caller belongs to |
@@ -69,6 +74,7 @@
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/contributors` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/diff` | GET | 404 | 403 | 403 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/edit` | POST | 401 | 403 | 403 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/documents/[documentId]/git` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | PATCH | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | POST | 401 | 403 | 403 | 400 | 400 |  |
@@ -80,9 +86,10 @@
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]` | PATCH | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]/assets/[...path]` | GET | 401 | 403 | 404 | 404 | 404 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]/package` | GET | 401 | 403 | 403 | 403 | 404 |  |
+| `/api/v1/spaces/[spaceId]/extensions/install` | POST | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]` | DELETE | 401 | 403 | 200 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/integrations/[provider]` | GET | 401 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/integrations/[provider]` | GET | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/callback` | GET | 401 | 403 | 302 | 302 | 302 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/connect` | POST | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/proxy` | POST | 401 | 403 | 400 | 400 | 400 |  |

@@ -99,15 +99,44 @@ const INLINE_SAFE_EXTENSIONS = new Set([
 export const SERVED_FILE_CSP = "default-src 'none'; sandbox; base-uri 'none'";
 
 /**
+ * Quote a filename for `Content-Disposition`, both ways round.
+ *
+ * The plain `filename` parameter is a quoted ASCII string, so anything outside
+ * it is replaced rather than escaped; `filename*` (RFC 5987) then carries the
+ * real name for clients that read it, which is every current browser. Sending
+ * both means an old client gets something usable and a new one gets the name
+ * exactly.
+ */
+function filenameParams(filename: string): string {
+  // CR, LF and NUL would let a name inject a header; quotes and backslashes
+  // would end the quoted string early.
+  const cleaned = filename.replace(/[\r\n\0]/g, "").trim();
+  if (!cleaned) return "";
+
+  const ascii = cleaned.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(cleaned);
+  return `; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
  * Compute the `Content-Disposition` for a served file. Inline-safe types are
  * served inline; everything else (notably `svg` and any `html`) is forced to
  * download so it cannot execute as a same-origin document.
+ *
+ * `filename` is the name the file was uploaded under. It is advisory — it never
+ * changes the inline/attachment decision above, which is a security control —
+ * but without it a download lands under the content hash the file is stored as,
+ * which is not a name anyone recognises.
  */
-export function contentDisposition(extension: string | undefined): string {
-  if (extension && INLINE_SAFE_EXTENSIONS.has(extension.toLowerCase())) {
-    return "inline";
-  }
-  return "attachment";
+export function contentDisposition(
+  extension: string | undefined,
+  filename?: string | null,
+): string {
+  const type =
+    extension && INLINE_SAFE_EXTENSIONS.has(extension.toLowerCase())
+      ? "inline"
+      : "attachment";
+  return filename ? `${type}${filenameParams(filename)}` : type;
 }
 
 /**
@@ -131,9 +160,10 @@ export const EXTENSION_ASSET_CSP_SCRIPT: string | null = null;
 /** Security headers applied to all served user files. */
 export function servedFileSecurityHeaders(
   extension: string | undefined,
+  filename?: string | null,
 ): Record<string, string> {
   return {
-    "Content-Disposition": contentDisposition(extension),
+    "Content-Disposition": contentDisposition(extension, filename),
     "Content-Security-Policy": SERVED_FILE_CSP,
     "X-Content-Type-Options": "nosniff",
   };

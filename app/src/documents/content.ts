@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import { rowsToHtmlTable } from "#documents/htmlTable.ts";
+import { sanitizeDocumentHtml } from "#utils/html.ts";
 import { parseCsvRows } from "#utils/xlsx.ts";
 
 // Custom renderer so task lists produce TipTap-compatible markup:
@@ -99,14 +100,22 @@ function isCsvContent(contentType: string | null): boolean {
   return Boolean(mimeType && CSV_TYPE_SET.has(mimeType));
 }
 
-export function toHtmlIfMarkdown(content: string, contentType: string | null): string {
+/** Converts CSV or Markdown when requested, then sanitizes the submitted HTML. */
+export function prepareDocumentContent(
+  content: string,
+  contentType: string | null,
+): string {
   if (isCsvContent(contentType)) {
-    return csvToHtmlTable(content);
+    return sanitizeDocumentHtml(csvToHtmlTable(content));
   }
 
   const mimeType = getMimeType(contentType);
-  if (!MARKDOWN_TYPES.has(mimeType ?? "")) {
-    return content;
+  const markdown = MARKDOWN_TYPES.has(mimeType ?? "");
+
+  let prepared = content;
+  if (markdown) {
+    prepared = marked.parse(content, { breaks: true, gfm: true }) as string;
   }
-  return marked.parse(content, { breaks: true, gfm: true }) as string;
+
+  return sanitizeDocumentHtml(prepared);
 }

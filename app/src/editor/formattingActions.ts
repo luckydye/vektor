@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import { Actions } from "#utils/actions.ts";
 import { createTranslator } from "#utils/lang.ts";
-import { indentEditor, outdentEditor } from "./indent.ts";
+import { canIndent, canOutdent, indentEditor, outdentEditor } from "./indent.ts";
 
 /**
  * Register all formatting actions
@@ -13,11 +13,20 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     return editor && !editor.isDestroyed;
   };
 
+  // Availability predicates for the statusbar / command palette. They read the
+  // editor state rather than focus, so a button stays visible while the pointer
+  // press that activates it blurs the document.
+  const isEditing = () => Boolean(isEditorAvailable()) && getEditor().isEditable;
+  const hasSelection = () => isEditing() && !getEditor().state.selection.empty;
+  const canRunOnEditor = (check: (editor: Editor) => boolean) => () =>
+    isEditing() && check(getEditor());
+
   // Text formatting
   Actions.register("format:bold", {
     title: t("Bold"),
     description: t("Toggle bold formatting"),
     group: "formatting",
+    available: hasSelection,
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleBold().run();
@@ -28,6 +37,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Italic"),
     description: t("Toggle italic formatting"),
     group: "formatting",
+    available: hasSelection,
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleItalic().run();
@@ -38,6 +48,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Underline"),
     description: t("Toggle underline formatting"),
     group: "formatting",
+    available: hasSelection,
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleUnderline().run();
@@ -190,6 +201,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Indent"),
     description: t("Indent the current block or list item"),
     group: "formatting",
+    available: canRunOnEditor(canIndent),
     run: async () => {
       if (!isEditorAvailable()) return;
       indentEditor(getEditor());
@@ -200,6 +212,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Outdent"),
     description: t("Outdent the current block or list item"),
     group: "formatting",
+    available: canRunOnEditor(canOutdent),
     run: async () => {
       if (!isEditorAvailable()) return;
       outdentEditor(getEditor());
@@ -281,7 +294,6 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
   Actions.register("format:hardbreak", {
     title: t("Hard Break"),
     description: t("Insert a hard line break"),
-    group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setHardBreak().run();
@@ -293,6 +305,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Insert Link"),
     description: t("Add or edit a hyperlink"),
     group: "formatting",
+    available: () => hasSelection() || (isEditing() && getEditor().isActive("link")),
     run: async () => {
       if (!isEditorAvailable()) return;
       const editor = getEditor();
@@ -327,6 +340,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Undo"),
     description: t("Undo the last action"),
     group: "formatting",
+    available: canRunOnEditor((editor) => editor.can().undo()),
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().undo().run();
@@ -337,6 +351,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Redo"),
     description: t("Redo the last undone action"),
     group: "formatting",
+    available: canRunOnEditor((editor) => editor.can().redo()),
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().redo().run();
@@ -574,6 +589,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
     title: t("Clear Formatting"),
     description: t("Remove all formatting from selection"),
     group: "formatting",
+    available: hasSelection,
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().clearNodes().unsetAllMarks().run();

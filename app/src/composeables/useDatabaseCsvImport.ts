@@ -121,7 +121,7 @@ export function useDatabaseCsvImport(options: DatabaseCsvImportOptions) {
       if (created > 0) {
         options.refreshRows();
       }
-      const errorMessage = e instanceof Error ? e.message : "Failed to import CSV";
+      const errorMessage = e instanceof Error ? e.message : "Failed to import";
       updateToast(
         toastId,
         {

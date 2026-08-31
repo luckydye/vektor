@@ -1,7 +1,7 @@
 import {
   escapeXml,
   optionsPreflight,
-  requireCalDAVUserAndAccess,
+  requireBasicAuthUserAndAccess,
   xmlResponse,
 } from "#api/caldav.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
@@ -13,7 +13,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 export const ALL: ApiRouteHandler = async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();
   const { userId } = context.var.params;
-  const caldavUser = await requireCalDAVUserAndAccess(context, { userId });
+  const caldavUser = await requireBasicAuthUserAndAccess(context, { userId });
   if (caldavUser instanceof Response) return caldavUser;
 
   const body = `<?xml version="1.0" encoding="utf-8" ?>

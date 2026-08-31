@@ -270,10 +270,15 @@ export async function createExtension(
   };
 }
 
+/**
+ * Re-record where a package came from. Omitted, the existing provenance is
+ * kept — a plain re-upload of the same extension is not a change of origin.
+ */
 export async function updateExtension(
   s: SpaceStore,
   extensionId: string,
   packageBuffer: Buffer,
+  options: CreateExtensionOptions = {},
 ): Promise<Extension | null> {
   const now = new Date();
 
@@ -295,10 +300,21 @@ export async function updateExtension(
     return null;
   }
 
+  const source = options.source ?? (existing.source as ExtensionSource) ?? "upload";
+  const sourceRef = options.source
+    ? (options.sourceRef ?? null)
+    : (existing.sourceRef ?? null);
+  const sourcePublisher = options.source
+    ? (options.sourcePublisher ?? null)
+    : (existing.sourcePublisher ?? null);
+
   await s.db
     .update(extension)
     .set({
       package: packageBuffer,
+      source,
+      sourceRef,
+      sourcePublisher,
       updatedAt: now,
     })
     .where(eq(extension.id, extensionId));
@@ -311,9 +327,9 @@ export async function updateExtension(
     id: extensionId,
     manifest,
     enabled: existing.enabled,
-    source: (existing.source as ExtensionSource) ?? "upload",
-    sourceRef: existing.sourceRef ?? null,
-    sourcePublisher: existing.sourcePublisher ?? null,
+    source,
+    sourceRef,
+    sourcePublisher,
     createdAt: existing.createdAt,
     updatedAt: now,
     createdBy: existing.createdBy,

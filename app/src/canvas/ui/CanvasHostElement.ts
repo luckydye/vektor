@@ -32,6 +32,7 @@ import type {
 import { iconMarkup } from "#components/Icon.tsx";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import { browserLang, createTranslator } from "#utils/lang.ts";
+
 const lang = browserLang();
 const t = createTranslator(lang);
 
@@ -411,7 +412,7 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
       .context=${view.hostContext()}
       .data=${view.elementDataForShape(shape)}
       @request-drag=${(event: Event) =>
-        view.startShapeDrag(shape, (event as CustomEvent).detail)}
+        view.startElementDrag(shape, (event as CustomEvent).detail)}
       @document-click=${(event: Event) =>
         view.onElementActivate(shape, (event as CustomEvent).detail)}
       @open-document=${(event: Event) => view.onElementOpen(shape, event)}
@@ -430,7 +431,7 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
         view.setActiveEditorRef(instance ?? null);
       })}
       @drag-start=${(event: Event) =>
-        view.startShapeDrag(shape, (event as CustomEvent).detail[0])}
+        view.startElementDrag(shape, (event as CustomEvent).detail[0])}
       @exit-edit=${() => view.stopActiveEdit()}
     ></${element}>`;
   }
@@ -440,7 +441,7 @@ function shapeArticle(view: CanvasView, shape: CanvasShape) {
       class=${classMap({
         "canvas-shape": true,
         [shape.type]: true,
-        selected: view.state.selectedShapeIds.has(shape.id),
+        selected: view.state.selectedIds.has(shape.id),
       })}
       style=${styleMap(view.articleStyle(shape))}
       data-shape-id=${shape.id}
@@ -464,59 +465,51 @@ function chromeEditor(view: CanvasView, shape: CanvasShape) {
   ></${element}>`;
 }
 
+/**
+ * The grab handles around the selection.
+ *
+ * One block for both stores: whether the selected thing is a shape or a stamped
+ * ink primitive is a question its `CanvasElementHandle` already answers, so the
+ * markup only asks what the element can be transformed into.
+ */
 function transformControls(view: CanvasView) {
-  const transformShape = view.selectedTransformShape();
-  const resizeShape = view.selectedResizeOnlyShape();
+  const transformElement = view.selectedTransformElement();
+  const resizeElement = view.selectedResizeOnlyElement();
   const scalable = view.selectedScalableSelection();
-  const stroke = view.selectedBasicShapeStroke();
-  const strokeControls = view.selectedBasicShapeStrokeControls();
+  const element = transformElement ?? resizeElement;
+  const controls = element ? view.transformControlPositions(element) : null;
 
   return html`
     ${
-      transformShape
+      element && controls
         ? html`<div class="canvas-transform-controls">
-            <button
-              type="button"
-              class="canvas-transform-handle canvas-rotate-handle"
-              aria-label=${`${t("Rotate")} ${transformShape.type}`}
-              style=${styleMap(handleAt(view.transformControlPositions(transformShape).rotation))}
-              @pointerdown=${(event: PointerEvent) => {
-                event.stopPropagation();
-                view.startShapeRotation(transformShape, event);
-              }}
-            >
-              ↻
-            </button>
+            ${
+              transformElement
+                ? html`<button
+                    type="button"
+                    class="canvas-transform-handle canvas-rotate-handle"
+                    aria-label=${`${t("Rotate")} ${element.type}`}
+                    style=${styleMap(handleAt(controls.rotation))}
+                    @pointerdown=${(event: PointerEvent) => {
+                      event.stopPropagation();
+                      view.startRotation(element, event);
+                    }}
+                  >
+                    ↻
+                  </button>`
+                : nothing
+            }
             <button
               type="button"
               class="canvas-transform-handle canvas-resize-handle"
-              aria-label=${`${t("Resize")} ${transformShape.type}`}
+              aria-label=${`${t("Resize")} ${element.type}`}
               style=${styleMap({
-                ...handleAt(view.transformControlPositions(transformShape).resize),
-                transform: `translate(-50%, -50%) rotate(${transformShape.frame.rotation}deg)`,
+                ...handleAt(controls.resize),
+                transform: `translate(-50%, -50%) rotate(${element.rotation}deg)`,
               })}
               @pointerdown=${(event: PointerEvent) => {
                 event.stopPropagation();
-                view.startShapeResize(transformShape, event);
-              }}
-            ></button>
-          </div>`
-        : nothing
-    }
-    ${
-      resizeShape
-        ? html`<div class="canvas-transform-controls">
-            <button
-              type="button"
-              class="canvas-transform-handle canvas-resize-handle"
-              aria-label=${`${t("Resize")} ${resizeShape.type}`}
-              style=${styleMap({
-                ...handleAt(view.transformControlPositions(resizeShape).resize),
-                transform: `translate(-50%, -50%) rotate(${resizeShape.frame.rotation}deg)`,
-              })}
-              @pointerdown=${(event: PointerEvent) => {
-                event.stopPropagation();
-                view.startShapeResize(resizeShape, event);
+                view.startResize(element, event);
               }}
             ></button>
           </div>`
@@ -538,37 +531,6 @@ function transformControls(view: CanvasView) {
           </div>`
         : nothing
     }
-    ${
-      stroke && strokeControls
-        ? html`<div class="canvas-transform-controls">
-            <button
-              type="button"
-              class="canvas-transform-handle canvas-rotate-handle"
-              aria-label=${`${t("Rotate")} ${t("Shape")}`}
-              style=${styleMap(handleAt(strokeControls.rotation))}
-              @pointerdown=${(event: PointerEvent) => {
-                event.stopPropagation();
-                view.startStrokeRotation(stroke, event);
-              }}
-            >
-              ↻
-            </button>
-            <button
-              type="button"
-              class="canvas-transform-handle canvas-resize-handle"
-              aria-label=${`${t("Resize")} ${t("Shape")}`}
-              style=${styleMap({
-                ...handleAt(strokeControls.resize),
-                transform: `translate(-50%, -50%) rotate(${stroke.rotation || 0}deg)`,
-              })}
-              @pointerdown=${(event: PointerEvent) => {
-                event.stopPropagation();
-                view.startStrokeResize(stroke, event);
-              }}
-            ></button>
-          </div>`
-        : nothing
-    }
   `;
 }
 
@@ -580,8 +542,7 @@ const handleAt = (point: { x: number; y: number }) => ({
 function contextMenu(view: CanvasView) {
   const position = view.state.contextMenuPos;
   if (!position) return nothing;
-  const hasSelection =
-    view.state.selectedShapeIds.size > 0 || view.state.selectedStrokeIds.size > 0;
+  const hasSelection = view.state.selectedIds.size > 0;
   // Per-type entries contributed by the selected shape's extension. Read once
   // per open rather than per button, since the hook may inspect live state.
   const extensionEntries = view.contextMenuEntries();
@@ -671,7 +632,7 @@ function contextMenu(view: CanvasView) {
                 type="button"
                 class="canvas-tool danger"
                 aria-label=${t("Delete")}
-                @click=${run(() => view.deleteSelectedShape())}
+                @click=${run(() => view.deleteSelection())}
               >
                 ${svgIcon(iconMarkup("delete-element"), "svg-icon canvas-tool-icon")}
               </button>

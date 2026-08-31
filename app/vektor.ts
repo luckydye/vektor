@@ -14,6 +14,7 @@
  *   vektor extension create <id>
  *   vektor extension package [id]
  *   vektor extension upload [id]
+ *   vektor extension install <id> [version]
  *   vektor cat <docId>
  *   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
  *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>] [--content-type <mime>]
@@ -24,9 +25,12 @@
  *   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
  *   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
  *   vektor category rm <slug>
- *   vektor space register <libsql-url>
- *   vektor space attach <libsql-url>
+ *   vektor space register <libsql-url> [--token <auth-token>]
+ *   vektor space attach <libsql-url> [--token <auth-token>]
  *   vektor space enable <database-id>
+ *   vektor space token <database-id> <auth-token>
+ *   vektor space migrate [<space-id>]
+ *   vektor space purge [<space-id>]
  *   vektor space ls
  */
 
@@ -45,7 +49,12 @@ import {
   commandSet,
   commandWrite,
 } from "./src/cli/document.ts";
-import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
+import {
+  commandCreate,
+  commandInstall,
+  commandPackage,
+  commandUpload,
+} from "./src/cli/extension.ts";
 import { commandLogin, commandLogout } from "./src/cli/login.ts";
 import { commandMcp } from "./src/cli/mcp.ts";
 import { configPath, resolveConfig } from "./src/cli/resolve.ts";
@@ -53,7 +62,10 @@ import {
   commandSpaceAttach,
   commandSpaceEnable,
   commandSpaceList,
+  commandSpaceMigrate,
+  commandSpacePurge,
   commandSpaceRegister,
+  commandSpaceToken,
 } from "./src/cli/space.ts";
 import { commandUploadFile } from "./src/cli/upload.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
@@ -113,6 +125,7 @@ Commands:
   vektor extension create <id>
   vektor extension package [id]
   vektor extension upload [id]
+  vektor extension install <id> [version]
   vektor cat <docId>
   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>] [--content-type <mime>]
@@ -123,9 +136,12 @@ Commands:
   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
   vektor category rm <slug>
-  vektor space register <libsql-url>
-  vektor space attach <libsql-url>
+  vektor space register <libsql-url> [--token <auth-token>]
+  vektor space attach <libsql-url> [--token <auth-token>]
   vektor space enable <database-id>
+  vektor space token <database-id> <auth-token>
+  vektor space migrate [<space-id>]
+  vektor space purge [<space-id>]      Reclaim deleted spaces (named: at once)
   vektor space ls
 
 Configuration:
@@ -270,6 +286,16 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (subcommand === "install") {
+      if (!extensionId) throw new Error("extension install requires an <id>");
+      const { host, token, spaceId } = await resolveConfig();
+      if (!token) throw new Error("Access Token required — run: vektor login");
+
+      const version = rest[2]?.startsWith("--") ? undefined : rest[2];
+      await commandInstall(extensionId, host, spaceId, token, version);
+      return;
+    }
+
     if (subcommand === "upload") {
       const { host, token, spaceId } = await resolveConfig();
 
@@ -287,7 +313,7 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-      `Unknown extension subcommand: ${subcommand}\n\nTry: create, package, upload`,
+      `Unknown extension subcommand: ${subcommand}\n\nTry: create, package, upload, install`,
     );
   }
 
@@ -408,17 +434,19 @@ async function main(): Promise<void> {
   }
 
   if (command === "space") {
-    const [subcommand, value] = rest;
+    const [subcommand, ...subArgs] = rest;
+    const { positional, flags } = parseFlags(subArgs);
+    const value = positional[0];
 
     if (subcommand === "register") {
       if (!value) throw new Error("space register requires a <libsql-url>");
-      await commandSpaceRegister(value);
+      await commandSpaceRegister(value, flags.token);
       return;
     }
 
     if (subcommand === "attach") {
       if (!value) throw new Error("space attach requires a <libsql-url>");
-      await commandSpaceAttach(value);
+      await commandSpaceAttach(value, flags.token);
       return;
     }
 
@@ -428,13 +456,32 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (subcommand === "token") {
+      const token = positional[1];
+      if (!value || !token) {
+        throw new Error("space token requires a <database-id> and an <auth-token>");
+      }
+      await commandSpaceToken(value, token);
+      return;
+    }
+
+    if (subcommand === "migrate") {
+      await commandSpaceMigrate(value);
+      return;
+    }
+
+    if (subcommand === "purge") {
+      await commandSpacePurge(value);
+      return;
+    }
+
     if (subcommand === "ls" || subcommand === "list") {
       await commandSpaceList();
       return;
     }
 
     throw new Error(
-      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, ls`,
+      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, token, migrate, purge, ls`,
     );
   }
 
