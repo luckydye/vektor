@@ -12,6 +12,7 @@ import * as chatCompletions from "./routes/chat/completions.ts";
 import * as gitSmart from "./routes/git/smart.ts";
 import * as marketplaceExtension from "./routes/marketplace/extension.ts";
 import * as marketplaceExtensions from "./routes/marketplace/extensions.ts";
+import * as mcp from "./routes/mcp.ts";
 import * as openapi from "./routes/openapi.ts";
 import * as proxyMedia from "./routes/proxy-media.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
@@ -95,6 +96,10 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/[spaceSlug]/git/[repo]/[...gitPath]", module: gitSmart },
 
   { pattern: "/api/auth/[...all]", module: authAll },
+
+  // Outside /api/v1: this is the MCP endpoint, and clients that speak MCP
+  // expect to find it at a fixed, version-free path.
+  { pattern: "/api/mcp", module: mcp },
 
   { pattern: "/api/v1/auth/cli", module: authCli },
   { pattern: "/api/v1/auth/cli/token", module: authCliToken },

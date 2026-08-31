@@ -23,6 +23,7 @@
 | `/api/caldav/principals/[userId]` | GET | 401 | 403 | 403 | 403 | 403 |  |
 | `/api/caldav/principals/[userId]` | POST | 401 | 403 | 403 | 403 | 403 |  |
 | `/api/caldav/principals/[userId]` | PROPFIND | 401 | 403 | 403 | 403 | 403 |  |
+| `/api/mcp` | POST | 400 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/access-tokens` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — the caller's own tokens, in the spaces it belongs to |
 | `/api/v1/access-tokens` | POST | 401 | 400 | 400 | 400 | 400 | caller-scoped — the caller's own tokens, in the spaces it belongs to |
 | `/api/v1/access-tokens/[tokenId]` | DELETE | 401 | 404 | 404 | 404 | 404 | caller-scoped — reaches only a token the caller issued |

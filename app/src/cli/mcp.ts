@@ -8,9 +8,10 @@ import {
 import { resolveConfig } from "./resolve.ts";
 
 /**
- * Stateless JSON-RPC 2.0 / MCP protocol layer. Only the CLI speaks MCP over
- * stdio, so the envelope handling lives here rather than next to the tool
- * surface it wraps.
+ * Stateless JSON-RPC 2.0 / MCP protocol layer. `handleMcpRequest` is the
+ * transport-agnostic core: the CLI wraps it in a stdio, line-delimited loop
+ * below, and `#api/routes/mcp.ts` wraps the same function in one HTTP request
+ * per JSON-RPC message. Only the framing differs between the two.
  */
 
 const PROTOCOL_VERSION = "2026-07-28";
@@ -25,7 +26,7 @@ const SERVER_INFO = {
 
 type JsonRpcId = string | number;
 
-type JsonRpcRequest = {
+export type JsonRpcRequest = {
   jsonrpc: "2.0";
   id?: JsonRpcId;
   method: string;
@@ -39,7 +40,7 @@ type McpRequestState = {
   cancelledRequestIds: Set<JsonRpcId>;
 };
 
-type JsonRpcResponse = {
+export type JsonRpcResponse = {
   jsonrpc: "2.0";
   id: JsonRpcId | null;
   result?: unknown;

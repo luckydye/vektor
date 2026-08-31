@@ -111,6 +111,31 @@ export const routeDocs: Record<string, RouteDoc> = {
     },
   },
 
+  "/api/mcp": {
+    tag: "AI",
+    jobToken: true,
+    description:
+      "MCP over HTTP: one JSON-RPC 2.0 request per call, the same tool surface (list/read/write documents, run workflows, …) the CLI's `vektor mcp` speaks over stdio. Outside `/api/v1` because MCP clients expect a fixed, version-free endpoint.",
+    operations: {
+      POST: {
+        summary: "Send one MCP JSON-RPC message",
+        description:
+          "The space is named by the `X-Space-Id` header; tools run with whatever access the caller's own credentials grant in it. A request with no `id` is a notification and gets a bare `202`, per JSON-RPC.",
+        requestBody: {
+          type: "object",
+          required: ["jsonrpc", "method"],
+          properties: {
+            jsonrpc: { type: "string", const: "2.0" },
+            id: { oneOf: [{ type: "string" }, { type: "integer" }] },
+            method: { type: "string" },
+            params: { type: "object", additionalProperties: true },
+          },
+        },
+        response: { type: "object", additionalProperties: true },
+      },
+    },
+  },
+
   "/api/v1/chat/completions": {
     tag: "AI",
     jobToken: true,
