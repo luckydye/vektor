@@ -11,7 +11,9 @@ import {
   subscribeToSpreadsheetPresence,
 } from "#editor/spreadsheet/documentPresence.ts";
 import {
+  applySpreadsheetTableDiff,
   isSpreadsheetTable,
+  spreadsheetTableData,
   spreadsheetTableFingerprint,
   spreadsheetTableHtml,
   spreadsheetTableNodeFromData,
@@ -32,10 +34,13 @@ export class SpreadsheetTableView implements NodeView {
   private destroyed = false;
   private buildVersion = 0;
   private publishVersion = 0;
+  private remoteVersion = 0;
   private publishedFingerprint: string | null = null;
   private lastSelection: SheetSelection | null = null;
   private readonly remoteSelections: Accessor<RemoteSelection[]>;
   private readonly setRemoteSelections: Setter<RemoteSelection[]>;
+  private readonly remoteRevision: Accessor<number>;
+  private readonly setRemoteRevision: Setter<number>;
   private readonly unsubscribePresence: () => void;
   private layoutObserver: ResizeObserver | null = null;
   private layoutFrame: number | null = null;
@@ -58,6 +63,7 @@ export class SpreadsheetTableView implements NodeView {
     [this.remoteSelections, this.setRemoteSelections] = createSignal<RemoteSelection[]>(
       [],
     );
+    [this.remoteRevision, this.setRemoteRevision] = createSignal(0);
     this.unsubscribePresence = subscribeToSpreadsheetPresence(
       this.editor,
       this.getPos,
@@ -181,7 +187,7 @@ export class SpreadsheetTableView implements NodeView {
             lang: browserLang(),
             model,
             canEdit: this.editor.isEditable,
-            remoteRevision: () => 0,
+            remoteRevision: this.remoteRevision,
             remoteSelections: this.remoteSelections,
             onSelectionChange: this.handleSelectionChange,
             onChange: () => this.publish(),
@@ -214,11 +220,16 @@ export class SpreadsheetTableView implements NodeView {
         this.editor.schema,
         readSheet(model),
       );
+      const tr = this.editor.state.tr;
+      // Rows or columns added or removed change the shape, which only a whole
+      // node replace can express.
+      if (!applySpreadsheetTableDiff(tr, pos, current, next)) {
+        tr.replaceWith(pos, pos + current.nodeSize, next);
+      }
+      if (!tr.docChanged) return;
       this.publishedFingerprint = spreadsheetTableFingerprint(next);
       this.node = next;
-      this.editor.view.dispatch(
-        this.editor.state.tr.replaceWith(pos, pos + current.nodeSize, next),
-      );
+      this.editor.view.dispatch(tr);
     });
   }
 
@@ -230,8 +241,38 @@ export class SpreadsheetTableView implements NodeView {
       this.publishedFingerprint = null;
       return true;
     }
-    void this.rebuild();
+    this.applyRemote(node);
     return true;
+  }
+
+  /**
+   * Lands a peer's edit on the running model. Rebuilding would free the model
+   * and dispose the Solid tree, discarding whatever the local user was typing,
+   * so that is only the fallback for a grid the engine cannot be talked into.
+   */
+  private applyRemote(node: ProseMirrorNode): void {
+    const model = this.model;
+    if (!model) {
+      void this.rebuild();
+      return;
+    }
+    const build = this.buildVersion;
+    const version = ++this.remoteVersion;
+    const data = spreadsheetTableData(node);
+
+    void import("#editor/spreadsheet/applyRemoteSheet.ts").then(
+      ({ applyRemoteSheet }) => {
+        if (this.destroyed || this.model !== model) return;
+        if (build !== this.buildVersion || version !== this.remoteVersion) return;
+        try {
+          applyRemoteSheet(model, data);
+        } catch {
+          void this.rebuild();
+          return;
+        }
+        this.setRemoteRevision((revision) => revision + 1);
+      },
+    );
   }
 
   selectNode(): void {
@@ -255,6 +296,7 @@ export class SpreadsheetTableView implements NodeView {
     this.destroyed = true;
     this.buildVersion++;
     this.publishVersion++;
+    this.remoteVersion++;
     this.unsubscribePresence();
     this.layoutObserver?.disconnect();
     this.layoutObserver = null;

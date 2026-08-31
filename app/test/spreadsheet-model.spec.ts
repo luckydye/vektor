@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createModel, toTableHtml } from "@vektorapp/spreadsheet/model";
+import { createModel, readSheet, toTableHtml } from "@vektorapp/spreadsheet/model";
+import { applyRemoteSheet } from "#editor/spreadsheet/applyRemoteSheet.ts";
 import {
   cellsToHtmlTable,
   htmlTableToCells,
@@ -261,5 +262,71 @@ describe("spreadsheetModel formatting", () => {
     const html = '<table><tbody><tr><td data-style="{oops">x</td></tr></tbody></table>';
     expect(() => createModel(html, "Test")).not.toThrow();
     expect(createModel(html, "Test").getFormattedCellValue(0, 1, 1)).toBe("x");
+  });
+});
+
+describe("applyRemoteSheet", () => {
+  const html = stored([
+    ["a", "b"],
+    ["1", "2"],
+  ]);
+
+  it("writes only the changed cell and keeps the local selection", () => {
+    const model = createModel(html, "Table");
+    model.setSelectedCell(2, 1);
+    model.setSelectedRange(2, 1, 2, 2);
+
+    const next = readSheet(model);
+    (next.cells[1] as { value: string }[])[1] = { value: "9" };
+    applyRemoteSheet(model, next);
+
+    expect(values(model, 2, 2)).toEqual([
+      ["a", "b"],
+      ["1", "9"],
+    ]);
+    const view = model.getSelectedView();
+    expect([view.row, view.column]).toEqual([2, 1]);
+    expect([...view.range]).toEqual([2, 1, 2, 2]);
+    model.free();
+  });
+
+  it("recomputes formulas that depend on a peer's edit", () => {
+    const model = createModel(stored([["2"], ["=A1*10"]]), "Table");
+    const next = readSheet(model);
+    next.cells[0] = [{ value: "3" }];
+    applyRemoteSheet(model, next);
+
+    expect(model.getFormattedCellValue(0, 2, 1)).toBe("30");
+    expect(model.getCellContent(0, 2, 1)).toBe("=A1*10");
+    model.free();
+  });
+
+  it("clears cells the new grid no longer covers", () => {
+    const model = createModel(
+      stored([
+        ["a", "b"],
+        ["1", "2"],
+      ]),
+      "Table",
+    );
+    applyRemoteSheet(model, { cells: [[{ value: "a" }]], layout: {} });
+
+    expect(toTableHtml(model)).toBe(stored([["a"]]));
+    model.free();
+  });
+
+  it("applies a peer's formatting and layout", () => {
+    const model = createModel(html, "Table");
+    const next = readSheet(model);
+    (next.cells[0] as { value: string; style?: unknown }[])[0] = {
+      value: "a",
+      style: { font: { b: true } },
+    };
+    next.layout = { ...next.layout, rowHeights: [40, undefined] };
+    applyRemoteSheet(model, next);
+
+    expect(model.getCellStyle(0, 1, 1).style.font.b).toBe(true);
+    expect(model.getRowHeight(0, 1)).toBe(40);
+    model.free();
   });
 });

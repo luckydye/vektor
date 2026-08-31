@@ -1,9 +1,11 @@
 import { getSchema } from "@tiptap/core";
 import { Node } from "@tiptap/pm/model";
+import { EditorState } from "@tiptap/pm/state";
 import { describe, expect, it } from "vitest";
 import { htmlToDoc } from "#documents/schema/parse.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import {
+  applySpreadsheetTableDiff,
   canConvertToSpreadsheet,
   isSpreadsheetTable,
   normalTableNodeFromSpreadsheet,
@@ -72,5 +74,84 @@ describe("spreadsheet tables inside documents", () => {
     expect(isSpreadsheetTable(table)).toBe(false);
     expect(table.firstChild?.firstChild?.attrs.dataSource).toBeNull();
     expect(table.textContent).toBe("2");
+  });
+});
+
+describe("publishing a spreadsheet edit", () => {
+  const html =
+    '<table data-table-kind="spreadsheet"><tbody>' +
+    "<tr><td><p>a</p></td><td><p>b</p></td></tr>" +
+    "<tr><td><p>1</p></td><td><p>2</p></td></tr>" +
+    "</tbody></table>";
+
+  function docWithTable() {
+    const doc = Node.fromJSON(schema, htmlToDoc(html));
+    const pos = doc.firstChild ? 0 : -1;
+    return { doc, pos };
+  }
+
+  it("touches only the cells that changed", () => {
+    const { doc, pos } = docWithTable();
+    const table = doc.child(0);
+    const next = spreadsheetTableNodeFromData(table, schema, {
+      ...spreadsheetTableData(table),
+      cells: [
+        [{ value: "a" }, { value: "b" }],
+        [{ value: "1" }, { value: "9" }],
+      ],
+    });
+
+    const tr = EditorState.create({ doc }).tr;
+    expect(applySpreadsheetTableDiff(tr, pos, table, next)).toBe(true);
+    expect(tr.steps).toHaveLength(1);
+    expect(tr.doc.child(0).eq(next)).toBe(true);
+
+    // The untouched cells keep their node identity, which is what lets
+    // y-prosemirror map a one-cell edit instead of replacing the table.
+    const before = table.child(1).child(0);
+    const after = tr.doc.child(0).child(1).child(0);
+    expect(after).toBe(before);
+  });
+
+  it("produces no steps when nothing changed", () => {
+    const { doc, pos } = docWithTable();
+    const table = doc.child(0);
+    const next = spreadsheetTableNodeFromData(table, schema, spreadsheetTableData(table));
+
+    const tr = EditorState.create({ doc }).tr;
+    expect(applySpreadsheetTableDiff(tr, pos, table, next)).toBe(true);
+    expect(tr.docChanged).toBe(false);
+  });
+
+  it("reports a shape change so the caller replaces the node", () => {
+    const { doc, pos } = docWithTable();
+    const table = doc.child(0);
+    const next = spreadsheetTableNodeFromData(table, schema, {
+      ...spreadsheetTableData(table),
+      cells: [
+        [{ value: "a" }, { value: "b" }, { value: "c" }],
+        [{ value: "1" }, { value: "2" }, { value: "3" }],
+      ],
+    });
+
+    const tr = EditorState.create({ doc }).tr;
+    expect(applySpreadsheetTableDiff(tr, pos, table, next)).toBe(false);
+    expect(tr.docChanged).toBe(false);
+  });
+
+  it("carries cell attribute changes without rewriting text", () => {
+    const { doc, pos } = docWithTable();
+    const table = doc.child(0);
+    const data = spreadsheetTableData(table);
+    const cells = data.cells.map((row) => row.map((cell) => ({ ...cell })));
+    (cells[0] as { style?: unknown }[])[1] = { value: "b", style: { font: { b: true } } };
+    const next = spreadsheetTableNodeFromData(table, schema, { ...data, cells });
+
+    const tr = EditorState.create({ doc }).tr;
+    expect(applySpreadsheetTableDiff(tr, pos, table, next)).toBe(true);
+    expect(tr.steps).toHaveLength(1);
+    expect(tr.doc.child(0).child(0).child(1).attrs.dataStyle).toEqual({
+      font: { b: true },
+    });
   });
 });

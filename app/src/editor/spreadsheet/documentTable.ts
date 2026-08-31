@@ -1,4 +1,5 @@
-import type { Node as ProseMirrorNode, Schema } from "@tiptap/pm/model";
+import type { Attrs, Node as ProseMirrorNode, Schema } from "@tiptap/pm/model";
+import type { Transaction } from "@tiptap/pm/state";
 import {
   cellsToHtmlTable,
   type TableCell,
@@ -163,7 +164,7 @@ export function canConvertToSpreadsheet(node: ProseMirrorNode): boolean {
         return;
       }
       const paragraph = cell.firstChild;
-      if (!paragraph || paragraph.type.name !== "paragraph") {
+      if (paragraph?.type.name !== "paragraph") {
         compatible = false;
         return;
       }
@@ -207,4 +208,72 @@ export function normalTableNodeFromSpreadsheet(
     rows.push(row.type.create({ ...row.attrs, dataHeight: null }, cells, row.marks));
   });
   return current.type.create({ ...current.attrs, tableKind: null }, rows, current.marks);
+}
+
+function sameAttrs(a: Attrs, b: Attrs): boolean {
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (a[key] === b[key]) continue;
+    if (JSON.stringify(a[key] ?? null) !== JSON.stringify(b[key] ?? null)) return false;
+  }
+  return true;
+}
+
+/**
+ * Rewrites the table at `pos` into `next` with one step per changed cell.
+ *
+ * Replacing the whole node instead leaves y-prosemirror without a mapping for
+ * any cell, so a single-cell edit syncs as a replacement of the entire table
+ * and concurrent edits to different cells overwrite each other. Returns false
+ * when rows or columns were added or removed, which only a full replace can
+ * express; `tr` is left untouched in that case.
+ */
+export function applySpreadsheetTableDiff(
+  tr: Transaction,
+  pos: number,
+  current: ProseMirrorNode,
+  next: ProseMirrorNode,
+): boolean {
+  if (current.childCount !== next.childCount) return false;
+
+  const rows: { rowPos: number; cellOffsets: number[] }[] = [];
+  let rowOffset = 0;
+  for (let index = 0; index < current.childCount; index++) {
+    const row = current.child(index);
+    const nextRow = next.child(index);
+    if (row.type !== nextRow.type || row.childCount !== nextRow.childCount) return false;
+    const cellOffsets: number[] = [];
+    let cellOffset = 0;
+    for (let column = 0; column < row.childCount; column++) {
+      if (row.child(column).type !== nextRow.child(column).type) return false;
+      cellOffsets.push(cellOffset);
+      cellOffset += row.child(column).nodeSize;
+    }
+    rows.push({ rowPos: pos + 1 + rowOffset, cellOffsets });
+    rowOffset += row.nodeSize;
+  }
+
+  // Descending, so a content replace never shifts a position not yet visited.
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const { rowPos, cellOffsets } = rows[index] as (typeof rows)[number];
+    const row = current.child(index);
+    const nextRow = next.child(index);
+    for (let column = row.childCount - 1; column >= 0; column--) {
+      const cell = row.child(column);
+      const nextCell = nextRow.child(column);
+      const cellPos = rowPos + 1 + (cellOffsets[column] as number);
+      if (!cell.content.eq(nextCell.content)) {
+        tr.replaceWith(cellPos + 1, cellPos + 1 + cell.content.size, nextCell.content);
+      }
+      if (!sameAttrs(cell.attrs, nextCell.attrs)) {
+        tr.setNodeMarkup(cellPos, undefined, nextCell.attrs, nextCell.marks);
+      }
+    }
+    if (!sameAttrs(row.attrs, nextRow.attrs)) {
+      tr.setNodeMarkup(rowPos, undefined, nextRow.attrs, nextRow.marks);
+    }
+  }
+  if (!sameAttrs(current.attrs, next.attrs)) {
+    tr.setNodeMarkup(pos, undefined, next.attrs, next.marks);
+  }
+  return true;
 }
