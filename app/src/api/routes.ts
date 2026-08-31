@@ -12,6 +12,7 @@ import * as chatCompletions from "./routes/chat/completions.ts";
 import * as gitSmart from "./routes/git/smart.ts";
 import * as marketplaceExtension from "./routes/marketplace/extension.ts";
 import * as marketplaceExtensions from "./routes/marketplace/extensions.ts";
+import * as openapi from "./routes/openapi.ts";
 import * as proxyMedia from "./routes/proxy-media.ts";
 import * as crossSpaceSearch from "./routes/search.ts";
 import * as accessToken from "./routes/spaces/access-token.ts";
@@ -233,6 +234,9 @@ export const apiRoutes: ApiRoute[] = [
   // The caller's own tokens, so nothing in the path identifies whose they are.
   { pattern: "/api/v1/access-tokens", module: personalAccessTokens },
   { pattern: "/api/v1/access-tokens/[tokenId]", module: personalAccessToken },
+
+  // The instance's own API description, served where a client looks for it.
+  { pattern: "/api/v1/openapi.json", module: openapi },
 
   { pattern: "/api/v1/proxy-media", module: proxyMedia },
   { pattern: "/api/v1/search", module: crossSpaceSearch },

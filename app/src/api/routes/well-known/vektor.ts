@@ -20,6 +20,9 @@ export const GET: ApiRouteHandler = () =>
     version: 1,
     apiVersion: "v1",
     documentEndpoint: "/api/v1/spaces/{spaceId}/documents/{documentId}",
+    // Where the rest of the API describes itself, so a client discovers the
+    // whole surface from this one unauthenticated document.
+    openapiEndpoint: "/api/v1/openapi.json",
   });
 
 export const OPTIONS: ApiRouteHandler = () =>
