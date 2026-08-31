@@ -84,7 +84,7 @@ export function ToastContainer() {
                 class="pointer-events-auto relative flex min-w-64 items-center gap-2.5 overflow-hidden rounded-lg px-4 py-2.5 font-medium text-size-small shadow-large"
                 classList={{
                   "bg-red-600 text-white": toast.type === "error",
-                  "bg-neutral-900 text-white": toast.type === "info",
+                  "bg-neutral-900 text-neutral-10": toast.type === "info",
                   "bg-green-600 text-white": toast.type === "success",
                   "pr-9": (toast.count ?? 1) > 1,
                 }}
@@ -94,7 +94,7 @@ export function ToastContainer() {
                 <Show when={(toast.count ?? 1) > 1}>
                   <span
                     aria-hidden="true"
-                    class="absolute top-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/25 px-1.5 font-semibold text-[11px] tabular-nums leading-none"
+                    class="absolute top-1 right-1 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-current/25 px-1.5 font-semibold text-[11px] tabular-nums leading-none"
                   >
                     {toast.count}
                   </span>
@@ -104,7 +104,7 @@ export function ToastContainer() {
                   {(action) => (
                     <button
                       type="button"
-                      class="relative z-10 ml-auto rounded-md bg-white/15 px-2 py-1 font-semibold text-xs transition-colors hover:bg-white/25"
+                      class="relative z-10 ml-auto rounded-md bg-current/15 px-2 py-1 font-semibold text-xs transition-colors hover:bg-current/25"
                       disabled={completedActions().has(toast.id)}
                       onClick={() => void runAction(toast)}
                     >
@@ -116,16 +116,16 @@ export function ToastContainer() {
                 </Show>
                 <Show when={toast.cancel}>
                   <IconButton
-                    class="relative z-10 ml-auto text-white/70 enabled:active:bg-white/30 enabled:hover:bg-white/20 enabled:hover:text-white"
+                    class="relative z-10 ml-auto text-current/70 enabled:active:bg-current/30 enabled:hover:bg-current/20 enabled:hover:text-current"
                     icon="cancel"
                     label={t("Cancel")}
                     onClick={() => toast.cancel?.()}
                   />
                 </Show>
                 <Show when={toast.progress !== undefined}>
-                  <div class="absolute inset-x-0 bottom-0 h-1 bg-white/15">
+                  <div class="absolute inset-x-0 bottom-0 h-1 bg-current/15">
                     <div
-                      class="h-full bg-white/55 transition-all duration-200 ease-out"
+                      class="h-full bg-current/55 transition-all duration-200 ease-out"
                       style={{
                         width: `${Math.max(0, Math.min(1, toast.progress ?? 0)) * 100}%`,
                       }}

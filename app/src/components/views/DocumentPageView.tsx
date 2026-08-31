@@ -504,7 +504,14 @@ export function DocumentPageView(props: Props) {
 
   const documentDetails = (layout?: "labeled", transparent = false): JSX.Element => (
     <Show when={documentDetailsVisible()}>
-      <div class="document-details-enter flex min-w-0 flex-1 flex-col">
+      <div
+        class={twMerge(
+          "document-details-enter flex min-w-0 flex-col",
+          // Growing is for the row layout beside a portrait header; in a
+          // full-height view it would stretch the header over the content.
+          layout === "labeled" && "flex-1",
+        )}
+      >
         <inset-view
           class={twMerge(
             "flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-s print:px-0",
@@ -670,6 +677,8 @@ export function DocumentPageView(props: Props) {
                   <div
                     class={twMerge(
                       "min-w-0",
+                      // Every document type ends on the same gap, footer or not.
+                      !isCanvas() && "pb-2xs",
                       isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                     )}
                   >
@@ -714,17 +723,10 @@ export function DocumentPageView(props: Props) {
                       </Show>
                     </div>
 
-                    <Show
-                      when={
-                        !isDraft() &&
-                        !editing() &&
-                        !isCanvas() &&
-                        !isWorkflow()
-                      }
-                    >
-                      <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-s print:px-0">
+                    <Show when={!isDraft() && !editing() && isRegularDocument()}>
+                      <inset-view class="mt-2xs flex items-center justify-end px-xs md:px-s print:px-0">
                         <Show when={doc()?.updatedAt}>
-                          <div class="mb-4 flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
+                          <div class="flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
                             <Show when={hasMounted() && updatedAtStr()}>
                               <span>Updated {updatedAtStr()}</span>
                             </Show>
