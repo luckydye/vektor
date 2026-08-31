@@ -28,6 +28,12 @@ import {
   validateSpacePreferences,
 } from "#utils/spacePreferences.ts";
 
+/**
+ * Read one space
+ *
+ * @tag Spaces
+ * @response #/components/schemas/Space
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -47,6 +53,12 @@ export const GET: ApiRouteHandler = (context) =>
     });
   }, "Failed to get space");
 
+/**
+ * Update a space
+ *
+ * @tag Spaces
+ * @body
+ */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -145,6 +157,11 @@ export const PATCH: ApiRouteHandler = (context) =>
     },
   );
 
+/**
+ * Delete a space and everything in it
+ *
+ * @tag Spaces
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

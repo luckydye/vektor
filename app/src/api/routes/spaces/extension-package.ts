@@ -11,9 +11,14 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getExtensionPackage } from "#db/space/extensions.ts";
 
 /**
+ * Download the installed extension package
+ *
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId/package
  * Download the raw extension ZIP. Useful for debugging broken packages.
  * Owners only (same restriction as delete).
+ *
+ * @tag Extensions
+ * @media application/zip
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

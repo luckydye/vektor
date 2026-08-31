@@ -55,16 +55,24 @@ async function resolveMcpAuth(
 }
 
 /**
- * MCP over HTTP, one JSON-RPC message per request. The protocol layer is the
- * CLI's: `#cli/mcp.ts` speaks it over stdio for the `vektor mcp` command, and
- * `handleMcpRequest` is the transport-agnostic core both wrap around the same
- * tool surface (`#agent/tools.ts`).
+ * Send one MCP JSON-RPC message.
  *
- * A space is required — `X-Space-Id`, the same header `chat/completions` and
- * `chat/acp` read — since every tool this surface exposes (list/read/write a
- * document, run a workflow, …) is scoped to one. The caller authenticates the
- * same way as any other route: a session, a personal or space access token, or
- * a job token already scoped to this space.
+ * The protocol layer is the CLI's: `#cli/mcp.ts` speaks it over stdio for the
+ * `vektor mcp` command, and `handleMcpRequest` is the transport-agnostic core
+ * both wrap around the same tool surface (`#agent/tools.ts`).
+ *
+ * The space is named by the `X-Space-Id` header, the same one
+ * `chat/completions` and `chat/acp` read, since every tool this surface
+ * exposes (list/read/write a document, run a workflow, …) is scoped to one.
+ * Tools run with whatever access the caller's own credentials — a session, a
+ * personal or space access token, or a job token already scoped to this space
+ * — actually grant in it. A request with no `id` is a notification and gets a
+ * bare `202`, per JSON-RPC.
+ *
+ * @tag AI
+ * @jobToken
+ * @note MCP over HTTP: one JSON-RPC 2.0 request per call, the same tool surface (list/read/write documents, run workflows, …) the CLI's `vektor mcp` speaks over stdio. Outside `/api/v1` because MCP clients expect a fixed, version-free endpoint.
+ * @body
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

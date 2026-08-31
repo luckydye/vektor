@@ -20,8 +20,12 @@ import {
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 /**
+ * List the space's access tokens (never the secrets)
+ *
  * GET /api/v1/spaces/:spaceId/access-tokens
  * List all access tokens and their permissions in this space
+ *
+ * @tag Access tokens
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -56,6 +60,10 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to list access tokens");
 
 /**
+ * Issue a space access token
+ *
+ * The token secret is returned once, in this response only.
+ *
  * POST /api/v1/spaces/:spaceId/access-tokens
  * Create a new access token and assign it to a resource
  * Body:
@@ -64,6 +72,10 @@ export const GET: ApiRouteHandler = (context) =>
  *   - resourceId: ID of the resource (use spaceId for space-level access)
  *   - permission: "viewer" | "editor" | "owner"
  *   - expiresInDays: Optional expiration in days
+ *
+ * @tag Access tokens
+ * @body
+ * @status 201
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

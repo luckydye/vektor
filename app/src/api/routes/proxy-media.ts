@@ -35,6 +35,15 @@ function rejectMedia(url: string, reason: string): Response {
   return badRequestResponse(REJECTED_MESSAGE);
 }
 
+/**
+ * Proxy a remote media file
+ *
+ * Fetches an external image or video on the server's behalf so a document can embed it without leaking the reader's address. Requires a session.
+ *
+ * @tag Media
+ * @query url! Absolute media URL.
+ * @media any
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     requireUser(context);

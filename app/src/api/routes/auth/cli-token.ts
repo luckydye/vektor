@@ -31,6 +31,12 @@ const CLI_TOKEN_TTL_DAYS = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Exchange a paired CLI code for an access token
+ *
+ * @tag Auth
+ * @public
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const body = await parseJsonBody(context.req.raw);

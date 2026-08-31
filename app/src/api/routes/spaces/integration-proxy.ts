@@ -183,6 +183,13 @@ async function resolveAccessToken(
   return refreshed.accessToken;
 }
 
+/**
+ * Call the provider's API with the space's stored credentials
+ *
+ * @tag Integrations
+ * @jobToken
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

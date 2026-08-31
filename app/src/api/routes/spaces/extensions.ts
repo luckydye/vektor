@@ -24,9 +24,14 @@ import {
 import { appLogger } from "#observability/logger.ts";
 
 /**
+ * List the extensions installed in a space
+ *
  * GET /api/v1/spaces/:spaceId/extensions
  * List extension metadata in a space.
  * Jobs may list all extensions in the space; user sessions only see extensions they can access.
+ *
+ * @tag Extensions
+ * @jobToken
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -80,8 +85,15 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to list extensions");
 
 /**
+ * Upload an extension package
+ *
  * POST /api/v1/spaces/:spaceId/extensions
  * Upload a new extension (zip file)
+ *
+ * @tag Extensions
+ * @jobToken
+ * @body binary
+ * @status 201
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(

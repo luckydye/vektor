@@ -14,14 +14,20 @@ import { createDocument, getDocument } from "#db/space/documents.ts";
 import { patchDocumentProperties } from "#db/space/properties.ts";
 
 /**
- * CalDAV individual event endpoint.
- * GET  – serves a single document as text/calendar.
- * PUT  – creates or updates a document from iCal data.
- *        On create, responds 201 with a Location header pointing to the canonical URL.
- * The eventId parameter includes the .ics extension (e.g., {docId}.ics).
+ * Advertise the methods this calendar object supports
+ *
+ * @tag CalDAV
+ * @param eventId Calendar object (`.ics`) name, e.g. `{docId}.ics`.
+ * @note CalDAV individual event endpoint: GET serves a document as text/calendar, PUT creates or updates one from iCal data (responding 201 with a Location header on create).
  */
 export const OPTIONS: ApiRouteHandler = () => optionsPreflight();
 
+/**
+ * Read one calendar object
+ *
+ * @tag CalDAV
+ * @param eventId Calendar object (`.ics`) name.
+ */
 export const GET: ApiRouteHandler = caldavRoute(async (context) => {
   const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
@@ -49,6 +55,12 @@ export const GET: ApiRouteHandler = caldavRoute(async (context) => {
   });
 });
 
+/**
+ * Create or replace one calendar object
+ *
+ * @tag CalDAV
+ * @param eventId Calendar object (`.ics`) name.
+ */
 export const PUT: ApiRouteHandler = caldavRoute(async (context) => {
   const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });

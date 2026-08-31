@@ -35,6 +35,12 @@ import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 
+/**
+ * List comments on a resource
+ *
+ * @tag Comments
+ * @query documentId! Document whose comments to list.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -88,6 +94,13 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ comments: enrichedComments });
   }, "Failed to list comments");
 
+/**
+ * Create a comment
+ *
+ * @tag Comments
+ * @body
+ * @status 201
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -187,6 +200,12 @@ export const POST: ApiRouteHandler = (context) =>
     return jsonResponse({ comment });
   }, "Failed to create comment");
 
+/**
+ * Update a comment
+ *
+ * @tag Comments
+ * @body
+ */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -266,6 +285,11 @@ export const PATCH: ApiRouteHandler = (context) =>
     return jsonResponse({ success: true });
   }, "Failed to update comments");
 
+/**
+ * Delete a comment
+ *
+ * @tag Comments
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

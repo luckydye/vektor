@@ -1,12 +1,11 @@
 import type { ApiRoute } from "#api/routes.ts";
 import type { ApiRouteMethod, ApiRouteModule } from "#api/server/types.ts";
-import { routeDocs } from "./operations.ts";
 import { SCHEMAS } from "./schemas.ts";
 import type {
   JsonSchema,
   OpenApiDocument,
-  PathItem,
   OperationDoc,
+  PathItem,
   QueryParameterDoc,
   RouteDoc,
 } from "./types.ts";
@@ -24,7 +23,10 @@ const OPENAPI_METHODS = [
 
 type OpenApiMethod = (typeof OPENAPI_METHODS)[number];
 
-const DEFAULT_SECURITY = [{ accessToken: [] }, { sessionCookie: [] }];
+const DEFAULT_SECURITY: Record<string, string[]>[] = [
+  { accessToken: [] },
+  { sessionCookie: [] },
+];
 
 /** Path-parameter descriptions shared by every route that takes one. */
 const PARAM_DESCRIPTIONS: Record<string, string> = {
@@ -235,10 +237,15 @@ function operationObject(
  * Build the OpenAPI document for a route registry.
  *
  * Nothing here reads a request: the schema is a pure function of the routes the
- * server is compiled with, which is what makes it safe to generate once and
- * serve as a static document.
+ * server is compiled with and the doc comments above each handler
+ * (`routeDocs`, from {@link parseRouteDoc}), which is what makes it safe to
+ * generate once — at build time for a compiled instance, at startup
+ * otherwise — and serve as a static document.
  */
-export function buildOpenApiDocument(routes: readonly ApiRoute[]): OpenApiDocument {
+export function buildOpenApiDocument(
+  routes: readonly ApiRoute[],
+  routeDocs: Record<string, RouteDoc>,
+): OpenApiDocument {
   const paths: Record<string, PathItem> = {};
   const usedTags = new Set<string>();
 

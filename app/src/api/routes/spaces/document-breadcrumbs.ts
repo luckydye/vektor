@@ -5,6 +5,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocumentBreadcrumbs } from "#db/space/documents.ts";
 
+/**
+ * The document's ancestors, root first
+ *
+ * @tag Documents
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

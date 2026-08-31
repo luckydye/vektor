@@ -31,6 +31,14 @@ function createPkceCodeChallenge(codeVerifier: string): string {
   return toBase64Url(createHash("sha256").update(codeVerifier).digest());
 }
 
+/**
+ * Begin connecting an integration
+ *
+ * Answers with the provider's authorization URL to send the user to.
+ *
+ * @tag Integrations
+ * @body?
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

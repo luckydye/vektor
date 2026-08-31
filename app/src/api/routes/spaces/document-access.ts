@@ -11,6 +11,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 
 // GET /api/v1/spaces/:spaceId/documents/:documentId/access
 // Everyone who can reach this document, and the grant that gets them there.
+/**
+ * Who may read or edit this document, and how they got there
+ *
+ * @tag Documents
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

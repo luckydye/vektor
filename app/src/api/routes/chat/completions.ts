@@ -18,6 +18,15 @@ import { getAIProvider } from "#db/space/aiConfig.ts";
 import { appLogger } from "#observability/logger.ts";
 import { SsrfError } from "#utils/ssrf.ts";
 
+/**
+ * Proxy a chat completion to the space's AI provider
+ *
+ * Takes an OpenAI-shaped completion request and forwards it with the space's configured provider and credentials. The space is named by the `X-Space-Id` header, and the caller needs viewer permission on it.
+ *
+ * @tag AI
+ * @jobToken
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

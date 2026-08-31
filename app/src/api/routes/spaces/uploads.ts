@@ -40,6 +40,12 @@ function safeExtension(originalName: string): string {
   return /^[a-z0-9]{1,16}$/.test(candidate) ? candidate : "bin";
 }
 
+/**
+ * List the files uploaded to a space
+ *
+ * @tag Files
+ * @jobToken
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -116,6 +122,14 @@ export const GET: ApiRouteHandler = (context) =>
     },
   );
 
+/**
+ * Upload a file
+ *
+ * @tag Files
+ * @jobToken
+ * @body binary
+ * @status 201
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

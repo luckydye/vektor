@@ -39,6 +39,13 @@ async function visibleCategoryIds(
   return access.resourceScope ? new Set(access.resourceScope) : null;
 }
 
+/**
+ * List the categories of a space
+ *
+ * @tag Categories
+ * @jobToken
+ * @response array #/components/schemas/Category
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -67,6 +74,14 @@ export const GET: ApiRouteHandler = (context) =>
     });
   }, "Failed to list categories");
 
+/**
+ * Create a category
+ *
+ * @tag Categories
+ * @jobToken
+ * @body
+ * @status 201
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -113,6 +128,13 @@ export const POST: ApiRouteHandler = (context) =>
     },
   );
 
+/**
+ * Reorder the categories of a space
+ *
+ * @tag Categories
+ * @jobToken
+ * @body
+ */
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

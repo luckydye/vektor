@@ -22,6 +22,13 @@ import {
   upsertSpaceSecret,
 } from "#db/space/spaceSecrets.ts";
 
+/**
+ * Read one secret's metadata
+ *
+ * @tag Secrets
+ * @jobToken
+ * @param name Secret name.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -49,6 +56,14 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ name, value });
   }, "Failed to get secret");
 
+/**
+ * Set a secret's value
+ *
+ * @tag Secrets
+ * @jobToken
+ * @param name Secret name.
+ * @body
+ */
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -95,6 +110,13 @@ export const PUT: ApiRouteHandler = (context) =>
     return jsonResponse({ secret });
   }, "Failed to update secret");
 
+/**
+ * Delete a secret
+ *
+ * @tag Secrets
+ * @jobToken
+ * @param name Secret name.
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -116,6 +138,13 @@ export const DELETE: ApiRouteHandler = (context) =>
     return successResponse();
   }, "Failed to delete secret");
 
+/**
+ * Check whether a secret exists
+ *
+ * @tag Secrets
+ * @jobToken
+ * @param name Secret name.
+ */
 export const HEAD: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

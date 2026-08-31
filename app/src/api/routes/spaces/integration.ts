@@ -20,6 +20,12 @@ import {
   getOAuthProviderDefinition,
 } from "#integrations/oauthProviders.ts";
 
+/**
+ * Read one integration's connection state
+ *
+ * @tag Integrations
+ * @param provider Integration provider id, e.g. `github`.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -44,6 +50,12 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ connection: buildIntegrationView(definition, connection) });
   }, "Failed to get integration status");
 
+/**
+ * Disconnect an integration
+ *
+ * @tag Integrations
+ * @param provider Integration provider id, e.g. `github`.
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

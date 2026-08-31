@@ -36,11 +36,16 @@ function getMimeType(filePath: string): string {
 }
 
 /**
+ * Serve a file from the extension package
+ *
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId/assets/*
  * Serve assets from extension zip package.
- *
  * Assets are extracted on-demand from the stored zip.
  * Access is granted if user is an editor on the space OR has explicit ACL entry for the extension.
+ *
+ * @tag Extensions
+ * @param path Path of the asset inside the extension package.
+ * @media any
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

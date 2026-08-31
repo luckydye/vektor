@@ -10,6 +10,11 @@ import {
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 
+/**
+ * What the caller may do in this space
+ *
+ * @tag Permissions
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

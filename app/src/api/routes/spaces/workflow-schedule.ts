@@ -27,6 +27,11 @@ import {
   validateCronExpression,
 } from "#db/space/workflowSchedules.ts";
 
+/**
+ * Read one workflow schedule
+ *
+ * @tag Workflows
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -50,6 +55,12 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ schedule: toWorkflowScheduleDto(schedule) });
   }, "Failed to get workflow schedule");
 
+/**
+ * Update a workflow schedule
+ *
+ * @tag Workflows
+ * @body
+ */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -113,6 +124,11 @@ export const PATCH: ApiRouteHandler = (context) =>
     return jsonResponse({ schedule: toWorkflowScheduleDto(schedule) });
   }, "Failed to update workflow schedule");
 
+/**
+ * Delete a workflow schedule
+ *
+ * @tag Workflows
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

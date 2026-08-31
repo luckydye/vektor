@@ -18,8 +18,12 @@ import {
 } from "#db/space/accessTokens.ts";
 
 /**
+ * Read one space access token
+ *
  * GET /api/v1/spaces/:spaceId/access-tokens/:tokenId
  * Get token details and its resources in this space
+ *
+ * @tag Access tokens
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -45,8 +49,13 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to get access token");
 
 /**
+ * Update a space access token
+ *
  * PATCH /api/v1/spaces/:spaceId/access-tokens/:tokenId
  * Revoke an access token (soft delete)
+ *
+ * @tag Access tokens
+ * @body
  */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -74,8 +83,12 @@ export const PATCH: ApiRouteHandler = (context) =>
   }, "Failed to revoke access token");
 
 /**
+ * Revoke a space access token
+ *
  * DELETE /api/v1/spaces/:spaceId/access-tokens/:tokenId
  * Permanently delete an access token
+ *
+ * @tag Access tokens
  */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

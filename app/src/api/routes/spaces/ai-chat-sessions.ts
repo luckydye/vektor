@@ -10,6 +10,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { listAIChatSessionSummaries } from "#db/space/aiChatSessions.ts";
 
+/**
+ * List the caller's AI chat sessions in a space
+ *
+ * @tag AI
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

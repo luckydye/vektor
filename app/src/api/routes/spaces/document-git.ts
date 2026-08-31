@@ -28,6 +28,11 @@ import { servedFileSecurityHeaders } from "#utils/csp.ts";
 /** Commits a single request will return, however many are asked for. */
 const MAX_LOG = 100;
 
+/**
+ * Repository state for a repository document
+ *
+ * @tag Git
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

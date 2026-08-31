@@ -20,6 +20,12 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { listJobRuns, toJobRunDto } from "#db/space/jobRuns.ts";
 
+/**
+ * List job runs
+ *
+ * @tag Jobs
+ * @paginated
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

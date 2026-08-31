@@ -12,6 +12,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { isEmailMuted, setEmailMuted } from "#db/space/emailNotificationPreferences.ts";
 
+/**
+ * Read the caller's notification preference for this space
+ *
+ * @tag Spaces
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -41,6 +46,12 @@ export const GET: ApiRouteHandler = (context) =>
     });
   }, "Failed to get notification preference");
 
+/**
+ * Update the caller's notification preference for this space
+ *
+ * @tag Spaces
+ * @body
+ */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

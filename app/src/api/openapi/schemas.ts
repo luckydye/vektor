@@ -14,6 +14,22 @@ export const SCHEMAS: Record<string, JsonSchema> = {
     properties: { error: { type: "string", description: "Human-readable reason." } },
   },
 
+  InstanceInfo: {
+    type: "object",
+    properties: {
+      service: { type: "string", const: "vektor" },
+      version: { type: "integer" },
+      apiVersion: { type: "string" },
+      documentEndpoint: { type: "string" },
+      openapiEndpoint: { type: "string" },
+    },
+  },
+
+  CreatedSpace: {
+    type: "object",
+    properties: { space: { $ref: "#/components/schemas/Space" } },
+  },
+
   Preferences: {
     type: "object",
     description: "Space preferences. A `user:`-prefixed key is the caller's own.",

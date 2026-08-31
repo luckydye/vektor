@@ -34,6 +34,11 @@ import {
   validateCronExpression,
 } from "#db/space/workflowSchedules.ts";
 
+/**
+ * List workflow schedules
+ *
+ * @tag Workflows
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -52,6 +57,12 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ schedules: schedules.map(toWorkflowScheduleDto) });
   }, "Failed to list workflow schedules");
 
+/**
+ * Create a workflow schedule
+ *
+ * @tag Workflows
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

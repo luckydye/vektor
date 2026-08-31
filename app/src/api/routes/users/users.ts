@@ -80,7 +80,7 @@ function storedGroups(raw: string | null): string[] {
 }
 
 /**
- * GET /api/v1/users
+ * List user profiles the caller may see
  *
  * How much of the user table a caller may see, which is a different answer for
  * an ordinary member than for whoever administers the instance:
@@ -104,6 +104,11 @@ function storedGroups(raw: string | null): string[] {
  * A parameter this route does not know is a `400`, whichever form it would
  * otherwise have selected: the scopes are how a caller says what it wants, and a
  * misspelled one must not silently become a different question.
+ *
+ * @tag Users
+ * @paginated
+ * @query id Read a single profile by user id.
+ * @query spaceId Members of a space the caller belongs to.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

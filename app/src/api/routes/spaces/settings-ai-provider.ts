@@ -38,6 +38,11 @@ export async function normalizeOllamaBaseUrl(rawBaseUrl: unknown): Promise<strin
   return baseUrl;
 }
 
+/**
+ * Read the space's AI provider configuration (never the API key)
+ *
+ * @tag AI
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -54,6 +59,12 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ aiProvider: meta });
   }, "Failed to get AI provider config");
 
+/**
+ * Configure the space's AI provider
+ *
+ * @tag AI
+ * @body
+ */
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -108,6 +119,11 @@ export const PUT: ApiRouteHandler = (context) =>
     return jsonResponse({ aiProvider: meta });
   }, "Failed to update AI provider config");
 
+/**
+ * Remove the space's AI provider configuration
+ *
+ * @tag AI
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

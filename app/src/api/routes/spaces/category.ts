@@ -62,6 +62,14 @@ async function verifyCategoryRead(
   );
 }
 
+/**
+ * Read one category
+ *
+ * @tag Categories
+ * @jobToken
+ * @param id Category id or slug.
+ * @response #/components/schemas/Category
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -77,6 +85,14 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ category: categoryData });
   }, "Failed to get category");
 
+/**
+ * Update a category
+ *
+ * @tag Categories
+ * @jobToken
+ * @param id Category id or slug.
+ * @body
+ */
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -133,6 +149,13 @@ export const PUT: ApiRouteHandler = (context) =>
     },
   );
 
+/**
+ * Delete a category
+ *
+ * @tag Categories
+ * @jobToken
+ * @param id Category id or slug.
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

@@ -31,6 +31,13 @@ import { getExtensionPackage, listExtensions } from "#db/space/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import { appLogger } from "#observability/logger.ts";
 
+/**
+ * Run a job
+ *
+ * @tag Jobs
+ * @jobToken
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

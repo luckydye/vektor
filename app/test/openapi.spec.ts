@@ -1,13 +1,15 @@
 /**
- * The OpenAPI document is generated from the route registry, so the thing worth
- * testing is that the two cannot drift: a route added without a doc entry, or a
- * doc entry for a method the module does not serve, fails here rather than
- * shipping a schema that describes a server nobody is running.
+ * The OpenAPI document is generated from the route registry and the doc
+ * comment above each handler (see `#api/openapi/comments.ts`), so the thing
+ * worth testing is that the two cannot drift: a route with no doc comment, a
+ * handler documented for a method it doesn't serve, or a served method with no
+ * doc comment, fails here rather than shipping a schema that describes a
+ * server nobody is running.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildOpenApiDocument, servesMethod, toOpenApiPath } from "#api/openapi/document.ts";
-import { routeDocs } from "#api/openapi/operations.ts";
+import { loadRouteDocs } from "#api/openapi/discover.ts";
 import { apiRoutes } from "#api/routes.ts";
 import {
   createApiRequest,
@@ -21,7 +23,12 @@ const PORT = 7571;
 const BASE_URL = testBaseUrl(PORT);
 const apiRequest = createApiRequest(BASE_URL);
 
-const document = buildOpenApiDocument(apiRoutes);
+const HTTP_METHODS = ["GET", "PUT", "POST", "DELETE", "OPTIONS", "HEAD", "PATCH"] as const;
+
+// Read live from each route file's own doc comments — the same thing the dev
+// server does on every process start. There is no static table to import.
+const routeDocs = await loadRouteDocs();
+const document = buildOpenApiDocument(apiRoutes, routeDocs);
 
 describe("OpenAPI document", () => {
   it("documents every registered route", () => {
@@ -44,6 +51,23 @@ describe("OpenAPI document", () => {
       }
     }
     expect(unserved).toEqual([]);
+  });
+
+  it("documents every method a route module answers, unless it exports ALL", () => {
+    // An `ALL`-exporting handler (CalDAV, git smart HTTP, better-auth) answers
+    // methods OpenAPI cannot describe by design — see `comments.ts` — so it
+    // only has to document a subset, not all of them.
+    const undocumented: string[] = [];
+    for (const { pattern, module } of apiRoutes) {
+      if ("ALL" in module) continue;
+      const documented = new Set(Object.keys(routeDocs[pattern]?.operations ?? {}));
+      for (const method of HTTP_METHODS) {
+        if (method in module && !documented.has(method)) {
+          undocumented.push(`${method} ${pattern}`);
+        }
+      }
+    }
+    expect(undocumented).toEqual([]);
   });
 
   it("emits an operation for every documented route", () => {

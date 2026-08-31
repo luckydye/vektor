@@ -17,6 +17,12 @@ import {
   upsertSpaceSecret,
 } from "#db/space/spaceSecrets.ts";
 
+/**
+ * List the space's secret names
+ *
+ * @tag Secrets
+ * @note Secret values are write-only: a read answers with names, never values.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -33,6 +39,13 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ secrets });
   }, "Failed to list secrets");
 
+/**
+ * Create a secret
+ *
+ * @tag Secrets
+ * @note Secret values are write-only: a read answers with names, never values.
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

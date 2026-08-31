@@ -42,6 +42,11 @@ function optionalPassword(value: unknown): string | undefined {
   return value;
 }
 
+/**
+ * List the space's share links
+ *
+ * @tag Sharing
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -98,6 +103,13 @@ export const GET: ApiRouteHandler = (context) =>
     });
   }, "Failed to list share links");
 
+/**
+ * Create a share link
+ *
+ * @tag Sharing
+ * @body
+ * @status 201
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

@@ -267,6 +267,15 @@ async function handleReadonlyPatch(
   }
 }
 
+/**
+ * Read one document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @query draft:boolean Read the current draft instead of the published revision. Requires editor permission.
+ * @response #/components/schemas/DocumentResponse
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const rawSpaceId = requireParam(context.var.params, "spaceId");
@@ -374,9 +383,7 @@ export const GET: ApiRouteHandler = (context) =>
       const serialized = isSerializedDocumentType(document.type);
       return withCors(
         new Response(
-          serialized
-            ? (document.content ?? "")
-            : htmlToMarkdown(document.content ?? ""),
+          serialized ? (document.content ?? "") : htmlToMarkdown(document.content ?? ""),
           {
             status: 200,
             headers: {
@@ -406,6 +413,14 @@ export const GET: ApiRouteHandler = (context) =>
     );
   }, "Failed to get document");
 
+/**
+ * Replace a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @body
+ */
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -552,6 +567,14 @@ export const PUT: ApiRouteHandler = (context) =>
     return jsonResponse({ document: documentMetadata });
   }, "Failed to update document");
 
+/**
+ * Update parts of a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @body
+ */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -671,6 +694,13 @@ export const PATCH: ApiRouteHandler = (context) =>
     },
   );
 
+/**
+ * Archive or delete a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -738,6 +768,14 @@ async function verifyRevisionWrite(
   );
 }
 
+/**
+ * Publish the document's current draft
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @body?
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -800,9 +838,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     if (isJson) {
       if (!body.html || typeof body.html !== "string") {
-        throw badRequestResponse(
-          "Revision content is required and must be a string",
-        );
+        throw badRequestResponse("Revision content is required and must be a string");
       }
 
       if (body.contentType !== undefined && typeof body.contentType !== "string") {
@@ -828,13 +864,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     const revision =
       mode === "suggestion"
-        ? await createSuggestion(
-            store,
-            documentId,
-            revisionContent,
-            user.id,
-            message,
-          )
+        ? await createSuggestion(store, documentId, revisionContent, user.id, message)
         : await createRevision(store, documentId, revisionContent, user.id, {
             message,
           });

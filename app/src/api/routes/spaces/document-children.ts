@@ -13,6 +13,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getDocument, getDocumentChildren } from "#db/space/documents.ts";
 
+/**
+ * The document's direct children
+ *
+ * @tag Documents
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

@@ -467,6 +467,13 @@ function renderCliAuthPage(options: {
   });
 }
 
+/**
+ * Poll a pending CLI login
+ *
+ * @tag Auth
+ * @public
+ * @note CLI pairing, authenticated by the one-time code it mints.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -502,6 +509,13 @@ function createCliApproval(userId: string, redirectUri: string, state: string): 
   return approval;
 }
 
+/**
+ * Start a CLI login and mint a pairing code
+ *
+ * @tag Auth
+ * @public
+ * @note CLI pairing, authenticated by the one-time code it mints.
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
