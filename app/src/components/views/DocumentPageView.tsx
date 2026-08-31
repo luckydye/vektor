@@ -485,7 +485,7 @@ export function DocumentPageView(props: Props) {
   const documentToolbar = (transparent = false): JSX.Element => (
     <div
       class={twMerge(
-        "sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-s",
+        "sticky top-0 z-10 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 px-xs py-4 md:px-s",
         !transparent && "border-neutral-50 border-b bg-neutral-10",
       )}
     >
@@ -506,7 +506,9 @@ export function DocumentPageView(props: Props) {
     <Show when={documentDetailsVisible()}>
       <div
         class={twMerge(
-          "document-details-enter flex min-w-0 flex-col",
+          // The enter transition's transform makes this a stacking context, so
+          // property popovers need the wrapper itself above the body below it.
+          "document-details-enter relative z-20 flex min-w-0 shrink-0 flex-col",
           // Growing is for the row layout beside a portrait header; in a
           // full-height view it would stretch the header over the content.
           layout === "labeled" && "flex-1",
@@ -520,10 +522,7 @@ export function DocumentPageView(props: Props) {
         >
           {titleRow()}
         </inset-view>
-        <inset-view
-          id="document-properties"
-          class="mb-xl block px-xs md:px-s print:px-0"
-        >
+        <inset-view id="document-properties" class="mb-xl block px-xs md:px-s print:px-0">
           {documentPropertiesBlock(layout)}
         </inset-view>
       </div>
@@ -582,7 +581,13 @@ export function DocumentPageView(props: Props) {
           </Show>
         }
       >
-        <div class={twMerge(isFullHeightView() && "flex h-full min-h-screen flex-col")}>
+        {/* A full-height view owns the viewport and scrolls inside itself, so
+            the page must not grow past it. */}
+        <div
+          class={twMerge(
+            isFullHeightView() && "flex h-[100dvh] flex-col overflow-hidden",
+          )}
+        >
           <inset-view
             class={twMerge(
               "block min-h-0 flex-1",
@@ -679,6 +684,9 @@ export function DocumentPageView(props: Props) {
                       "min-w-0",
                       // Every document type ends on the same gap, footer or not.
                       !isCanvas() && "pb-2xs",
+                      // Collapsed details take their own bottom margin with
+                      // them, leaving the body flush against the toolbar.
+                      isRegularDocument() && !documentDetailsVisible() && "pt-2xs",
                       isFullHeightView() && "flex min-h-0 flex-1 flex-col",
                     )}
                   >

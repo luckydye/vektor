@@ -132,8 +132,12 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
     if (isImporting()) return;
 
     const format = isIcsFile(file) ? "ICS" : "CSV";
+    let cancelled = false;
     const toastId = showToast(`Preparing ${format} import...`, "info", 0, {
       progress: 0,
+      cancel: () => {
+        cancelled = true;
+      },
     });
     setIsImporting(true);
     let created = 0;
@@ -157,6 +161,10 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
       updateToast(toastId, { message: `0/${total} created..`, progress: 0 });
 
       for (const row of rows) {
+        // Rows are created one request at a time, so cancelling keeps whatever
+        // already landed and simply stops here.
+        if (cancelled) break;
+
         const properties: DocumentProperties = {};
         let fallbackTitle = "";
 
@@ -188,19 +196,28 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
       options.refreshRows();
       updateToast(
         toastId,
-        {
-          message: `Imported ${created} ${created === 1 ? "row" : "rows"}`,
-          type: "success",
-          progress: 1,
-        },
+        cancelled
+          ? {
+              message: `Import cancelled after ${created}/${total} ${
+                created === 1 ? "row" : "rows"
+              }`,
+              type: "info",
+              progress: undefined,
+              cancel: undefined,
+            }
+          : {
+              message: `Imported ${created} ${created === 1 ? "row" : "rows"}`,
+              type: "success",
+              progress: 1,
+              cancel: undefined,
+            },
         { duration: 3000 },
       );
     } catch (e) {
       if (created > 0) {
         options.refreshRows();
       }
-      const errorMessage =
-        e instanceof Error ? e.message : `Failed to import ${format}`;
+      const errorMessage = e instanceof Error ? e.message : `Failed to import ${format}`;
       updateToast(
         toastId,
         {
@@ -210,6 +227,7 @@ export function useDatabaseFileImport(options: DatabaseFileImportOptions) {
               : errorMessage,
           type: "error",
           progress: 1,
+          cancel: undefined,
         },
         { duration: 5000 },
       );

@@ -1,5 +1,14 @@
 import "@atrium-ui/elements/popover";
-import { createEffect, createSignal, For, type JSX, onMount, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { Portal } from "solid-js/web";
 import { useDatabaseFileImport } from "#composeables/useDatabaseFileImport.ts";
 import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
@@ -21,6 +30,14 @@ interface Props {
 
 const DEFAULT_COL_WIDTH = 180;
 const NAME_COL_WIDTH = 240;
+const ACTION_COL_WIDTH = 48;
+
+// Below this a full render costs less than the scroll bookkeeping around it.
+const VIRTUALIZE_FROM_ROWS = 80;
+const ROW_OVERSCAN = 8;
+// Rows are single-line, so one measured height describes them all; this is the
+// fallback until the first one is on screen.
+const ESTIMATED_ROW_HEIGHT = 41;
 
 function cellValue(row: DocumentProperties, col: string): string {
   // Column names come from the space's property keys, so a column called
@@ -173,6 +190,94 @@ export function DatabaseView(props: Props) {
   }
 
   const [hasMounted, setHasMounted] = createSignal(false);
+  let bodyRef: HTMLTableSectionElement | undefined;
+  // How far the body has scrolled past the top of the viewport, and how much
+  // of the viewport it can occupy. Measured from the body's own rect rather
+  // than a scroll container: depending on the layout the scroller is either the
+  // table's wrapper or the page itself.
+  const [bodyOffset, setBodyOffset] = createSignal(0);
+  const [viewportHeight, setViewportHeight] = createSignal(0);
+  const [rowHeight, setRowHeight] = createSignal(ESTIMATED_ROW_HEIGHT);
+
+  // Inline rather than `sticky top-0`: the app shell offsets every
+  // `.sticky.top-0` by the titlebar height, which would push the header down
+  // inside its own scroller.
+  const stickyHeaderStyle = { position: "sticky", top: "0", "z-index": "1" } as const;
+
+  const tableWidth = createMemo(
+    () => NAME_COL_WIDTH + derivedColumns().length * DEFAULT_COL_WIDTH + ACTION_COL_WIDTH,
+  );
+
+  const isVirtualized = createMemo(
+    () => hasMounted() && rows().length > VIRTUALIZE_FROM_ROWS,
+  );
+
+  const visibleRange = createMemo(() => {
+    const total = rows().length;
+    if (!isVirtualized()) return { start: 0, end: total };
+
+    const height = rowHeight();
+    const start = Math.max(0, Math.floor(bodyOffset() / height) - ROW_OVERSCAN);
+    const visible = Math.ceil((viewportHeight() || height) / height);
+    return { start, end: Math.min(total, start + visible + ROW_OVERSCAN * 2) };
+  });
+
+  const visibleRows = createMemo(() => {
+    const { start, end } = visibleRange();
+    return rows().slice(start, end);
+  });
+
+  // Spacer rows stand in for the ones outside the window, keeping the
+  // scrollbar the size the full table would have.
+  const spacerBefore = createMemo(() => visibleRange().start * rowHeight());
+  const spacerAfter = createMemo(
+    () => (rows().length - visibleRange().end) * rowHeight(),
+  );
+
+  function measureViewport() {
+    setViewportHeight(window.innerHeight);
+    if (!bodyRef) return;
+    setBodyOffset(Math.max(0, -bodyRef.getBoundingClientRect().top));
+  }
+
+  onMount(() => {
+    let frame = 0;
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        measureViewport();
+      });
+    };
+
+    measureViewport();
+    // Capture, so a scroll on whichever ancestor actually scrolls is seen.
+    window.addEventListener("scroll", schedule, { passive: true, capture: true });
+    window.addEventListener("resize", schedule, { passive: true });
+    onCleanup(() => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule, { capture: true });
+      window.removeEventListener("resize", schedule);
+    });
+  });
+
+  // The body only takes its place once the rows are painted, so measuring has
+  // to wait a frame after they change.
+  createEffect(() => {
+    void rows().length;
+    if (!hasMounted()) return;
+    const frame = requestAnimationFrame(measureViewport);
+    onCleanup(() => cancelAnimationFrame(frame));
+  });
+
+  // One real row is worth more than a guess: fonts and zoom both move it.
+  createEffect(() => {
+    if (!isVirtualized() || !visibleRows().length) return;
+    const row = bodyRef?.querySelector<HTMLTableRowElement>("tr[data-row]");
+    const measured = row?.getBoundingClientRect().height;
+    if (measured && Math.abs(measured - rowHeight()) > 0.5) setRowHeight(measured);
+  });
+
   onMount(() => setHasMounted(true));
 
   return (
@@ -206,7 +311,7 @@ export function DatabaseView(props: Props) {
             when={!isLoading()}
             fallback={
               <table
-                class="animate-pulse border-separate border-spacing-0 overflow-hidden rounded-b-[var(--radius-md)] border border-neutral-100 [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
+                class="border-separate border-spacing-0 animate-pulse overflow-hidden rounded-b-[var(--radius-md)] border border-neutral-100 [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_tr_>_:last-child]:border-r-0"
                 style={{ "table-layout": "fixed", width: "100%" }}
               >
                 <thead>
@@ -216,7 +321,10 @@ export function DatabaseView(props: Props) {
                     </th>
                     <For each={[0, 1]}>
                       {() => (
-                        <th class="px-3 py-2.5" style={{ width: `${DEFAULT_COL_WIDTH}px` }}>
+                        <th
+                          class="px-3 py-2.5"
+                          style={{ width: `${DEFAULT_COL_WIDTH}px` }}
+                        >
                           <div class="h-2.5 w-14 rounded-full bg-neutral-200" />
                         </th>
                       )}
@@ -253,18 +361,21 @@ export function DatabaseView(props: Props) {
             }
           >
             <table
-              class="border-separate border-spacing-0 overflow-hidden rounded-b-[var(--radius-md)] border border-neutral-100 text-size-medium [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
+              class="border-separate border-spacing-0 rounded-b-[var(--radius-md)] border border-neutral-100 text-size-medium [&_tbody_tr:last-child_>_td]:border-b-0 [&_td]:border-neutral-100 [&_td]:border-r [&_td]:border-b [&_td]:leading-[1.45] [&_th]:border-neutral-100 [&_th]:border-r [&_th]:border-b [&_th]:leading-[1.45] [&_tr_>_:last-child]:border-r-0"
               style={{
                 "table-layout": "fixed",
-                width: "max-content",
+                // An explicit sum, not `max-content`: that measured the cells,
+                // so nowrap content widened its column instead of truncating,
+                // and the width moved as rows scrolled in and out.
+                width: `${tableWidth()}px`,
                 "min-width": "100%",
               }}
             >
               <thead>
                 <tr class="bg-neutral-50 text-left">
                   <th
-                    class="relative whitespace-nowrap px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
-                    style={{ width: `${NAME_COL_WIDTH}px` }}
+                    class="relative whitespace-nowrap bg-neutral-50 px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
+                    style={{ ...stickyHeaderStyle, width: `${NAME_COL_WIDTH}px` }}
                   >
                     Name
                   </th>
@@ -272,8 +383,8 @@ export function DatabaseView(props: Props) {
                   <For each={derivedColumns()}>
                     {(col) => (
                       <th
-                        class="group whitespace-nowrap px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
-                        style={{ width: `${DEFAULT_COL_WIDTH}px` }}
+                        class="group whitespace-nowrap bg-neutral-50 px-3 py-2.5 font-semibold text-neutral-700 text-size-small"
+                        style={{ ...stickyHeaderStyle, width: `${DEFAULT_COL_WIDTH}px` }}
                       >
                         <div class="flex items-center justify-between gap-1">
                           <span class="truncate">{col.label}</span>
@@ -290,7 +401,10 @@ export function DatabaseView(props: Props) {
                     )}
                   </For>
 
-                  <th class="px-2" style={{ width: "48px" }}>
+                  <th
+                    class="bg-neutral-50 px-2"
+                    style={{ ...stickyHeaderStyle, width: `${ACTION_COL_WIDTH}px` }}
+                  >
                     <a-popover-trigger ref={addColumnTriggerRef as never}>
                       <button
                         type="button"
@@ -345,10 +459,20 @@ export function DatabaseView(props: Props) {
                 </tr>
               </thead>
 
-              <tbody>
-                <For each={rows()}>
+              <tbody ref={bodyRef}>
+                <Show when={spacerBefore() > 0}>
+                  <tr>
+                    <td
+                      colspan={derivedColumns().length + 2}
+                      class="border-0! p-0!"
+                      style={{ height: `${spacerBefore()}px` }}
+                    />
+                  </tr>
+                </Show>
+
+                <For each={visibleRows()}>
                   {(row) => (
-                    <tr class="group">
+                    <tr class="group" data-row>
                       <td
                         class="px-3 py-2.5 align-top"
                         style={{ width: `${NAME_COL_WIDTH}px` }}
@@ -453,7 +577,10 @@ export function DatabaseView(props: Props) {
                         )}
                       </For>
 
-                      <td class="px-2 py-2.5 align-top" style={{ width: "48px" }}>
+                      <td
+                        class="px-2 py-2.5 align-top"
+                        style={{ width: `${ACTION_COL_WIDTH}px` }}
+                      >
                         <button
                           type="button"
                           class="text-neutral-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
@@ -466,6 +593,16 @@ export function DatabaseView(props: Props) {
                     </tr>
                   )}
                 </For>
+
+                <Show when={spacerAfter() > 0}>
+                  <tr>
+                    <td
+                      colspan={derivedColumns().length + 2}
+                      class="border-0! p-0!"
+                      style={{ height: `${spacerAfter()}px` }}
+                    />
+                  </tr>
+                </Show>
 
                 <Show when={rows().length === 0 && !isLoading()}>
                   <tr>

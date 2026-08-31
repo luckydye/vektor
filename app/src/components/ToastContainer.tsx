@@ -1,10 +1,10 @@
 import { createEffect, createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { type Toast, useToast } from "#composeables/useToast.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { animateIn, animateOut, EXIT_TIMEOUT_MS } from "#utils/animate.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 const icons: Record<Toast["type"], IconName> = {
   error: "alert-circle",
