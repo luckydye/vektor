@@ -34,13 +34,7 @@ pnpm-debug.log*
 
 /vektor
 
-# A bare directory name here would exclude `generated/` itself from being
-# walked at all, and a negation below can't re-include a path inside an
-# excluded directory — hence `generated/*`, not `generated`.
-generated/*
-# ...except the OpenAPI schema: committed so it's reviewable in diffs, even
-# though `server.ts`/`task compile` regenerate it from the route doc comments.
-!generated/openapi.ts
+generated
 
 data/**/*
 
