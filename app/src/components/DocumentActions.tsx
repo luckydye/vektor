@@ -496,7 +496,7 @@ export function DocumentActions(props: Props) {
       <Show when={canUseDocumentEditor() && !editing()}>
         <button
           type="button"
-          class="button-primary px-3 max-md:hidden"
+          class="button-outline max-md:hidden"
           onClick={startEditing}
         >
           <Icon name="edit-document" />
@@ -598,7 +598,7 @@ export function DocumentActions(props: Props) {
           </div>
 
           <Show when={showCancel()}>
-            <Button variant="secondary" onClick={cancelEditing}>
+            <Button variant="outline" onClick={cancelEditing}>
               <Icon name="cancel" />
               <span>{t("Cancel")}</span>
             </Button>
@@ -625,7 +625,11 @@ export function DocumentActions(props: Props) {
             />
           )}
         </Show>
-        <ContextMenu>
+        <ContextMenu
+          ariaLabel={t("Document actions")}
+          triggerVariant="outline"
+          triggerClass="h-8 w-8 justify-center px-0"
+        >
           <For each={actionsSpace()}>
             {([name, options]) => <MenuActionItem name={name} options={options} />}
           </For>

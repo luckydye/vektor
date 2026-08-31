@@ -9,6 +9,9 @@ interface Props {
   children?: JSX.Element;
   ariaLabel?: string;
   placements?: string;
+  /** Styles the built-in trigger without introducing a second SSR branch. */
+  triggerVariant?: "secondary" | "outline";
+  triggerClass?: string;
   /**
    * Replaces the default trigger button, which must carry `slot="trigger"`.
    * For a menu sitting on artwork, where the button's own styling would fight
@@ -57,10 +60,10 @@ export function ContextMenu(props: Props) {
         when={props.trigger}
         fallback={
           <Button
-            variant="secondary"
+            variant={props.triggerVariant ?? "secondary"}
             slot="trigger"
             ariaLabel={props.ariaLabel ?? t("Document actions")}
-            class="px-4xs"
+            class={props.triggerClass ?? "px-4xs"}
           >
             <Icon name="context-menu-more" />
           </Button>

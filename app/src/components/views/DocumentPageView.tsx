@@ -21,6 +21,7 @@ import { DocumentContent } from "#components/DocumentContent.tsx";
 import { DocumentExtensionViews } from "#components/DocumentExtensionViews.tsx";
 import { DocumentProperties } from "#components/DocumentProperties.tsx";
 import { HeaderImage } from "#components/HeaderImage.tsx";
+import { Icon } from "#components/Icon.tsx";
 import { NewDocumentPicker } from "#components/NewDocumentPicker.tsx";
 import { RestoreButton } from "#components/RestoreButton.tsx";
 import { RevisionsSidebar } from "#components/RevisionsSidebar.tsx";
@@ -35,7 +36,7 @@ import { usePersistedState } from "#composeables/usePersistedState.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useToast } from "#composeables/useToast.ts";
-import { useLocale } from "#composeables/useTranslation.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { optionalPropertyValueToText } from "#documents/properties.ts";
 import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
@@ -82,6 +83,7 @@ const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
 
 export function DocumentPageView(props: Props) {
   const lang = useLocale();
+  const t = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [now, setNow] = createSignal(props.ssrNow ?? Date.now());
@@ -208,13 +210,6 @@ export function DocumentPageView(props: Props) {
   const isDatabase = createMemo(() => documentType() === "database");
   const isRecord = createMemo(() => documentType() === "record");
   const isRegularDocument = createMemo(() => documentType() === "document");
-  const isRepository = createMemo(() => documentType() === repositoryDocumentType);
-  /**
-   * Views that carry their own name and their own sense of when they changed:
-   * repeating the document title above them, or a footer saying how long ago
-   * they were updated, only says it twice.
-   */
-  const isSelfTitled = createMemo(() => isDatabase() || isRepository());
   const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
   const isPaddedDocument = createMemo(
     () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
@@ -294,6 +289,11 @@ export function DocumentPageView(props: Props) {
   const { value: tableOfContentsVisible, commit: setTableOfContentsVisible } =
     usePersistedState<boolean>({
       key: "document-table-of-contents-visible",
+      fallback: true,
+    });
+  const { value: documentDetailsVisible, commit: setDocumentDetailsVisible } =
+    usePersistedState<boolean>({
+      key: "document-details-visible",
       fallback: true,
     });
   const hasDocumentAside = () =>
@@ -441,16 +441,85 @@ export function DocumentPageView(props: Props) {
     />
   );
 
-  const breadcrumbs = (): JSX.Element => (
-    <Show when={!isDraft()}>
-      <Breadcrumbs
-        category={docCategory()}
-        parents={parentBreadcrumbs()}
-        currentTitle={title()}
-        documentId={doc()?.id}
-        spaceId={currentSpace()?.id}
-        canEdit={userCanEdit()}
+  const documentDetailsToggle = (): JSX.Element => (
+    <button
+      type="button"
+      aria-label={
+        documentDetailsVisible() ? t("Hide document details") : t("Show document details")
+      }
+      aria-pressed={documentDetailsVisible()}
+      title={
+        documentDetailsVisible() ? t("Hide document details") : t("Show document details")
+      }
+      class={twMerge(
+        "pointer-events-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2",
+      )}
+      onClick={() => setDocumentDetailsVisible(!documentDetailsVisible())}
+    >
+      <Icon
+        name="chevron-down"
+        class={twMerge(
+          "h-4 w-4 transition-transform duration-150 ease-out",
+          documentDetailsVisible() && "rotate-180",
+        )}
       />
+    </button>
+  );
+
+  const breadcrumbs = (): JSX.Element => (
+    <div class="flex min-w-0 items-center gap-1">
+      <Show when={!isDraft()}>
+        <Breadcrumbs
+          category={docCategory()}
+          parents={parentBreadcrumbs()}
+          currentTitle={title()}
+          documentId={doc()?.id}
+          spaceId={currentSpace()?.id}
+          canEdit={userCanEdit()}
+        />
+      </Show>
+      {documentDetailsToggle()}
+    </div>
+  );
+
+  const documentToolbar = (transparent = false): JSX.Element => (
+    <div
+      class={twMerge(
+        "sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-s",
+        !transparent && "border-neutral-50 border-b bg-neutral-10",
+      )}
+    >
+      <Show
+        when={isWorkflow()}
+        fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
+      >
+        <div class="flex min-w-0 flex-1 items-center gap-1">
+          <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
+          {documentDetailsToggle()}
+        </div>
+      </Show>
+      {documentActions()}
+    </div>
+  );
+
+  const documentDetails = (layout?: "labeled", transparent = false): JSX.Element => (
+    <Show when={documentDetailsVisible()}>
+      <div class="document-details-enter flex min-w-0 flex-1 flex-col">
+        <inset-view
+          class={twMerge(
+            "flex flex-row justify-between gap-6 px-xs py-3xs md:gap-4 md:px-s print:px-0",
+            !transparent && "bg-neutral-10",
+          )}
+        >
+          {titleRow()}
+        </inset-view>
+        <inset-view
+          id="document-properties"
+          class="mb-xl block px-xs md:px-s print:px-0"
+        >
+          {documentPropertiesBlock(layout)}
+        </inset-view>
+      </div>
     </Show>
   );
 
@@ -554,25 +623,13 @@ export function DocumentPageView(props: Props) {
 
                 <Show when={isCanvas()}>
                   <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
-                    <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 px-xs py-4 md:px-s">
-                      <div class="min-w-0 flex-1">{breadcrumbs()}</div>
-                      <DocumentActions title={title()} headerImage={headerImageSrc()} />
-                    </div>
-
-                    <inset-view
-                      id="document-properties"
-                      class="mb-l block px-xs md:px-s print:px-0"
-                    >
-                      {documentPropertiesBlock()}
-                    </inset-view>
+                    {documentToolbar(true)}
+                    {documentDetails(undefined, true)}
                   </div>
                 </Show>
 
-                <Show when={!isCanvas() && !isApp() && isPortraitHeader()}>
-                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-s">
-                    <div class="min-w-0 flex-1">{breadcrumbs()}</div>
-                    {documentActions()}
-                  </div>
+                <Show when={!isCanvas() && isPortraitHeader()}>
+                  {documentToolbar()}
 
                   <div class="mb-4 flex flex-col gap-xl px-xs md:flex-row md:items-start md:px-xl print:px-0">
                     <HeaderImage
@@ -583,27 +640,11 @@ export function DocumentPageView(props: Props) {
                       initialSrc={headerImageSrc()}
                     />
 
-                    <div class="flex min-w-0 flex-1 flex-col">
-                      <Show when={!isSelfTitled()}>
-                        <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 py-3xs md:gap-4 print:px-0">
-                          {titleRow()}
-                        </inset-view>
-                      </Show>
-
-                      <inset-view
-                        id="document-properties"
-                        class={twMerge(
-                          "block print:px-0",
-                          isSelfTitled() ? "mt-2xs mb-2xs" : "mb-l",
-                        )}
-                      >
-                        {documentPropertiesBlock("labeled")}
-                      </inset-view>
-                    </div>
+                    {documentDetails("labeled")}
                   </div>
                 </Show>
 
-                <Show when={!isCanvas() && !isApp() && !isPortraitHeader()}>
+                <Show when={!isCanvas() && !isPortraitHeader()}>
                   <Show when={!isDraft() && !isWorkflow()}>
                     <HeaderImage
                       class="mt-4"
@@ -614,33 +655,8 @@ export function DocumentPageView(props: Props) {
                     />
                   </Show>
 
-                  <div class="sticky top-0 z-10 flex min-h-7 flex-row items-center justify-between gap-6 border-neutral-50 border-b bg-neutral-10 px-xs py-4 md:px-s">
-                    <Show
-                      when={isWorkflow()}
-                      fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
-                    >
-                      <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
-                    </Show>
-                    {documentActions()}
-                  </div>
-
-                  <Show when={!isSelfTitled()}>
-                    <inset-view class="flex flex-row justify-between gap-6 bg-neutral-10 px-xs py-3xs md:gap-4 md:px-s print:px-0">
-                      {titleRow()}
-                    </inset-view>
-                  </Show>
-
-                  <Show when={!isSelfTitled()}>
-                    <inset-view
-                      id="document-properties"
-                      class={twMerge(
-                        "block px-xs md:px-s print:px-0",
-                        isSelfTitled() ? "mt-2xs mb-2xs" : "mb-xl",
-                      )}
-                    >
-                      {documentPropertiesBlock()}
-                    </inset-view>
-                  </Show>
+                  {documentToolbar()}
+                  {documentDetails()}
                 </Show>
 
                 <div
@@ -698,19 +714,12 @@ export function DocumentPageView(props: Props) {
                       </Show>
                     </div>
 
-                    {/* The footer used to be what kept a view off the bottom
-                        of the window; without it these need the room back. */}
-                    <Show when={isSelfTitled()}>
-                      <div class="h-l" />
-                    </Show>
-
                     <Show
                       when={
                         !isDraft() &&
                         !editing() &&
                         !isCanvas() &&
-                        !isWorkflow() &&
-                        !isSelfTitled()
+                        !isWorkflow()
                       }
                     >
                       <inset-view class="mt-2xs mb-4xs flex items-center justify-end px-xs md:px-s print:px-0">
