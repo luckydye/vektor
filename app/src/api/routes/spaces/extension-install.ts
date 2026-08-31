@@ -26,15 +26,19 @@ interface InstallBody {
 }
 
 /**
+ * Install an extension from the store
+ *
  * POST /api/v1/spaces/:spaceId/extensions/install
  * Install (or update to) a version of a store extension.
- *
  * The caller names an extension, never a URL: the server resolves the version
  * through the registry's own documents, downloads it, and verifies the
  * published checksum before the package is unzipped. The result is stored with
  * `source: "marketplace"` so the space can tell later where its code came from
  * — and so an operator who allows only `marketplace` can prove nothing was
  * side-loaded.
+ *
+ * @tag Extensions
+ * @body
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

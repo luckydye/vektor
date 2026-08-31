@@ -22,9 +22,14 @@ import {
 } from "#db/space/extensions.ts";
 
 /**
+ * Read one installed extension
+ *
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId
  * Get a single extension's metadata.
  * Jobs may read any extension metadata in the same space; user sessions still require extension access.
+ *
+ * @tag Extensions
+ * @jobToken
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -70,8 +75,14 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to get extension");
 
 /**
+ * Enable or disable an installed extension
+ *
  * PATCH /api/v1/spaces/:spaceId/extensions/:extensionId
  * Update extension settings (owners only)
+ *
+ * @tag Extensions
+ * @jobToken
+ * @body
  */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -111,8 +122,13 @@ export const PATCH: ApiRouteHandler = (context) =>
   }, "Failed to update extension");
 
 /**
+ * Uninstall an extension
+ *
  * DELETE /api/v1/spaces/:spaceId/extensions/:extensionId
  * Delete an extension (owners only)
+ *
+ * @tag Extensions
+ * @jobToken
  */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

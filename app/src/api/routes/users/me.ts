@@ -3,6 +3,12 @@ import { jsonResponse, requireUser, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
+/**
+ * The caller's own profile
+ *
+ * @tag Users
+ * @response #/components/schemas/CurrentUser
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

@@ -1,9 +1,3 @@
-/**
- * One of the caller's own personal access tokens. Which space holds it is
- * resolved from the caller's own tokens, so a token id belonging to anyone else
- * reads as not found rather than as a token this caller may touch.
- */
-
 import {
   notFoundResponse,
   requireParam,
@@ -20,8 +14,15 @@ import {
 } from "#db/space/accessTokens.ts";
 
 /**
- * PATCH /api/v1/access-tokens/:tokenId
- * Revoke one of the caller's tokens (soft delete).
+ * Update one of the caller's access tokens
+ *
+ * One of the caller's own personal access tokens. Which space holds it is
+ * resolved from the caller's own tokens, so a token id belonging to anyone
+ * else reads as not found rather than as a token this caller may touch. This
+ * revokes it (soft delete).
+ *
+ * @tag Access tokens
+ * @body
  */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -39,8 +40,11 @@ export const PATCH: ApiRouteHandler = (context) =>
   }, "Failed to revoke access token");
 
 /**
- * DELETE /api/v1/access-tokens/:tokenId
- * Permanently delete one of the caller's tokens, and the grant it carries.
+ * Revoke one of the caller's access tokens
+ *
+ * Permanently deletes it, and the grant it carries.
+ *
+ * @tag Access tokens
  */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

@@ -73,6 +73,11 @@ function parseSessionInput(
   };
 }
 
+/**
+ * Read one AI chat session
+ *
+ * @tag AI
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -95,6 +100,12 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ session });
   }, "Failed to get AI chat session");
 
+/**
+ * Create or replace an AI chat session
+ *
+ * @tag AI
+ * @body
+ */
 export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -116,6 +127,11 @@ export const PUT: ApiRouteHandler = (context) =>
     return jsonResponse({ session: saved });
   }, "Failed to save AI chat session");
 
+/**
+ * Delete an AI chat session
+ *
+ * @tag AI
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

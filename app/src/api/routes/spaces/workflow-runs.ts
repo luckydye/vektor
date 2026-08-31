@@ -26,11 +26,18 @@ import { readRunResumeState, type WorkflowStepCache } from "#jobs/workflowStepCa
 import { appLogger } from "#observability/logger.ts";
 
 /**
- * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
- * With documentId: returns { runId, status } for the latest run of that document, or 404.
- * Without documentId: returns { runs: [...], nextCursor } for runs in the space, cursor-paginated
- * (pass the previous response's nextCursor back as ?cursor= to fetch the next page).
- * Optional query: sourceExtensionId filters runs created directly by that extension.
+ * List workflow runs
+ *
+ * With `documentId`: returns `{ runId, status }` for the latest run of that
+ * document, or 404. Without it: returns `{ runs: [...], nextCursor }` for runs
+ * in the space, cursor-paginated (pass the previous response's `nextCursor`
+ * back as `?cursor=` for the next page).
+ *
+ * @tag Workflows
+ * @jobToken
+ * @paginated
+ * @query documentId Return only the latest run of this document.
+ * @query sourceExtensionId Filter to runs created directly by that extension.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -125,9 +132,14 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to get runs");
 
 /**
- * POST /api/v1/spaces/:spaceId/workflows/runs
- * Body: { documentId: string }
- * Returns 202 { runId } immediately; execution proceeds in the background.
+ * Start a workflow run
+ *
+ * Returns `202 { runId }` immediately; execution proceeds in the background.
+ *
+ * @tag Workflows
+ * @jobToken
+ * @status 202
+ * @body
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(

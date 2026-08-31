@@ -735,6 +735,12 @@ function getOrStartActiveChatTurn(options: {
 
 // POST handler
 
+/**
+ * Run an agent turn over the Agent Client Protocol
+ *
+ * @tag AI
+ * @jobToken
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

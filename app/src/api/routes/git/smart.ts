@@ -82,6 +82,22 @@ async function mayReach(
   return canAccess(spaceId, target, caller.id, required);
 }
 
+/**
+ * Git smart HTTP reference discovery.
+ *
+ * @method GET
+ * @tag Git
+ * @param spaceSlug Slug of the space the repository belongs to.
+ * @param repo Repository document slug.
+ * @param gitPath Remaining smart-HTTP path, e.g. `info/refs` or `git-upload-pack`.
+ * @note Git smart HTTP for a repository document. This is the clone URL, so it lives outside `/api`.
+ */
+/**
+ * Git smart HTTP upload-pack / receive-pack.
+ *
+ * @method POST
+ * @tag Git
+ */
 export const ALL: ApiRouteHandler = async (context) => {
   const spaceSlug = context.var.params.spaceSlug;
   const repoParam = context.var.params.repo;

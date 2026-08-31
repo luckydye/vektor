@@ -45,6 +45,11 @@ async function resolveFallbackPath(spaceId: string): Promise<string> {
   return defaultSettingsPath(space.slug);
 }
 
+/**
+ * OAuth redirect target that completes a connection
+ *
+ * @tag Integrations
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

@@ -5,6 +5,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getAllPropertiesWithValues } from "#db/space/properties.ts";
 
+/**
+ * List the document property keys used in a space, with their values
+ *
+ * @tag Documents
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

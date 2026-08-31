@@ -16,6 +16,11 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { resolveProfileImage } from "#utils/gravatar.ts";
 
+/**
+ * List the members of a space with their roles
+ *
+ * @tag Spaces
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

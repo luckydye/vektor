@@ -28,6 +28,14 @@ import {
   validateSpacePreferences,
 } from "#utils/spacePreferences.ts";
 
+/**
+ * List the spaces the caller can read
+ *
+ * A session lists the caller's spaces, an access token the single space it belongs to, and an anonymous caller the publicly readable ones.
+ *
+ * @tag Spaces
+ * @response array #/components/schemas/Space
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const rawToken = extractAccessToken(context.var.credentials);
@@ -47,6 +55,14 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse(spaces);
   }, "Failed to list spaces");
 
+/**
+ * Create a space
+ *
+ * @tag Spaces
+ * @status 201
+ * @body
+ * @response #/components/schemas/CreatedSpace
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

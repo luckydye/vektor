@@ -38,6 +38,12 @@ import { user as userTable } from "#db/schema/auth.ts";
 // GET /api/v1/spaces/:spaceId/permissions
 // List all permissions (roles and feature overrides)
 // Query params: ?type=role|feature|all (default: all)
+/**
+ * List the space's roles and feature overrides
+ *
+ * @tag Permissions
+ * @query type Which entries to list.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -117,6 +123,12 @@ async function isSpaceOwner(spaceId: string, userId: string): Promise<boolean> {
 //   resourceId?: string,
 //   action: "grant" | "revoke" for roles, "grant" | "deny" | "revoke" for features
 // }
+/**
+ * Grant, deny or revoke a permission
+ *
+ * @tag Permissions
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

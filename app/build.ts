@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative, sep } from "node:path";
 import { familySync, MUSL } from "detect-libc";
+import { generateOpenApiModule } from "./scripts/generate-openapi.ts";
 
 const appDir = join(import.meta.dir);
 const clientDir = join(appDir, "dist/client");
@@ -104,6 +105,7 @@ function getLibsqlNativeAddonPath(): string {
 }
 
 await generateClientAssetsModule();
+await generateOpenApiModule();
 
 /**
  * Pre-bundle the serialization worker into a single self-contained file so it

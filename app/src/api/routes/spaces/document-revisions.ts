@@ -23,6 +23,13 @@ import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { replaceLiveDocumentContent } from "#realtime/yjsRooms.ts";
 
+/**
+ * List the revisions of a document
+ *
+ * @tag Documents
+ * @paginated
+ * @response array #/components/schemas/Revision
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -45,6 +52,13 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ revisions });
   }, "Failed to list revisions");
 
+/**
+ * Create a revision, or restore an earlier one
+ *
+ * @tag Documents
+ * @body
+ * @status 201
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
@@ -97,6 +111,12 @@ export const POST: ApiRouteHandler = (context) =>
     });
   }, "Failed to restore revision");
 
+/**
+ * Update a revision's message or suggestion status
+ *
+ * @tag Documents
+ * @body
+ */
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

@@ -16,6 +16,12 @@ import {
 } from "#db/space/auditLogs.ts";
 import { getDocument } from "#db/space/documents.ts";
 
+/**
+ * List the space's audit log
+ *
+ * @tag Spaces
+ * @paginated
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

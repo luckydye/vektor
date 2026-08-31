@@ -28,6 +28,14 @@ function etagMatches(header: string, etag: string): boolean {
   return header.split(",").some((candidate) => strip(candidate) === strip(etag));
 }
 
+/**
+ * Download an uploaded file
+ *
+ * @tag Files
+ * @jobToken
+ * @param path Storage path of the file.
+ * @media any
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
@@ -187,6 +195,13 @@ export const GET: ApiRouteHandler = (context) =>
     },
   );
 
+/**
+ * Delete an uploaded file
+ *
+ * @tag Files
+ * @jobToken
+ * @param path Storage path of the file.
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

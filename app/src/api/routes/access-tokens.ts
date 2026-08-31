@@ -1,11 +1,3 @@
-/**
- * Personal access tokens: the ones the caller issued for itself, the same kind
- * `vektor login` mints. Creation delegates the caller's own role on the chosen
- * space rather than a role it picks, so a token can never open more than its
- * issuer already holds — which is why this needs no owner check, unlike the
- * space-wide endpoint that mints tokens on other people's behalf.
- */
-
 import { isPermission, ResourceType } from "#acl/permissions.ts";
 import {
   badRequestResponse,
@@ -29,8 +21,13 @@ import { getSpace, getUserSpaceRole } from "#db/space/spaces.ts";
 import { addPositiveDays, isValidPositiveDayDuration } from "#utils/datetime.ts";
 
 /**
- * GET /api/v1/access-tokens
- * List the caller's own tokens across the spaces it belongs to.
+ * List the caller's personal access tokens
+ *
+ * The ones the caller issued for itself, the same kind `vektor login` mints,
+ * across the spaces it belongs to.
+ *
+ * @tag Access tokens
+ * @note The caller's own tokens, across the spaces they belong to.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -39,12 +36,16 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to list access tokens");
 
 /**
- * POST /api/v1/access-tokens
- * Mint a token carrying the caller's own role on one space.
- * Body:
- *   - name: Token name/description
- *   - spaceId: Space the token opens
- *   - expiresInDays: Optional expiration in days
+ * Issue a personal access token
+ *
+ * Mints a token carrying the caller's own role on one space — it can never
+ * open more than its issuer already holds, which is why this needs no owner
+ * check, unlike the space-wide endpoint that mints tokens on other people's
+ * behalf. The token secret is returned once, in this response only.
+ *
+ * @tag Access tokens
+ * @status 201
+ * @body
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { join } from "node:path";
 import type { dev } from "astro";
 import { Hono } from "hono";
 import { stopSerializationPool } from "#documents/serializationPool.ts";
@@ -36,6 +38,33 @@ const app = new Hono<ApiBindings>();
 // Database schema preparation and local-file reconciliation must complete
 // before requests or background workers can observe the space index.
 await initializeDatabases();
+
+// The OpenAPI schema (served at `/api/v1/openapi.json`) is generated ahead of
+// time for a compiled instance: `task compile` runs
+// `scripts/generate-openapi.ts` while the route files it reads doc comments
+// from still exist as plain source, and embeds the result in the binary.
+// Running from source — dev, tests, or a bare `bun ./src/server.ts` — has no
+// such head start and that source can differ from any previous run, so the
+// same script runs again here, before the server accepts any request. Not
+// gated on `import.meta.env.DEV`: the test harness runs from source too,
+// without that flag set. Checking for the script itself, rather than a flag,
+// is what actually distinguishes the two — a compiled binary has no
+// `scripts/` directory on disk, only the `generated/openapi.ts` it already
+// produced. Either way, the doc-comment parsing this does has no business
+// living in the server's own module graph.
+const generateOpenApiScript = join(import.meta.dir, "../scripts/generate-openapi.ts");
+if (existsSync(generateOpenApiScript)) {
+  const proc = Bun.spawn(["bun", generateOpenApiScript], {
+    stdout: "ignore",
+    stderr: "inherit",
+  });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    throw new Error(
+      "Failed to generate the OpenAPI schema (scripts/generate-openapi.ts)",
+    );
+  }
+}
 
 app.use("*", async (c, next) => {
   const res = c.env.outgoing;

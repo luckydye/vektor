@@ -16,6 +16,15 @@ import { searchDocuments } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
 import { refreshStaleDocumentIndexes } from "#search/indexing.ts";
 
+/**
+ * Search the documents of one space
+ *
+ * @tag Search
+ * @paginated
+ * @query q Search query.
+ * @query filters JSON-encoded `[{ key, value }]` document property filters.
+ * @response #/components/schemas/SearchResponse
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

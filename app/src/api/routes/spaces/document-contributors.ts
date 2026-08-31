@@ -17,6 +17,11 @@ import {
   getAuditLogsForDocument,
 } from "#db/space/auditLogs.ts";
 
+/**
+ * The accounts that have revised this document
+ *
+ * @tag Documents
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const currentUser = requireUser(context);

@@ -69,6 +69,19 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
   }
 }
 
+/**
+ * List the documents of a space
+ *
+ * @tag Documents
+ * @jobToken
+ * @paginated
+ * @query type Only documents of this document type.
+ * @query categorySlugs Comma-separated category slugs to list documents from.
+ * @query grouped:boolean With `categorySlugs`, group the result by category.
+ * @query parentId List the children of this document instead of the space.
+ * @query includeFiles:boolean Append the space's uploaded files as `file` entries.
+ * @response #/components/schemas/DocumentPage
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
@@ -175,6 +188,14 @@ export const GET: ApiRouteHandler = (context) =>
     return jsonResponse({ documents, total, limit, nextCursor });
   }, "Failed to list documents");
 
+/**
+ * Create a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @body
+ * @status 201
+ */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");

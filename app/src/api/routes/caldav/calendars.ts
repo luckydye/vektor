@@ -8,9 +8,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { listUserSpaces } from "#db/space/spaces.ts";
 
 /**
- * CalDAV calendar home endpoint.
- * Lists all spaces accessible to the user as CalDAV calendars.
- * Responds to PROPFIND with Depth: 1.
+ * Advertise the methods the calendar home supports.
+ *
+ * @method OPTIONS
+ * @tag CalDAV
+ * @note The user's calendar home: lists all spaces accessible to the user as CalDAV calendars. Also answers WebDAV PROPFIND (with Depth: 1) for calendar discovery.
  */
 export const ALL: ApiRouteHandler = async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();

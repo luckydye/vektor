@@ -14,6 +14,7 @@ And it should do this without asking you to settle. Real-time, multiplayer editi
 - **Rich editor** — powered by [tiptap](https://tiptap.dev/) with full formatting, embeds, and extensibility
 - **Flexible auth** — connect any OAuth2 provider or implement a custom authentication system via [better-auth](https://www.better-auth.com/)
 - **Single binary** — ships as one self-contained executable, no runtime or database setup required
+- **Documented API** — every route the instance serves is described by an OpenAPI 3.1 schema at `/api/v1/openapi.json`
 
 ## Install
 

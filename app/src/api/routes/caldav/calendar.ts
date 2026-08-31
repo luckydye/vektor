@@ -11,9 +11,11 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { listDocuments } from "#db/space/documents.ts";
 
 /**
- * CalDAV calendar endpoint for a specific space.
- * - PROPFIND: returns calendar metadata
- * - REPORT: returns all documents as VEVENT iCal data
+ * Advertise the methods this calendar supports.
+ *
+ * @method OPTIONS
+ * @tag CalDAV
+ * @note A space's calendar. Also answers the WebDAV methods (PROPFIND, REPORT, MKCALENDAR) that OpenAPI cannot describe — PROPFIND returns calendar metadata, REPORT all documents as VEVENT iCal data.
  */
 export const ALL: ApiRouteHandler = caldavRoute(async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();

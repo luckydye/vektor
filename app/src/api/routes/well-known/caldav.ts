@@ -7,11 +7,12 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 
 /**
- * CalDAV well-known discovery endpoint.
- * Responds to PROPFIND with the current-user-principal URL.
+ * Advertise CalDAV support.
  *
- * @example
- * curl -X PROPFIND -u user@example.com:password http://localhost:4321/.well-known/caldav
+ * @method OPTIONS
+ * @tag CalDAV
+ * @public
+ * @note CalDAV service discovery. Also answers the WebDAV methods (PROPFIND) that OpenAPI cannot describe — `curl -X PROPFIND -u user@example.com:password http://localhost:4321/.well-known/caldav`.
  */
 export const ALL: ApiRouteHandler = async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();

@@ -7,8 +7,11 @@ import {
 import type { ApiRouteHandler } from "#api/server/types.ts";
 
 /**
- * CalDAV principal endpoint.
- * Returns calendar-home-set and calendar-user-address-set for a user.
+ * Advertise the methods the principal supports.
+ *
+ * @method OPTIONS
+ * @tag CalDAV
+ * @note The CalDAV principal: returns calendar-home-set and calendar-user-address-set for a user. Also answers WebDAV PROPFIND.
  */
 export const ALL: ApiRouteHandler = async (context) => {
   if (context.req.raw.method === "OPTIONS") return optionsPreflight();

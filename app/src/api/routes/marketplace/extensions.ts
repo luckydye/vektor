@@ -8,14 +8,17 @@ import {
 } from "#extensions/registry.ts";
 
 /**
+ * List the extensions in the configured store
+ *
  * GET /api/v1/marketplace/extensions
  * The extension store catalogue.
- *
  * The server fetches it rather than the browser: the registry is
  * operator-configured (it may be an internal mirror the browser cannot reach),
  * the response is cached once for the whole instance, and a store that is
  * switched off simply has no catalogue here. Being signed in is enough — this
  * is public information, and installing is gated separately.
+ *
+ * @tag Marketplace
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

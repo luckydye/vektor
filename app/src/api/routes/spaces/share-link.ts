@@ -11,6 +11,11 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { getShareLink, revokeShareLink } from "#db/space/shareLinks.ts";
 
+/**
+ * Revoke a share link
+ *
+ * @tag Sharing
+ */
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

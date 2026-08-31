@@ -12,6 +12,12 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import { listArchivedDocuments } from "#db/space/documents.ts";
 
+/**
+ * List the archived documents of a space
+ *
+ * @tag Documents
+ * @paginated
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

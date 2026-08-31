@@ -21,10 +21,15 @@ import {
 import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
 
 /**
+ * Read one workflow run
+ *
  * GET /api/v1/spaces/:spaceId/workflows/runs/:runId
  * Returns the current state of a script workflow run. The result itself is a
  * JSON artifact; a hidden child document holds only its storage key and run
  * metadata in private properties.
+ *
+ * @tag Workflows
+ * @jobToken
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -105,6 +110,19 @@ function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
   );
 }
 
+/**
+ * Act on a running workflow, e.g. answer a pending step
+ *
+ * @tag Workflows
+ * @jobToken
+ * @body
+ */
 export const POST: ApiRouteHandler = (context) => cancelWorkflowRun(context);
 
+/**
+ * Cancel or delete a workflow run
+ *
+ * @tag Workflows
+ * @jobToken
+ */
 export const DELETE: ApiRouteHandler = (context) => cancelWorkflowRun(context);

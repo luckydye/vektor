@@ -450,6 +450,12 @@ function parseInternalPath(
   }
 }
 
+/**
+ * Read link preview metadata for a URL
+ *
+ * @tag Media
+ * @query url! Absolute URL to inspect.
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {

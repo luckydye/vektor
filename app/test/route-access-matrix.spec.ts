@@ -69,6 +69,8 @@ const PUBLIC_ROUTES: Record<string, string> = {
   "/api/auth/[...all]": "better-auth: sign-in/sign-up must be reachable",
   "/api/v1/auth/cli": "CLI pairing: authenticated by the one-time code it mints",
   "/api/v1/auth/cli/token": "CLI pairing: authenticated by the one-time code",
+  "/api/v1/openapi.json":
+    "the instance's own API description: routes, never data — read before a client has credentials",
 };
 
 /**

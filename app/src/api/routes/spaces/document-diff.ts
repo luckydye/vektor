@@ -31,11 +31,16 @@ async function getRevision(rev: number, spaceId: string, id: string) {
 }
 
 /**
+ * Diff a revision against its parent
+ *
  * Returns a patch between two revisions: `rev` against `base`, defaulting to
  * the revision this one was meant to change (its parent for a suggestion, the
  * published revision otherwise). The resolved base comes back in
  * `X-Diff-Base-Rev` so a caller that took the default can name both sides of
  * the comparison — the viewer puts them in its URL.
+ *
+ * @tag Documents
+ * @query rev! Revision number to diff.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -116,11 +121,7 @@ export const GET: ApiRouteHandler = (context) =>
     return new Response(
       serialized
         ? sourcePatch
-        : createPatch(
-            id,
-            prettyPrintHtml(baseContent),
-            prettyPrintHtml(revisionContent),
-          ),
+        : createPatch(id, prettyPrintHtml(baseContent), prettyPrintHtml(revisionContent)),
       { headers: { "X-Diff-Base-Rev": String(compareBaseRev) } },
     );
   }, "Failed to compute revision diff");

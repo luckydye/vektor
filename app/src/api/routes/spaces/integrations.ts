@@ -15,6 +15,11 @@ import {
   listOAuthProviderDefinitions,
 } from "#integrations/oauthProviders.ts";
 
+/**
+ * List the integrations configured for a space
+ *
+ * @tag Integrations
+ */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

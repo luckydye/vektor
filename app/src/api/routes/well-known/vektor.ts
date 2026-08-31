@@ -14,14 +14,32 @@ function corsJson(data: unknown): Response {
   });
 }
 
+/**
+ * Instance discovery document
+ *
+ * Identifies the server as a Vektor instance and names the API version it speaks.
+ *
+ * @tag Discovery
+ * @public
+ * @response #/components/schemas/InstanceInfo
+ */
 export const GET: ApiRouteHandler = () =>
   corsJson({
     service: "vektor",
     version: 1,
     apiVersion: "v1",
     documentEndpoint: "/api/v1/spaces/{spaceId}/documents/{documentId}",
+    // Where the rest of the API describes itself, so a client discovers the
+    // whole surface from this one unauthenticated document.
+    openapiEndpoint: "/api/v1/openapi.json",
   });
 
+/**
+ * CORS preflight for the discovery document
+ *
+ * @tag Discovery
+ * @public
+ */
 export const OPTIONS: ApiRouteHandler = () =>
   new Response(null, {
     status: 204,

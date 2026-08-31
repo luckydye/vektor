@@ -9,9 +9,18 @@ import { appLogger } from "#observability/logger.ts";
 import { searchOtherSpaces } from "#search/crossSpace.ts";
 
 /**
+ * Search across the other spaces the caller can read
+ *
+ * Requires a session: a space-scoped token has no other spaces to widen to, and answers with an empty result.
+ *
  * Search beyond one space: the strongest matches in the other spaces the caller
  * can read. `excludeSpaceId` is the space they are searching in, whose own
  * results come from `/spaces/[spaceId]/search` — paged, and ranked as usual.
+ *
+ * @tag Search
+ * @query q Search query.
+ * @query excludeSpaceId The space the caller is searching in, whose own results come from the space search route.
+ * @query filters JSON-encoded `[{ key, value }]` document property filters.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(

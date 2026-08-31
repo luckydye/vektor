@@ -17,10 +17,16 @@ import { documentIsReadonly } from "#documents/types.ts";
 import { transformDocumentContent } from "#realtime/yjsRooms.ts";
 
 /**
+ * Apply an edit to the document's draft
+ *
  * Applies partial edit operations to a document through the collaboration
  * channel. When the document is open in an editor, the edit is applied to the
  * live Yjs doc and broadcast to connected clients, so it merges with
  * concurrent changes instead of overwriting them.
+ *
+ * @tag Documents
+ * @jobToken
+ * @body
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
