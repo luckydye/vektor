@@ -615,7 +615,7 @@ export function WorkflowView(props: Props) {
               ref={workflowTabsEl as never}
               on:tab-selected={handleWorkflowTabSelected}
             >
-              <TabsList class="border-neutral-100 border-b">
+              <TabsList>
                 <Tab>Results</Tab>
                 <Tab>Run Details</Tab>
                 <Tab class="@4xl/workflow:hidden">History</Tab>
