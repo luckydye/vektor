@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import init, { type Model } from "@ironcalc/wasm";
 import { beforeAll, describe, expect, it } from "vitest";
-import { getDocumentTypeForContentType, prepareDocumentContent } from "#documents/content.ts";
 import { createModel, toTableHtml } from "@vektorapp/spreadsheet/model";
 import {
   cellsToHtmlTable,
@@ -155,26 +154,6 @@ describe("spreadsheetModel", () => {
   it("handles empty table markup", () => {
     const model = createModel("", "Test");
     expect(toTableHtml(model)).toBe("<table><tbody></tbody></table>");
-  });
-});
-
-describe("CSV import", () => {
-  const csv = "a,b\n1,2\n";
-  const table = rowsToHtmlTable([
-    ["a", "b"],
-    ["1", "2"],
-  ]);
-
-  it("converts a csv upload", () => {
-    expect(prepareDocumentContent(csv, "text/csv")).toBe(table);
-  });
-
-  it("imports csv uploads as normal documents", () => {
-    expect(getDocumentTypeForContentType("text/csv; charset=utf-8")).toBe("document");
-  });
-
-  it("still converts markdown for a plain document", () => {
-    expect(prepareDocumentContent("# Title", "text/markdown")).toContain("<h1>");
   });
 });
 
