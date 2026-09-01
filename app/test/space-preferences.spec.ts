@@ -33,14 +33,12 @@ describe("validateSpacePreferences", () => {
         brandColor: "#1e293b",
         description: "A space",
         logoSvg: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
-        pinnedDocumentId: "document_abc123",
         workflowCreationEnabled: "false",
         repositoryCreationEnabled: "false",
       }),
     ).toMatchObject({
       brandColor: "#1e293b",
       description: "A space",
-      pinnedDocumentId: "document_abc123",
       workflowCreationEnabled: "false",
       repositoryCreationEnabled: "false",
     });
@@ -150,8 +148,8 @@ describe("validateSpacePreferences", () => {
   });
 
   it("accepts an empty value, which is how a preference is cleared", () => {
-    expect(validated({ pinnedDocumentId: "", brandColor: "" })).toEqual({
-      pinnedDocumentId: "",
+    expect(validated({ logoSvg: "", brandColor: "" })).toEqual({
+      logoSvg: "",
       brandColor: "",
     });
   });

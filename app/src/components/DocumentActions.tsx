@@ -304,45 +304,6 @@ export function DocumentActions(props: Props) {
   });
 
   createEffect(() => {
-    const space = currentSpace();
-    const docId = documentId();
-    if (!userCanManageDocument() || !space || !docId) return;
-
-    const isPinned = space.preferences?.pinnedDocumentId === docId;
-
-    if (isPinned) {
-      registerScopedAction("document:unpin", {
-        title: t("Unpin from Home"),
-        icon: () => "pin-to-home",
-        description: t("Remove this document from the space home page"),
-        group: "document:space",
-        order: 20,
-        run: async () => {
-          await api.space.patch(space.id, { preferences: { pinnedDocumentId: "" } });
-        },
-      });
-      return;
-    }
-
-    registerScopedAction("document:pin", {
-      title: t("Pin to Home"),
-      icon: () => "pin-to-home",
-      description: t("Showcase this document on the space home page"),
-      group: "document:space",
-      order: 20,
-      run: async () => {
-        await api.space.patch(space.id, { preferences: { pinnedDocumentId: docId } });
-        toast.show(t("Pinned to Home"), "success", 8000, {
-          action: {
-            label: t("View activity"),
-            run: () => navigate("/"),
-          },
-        });
-      },
-    });
-  });
-
-  createEffect(() => {
     const spaceId = currentSpaceId();
     const currentDocumentId = documentId();
     if (!userCanManageDocument() || !spaceId || !currentDocumentId) return;

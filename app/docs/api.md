@@ -615,7 +615,7 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE"
 - **Body**: at least one of `name` (non-empty string), `slug` (non-empty string),
   `preferences` (object, ≤512KB serialized). A preference key is either a bare name or
   `namespace:name`; values are opaque text except for the keys the app renders as
-  markup, CSS or a URL (`brandColor`, `description`, `logoSvg`, `pinnedDocumentId`,
+  markup, CSS or a URL (`brandColor`, `description`, `logoSvg`,
   `workflowCreationEnabled`, `repositoryCreationEnabled`), which are validated and may
   be stored sanitized. An empty string clears a preference.
 - **Behavior**: `user:`-namespaced preferences are stored against the caller rather than

@@ -1,7 +1,6 @@
 import { createMemo, Show } from "solid-js";
 import { canEdit } from "#acl/permissions.ts";
 import { FileDropOverlay } from "#components/FileDropOverlay.tsx";
-import { PinnedDocument } from "#components/PinnedDocument.tsx";
 import { RecentDocuments } from "#components/RecentDocuments.tsx";
 import { SpaceActivityFeed } from "#components/SpaceActivityFeed.tsx";
 import { SpaceHomeHeadline } from "#components/SpaceHomeHeadline.tsx";
@@ -75,12 +74,6 @@ export function SpaceHomeView() {
                 space().name,
               )}
             />
-
-            <Show when={space().preferences.pinnedDocumentId}>
-              {(pinnedId) => (
-                <PinnedDocument spaceId={space().id} pinnedDocumentId={pinnedId()} />
-              )}
-            </Show>
 
             <div>
               <RecentDocuments limit={10} />
