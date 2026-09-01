@@ -27,6 +27,7 @@ import * as spaceComments from "./routes/spaces/comments.ts";
 import * as document from "./routes/spaces/document.ts";
 import * as documentAccess from "./routes/spaces/document-access.ts";
 import * as documentBreadcrumbs from "./routes/spaces/document-breadcrumbs.ts";
+import * as documentChanges from "./routes/spaces/document-changes.ts";
 import * as documentContributors from "./routes/spaces/document-contributors.ts";
 import * as documentDiff from "./routes/spaces/document-diff.ts";
 import * as documentEdit from "./routes/spaces/document-edit.ts";
@@ -136,9 +137,11 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/comments", module: spaceComments },
 
   { pattern: "/api/v1/spaces/[spaceId]/documents", module: documents },
+  // `sortRoutes` puts these ahead of `documents/[documentId]`: same depth, but a
+  // literal segment outranks a parameter one. The cost is that `changes` and
+  // `by-external` stop being usable as document slugs.
+  { pattern: "/api/v1/spaces/[spaceId]/documents/changes", module: documentChanges },
   {
-    // `sortRoutes` puts this ahead of `documents/[documentId]/...`: same depth,
-    // but a literal segment outranks a parameter one.
     pattern: "/api/v1/spaces/[spaceId]/documents/by-external/[source]/[externalId]",
     module: documentExternal,
   },

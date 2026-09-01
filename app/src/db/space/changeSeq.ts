@@ -14,7 +14,7 @@
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
-import { document, spaceMetadata } from "#db/schema/space.ts";
+import { document, documentTombstone, spaceMetadata } from "#db/schema/space.ts";
 
 /**
  * The outcome of a write that carried a condition.
@@ -108,24 +108,36 @@ export async function touchDocument(
 }
 
 /**
- * Delete a document, optionally only while it still sits at one of `expected`.
+ * Delete a document, optionally only while it still sits at one of `expected`,
+ * leaving a tombstone at the sequence the deletion happened at.
  *
- * No sequence is allocated: the row is going, so there is nothing left to carry
- * one. What a consumer needs in order to notice the deletion is a tombstone,
- * which is a separate concern from the counter.
+ * The sequence outlives the row on purpose. A consumer walking the counter sees
+ * only what still exists, so a document that is simply gone is indistinguishable
+ * from one that never changed; the tombstone is the only thing that can tell it
+ * apart. Writing it here rather than at the call site makes "a delete always
+ * leaves one" structural, the same way this module makes "a write always moves
+ * the sequence" structural.
  */
 export async function deleteDocumentRow(
   s: SpaceStore,
   id: string,
   expected?: number[],
 ): Promise<boolean> {
-  const rows = await many(
-    s.db
-      .delete(document)
-      .where(documentCondition(id, expected, undefined))
-      .returning({ id: document.id }),
-  );
-  return rows.length > 0;
+  return s.tx(async (tx) => {
+    const changeSeq = await nextChangeSeq(tx);
+    const rows = await many(
+      tx.db
+        .delete(document)
+        .where(documentCondition(id, expected, undefined))
+        .returning({ id: document.id }),
+    );
+    if (rows.length === 0) return false;
+
+    await tx.db
+      .insert(documentTombstone)
+      .values({ documentId: id, changeSeq, deletedAt: new Date() });
+    return true;
+  });
 }
 
 /**

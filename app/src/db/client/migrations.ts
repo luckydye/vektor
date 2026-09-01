@@ -161,11 +161,12 @@ async function baseline(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.document.changeSeq);
   await backfillDocumentChangeSeq(db);
 
-  await createTables(db, [spaceSchema.externalLink]);
+  await createTables(db, [spaceSchema.externalLink, spaceSchema.documentTombstone]);
   await run(db, [
     "CREATE INDEX IF NOT EXISTS document_change_seq_idx ON document (change_seq)",
     "CREATE UNIQUE INDEX IF NOT EXISTS external_link_identity_unique ON external_link (source, external_id, instance_id)",
     "CREATE INDEX IF NOT EXISTS external_link_document_idx ON external_link (document_id)",
+    "CREATE INDEX IF NOT EXISTS document_tombstone_change_seq_idx ON document_tombstone (change_seq)",
   ]);
 }
 

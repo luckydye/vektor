@@ -126,6 +126,30 @@ export const revision = sqliteTable(
 );
 
 /**
+ * That a document was deleted, and where in the write order that happened.
+ *
+ * A deleted row cannot announce itself: a consumer walking `change_seq` sees
+ * only what still exists, so without this a document it holds simply stops
+ * appearing and it can never tell that from "unchanged". Archiving needs no
+ * tombstone — an archived document is a live row and travels the feed as an
+ * ordinary change.
+ *
+ * Rows are kept indefinitely. They are three columns wide, and keeping them is
+ * what lets a consumer that has been away for months resume from its own
+ * position instead of being told to start over.
+ */
+export const documentTombstone = sqliteTable(
+  "document_tombstone",
+  {
+    /** Not a foreign key: the row it would reference is the one that just went. */
+    documentId: text("document_id").primaryKey(),
+    changeSeq: integer("change_seq").notNull(),
+    deletedAt: integer("deleted_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [index("document_tombstone_change_seq_idx").on(t.changeSeq)],
+);
+
+/**
  * What a document is called in the system it syncs with.
  *
  * A syncing peer names things by its own identifier — a calendar event's `UID`,
