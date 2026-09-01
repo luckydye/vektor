@@ -735,7 +735,7 @@ describe("API Tests - Documents", () => {
 
     // Document should be in archived list
     const archivedResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/archived`,
+      `/api/v1/spaces/${testSpaceId}/documents?archived=true`,
     );
     expect(archivedResponse.status).toBe(200);
     const archivedData = await archivedResponse.json();
@@ -793,7 +793,7 @@ describe("API Tests - Documents", () => {
 
     // Verify it's no longer in archived list
     const archivedListResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/archived`,
+      `/api/v1/spaces/${testSpaceId}/documents?archived=true`,
     );
     expect(archivedListResponse.status).toBe(200);
     const archivedListData = await archivedListResponse.json();
@@ -856,7 +856,7 @@ describe("API Tests - Documents", () => {
 
     // Document should not be in archived list after permanent deletion
     const archivedResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/archived`,
+      `/api/v1/spaces/${testSpaceId}/documents?archived=true`,
     );
     expect(archivedResponse.status).toBe(200);
     const archivedData = await archivedResponse.json();

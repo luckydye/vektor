@@ -21,6 +21,7 @@ import {
   getDocumentChildren,
   InvalidDocumentParentError,
   listAllDocumentsByCategories,
+  listArchivedDocuments,
   listDocuments,
   type PropertyInit,
 } from "#db/space/documents.ts";
@@ -80,21 +81,25 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
  * @query grouped:boolean With `categorySlugs`, group the result by category.
  * @query parentId List the children of this document instead of the space.
  * @query includeFiles:boolean Append the space's uploaded files as `file` entries.
+ * @query archived:boolean List the archived (soft-deleted) documents instead. Takes `editor`.
  * @response #/components/schemas/DocumentPage
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
+    const archived = new URL(context.req.url).searchParams.get("archived") === "true";
 
     // Resource-scoped grantees browse here too: a user shared into a single
     // category or document tree has no space-wide role, and the sidebar reads
     // its documents from this endpoint. `viewer` confines them to their grants.
+    // The archive is the exception: reading an archived document takes
+    // `editor`, so listing them does too, and a resource grant is not enough.
     const access = await authenticateSpaceAccess(
       context.var.credentials,
       spaceId,
-      Permission.VIEWER,
+      archived ? Permission.EDITOR : Permission.VIEWER,
       {
-        allowResourceGrants: true,
+        allowResourceGrants: !archived,
       },
     );
     const viewer = spaceAccessToViewer(access);
@@ -121,6 +126,14 @@ export const GET: ApiRouteHandler = (context) =>
       : [];
 
     const store = await openSpaceStore(spaceId);
+    if (archived) {
+      const { documents, nextCursor } = await listArchivedDocuments(store, viewer, {
+        limit,
+        cursor,
+      });
+      return jsonResponse({ documents, limit, nextCursor });
+    }
+
     if (categorySlugs.length > 0) {
       const userEmail = access.user?.email;
       const documentsByCategory = await listAllDocumentsByCategories(

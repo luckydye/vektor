@@ -79,7 +79,6 @@
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | PATCH | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/documents/[documentId]/revisions` | POST | 401 | 403 | 403 | 400 | 400 |  |
-| `/api/v1/spaces/[spaceId]/documents/archived` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/extensions` | GET | 401 | 403 | 403 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/extensions` | POST | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/extensions/[extensionId]` | DELETE | 401 | 403 | 403 | 403 | 404 |  |

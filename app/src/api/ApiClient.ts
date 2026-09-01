@@ -1334,12 +1334,20 @@ export class ApiClient {
       return this.replica.subscribeDocuments(spaceId, callback);
     },
 
+    /**
+     * The space's archived documents. Kept off the replica cache on purpose:
+     * the cached listing is what the sidebar reads, and the archive is exactly
+     * what it must not show.
+     */
     archived: async (spaceId: string, query?: { limit?: number; cursor?: string }) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
         limit: number;
         nextCursor: string | null;
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/archived`, query);
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, {
+        ...query,
+        archived: true,
+      });
       return response;
     },
 
