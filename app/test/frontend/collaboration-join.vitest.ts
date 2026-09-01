@@ -12,6 +12,7 @@ import {
   wsDecode,
   wsDecodeJson,
   wsEncode,
+  wsEncodeYjsSyncRequest,
   wsEncodeYjsUpdate,
 } from "#realtime/protocol.ts";
 
@@ -41,6 +42,11 @@ class TestWebSocket extends EventTarget {
 
   close(): void {
     this.readyState = TestWebSocket.CLOSED;
+  }
+
+  disconnect(): void {
+    this.readyState = TestWebSocket.CLOSED;
+    this.dispatchEvent(new CloseEvent("close", { code: 1006 }));
   }
 
   receive(frame: Uint8Array): void {
@@ -225,10 +231,54 @@ describe("collaboration session joins", () => {
     const { collaboration, dispose } = session("doc-1");
     try {
       const joined = collaboration.joinUntilReady();
+      TestWebSocket.instances.at(-1)?.receiveJson(WsMsgType.YjsJoined, {
+        documentId: "doc-1",
+        generation: "room-generation-1",
+      });
       TestWebSocket.instances
         .at(-1)
         ?.receive(wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(new Y.Doc())));
       await expect(joined).resolves.toBeUndefined();
+    } finally {
+      dispose();
+    }
+  });
+
+  it("replaces and rejoins a stale document after an established session resets", async () => {
+    const { collaboration, dispose } = session("doc-1");
+    try {
+      const firstDocument = collaboration.ydoc();
+      const joined = collaboration.joinUntilReady();
+      const socket = TestWebSocket.instances.at(-1);
+      socket?.receiveJson(WsMsgType.YjsJoined, {
+        documentId: "doc-1",
+        generation: "room-generation-1",
+      });
+      socket?.receive(
+        wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(new Y.Doc())),
+      );
+      await joined;
+
+      const joinsBeforeReset = TestWebSocket.sentFrames(WsMsgType.YjsJoin).length;
+      socket?.receiveJson(WsMsgType.YjsReset, {
+        documentId: "doc-1",
+        generation: "room-generation-2",
+      });
+
+      await vi.waitFor(() => {
+        expect(collaboration.ydoc()).not.toBe(firstDocument);
+        expect(TestWebSocket.sentFrames(WsMsgType.YjsJoin).length).toBe(
+          joinsBeforeReset + 1,
+        );
+      });
+
+      socket?.receiveJson(WsMsgType.YjsJoined, {
+        documentId: "doc-1",
+        generation: "room-generation-2",
+      });
+      socket?.receive(
+        wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(new Y.Doc())),
+      );
     } finally {
       dispose();
     }
@@ -259,6 +309,8 @@ describe("reporting a join nobody is waiting on", () => {
 });
 
 describe("rejoining a room the server rebuilt from storage", () => {
+  const generation = "room-generation-1";
+
   function docWithText(text: string): Y.Doc {
     const doc = new Y.Doc();
     const paragraph = new Y.XmlElement("paragraph");
@@ -267,7 +319,7 @@ describe("rejoining a room the server rebuilt from storage", () => {
     return doc;
   }
 
-  it("asks for a reset when the server's state shares no history with the local doc", () => {
+  it("asks for a reset when the server reports a different room generation", () => {
     const client = new ApiClient({ socketHost: "localhost" });
     const local = docWithText("typed before the drop");
     let reset = false;
@@ -285,10 +337,10 @@ describe("rejoining a room the server rebuilt from storage", () => {
       },
     );
 
-    const rebuilt = docWithText("typed before the drop");
-    TestWebSocket.instances[0]?.receive(
-      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(rebuilt)),
-    );
+    TestWebSocket.instances[0]?.receiveJson(WsMsgType.YjsReset, {
+      documentId: "doc-1",
+      generation: "rebuilt-room-generation",
+    });
 
     expect(reset).toBe(true);
     expect(synced).toBe(false);
@@ -322,6 +374,11 @@ describe("rejoining a room the server rebuilt from storage", () => {
       },
     );
 
+    TestWebSocket.instances[0]?.receiveJson(WsMsgType.YjsJoined, {
+      documentId: "doc-1",
+      generation,
+    });
+
     const paragraph = new Y.XmlElement("paragraph");
     paragraph.insert(0, [new Y.XmlText("added by a peer")]);
     live.getXmlFragment("default").push([paragraph]);
@@ -352,6 +409,11 @@ describe("rejoining a room the server rebuilt from storage", () => {
       },
     );
 
+    TestWebSocket.instances[0]?.receiveJson(WsMsgType.YjsJoined, {
+      documentId: "doc-1",
+      generation,
+    });
+
     TestWebSocket.instances[0]?.receive(
       wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(docWithText("server content"))),
     );
@@ -359,5 +421,79 @@ describe("rejoining a room the server rebuilt from storage", () => {
     expect(reset).toBe(false);
     expect(synced).toBe(true);
     expect(local.getXmlFragment("default").toString()).toContain("server content");
+  });
+
+  it("buffers local updates until the generation and initial state are acknowledged", () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    const local = new Y.Doc();
+    client.joinYjsRoom("space-1", "doc-1", local);
+
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText("typed while reconnecting")]);
+    local.getXmlFragment("default").push([paragraph]);
+    expect(TestWebSocket.sentFrames(WsMsgType.YjsUpdate)).toHaveLength(0);
+
+    TestWebSocket.instances[0]?.receiveJson(WsMsgType.YjsJoined, {
+      documentId: "doc-1",
+      generation,
+    });
+    expect(TestWebSocket.sentFrames(WsMsgType.YjsUpdate)).toHaveLength(0);
+
+    TestWebSocket.instances[0]?.receive(
+      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(new Y.Doc())),
+    );
+    expect(TestWebSocket.sentFrames(WsMsgType.YjsUpdate)).toHaveLength(1);
+  });
+
+  it("replays the generation and flushes offline edits through the sync request", async () => {
+    const client = new ApiClient({ socketHost: "localhost" });
+    const local = new Y.Doc();
+    const live = docWithText("shared base");
+    client.joinYjsRoom("space-1", "doc-1", local);
+
+    const firstSocket = TestWebSocket.instances[0];
+    firstSocket?.receiveJson(WsMsgType.YjsJoined, {
+      documentId: "doc-1",
+      generation,
+    });
+    firstSocket?.receive(
+      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(live)),
+    );
+
+    firstSocket?.disconnect();
+    const offlineParagraph = new Y.XmlElement("paragraph");
+    offlineParagraph.insert(0, [new Y.XmlText("offline edit")]);
+    local.getXmlFragment("default").push([offlineParagraph]);
+    expect(TestWebSocket.sentFrames(WsMsgType.YjsUpdate)).toHaveLength(0);
+
+    (
+      client as unknown as {
+        reconnectRealtimeNow(): void;
+      }
+    ).reconnectRealtimeNow();
+    await vi.waitFor(() => expect(TestWebSocket.instances).toHaveLength(2));
+    await Promise.resolve();
+
+    const reconnectJoin = wsDecodeJson<{
+      generation?: string;
+      stateVector?: string;
+    }>(TestWebSocket.sentFrames(WsMsgType.YjsJoin).at(-1) as Uint8Array);
+    expect(reconnectJoin.generation).toBe(generation);
+    expect(reconnectJoin.stateVector).toBeTypeOf("string");
+
+    const secondSocket = TestWebSocket.instances[1];
+    secondSocket?.receiveJson(WsMsgType.YjsJoined, {
+      documentId: "doc-1",
+      generation,
+    });
+    secondSocket?.receive(
+      wsEncodeYjsUpdate("doc-1", Y.encodeStateAsUpdate(live, Y.encodeStateVector(local))),
+    );
+    expect(TestWebSocket.sentFrames(WsMsgType.YjsUpdate)).toHaveLength(0);
+
+    secondSocket?.receive(
+      wsEncodeYjsSyncRequest("doc-1", Y.encodeStateVector(live)),
+    );
+    expect(TestWebSocket.sentFrames(WsMsgType.YjsUpdate)).toHaveLength(1);
   });
 });

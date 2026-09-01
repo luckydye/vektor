@@ -1,11 +1,4 @@
-import {
-  applyUpdate,
-  decodeStateVector,
-  encodeStateAsUpdate,
-  encodeStateVector,
-  encodeStateVectorFromUpdate,
-  Doc as YDoc,
-} from "yjs";
+import { applyUpdate, encodeStateAsUpdate, encodeStateVector, Doc as YDoc } from "yjs";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
 import {
@@ -29,6 +22,8 @@ import {
   wsDecodeYjsUpdate,
   wsEncode,
   wsEncodeYjsUpdate,
+  type YjsJoinPayload,
+  type YjsRoomGenerationPayload,
 } from "#realtime/protocol.ts";
 import { ReplicaCache } from "./ReplicaCache.ts";
 import type { ReplicaOperation } from "./ReplicaDb.ts";
@@ -718,24 +713,15 @@ interface RealtimeSubscription {
   callback: (event: RealtimeEventMessage) => void;
 }
 
-function sharesNoHistory(ydoc: YDoc, update: Uint8Array): boolean {
-  let local: Map<number, number>;
-  let incoming: Map<number, number>;
-  try {
-    local = decodeStateVector(encodeStateVector(ydoc));
-    incoming = decodeStateVector(encodeStateVectorFromUpdate(update));
-  } catch {
-    return false;
-  }
-  if (local.size === 0 || incoming.size === 0) return false;
-  for (const client of incoming.keys()) {
-    if (local.has(client)) return false;
-  }
-  return true;
-}
-
 interface YjsRoomEntry {
   ydoc: YDoc;
+  /** The transient server room this Y.Doc was last synchronized with. */
+  generation?: string;
+  /** Updates made while disconnected wait behind the next join state frame. */
+  pendingUpdates: Uint8Array[];
+  /** A retained state vector makes the server request the client's missing side. */
+  awaitingSyncRequest: boolean;
+  joinedSocket: WebSocket | null;
   onReset?: () => void;
   onSynced?: () => void;
   /** Both are cleared on the first of the two, so a join settles exactly once. */
@@ -2827,20 +2813,43 @@ export class ApiClient {
       return;
     }
 
+    if (type === WsMsgType.YjsJoined) {
+      const joined = wsDecodeJson<YjsRoomGenerationPayload>(payload);
+      for (const entry of connection.yjsRooms.get(joined.documentId) ?? []) {
+        entry.generation = joined.generation;
+      }
+      return;
+    }
+
+    if (type === WsMsgType.YjsReset) {
+      const reset = wsDecodeJson<YjsRoomGenerationPayload>(payload);
+      for (const entry of connection.yjsRooms.get(reset.documentId) ?? []) {
+        entry.pendingUpdates = [];
+        entry.awaitingSyncRequest = false;
+        entry.joinedSocket = null;
+        const onReset = entry.onReset;
+        entry.onSynced = undefined;
+        entry.onError = undefined;
+        entry.onReset = undefined;
+        onReset?.();
+      }
+      return;
+    }
+
     if (type === WsMsgType.YjsUpdate) {
       const { documentId, update } = wsDecodeYjsUpdate(payload);
       const ydocs = connection.yjsRooms.get(documentId);
       if (ydocs) {
         for (const entry of ydocs) {
-          if (entry.onSynced && entry.onReset && sharesNoHistory(entry.ydoc, update)) {
-            const onReset = entry.onReset;
-            entry.onSynced = undefined;
-            entry.onError = undefined;
-            entry.onReset = undefined;
-            onReset();
-            continue;
-          }
           applyUpdate(entry.ydoc, update, "remote");
+          entry.joinedSocket = connection.socket;
+          if (!entry.awaitingSyncRequest && entry.generation) {
+            const pending = entry.pendingUpdates;
+            entry.pendingUpdates = [];
+            for (const localUpdate of pending) {
+              connection.socket.send(wsEncodeYjsUpdate(documentId, localUpdate));
+            }
+          }
           const onSynced = entry.onSynced;
           entry.onSynced = undefined;
           entry.onError = undefined;
@@ -2858,6 +2867,8 @@ export class ApiClient {
         if (missing.length > 2) {
           this.sendRealtimeEphemeral(connection, wsEncodeYjsUpdate(documentId, missing));
         }
+        entry.pendingUpdates = [];
+        entry.awaitingSyncRequest = false;
       }
       return;
     }
@@ -3026,7 +3037,12 @@ export class ApiClient {
     }
 
     for (const [documentId, entries] of connection.yjsRooms) {
-      socket.send(wsEncode(WsMsgType.YjsJoin, this.yjsJoinPayload(documentId, entries)));
+      const payload = this.yjsJoinPayload(documentId, entries);
+      for (const entry of entries) {
+        entry.joinedSocket = null;
+        entry.awaitingSyncRequest = payload.stateVector !== undefined;
+      }
+      socket.send(wsEncode(WsMsgType.YjsJoin, payload));
     }
 
     for (const payload of connection.presenceJoinPayloads.values()) {
@@ -3205,14 +3221,21 @@ export class ApiClient {
   private yjsJoinPayload(
     documentId: string,
     entries: Iterable<YjsRoomEntry>,
-  ): { documentId: string; stateVector?: string } {
+  ): YjsJoinPayload {
     const first = entries[Symbol.iterator]().next();
     if (first.done) return { documentId };
     const vector = encodeStateVector(first.value.ydoc);
-    if (vector.length <= 1) return { documentId };
+    const generation = first.value.generation;
+    if (vector.length <= 1) {
+      return { documentId, ...(generation ? { generation } : {}) };
+    }
     let binary = "";
     for (const byte of vector) binary += String.fromCharCode(byte);
-    return { documentId, stateVector: btoa(binary) };
+    return {
+      documentId,
+      ...(generation ? { generation } : {}),
+      stateVector: btoa(binary),
+    };
   }
 
   /**
@@ -3296,20 +3319,30 @@ export class ApiClient {
     const connection = this.getRealtimeConnection(spaceId);
 
     let ydocs = connection.yjsRooms.get(documentId);
-    const entry: YjsRoomEntry = { ydoc, onSynced, onError, onReset };
+    const entry: YjsRoomEntry = {
+      ydoc,
+      pendingUpdates: [],
+      awaitingSyncRequest: false,
+      joinedSocket: null,
+      onSynced,
+      onError,
+      onReset,
+    };
     if (!ydocs) {
       ydocs = new Set();
       connection.yjsRooms.set(documentId, ydocs);
       ydocs.add(entry);
       // First doc for this room — announce the join (replayed on reconnect).
-      this.sendRealtimeState(
-        connection,
-        wsEncode(WsMsgType.YjsJoin, this.yjsJoinPayload(documentId, ydocs)),
-      );
+      const payload = this.yjsJoinPayload(documentId, ydocs);
+      entry.awaitingSyncRequest = payload.stateVector !== undefined;
+      this.sendRealtimeState(connection, wsEncode(WsMsgType.YjsJoin, payload));
     } else {
       const source = ydocs.values().next().value;
       if (source) {
         applyUpdate(ydoc, encodeStateAsUpdate(source.ydoc), "remote");
+        entry.generation = source.generation;
+        entry.joinedSocket = source.joinedSocket;
+        entry.awaitingSyncRequest = source.awaitingSyncRequest;
         queueMicrotask(() => {
           entry.onSynced = undefined;
           entry.onError = undefined;
@@ -3330,7 +3363,15 @@ export class ApiClient {
           }
         }
       }
-      this.sendRealtimeEphemeral(connection, wsEncodeYjsUpdate(documentId, update));
+      if (
+        entry.generation &&
+        entry.joinedSocket === connection.socket &&
+        connection.socket.readyState === WebSocket.OPEN
+      ) {
+        connection.socket.send(wsEncodeYjsUpdate(documentId, update));
+      } else {
+        entry.pendingUpdates.push(update);
+      }
     };
 
     ydoc.on("update", handleUpdate);

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -33,6 +34,8 @@ import {
 } from "./protocol.ts";
 
 export interface YRoom {
+  /** Changes whenever persisted content is rebuilt into a new transient Y.Doc. */
+  generation: string;
   doc?: Y.Doc;
   /** In-flight `loadYDoc` for a room that has no doc yet; see `ensureRoomDoc`. */
   loading?: Promise<Y.Doc>;
@@ -113,6 +116,7 @@ export function getRoom(spaceId: string, documentId: string): YRoom {
   let room = yRooms.get(key);
   if (!room) {
     room = {
+      generation: randomUUID(),
       clients: new Set(),
       presences: new Map(),
     };
@@ -385,9 +389,17 @@ function settledPersist(key: string): Promise<void> {
   });
 }
 
-const ROOM_GRACE_MS = 10 * 60 * 1000;
+function positiveDurationFromEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const ROOM_GRACE_MS = positiveDurationFromEnv("VEKTOR_YJS_ROOM_GRACE_MS", 10 * 60 * 1000);
 const MAX_IDLE_ROOMS = 200;
-const ROOM_SWEEP_INTERVAL_MS = 60 * 1000;
+const ROOM_SWEEP_INTERVAL_MS = positiveDurationFromEnv(
+  "VEKTOR_YJS_ROOM_SWEEP_INTERVAL_MS",
+  60 * 1000,
+);
 
 function roomIsIdle(room: YRoom): boolean {
   return room.clients.size === 0 && room.presences.size === 0 && !room.loading;
@@ -874,8 +886,7 @@ export async function transformDocumentContent(
   // no DOM behind it, which is what made the off-thread hop worth its cost.
   const currentBlocks = fragmentToNodes(doc.getXmlFragment("default")).map(nodeToHtml);
   const transformed = transform(currentBlocks.join("\n"));
-  const nextHtml =
-    format === "html" ? sanitizeDocumentHtml(transformed) : transformed;
+  const nextHtml = format === "html" ? sanitizeDocumentHtml(transformed) : transformed;
   const { from, remove, blocks } = changedBlockRange(
     currentBlocks,
     htmlToDoc(nextHtml).content ?? [],

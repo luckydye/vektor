@@ -173,7 +173,7 @@ export function toRealtimeTopicEvent(input: RealtimeEventInput): RealtimeTopicEv
 
 // Binary WebSocket protocol
 // All frames: [1 byte: WsMsgType][payload bytes]
-// Payload for types 0-4: UTF-8 JSON (omitting the redundant `type` field)
+// JSON payloads omit the redundant `type` field.
 // Payload for YjsUpdate (5): [4B: docId length BE][docId UTF-8][Y.js update bytes]
 
 export const WsMsgType = {
@@ -196,9 +196,25 @@ export const WsMsgType = {
   Pong: 11,
   AccessChanged: 12,
   YjsSyncRequest: 13,
+  /** Confirms that a client joined the current transient room generation. */
+  YjsJoined: 14,
+  /** Rejects a stale Y.Doc whose transient room generation no longer exists. */
+  YjsReset: 15,
 } as const;
 
 export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];
+
+export interface YjsJoinPayload {
+  documentId: string;
+  /** The in-memory room generation the retained client Y.Doc belongs to. */
+  generation?: string;
+  stateVector?: string;
+}
+
+export interface YjsRoomGenerationPayload {
+  documentId: string;
+  generation: string;
+}
 
 /**
  * Payload of an `Error` frame. `documentId` is what makes one actionable: it

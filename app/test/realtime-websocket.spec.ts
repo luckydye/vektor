@@ -216,13 +216,19 @@ async function subscribe(
   await connection.waitForFrame(WsMsgType.Event, timeoutMs);
 }
 
+const joinedGenerations = new WeakMap<Y.Doc, string>();
+
 async function joinRoom(connection: SocketFrames, documentId: string): Promise<Y.Doc> {
   connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+  const joined = wsDecodeJson<{ generation: string }>(
+    await connection.waitForFrame(WsMsgType.YjsJoined, FRAME_TIMEOUT_MS),
+  );
   const state = wsDecodeYjsUpdate(
     await connection.waitForFrame(WsMsgType.YjsUpdate, FRAME_TIMEOUT_MS),
   );
   const clientDoc = new Y.Doc();
   Y.applyUpdate(clientDoc, state.update, "remote");
+  joinedGenerations.set(clientDoc, joined.generation);
   return clientDoc;
 }
 
@@ -429,7 +435,7 @@ describe("Realtime WebSocket", () => {
     }
   });
 
-  it("does not duplicate content when reconnecting to a recreated Yjs room", async () => {
+  it("does not duplicate content when reconnecting to a retained Yjs room", async () => {
     const initialConnection = await connectWebSocket(BASE_URL, testSpaceId);
     const clientDoc = new Y.Doc();
 
@@ -444,9 +450,8 @@ describe("Realtime WebSocket", () => {
     const expectedContent = clientDoc.getXmlFragment("default").toString();
     expect(expectedContent).not.toBe("");
 
-    // This socket is the room's only member and has no presence registration,
-    // so closing it evicts the in-memory Y.Doc. The next join recreates the room
-    // from persisted HTML while the client retains its original Y.Doc.
+    // The idle grace period retains the in-memory Y.Doc, so an immediate raw
+    // reconnect receives the same structures the client already holds.
     initialConnection.socket.close();
     await waitForClose(initialConnection.socket);
 
@@ -1586,6 +1591,7 @@ describe("Realtime WebSocket writes against an open room", () => {
         second.socket.send(
           wsEncode(WsMsgType.YjsJoin, {
             documentId,
+            generation: joinedGenerations.get(clientDoc),
             stateVector: Buffer.from(Y.encodeStateVector(clientDoc)).toString("base64"),
           }),
         );
@@ -1662,7 +1668,12 @@ describe("idle Yjs rooms", () => {
   const GRACE_MS = 10 * 60 * 1000;
 
   function addIdleRoom(key: string): void {
-    yRooms.set(key, { clients: new Set(), presences: new Map(), doc: new Y.Doc() });
+    yRooms.set(key, {
+      generation: `generation-${key}`,
+      clients: new Set(),
+      presences: new Map(),
+      doc: new Y.Doc(),
+    });
   }
 
   afterEach(() => {
@@ -1692,6 +1703,7 @@ describe("idle Yjs rooms", () => {
   it("keeps a room with a client in it however long it sits", () => {
     const socket = { readyState: 1 } as unknown as WebSocket;
     yRooms.set("sweep:busy", {
+      generation: "generation-busy",
       clients: new Set([socket]),
       presences: new Map(),
       doc: new Y.Doc(),

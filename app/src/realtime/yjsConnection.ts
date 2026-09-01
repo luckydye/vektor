@@ -19,6 +19,8 @@ import {
   wsEncode,
   wsEncodeYjsSyncRequest,
   wsEncodeYjsUpdate,
+  type YjsJoinPayload,
+  type YjsRoomGenerationPayload,
 } from "./protocol.ts";
 import {
   ensureRoomDoc,
@@ -35,6 +37,7 @@ interface JoinedRoom {
   canEdit: boolean;
   verifiedAt: number;
   aclVersion: number;
+  generation: string;
 }
 
 /** Avoid an ACL query for every Yjs update while bounding stale writes. */
@@ -73,8 +76,12 @@ export class YjsConnection {
   /** Handles a Yjs frame and returns whether the frame was recognized. */
   async handle(type: WsMsgType, payload: Uint8Array): Promise<boolean> {
     if (type === WsMsgType.YjsJoin) {
-      const join = wsDecodeJson<{ documentId: string; stateVector?: string }>(payload);
-      await this.join(join.documentId, decodeStateVector(join.stateVector));
+      const join = wsDecodeJson<YjsJoinPayload>(payload);
+      await this.join(
+        join.documentId,
+        join.generation,
+        decodeStateVector(join.stateVector),
+      );
       return true;
     }
 
@@ -105,6 +112,7 @@ export class YjsConnection {
 
   private async join(
     documentId: string,
+    clientGeneration: string | undefined,
     clientStateVector: Uint8Array | null,
   ): Promise<void> {
     const { access, checkedAt, version } = await this.authorizeCurrentRoom(documentId);
@@ -131,12 +139,36 @@ export class YjsConnection {
     // Re-read: the room this started from may have been dropped while the
     // document loaded, and updates only reach the one that is registered now.
     const room = getRoom(this.spaceId, documentId);
+    const staleGeneration =
+      clientGeneration !== undefined && clientGeneration !== room.generation;
+    const unversionedHistory = clientStateVector !== null && !clientGeneration;
+    if (staleGeneration || unversionedHistory) {
+      this.leaveRoom(roomKey);
+      this.websocket.send(
+        wsEncode(WsMsgType.YjsReset, {
+          documentId,
+          generation: room.generation,
+        } satisfies YjsRoomGenerationPayload),
+      );
+      return;
+    }
+
     room.clients.add(this.websocket);
     this.joinedRooms.set(roomKey, {
       canEdit: access === "edit",
       verifiedAt: checkedAt,
       aclVersion: version,
+      generation: room.generation,
     });
+
+    // The acknowledgement precedes the state frame. The client uses both as a
+    // barrier before flushing edits accumulated while its socket was down.
+    this.websocket.send(
+      wsEncode(WsMsgType.YjsJoined, {
+        documentId,
+        generation: room.generation,
+      } satisfies YjsRoomGenerationPayload),
+    );
 
     const stateUpdate = tracedSync("yjs.encodeState", () =>
       Y.encodeStateAsUpdate(doc, clientStateVector ?? undefined),
@@ -168,7 +200,10 @@ export class YjsConnection {
     if (!joined?.canEdit) return;
 
     const room = yRooms.get(roomKey);
-    if (!room?.doc || room.writeBlocked) return;
+    // A room can only change generation after the old one has no clients, but
+    // keep the invariant local: a stale socket may never write into a rebuilt
+    // transient document.
+    if (!room?.doc || room.writeBlocked || joined.generation !== room.generation) return;
 
     tracedSync("yjs.applyUpdate", () =>
       Y.applyUpdate(room.doc as Y.Doc, update, this.websocket),

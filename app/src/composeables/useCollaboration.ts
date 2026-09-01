@@ -232,6 +232,7 @@ export function useCollaboration<TPresenceState>(options: {
   let lastPresenceState = "";
   let presenceRequested = false;
   let cancelSyncWait: (() => void) | null = null;
+  let resetInFlight: Promise<void> | null = null;
 
   /**
    * Waits for the server's first state frame, or for the server to refuse the
@@ -288,6 +289,31 @@ export function useCollaboration<TPresenceState>(options: {
     }
     if (!leaveYjsRoom) {
       const pending = waitForInitialSync((onSynced, onFailed) => {
+        const onReset = () => {
+          const reset = new CollaborationResetRequired();
+          // Before the first state frame, let the awaiting join own the retry.
+          if (cancelSyncWait) {
+            onFailed(reset);
+            return;
+          }
+          if (resetInFlight) return;
+
+          // A later socket reconnect has no caller awaiting `joinUntilReady`.
+          // Replace the stale Y.Doc here and restore the room membership that
+          // was active before the transient server generation disappeared.
+          const restorePresence = presenceRequested;
+          leave();
+          resetInFlight = joinUntilReady()
+            .then(async () => {
+              if (!restorePresence) return;
+              presenceRequested = true;
+              await setupPresence();
+            })
+            .catch(reportJoinFailure)
+            .finally(() => {
+              resetInFlight = null;
+            });
+        };
         // Returns a cleanup function that disconnects from the Y.js room.
         leaveYjsRoom = api.joinYjsRoom(
           spaceId,
@@ -295,7 +321,7 @@ export function useCollaboration<TPresenceState>(options: {
           ydoc(),
           onSynced,
           onFailed,
-          () => onFailed(new CollaborationResetRequired()),
+          onReset,
         );
       });
       // A join that failed still holds the room and a document that never
