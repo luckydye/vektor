@@ -597,15 +597,15 @@ describe("API Tests - Documents", () => {
 
   it("should get document children", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}/children`,
+      `/api/v1/spaces/${testSpaceId}/documents?parentId=${testDocumentId}`,
     );
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data.children).toBeDefined();
-    expect(Array.isArray(data.children)).toBe(true);
-    expect(data.children.length).toBe(1);
-    expect(data.children[0].id).toBe(childDocumentId);
+    expect(data.documents).toBeDefined();
+    expect(Array.isArray(data.documents)).toBe(true);
+    expect(data.documents.length).toBe(1);
+    expect(data.documents[0].id).toBe(childDocumentId);
   });
 
   it("should move document by updating parent", async () => {
@@ -735,7 +735,7 @@ describe("API Tests - Documents", () => {
 
     // Document should be in archived list
     const archivedResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/archived`,
+      `/api/v1/spaces/${testSpaceId}/documents?archived=true`,
     );
     expect(archivedResponse.status).toBe(200);
     const archivedData = await archivedResponse.json();
@@ -793,7 +793,7 @@ describe("API Tests - Documents", () => {
 
     // Verify it's no longer in archived list
     const archivedListResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/archived`,
+      `/api/v1/spaces/${testSpaceId}/documents?archived=true`,
     );
     expect(archivedListResponse.status).toBe(200);
     const archivedListData = await archivedListResponse.json();
@@ -856,7 +856,7 @@ describe("API Tests - Documents", () => {
 
     // Document should not be in archived list after permanent deletion
     const archivedResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/archived`,
+      `/api/v1/spaces/${testSpaceId}/documents?archived=true`,
     );
     expect(archivedResponse.status).toBe(200);
     const archivedData = await archivedResponse.json();
@@ -2287,9 +2287,10 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
     it("should return empty array for children of non-existent document", async () => {
       const fakeDocId = crypto.randomUUID();
       const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${fakeDocId}/children`,
+        `/api/v1/spaces/${testSpaceId}/documents?parentId=${fakeDocId}`,
       );
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(200);
+      expect((await response.json()).documents).toEqual([]);
     });
 
     it("should handle circular parent references gracefully", async () => {

@@ -27,14 +27,12 @@ import * as spaceComments from "./routes/spaces/comments.ts";
 import * as document from "./routes/spaces/document.ts";
 import * as documentAccess from "./routes/spaces/document-access.ts";
 import * as documentBreadcrumbs from "./routes/spaces/document-breadcrumbs.ts";
-import * as documentChildren from "./routes/spaces/document-children.ts";
 import * as documentContributors from "./routes/spaces/document-contributors.ts";
 import * as documentDiff from "./routes/spaces/document-diff.ts";
 import * as documentEdit from "./routes/spaces/document-edit.ts";
 import * as documentGit from "./routes/spaces/document-git.ts";
 import * as documentRevisions from "./routes/spaces/document-revisions.ts";
 import * as documents from "./routes/spaces/documents.ts";
-import * as documentsArchived from "./routes/spaces/documents-archived.ts";
 import * as extension from "./routes/spaces/extension.ts";
 import * as extensionAsset from "./routes/spaces/extension-assets.ts";
 import * as extensionInstall from "./routes/spaces/extension-install.ts";
@@ -137,7 +135,6 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/comments", module: spaceComments },
 
   { pattern: "/api/v1/spaces/[spaceId]/documents", module: documents },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/archived", module: documentsArchived },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]", module: document },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/access",
@@ -146,10 +143,6 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs",
     module: documentBreadcrumbs,
-  },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/children",
-    module: documentChildren,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/contributors",

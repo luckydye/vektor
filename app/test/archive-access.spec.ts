@@ -321,13 +321,13 @@ describe("archiving locks out space viewers", () => {
     await archive(documentId);
 
     const forViewer = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/archived`,
+      `/api/v1/spaces/${spaceId}/documents?archived=true`,
       viewerToken,
     );
     expect(forViewer.status).toBe(403);
 
     const forEditor = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/archived`,
+      `/api/v1/spaces/${spaceId}/documents?archived=true`,
       editorToken,
     );
     expect(forEditor.status).toBe(200);

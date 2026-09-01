@@ -1296,6 +1296,8 @@ export class ApiClient {
         limit?: number;
         cursor?: string;
         type?: string;
+        /** List the direct children of this document instead of the space. */
+        parentId?: string;
         /** Uploaded files, as pseudo-documents, alongside the first page. */
         includeFiles?: boolean;
       } & Record<string, string | number | boolean | undefined>,
@@ -1334,12 +1336,20 @@ export class ApiClient {
       return this.replica.subscribeDocuments(spaceId, callback);
     },
 
+    /**
+     * The space's archived documents. Kept off the replica cache on purpose:
+     * the cached listing is what the sidebar reads, and the archive is exactly
+     * what it must not show.
+     */
     archived: async (spaceId: string, query?: { limit?: number; cursor?: string }) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
         limit: number;
         nextCursor: string | null;
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/archived`, query);
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, {
+        ...query,
+        archived: true,
+      });
       return response;
     },
 
@@ -1653,16 +1663,6 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/documents/${documentId}/contributors`,
       );
       return response.contributors;
-    },
-  };
-
-  documentChildren = {
-    get: async (spaceId: string, documentId: string) => {
-      const response = await this.apiGet<{ children: DocumentWithProperties[] }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/children`,
-      );
-      return response.children;
     },
   };
 
