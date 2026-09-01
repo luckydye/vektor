@@ -8,8 +8,8 @@ import { registerScopedAction } from "#utils/scopedAction.ts";
  *
  * The action registry is a module-level map, so an action registered while a
  * document is open stays in the command palette and context menu of every page
- * that follows unless something removes it — and then "Unpublish" or "Pin to
- * Home" is offered on the home page, where there is no document to act on.
+ * that follows unless something removes it — and then "Unpublish" or "Duplicate
+ * Document" is offered on the home page, where there is no document to act on.
  */
 
 const disposers: Array<() => void> = [];
@@ -52,17 +52,17 @@ describe("registerScopedAction", () => {
     inRoot(() => {
       createEffect(() => {
         if (!hasDocument()) return;
-        registerScopedAction("document:pin", { ...noop, group: "document" });
+        registerScopedAction("document:duplicate", { ...noop, group: "document" });
       });
     });
     await Promise.resolve();
 
-    expect(Actions.get("document:pin")).toBeTruthy();
+    expect(Actions.get("document:duplicate")).toBeTruthy();
 
     setHasDocument(false);
     await Promise.resolve();
 
-    expect(Actions.get("document:pin")).toBeUndefined();
+    expect(Actions.get("document:duplicate")).toBeUndefined();
   });
 
   it("keeps the live registration when a second owner replaced it first", () => {

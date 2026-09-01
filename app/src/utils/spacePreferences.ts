@@ -28,7 +28,6 @@ export const spacePreferenceKeys = {
   brandColor: "brandColor",
   description: "description",
   logoSvg: "logoSvg",
-  pinnedDocumentId: "pinnedDocumentId",
   repositoryCreationEnabled: "repositoryCreationEnabled",
   workflowCreationEnabled: "workflowCreationEnabled",
 } as const;
@@ -94,13 +93,6 @@ const PREFERENCE_RULES = new Map<string, PreferenceRule>([
       isSafeUploadedImageUrl(value)
         ? { value }
         : { error: "logoSvg must be an image URL or data URI" },
-  ],
-  [
-    spacePreferenceKeys.pinnedDocumentId,
-    (value) =>
-      /^[\w-]{1,64}$/.test(value)
-        ? { value }
-        : { error: "pinnedDocumentId must be a document id" },
   ],
   [
     spacePreferenceKeys.repositoryCreationEnabled,
@@ -298,9 +290,9 @@ export function splitPreferencesByScope(preferences: Record<string, string>): {
  * the value of the keys in `PREFERENCE_RULES` — the ones this app renders as
  * something other than text.
  *
- * An empty string is how the client clears a preference (unpinning a document
- * sends `pinnedDocumentId: ""`), so it is accepted for every key without being
- * run through that key's rule.
+ * An empty string is how the client clears a preference (dropping a space's
+ * `brandColor` sends `brandColor: ""`), so it is accepted for every key without
+ * being run through that key's rule.
  */
 export function validateSpacePreferences(
   preferences: unknown,
