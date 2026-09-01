@@ -20,11 +20,15 @@ import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { touchDocument } from "./changeSeq.ts";
 import { generateUniqueSlug } from "./documents.ts";
 import { nonArchivedDocumentCondition } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
+  /** The condition named a sequence the document had already moved past. */
+  conflict?: true;
+  changeSeq?: number;
 }
 
 interface DocumentPropertyChange {
@@ -78,11 +82,12 @@ export async function patchDocumentProperties(
   documentId: string,
   patch: DocumentPropertyPatch,
   userId?: string,
+  expected?: number[],
 ): Promise<PatchDocumentPropertiesResult> {
   const operations = normalizeDocumentPropertyPatch(patch);
   if (operations.length === 0) return {};
 
-  const result = await s.tx(async (txStore) => {
+  const result = await s.tx(async (txStore): Promise<PatchDocumentPropertiesResult> => {
     const now = new Date();
     const existingRows = await many(
       txStore.db.select().from(property).where(eq(property.documentId, documentId)),
@@ -98,6 +103,21 @@ export async function patchDocumentProperties(
       group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     }
     const changes: DocumentPropertyChange[] = [];
+
+    // The document write comes first so that it is the transaction's first
+    // write: a refused condition then rolls back having changed nothing, where
+    // checking after the property rows had landed would commit them behind a
+    // sequence that never moved. Properties are part of what a read returns, so
+    // a patch moves the sequence exactly as a content write does — `currentRev`
+    // does not, which is why it was never usable as the validator.
+    const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
+    const written = await touchDocument(
+      txStore,
+      documentId,
+      { ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now },
+      expected,
+    );
+    if (!written.ok) return { conflict: true } as const;
 
     // Folding two spellings together destroys a stored value, so it is logged and
     // broadcast like any other delete.
@@ -195,12 +215,6 @@ export async function patchDocumentProperties(
       });
     }
 
-    const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
-    await txStore.db
-      .update(document)
-      .set({ ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now })
-      .where(eq(document.id, documentId));
-
     txStore.emit({
       kind: "documentProperties",
       documentId,
@@ -214,8 +228,12 @@ export async function patchDocumentProperties(
       },
     });
 
-    return renamedSlug ? { slug: renamedSlug } : {};
+    return renamedSlug
+      ? { slug: renamedSlug, changeSeq: written.changeSeq }
+      : { changeSeq: written.changeSeq };
   });
+
+  if (result.conflict) return result;
 
   scheduleDocumentSearchRefresh(s, documentId);
   return result;

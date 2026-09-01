@@ -21,11 +21,21 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
-import type { ApiRouteHandler } from "#api/server/types.ts";
+import {
+  documentEtag,
+  expectedSeqs,
+  matchesWeak,
+  notModified,
+  preconditionFailed,
+  PRIVATE_REVALIDATE,
+  revisionEtag,
+} from "#api/conditional.ts";
+import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
+import { touchDocument } from "#db/space/changeSeq.ts";
 import {
   archiveDocument,
   type DocumentMeta,
@@ -120,11 +130,43 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
   return value as DocumentPatchBody;
 }
 
+/**
+ * The sequences an `If-Match` on this request would accept, or `undefined` when
+ * it carries no condition.
+ *
+ * A request without the header writes unconditionally, which is exactly what
+ * every caller predating this did — so absent headers keep their behaviour.
+ * `*` collapses to the same thing here, because it asks only that the document
+ * exist and each of these handlers has already established that.
+ */
+function requestedCondition(context: ApiContext): number[] | undefined {
+  const header = context.req.raw.headers.get("if-match");
+  if (!header) return undefined;
+  const seqs = expectedSeqs(header);
+  return seqs === "any" ? undefined : seqs;
+}
+
+/**
+ * Answer a refused condition with the document as it now stands.
+ *
+ * Read after the failed write rather than before it, so the caller is handed
+ * the state that beat it rather than the one it already knew about. Metadata
+ * only: the content is what made the response worth omitting in the first place.
+ */
+async function conflictResponse(store: SpaceStore, id: string): Promise<Response> {
+  const current = await getDocument(store, id);
+  if (!current) throw notFoundResponse("Document");
+  return preconditionFailed(current, documentEtag(current.changeSeq));
+}
+
 function withCors(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, If-Match, If-None-Match");
+  // A browser hides every response header not named here, so without this a
+  // cross-origin caller cannot read the tag it is expected to send back.
+  headers.set("Access-Control-Expose-Headers", "ETag");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -160,10 +202,10 @@ async function handlePublishedRevisionPatch(
   }
 
   const auditEntry = await store.tx(async (tx) => {
-    await tx.db
-      .update(documentTable)
-      .set({ publishedRev: revToPublish })
-      .where(eq(documentTable.id, documentId));
+    // Publishing changes which body a plain read of this document returns, so
+    // it moves the sequence like any other write. Both statements are one
+    // logical change, so they share the one allocation the second makes.
+    await touchDocument(tx, documentId, { publishedRev: revToPublish });
 
     const entry = await createAuditLog(tx, {
       spaceId,
@@ -182,10 +224,7 @@ async function handlePublishedRevisionPatch(
     if (revisionContent !== null) {
       // Publishing a revision also loads it into the draft, so the editor
       // reflects the revision that is now published.
-      await tx.db
-        .update(documentTable)
-        .set({ content: revisionContent })
-        .where(eq(documentTable.id, documentId));
+      await touchDocument(tx, documentId, { content: revisionContent });
     }
 
     return entry;
@@ -242,10 +281,7 @@ async function handleReadonlyPatch(
     if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
 
     await store.tx(async (tx) => {
-      await tx.db
-        .update(documentTable)
-        .set({ readonly })
-        .where(eq(documentTable.id, documentId));
+      await touchDocument(tx, documentId, { readonly });
 
       await createAuditLog(tx, {
         spaceId,
@@ -341,16 +377,41 @@ export const GET: ApiRouteHandler = (context) =>
         throw notFoundResponse("Revision");
       }
 
+      // A revision's bytes never change, so the tag comes from the revision
+      // number. It still revalidates rather than sitting in a cache for an
+      // hour: the body below varies with history access, and a grant can be
+      // taken away under a response already stored.
+      const revEtag = revisionEtag(rev);
+      const revIfNoneMatch = context.req.raw.headers.get("if-none-match");
+      if (revIfNoneMatch && matchesWeak(revIfNoneMatch, revEtag)) {
+        return withCors(notModified(revEtag));
+      }
+
       return withCors(
-        jsonResponse({
-          // Without history access, the snapshot and nothing describing it.
-          // `status` is stated rather than withheld: a published revision is by
-          // definition not a suggestion, and clients branch on it.
-          revision: access.metadata
-            ? { ...metadata, content }
-            : { rev: metadata.rev, content, status: null },
-        }),
+        jsonResponse(
+          {
+            // Without history access, the snapshot and nothing describing it.
+            // `status` is stated rather than withheld: a published revision is by
+            // definition not a suggestion, and clients branch on it.
+            revision: access.metadata
+              ? { ...metadata, content }
+              : { rev: metadata.rev, content, status: null },
+          },
+          200,
+          { ETag: revEtag, "Cache-Control": PRIVATE_REVALIDATE },
+        ),
       );
+    }
+
+    // Only the canonical read is tagged. `?draft` and `?live` are different
+    // representations of the same URL, and `?live` is not even a representation
+    // of the stored row — it is whatever the collaboration room holds this
+    // instant, which no column can describe. One tag across the three is how a
+    // cache is talked into answering one with another.
+    const etag = draft || live ? null : documentEtag(meta.changeSeq);
+    const ifNoneMatch = context.req.raw.headers.get("if-none-match");
+    if (etag && ifNoneMatch && matchesWeak(ifNoneMatch, etag)) {
+      return withCors(notModified(etag, "Accept"));
     }
 
     // getDocument is metadata-only; this route returns the body, so load it
@@ -390,6 +451,13 @@ export const GET: ApiRouteHandler = (context) =>
               "Content-Type": serialized
                 ? "text/plain; charset=utf-8"
                 : "text/markdown; charset=utf-8",
+              // Same URL, same tag, a different body — so the tag is only
+              // usable if a cache is told what the body was chosen by. Nothing
+              // is added where there is no tag: an untagged representation
+              // answers exactly as it did before.
+              ...(etag
+                ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
+                : {}),
             },
           },
         ),
@@ -402,14 +470,20 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     return withCors(
-      jsonResponse({
-        document: { ...document, headerImageAspectRatio },
-        space: {
-          id: space.id,
-          slug: space.slug,
-          name: space.name,
+      jsonResponse(
+        {
+          document: { ...document, headerImageAspectRatio },
+          space: {
+            id: space.id,
+            slug: space.slug,
+            name: space.name,
+          },
         },
-      }),
+        200,
+        etag
+          ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
+          : undefined,
+      ),
     );
   }, "Failed to get document");
 
@@ -433,6 +507,7 @@ export const PUT: ApiRouteHandler = (context) =>
     }
 
     const publish = new URL(context.req.url).searchParams.get("publish") === "true";
+    const expected = requestedCondition(context);
     let userId: string | undefined;
 
     const jobToken = context.req.raw.headers.get("X-Job-Token");
@@ -501,13 +576,17 @@ export const PUT: ApiRouteHandler = (context) =>
           throw forbiddenResponse("Invalid restore request");
         }
 
-        await restoreDocument(store, id, userId);
+        const restored = await restoreDocument(store, id, userId, expected);
+        if (!restored.ok) return conflictResponse(store, id);
+
         sendSyncEvent(
           spaceId,
           realtimeTopics.categoryDocuments,
           realtimeTopics.documentTree,
         );
-        return jsonResponse({ success: true });
+        return jsonResponse({ success: true }, 200, {
+          ETag: documentEtag(restored.changeSeq),
+        });
       }
 
       if (documentIsReadonly(existingDoc)) {
@@ -532,10 +611,12 @@ export const PUT: ApiRouteHandler = (context) =>
         : prepareDocumentContent(rawContent, contentType);
     }
 
-    let document = await updateDocument(store, id, content, existingDoc.type);
-    if (!document) {
-      throw notFoundResponse("Document");
+    const written = await updateDocument(store, id, content, existingDoc.type, expected);
+    if (!written.ok) {
+      if (written.reason === "missing") throw notFoundResponse("Document");
+      return conflictResponse(store, id);
     }
+    let document = written.document;
 
     replaceLiveDocumentContent(spaceId, id, existingDoc.type, content);
 
@@ -564,7 +645,12 @@ export const PUT: ApiRouteHandler = (context) =>
     // content it just sent, so it only needs the canonical metadata (revs,
     // timestamps) to reconcile its optimistic state.
     const { content: _omittedContent, ...documentMetadata } = document;
-    return jsonResponse({ document: documentMetadata });
+    // The tag the write produced, so a caller holding it can make its next
+    // conditional write without reading the document back first — and, for a
+    // syncing caller, without mistaking its own write for someone else's edit.
+    return jsonResponse({ document: documentMetadata }, 200, {
+      ETag: documentEtag(document.changeSeq),
+    });
   }, "Failed to update document");
 
 /**
@@ -602,6 +688,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 
       const body = parseDocumentPatchBody(await parseJsonBody<unknown>(context.req.raw));
       const { properties, parentId, publishedRev, readonly } = body;
+      const expected = requestedCondition(context);
 
       await verifyAccess(
         spaceId,
@@ -615,8 +702,34 @@ export const PATCH: ApiRouteHandler = (context) =>
           throw badRequestResponse("Properties must be an object");
         }
 
-        const payload = await patchDocumentProperties(store, id, properties, userId);
-        return successResponse(payload);
+        const payload = await patchDocumentProperties(
+          store,
+          id,
+          properties,
+          userId,
+          expected,
+        );
+        if (payload.conflict) return conflictResponse(store, id);
+
+        // The body stays exactly what `successResponse(payload)` sent before:
+        // the sequence travels in the header, where a caller that never asked
+        // for it never sees it.
+        const { changeSeq, conflict: _conflict, ...result } = payload;
+        return jsonResponse(
+          result,
+          200,
+          changeSeq === undefined ? undefined : { ETag: documentEtag(changeSeq) },
+        );
+      }
+
+      // `parentId`, `publishedRev` and `readonly` each write through the
+      // counter but take no condition of their own, so one check stands for the
+      // three. It is a read-then-write and therefore racy in a way the property
+      // path above is not — stated here rather than hidden, because the window
+      // is a few milliseconds and these three are not what a syncing writer
+      // contends over.
+      if (expected && !expected.includes(existingDoc.changeSeq)) {
+        return conflictResponse(store, id);
       }
 
       if (parentId !== undefined) {
@@ -679,7 +792,12 @@ export const PATCH: ApiRouteHandler = (context) =>
         await handleReadonlyPatch(store, id, userId, readonly);
       }
 
-      return jsonResponse({ success: true });
+      const patched = await getDocument(store, id);
+      return jsonResponse(
+        { success: true },
+        200,
+        patched ? { ETag: documentEtag(patched.changeSeq) } : undefined,
+      );
     },
     {
       fallbackMessage: "Failed to patch document",
@@ -721,6 +839,14 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     const store = await openSpaceStore(spaceId);
+    const expected = requestedCondition(context);
+    // A condition on a document that is not there is not a failed condition:
+    // there is no resource to have a state, so the answer is the same 404 a
+    // plain request would get.
+    if (expected && !(await getDocument(store, id))) {
+      throw notFoundResponse("Document");
+    }
+
     if (permanent) {
       await verifyAccess(
         spaceId,
@@ -728,7 +854,9 @@ export const DELETE: ApiRouteHandler = (context) =>
         userId,
         Permission.OWNER,
       );
-      await deleteDocument(store, id, userId);
+      if (!(await deleteDocument(store, id, userId, expected))) {
+        return conflictResponse(store, id);
+      }
     } else {
       await verifyAccess(
         spaceId,
@@ -736,7 +864,8 @@ export const DELETE: ApiRouteHandler = (context) =>
         userId,
         Permission.EDITOR,
       );
-      await archiveDocument(store, id, userId);
+      const archived = await archiveDocument(store, id, userId, expected);
+      if (!archived.ok) return conflictResponse(store, id);
     }
 
     return successResponse();

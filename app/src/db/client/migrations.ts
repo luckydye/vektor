@@ -60,6 +60,34 @@ async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
 }
 
 /**
+ * Give documents that predate `change_seq` an order worth reading them in.
+ *
+ * A consumer walking the counter for the first time is handed the entire space,
+ * so the order it arrives in should mean something: least recently edited
+ * first. Numbering from one also leaves `0` free to read as "never written",
+ * which is what an unallocated row is.
+ *
+ * Skipped once the counter has moved, so replaying the baseline against a live
+ * database cannot renumber documents out from under a consumer mid-sync.
+ */
+async function backfillDocumentChangeSeq(db: SpaceDb): Promise<void> {
+  const [counter] = await db
+    .select({ changeSeq: spaceSchema.spaceMetadata.changeSeq })
+    .from(spaceSchema.spaceMetadata);
+  if (counter && counter.changeSeq > 0) return;
+
+  await run(db, [
+    `UPDATE document SET change_seq = (
+       SELECT seq FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at ASC, id ASC) AS seq
+         FROM document
+       ) ranked WHERE ranked.id = document.id
+     )`,
+    "UPDATE space_metadata SET change_seq = (SELECT COUNT(*) FROM document)",
+  ]);
+}
+
+/**
  * Every schema change made before databases were versioned. Idempotent, unlike
  * the migrations after it: a database predating the stamp replays it once.
  */
@@ -128,6 +156,17 @@ async function baseline(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.file.size);
   await addColumnIfMissing(db, spaceSchema.file.width);
   await addColumnIfMissing(db, spaceSchema.file.height);
+
+  await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
+  await addColumnIfMissing(db, spaceSchema.document.changeSeq);
+  await backfillDocumentChangeSeq(db);
+
+  await createTables(db, [spaceSchema.externalLink]);
+  await run(db, [
+    "CREATE INDEX IF NOT EXISTS document_change_seq_idx ON document (change_seq)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS external_link_identity_unique ON external_link (source, external_id, instance_id)",
+    "CREATE INDEX IF NOT EXISTS external_link_document_idx ON external_link (document_id)",
+  ]);
 }
 
 export const spaceMigrations: Migration[] = [{ id: 1, name: "baseline", up: baseline }];

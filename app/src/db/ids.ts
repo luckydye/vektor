@@ -4,6 +4,7 @@ const idPrefixes = {
   comment: "comment",
   document: "doc",
   emailNotification: "email_notification",
+  externalLink: "extlink",
   oauthIntegration: "oauth",
   oauthIntegrationState: "oauth_state",
   preference: "pref",

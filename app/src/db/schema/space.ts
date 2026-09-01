@@ -1,6 +1,7 @@
 import {
   type AnySQLiteColumn,
   blob,
+  index,
   integer,
   primaryKey,
   sqliteTable,
@@ -15,6 +16,15 @@ export const spaceMetadata = sqliteTable("space_metadata", {
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  /**
+   * The space's write counter, and the source of every `document.change_seq`.
+   *
+   * A space database holds exactly one of these rows, so allocating from it
+   * orders every document write in the space against every other — which is
+   * what a consumer asking "what changed since I last looked" needs, and what a
+   * per-document counter cannot give.
+   */
+  changeSeq: integer("change_seq").notNull().default(0),
 });
 
 export const preference = sqliteTable("preference", {
@@ -55,26 +65,43 @@ export const extension = sqliteTable("extension", {
   createdBy: text("created_by").notNull(),
 });
 
-export const document = sqliteTable("document", {
-  id: text("id").primaryKey(),
-  slug: text("slug").notNull(),
-  type: text("type"),
-  archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
-  readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
-  content: text("content").notNull(),
-  searchText: text("search_text"),
-  searchEmbedding: text("search_embedding"),
-  searchEmbeddingModel: text("search_embedding_model"),
-  searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
-  currentRev: integer("current_rev").default(0).notNull(),
-  publishedRev: integer("published_rev"),
-  parentId: text("parent_id").references((): AnySQLiteColumn => document.id, {
-    onDelete: "set null",
-  }),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-});
+export const document = sqliteTable(
+  "document",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    type: text("type"),
+    archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
+    readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
+    content: text("content").notNull(),
+    searchText: text("search_text"),
+    searchEmbedding: text("search_embedding"),
+    searchEmbeddingModel: text("search_embedding_model"),
+    searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
+    currentRev: integer("current_rev").default(0).notNull(),
+    publishedRev: integer("published_rev"),
+    parentId: text("parent_id").references((): AnySQLiteColumn => document.id, {
+      onDelete: "set null",
+    }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+    createdBy: text("created_by").notNull(),
+    /**
+     * The value this document last drew from `space_metadata.change_seq`, and
+     * the document's entity tag.
+     *
+     * It advances on every write that changes what a read of this document
+     * returns, and on nothing else — the search index refresh is the one
+     * deliberate exception, since none of its columns are ever served. This is
+     * not `currentRev`: a revision is a content snapshot, while a property
+     * patch, a publish or a move all change the document without making one.
+     */
+    changeSeq: integer("change_seq").notNull().default(0),
+  },
+  // Ordered scans over the counter (`change_seq > ?`) are how a sync consumer
+  // reads what changed, so the column is indexed rather than table-scanned.
+  (t) => [index("document_change_seq_idx").on(t.changeSeq)],
+);
 
 export const revision = sqliteTable(
   "revision",
@@ -96,6 +123,54 @@ export const revision = sqliteTable(
   // `currentRev` and `publishedRev` are (documentId, rev) pointers, so a second
   // row at one number makes them ambiguous rather than merely untidy.
   (t) => [uniqueIndex("revision_document_id_rev_unique").on(t.documentId, t.rev)],
+);
+
+/**
+ * What a document is called in the system it syncs with.
+ *
+ * A syncing peer names things by its own identifier — a calendar event's `UID`,
+ * an issue key — and has to be able to write "the document for this identifier"
+ * without first asking whether one exists. The unique index is what makes that
+ * safe: two runs racing to import the same event contend on one row rather than
+ * producing two documents.
+ */
+export const externalLink = sqliteTable(
+  "external_link",
+  {
+    id: text("id").primaryKey(),
+    /** Which peer, so two calendars claiming one `UID` stay distinct. */
+    source: text("source").notNull(),
+    /** The peer's identifier for this thing. */
+    externalId: text("external_id").notNull(),
+    /**
+     * Which occurrence, for a peer whose identifier names a series rather than
+     * a single thing (iCalendar `RECURRENCE-ID`). Empty for the series itself —
+     * not null, because SQLite treats nulls as distinct in a unique index and
+     * the series row would stop being unique.
+     */
+    instanceId: text("instance_id").notNull().default(""),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    /** The peer's own version of the thing: `SEQUENCE`, an etag, a timestamp. */
+    remoteVersion: text("remote_version"),
+    /**
+     * The `document.change_seq` this link last wrote. A document sitting at
+     * this value has not been touched locally since the last sync; anything
+     * higher is a local edit the peer has not seen.
+     */
+    syncedChangeSeq: integer("synced_change_seq"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("external_link_identity_unique").on(
+      t.source,
+      t.externalId,
+      t.instanceId,
+    ),
+    index("external_link_document_idx").on(t.documentId),
+  ],
 );
 
 export const property = sqliteTable(

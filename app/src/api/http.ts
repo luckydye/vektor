@@ -10,13 +10,18 @@ import type { ApiContext } from "#api/server/types.ts";
 import type { PropertyFilter } from "#db/space/search.ts";
 import { appLogger } from "#observability/logger.ts";
 
-export function jsonResponse(data: unknown, status = 200): Response {
+export function jsonResponse(
+  data: unknown,
+  status = 200,
+  headers?: Record<string, string>,
+): Response {
   const body = JSON.stringify(data);
   return new Response(body, {
     status,
     headers: {
       "Content-Type": "application/json",
       "Content-Length": Buffer.byteLength(body).toString(),
+      ...headers,
     },
   });
 }

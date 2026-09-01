@@ -9,6 +9,7 @@ import {
   deleteDocument,
   getDocument,
 } from "#db/space/documents.ts";
+import { touchDocument } from "#db/space/changeSeq.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
@@ -226,10 +227,16 @@ async function writeRunToDocument(
   run: RunState,
 ): Promise<void> {
   const now = new Date();
-  await store.db
-    .update(document)
-    .set({ updatedAt: now })
-    .where(and(eq(document.id, runId), eq(document.type, workflowRunDocumentType)));
+  // A run document is read over the same API as any other, so its writes move
+  // the sequence too — otherwise a consumer following the counter sees a run
+  // start and never sees it finish.
+  await touchDocument(
+    store,
+    runId,
+    { updatedAt: now },
+    undefined,
+    eq(document.type, workflowRunDocumentType),
+  );
 
   for (const entry of runProperties(run)) {
     await store.db
@@ -446,6 +453,9 @@ export async function createRun(
       content: "",
       currentRev: 0,
       publishedRev: null,
+      // Left at its default here and set by `writeRunToDocument` on the next
+      // line, inside this same transaction — so the row is never visible to a
+      // reader without a sequence.
       parentId: documentId,
       createdAt: now,
       updatedAt: now,

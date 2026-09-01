@@ -349,6 +349,10 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   const content = format === "html" ? sanitizeDocumentHtml(serialized) : serialized;
 
   const store = await openSpaceStore(ids.spaceId);
+  // Unconditional: the room is the authority on this content, not a writer
+  // racing one. Note that it still moves the document's sequence — a document
+  // with an open editor changes every debounce, and any reader or API writer
+  // holding a tag for it is genuinely looking at a stale document.
   await traced("persist.write", () =>
     updateDocument(store, ids.documentId, content, meta.type),
   );

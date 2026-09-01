@@ -12,6 +12,7 @@ import { createId } from "#db/ids.ts";
 import { document, revision } from "#db/schema/space.ts";
 import { appLogger } from "#observability/logger.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { touchDocument } from "./changeSeq.ts";
 
 export interface Revision {
   id: string;
@@ -253,10 +254,13 @@ export async function createRevision(
   if (kind !== "suggestion") {
     // Never backwards: a save that landed while this one compressed has already
     // moved the pointer past the revision written here.
-    await s.db
-      .update(document)
-      .set({ currentRev: sql`max(${document.currentRev}, ${created.rev})` })
-      .where(eq(document.id, documentId));
+    //
+    // `currentRev` is part of what a read of the document returns, so moving it
+    // moves the sequence too — unconditionally, because the caller asked for a
+    // revision of the content it supplied, not of whatever the row holds now.
+    await touchDocument(s, documentId, {
+      currentRev: sql`max(${document.currentRev}, ${created.rev})`,
+    });
   }
 
   await createAuditLog(s, {

@@ -44,6 +44,13 @@ import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import {
+  deleteDocumentRow,
+  type DocumentWriteOutcome,
+  type DocumentWriteResult,
+  nextChangeSeq,
+  touchDocument,
+} from "./changeSeq.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
 import { decompressRevisionContent } from "./revisions.ts";
@@ -56,6 +63,8 @@ export interface DocumentWithProperties {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
+  /** The document's position in the space write order; see `#db/space/changeSeq.ts`. */
+  changeSeq: number;
   properties: DocumentProperties;
   createdAt: Date;
   updatedAt: Date;
@@ -176,19 +185,27 @@ export async function createDocument(
   // Generate a unique slug if the provided slug already exists
   const uniqueSlug = await generateUniqueSlug(s, slug);
 
-  await s.db.insert(document).values({
-    id,
-    slug: uniqueSlug,
-    type: type || null,
-    content,
-    currentRev: 0,
-    publishedRev: null,
-    createdBy: createdBy,
-    parentId: parentId || null,
-    archived: false,
-    readonly,
-    createdAt: documentCreatedAt,
-    updatedAt: documentUpdatedAt,
+  // The row and the sequence it is born at land together: a document visible to
+  // a reader before it has a position in the write order is a document a sync
+  // consumer can walk straight past.
+  const changeSeq = await s.tx(async (tx) => {
+    const allocated = await nextChangeSeq(tx);
+    await tx.db.insert(document).values({
+      id,
+      slug: uniqueSlug,
+      type: type || null,
+      content,
+      currentRev: 0,
+      publishedRev: null,
+      changeSeq: allocated,
+      createdBy: createdBy,
+      parentId: parentId || null,
+      archived: false,
+      readonly,
+      createdAt: documentCreatedAt,
+      updatedAt: documentUpdatedAt,
+    });
+    return allocated;
   });
 
   const properties = initialProperties || {};
@@ -239,6 +256,7 @@ export async function createDocument(
     content,
     currentRev: 0,
     publishedRev: null,
+    changeSeq,
     properties: Object.fromEntries(storedProperties),
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
@@ -271,6 +289,7 @@ export async function getDocument(
         type: document.type,
         currentRev: document.currentRev,
         publishedRev: document.publishedRev,
+        changeSeq: document.changeSeq,
         parentId: document.parentId,
         createdAt: document.createdAt,
         updatedAt: document.updatedAt,
@@ -316,6 +335,7 @@ export async function getDocumentsByIds(
           type: document.type,
           currentRev: document.currentRev,
           publishedRev: document.publishedRev,
+          changeSeq: document.changeSeq,
           parentId: document.parentId,
           createdAt: document.createdAt,
           updatedAt: document.updatedAt,
@@ -417,6 +437,7 @@ export async function getDocumentBySlug(
     content: doc.content,
     currentRev: doc.currentRev,
     publishedRev: doc.publishedRev,
+    changeSeq: doc.changeSeq,
     properties,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -432,39 +453,52 @@ export async function updateDocument(
   id: string,
   content: string,
   type?: string | null,
-): Promise<DocumentWithProperties | null> {
+  expected?: number[],
+): Promise<DocumentWriteOutcome<DocumentWithProperties>> {
   // getDocument is metadata-only — `existing.content` is never read here (the
   // write uses the new `content`), so we avoid loading the old content (tens of
-  // MB on large canvases) every save.
+  // MB on large canvases) every save. It supplies the fields echoed back, never
+  // the decision to write: `expected` is compared by the write itself.
   const existing = await getDocument(s, id);
   if (!existing) {
-    return null;
+    return { ok: false, reason: "missing" };
   }
 
   const now = new Date();
   const nextType = type === undefined ? existing.type : type;
 
-  await s.db
-    .update(document)
-    .set({ content, updatedAt: now, type: nextType })
-    .where(eq(document.id, id));
+  const written = await touchDocument(
+    s,
+    id,
+    { content, updatedAt: now, type: nextType },
+    expected,
+  );
+  if (!written.ok) {
+    // The row was read a moment ago, so a refusal here is the condition and not
+    // a vanished document: another writer moved the sequence in between.
+    return { ok: false, reason: "conflict" };
+  }
 
   scheduleDocumentSearchRefresh(s, id);
 
   return {
-    id,
-    slug: existing.slug,
-    content,
-    currentRev: existing.currentRev,
-    publishedRev: existing.publishedRev,
-    properties: existing.properties,
-    createdAt: existing.createdAt,
-    updatedAt: now,
-    createdBy: existing.createdBy,
-    parentId: existing.parentId,
-    readonly: existing.readonly,
-    type: nextType,
-    archived: existing.archived,
+    ok: true,
+    document: {
+      id,
+      slug: existing.slug,
+      content,
+      currentRev: existing.currentRev,
+      publishedRev: existing.publishedRev,
+      changeSeq: written.changeSeq,
+      properties: existing.properties,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+      createdBy: existing.createdBy,
+      parentId: existing.parentId,
+      readonly: existing.readonly,
+      type: nextType,
+      archived: existing.archived,
+    },
   };
 }
 
@@ -486,9 +520,18 @@ export async function archiveDocument(
   s: SpaceStore,
   id: string,
   userId?: string,
-): Promise<boolean> {
-  await s.tx(async (tx) => {
-    if (userId) {
+  expected?: number[],
+): Promise<DocumentWriteResult> {
+  return s.tx(async (tx) => {
+    const written = await touchDocument(
+      tx,
+      id,
+      { archived: true, updatedAt: new Date() },
+      expected,
+    );
+    // The audit entry follows the write rather than preceding it: a refused
+    // condition must not leave a record saying the document was archived.
+    if (written.ok && userId) {
       await createAuditLog(tx, {
         spaceId: tx.spaceId,
         docId: id,
@@ -497,14 +540,8 @@ export async function archiveDocument(
         details: { message: "Document archived" },
       });
     }
-
-    await tx.db
-      .update(document)
-      .set({ archived: true, updatedAt: new Date() })
-      .where(eq(document.id, id));
+    return written;
   });
-
-  return true;
 }
 
 /**
@@ -515,29 +552,33 @@ export async function restoreDocument(
   s: SpaceStore,
   id: string,
   userId?: string,
-): Promise<boolean> {
-  if (userId) {
-    await createAuditLog(s, {
-      spaceId: s.spaceId,
-      docId: id,
-      userId,
-      event: "restore",
-      details: { message: "Document restored" },
-    });
-  }
-
-  await s.db
-    .update(document)
-    .set({ archived: false, updatedAt: new Date() })
-    .where(eq(document.id, id));
-
-  return true;
+  expected?: number[],
+): Promise<DocumentWriteResult> {
+  return s.tx(async (tx) => {
+    const written = await touchDocument(
+      tx,
+      id,
+      { archived: false, updatedAt: new Date() },
+      expected,
+    );
+    if (written.ok && userId) {
+      await createAuditLog(tx, {
+        spaceId: tx.spaceId,
+        docId: id,
+        userId,
+        event: "restore",
+        details: { message: "Document restored" },
+      });
+    }
+    return written;
+  });
 }
 
 export async function deleteDocument(
   s: SpaceStore,
   id: string,
   userId?: string,
+  expected?: number[],
 ): Promise<boolean> {
   // Read before the row goes: afterwards nothing says this document was a
   // repository, and its objects would stay in storage forever.
@@ -547,6 +588,31 @@ export async function deleteDocument(
   const wasRepository = existing?.type === repositoryDocumentType;
 
   const storedFiles = await s.tx(async (tx) => {
+    // Everything the delete will cascade away has to be read before it runs:
+    // `file.document_id` and `document.parent_id` are both FK-driven, so after
+    // the row goes there is nothing left to say which files were its or which
+    // documents it parented.
+    const files = await many(
+      tx.db
+        .select({ path: fileTable.path })
+        .from(fileTable)
+        .where(eq(fileTable.documentId, id)),
+    );
+    const children = await many(
+      tx.db.select({ id: document.id }).from(document).where(eq(document.parentId, id)),
+    );
+
+    // The conditional delete goes before the writes below, so a refused
+    // condition rolls back having touched nothing — the grants, comments and
+    // preferences are unrecoverable once dropped.
+    if (!(await deleteDocumentRow(tx, id, expected))) return null;
+
+    // `parent_id` is ON DELETE SET NULL, so every child just changed in a way a
+    // reader can see. Nothing else here would move their sequence.
+    for (const child of children) {
+      await touchDocument(tx, child.id, { updatedAt: new Date() });
+    }
+
     if (userId) {
       await createAuditLog(tx, {
         spaceId: tx.spaceId,
@@ -557,13 +623,6 @@ export async function deleteDocument(
       });
     }
 
-    const files = await many(
-      tx.db
-        .select({ path: fileTable.path })
-        .from(fileTable)
-        .where(eq(fileTable.documentId, id)),
-    );
-
     // These relationships are encoded rather than relational, so an FK cannot
     // clean them up. Relational child rows cascade from the document delete.
     await deleteDocumentEmailPreferences(tx, id);
@@ -571,10 +630,11 @@ export async function deleteDocument(
     await tx.db
       .delete(comment)
       .where(and(eq(comment.resourceType, "document"), eq(comment.resourceId, id)));
-    await tx.db.delete(document).where(eq(document.id, id));
 
     return files;
   });
+
+  if (storedFiles === null) return false;
 
   const storage = getFileStorage();
   if (wasRepository) {
@@ -724,6 +784,7 @@ export async function listDocuments(
     slug: document.slug,
     type: document.type,
     currentRev: document.currentRev,
+    changeSeq: document.changeSeq,
     createdBy: document.createdBy,
     readonly: document.readonly,
     archived: document.archived,
@@ -740,6 +801,7 @@ export async function listDocuments(
           slug: string;
           type: string | null;
           currentRev: number;
+          changeSeq: number;
           createdBy: string;
           readonly: boolean;
           archived: boolean;
@@ -840,6 +902,7 @@ export async function listDocuments(
     content: "", // Empty content for list view - fetch separately when viewing
     currentRev: doc.currentRev,
     publishedRev: doc.publishedRev,
+    changeSeq: doc.changeSeq,
     properties: propsByDocId.get(doc.id) || {},
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -891,6 +954,7 @@ export async function listArchivedDocuments(
         slug: document.slug,
         type: document.type,
         currentRev: document.currentRev,
+        changeSeq: document.changeSeq,
         createdBy: document.createdBy,
         readonly: document.readonly,
         archived: document.archived,
@@ -930,6 +994,7 @@ export async function listArchivedDocuments(
     content: "",
     currentRev: doc.currentRev,
     publishedRev: doc.publishedRev,
+    changeSeq: doc.changeSeq,
     properties: propsByDocId.get(doc.id) || {},
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -1074,6 +1139,7 @@ export async function listAllDocumentsByCategories(
         slug: document.slug,
         type: document.type,
         currentRev: document.currentRev,
+        changeSeq: document.changeSeq,
         createdBy: document.createdBy,
         readonly: document.readonly,
         archived: document.archived,
@@ -1120,6 +1186,7 @@ export async function listAllDocumentsByCategories(
     content: "",
     currentRev: doc.currentRev,
     publishedRev: doc.publishedRev,
+    changeSeq: doc.changeSeq,
     properties: propsByDocId.get(doc.id) || {},
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -1252,10 +1319,7 @@ export async function setDocumentParent(
       }
     }
 
-    await tx.db
-      .update(document)
-      .set({ parentId, updatedAt: new Date() })
-      .where(eq(document.id, documentId));
+    await touchDocument(tx, documentId, { parentId, updatedAt: new Date() });
 
     return {
       documentId,
@@ -1307,6 +1371,7 @@ export async function getDocumentChildren(
     content: "",
     currentRev: doc.currentRev,
     publishedRev: doc.publishedRev,
+    changeSeq: doc.changeSeq,
     properties: propsByDocId.get(doc.id) ?? {},
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
