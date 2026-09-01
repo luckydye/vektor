@@ -270,8 +270,8 @@ describe("in-memory server — documents", () => {
   });
 
   it("returns the child document under the first document's children", async () => {
-    const { children } = await apiJson<{ children: { id: string }[] }>(
-      `/api/v1/spaces/${spaceId}/documents/${docIds[0]}/children`,
+    const { documents: children } = await apiJson<{ documents: { id: string }[] }>(
+      `/api/v1/spaces/${spaceId}/documents?parentId=${docIds[0]}`,
     );
 
     expect(Array.isArray(children)).toBe(true);

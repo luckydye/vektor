@@ -223,12 +223,12 @@ describe("SV Wiki roles — independent acceptance suite", () => {
     }
 
     const children = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/${assets.id}/children`,
+      `/api/v1/spaces/${spaceId}/documents?parentId=${assets.id}`,
       owner.token,
     );
-    expect((await children.json()).children.map((doc: { id: string }) => doc.id)).toEqual(
-      expect.arrayContaining([moodboard.id, second.id]),
-    );
+    expect(
+      (await children.json()).documents.map((doc: { id: string }) => doc.id),
+    ).toEqual(expect.arrayContaining([moodboard.id, second.id]));
   });
 
   it("AT-05 PM-08/PM-09/PM-10: rich pasted content survives a server round-trip", async () => {

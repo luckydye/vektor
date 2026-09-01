@@ -811,7 +811,7 @@ async function bench(state: SeedState): Promise<BenchResult> {
 
   const childrenList = await measureN("GET children", 300, async () => {
     const id = randomItem(documentIds);
-    await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}/children`);
+    await apiJson(`/api/v1/spaces/${spaceId}/documents?parentId=${id}`);
   });
 
   // ── Write latency ─────────────────────────────────────────────────────────

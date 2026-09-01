@@ -249,7 +249,6 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET/POST | `/spaces/:spaceId/documents` | List documents (with filters) / create a document |
 | GET/PUT/PATCH/DELETE/POST | `/spaces/:spaceId/documents/:documentId` | Read / replace content / patch metadata / archive-delete / create revision |
 | GET | `/spaces/:spaceId/documents/:documentId/access` | Everyone who can reach the document, and the grant that gets them there |
-| GET | `/spaces/:spaceId/documents/:documentId/children` | List direct child documents |
 | GET | `/spaces/:spaceId/documents/:documentId/breadcrumbs` | Ancestor chain for a document |
 | GET | `/spaces/:spaceId/documents/:documentId/contributors` | Users who have edited the document |
 | GET | `/spaces/:spaceId/documents/:documentId/diff` | Unified/inline diff between a revision and its base |
@@ -2067,7 +2066,9 @@ curl -sS -X DELETE -b "$COOKIE" "$VEKTOR/spaces/$SPACE/ai-chat/sessions/chat_202
   only gets them on request), `archived` (`"true"` — the archived (soft-deleted)
   documents instead of the live ones; takes precedence over the other filters).
 - **Behavior**: content is never included in list responses (fetched separately per
-  document). `record`-type documents are excluded when filtering by category.
+  document). `record`-type documents are excluded when filtering by category. With
+  `parentId`, children are filtered against the caller's document grants, so a child
+  with no ACL entry of its own is not enumerable through a grant on the parent alone.
 - **Returns**: shape depends on query — `{ documentsByCategory, categorySlugs }`
   (grouped), `{ documents, total, nextCursor: null }` (`categorySlugs` or `parentId`
   — the full filtered result set in one response, so no `limit` applies and there is
@@ -2122,6 +2123,29 @@ curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/documents?archived=true&limit=1"
     }
   ],
   "limit": 1,
+  "nextCursor": null
+}
+```
+
+A parent's direct children:
+
+```bash
+curl -sS -b "$COOKIE" \
+  "$VEKTOR/spaces/$SPACE/documents?parentId=doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31"
+```
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc_9a71fe30-4c28-4d17-8b6e-05f2a7c91d84",
+      "slug": "launch-checklist",
+      "properties": { "title": "Launch checklist" },
+      "parentId": "doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31",
+      "updatedAt": "2026-08-16T18:02:00.000Z"
+    }
+  ],
+  "total": 1,
   "nextCursor": null
 }
 ```
@@ -2448,32 +2472,6 @@ curl -sS -b "$COOKIE" \
           "createdAt": "2026-04-01T08:00:00.000Z"
         }
       ]
-    }
-  ]
-}
-```
-
-### `GET /spaces/:spaceId/documents/:documentId/children`
-
-- **Auth**: session; `viewer` on the document.
-- **Behavior**: children are filtered against the caller's document grants, so a child
-  with no ACL entry of its own is not enumerable through a grant on the parent alone.
-- **Returns**: `200 { children }`.
-
-```bash
-curl -sS -b "$COOKIE" \
-  "$VEKTOR/spaces/$SPACE/documents/doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31/children"
-```
-
-```json
-{
-  "children": [
-    {
-      "id": "doc_9a71fe30-4c28-4d17-8b6e-05f2a7c91d84",
-      "slug": "launch-checklist",
-      "properties": { "title": "Launch checklist" },
-      "parentId": "doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31",
-      "updatedAt": "2026-08-16T18:02:00.000Z"
     }
   ]
 }

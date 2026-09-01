@@ -1060,12 +1060,12 @@ describe("ACL API Tests - Access Control", () => {
     expect(editorWrite.status).toBe(200);
 
     const childrenResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${root.id}/children`,
+      `/api/v1/spaces/${testSpaceId}/documents?parentId=${root.id}`,
       treeUserToken,
     );
     expect(childrenResponse.status).toBe(200);
     const childrenData = await childrenResponse.json();
-    expect(childrenData.children.map((doc: any) => doc.id)).toContain(child.id);
+    expect(childrenData.documents.map((doc: any) => doc.id)).toContain(child.id);
 
     const futureChildResponse = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents`,
@@ -1784,26 +1784,26 @@ describe("ACL API Tests - Document Children Access Control", () => {
 
   it("should allow member to view document children", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${parentDocId}/children`,
+      `/api/v1/spaces/${testSpaceId}/documents?parentId=${parentDocId}`,
       session3Token, // viewer
     );
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.children).toBeDefined();
-    expect(Array.isArray(data.children)).toBe(true);
-    expect(data.children.length).toBeGreaterThan(0);
+    expect(data.documents).toBeDefined();
+    expect(Array.isArray(data.documents)).toBe(true);
+    expect(data.documents.length).toBeGreaterThan(0);
   });
 
   it("should allow editor to view document children", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${parentDocId}/children`,
+      `/api/v1/spaces/${testSpaceId}/documents?parentId=${parentDocId}`,
       session2Token, // editor
     );
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.children).toBeDefined();
+    expect(data.documents).toBeDefined();
   });
 
   it("should deny non-member access to document children", async () => {
@@ -1811,7 +1811,7 @@ describe("ACL API Tests - Document Children Access Control", () => {
     const nonMemberToken = nonMemberData.token;
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${parentDocId}/children`,
+      `/api/v1/spaces/${testSpaceId}/documents?parentId=${parentDocId}`,
       nonMemberToken,
     );
 
@@ -3879,13 +3879,6 @@ describe("ACL API Tests - Resource-Scoped Browsing", () => {
       resourceType: "document",
       resourceId: parentId,
     });
-
-    const children = await apiRequest(
-      `/api/v1/spaces/${spaceId}/documents/${parentId}/children`,
-      user.token,
-    );
-    expect(children.status).toBe(200);
-    expect((await children.json()).children).toEqual([]);
 
     const listedChildren = await apiRequest(
       `/api/v1/spaces/${spaceId}/documents?parentId=${parentId}`,
