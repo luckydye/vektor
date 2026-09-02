@@ -3,12 +3,10 @@
  * through.
  *
  * A document carries the counter value it was last written at
- * (`document.change_seq`). That value does two jobs: it is the document's
- * entity tag, so a reader can ask "is this still what I saw?", and it is a
- * position in the space's write order, so a consumer can ask "what changed
- * since I last looked?". Both answers are only as good as the rule that every
- * write moves it, which is why writers call {@link touchDocument} rather than
- * updating the row themselves.
+ * (`document.change_seq`): its entity tag, and its position in the space's
+ * write order. Both only work while every write moves it, which is why writers
+ * call `touchDocument` instead of updating the row themselves. The one
+ * exception is `writeDocumentIndex`, documented at that function.
  */
 
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
@@ -16,48 +14,25 @@ import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { document, documentTombstone, spaceMetadata } from "#db/schema/space.ts";
 
-/**
- * The outcome of a write that carried a condition.
- *
- * A conflict is a result rather than a failure: losing a race is how a writer
- * finds out it has to re-read and decide again. The shape mirrors
- * `ConditionalPutResult` in `#files/storage.ts` on purpose, but carries the
- * sequence instead of an entity tag — spelling a tag is the HTTP layer's
- * business, and nothing down here should know how one is written.
- */
+/** A conflict is a result, not a failure: the caller re-reads and decides again. */
 export type DocumentWriteResult = { ok: true; changeSeq: number } | { ok: false };
 
-/**
- * A conditional write that also hands back what it wrote, for the callers whose
- * answer is the document rather than a status.
- *
- * The two ways to fail are kept apart because they are different answers to the
- * caller and different answers over HTTP: a document that is not there was
- * never a candidate for the condition, while one that is there and moved on is
- * a race the caller can retry.
- */
+/** `missing` and `conflict` are different answers, and different status codes. */
 export type DocumentWriteOutcome<T> =
   | { ok: true; document: T }
   | { ok: false; reason: "missing" | "conflict" };
 
-/**
- * What a write may set. `changeSeq` is absent because it is not the caller's to
- * choose, and `id` because a write that renames a document is a different
- * operation from the one this models.
- */
 export type DocumentWriteValues = Omit<
   Partial<typeof document.$inferInsert>,
   "id" | "changeSeq"
 >;
 
 /**
- * Take the next value from the space's counter.
+ * Take the next value from the space's counter, in the caller's transaction.
  *
- * Always inside the caller's transaction, so the number and the write it
- * describes commit or roll back together. Being a write, it also takes SQLite's
- * write lock at the point it runs — which is why callers allocate before they
- * read anything else: the lock is held from there to the commit, and no second
- * transaction can interleave an allocation into the gap.
+ * Being a write, this takes SQLite's write lock where it runs and holds it to
+ * the commit — so callers allocate before they read, and no other transaction
+ * can interleave an allocation.
  */
 export async function nextChangeSeq(s: SpaceStore): Promise<number> {
   // No key: a space database holds exactly one metadata row.
@@ -75,17 +50,11 @@ export async function nextChangeSeq(s: SpaceStore): Promise<number> {
 
 /**
  * Write a document and move its sequence, optionally only while it still sits
- * at one of `expected`.
+ * at one of `expected`. Zero rows updated is the conflict.
  *
- * The comparison is part of the write, not a read before it: a caller that
- * checks the sequence and then updates has a gap between the two that another
- * writer fits inside. Zero rows updated is the conflict, and the only way to
- * learn about one.
- *
- * A refused write still consumes the sequence it allocated. That leaves a gap
- * in the counter, which costs nothing — a consumer asks for everything above
- * the position it holds, and a number no document carries is simply a number it
- * never sees.
+ * A refused write still consumes the sequence it allocated. The gap costs
+ * nothing: a consumer asks for everything above its position, and a number no
+ * document carries is a number it never sees.
  */
 export async function touchDocument(
   s: SpaceStore,
@@ -108,15 +77,12 @@ export async function touchDocument(
 }
 
 /**
- * Delete a document, optionally only while it still sits at one of `expected`,
- * leaving a tombstone at the sequence the deletion happened at.
+ * Delete a document, leaving a tombstone at the sequence it happened at.
  *
- * The sequence outlives the row on purpose. A consumer walking the counter sees
- * only what still exists, so a document that is simply gone is indistinguishable
- * from one that never changed; the tombstone is the only thing that can tell it
- * apart. Writing it here rather than at the call site makes "a delete always
- * leaves one" structural, the same way this module makes "a write always moves
- * the sequence" structural.
+ * Written here rather than at the call site so that "a delete always leaves
+ * one" holds structurally. A scan of rows that exist can never mention one that
+ * does not, so the tombstone is all a consumer has to tell a delete from
+ * silence.
  */
 export async function deleteDocumentRow(
   s: SpaceStore,
@@ -140,25 +106,16 @@ export async function deleteDocumentRow(
   });
 }
 
-/**
- * `guard` is for a caller that will only ever write one kind of document and
- * wants that stated in the statement rather than assumed — it narrows what the
- * write can reach, where `expected` decides whether it happens at all.
- */
+/** `guard` narrows what the write can reach; `expected` decides whether it happens. */
 function documentCondition(
   id: string,
   expected: number[] | undefined,
   guard: SQL | undefined,
 ): SQL {
   // An `If-Match` naming only tags this server could not have issued decodes to
-  // nothing, and nothing is what it can match. Spelled out rather than handed to
-  // `inArray` as an empty list, whose SQL is a question about the query builder
-  // instead of a statement about the condition.
+  // an empty list, and nothing is what it matches.
   if (expected?.length === 0) return sql`1 = 0`;
 
-  // `inArray` rather than `eq`, because `If-Match` is a list and the condition
-  // it states is "any of these" — which one statement can express and a loop of
-  // statements cannot do atomically.
   const parts = [
     eq(document.id, id),
     ...(expected ? [inArray(document.changeSeq, expected)] : []),

@@ -60,15 +60,11 @@ async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
 }
 
 /**
- * Give documents that predate `change_seq` an order worth reading them in.
+ * Number documents that predate `change_seq`, least recently edited first, so a
+ * consumer's first full read arrives in a meaningful order.
  *
- * A consumer walking the counter for the first time is handed the entire space,
- * so the order it arrives in should mean something: least recently edited
- * first. Numbering from one also leaves `0` free to read as "never written",
- * which is what an unallocated row is.
- *
- * Skipped once the counter has moved, so replaying the baseline against a live
- * database cannot renumber documents out from under a consumer mid-sync.
+ * Skipped once the counter has moved: replaying the baseline against a live
+ * database must not renumber documents mid-sync.
  */
 async function backfillDocumentChangeSeq(db: SpaceDb): Promise<void> {
   const [counter] = await db

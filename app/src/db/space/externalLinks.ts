@@ -1,12 +1,6 @@
 /**
  * What a document is called in the system it syncs with, and what that system
  * last saw of it.
- *
- * A peer names things by its own identifier — a calendar event's `UID`, an issue
- * key — and needs to write "the document for this identifier" without first
- * asking whether one exists. The unique index on the identity does that: two
- * runs racing to import one event contend on a single row instead of producing
- * two documents.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -56,7 +50,7 @@ export async function findExternalLink(
   return row ?? null;
 }
 
-/** Every identity pointing at one document, for the reverse lookup a push needs. */
+/** Every identity pointing at one document. */
 export async function listExternalLinksForDocument(
   s: SpaceStore,
   documentId: string,
@@ -77,12 +71,9 @@ export async function listExternalLinksForDocument(
 }
 
 /**
- * Claim an identity for a document.
- *
- * Deliberately an insert and not an upsert: claiming an identity that is
- * already claimed is a race the caller has to hear about, and the unique index
- * is what tells it. Call this inside the transaction that creates the document,
- * so a lost race takes the document with it rather than leaving an orphan.
+ * An insert, not an upsert: claiming a taken identity is a race the caller has
+ * to hear about, and the unique index is what tells it. Call inside the
+ * transaction that creates the document, so a lost race leaves no orphan.
  */
 export async function claimExternalIdentity(
   s: SpaceStore,
@@ -104,11 +95,8 @@ export async function claimExternalIdentity(
 }
 
 /**
- * Record what the peer has now seen.
- *
- * `syncedChangeSeq` is the sequence this sync itself wrote. A document sitting
- * at that value has not been touched locally since; anything higher is a local
- * edit the peer does not know about yet, which is the whole reason to store it.
+ * Record what the peer has seen. A document still sitting at `syncedChangeSeq`
+ * has not been edited locally since; anything higher is a local edit.
  */
 export async function markExternalSynced(
   s: SpaceStore,

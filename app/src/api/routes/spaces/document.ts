@@ -131,13 +131,9 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
 }
 
 /**
- * The sequences an `If-Match` on this request would accept, or `undefined` when
- * it carries no condition.
- *
- * A request without the header writes unconditionally, which is exactly what
- * every caller predating this did — so absent headers keep their behaviour.
- * `*` collapses to the same thing here, because it asks only that the document
- * exist and each of these handlers has already established that.
+ * The sequences an `If-Match` would accept, or `undefined` for no condition —
+ * so a request without the header writes unconditionally, as before. `*` says
+ * only that the document exist, which every handler here has established.
  */
 function requestedCondition(context: ApiContext): number[] | undefined {
   const header = context.req.raw.headers.get("if-match");
@@ -146,13 +142,7 @@ function requestedCondition(context: ApiContext): number[] | undefined {
   return seqs === "any" ? undefined : seqs;
 }
 
-/**
- * Answer a refused condition with the document as it now stands.
- *
- * Read after the failed write rather than before it, so the caller is handed
- * the state that beat it rather than the one it already knew about. Metadata
- * only: the content is what made the response worth omitting in the first place.
- */
+/** Read after the failed write, so the caller is handed the state that beat it. */
 async function conflictResponse(store: SpaceStore, id: string): Promise<Response> {
   const current = await getDocument(store, id);
   if (!current) throw notFoundResponse("Document");
@@ -164,8 +154,8 @@ function withCors(response: Response): Response {
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, If-Match, If-None-Match");
-  // A browser hides every response header not named here, so without this a
-  // cross-origin caller cannot read the tag it is expected to send back.
+  // A browser hides every header not named here, so a cross-origin caller
+  // cannot otherwise read the tag it is meant to send back.
   headers.set("Access-Control-Expose-Headers", "ETag");
   return new Response(response.body, {
     status: response.status,
@@ -202,9 +192,8 @@ async function handlePublishedRevisionPatch(
   }
 
   const auditEntry = await store.tx(async (tx) => {
-    // Publishing changes which body a plain read of this document returns, so
-    // it moves the sequence like any other write. Both statements are one
-    // logical change, so they share the one allocation the second makes.
+    // Publishing changes which body a plain read returns, so it moves the
+    // sequence. Both writes are one change and share the second's allocation.
     await touchDocument(tx, documentId, { publishedRev: revToPublish });
 
     const entry = await createAuditLog(tx, {
@@ -377,10 +366,8 @@ export const GET: ApiRouteHandler = (context) =>
         throw notFoundResponse("Revision");
       }
 
-      // A revision's bytes never change, so the tag comes from the revision
-      // number. It still revalidates rather than sitting in a cache for an
-      // hour: the body below varies with history access, and a grant can be
-      // taken away under a response already stored.
+      // Tagged from the revision, whose bytes never change — but still
+      // revalidating, since the body below varies with history access.
       const revEtag = revisionEtag(rev);
       const revIfNoneMatch = context.req.raw.headers.get("if-none-match");
       if (revIfNoneMatch && matchesWeak(revIfNoneMatch, revEtag)) {
@@ -403,11 +390,8 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    // Only the canonical read is tagged. `?draft` and `?live` are different
-    // representations of the same URL, and `?live` is not even a representation
-    // of the stored row — it is whatever the collaboration room holds this
-    // instant, which no column can describe. One tag across the three is how a
-    // cache is talked into answering one with another.
+    // Only the canonical read is tagged: `?draft` and `?live` are different
+    // representations of the same URL, and `?live` is not the stored row at all.
     const etag = draft || live ? null : documentEtag(meta.changeSeq);
     const ifNoneMatch = context.req.raw.headers.get("if-none-match");
     if (etag && ifNoneMatch && matchesWeak(ifNoneMatch, etag)) {
@@ -451,10 +435,7 @@ export const GET: ApiRouteHandler = (context) =>
               "Content-Type": serialized
                 ? "text/plain; charset=utf-8"
                 : "text/markdown; charset=utf-8",
-              // Same URL, same tag, a different body — so the tag is only
-              // usable if a cache is told what the body was chosen by. Nothing
-              // is added where there is no tag: an untagged representation
-              // answers exactly as it did before.
+              // Same URL, different body, so the tag needs `Vary` to be safe.
               ...(etag
                 ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
                 : {}),
@@ -645,9 +626,8 @@ export const PUT: ApiRouteHandler = (context) =>
     // content it just sent, so it only needs the canonical metadata (revs,
     // timestamps) to reconcile its optimistic state.
     const { content: _omittedContent, ...documentMetadata } = document;
-    // The tag the write produced, so a caller holding it can make its next
-    // conditional write without reading the document back first — and, for a
-    // syncing caller, without mistaking its own write for someone else's edit.
+    // So the next conditional write needs no read back — and a syncing caller
+    // does not mistake its own write for someone else's edit.
     return jsonResponse({ document: documentMetadata }, 200, {
       ETag: documentEtag(document.changeSeq),
     });
@@ -711,9 +691,7 @@ export const PATCH: ApiRouteHandler = (context) =>
         );
         if (payload.conflict) return conflictResponse(store, id);
 
-        // The body stays exactly what `successResponse(payload)` sent before:
-        // the sequence travels in the header, where a caller that never asked
-        // for it never sees it.
+        // Body unchanged from `successResponse(payload)`; the sequence is a header.
         const { changeSeq, conflict: _conflict, ...result } = payload;
         return jsonResponse(
           result,
@@ -722,12 +700,8 @@ export const PATCH: ApiRouteHandler = (context) =>
         );
       }
 
-      // `parentId`, `publishedRev` and `readonly` each write through the
-      // counter but take no condition of their own, so one check stands for the
-      // three. It is a read-then-write and therefore racy in a way the property
-      // path above is not — stated here rather than hidden, because the window
-      // is a few milliseconds and these three are not what a syncing writer
-      // contends over.
+      // One check for the three branches below, none of which takes a condition
+      // of its own. Read-then-write, so racy in a way the property path is not.
       if (expected && !expected.includes(existingDoc.changeSeq)) {
         return conflictResponse(store, id);
       }
@@ -840,9 +814,7 @@ export const DELETE: ApiRouteHandler = (context) =>
 
     const store = await openSpaceStore(spaceId);
     const expected = requestedCondition(context);
-    // A condition on a document that is not there is not a failed condition:
-    // there is no resource to have a state, so the answer is the same 404 a
-    // plain request would get.
+    // No resource, so no state to have failed a condition.
     if (expected && !(await getDocument(store, id))) {
       throw notFoundResponse("Document");
     }

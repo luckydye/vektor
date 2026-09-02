@@ -18,11 +18,7 @@ export const spaceMetadata = sqliteTable("space_metadata", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   /**
    * The space's write counter, and the source of every `document.change_seq`.
-   *
-   * A space database holds exactly one of these rows, so allocating from it
-   * orders every document write in the space against every other — which is
-   * what a consumer asking "what changed since I last looked" needs, and what a
-   * per-document counter cannot give.
+   * One row per space database, so it orders every write against every other.
    */
   changeSeq: integer("change_seq").notNull().default(0),
 });
@@ -88,18 +84,15 @@ export const document = sqliteTable(
     createdBy: text("created_by").notNull(),
     /**
      * The value this document last drew from `space_metadata.change_seq`, and
-     * the document's entity tag.
+     * the document's entity tag. Moves on every write that changes what a read
+     * returns; see `#db/space/changeSeq.ts`.
      *
-     * It advances on every write that changes what a read of this document
-     * returns, and on nothing else — the search index refresh is the one
-     * deliberate exception, since none of its columns are ever served. This is
-     * not `currentRev`: a revision is a content snapshot, while a property
-     * patch, a publish or a move all change the document without making one.
+     * Not `currentRev`: a property patch, a publish or a move all change the
+     * document without making a revision.
      */
     changeSeq: integer("change_seq").notNull().default(0),
   },
-  // Ordered scans over the counter (`change_seq > ?`) are how a sync consumer
-  // reads what changed, so the column is indexed rather than table-scanned.
+  // Indexed for the `change_seq > ?` scan the delta feed runs.
   (t) => [index("document_change_seq_idx").on(t.changeSeq)],
 );
 
@@ -126,22 +119,16 @@ export const revision = sqliteTable(
 );
 
 /**
- * That a document was deleted, and where in the write order that happened.
+ * That a document was deleted, and where in the write order — the only thing a
+ * consumer walking `change_seq` can notice a delete by.
  *
- * A deleted row cannot announce itself: a consumer walking `change_seq` sees
- * only what still exists, so without this a document it holds simply stops
- * appearing and it can never tell that from "unchanged". Archiving needs no
- * tombstone — an archived document is a live row and travels the feed as an
- * ordinary change.
- *
- * Rows are kept indefinitely. They are three columns wide, and keeping them is
- * what lets a consumer that has been away for months resume from its own
- * position instead of being told to start over.
+ * Archiving needs no tombstone: an archived document is a live row. Rows are
+ * kept indefinitely, so a consumer away for months can still resume.
  */
 export const documentTombstone = sqliteTable(
   "document_tombstone",
   {
-    /** Not a foreign key: the row it would reference is the one that just went. */
+    /** Not a foreign key: the row it would reference is the one that went. */
     documentId: text("document_id").primaryKey(),
     changeSeq: integer("change_seq").notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp" }).notNull(),
@@ -150,13 +137,10 @@ export const documentTombstone = sqliteTable(
 );
 
 /**
- * What a document is called in the system it syncs with.
- *
- * A syncing peer names things by its own identifier — a calendar event's `UID`,
- * an issue key — and has to be able to write "the document for this identifier"
- * without first asking whether one exists. The unique index is what makes that
- * safe: two runs racing to import the same event contend on one row rather than
- * producing two documents.
+ * What a document is called in the system it syncs with, so a peer can write
+ * "the document for this identifier" without asking whether one exists. The
+ * unique index makes that safe: two runs importing one event contend on a row
+ * instead of producing two documents.
  */
 export const externalLink = sqliteTable(
   "external_link",
@@ -164,24 +148,21 @@ export const externalLink = sqliteTable(
     id: text("id").primaryKey(),
     /** Which peer, so two calendars claiming one `UID` stay distinct. */
     source: text("source").notNull(),
-    /** The peer's identifier for this thing. */
     externalId: text("external_id").notNull(),
     /**
-     * Which occurrence, for a peer whose identifier names a series rather than
-     * a single thing (iCalendar `RECURRENCE-ID`). Empty for the series itself —
-     * not null, because SQLite treats nulls as distinct in a unique index and
-     * the series row would stop being unique.
+     * Which occurrence, for an identifier that names a series (iCalendar
+     * `RECURRENCE-ID`). Empty for the series — not null, since SQLite treats
+     * nulls as distinct in a unique index.
      */
     instanceId: text("instance_id").notNull().default(""),
     documentId: text("document_id")
       .notNull()
       .references(() => document.id, { onDelete: "cascade" }),
-    /** The peer's own version of the thing: `SEQUENCE`, an etag, a timestamp. */
+    /** The peer's own version: `SEQUENCE`, an etag, a timestamp. */
     remoteVersion: text("remote_version"),
     /**
-     * The `document.change_seq` this link last wrote. A document sitting at
-     * this value has not been touched locally since the last sync; anything
-     * higher is a local edit the peer has not seen.
+     * The `document.change_seq` this link last wrote. Anything higher on the
+     * document is a local edit the peer has not seen.
      */
     syncedChangeSeq: integer("synced_change_seq"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),

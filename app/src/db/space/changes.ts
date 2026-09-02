@@ -1,18 +1,12 @@
 /**
- * The space's write order, read forwards.
+ * The space's write order, read forwards: a consumer holds one number and asks
+ * for everything above it.
  *
- * A consumer holds one number — the position it has caught up to — and asks for
- * everything above it. Documents come back with the sequence they were last
- * written at; deletions come back as tombstones, because a row that is gone
- * cannot appear in a scan of rows that exist.
- *
- * The feed is gap-free, and not by luck. `nextChangeSeq` is a write, so it takes
- * SQLite's single write lock, and that lock is held until commit — a transaction
- * cannot allocate a sequence above one that is still uncommitted. Sequence order
- * is commit order, so a consumer that has seen `n` has seen everything below it
- * and can advance without looking back. On an engine with concurrent writers
- * this would need a commit-order table instead, and on the in-memory path (see
- * `store.ts`, where a transaction is not a transaction) it does not hold at all.
+ * The feed is gap-free because `nextChangeSeq` is a write, so it holds SQLite's
+ * single write lock until commit and no transaction can allocate a sequence
+ * above one still uncommitted — sequence order is commit order. That is a
+ * property of this engine, and it does not hold on the in-memory path where
+ * `store.ts` runs transactions as plain calls.
  */
 
 import { and, asc, gt, isNull, ne, or } from "drizzle-orm";
@@ -31,13 +25,10 @@ export type DocumentChange =
 export interface DocumentChangesPage {
   changes: DocumentChange[];
   /**
-   * The position to resume from. It is the highest sequence *examined*, not the
-   * highest returned: a page whose entries were all filtered away still made
-   * progress, and a consumer that rewound to the last visible entry would read
-   * the same invisible rows forever.
+   * The position to resume from: the highest sequence examined, not the highest
+   * returned, so a page filtered down to nothing still makes progress.
    */
   nextSince: number;
-  /** Whether the page filled, and so whether asking again may yield more. */
   hasMore: boolean;
 }
 
@@ -45,10 +36,9 @@ export interface ListDocumentChangesOptions {
   since: number;
   limit: number;
   /**
-   * Whose reading of the feed this is. Live documents are filtered to what this
-   * viewer may read; a null viewer is a trusted system caller. Tombstones are
-   * not filtered — the grants that would decide are revoked with the document —
-   * so they carry an id and a time and nothing else.
+   * Live documents are filtered to what this viewer may read; null is a trusted
+   * system caller. Tombstones are not filtered — the grants that would decide
+   * were revoked with the document — so they carry an id and a time, no more.
    */
   viewer: AclViewer | null;
 }
@@ -59,8 +49,8 @@ export async function listDocumentChanges(
 ): Promise<DocumentChangesPage> {
   const { since, limit, viewer } = options;
 
-  // One page's worth from each side: the merge below can take at most `limit`
-  // in total, so neither side can contribute more than that on its own.
+  // One page from each side: the merge takes at most `limit` in total, so
+  // neither side can contribute more than that alone.
   const [written, deleted] = await Promise.all([
     many(
       s.db
@@ -73,14 +63,10 @@ export async function listDocumentChanges(
         .where(
           and(
             gt(document.changeSeq, since),
-            // Workflow runs write on every status change and the document route
-            // answers 404 for them, so a consumer offered one could only fail to
-            // fetch it. `IS NULL OR !=` because a null type is not `!=` anything
-            // in SQL, and most documents have no type at all.
-            or(
-              isNull(document.type),
-              ne(document.type, workflowRunDocumentType),
-            ),
+            // Runs write on every status change and the document route 404s
+            // them. `IS NULL OR !=` because most documents have no type, and a
+            // null is not `!=` anything in SQL.
+            or(isNull(document.type), ne(document.type, workflowRunDocumentType)),
           ),
         )
         .orderBy(asc(document.changeSeq))
@@ -120,13 +106,11 @@ export async function listDocumentChanges(
     return { changes: [], nextSince: since, hasMore: false };
   }
 
-  // Every sequence in this page is accounted for, including the ones the viewer
-  // may not read, so resuming from the last of them skips nothing it was owed.
+  // Includes the entries the viewer may not read, so resuming here skips
+  // nothing it was owed.
   const nextSince = page[page.length - 1].changeSeq;
   const hasMore = ordered.length > page.length || page.length === limit;
 
-  // Reading an archived document takes `editor`, which is what listing them
-  // takes — so the feed asks the same two questions rather than one weaker one.
   const live = page.filter((entry) => !entry.tombstone);
   const visibleIds = viewer
     ? await readableDocumentIds(s, live, viewer)
@@ -157,6 +141,7 @@ export async function listDocumentChanges(
   return { changes, nextSince, hasMore };
 }
 
+/** Archived documents take `editor` to read, as they do to list. */
 async function readableDocumentIds(
   s: SpaceStore,
   entries: { id: string; archived: boolean }[],

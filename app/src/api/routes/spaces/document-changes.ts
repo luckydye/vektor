@@ -13,14 +13,9 @@ import { listDocumentChanges } from "#db/space/changes.ts";
 /**
  * Read what changed since a position in the space's write order
  *
- * The pull half of sync. A consumer holds one number, asks for everything
- * above it, and stores the `nextSince` it gets back — so a run that dies
- * halfway resumes where it stopped rather than starting over, and replaying a
- * page it already applied changes nothing.
- *
- * Deleted documents arrive as entries with `deleted: true`. They are the reason
- * this exists: a scan of documents that exist can never mention one that does
- * not, so without them a consumer cannot tell a deletion from silence.
+ * A consumer stores the `nextSince` it gets back, so a run that dies halfway
+ * resumes where it stopped and replaying a page changes nothing. Deleted
+ * documents arrive as entries with `deleted: true`.
  *
  * @tag Documents
  * @jobToken
@@ -31,9 +26,8 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    // No resource grants: this walks the whole space's write order, including
-    // tombstones that no per-document check can filter, so reaching it takes a
-    // role in the space rather than a grant on something inside it.
+    // No resource grants: this walks the whole write order, including tombstones
+    // that no per-document check can filter.
     const access = await authenticateSpaceAccess(
       context.var.credentials,
       spaceId,

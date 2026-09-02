@@ -101,11 +101,7 @@ export interface Document {
   content: string;
   currentRev: number;
   publishedRev: number | null;
-  /**
-   * The document's entity tag as a number: the position it holds in its
-   * space's write order. Send it back on a write to have that write refused
-   * rather than applied if someone else got there first.
-   */
+  /** Send back on a write as `If-Match` to make it conditional. */
   changeSeq?: number;
   readonly?: boolean;
   /** Archived documents are hidden from listings but still readable. */

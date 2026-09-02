@@ -63,7 +63,7 @@ export interface DocumentWithProperties {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
-  /** The document's position in the space write order; see `#db/space/changeSeq.ts`. */
+  /** See `#db/space/changeSeq.ts`. */
   changeSeq: number;
   properties: DocumentProperties;
   createdAt: Date;
@@ -185,9 +185,6 @@ export async function createDocument(
   // Generate a unique slug if the provided slug already exists
   const uniqueSlug = await generateUniqueSlug(s, slug);
 
-  // The row and the sequence it is born at land together: a document visible to
-  // a reader before it has a position in the write order is a document a sync
-  // consumer can walk straight past.
   const changeSeq = await s.tx(async (tx) => {
     const allocated = await nextChangeSeq(tx);
     await tx.db.insert(document).values({
@@ -457,8 +454,8 @@ export async function updateDocument(
 ): Promise<DocumentWriteOutcome<DocumentWithProperties>> {
   // getDocument is metadata-only — `existing.content` is never read here (the
   // write uses the new `content`), so we avoid loading the old content (tens of
-  // MB on large canvases) every save. It supplies the fields echoed back, never
-  // the decision to write: `expected` is compared by the write itself.
+  // MB on large canvases) every save. The read supplies the fields echoed back,
+  // never the decision to write — `expected` is compared by the write itself.
   const existing = await getDocument(s, id);
   if (!existing) {
     return { ok: false, reason: "missing" };
@@ -474,8 +471,7 @@ export async function updateDocument(
     expected,
   );
   if (!written.ok) {
-    // The row was read a moment ago, so a refusal here is the condition and not
-    // a vanished document: another writer moved the sequence in between.
+    // The row existed a moment ago, so a refusal is the condition, not a delete.
     return { ok: false, reason: "conflict" };
   }
 
@@ -529,8 +525,7 @@ export async function archiveDocument(
       { archived: true, updatedAt: new Date() },
       expected,
     );
-    // The audit entry follows the write rather than preceding it: a refused
-    // condition must not leave a record saying the document was archived.
+    // After the write: a refused condition must not leave an audit entry.
     if (written.ok && userId) {
       await createAuditLog(tx, {
         spaceId: tx.spaceId,
@@ -588,10 +583,8 @@ export async function deleteDocument(
   const wasRepository = existing?.type === repositoryDocumentType;
 
   const storedFiles = await s.tx(async (tx) => {
-    // Everything the delete will cascade away has to be read before it runs:
-    // `file.document_id` and `document.parent_id` are both FK-driven, so after
-    // the row goes there is nothing left to say which files were its or which
-    // documents it parented.
+    // Read before the delete: `file.document_id` cascades and
+    // `document.parent_id` nulls out, so afterwards neither is recoverable.
     const files = await many(
       tx.db
         .select({ path: fileTable.path })
@@ -602,13 +595,10 @@ export async function deleteDocument(
       tx.db.select({ id: document.id }).from(document).where(eq(document.parentId, id)),
     );
 
-    // The conditional delete goes before the writes below, so a refused
-    // condition rolls back having touched nothing — the grants, comments and
-    // preferences are unrecoverable once dropped.
+    // Before the writes below, so a refused condition drops no grants.
     if (!(await deleteDocumentRow(tx, id, expected))) return null;
 
-    // `parent_id` is ON DELETE SET NULL, so every child just changed in a way a
-    // reader can see. Nothing else here would move their sequence.
+    // `parent_id` was just nulled out by the cascade — a visible change.
     for (const child of children) {
       await touchDocument(tx, child.id, { updatedAt: new Date() });
     }

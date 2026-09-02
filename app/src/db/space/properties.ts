@@ -104,12 +104,8 @@ export async function patchDocumentProperties(
     }
     const changes: DocumentPropertyChange[] = [];
 
-    // The document write comes first so that it is the transaction's first
-    // write: a refused condition then rolls back having changed nothing, where
-    // checking after the property rows had landed would commit them behind a
-    // sequence that never moved. Properties are part of what a read returns, so
-    // a patch moves the sequence exactly as a content write does — `currentRev`
-    // does not, which is why it was never usable as the validator.
+    // First write in the transaction, so a refused condition rolls back before
+    // any property row lands behind a sequence that never moved.
     const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
     const written = await touchDocument(
       txStore,

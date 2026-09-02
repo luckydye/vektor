@@ -33,7 +33,7 @@ import type { DocumentPropertyPatch } from "#documents/properties.ts";
 interface ExternalUpsertBody {
   /** Which occurrence, for a peer whose id names a series. Empty is the series. */
   instanceId?: string;
-  /** The peer's own version of the thing, stored so an unchanged one can be skipped. */
+  /** The peer's own version, so an unchanged one can be skipped next run. */
   remoteVersion?: string;
   slug?: string;
   content?: string;
@@ -69,10 +69,6 @@ function respond(document: DocumentMeta, status: 200 | 201): Response {
   return jsonResponse({ document }, status, { ETag: documentEtag(document.changeSeq) });
 }
 
-/**
- * Answer with the document as it now stands, so a caller that lost a race can
- * reconcile without a second round trip.
- */
 async function conflict(store: SpaceStore, documentId: string): Promise<Response> {
   const current = await getDocument(store, documentId);
   if (!current) throw notFoundResponse("Document");
@@ -82,14 +78,8 @@ async function conflict(store: SpaceStore, documentId: string): Promise<Response
 /**
  * Create or replace the document a peer knows by its own identifier
  *
- * A conditional `PUT` to a name the caller chooses — the same shape as a
- * conditional write to an object store, and for the same reason: a syncing
- * peer has to be able to say "write this, but only if nobody beat me" without
- * a read and a write it cannot make atomic.
- *
- * `If-None-Match: *` creates and refuses to overwrite. `If-Match` overwrites
- * and refuses to create. Neither header upserts, which is what a first full
- * import wants.
+ * `If-None-Match: *` creates and refuses to overwrite; `If-Match` overwrites
+ * and refuses to create; neither header upserts.
  *
  * @tag Documents
  * @jobToken
@@ -126,16 +116,12 @@ export const PUT: ApiRouteHandler = (context: ApiContext) =>
     const link = await findExternalLink(store, identity);
 
     if (!link) {
-      // `If-Match` names a state, and a document that does not exist has none.
-      // 404 rather than 412, for the same reason a conditional read of a
-      // missing resource is a 404: there is nothing to have failed a condition.
+      // No resource, so no state to have failed a condition.
       if (ifMatch) throw notFoundResponse("Document");
       return createLinked(store, identity, userId, body);
     }
 
-    // The identity is taken, and `If-None-Match: *` asked for it not to be.
-    // Only `*` is meaningful here: a specific tag would be asking about a
-    // representation of a document the caller does not yet claim to know.
+    // Only `*` is meaningful on a create-or-update.
     if (ifNoneMatch?.trim() === "*") {
       return conflict(store, link.documentId);
     }
@@ -153,11 +139,8 @@ export const PUT: ApiRouteHandler = (context: ApiContext) =>
   }, "Failed to write external document");
 
 /**
- * Create the document and claim the identity in one transaction.
- *
- * Both or neither: a document created outside the claim is an orphan nothing
- * will ever find again, and a claim without a document points at nothing. The
- * unique index decides a race, and losing it rolls the document back with it.
+ * Both or neither: a document created outside the claim is an orphan. The unique
+ * index decides a race, and losing it rolls the document back with it.
  */
 async function createLinked(
   store: SpaceStore,
@@ -174,8 +157,7 @@ async function createLinked(
         body.content ?? "",
         { type: body.type ?? undefined },
       );
-      // Properties go through the patch path rather than the create options, so
-      // that a create and an update apply a peer's fields the same way.
+      // The patch path, not the create options, so create and update agree.
       const patched: PatchDocumentPropertiesResult = body.properties
         ? await patchDocumentProperties(tx, document.id, body.properties, userId)
         : {};
@@ -189,9 +171,8 @@ async function createLinked(
       return document.id;
     })
     .catch((error: unknown) => {
-      // The only insert here that can fail is the identity index, and the only
-      // way it fails is a second writer claiming the identity between the read
-      // above and this transaction. A lost race, not a server fault.
+      // Only the identity index can fail here, and only if a second writer
+      // claimed it since the read above.
       if (isUniqueViolation(error)) return null;
       throw error;
     });
@@ -235,9 +216,8 @@ async function updateLinked(
   }
 
   if (body.properties !== undefined) {
-    // Chained off the write above rather than the caller's condition: the
-    // content write already moved the sequence, so re-using the original
-    // condition here would refuse this half of the caller's own change.
+    // Chained off the write above: reusing the caller's condition here would
+    // refuse this half of its own change.
     const patched = await patchDocumentProperties(
       store,
       documentId,
@@ -260,7 +240,6 @@ async function updateLinked(
   return respond(document, 200);
 }
 
-/** SQLite reports the identity index by name; nothing else on this path can fail this way. */
 function isUniqueViolation(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("UNIQUE constraint failed");

@@ -255,9 +255,7 @@ export async function createRevision(
     // Never backwards: a save that landed while this one compressed has already
     // moved the pointer past the revision written here.
     //
-    // `currentRev` is part of what a read of the document returns, so moving it
-    // moves the sequence too — unconditionally, because the caller asked for a
-    // revision of the content it supplied, not of whatever the row holds now.
+    // Unconditional: the caller asked for a revision of the content it supplied.
     await touchDocument(s, documentId, {
       currentRev: sql`max(${document.currentRev}, ${created.rev})`,
     });

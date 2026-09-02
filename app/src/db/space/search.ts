@@ -77,8 +77,7 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
     content: "",
     currentRev: 0,
     publishedRev: null,
-    // A file row is not a document and carries no position in the write order.
-    // Zero reads as "never written", which is what it is.
+    // Not a document, so no position in the write order.
     changeSeq: 0,
     properties: {
       ...(f.originalName ? { title: f.originalName } : {}),
@@ -161,13 +160,9 @@ export async function readDocumentIndexSource(
 }
 
 /**
- * The one document write that deliberately does NOT move `change_seq`.
- *
- * Nothing this sets is in any representation the API serves, and the refresh is
- * asynchronous and repeats after every save. Moving the sequence here would
- * invalidate every reader's cached copy and wake every sync consumer for a
- * change none of them can see. See `#db/space/changeSeq.ts` for the rule this
- * is the exception to.
+ * The one document write that deliberately does not move `change_seq` (see
+ * `#db/space/changeSeq.ts`): none of these columns is ever served, and the
+ * refresh repeats after every save.
  */
 export async function writeDocumentIndex(
   s: SpaceStore,

@@ -227,9 +227,6 @@ async function writeRunToDocument(
   run: RunState,
 ): Promise<void> {
   const now = new Date();
-  // A run document is read over the same API as any other, so its writes move
-  // the sequence too — otherwise a consumer following the counter sees a run
-  // start and never sees it finish.
   await touchDocument(
     store,
     runId,
@@ -453,9 +450,7 @@ export async function createRun(
       content: "",
       currentRev: 0,
       publishedRev: null,
-      // Left at its default here and set by `writeRunToDocument` on the next
-      // line, inside this same transaction — so the row is never visible to a
-      // reader without a sequence.
+      // `changeSeq` is set by `writeRunToDocument` below, in this transaction.
       parentId: documentId,
       createdAt: now,
       updatedAt: now,
