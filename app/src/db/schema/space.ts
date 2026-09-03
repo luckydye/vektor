@@ -119,7 +119,11 @@ export const property = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
-  (t) => [uniqueIndex("property_document_id_key_unique").on(t.documentId, t.key)],
+  (t) => [
+    uniqueIndex("property_document_id_key_unique").on(t.documentId, t.key),
+    // Reverse lookup: which document claims this key and value.
+    index("property_key_value_idx").on(t.key, t.value),
+  ],
 );
 
 export const category = sqliteTable("category", {

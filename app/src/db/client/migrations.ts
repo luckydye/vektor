@@ -60,27 +60,6 @@ async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
 }
 
 /**
- * Number documents that predate `change_seq`, least recently edited first.
- * Skipped once the counter has moved, so a replay cannot renumber live rows.
- */
-async function backfillDocumentChangeSeq(db: SpaceDb): Promise<void> {
-  const [counter] = await db
-    .select({ changeSeq: spaceSchema.spaceMetadata.changeSeq })
-    .from(spaceSchema.spaceMetadata);
-  if (counter && counter.changeSeq > 0) return;
-
-  await run(db, [
-    `UPDATE document SET change_seq = (
-       SELECT seq FROM (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at ASC, id ASC) AS seq
-         FROM document
-       ) ranked WHERE ranked.id = document.id
-     )`,
-    "UPDATE space_metadata SET change_seq = (SELECT COUNT(*) FROM document)",
-  ]);
-}
-
-/**
  * Every schema change made before databases were versioned. Idempotent, unlike
  * the migrations after it: a database predating the stamp replays it once.
  */
@@ -111,7 +90,6 @@ async function baseline(db: SpaceDb): Promise<void> {
     "CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)",
     "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
     "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
-    "CREATE INDEX IF NOT EXISTS property_key_value_idx ON property (key, value)",
     "CREATE UNIQUE INDEX IF NOT EXISTS revision_document_id_rev_unique ON revision (document_id, rev)",
     "CREATE INDEX IF NOT EXISTS audit_log_doc_id_created_at_idx ON audit_log (doc_id, created_at DESC, id DESC)",
     "CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at DESC, id DESC)",
@@ -150,10 +128,42 @@ async function baseline(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.file.size);
   await addColumnIfMissing(db, spaceSchema.file.width);
   await addColumnIfMissing(db, spaceSchema.file.height);
-
-  await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
-  await addColumnIfMissing(db, spaceSchema.document.changeSeq);
-  await backfillDocumentChangeSeq(db);
 }
 
-export const spaceMigrations: Migration[] = [{ id: 1, name: "baseline", up: baseline }];
+/**
+ * The space write counter behind `document.change_seq`, the entity tag every
+ * conditional document request compares against.
+ *
+ * Documents that predate it are numbered least recently edited first, so the
+ * counter ends at the document count and the next allocation is unused. The
+ * backfill is skipped once the counter has moved, in case the step is ever
+ * replayed against a database whose rows are already live.
+ */
+async function documentChangeSeq(db: SpaceDb): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
+  await addColumnIfMissing(db, spaceSchema.document.changeSeq);
+  await exec(
+    db,
+    sql.raw("CREATE INDEX IF NOT EXISTS property_key_value_idx ON property (key, value)"),
+  );
+
+  const [counter] = await db
+    .select({ changeSeq: spaceSchema.spaceMetadata.changeSeq })
+    .from(spaceSchema.spaceMetadata);
+  if (counter && counter.changeSeq > 0) return;
+
+  await run(db, [
+    `UPDATE document SET change_seq = (
+       SELECT seq FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at ASC, id ASC) AS seq
+         FROM document
+       ) ranked WHERE ranked.id = document.id
+     )`,
+    "UPDATE space_metadata SET change_seq = (SELECT COUNT(*) FROM document)",
+  ]);
+}
+
+export const spaceMigrations: Migration[] = [
+  { id: 1, name: "baseline", up: baseline },
+  { id: 2, name: "document-change-seq", up: documentChangeSeq },
+];

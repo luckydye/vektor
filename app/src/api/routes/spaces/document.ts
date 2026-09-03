@@ -9,6 +9,15 @@ import {
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import {
+  documentEtag,
+  expectedSeqs,
+  matchesWeak,
+  notModified,
+  PRIVATE_REVALIDATE,
+  preconditionFailed,
+  revisionEtag,
+} from "#api/conditional.ts";
+import {
   badRequestResponse,
   forbiddenResponse,
   jsonResponse,
@@ -21,15 +30,6 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
-import {
-  documentEtag,
-  expectedSeqs,
-  matchesWeak,
-  notModified,
-  preconditionFailed,
-  PRIVATE_REVALIDATE,
-  revisionEtag,
-} from "#api/conditional.ts";
 import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
@@ -224,12 +224,9 @@ async function handlePublishedRevisionPatch(
       // Publishing a revision also loads it into the draft, so the editor
       // reflects the revision that is now published. Conditioned on the write
       // above, not the caller's condition, which that write already consumed.
-      const second = await touchDocument(
-        tx,
-        documentId,
-        { content: revisionContent },
-        [changeSeq],
-      );
+      const second = await touchDocument(tx, documentId, { content: revisionContent }, [
+        changeSeq,
+      ]);
       if (!second.ok) return null;
       changeSeq = second.changeSeq;
     }

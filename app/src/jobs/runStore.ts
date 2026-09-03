@@ -3,13 +3,13 @@ import { many } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
+import { touchDocument } from "#db/space/changeSeq.ts";
 import {
   assertDocumentCanParent,
   type DocumentWithProperties,
   deleteDocument,
   getDocument,
 } from "#db/space/documents.ts";
-import { touchDocument } from "#db/space/changeSeq.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";

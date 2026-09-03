@@ -45,9 +45,9 @@ import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import {
-  deleteDocumentRow,
   type DocumentWriteOutcome,
   type DocumentWriteResult,
+  deleteDocumentRow,
   nextChangeSeq,
   touchDocument,
   touchDocuments,

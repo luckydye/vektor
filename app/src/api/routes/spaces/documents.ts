@@ -393,7 +393,12 @@ class IdentityTakenError extends Error {
 }
 
 function propertyInitValue(init: PropertyInit | undefined): unknown {
-  if (typeof init === "object" && init !== null && !Array.isArray(init) && "value" in init) {
+  if (
+    typeof init === "object" &&
+    init !== null &&
+    !Array.isArray(init) &&
+    "value" in init
+  ) {
     return init.value;
   }
   return init;

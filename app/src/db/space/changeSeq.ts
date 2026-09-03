@@ -18,8 +18,11 @@ export type DocumentWriteOutcome<T> =
   | { ok: true; document: T }
   | { ok: false; reason: "missing" | "conflict" };
 
+/** A column takes a value or a SQL expression over its current one. */
 export type DocumentWriteValues = Omit<
-  Partial<typeof document.$inferInsert>,
+  {
+    [K in keyof typeof document.$inferInsert]?: (typeof document.$inferInsert)[K] | SQL;
+  },
   "id" | "changeSeq"
 >;
 
