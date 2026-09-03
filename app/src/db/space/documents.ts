@@ -8,6 +8,7 @@ import { createId } from "#db/ids.ts";
 import {
   comment,
   document,
+  documentTombstone,
   file as fileTable,
   property,
   revision,
@@ -134,6 +135,12 @@ export type PropertyInit =
 export class InvalidDocumentParentError extends Error {}
 
 export interface CreateDocumentOptions {
+  /**
+   * The id to create at, for a caller that derives one from an identifier of
+   * its own. Omitted, an id is minted. The primary key decides a collision, so
+   * a caller that must not overwrite passes `expectAbsent`.
+   */
+  id?: string;
   properties?: Record<string, PropertyInit>;
   parentId?: string | null;
   type?: string;
@@ -177,7 +184,7 @@ export async function createDocument(
   for (const key of Object.keys(initialProperties ?? {})) {
     assertWritableDocumentPropertyKey(storedPropertyKey(key));
   }
-  const id = createId("document");
+  const id = options.id ?? createId("document");
   const now = new Date();
   const documentCreatedAt = options.createdAt || now;
   const documentUpdatedAt = options.updatedAt || now;
@@ -308,6 +315,22 @@ export async function getDocument(
   const properties = toDocumentProperties(props);
 
   return { ...doc, parentId: doc.parentId || null, properties };
+}
+
+/** Whether this id names a document that once existed and was deleted. */
+export async function documentWasDeleted(s: SpaceStore, id: string): Promise<boolean> {
+  const row = await one(
+    s.db
+      .select({ documentId: documentTombstone.documentId })
+      .from(documentTombstone)
+      .where(eq(documentTombstone.documentId, id)),
+  );
+  return row !== undefined;
+}
+
+/** Forget a deletion, for an id being created again. */
+export async function clearDocumentTombstone(s: SpaceStore, id: string): Promise<void> {
+  await s.db.delete(documentTombstone).where(eq(documentTombstone.documentId, id));
 }
 
 /**

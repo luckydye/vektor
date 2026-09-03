@@ -157,11 +157,7 @@ async function baseline(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.document.changeSeq);
   await backfillDocumentChangeSeq(db);
 
-  await createTables(db, [spaceSchema.externalLink]);
-  await run(db, [
-    "CREATE UNIQUE INDEX IF NOT EXISTS external_link_identity_unique ON external_link (source, external_id, instance_id)",
-    "CREATE INDEX IF NOT EXISTS external_link_document_idx ON external_link (document_id)",
-  ]);
+  await createTables(db, [spaceSchema.documentTombstone]);
 }
 
 export const spaceMigrations: Migration[] = [{ id: 1, name: "baseline", up: baseline }];

@@ -114,56 +114,21 @@ export const revision = sqliteTable(
 );
 
 /**
- * What a document is called in the system it syncs with, and where that sync
- * got to.
+ * That a document that once existed is gone.
  *
- * `source` is the consumer, so two systems tracking one document hold a row
- * each and never see each other's progress. Reconciling a source is then one
- * scan of its rows: `change_seq` against `synced_change_seq` says whether the
- * document moved here, `remote_version` says whether it moved there.
+ * A caller asking for an id it derived cannot otherwise tell "deleted" from
+ * "never created" — the evidence for both is the same absence. This is a fact
+ * about a document, not about whoever is asking: it answers `410` and knows
+ * nothing else.
+ *
+ * Rows are kept indefinitely. Two columns each, and dropping one turns a
+ * deletion back into an ambiguity.
  */
-export const externalLink = sqliteTable(
-  "external_link",
-  {
-    id: text("id").primaryKey(),
-    /** Which peer, so two calendars claiming one `UID` stay distinct. */
-    source: text("source").notNull(),
-    externalId: text("external_id").notNull(),
-    /**
-     * Which occurrence, for an identifier that names a series (iCalendar
-     * `RECURRENCE-ID`). Empty for the series — not null, since SQLite treats
-     * nulls as distinct in a unique index.
-     */
-    instanceId: text("instance_id").notNull().default(""),
-    /**
-     * Deliberately not a foreign key. The row outlives the document it names:
-     * a consumer that stores nothing of its own cannot tell "deleted here" from
-     * "never imported", and absence would have it recreate what someone
-     * deleted. `deletedAt` is what tells the two apart, so the delete marks
-     * this row rather than cascading it away.
-     */
-    documentId: text("document_id").notNull(),
-    /** The peer's own version: `SEQUENCE`, an etag, a timestamp. */
-    remoteVersion: text("remote_version"),
-    /**
-     * The `document.change_seq` this sync last wrote. Anything higher on the
-     * document is an edit made here that the peer has not seen.
-     */
-    syncedChangeSeq: integer("synced_change_seq"),
-    /** Set when the document was deleted, which the identity outlives. */
-    deletedAt: integer("deleted_at", { mode: "timestamp" }),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  },
-  (t) => [
-    uniqueIndex("external_link_identity_unique").on(
-      t.source,
-      t.externalId,
-      t.instanceId,
-    ),
-    index("external_link_document_idx").on(t.documentId),
-  ],
-);
+export const documentTombstone = sqliteTable("document_tombstone", {
+  /** Not a foreign key: the row it would reference is the one that went. */
+  documentId: text("document_id").primaryKey(),
+  deletedAt: integer("deleted_at", { mode: "timestamp" }).notNull(),
+});
 
 export const property = sqliteTable(
   "property",
