@@ -67,6 +67,27 @@ export async function touchDocument(
   });
 }
 
+/**
+ * Write several documents at one sequence.
+ *
+ * They changed together, so they share the value — and it is one statement
+ * rather than one per document.
+ */
+export async function touchDocuments(
+  s: SpaceStore,
+  ids: string[],
+  values: DocumentWriteValues,
+): Promise<void> {
+  if (ids.length === 0) return;
+  await s.tx(async (tx) => {
+    const changeSeq = await nextChangeSeq(tx);
+    await tx.db
+      .update(document)
+      .set({ ...values, changeSeq })
+      .where(inArray(document.id, ids));
+  });
+}
+
 /** Delete a document, optionally only while it still sits at one of `expected`. */
 export async function deleteDocumentRow(
   s: SpaceStore,

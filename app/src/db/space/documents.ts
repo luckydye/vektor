@@ -50,6 +50,7 @@ import {
   type DocumentWriteResult,
   nextChangeSeq,
   touchDocument,
+  touchDocuments,
 } from "./changeSeq.ts";
 import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { filterAccessibleFiles } from "./files.ts";
@@ -610,9 +611,11 @@ export async function deleteDocument(
     if (!(await deleteDocumentRow(tx, id, expected))) return null;
 
     // `parent_id` was just nulled by the cascade.
-    for (const child of children) {
-      await touchDocument(tx, child.id, { updatedAt: new Date() });
-    }
+    await touchDocuments(
+      tx,
+      children.map((child) => child.id),
+      { updatedAt: new Date() },
+    );
 
     if (userId) {
       await createAuditLog(tx, {
@@ -1273,11 +1276,13 @@ export async function setDocumentParent(
   s: SpaceStore,
   documentId: string,
   parentId: string | null,
+  expected?: number[],
 ): Promise<{
   documentId: string;
   previousParentId: string | null;
   parentId: string | null;
-}> {
+  changeSeq: number;
+} | null> {
   return s.tx(async (tx) => {
     const existing = await one(
       tx.db
@@ -1320,12 +1325,19 @@ export async function setDocumentParent(
       }
     }
 
-    await touchDocument(tx, documentId, { parentId, updatedAt: new Date() });
+    const written = await touchDocument(
+      tx,
+      documentId,
+      { parentId, updatedAt: new Date() },
+      expected,
+    );
+    if (!written.ok) return null;
 
     return {
       documentId,
       previousParentId: existing.parentId ?? null,
       parentId,
+      changeSeq: written.changeSeq,
     };
   });
 }

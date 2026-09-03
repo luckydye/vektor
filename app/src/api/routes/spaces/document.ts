@@ -130,6 +130,15 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
   return value as DocumentPatchBody;
 }
 
+/**
+ * One step of a `PATCH`, and the condition the next step should carry.
+ *
+ * Each branch writes through the counter, so a body naming two of them has the
+ * first write move the sequence out from under the second — `next` is how the
+ * caller's condition follows along.
+ */
+type PatchStep = { ok: true; next: number[] | undefined } | { ok: false };
+
 /** `undefined` for no condition, so an absent header writes unconditionally. */
 function requestedCondition(context: ApiContext): number[] | undefined {
   const header = context.req.raw.headers.get("if-match");
@@ -163,7 +172,8 @@ async function handlePublishedRevisionPatch(
   documentId: string,
   userId: string,
   publishedRev: number | null,
-) {
+  expected?: number[],
+): Promise<PatchStep> {
   const { spaceId } = store;
   const revToPublish = publishedRev === null ? null : publishedRev;
 
@@ -174,7 +184,7 @@ async function handlePublishedRevisionPatch(
       .where(eq(documentTable.id, documentId)),
   );
   if (existing?.publishedRev === revToPublish) {
-    return;
+    return { ok: true, next: expected };
   }
 
   const revisionContent =
@@ -185,9 +195,16 @@ async function handlePublishedRevisionPatch(
     throw notFoundResponse("Revision");
   }
 
-  const auditEntry = await store.tx(async (tx) => {
+  const published = await store.tx(async (tx) => {
     // Publishing changes which body a plain read returns.
-    await touchDocument(tx, documentId, { publishedRev: revToPublish });
+    const first = await touchDocument(
+      tx,
+      documentId,
+      { publishedRev: revToPublish },
+      expected,
+    );
+    if (!first.ok) return null;
+    let changeSeq = first.changeSeq;
 
     const entry = await createAuditLog(tx, {
       spaceId,
@@ -205,15 +222,26 @@ async function handlePublishedRevisionPatch(
 
     if (revisionContent !== null) {
       // Publishing a revision also loads it into the draft, so the editor
-      // reflects the revision that is now published.
-      await touchDocument(tx, documentId, { content: revisionContent });
+      // reflects the revision that is now published. Conditioned on the write
+      // above, not the caller's condition, which that write already consumed.
+      const second = await touchDocument(
+        tx,
+        documentId,
+        { content: revisionContent },
+        [changeSeq],
+      );
+      if (!second.ok) return null;
+      changeSeq = second.changeSeq;
     }
 
-    return entry;
+    return { entry, changeSeq };
   });
 
+  if (!published) return { ok: false };
+  const { entry: auditEntry, changeSeq } = published;
+
   if (revToPublish === null) {
-    return;
+    return { ok: true, next: [changeSeq] };
   }
 
   if (revisionContent === null) throw notFoundResponse("Revision");
@@ -242,6 +270,8 @@ async function handlePublishedRevisionPatch(
       revision: revToPublish,
     });
   }
+
+  return { ok: true, next: [changeSeq] };
 }
 
 async function handleReadonlyPatch(
@@ -249,7 +279,8 @@ async function handleReadonlyPatch(
   documentId: string,
   userId: string,
   readonly: boolean,
-) {
+  expected?: number[],
+): Promise<PatchStep> {
   const { spaceId } = store;
   if (typeof readonly !== "boolean") {
     throw badRequestResponse("Readonly must be a boolean");
@@ -262,8 +293,9 @@ async function handleReadonlyPatch(
   try {
     if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
 
-    await store.tx(async (tx) => {
-      await touchDocument(tx, documentId, { readonly });
+    const written = await store.tx(async (tx) => {
+      const result = await touchDocument(tx, documentId, { readonly }, expected);
+      if (!result.ok) return result;
 
       await createAuditLog(tx, {
         spaceId,
@@ -274,9 +306,17 @@ async function handleReadonlyPatch(
           message: readonly ? "Document set to readonly" : "Document readonly removed",
         },
       });
+      return result;
     });
 
+    // A refused condition unwinds the write block the same way a throw does.
+    if (!written.ok) {
+      if (readonly) setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+      return { ok: false };
+    }
+
     if (!readonly) setYRoomWriteBlocked(spaceId, documentId, false);
+    return { ok: true, next: [written.changeSeq] };
   } catch (error) {
     if (readonly) {
       setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
@@ -690,11 +730,10 @@ export const PATCH: ApiRouteHandler = (context) =>
         );
       }
 
-      // One check for the three branches below. Read-then-write, so racy in a
-      // way the property path is not.
-      if (expected && !expected.includes(existingDoc.changeSeq)) {
-        return conflictResponse(store, id);
-      }
+      // Each branch carries the condition into its own write and hands back the
+      // sequence it produced, so a body naming two of them conditions the
+      // second on the first rather than on what the request arrived with.
+      let condition = expected;
 
       if (parentId !== undefined) {
         if (parentId !== null && typeof parentId !== "string") {
@@ -712,14 +751,20 @@ export const PATCH: ApiRouteHandler = (context) =>
           );
         }
 
-        const parentChange = await setDocumentParent(store, id, parentId).catch(
-          (error) => {
-            if (error instanceof InvalidDocumentParentError) {
-              throw badRequestResponse(error.message);
-            }
-            throw error;
-          },
-        );
+        const parentChange = await setDocumentParent(
+          store,
+          id,
+          parentId,
+          condition,
+        ).catch((error) => {
+          if (error instanceof InvalidDocumentParentError) {
+            throw badRequestResponse(error.message);
+          }
+          throw error;
+        });
+        if (!parentChange) return conflictResponse(store, id);
+        condition = [parentChange.changeSeq];
+
         const parentChangeData = {
           kind: "document_parent_changed",
           documentId: id,
@@ -749,11 +794,21 @@ export const PATCH: ApiRouteHandler = (context) =>
           throw badRequestResponse("Published revision must be a number or null");
         }
 
-        await handlePublishedRevisionPatch(store, id, userId, publishedRev);
+        const step = await handlePublishedRevisionPatch(
+          store,
+          id,
+          userId,
+          publishedRev,
+          condition,
+        );
+        if (!step.ok) return conflictResponse(store, id);
+        condition = step.next;
       }
 
       if (readonly !== undefined) {
-        await handleReadonlyPatch(store, id, userId, readonly);
+        const step = await handleReadonlyPatch(store, id, userId, readonly, condition);
+        if (!step.ok) return conflictResponse(store, id);
+        condition = step.next;
       }
 
       const patched = await getDocument(store, id);
