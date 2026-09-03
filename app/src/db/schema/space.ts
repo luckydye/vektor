@@ -61,40 +61,35 @@ export const extension = sqliteTable("extension", {
   createdBy: text("created_by").notNull(),
 });
 
-export const document = sqliteTable(
-  "document",
-  {
-    id: text("id").primaryKey(),
-    slug: text("slug").notNull(),
-    type: text("type"),
-    archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
-    readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
-    content: text("content").notNull(),
-    searchText: text("search_text"),
-    searchEmbedding: text("search_embedding"),
-    searchEmbeddingModel: text("search_embedding_model"),
-    searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
-    currentRev: integer("current_rev").default(0).notNull(),
-    publishedRev: integer("published_rev"),
-    parentId: text("parent_id").references((): AnySQLiteColumn => document.id, {
-      onDelete: "set null",
-    }),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-    createdBy: text("created_by").notNull(),
-    /**
-     * The value this document last drew from `space_metadata.change_seq`, and
-     * the document's entity tag. Moves on every write that changes what a read
-     * returns; see `#db/space/changeSeq.ts`.
-     *
-     * Not `currentRev`: a property patch, a publish or a move all change the
-     * document without making a revision.
-     */
-    changeSeq: integer("change_seq").notNull().default(0),
-  },
-  // Indexed for the `change_seq > ?` scan the delta feed runs.
-  (t) => [index("document_change_seq_idx").on(t.changeSeq)],
-);
+export const document = sqliteTable("document", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull(),
+  type: text("type"),
+  archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
+  readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
+  content: text("content").notNull(),
+  searchText: text("search_text"),
+  searchEmbedding: text("search_embedding"),
+  searchEmbeddingModel: text("search_embedding_model"),
+  searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
+  currentRev: integer("current_rev").default(0).notNull(),
+  publishedRev: integer("published_rev"),
+  parentId: text("parent_id").references((): AnySQLiteColumn => document.id, {
+    onDelete: "set null",
+  }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  createdBy: text("created_by").notNull(),
+  /**
+   * The value this document last drew from `space_metadata.change_seq`, and
+   * the document's entity tag. Moves on every write that changes what a read
+   * returns; see `#db/space/changeSeq.ts`.
+   *
+   * Not `currentRev`: a property patch, a publish or a move all change the
+   * document without making a revision.
+   */
+  changeSeq: integer("change_seq").notNull().default(0),
+});
 
 export const revision = sqliteTable(
   "revision",
@@ -119,31 +114,13 @@ export const revision = sqliteTable(
 );
 
 /**
- * That a document was deleted, and where in the write order — the only thing a
- * consumer walking `change_seq` can notice a delete by.
+ * What a document is called in the system it syncs with, and where that sync
+ * got to.
  *
- * Archiving needs no tombstone: an archived document is a live row. Rows are
- * kept indefinitely, so a consumer away for months can still resume.
- */
-export const documentTombstone = sqliteTable(
-  "document_tombstone",
-  {
-    /** Not a foreign key: the row it would reference is the one that went. */
-    documentId: text("document_id").primaryKey(),
-    changeSeq: integer("change_seq").notNull(),
-    deletedAt: integer("deleted_at", { mode: "timestamp" }).notNull(),
-  },
-  (t) => [index("document_tombstone_change_seq_idx").on(t.changeSeq)],
-);
-
-/**
- * What a document is called in the system it syncs with.
- *
- * An identity map and nothing more: a peer's own sync state — the version it
- * last saw, the sequence it last wrote — lives with the peer, which needs
- * somewhere to keep `documentId` anyway. The unique index is what makes a claim
- * atomic, so two runs importing one event contend on a row instead of
- * producing two documents.
+ * `source` is the consumer, so two systems tracking one document hold a row
+ * each and never see each other's progress. Reconciling a source is then one
+ * scan of its rows: `change_seq` against `synced_change_seq` says whether the
+ * document moved here, `remote_version` says whether it moved there.
  */
 export const externalLink = sqliteTable(
   "external_link",
@@ -158,9 +135,23 @@ export const externalLink = sqliteTable(
      * nulls as distinct in a unique index.
      */
     instanceId: text("instance_id").notNull().default(""),
-    documentId: text("document_id")
-      .notNull()
-      .references(() => document.id, { onDelete: "cascade" }),
+    /**
+     * Deliberately not a foreign key. The row outlives the document it names:
+     * a consumer that stores nothing of its own cannot tell "deleted here" from
+     * "never imported", and absence would have it recreate what someone
+     * deleted. `deletedAt` is what tells the two apart, so the delete marks
+     * this row rather than cascading it away.
+     */
+    documentId: text("document_id").notNull(),
+    /** The peer's own version: `SEQUENCE`, an etag, a timestamp. */
+    remoteVersion: text("remote_version"),
+    /**
+     * The `document.change_seq` this sync last wrote. Anything higher on the
+     * document is an edit made here that the peer has not seen.
+     */
+    syncedChangeSeq: integer("synced_change_seq"),
+    /** Set when the document was deleted, which the identity outlives. */
+    deletedAt: integer("deleted_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },

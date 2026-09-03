@@ -12,7 +12,8 @@
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
-import { document, documentTombstone, spaceMetadata } from "#db/schema/space.ts";
+import { document, spaceMetadata } from "#db/schema/space.ts";
+import { markExternalLinksDeleted } from "./externalLinks.ts";
 
 /** A conflict is a result, not a failure: the caller re-reads and decides again. */
 export type DocumentWriteResult = { ok: true; changeSeq: number } | { ok: false };
@@ -77,12 +78,11 @@ export async function touchDocument(
 }
 
 /**
- * Delete a document, leaving a tombstone at the sequence it happened at.
+ * Delete a document, marking every external identity that named it.
  *
- * Written here rather than at the call site so that "a delete always leaves
- * one" holds structurally. A scan of rows that exist can never mention one that
- * does not, so the tombstone is all a consumer has to tell a delete from
- * silence.
+ * The marking is here rather than at the call site so that a delete can never
+ * quietly leave an identity pointing at nothing — which is the one thing a
+ * consumer with no memory of its own cannot recover from.
  */
 export async function deleteDocumentRow(
   s: SpaceStore,
@@ -90,7 +90,6 @@ export async function deleteDocumentRow(
   expected?: number[],
 ): Promise<boolean> {
   return s.tx(async (tx) => {
-    const changeSeq = await nextChangeSeq(tx);
     const rows = await many(
       tx.db
         .delete(document)
@@ -99,9 +98,7 @@ export async function deleteDocumentRow(
     );
     if (rows.length === 0) return false;
 
-    await tx.db
-      .insert(documentTombstone)
-      .values({ documentId: id, changeSeq, deletedAt: new Date() });
+    await markExternalLinksDeleted(tx, id);
     return true;
   });
 }

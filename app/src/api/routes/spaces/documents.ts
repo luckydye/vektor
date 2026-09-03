@@ -33,6 +33,7 @@ import {
   type ExternalIdentity,
   findExternalLink,
   isExternalIdentityTaken,
+  listUnlinkedDocumentIds,
 } from "#db/space/externalLinks.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import {
@@ -113,6 +114,8 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
  *   identity names and its tag, instead of a listing.
  * @query externalId The peer's identifier for the document.
  * @query instanceId Which occurrence, for an identifier naming a series.
+ * @query unlinked Answer with the ids of documents this source holds no
+ *   identity for — what it has never been told about.
  * @query type Only documents of this document type.
  * @query categorySlugs Comma-separated category slugs to list documents from.
  * @query grouped:boolean With `categorySlugs`, group the result by category.
@@ -185,6 +188,24 @@ export const GET: ApiRouteHandler = (context) =>
       if (!document) throw notFoundResponse("Document");
       return jsonResponse({ document }, 200, {
         ETag: documentEtag(document.changeSeq),
+      });
+    }
+
+    const unlinked = params.get("unlinked")?.trim();
+    if (unlinked) {
+      // Bare ids for the whole space, so a role in the space rather than a
+      // grant on something inside it — the space check above admits a
+      // resource-scoped grantee, which must not enumerate everything.
+      await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.EDITOR, {
+        allowResourceGrants: false,
+      });
+      const documentIds = await listUnlinkedDocumentIds(store, unlinked, {
+        limit,
+        after: params.get("after") ?? undefined,
+      });
+      return jsonResponse({
+        documentIds,
+        nextCursor: documentIds.length === limit ? documentIds[limit - 1] : null,
       });
     }
 
@@ -299,6 +320,7 @@ export const POST: ApiRouteHandler = (context) =>
     let updatedAt: Date | undefined;
     let readonly = false;
     let identity: ExternalIdentity | null = null;
+    let remoteVersion: string | undefined;
 
     if (contentType === "application/json") {
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
@@ -311,6 +333,10 @@ export const POST: ApiRouteHandler = (context) =>
       const jsonUpdatedAt = body.updatedAt;
       const jsonReadonly = body.readonly;
       identity = externalIdentityFrom(body.source, body.externalId, body.instanceId);
+      if (body.remoteVersion !== undefined && typeof body.remoteVersion !== "string") {
+        throw badRequestResponse("remoteVersion must be a string");
+      }
+      remoteVersion = body.remoteVersion as string | undefined;
       const jsonBodyContentType =
         typeof body.contentType === "string" ? body.contentType : undefined;
 
@@ -389,7 +415,15 @@ export const POST: ApiRouteHandler = (context) =>
           createdAt,
           updatedAt,
         });
-        if (identity) await claimExternalIdentity(tx, identity, created.id);
+        if (identity) {
+          await claimExternalIdentity(
+            tx,
+            identity,
+            created.id,
+            remoteVersion ?? null,
+            created.changeSeq,
+          );
+        }
         return created;
       })
       .catch((error) => {
