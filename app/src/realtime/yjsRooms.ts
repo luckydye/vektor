@@ -349,6 +349,8 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   const content = format === "html" ? sanitizeDocumentHtml(serialized) : serialized;
 
   const store = await openSpaceStore(ids.spaceId);
+  // Unconditional: the room owns this content. It still moves `change_seq`, so a
+  // document with an open editor invalidates held tags every debounce.
   await traced("persist.write", () =>
     updateDocument(store, ids.documentId, content, meta.type),
   );

@@ -9,6 +9,15 @@ import {
 } from "#acl/guards.ts";
 import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
 import {
+  documentEtag,
+  expectedSeqs,
+  matchesWeak,
+  notModified,
+  PRIVATE_REVALIDATE,
+  preconditionFailed,
+  revisionEtag,
+} from "#api/conditional.ts";
+import {
   badRequestResponse,
   forbiddenResponse,
   jsonResponse,
@@ -21,11 +30,12 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#api/http.ts";
-import type { ApiRouteHandler } from "#api/server/types.ts";
+import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
+import { touchDocument } from "#db/space/changeSeq.ts";
 import {
   archiveDocument,
   type DocumentMeta,
@@ -120,11 +130,36 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
   return value as DocumentPatchBody;
 }
 
+/**
+ * One step of a `PATCH`, and the condition the next step should carry.
+ *
+ * Each branch writes through the counter, so a body naming two of them has the
+ * first write move the sequence out from under the second — `next` is how the
+ * caller's condition follows along.
+ */
+type PatchStep = { ok: true; next: number[] | undefined } | { ok: false };
+
+/** `undefined` for no condition, so an absent header writes unconditionally. */
+function requestedCondition(context: ApiContext): number[] | undefined {
+  const header = context.req.raw.headers.get("if-match");
+  if (!header) return undefined;
+  const seqs = expectedSeqs(header);
+  return seqs === "any" ? undefined : seqs;
+}
+
+async function conflictResponse(store: SpaceStore, id: string): Promise<Response> {
+  const current = await getDocument(store, id);
+  if (!current) throw notFoundResponse("Document");
+  return preconditionFailed(current, documentEtag(current.changeSeq));
+}
+
 function withCors(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, If-Match, If-None-Match");
+  // Hidden from a cross-origin caller unless named here.
+  headers.set("Access-Control-Expose-Headers", "ETag");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -137,7 +172,8 @@ async function handlePublishedRevisionPatch(
   documentId: string,
   userId: string,
   publishedRev: number | null,
-) {
+  expected?: number[],
+): Promise<PatchStep> {
   const { spaceId } = store;
   const revToPublish = publishedRev === null ? null : publishedRev;
 
@@ -148,7 +184,7 @@ async function handlePublishedRevisionPatch(
       .where(eq(documentTable.id, documentId)),
   );
   if (existing?.publishedRev === revToPublish) {
-    return;
+    return { ok: true, next: expected };
   }
 
   const revisionContent =
@@ -159,11 +195,16 @@ async function handlePublishedRevisionPatch(
     throw notFoundResponse("Revision");
   }
 
-  const auditEntry = await store.tx(async (tx) => {
-    await tx.db
-      .update(documentTable)
-      .set({ publishedRev: revToPublish })
-      .where(eq(documentTable.id, documentId));
+  const published = await store.tx(async (tx) => {
+    // Publishing changes which body a plain read returns.
+    const first = await touchDocument(
+      tx,
+      documentId,
+      { publishedRev: revToPublish },
+      expected,
+    );
+    if (!first.ok) return null;
+    let changeSeq = first.changeSeq;
 
     const entry = await createAuditLog(tx, {
       spaceId,
@@ -181,18 +222,23 @@ async function handlePublishedRevisionPatch(
 
     if (revisionContent !== null) {
       // Publishing a revision also loads it into the draft, so the editor
-      // reflects the revision that is now published.
-      await tx.db
-        .update(documentTable)
-        .set({ content: revisionContent })
-        .where(eq(documentTable.id, documentId));
+      // reflects the revision that is now published. Conditioned on the write
+      // above, not the caller's condition, which that write already consumed.
+      const second = await touchDocument(tx, documentId, { content: revisionContent }, [
+        changeSeq,
+      ]);
+      if (!second.ok) return null;
+      changeSeq = second.changeSeq;
     }
 
-    return entry;
+    return { entry, changeSeq };
   });
 
+  if (!published) return { ok: false };
+  const { entry: auditEntry, changeSeq } = published;
+
   if (revToPublish === null) {
-    return;
+    return { ok: true, next: [changeSeq] };
   }
 
   if (revisionContent === null) throw notFoundResponse("Revision");
@@ -221,6 +267,8 @@ async function handlePublishedRevisionPatch(
       revision: revToPublish,
     });
   }
+
+  return { ok: true, next: [changeSeq] };
 }
 
 async function handleReadonlyPatch(
@@ -228,7 +276,8 @@ async function handleReadonlyPatch(
   documentId: string,
   userId: string,
   readonly: boolean,
-) {
+  expected?: number[],
+): Promise<PatchStep> {
   const { spaceId } = store;
   if (typeof readonly !== "boolean") {
     throw badRequestResponse("Readonly must be a boolean");
@@ -241,11 +290,9 @@ async function handleReadonlyPatch(
   try {
     if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
 
-    await store.tx(async (tx) => {
-      await tx.db
-        .update(documentTable)
-        .set({ readonly })
-        .where(eq(documentTable.id, documentId));
+    const written = await store.tx(async (tx) => {
+      const result = await touchDocument(tx, documentId, { readonly }, expected);
+      if (!result.ok) return result;
 
       await createAuditLog(tx, {
         spaceId,
@@ -256,9 +303,17 @@ async function handleReadonlyPatch(
           message: readonly ? "Document set to readonly" : "Document readonly removed",
         },
       });
+      return result;
     });
 
+    // A refused condition unwinds the write block the same way a throw does.
+    if (!written.ok) {
+      if (readonly) setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+      return { ok: false };
+    }
+
     if (!readonly) setYRoomWriteBlocked(spaceId, documentId, false);
+    return { ok: true, next: [written.changeSeq] };
   } catch (error) {
     if (readonly) {
       setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
@@ -341,16 +396,36 @@ export const GET: ApiRouteHandler = (context) =>
         throw notFoundResponse("Revision");
       }
 
+      // Tagged from the revision; still revalidating, since the body varies
+      // with history access.
+      const revEtag = revisionEtag(rev);
+      const revIfNoneMatch = context.req.raw.headers.get("if-none-match");
+      if (revIfNoneMatch && matchesWeak(revIfNoneMatch, revEtag)) {
+        return withCors(notModified(revEtag));
+      }
+
       return withCors(
-        jsonResponse({
-          // Without history access, the snapshot and nothing describing it.
-          // `status` is stated rather than withheld: a published revision is by
-          // definition not a suggestion, and clients branch on it.
-          revision: access.metadata
-            ? { ...metadata, content }
-            : { rev: metadata.rev, content, status: null },
-        }),
+        jsonResponse(
+          {
+            // Without history access, the snapshot and nothing describing it.
+            // `status` is stated rather than withheld: a published revision is by
+            // definition not a suggestion, and clients branch on it.
+            revision: access.metadata
+              ? { ...metadata, content }
+              : { rev: metadata.rev, content, status: null },
+          },
+          200,
+          { ETag: revEtag, "Cache-Control": PRIVATE_REVALIDATE },
+        ),
       );
+    }
+
+    // Only the canonical read is tagged; `?draft` and `?live` are different
+    // representations of one URL, and `?live` is not the stored row.
+    const etag = draft || live ? null : documentEtag(meta.changeSeq);
+    const ifNoneMatch = context.req.raw.headers.get("if-none-match");
+    if (etag && ifNoneMatch && matchesWeak(ifNoneMatch, etag)) {
+      return withCors(notModified(etag, "Accept"));
     }
 
     // getDocument is metadata-only; this route returns the body, so load it
@@ -390,6 +465,9 @@ export const GET: ApiRouteHandler = (context) =>
               "Content-Type": serialized
                 ? "text/plain; charset=utf-8"
                 : "text/markdown; charset=utf-8",
+              ...(etag
+                ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
+                : {}),
             },
           },
         ),
@@ -402,14 +480,20 @@ export const GET: ApiRouteHandler = (context) =>
     );
 
     return withCors(
-      jsonResponse({
-        document: { ...document, headerImageAspectRatio },
-        space: {
-          id: space.id,
-          slug: space.slug,
-          name: space.name,
+      jsonResponse(
+        {
+          document: { ...document, headerImageAspectRatio },
+          space: {
+            id: space.id,
+            slug: space.slug,
+            name: space.name,
+          },
         },
-      }),
+        200,
+        etag
+          ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
+          : undefined,
+      ),
     );
   }, "Failed to get document");
 
@@ -433,6 +517,7 @@ export const PUT: ApiRouteHandler = (context) =>
     }
 
     const publish = new URL(context.req.url).searchParams.get("publish") === "true";
+    const expected = requestedCondition(context);
     let userId: string | undefined;
 
     const jobToken = context.req.raw.headers.get("X-Job-Token");
@@ -501,13 +586,17 @@ export const PUT: ApiRouteHandler = (context) =>
           throw forbiddenResponse("Invalid restore request");
         }
 
-        await restoreDocument(store, id, userId);
+        const restored = await restoreDocument(store, id, userId, expected);
+        if (!restored.ok) return conflictResponse(store, id);
+
         sendSyncEvent(
           spaceId,
           realtimeTopics.categoryDocuments,
           realtimeTopics.documentTree,
         );
-        return jsonResponse({ success: true });
+        return jsonResponse({ success: true }, 200, {
+          ETag: documentEtag(restored.changeSeq),
+        });
       }
 
       if (documentIsReadonly(existingDoc)) {
@@ -532,10 +621,12 @@ export const PUT: ApiRouteHandler = (context) =>
         : prepareDocumentContent(rawContent, contentType);
     }
 
-    let document = await updateDocument(store, id, content, existingDoc.type);
-    if (!document) {
-      throw notFoundResponse("Document");
+    const written = await updateDocument(store, id, content, existingDoc.type, expected);
+    if (!written.ok) {
+      if (written.reason === "missing") throw notFoundResponse("Document");
+      return conflictResponse(store, id);
     }
+    let document = written.document;
 
     replaceLiveDocumentContent(spaceId, id, existingDoc.type, content);
 
@@ -564,7 +655,10 @@ export const PUT: ApiRouteHandler = (context) =>
     // content it just sent, so it only needs the canonical metadata (revs,
     // timestamps) to reconcile its optimistic state.
     const { content: _omittedContent, ...documentMetadata } = document;
-    return jsonResponse({ document: documentMetadata });
+    // So the next conditional write needs no read back.
+    return jsonResponse({ document: documentMetadata }, 200, {
+      ETag: documentEtag(document.changeSeq),
+    });
   }, "Failed to update document");
 
 /**
@@ -602,6 +696,7 @@ export const PATCH: ApiRouteHandler = (context) =>
 
       const body = parseDocumentPatchBody(await parseJsonBody<unknown>(context.req.raw));
       const { properties, parentId, publishedRev, readonly } = body;
+      const expected = requestedCondition(context);
 
       await verifyAccess(
         spaceId,
@@ -615,9 +710,27 @@ export const PATCH: ApiRouteHandler = (context) =>
           throw badRequestResponse("Properties must be an object");
         }
 
-        const payload = await patchDocumentProperties(store, id, properties, userId);
-        return successResponse(payload);
+        const payload = await patchDocumentProperties(
+          store,
+          id,
+          properties,
+          userId,
+          expected,
+        );
+        if (payload.conflict) return conflictResponse(store, id);
+
+        const { changeSeq, conflict: _conflict, ...result } = payload;
+        return jsonResponse(
+          result,
+          200,
+          changeSeq === undefined ? undefined : { ETag: documentEtag(changeSeq) },
+        );
       }
+
+      // Each branch carries the condition into its own write and hands back the
+      // sequence it produced, so a body naming two of them conditions the
+      // second on the first rather than on what the request arrived with.
+      let condition = expected;
 
       if (parentId !== undefined) {
         if (parentId !== null && typeof parentId !== "string") {
@@ -635,14 +748,20 @@ export const PATCH: ApiRouteHandler = (context) =>
           );
         }
 
-        const parentChange = await setDocumentParent(store, id, parentId).catch(
-          (error) => {
-            if (error instanceof InvalidDocumentParentError) {
-              throw badRequestResponse(error.message);
-            }
-            throw error;
-          },
-        );
+        const parentChange = await setDocumentParent(
+          store,
+          id,
+          parentId,
+          condition,
+        ).catch((error) => {
+          if (error instanceof InvalidDocumentParentError) {
+            throw badRequestResponse(error.message);
+          }
+          throw error;
+        });
+        if (!parentChange) return conflictResponse(store, id);
+        condition = [parentChange.changeSeq];
+
         const parentChangeData = {
           kind: "document_parent_changed",
           documentId: id,
@@ -672,14 +791,29 @@ export const PATCH: ApiRouteHandler = (context) =>
           throw badRequestResponse("Published revision must be a number or null");
         }
 
-        await handlePublishedRevisionPatch(store, id, userId, publishedRev);
+        const step = await handlePublishedRevisionPatch(
+          store,
+          id,
+          userId,
+          publishedRev,
+          condition,
+        );
+        if (!step.ok) return conflictResponse(store, id);
+        condition = step.next;
       }
 
       if (readonly !== undefined) {
-        await handleReadonlyPatch(store, id, userId, readonly);
+        const step = await handleReadonlyPatch(store, id, userId, readonly, condition);
+        if (!step.ok) return conflictResponse(store, id);
+        condition = step.next;
       }
 
-      return jsonResponse({ success: true });
+      const patched = await getDocument(store, id);
+      return jsonResponse(
+        { success: true },
+        200,
+        patched ? { ETag: documentEtag(patched.changeSeq) } : undefined,
+      );
     },
     {
       fallbackMessage: "Failed to patch document",
@@ -721,6 +855,12 @@ export const DELETE: ApiRouteHandler = (context) =>
     }
 
     const store = await openSpaceStore(spaceId);
+    const expected = requestedCondition(context);
+    // No resource, so no state to have failed a condition.
+    if (expected && !(await getDocument(store, id))) {
+      throw notFoundResponse("Document");
+    }
+
     if (permanent) {
       await verifyAccess(
         spaceId,
@@ -728,7 +868,9 @@ export const DELETE: ApiRouteHandler = (context) =>
         userId,
         Permission.OWNER,
       );
-      await deleteDocument(store, id, userId);
+      if (!(await deleteDocument(store, id, userId, expected))) {
+        return conflictResponse(store, id);
+      }
     } else {
       await verifyAccess(
         spaceId,
@@ -736,7 +878,8 @@ export const DELETE: ApiRouteHandler = (context) =>
         userId,
         Permission.EDITOR,
       );
-      await archiveDocument(store, id, userId);
+      const archived = await archiveDocument(store, id, userId, expected);
+      if (!archived.ok) return conflictResponse(store, id);
     }
 
     return successResponse();

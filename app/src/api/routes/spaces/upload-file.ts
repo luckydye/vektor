@@ -5,6 +5,7 @@ import {
   authenticateSpaceAccess,
 } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { matchesWeak } from "#api/conditional.ts";
 import { requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
@@ -16,17 +17,6 @@ import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { isSafeUploadPath } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { servedFileSecurityHeaders } from "#utils/csp.ts";
-
-/**
- * Whether an `If-None-Match` header names this entity tag. The header is a
- * comma-separated list or `*`, and a cache may weaken a tag it stored, so the
- * `W/` prefix is ignored on both sides as the comparison for 304 requires.
- */
-function etagMatches(header: string, etag: string): boolean {
-  const strip = (value: string) => value.trim().replace(/^W\//, "");
-  if (header.trim() === "*") return true;
-  return header.split(",").some((candidate) => strip(candidate) === strip(etag));
-}
 
 /**
  * Download an uploaded file
@@ -115,7 +105,7 @@ export const GET: ApiRouteHandler = (context) =>
       // browser stops re-fetching whole images and videos once its cache entry
       // goes stale.
       const ifNoneMatch = context.req.raw.headers.get("if-none-match");
-      if (ifNoneMatch && etagMatches(ifNoneMatch, info.etag)) {
+      if (ifNoneMatch && matchesWeak(ifNoneMatch, info.etag)) {
         return new Response(null, {
           status: 304,
           headers: { ETag: info.etag, "Cache-Control": "private, max-age=3600" },

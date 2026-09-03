@@ -130,4 +130,40 @@ async function baseline(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.file.height);
 }
 
-export const spaceMigrations: Migration[] = [{ id: 1, name: "baseline", up: baseline }];
+/**
+ * The space write counter behind `document.change_seq`, the entity tag every
+ * conditional document request compares against.
+ *
+ * Documents that predate it are numbered least recently edited first, so the
+ * counter ends at the document count and the next allocation is unused. The
+ * backfill is skipped once the counter has moved, in case the step is ever
+ * replayed against a database whose rows are already live.
+ */
+async function documentChangeSeq(db: SpaceDb): Promise<void> {
+  await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
+  await addColumnIfMissing(db, spaceSchema.document.changeSeq);
+  await exec(
+    db,
+    sql.raw("CREATE INDEX IF NOT EXISTS property_key_value_idx ON property (key, value)"),
+  );
+
+  const [counter] = await db
+    .select({ changeSeq: spaceSchema.spaceMetadata.changeSeq })
+    .from(spaceSchema.spaceMetadata);
+  if (counter && counter.changeSeq > 0) return;
+
+  await run(db, [
+    `UPDATE document SET change_seq = (
+       SELECT seq FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at ASC, id ASC) AS seq
+         FROM document
+       ) ranked WHERE ranked.id = document.id
+     )`,
+    "UPDATE space_metadata SET change_seq = (SELECT COUNT(*) FROM document)",
+  ]);
+}
+
+export const spaceMigrations: Migration[] = [
+  { id: 1, name: "baseline", up: baseline },
+  { id: 2, name: "document-change-seq", up: documentChangeSeq },
+];

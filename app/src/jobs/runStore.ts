@@ -3,6 +3,7 @@ import { many } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
+import { touchDocument } from "#db/space/changeSeq.ts";
 import {
   assertDocumentCanParent,
   type DocumentWithProperties,
@@ -226,10 +227,13 @@ async function writeRunToDocument(
   run: RunState,
 ): Promise<void> {
   const now = new Date();
-  await store.db
-    .update(document)
-    .set({ updatedAt: now })
-    .where(and(eq(document.id, runId), eq(document.type, workflowRunDocumentType)));
+  await touchDocument(
+    store,
+    runId,
+    { updatedAt: now },
+    undefined,
+    eq(document.type, workflowRunDocumentType),
+  );
 
   for (const entry of runProperties(run)) {
     await store.db
@@ -446,6 +450,7 @@ export async function createRun(
       content: "",
       currentRev: 0,
       publishedRev: null,
+      // `changeSeq` is set by `writeRunToDocument` below, in this transaction.
       parentId: documentId,
       createdAt: now,
       updatedAt: now,

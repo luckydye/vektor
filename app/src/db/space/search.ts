@@ -77,6 +77,7 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
     content: "",
     currentRev: 0,
     publishedRev: null,
+    changeSeq: 0,
     properties: {
       ...(f.originalName ? { title: f.originalName } : {}),
       ...(f.mimeType ? { mimeType: f.mimeType } : {}),
@@ -157,6 +158,10 @@ export async function readDocumentIndexSource(
   };
 }
 
+/**
+ * The one document write that deliberately does not move `change_seq`: none of
+ * these columns is served, and the refresh repeats after every save.
+ */
 export async function writeDocumentIndex(
   s: SpaceStore,
   documentId: string,
@@ -371,6 +376,7 @@ export async function searchDocuments(
         userId: string;
         parentId: string | null;
         currentRev: number;
+        changeSeq: number;
         publishedRev: number | null;
         readonly: boolean;
         archived: boolean;
@@ -388,6 +394,7 @@ export async function searchDocuments(
         d.created_by as userId,
         d.parent_id as parentId,
         d.current_rev as currentRev,
+        d.change_seq as changeSeq,
         d.published_rev as publishedRev,
         d.readonly as readonly,
         d.archived as archived,
@@ -620,6 +627,7 @@ export async function searchDocuments(
       // shipping the page's would put that in the response.
       content: "",
       currentRev: doc?.currentRev || 0,
+      changeSeq: doc?.changeSeq ?? 0,
       publishedRev: doc?.publishedRev || null,
       properties,
       createdAt: row.createdAt,

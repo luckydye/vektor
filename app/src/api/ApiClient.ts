@@ -101,6 +101,8 @@ export interface Document {
   content: string;
   currentRev: number;
   publishedRev: number | null;
+  /** Send back on a write as `If-Match` to make it conditional. */
+  changeSeq?: number;
   readonly?: boolean;
   /** Archived documents are hidden from listings but still readable. */
   archived?: boolean;

@@ -89,10 +89,11 @@ export const POST: ApiRouteHandler = (context) =>
     }
 
     const { revision, content } = restored;
-    const document = await updateDocument(store, documentId, content);
-    if (!document) {
+    const written = await updateDocument(store, documentId, content);
+    if (!written.ok) {
       throw notFoundResponse("Document");
     }
+    const document = written.document;
     replaceLiveDocumentContent(spaceId, documentId, document.type, content);
     sendSyncEvent(spaceId, realtimeTopics.document(documentId));
 

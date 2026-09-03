@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -20,11 +20,15 @@ import { isPlaceholderDocumentSlug } from "#documents/types.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { slugify } from "#utils/slug.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { touchDocument } from "./changeSeq.ts";
 import { generateUniqueSlug } from "./documents.ts";
 import { nonArchivedDocumentCondition } from "./search.ts";
 
 export interface PatchDocumentPropertiesResult {
   slug?: string;
+  /** The condition named a sequence the document had already moved past. */
+  conflict?: true;
+  changeSeq?: number;
 }
 
 interface DocumentPropertyChange {
@@ -66,6 +70,36 @@ async function resolveRenamedSlug(
 }
 
 /**
+ * Insert a property only while no document in the space carries that key and
+ * value. Returns whether it landed.
+ *
+ * The `NOT EXISTS` is inside the insert: one statement, and SQLite admits one
+ * writer at a time, so the loser's subquery sees the winner's committed row.
+ * Checking and then inserting would leave a gap. Call inside the transaction
+ * that creates the document, so a refusal rolls it back.
+ */
+export async function insertUniqueProperty(
+  s: SpaceStore,
+  documentId: string,
+  key: string,
+  value: string,
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await many<{ id: string }>(
+    s.db,
+    sql`
+      INSERT INTO property (id, document_id, key, value, type, created_at, updated_at)
+      SELECT ${createId("property")}, ${documentId}, ${key}, ${value}, NULL, ${now}, ${now}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM property WHERE key = ${key} AND value = ${value}
+      )
+      RETURNING id
+    `,
+  );
+  return rows.length > 0;
+}
+
+/**
  * Apply one document property patch as a single persistence operation.
  *
  * The complete patch is normalized before the transaction starts. Property
@@ -78,11 +112,12 @@ export async function patchDocumentProperties(
   documentId: string,
   patch: DocumentPropertyPatch,
   userId?: string,
+  expected?: number[],
 ): Promise<PatchDocumentPropertiesResult> {
   const operations = normalizeDocumentPropertyPatch(patch);
   if (operations.length === 0) return {};
 
-  const result = await s.tx(async (txStore) => {
+  const result = await s.tx(async (txStore): Promise<PatchDocumentPropertiesResult> => {
     const now = new Date();
     const existingRows = await many(
       txStore.db.select().from(property).where(eq(property.documentId, documentId)),
@@ -98,6 +133,16 @@ export async function patchDocumentProperties(
       group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     }
     const changes: DocumentPropertyChange[] = [];
+
+    // First write in the transaction, so a refusal rolls back cleanly.
+    const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
+    const written = await touchDocument(
+      txStore,
+      documentId,
+      { ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now },
+      expected,
+    );
+    if (!written.ok) return { conflict: true } as const;
 
     // Folding two spellings together destroys a stored value, so it is logged and
     // broadcast like any other delete.
@@ -195,12 +240,6 @@ export async function patchDocumentProperties(
       });
     }
 
-    const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
-    await txStore.db
-      .update(document)
-      .set({ ...(renamedSlug ? { slug: renamedSlug } : {}), updatedAt: now })
-      .where(eq(document.id, documentId));
-
     txStore.emit({
       kind: "documentProperties",
       documentId,
@@ -214,8 +253,12 @@ export async function patchDocumentProperties(
       },
     });
 
-    return renamedSlug ? { slug: renamedSlug } : {};
+    return renamedSlug
+      ? { slug: renamedSlug, changeSeq: written.changeSeq }
+      : { changeSeq: written.changeSeq };
   });
+
+  if (result.conflict) return result;
 
   scheduleDocumentSearchRefresh(s, documentId);
   return result;

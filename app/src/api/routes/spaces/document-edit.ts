@@ -82,6 +82,9 @@ export const POST: ApiRouteHandler = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const document = await updateDocument(store, id, result.content);
-    return jsonResponse({ document, live: result.live });
+    const written = await updateDocument(store, id, result.content);
+    if (!written.ok) {
+      throw notFoundResponse("Document");
+    }
+    return jsonResponse({ document: written.document, live: result.live });
   }, "Failed to edit document");

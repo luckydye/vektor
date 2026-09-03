@@ -1,6 +1,7 @@
 import {
   type AnySQLiteColumn,
   blob,
+  index,
   integer,
   primaryKey,
   sqliteTable,
@@ -15,6 +16,8 @@ export const spaceMetadata = sqliteTable("space_metadata", {
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  /** The source of every `document.change_seq`. One row per space database. */
+  changeSeq: integer("change_seq").notNull().default(0),
 });
 
 export const preference = sqliteTable("preference", {
@@ -74,6 +77,11 @@ export const document = sqliteTable("document", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   createdBy: text("created_by").notNull(),
+  /**
+   * The document's entity tag; see `#db/space/changeSeq.ts`. Not `currentRev`,
+   * which a property patch, a publish or a move all leave alone.
+   */
+  changeSeq: integer("change_seq").notNull().default(0),
 });
 
 export const revision = sqliteTable(
@@ -111,7 +119,11 @@ export const property = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
-  (t) => [uniqueIndex("property_document_id_key_unique").on(t.documentId, t.key)],
+  (t) => [
+    uniqueIndex("property_document_id_key_unique").on(t.documentId, t.key),
+    // Reverse lookup: which document claims this key and value.
+    index("property_key_value_idx").on(t.key, t.value),
+  ],
 );
 
 export const category = sqliteTable("category", {
