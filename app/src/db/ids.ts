@@ -4,7 +4,6 @@ const idPrefixes = {
   comment: "comment",
   document: "doc",
   emailNotification: "email_notification",
-  externalLink: "extlink",
   oauthIntegration: "oauth",
   oauthIntegrationState: "oauth_state",
   preference: "pref",
@@ -22,4 +21,3 @@ export type IdType = keyof typeof idPrefixes;
 export function createId(type: IdType): string {
   return `${idPrefixes[type]}_${crypto.randomUUID()}`;
 }
-
