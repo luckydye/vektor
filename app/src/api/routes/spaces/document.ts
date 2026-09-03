@@ -482,13 +482,14 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to get document");
 
 /**
- * Create a document at a caller-chosen id.
+ * Create a document at the id in the URL.
  *
  * The half of `PUT` that HTTP always meant and this route never did: a caller
- * that derives its ids — from a calendar `UID`, an issue key — can write to the
- * URL it computed without first asking what id we would have minted. The
- * primary key decides a collision, so `If-None-Match: *` needs no lookup of its
- * own, and a run that repeats writes the same document rather than a second one.
+ * that derives its ids — a UUIDv5 over a calendar `UID`, an issue key — writes
+ * to the URL it computed instead of reading back one we minted. The id must
+ * still be a well-formed one, so the namespace stays ours. The primary key
+ * decides a collision, so `If-None-Match: *` needs no lookup of its own, and a
+ * run that repeats writes the same document rather than a second one.
  */
 async function createAtId(
   context: ApiContext,
@@ -496,8 +497,11 @@ async function createAtId(
   spaceId: string,
   id: string,
 ): Promise<Response> {
+  // The id namespace is this system's, not the caller's. A caller computing one
+  // derives a UUIDv5 from its own identifier, so what arrives is the same shape
+  // as anything minted here.
   if (!isValidDocumentId(id)) {
-    throw badRequestResponse("Document id must be 1-200 characters of [A-Za-z0-9._~-]");
+    throw badRequestResponse("Document id must be `doc_` followed by a UUID");
   }
 
   // No document to authorize against yet, so the space decides — as it does for
@@ -586,7 +590,9 @@ function isPrimaryKeyCollision(error: unknown): boolean {
  * Create or replace a document
  *
  * Replaces the document at this id, or creates one there when nothing exists —
- * for a caller that derives its ids rather than reading back a minted one.
+ * for a caller that derives its ids rather than reading back a minted one. A
+ * created id must be `doc_` followed by a UUID, the same shape this system
+ * mints, so deriving one means a UUIDv5 over the caller's own identifier.
  * `If-None-Match: *` refuses to overwrite; `If-Match` refuses to create.
  *
  * @tag Documents
