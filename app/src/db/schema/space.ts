@@ -137,10 +137,13 @@ export const documentTombstone = sqliteTable(
 );
 
 /**
- * What a document is called in the system it syncs with, so a peer can write
- * "the document for this identifier" without asking whether one exists. The
- * unique index makes that safe: two runs importing one event contend on a row
- * instead of producing two documents.
+ * What a document is called in the system it syncs with.
+ *
+ * An identity map and nothing more: a peer's own sync state — the version it
+ * last saw, the sequence it last wrote — lives with the peer, which needs
+ * somewhere to keep `documentId` anyway. The unique index is what makes a claim
+ * atomic, so two runs importing one event contend on a row instead of
+ * producing two documents.
  */
 export const externalLink = sqliteTable(
   "external_link",
@@ -158,13 +161,6 @@ export const externalLink = sqliteTable(
     documentId: text("document_id")
       .notNull()
       .references(() => document.id, { onDelete: "cascade" }),
-    /** The peer's own version: `SEQUENCE`, an etag, a timestamp. */
-    remoteVersion: text("remote_version"),
-    /**
-     * The `document.change_seq` this link last wrote. Anything higher on the
-     * document is a local edit the peer has not seen.
-     */
-    syncedChangeSeq: integer("synced_change_seq"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },

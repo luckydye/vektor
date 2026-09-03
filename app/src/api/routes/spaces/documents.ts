@@ -1,23 +1,26 @@
 import {
+  authenticateDocumentAccess,
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
   spaceAccessToViewer,
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
+import { documentEtag, preconditionFailed } from "#api/conditional.ts";
 import {
   badRequestResponse,
-  createdResponse,
   forbiddenResponse,
   jsonResponse,
+  notFoundResponse,
   parseJsonBody,
   parsePaginationParams,
   requireParam,
   withApiErrorHandling,
 } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
-import { openSpaceStore } from "#db/client/store.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import {
   createDocument,
+  getDocument,
   getDocumentChildren,
   InvalidDocumentParentError,
   listAllDocumentsByCategories,
@@ -25,6 +28,12 @@ import {
   listDocuments,
   type PropertyInit,
 } from "#db/space/documents.ts";
+import {
+  claimExternalIdentity,
+  type ExternalIdentity,
+  findExternalLink,
+  isExternalIdentityTaken,
+} from "#db/space/externalLinks.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import {
   getDocumentTypeForContentType,
@@ -41,6 +50,30 @@ import {
   isRepositoryCreationEnabled,
   isWorkflowCreationEnabled,
 } from "#utils/spacePreferences.ts";
+
+/**
+ * The external identity named by this request, or null when it names none.
+ *
+ * `source` and `externalId` travel together: half an identity is a mistake, not
+ * a default.
+ */
+function externalIdentityFrom(
+  source: unknown,
+  externalId: unknown,
+  instanceId: unknown,
+): ExternalIdentity | null {
+  if (source === undefined && externalId === undefined) return null;
+  if (typeof source !== "string" || !source.trim()) {
+    throw badRequestResponse("source must be a non-empty string");
+  }
+  if (typeof externalId !== "string" || !externalId.trim()) {
+    throw badRequestResponse("externalId must be a non-empty string");
+  }
+  if (instanceId !== undefined && typeof instanceId !== "string") {
+    throw badRequestResponse("instanceId must be a string");
+  }
+  return { source, externalId, instanceId: instanceId ?? "" };
+}
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
   if (value === undefined) return undefined;
@@ -71,11 +104,15 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
 }
 
 /**
- * List the documents of a space
+ * List the documents of a space, or look one up by its external identity
  *
  * @tag Documents
  * @jobToken
  * @paginated
+ * @query source With `externalId`, answer with the single document that
+ *   identity names and its tag, instead of a listing.
+ * @query externalId The peer's identifier for the document.
+ * @query instanceId Which occurrence, for an identifier naming a series.
  * @query type Only documents of this document type.
  * @query categorySlugs Comma-separated category slugs to list documents from.
  * @query grouped:boolean With `categorySlugs`, group the result by category.
@@ -126,6 +163,31 @@ export const GET: ApiRouteHandler = (context) =>
       : [];
 
     const store = await openSpaceStore(spaceId);
+
+    const params = new URL(context.req.url).searchParams;
+    const identity = externalIdentityFrom(
+      params.get("source") ?? undefined,
+      params.get("externalId") ?? undefined,
+      params.get("instanceId") ?? undefined,
+    );
+    if (identity) {
+      const link = await findExternalLink(store, identity);
+      if (!link) throw notFoundResponse("Document");
+      // The space check above does not cover one document: this re-authorizes
+      // against the document's own ACL, and raises the bar for an archived one.
+      await authenticateDocumentAccess(
+        context.var.credentials,
+        spaceId,
+        link.documentId,
+        Permission.VIEWER,
+      );
+      const document = await getDocument(store, link.documentId);
+      if (!document) throw notFoundResponse("Document");
+      return jsonResponse({ document }, 200, {
+        ETag: documentEtag(document.changeSeq),
+      });
+    }
+
     if (archived) {
       const { documents, nextCursor } = await listArchivedDocuments(store, viewer, {
         limit,
@@ -204,6 +266,11 @@ export const GET: ApiRouteHandler = (context) =>
 /**
  * Create a document
  *
+ * Pass `source` and `externalId` to claim an external identity for it at the
+ * same time, atomically: if that identity already names a document, nothing is
+ * created and the answer is `412` carrying that document and its tag, so the
+ * caller's next move is a conditional `PUT` rather than another create.
+ *
  * @tag Documents
  * @jobToken
  * @body
@@ -231,6 +298,7 @@ export const POST: ApiRouteHandler = (context) =>
     let createdAt: Date | undefined;
     let updatedAt: Date | undefined;
     let readonly = false;
+    let identity: ExternalIdentity | null = null;
 
     if (contentType === "application/json") {
       const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
@@ -242,6 +310,7 @@ export const POST: ApiRouteHandler = (context) =>
       const jsonCreatedAt = body.createdAt;
       const jsonUpdatedAt = body.updatedAt;
       const jsonReadonly = body.readonly;
+      identity = externalIdentityFrom(body.source, body.externalId, body.instanceId);
       const jsonBodyContentType =
         typeof body.contentType === "string" ? body.contentType : undefined;
 
@@ -308,21 +377,51 @@ export const POST: ApiRouteHandler = (context) =>
 
     // createDocument now handles slug uniqueness internally
     const store = await openSpaceStore(spaceId);
-    const document = await createDocument(store, userId, slugBase, content, {
-      properties,
-      parentId,
-      type,
-      readonly,
-      createdAt,
-      updatedAt,
-    }).catch((error) => {
-      if (
-        error instanceof InvalidDocumentParentError ||
-        error instanceof ReservedDocumentPropertyKeyError
-      ) {
-        throw badRequestResponse(error.message);
-      }
-      throw error;
+    // One transaction, so a claim that loses its race takes the document with
+    // it rather than leaving one nothing can ever find again.
+    const document = await store
+      .tx(async (tx) => {
+        const created = await createDocument(tx, userId, slugBase, content, {
+          properties,
+          parentId,
+          type,
+          readonly,
+          createdAt,
+          updatedAt,
+        });
+        if (identity) await claimExternalIdentity(tx, identity, created.id);
+        return created;
+      })
+      .catch((error) => {
+        if (
+          error instanceof InvalidDocumentParentError ||
+          error instanceof ReservedDocumentPropertyKeyError
+        ) {
+          throw badRequestResponse(error.message);
+        }
+        if (identity && isExternalIdentityTaken(error)) return null;
+        throw error;
+      });
+
+    // The identity already names a document. Answer with it and its tag, so the
+    // caller's next move is a conditional PUT rather than another create.
+    if (!document) {
+      if (!identity) throw new Error("Document creation returned nothing");
+      return externalConflict(store, identity);
+    }
+
+    return jsonResponse({ document }, 201, {
+      ETag: documentEtag(document.changeSeq),
     });
-    return createdResponse({ document });
   }, "Failed to create document");
+
+async function externalConflict(
+  store: SpaceStore,
+  identity: ExternalIdentity,
+): Promise<Response> {
+  const link = await findExternalLink(store, identity);
+  if (!link) throw new Error("External identity vanished after a unique violation");
+  const current = await getDocument(store, link.documentId);
+  if (!current) throw notFoundResponse("Document");
+  return preconditionFailed(current, documentEtag(current.changeSeq));
+}

@@ -1,10 +1,7 @@
-/**
- * What a document is called in the system it syncs with, and what that system
- * last saw of it.
- */
+/** The map from a peer's own identifier to a document. */
 
 import { and, eq } from "drizzle-orm";
-import { many, one } from "#db/client/query.ts";
+import { one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
 import { externalLink } from "#db/schema/space.ts";
@@ -18,8 +15,6 @@ export interface ExternalIdentity {
 
 export interface ExternalLink extends ExternalIdentity {
   documentId: string;
-  remoteVersion: string | null;
-  syncedChangeSeq: number | null;
 }
 
 export function externalIdentityCondition(identity: ExternalIdentity) {
@@ -41,33 +36,11 @@ export async function findExternalLink(
         externalId: externalLink.externalId,
         instanceId: externalLink.instanceId,
         documentId: externalLink.documentId,
-        remoteVersion: externalLink.remoteVersion,
-        syncedChangeSeq: externalLink.syncedChangeSeq,
       })
       .from(externalLink)
       .where(externalIdentityCondition(identity)),
   );
   return row ?? null;
-}
-
-/** Every identity pointing at one document. */
-export async function listExternalLinksForDocument(
-  s: SpaceStore,
-  documentId: string,
-): Promise<ExternalLink[]> {
-  return many(
-    s.db
-      .select({
-        source: externalLink.source,
-        externalId: externalLink.externalId,
-        instanceId: externalLink.instanceId,
-        documentId: externalLink.documentId,
-        remoteVersion: externalLink.remoteVersion,
-        syncedChangeSeq: externalLink.syncedChangeSeq,
-      })
-      .from(externalLink)
-      .where(eq(externalLink.documentId, documentId)),
-  );
 }
 
 /**
@@ -79,33 +52,19 @@ export async function claimExternalIdentity(
   s: SpaceStore,
   identity: ExternalIdentity,
   documentId: string,
-  remoteVersion: string | null,
-  syncedChangeSeq: number,
 ): Promise<void> {
   const now = new Date();
   await s.db.insert(externalLink).values({
     id: createId("externalLink"),
     ...identity,
     documentId,
-    remoteVersion,
-    syncedChangeSeq,
     createdAt: now,
     updatedAt: now,
   });
 }
 
-/**
- * Record what the peer has seen. A document still sitting at `syncedChangeSeq`
- * has not been edited locally since; anything higher is a local edit.
- */
-export async function markExternalSynced(
-  s: SpaceStore,
-  identity: ExternalIdentity,
-  remoteVersion: string | null,
-  syncedChangeSeq: number,
-): Promise<void> {
-  await s.db
-    .update(externalLink)
-    .set({ remoteVersion, syncedChangeSeq, updatedAt: new Date() })
-    .where(externalIdentityCondition(identity));
+/** SQLite names the index it rejected; nothing else on the claim path can fail so. */
+export function isExternalIdentityTaken(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("UNIQUE constraint failed");
 }
