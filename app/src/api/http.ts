@@ -42,14 +42,6 @@ export function notFoundResponse(resource: string): Response {
   return errorResponse(`${resource} not found`, 404);
 }
 
-/**
- * The resource existed and does not now — which a 404 cannot say, and which a
- * caller that derived the URL rather than following one needs told apart.
- */
-export function goneResponse(): Response {
-  return errorResponse("Document has been deleted", 410);
-}
-
 export function badRequestResponse(message: string): Response {
   return errorResponse(message, 400);
 }

@@ -113,23 +113,6 @@ export const revision = sqliteTable(
   (t) => [uniqueIndex("revision_document_id_rev_unique").on(t.documentId, t.rev)],
 );
 
-/**
- * That a document that once existed is gone.
- *
- * A caller asking for an id it derived cannot otherwise tell "deleted" from
- * "never created" — the evidence for both is the same absence. This is a fact
- * about a document, not about whoever is asking: it answers `410` and knows
- * nothing else.
- *
- * Rows are kept indefinitely. Two columns each, and dropping one turns a
- * deletion back into an ambiguity.
- */
-export const documentTombstone = sqliteTable("document_tombstone", {
-  /** Not a foreign key: the row it would reference is the one that went. */
-  documentId: text("document_id").primaryKey(),
-  deletedAt: integer("deleted_at", { mode: "timestamp" }).notNull(),
-});
-
 export const property = sqliteTable(
   "property",
   {

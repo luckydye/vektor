@@ -12,7 +12,7 @@
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
-import { document, documentTombstone, spaceMetadata } from "#db/schema/space.ts";
+import { document, spaceMetadata } from "#db/schema/space.ts";
 
 /** A conflict is a result, not a failure: the caller re-reads and decides again. */
 export type DocumentWriteResult = { ok: true; changeSeq: number } | { ok: false };
@@ -76,33 +76,19 @@ export async function touchDocument(
   });
 }
 
-/**
- * Delete a document, leaving a tombstone at its id.
- *
- * Written here rather than at the call site so that "a delete always leaves
- * one" holds structurally. A caller that derives an id cannot tell a deletion
- * from a document that never existed; the tombstone is the only thing that can.
- */
+/** Delete a document, optionally only while it still sits at one of `expected`. */
 export async function deleteDocumentRow(
   s: SpaceStore,
   id: string,
   expected?: number[],
 ): Promise<boolean> {
-  return s.tx(async (tx) => {
-    const rows = await many(
-      tx.db
-        .delete(document)
-        .where(documentCondition(id, expected, undefined))
-        .returning({ id: document.id }),
-    );
-    if (rows.length === 0) return false;
-
-    await tx.db
-      .insert(documentTombstone)
-      .values({ documentId: id, deletedAt: new Date() })
-      .onConflictDoNothing();
-    return true;
-  });
+  const rows = await many(
+    s.db
+      .delete(document)
+      .where(documentCondition(id, expected, undefined))
+      .returning({ id: document.id }),
+  );
+  return rows.length > 0;
 }
 
 /** `guard` narrows what the write can reach; `expected` decides whether it happens. */

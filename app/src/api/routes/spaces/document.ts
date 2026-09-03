@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
   authenticateDocumentAccess,
-  authenticateSpaceAccess,
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
   verifyAccess,
@@ -13,7 +12,6 @@ import {
   badRequestResponse,
   forbiddenResponse,
   jsonResponse,
-  goneResponse,
   notFoundResponse,
   parseJsonBody,
   parseQueryInt,
@@ -36,19 +34,15 @@ import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import { one } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { document as documentTable } from "#db/schema/space.ts";
-import { isValidDocumentId } from "#db/ids.ts";
 import { createAuditLog } from "#db/space/auditLogs.ts";
 import { touchDocument } from "#db/space/changeSeq.ts";
 import {
   archiveDocument,
-  clearDocumentTombstone,
-  createDocument,
   type DocumentMeta,
   deleteDocument,
   getDocument,
   getDocumentBySlug,
   getDocumentContent,
-  documentWasDeleted,
   InvalidDocumentParentError,
   restoreDocument,
   setDocumentParent,
@@ -331,13 +325,6 @@ export const GET: ApiRouteHandler = (context) =>
     if (!preCheck) {
       const bySlug = await getDocumentBySlug(store, rawId);
       if (bySlug) id = bySlug.id;
-      else if (await documentWasDeleted(store, rawId)) {
-        // A caller that derived this id cannot tell a deletion from something
-        // that never existed, and both look the same from outside. Checked at
-        // space level because there is no document left to authorize against.
-        await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
-        return withCors(goneResponse());
-      }
     }
 
     // Draft/live content is unpublished, so it requires editor; the published
@@ -482,118 +469,7 @@ export const GET: ApiRouteHandler = (context) =>
   }, "Failed to get document");
 
 /**
- * Create a document at the id in the URL.
- *
- * The half of `PUT` that HTTP always meant and this route never did: a caller
- * that derives its ids — a UUIDv5 over a calendar `UID`, an issue key — writes
- * to the URL it computed instead of reading back one we minted. The id must
- * still be a well-formed one, so the namespace stays ours. The primary key
- * decides a collision, so `If-None-Match: *` needs no lookup of its own, and a
- * run that repeats writes the same document rather than a second one.
- */
-async function createAtId(
-  context: ApiContext,
-  store: SpaceStore,
-  spaceId: string,
-  id: string,
-): Promise<Response> {
-  // The id namespace is this system's, not the caller's. A caller computing one
-  // derives a UUIDv5 from its own identifier, so what arrives is the same shape
-  // as anything minted here.
-  if (!isValidDocumentId(id)) {
-    throw badRequestResponse("Document id must be `doc_` followed by a UUID");
-  }
-
-  // No document to authorize against yet, so the space decides — as it does for
-  // the minted-id create on `POST /documents`.
-  const auth = await authenticateJobTokenOrSpaceRole(
-    context.var.credentials,
-    spaceId,
-    Permission.EDITOR,
-  );
-  const userId = auth.type === "user" ? auth.user.id : auth.userId;
-  if (!userId) {
-    throw forbiddenResponse("Job token is missing user context");
-  }
-
-  const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
-  let content: string;
-  let type: string | undefined;
-  let slug: string | undefined;
-  let properties: DocumentPropertyPatch | undefined;
-
-  if (contentType === "application/json") {
-    const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
-    if (typeof body.content !== "string") {
-      throw badRequestResponse("Content is required and must be a string");
-    }
-    if (body.type !== undefined && typeof body.type !== "string") {
-      throw badRequestResponse("Type must be a string");
-    }
-    if (body.slug !== undefined && typeof body.slug !== "string") {
-      throw badRequestResponse("Slug must be a string");
-    }
-    if (
-      body.properties !== undefined &&
-      (typeof body.properties !== "object" ||
-        body.properties === null ||
-        Array.isArray(body.properties))
-    ) {
-      throw badRequestResponse("Properties must be an object");
-    }
-    type = body.type;
-    slug = body.slug;
-    properties = body.properties as DocumentPropertyPatch | undefined;
-    content = isSerializedDocumentType(type) ? body.content : prepareDocumentContent(body.content, null);
-  } else {
-    const raw = await context.req.raw.text();
-    type = context.req.raw.headers.get("X-Document-Type") ?? undefined;
-    content = isSerializedDocumentType(type)
-      ? raw
-      : prepareDocumentContent(raw, contentType);
-  }
-
-  const changeSeq = await store
-    .tx(async (tx) => {
-      const created = await createDocument(tx, userId, slug ?? id, content, { id, type });
-      const patched = properties
-        ? await patchDocumentProperties(tx, created.id, properties, userId)
-        : {};
-      // An id that was deleted is reclaimable: a peer re-using an identifier it
-      // once used means a new thing here, not a resurrection.
-      await clearDocumentTombstone(tx, id);
-      return patched.changeSeq ?? created.changeSeq;
-    })
-    .catch((error: unknown) => {
-      // Another writer created this id between the read above and here. The
-      // primary key is what noticed, and losing that race is a failed
-      // precondition rather than a fault — the caller re-reads and decides.
-      if (isPrimaryKeyCollision(error)) return null;
-      throw error;
-    });
-
-  const document = await getDocument(store, id);
-  if (!document) throw notFoundResponse("Document");
-  if (changeSeq === null) {
-    return preconditionFailed(document, documentEtag(document.changeSeq));
-  }
-  return jsonResponse({ document }, 201, { ETag: documentEtag(changeSeq) });
-}
-
-/** SQLite names the constraint it rejected; only the document id can fail here. */
-function isPrimaryKeyCollision(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("UNIQUE constraint failed: document.id");
-}
-
-/**
- * Create or replace a document
- *
- * Replaces the document at this id, or creates one there when nothing exists —
- * for a caller that derives its ids rather than reading back a minted one. A
- * created id must be `doc_` followed by a UUID, the same shape this system
- * mints, so deriving one means a UUIDv5 over the caller's own identifier.
- * `If-None-Match: *` refuses to overwrite; `If-Match` refuses to create.
+ * Replace a document
  *
  * @tag Documents
  * @jobToken
@@ -607,20 +483,12 @@ export const PUT: ApiRouteHandler = (context) =>
 
     const store = await openSpaceStore(spaceId);
     const existingDoc = await getDocument(store, id);
-    const expected = requestedCondition(context);
-
     if (!existingDoc) {
-      // `If-Match` names a state, and nothing here has one.
-      if (context.req.raw.headers.get("if-match")) throw notFoundResponse("Document");
-      return createAtId(context, store, spaceId, id);
-    }
-
-    // The caller asked to create and only create.
-    if (context.req.raw.headers.get("if-none-match")?.trim() === "*") {
-      return preconditionFailed(existingDoc, documentEtag(existingDoc.changeSeq));
+      throw notFoundResponse("Document");
     }
 
     const publish = new URL(context.req.url).searchParams.get("publish") === "true";
+    const expected = requestedCondition(context);
     let userId: string | undefined;
 
     const jobToken = context.req.raw.headers.get("X-Job-Token");

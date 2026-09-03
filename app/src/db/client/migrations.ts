@@ -156,8 +156,6 @@ async function baseline(db: SpaceDb): Promise<void> {
   await addColumnIfMissing(db, spaceSchema.spaceMetadata.changeSeq);
   await addColumnIfMissing(db, spaceSchema.document.changeSeq);
   await backfillDocumentChangeSeq(db);
-
-  await createTables(db, [spaceSchema.documentTombstone]);
 }
 
 export const spaceMigrations: Migration[] = [{ id: 1, name: "baseline", up: baseline }];
