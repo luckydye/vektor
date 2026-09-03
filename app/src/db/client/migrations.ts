@@ -114,6 +114,7 @@ async function baseline(db: SpaceDb): Promise<void> {
     "CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)",
     "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
     "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
+    "CREATE INDEX IF NOT EXISTS property_key_value_idx ON property (key, value)",
     "CREATE UNIQUE INDEX IF NOT EXISTS revision_document_id_rev_unique ON revision (document_id, rev)",
     "CREATE INDEX IF NOT EXISTS audit_log_doc_id_created_at_idx ON audit_log (doc_id, created_at DESC, id DESC)",
     "CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at DESC, id DESC)",

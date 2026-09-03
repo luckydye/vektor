@@ -311,6 +311,26 @@ export async function getDocument(
 }
 
 /**
+ * The document carrying this property key and value, if one does.
+ *
+ * A caller that knows a document by an identifier of its own finds it with
+ * this; nothing here knows what the identifier means.
+ */
+export async function findDocumentByProperty(
+  s: SpaceStore,
+  key: string,
+  value: string,
+): Promise<DocumentMeta | null> {
+  const row = await one(
+    s.db
+      .select({ documentId: property.documentId })
+      .from(property)
+      .where(and(eq(property.key, key), eq(property.value, value))),
+  );
+  return row ? getDocument(s, row.documentId) : null;
+}
+
+/**
  * `getDocument` for many ids: two queries instead of two per document.
  *
  * For callers that resolve a list of references — a page of workflow runs, an

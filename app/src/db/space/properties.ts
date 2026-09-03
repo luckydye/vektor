@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -67,6 +67,40 @@ async function resolveRenamedSlug(
   if (!slugify(titleUpdate.value)) return undefined;
 
   return generateUniqueSlug(s, titleUpdate.value, documentId);
+}
+
+/**
+ * Insert a property only while no document in the space already carries that
+ * key and value, reporting whether it landed.
+ *
+ * The point of the `NOT EXISTS` is that it is *inside* the insert. A caller that
+ * looks for the value and then writes has a gap another writer fits inside —
+ * the same gap `touchDocument` exists to close on the update path. One statement
+ * has no gap: SQLite admits one writer at a time, so the loser's subquery sees
+ * the winner's committed row and matches nothing.
+ *
+ * Call inside the transaction that creates the document, so a refusal rolls the
+ * document back with it.
+ */
+export async function insertUniqueProperty(
+  s: SpaceStore,
+  documentId: string,
+  key: string,
+  value: string,
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await many<{ id: string }>(
+    s.db,
+    sql`
+      INSERT INTO property (id, document_id, key, value, type, created_at, updated_at)
+      SELECT ${createId("property")}, ${documentId}, ${key}, ${value}, NULL, ${now}, ${now}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM property WHERE key = ${key} AND value = ${value}
+      )
+      RETURNING id
+    `,
+  );
+  return rows.length > 0;
 }
 
 /**

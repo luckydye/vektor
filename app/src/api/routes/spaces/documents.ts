@@ -4,7 +4,7 @@ import {
   spaceAccessToViewer,
 } from "#acl/guards.ts";
 import { Permission } from "#acl/permissions.ts";
-import { documentEtag } from "#api/conditional.ts";
+import { documentEtag, preconditionFailed } from "#api/conditional.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -18,6 +18,7 @@ import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
 import {
   createDocument,
+  findDocumentByProperty,
   getDocumentChildren,
   InvalidDocumentParentError,
   listAllDocumentsByCategories,
@@ -25,6 +26,7 @@ import {
   listDocuments,
   type PropertyInit,
 } from "#db/space/documents.ts";
+import { insertUniqueProperty } from "#db/space/properties.ts";
 import { getSpace } from "#db/space/spaces.ts";
 import {
   getDocumentTypeForContentType,
@@ -32,8 +34,10 @@ import {
   prepareDocumentContent,
 } from "#documents/content.ts";
 import {
+  parseStoredPropertyValue,
   propertyValueToText,
   ReservedDocumentPropertyKeyError,
+  serializePropertyValue,
 } from "#documents/properties.ts";
 import { isSerializedDocumentType, repositoryDocumentType } from "#documents/types.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
@@ -205,8 +209,12 @@ export const GET: ApiRouteHandler = (context) =>
 /**
  * Create a document
  *
- * The id is minted here. A caller that needs to choose it — because it derives
- * the id from an identifier of its own — creates with `PUT` instead.
+ * The id is minted here and is never the caller's to choose. A caller that
+ * knows a document by an identifier of its own puts that identifier in a
+ * property and sends `If-None-Match: *` with `identityKey` naming it: the
+ * document is then created only while no document in the space already carries
+ * that key and value, and a collision answers `412` with the document that
+ * does — which is also how the caller learns its id.
  *
  * @tag Documents
  * @jobToken
@@ -229,6 +237,7 @@ export const POST: ApiRouteHandler = (context) =>
     const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     let content: string;
     let properties: Record<string, PropertyInit> | undefined;
+    let identityKeyField: unknown;
     let parentId: string | undefined;
     let type: string | undefined;
     let slugHint: string | undefined;
@@ -248,6 +257,7 @@ export const POST: ApiRouteHandler = (context) =>
       const jsonReadonly = body.readonly;
       const jsonBodyContentType =
         typeof body.contentType === "string" ? body.contentType : undefined;
+      identityKeyField = body.identityKey;
 
       if (typeof jsonContent !== "string") {
         throw badRequestResponse("Content is required and must be a string");
@@ -310,26 +320,106 @@ export const POST: ApiRouteHandler = (context) =>
     const titleValue = properties?.title;
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
 
+    // `If-None-Match: *` on a create asks for the identity to be free. The URL
+    // names a collection rather than a resource, so what the condition applies
+    // to is named in the body instead.
+    const identityKey =
+      context.req.raw.headers.get("if-none-match")?.trim() === "*"
+        ? requireIdentityKey(identityKeyField, properties)
+        : null;
+
     // createDocument now handles slug uniqueness internally
     const store = await openSpaceStore(spaceId);
-    const document = await createDocument(store, userId, slugBase, content, {
-      properties,
-      parentId,
-      type,
-      readonly,
-      createdAt,
-      updatedAt,
-    }).catch((error) => {
-      if (
-        error instanceof InvalidDocumentParentError ||
-        error instanceof ReservedDocumentPropertyKeyError
-      ) {
-        throw badRequestResponse(error.message);
-      }
-      throw error;
-    });
+    const created = await store
+      .tx(async (tx) => {
+        // The identity property is held back from the create and written
+        // conditionally below, so that a refusal rolls the document back.
+        const withheld = identityKey
+          ? Object.fromEntries(
+              Object.entries(properties ?? {}).filter(([key]) => key !== identityKey),
+            )
+          : properties;
 
-    return jsonResponse({ document }, 201, {
-      ETag: documentEtag(document.changeSeq),
+        const document = await createDocument(tx, userId, slugBase, content, {
+          properties: withheld,
+          parentId,
+          type,
+          readonly,
+          createdAt,
+          updatedAt,
+        });
+
+        if (!identityKey) return document;
+
+        const value = serializePropertyValue(
+          propertyInitValue(properties?.[identityKey]),
+        );
+        if (!(await insertUniqueProperty(tx, document.id, identityKey, value))) {
+          throw new IdentityTakenError(identityKey, value);
+        }
+        // Written outside `touchDocument`, which would ordinarily be the bug
+        // this file guards against — but the sequence `createDocument` just
+        // allocated commits with this row, so no reader sees one without the
+        // other and the tag still describes what landed.
+        return {
+          ...document,
+          properties: {
+            ...document.properties,
+            [identityKey]: parseStoredPropertyValue(value),
+          },
+        };
+      })
+      .catch((error) => {
+        if (
+          error instanceof InvalidDocumentParentError ||
+          error instanceof ReservedDocumentPropertyKeyError
+        ) {
+          throw badRequestResponse(error.message);
+        }
+        if (error instanceof IdentityTakenError) return error;
+        throw error;
+      });
+
+    if (created instanceof IdentityTakenError) {
+      const holder = await findDocumentByProperty(store, created.key, created.value);
+      // The insert refused, so a document holds this identity. Anything else is
+      // a bug rather than a state worth reporting.
+      if (!holder) throw new Error("Identity is taken but no document holds it");
+      return preconditionFailed(holder, documentEtag(holder.changeSeq));
+    }
+
+    return jsonResponse({ document: created }, 201, {
+      ETag: documentEtag(created.changeSeq),
     });
   }, "Failed to create document");
+
+/** The identity property was already claimed; carried out of the transaction. */
+class IdentityTakenError extends Error {
+  constructor(
+    readonly key: string,
+    readonly value: string,
+  ) {
+    super(`Property ${key} is already claimed`);
+  }
+}
+
+/** A `PropertyInit` is either the value or `{ value, type }` around it. */
+function propertyInitValue(init: PropertyInit | undefined): unknown {
+  if (typeof init === "object" && init !== null && !Array.isArray(init) && "value" in init) {
+    return init.value;
+  }
+  return init;
+}
+
+function requireIdentityKey(
+  key: unknown,
+  properties: Record<string, PropertyInit> | undefined,
+): string {
+  if (typeof key !== "string" || !key.trim()) {
+    throw badRequestResponse("identityKey is required with If-None-Match");
+  }
+  if (properties?.[key] === undefined) {
+    throw badRequestResponse(`identityKey "${key}" names no supplied property`);
+  }
+  return key;
+}
