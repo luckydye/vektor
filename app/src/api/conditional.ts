@@ -1,10 +1,4 @@
-/**
- * Conditional requests: entity tags in, 304 and 412 out.
- *
- * The write semantics are the ones an object store gives a conditional `PUT` —
- * see `PutCondition` in `#files/storage.ts`. The tag is opaque to callers; only
- * this module knows how one is spelled.
- */
+/** Conditional requests: entity tags in, 304 and 412 out. */
 
 import { jsonResponse } from "#api/http.ts";
 
@@ -12,12 +6,11 @@ export function documentEtag(changeSeq: number): string {
   return `"${changeSeq}"`;
 }
 
-/** Derived from the revision, not the document: a revision's bytes never change. */
 export function revisionEtag(rev: number): string {
   return `"rev-${rev}"`;
 }
 
-/** The `If-None-Match` comparison: a cache may weaken a tag it stored. */
+/** Weak comparison, as `If-None-Match` requires. */
 export function matchesWeak(header: string, etag: string): boolean {
   const strip = (value: string) => value.trim().replace(/^W\//, "");
   if (header.trim() === "*") return true;
@@ -25,13 +18,10 @@ export function matchesWeak(header: string, etag: string): boolean {
 }
 
 /**
- * The sequences an `If-Match` header would accept, or `"any"` for `*`.
+ * The sequences an `If-Match` would accept, or `"any"` for `*`.
  *
- * A list, because `If-Match` states "any of these". The pattern admits a strong
- * document tag and nothing else, which is where the strong comparison lives: a
- * weak tag decodes to nothing and so never authorizes a write. A header made
- * entirely of tags this server could not have issued yields an empty list,
- * which no document satisfies.
+ * The pattern admits a strong document tag and nothing else, so a weak tag
+ * decodes to nothing and never authorizes a write.
  */
 export function expectedSeqs(header: string): number[] | "any" {
   if (header.trim() === "*") return "any";
@@ -42,7 +32,7 @@ export function expectedSeqs(header: string): number[] | "any" {
     .map(Number);
 }
 
-/** For anything the ACL gates: never a shared cache, never served after a revoke. */
+/** For anything the ACL gates. */
 export const PRIVATE_REVALIDATE = "private, must-revalidate";
 
 export function notModified(etag: string, vary?: string): Response {
@@ -56,7 +46,7 @@ export function notModified(etag: string, vary?: string): Response {
   });
 }
 
-/** 412 with the document as it now stands, so a caller can retry in one trip. */
+/** 412 with the document as it now stands. */
 export function preconditionFailed(current: unknown, etag: string): Response {
   return jsonResponse({ error: "Document has changed", document: current }, 412, {
     ETag: etag,

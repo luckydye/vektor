@@ -130,11 +130,7 @@ function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
   return value as DocumentPatchBody;
 }
 
-/**
- * The sequences an `If-Match` would accept, or `undefined` for no condition —
- * so a request without the header writes unconditionally, as before. `*` says
- * only that the document exist, which every handler here has established.
- */
+/** `undefined` for no condition, so an absent header writes unconditionally. */
 function requestedCondition(context: ApiContext): number[] | undefined {
   const header = context.req.raw.headers.get("if-match");
   if (!header) return undefined;
@@ -142,7 +138,6 @@ function requestedCondition(context: ApiContext): number[] | undefined {
   return seqs === "any" ? undefined : seqs;
 }
 
-/** Read after the failed write, so the caller is handed the state that beat it. */
 async function conflictResponse(store: SpaceStore, id: string): Promise<Response> {
   const current = await getDocument(store, id);
   if (!current) throw notFoundResponse("Document");
@@ -154,8 +149,7 @@ function withCors(response: Response): Response {
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, If-Match, If-None-Match");
-  // A browser hides every header not named here, so a cross-origin caller
-  // cannot otherwise read the tag it is meant to send back.
+  // Hidden from a cross-origin caller unless named here.
   headers.set("Access-Control-Expose-Headers", "ETag");
   return new Response(response.body, {
     status: response.status,
@@ -192,8 +186,7 @@ async function handlePublishedRevisionPatch(
   }
 
   const auditEntry = await store.tx(async (tx) => {
-    // Publishing changes which body a plain read returns, so it moves the
-    // sequence. Both writes are one change and share the second's allocation.
+    // Publishing changes which body a plain read returns.
     await touchDocument(tx, documentId, { publishedRev: revToPublish });
 
     const entry = await createAuditLog(tx, {
@@ -366,8 +359,8 @@ export const GET: ApiRouteHandler = (context) =>
         throw notFoundResponse("Revision");
       }
 
-      // Tagged from the revision, whose bytes never change — but still
-      // revalidating, since the body below varies with history access.
+      // Tagged from the revision; still revalidating, since the body varies
+      // with history access.
       const revEtag = revisionEtag(rev);
       const revIfNoneMatch = context.req.raw.headers.get("if-none-match");
       if (revIfNoneMatch && matchesWeak(revIfNoneMatch, revEtag)) {
@@ -390,8 +383,8 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    // Only the canonical read is tagged: `?draft` and `?live` are different
-    // representations of the same URL, and `?live` is not the stored row at all.
+    // Only the canonical read is tagged; `?draft` and `?live` are different
+    // representations of one URL, and `?live` is not the stored row.
     const etag = draft || live ? null : documentEtag(meta.changeSeq);
     const ifNoneMatch = context.req.raw.headers.get("if-none-match");
     if (etag && ifNoneMatch && matchesWeak(ifNoneMatch, etag)) {
@@ -435,7 +428,6 @@ export const GET: ApiRouteHandler = (context) =>
               "Content-Type": serialized
                 ? "text/plain; charset=utf-8"
                 : "text/markdown; charset=utf-8",
-              // Same URL, different body, so the tag needs `Vary` to be safe.
               ...(etag
                 ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
                 : {}),
@@ -626,8 +618,7 @@ export const PUT: ApiRouteHandler = (context) =>
     // content it just sent, so it only needs the canonical metadata (revs,
     // timestamps) to reconcile its optimistic state.
     const { content: _omittedContent, ...documentMetadata } = document;
-    // So the next conditional write needs no read back — and a syncing caller
-    // does not mistake its own write for someone else's edit.
+    // So the next conditional write needs no read back.
     return jsonResponse({ document: documentMetadata }, 200, {
       ETag: documentEtag(document.changeSeq),
     });
@@ -691,7 +682,6 @@ export const PATCH: ApiRouteHandler = (context) =>
         );
         if (payload.conflict) return conflictResponse(store, id);
 
-        // Body unchanged from `successResponse(payload)`; the sequence is a header.
         const { changeSeq, conflict: _conflict, ...result } = payload;
         return jsonResponse(
           result,
@@ -700,8 +690,8 @@ export const PATCH: ApiRouteHandler = (context) =>
         );
       }
 
-      // One check for the three branches below, none of which takes a condition
-      // of its own. Read-then-write, so racy in a way the property path is not.
+      // One check for the three branches below. Read-then-write, so racy in a
+      // way the property path is not.
       if (expected && !expected.includes(existingDoc.changeSeq)) {
         return conflictResponse(store, id);
       }

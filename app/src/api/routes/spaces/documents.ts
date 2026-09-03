@@ -209,12 +209,9 @@ export const GET: ApiRouteHandler = (context) =>
 /**
  * Create a document
  *
- * The id is minted here and is never the caller's to choose. A caller that
- * knows a document by an identifier of its own puts that identifier in a
- * property and sends `If-None-Match: *` with `identityKey` naming it: the
- * document is then created only while no document in the space already carries
- * that key and value, and a collision answers `412` with the document that
- * does — which is also how the caller learns its id.
+ * `If-None-Match: *` with `identityKey` naming one of the supplied properties
+ * creates only while no document in the space carries that key and value; a
+ * collision answers 412 with the document that does.
  *
  * @tag Documents
  * @jobToken
@@ -320,9 +317,7 @@ export const POST: ApiRouteHandler = (context) =>
     const titleValue = properties?.title;
     const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
 
-    // `If-None-Match: *` on a create asks for the identity to be free. The URL
-    // names a collection rather than a resource, so what the condition applies
-    // to is named in the body instead.
+    // The URL names a collection, so the condition's subject is in the body.
     const identityKey =
       context.req.raw.headers.get("if-none-match")?.trim() === "*"
         ? requireIdentityKey(identityKeyField, properties)
@@ -332,8 +327,7 @@ export const POST: ApiRouteHandler = (context) =>
     const store = await openSpaceStore(spaceId);
     const created = await store
       .tx(async (tx) => {
-        // The identity property is held back from the create and written
-        // conditionally below, so that a refusal rolls the document back.
+        // Held back from the create so a refusal rolls the document back.
         const withheld = identityKey
           ? Object.fromEntries(
               Object.entries(properties ?? {}).filter(([key]) => key !== identityKey),
@@ -357,10 +351,8 @@ export const POST: ApiRouteHandler = (context) =>
         if (!(await insertUniqueProperty(tx, document.id, identityKey, value))) {
           throw new IdentityTakenError(identityKey, value);
         }
-        // Written outside `touchDocument`, which would ordinarily be the bug
-        // this file guards against — but the sequence `createDocument` just
-        // allocated commits with this row, so no reader sees one without the
-        // other and the tag still describes what landed.
+        // Outside `touchDocument`, but it commits with the sequence
+        // `createDocument` allocated, so no reader sees one without the other.
         return {
           ...document,
           properties: {
@@ -382,8 +374,6 @@ export const POST: ApiRouteHandler = (context) =>
 
     if (created instanceof IdentityTakenError) {
       const holder = await findDocumentByProperty(store, created.key, created.value);
-      // The insert refused, so a document holds this identity. Anything else is
-      // a bug rather than a state worth reporting.
       if (!holder) throw new Error("Identity is taken but no document holds it");
       return preconditionFailed(holder, documentEtag(holder.changeSeq));
     }
@@ -393,7 +383,6 @@ export const POST: ApiRouteHandler = (context) =>
     });
   }, "Failed to create document");
 
-/** The identity property was already claimed; carried out of the transaction. */
 class IdentityTakenError extends Error {
   constructor(
     readonly key: string,
@@ -403,7 +392,6 @@ class IdentityTakenError extends Error {
   }
 }
 
-/** A `PropertyInit` is either the value or `{ value, type }` around it. */
 function propertyInitValue(init: PropertyInit | undefined): unknown {
   if (typeof init === "object" && init !== null && !Array.isArray(init) && "value" in init) {
     return init.value;

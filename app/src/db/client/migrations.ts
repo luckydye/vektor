@@ -60,11 +60,8 @@ async function backfillAIChatSessionRoles(db: SpaceDb): Promise<void> {
 }
 
 /**
- * Number documents that predate `change_seq`, least recently edited first, so a
- * consumer's first full read arrives in a meaningful order.
- *
- * Skipped once the counter has moved: replaying the baseline against a live
- * database must not renumber documents mid-sync.
+ * Number documents that predate `change_seq`, least recently edited first.
+ * Skipped once the counter has moved, so a replay cannot renumber live rows.
  */
 async function backfillDocumentChangeSeq(db: SpaceDb): Promise<void> {
   const [counter] = await db

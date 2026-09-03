@@ -63,7 +63,6 @@ export interface DocumentWithProperties {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
-  /** See `#db/space/changeSeq.ts`. */
   changeSeq: number;
   properties: DocumentProperties;
   createdAt: Date;
@@ -310,12 +309,7 @@ export async function getDocument(
   return { ...doc, parentId: doc.parentId || null, properties };
 }
 
-/**
- * The document carrying this property key and value, if one does.
- *
- * A caller that knows a document by an identifier of its own finds it with
- * this; nothing here knows what the identifier means.
- */
+/** The document carrying this property key and value, if one does. */
 export async function findDocumentByProperty(
   s: SpaceStore,
   key: string,
@@ -474,8 +468,8 @@ export async function updateDocument(
 ): Promise<DocumentWriteOutcome<DocumentWithProperties>> {
   // getDocument is metadata-only — `existing.content` is never read here (the
   // write uses the new `content`), so we avoid loading the old content (tens of
-  // MB on large canvases) every save. The read supplies the fields echoed back,
-  // never the decision to write — `expected` is compared by the write itself.
+  // MB on large canvases) every save. It supplies the fields echoed back, never
+  // the decision to write.
   const existing = await getDocument(s, id);
   if (!existing) {
     return { ok: false, reason: "missing" };
@@ -491,7 +485,6 @@ export async function updateDocument(
     expected,
   );
   if (!written.ok) {
-    // The row existed a moment ago, so a refusal is the condition, not a delete.
     return { ok: false, reason: "conflict" };
   }
 
@@ -545,7 +538,6 @@ export async function archiveDocument(
       { archived: true, updatedAt: new Date() },
       expected,
     );
-    // After the write: a refused condition must not leave an audit entry.
     if (written.ok && userId) {
       await createAuditLog(tx, {
         spaceId: tx.spaceId,
@@ -615,10 +607,9 @@ export async function deleteDocument(
       tx.db.select({ id: document.id }).from(document).where(eq(document.parentId, id)),
     );
 
-    // Before the writes below, so a refused condition drops no grants.
     if (!(await deleteDocumentRow(tx, id, expected))) return null;
 
-    // `parent_id` was just nulled out by the cascade — a visible change.
+    // `parent_id` was just nulled by the cascade.
     for (const child of children) {
       await touchDocument(tx, child.id, { updatedAt: new Date() });
     }

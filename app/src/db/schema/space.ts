@@ -16,10 +16,7 @@ export const spaceMetadata = sqliteTable("space_metadata", {
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  /**
-   * The space's write counter, and the source of every `document.change_seq`.
-   * One row per space database, so it orders every write against every other.
-   */
+  /** The source of every `document.change_seq`. One row per space database. */
   changeSeq: integer("change_seq").notNull().default(0),
 });
 
@@ -81,12 +78,8 @@ export const document = sqliteTable("document", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   createdBy: text("created_by").notNull(),
   /**
-   * The value this document last drew from `space_metadata.change_seq`, and
-   * the document's entity tag. Moves on every write that changes what a read
-   * returns; see `#db/space/changeSeq.ts`.
-   *
-   * Not `currentRev`: a property patch, a publish or a move all change the
-   * document without making a revision.
+   * The document's entity tag; see `#db/space/changeSeq.ts`. Not `currentRev`,
+   * which a property patch, a publish or a move all leave alone.
    */
   changeSeq: integer("change_seq").notNull().default(0),
 });

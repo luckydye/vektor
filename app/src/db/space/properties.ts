@@ -70,17 +70,13 @@ async function resolveRenamedSlug(
 }
 
 /**
- * Insert a property only while no document in the space already carries that
- * key and value, reporting whether it landed.
+ * Insert a property only while no document in the space carries that key and
+ * value. Returns whether it landed.
  *
- * The point of the `NOT EXISTS` is that it is *inside* the insert. A caller that
- * looks for the value and then writes has a gap another writer fits inside —
- * the same gap `touchDocument` exists to close on the update path. One statement
- * has no gap: SQLite admits one writer at a time, so the loser's subquery sees
- * the winner's committed row and matches nothing.
- *
- * Call inside the transaction that creates the document, so a refusal rolls the
- * document back with it.
+ * The `NOT EXISTS` is inside the insert: one statement, and SQLite admits one
+ * writer at a time, so the loser's subquery sees the winner's committed row.
+ * Checking and then inserting would leave a gap. Call inside the transaction
+ * that creates the document, so a refusal rolls it back.
  */
 export async function insertUniqueProperty(
   s: SpaceStore,
@@ -138,8 +134,7 @@ export async function patchDocumentProperties(
     }
     const changes: DocumentPropertyChange[] = [];
 
-    // First write in the transaction, so a refused condition rolls back before
-    // any property row lands behind a sequence that never moved.
+    // First write in the transaction, so a refusal rolls back cleanly.
     const renamedSlug = await resolveRenamedSlug(txStore, documentId, operations);
     const written = await touchDocument(
       txStore,
