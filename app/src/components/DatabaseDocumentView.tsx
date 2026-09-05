@@ -215,7 +215,7 @@ export function DatabaseDocumentView(props: Props) {
 
   return (
     <div class="flex h-full min-h-0 flex-1 flex-col">
-      <div class="flex shrink-0 items-center overflow-x-auto px-xs py-2xs lg:px-s">
+      <div class="flex shrink-0 items-center overflow-x-auto px-3xs py-2xs lg:px-s">
         <div role="tablist" class="space-x-1" aria-label="Database views" onKeyDown={onTabKeyDown}>
           <TabButton
             selected={selectedViewId() === TABLE_VIEW_ID}
@@ -313,7 +313,7 @@ export function DatabaseDocumentView(props: Props) {
       <div
         ref={panelRef}
         role="tabpanel"
-        class="flex min-h-0 flex-1 flex-col px-xs lg:px-s"
+        class="flex min-h-0 flex-1 flex-col px-3xs lg:px-s"
       >
         <Show
           when={selectedExtensionView()}
