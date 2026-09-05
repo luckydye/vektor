@@ -62,6 +62,12 @@ export interface ExtensionIntegration {
   defaultInstanceUrl?: string;
   /** Every proxied request is forced under this path, e.g. "/api/v4". */
   apiBasePath?: string;
+  /**
+   * Extra query parameters for the authorization redirect. Providers that only
+   * hand out a refresh token when asked need this — Google, for one, returns
+   * none without `access_type=offline`.
+   */
+  authorizationParams?: Record<string, string>;
   profile: ExtensionIntegrationProfile;
   agent?: ExtensionIntegrationAgent;
 }
@@ -160,6 +166,46 @@ function resolveMenuIcon(icon: string, files: ZipFiles): string {
 const INTEGRATION_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 /**
+ * Parameters the server derives itself. A manifest that could overwrite `state`
+ * or the PKCE challenge could disarm both, so an extension may only add
+ * parameters the flow does not depend on.
+ */
+const RESERVED_AUTHORIZATION_PARAMS = new Set([
+  "response_type",
+  "client_id",
+  "client_secret",
+  "redirect_uri",
+  "scope",
+  "state",
+  "code_challenge",
+  "code_challenge_method",
+]);
+
+function validateAuthorizationParams(integration: ExtensionIntegration): void {
+  const params = integration.authorizationParams;
+  if (params === undefined) return;
+
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    throw new Error(
+      `Extension manifest integration '${integration.id}' has an invalid 'authorizationParams'`,
+    );
+  }
+
+  for (const [name, value] of Object.entries(params)) {
+    if (RESERVED_AUTHORIZATION_PARAMS.has(name.toLowerCase())) {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' may not set the reserved authorization parameter '${name}'`,
+      );
+    }
+    if (typeof value !== "string") {
+      throw new Error(
+        `Extension manifest integration '${integration.id}' authorization parameter '${name}' must be a string`,
+      );
+    }
+  }
+}
+
+/**
  * Integrations are how a provider reaches the OAuth routes, so a malformed one
  * has to fail the install rather than surface as a half-configured provider.
  */
@@ -210,6 +256,8 @@ function validateIntegrations(manifest: ExtensionManifest): void {
         `Extension manifest integration '${integration.id}' needs 'profile.accountId' naming at least one response field`,
       );
     }
+
+    validateAuthorizationParams(integration);
 
     const commandJobId = integration.agent?.command?.jobId;
     if (commandJobId && !manifest.jobs?.some((job) => job.id === commandJobId)) {

@@ -163,6 +163,16 @@ export async function upsertOAuthIntegrationForUser(
   };
 
   if (existing) {
+    // Some providers issue a refresh token only on the first consent — Google
+    // is one — so re-connecting must not clear the one already stored.
+    const refreshColumns = refreshEncrypted
+      ? {
+          refreshTokenCiphertext: refreshEncrypted.ciphertext,
+          refreshTokenIv: refreshEncrypted.iv,
+          refreshTokenAuthTag: refreshEncrypted.authTag,
+        }
+      : {};
+
     await s.db
       .update(oauthIntegration)
       .set({
@@ -173,9 +183,7 @@ export async function upsertOAuthIntegrationForUser(
         accessTokenCiphertext: accessEncrypted.ciphertext,
         accessTokenIv: accessEncrypted.iv,
         accessTokenAuthTag: accessEncrypted.authTag,
-        refreshTokenCiphertext: refreshEncrypted?.ciphertext ?? null,
-        refreshTokenIv: refreshEncrypted?.iv ?? null,
-        refreshTokenAuthTag: refreshEncrypted?.authTag ?? null,
+        ...refreshColumns,
         accessTokenExpiresAt: tokenSet.expiresAt,
         updatedAt: now,
       })

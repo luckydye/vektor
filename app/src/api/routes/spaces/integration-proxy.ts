@@ -107,15 +107,6 @@ export function buildIntegrationApiUrl(
 
   if (/^https?:\/\//i.test(trimmed)) {
     resolved = new URL(trimmed);
-    if (
-      apiBasePath &&
-      !resolved.pathname.startsWith(`${apiBasePath}/`) &&
-      resolved.pathname !== apiBasePath
-    ) {
-      throw badRequestResponse(
-        `${providerConfig.id} request URL must target ${apiBasePath}`,
-      );
-    }
   } else {
     // `URL` strips tab/CR/LF itself, so `/\t/evil.example` would slip past the
     // protocol-relative check below.
@@ -135,6 +126,19 @@ export function buildIntegrationApiUrl(
   if (resolved.origin !== base.origin) {
     throw badRequestResponse(
       `${providerConfig.id} request URL must match configured origin`,
+    );
+  }
+
+  // Checked after resolution, not on the caller's string: `URL` collapses `..`
+  // segments, so a prefixed `/calendar/v3/../drive/v3/files` would otherwise
+  // leave the base path while still passing the origin check above.
+  if (
+    apiBasePath &&
+    resolved.pathname !== apiBasePath &&
+    !resolved.pathname.startsWith(`${apiBasePath}/`)
+  ) {
+    throw badRequestResponse(
+      `${providerConfig.id} request URL must target ${apiBasePath}`,
     );
   }
 

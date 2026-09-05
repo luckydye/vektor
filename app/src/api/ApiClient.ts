@@ -490,6 +490,15 @@ export type AIConfigMeta =
 /** Provider ids are declared by installed extensions, not by the app. */
 export type OAuthIntegrationProvider = string;
 
+/** The upstream response, relayed verbatim; `body` is unparsed text. */
+export interface IntegrationProxyResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
 export interface OAuthIntegrationConnection {
   provider: OAuthIntegrationProvider;
   label: string;
@@ -2120,6 +2129,28 @@ export class ApiClient {
       await this.apiDelete(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/integrations/${provider}`,
+      );
+    },
+
+    /**
+     * Call the provider's API with the current user's stored credentials. The
+     * access token never reaches the browser, so an extension view has no way
+     * to talk to a provider other than through this proxy.
+     */
+    request: async (
+      spaceId: string,
+      provider: OAuthIntegrationProvider,
+      request: {
+        path: string;
+        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+        headers?: Record<string, string>;
+        body?: string;
+      },
+    ): Promise<IntegrationProxyResponse> => {
+      return await this.apiPost<IntegrationProxyResponse>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/integrations/${provider}/proxy`,
+        request,
       );
     },
   };

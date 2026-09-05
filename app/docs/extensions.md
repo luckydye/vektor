@@ -821,6 +821,7 @@ manifest describes the provider; it never contains credentials.
 | `scopes` | No | Requested scopes, unless the operator overrides them |
 | `defaultInstanceUrl` | No | Used when the operator configures none — set it for a hosted-only service |
 | `apiBasePath` | No | Proxied requests are confined to this path and prefixed with it |
+| `authorizationParams` | No | Extra query parameters for the authorization redirect. The parameters the flow derives itself (`state`, `scope`, `redirect_uri`, the PKCE challenge, the client id) are rejected |
 | `profile` | Yes | Which userinfo fields hold the account id and display name, tried in order |
 | `agent` | No | `instructions` for the agent's system prompt, and a `command` naming a job in `jobs` |
 
@@ -830,6 +831,28 @@ optionally `VEKTOR_OAUTH_GITLAB_BASE_URL` and `VEKTOR_OAUTH_GITLAB_SCOPES`. A
 provider whose id contains hyphens uses underscores in the variable name. Until
 both id and secret are set the settings card shows the provider as unconfigured
 and lists what is missing.
+
+Set `authorizationParams` when the provider needs to be asked for a refresh
+token. Google issues none without `"access_type": "offline"`, and only repeats
+it on a later consent with `"prompt": "consent"` — without both, the connection
+stops working an hour after it is made.
+
+### Calling the provider from a view
+
+The access token stays on the server, so a view reaches the provider through the
+proxy. Paths are relative to `apiBasePath`, and the upstream response is relayed
+with its body unparsed:
+
+```ts
+const response = await ctx.api.integrations.request(ctx.spaceId, "google", {
+  path: "/users/me/calendarList",
+});
+if (!response.ok) throw new Error(`Calendar list failed (${response.status})`);
+const { items } = JSON.parse(response.body);
+```
+
+`request` throws only when the proxy itself refuses (not connected, unknown
+provider); an upstream error arrives as `ok: false` with the status.
 
 ### Agent commands
 

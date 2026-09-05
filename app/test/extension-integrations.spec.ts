@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionIntegration } from "#extensions/manifest.ts";
 import { extractManifest } from "#extensions/manifest.ts";
 import {
+  buildOAuthAuthorizationUrl,
   fetchOAuthExternalUser,
   type OAuthProviderDefinition,
   resolveOAuthProviderConfiguration,
@@ -59,6 +60,18 @@ describe("integration manifests", () => {
     ["a missing label", { ...gitlabIntegration, label: "" }],
     ["a missing token endpoint", { ...gitlabIntegration, tokenUrl: "" }],
     ["no profile mapping", { ...gitlabIntegration, profile: { accountId: [] } }],
+    [
+      "an authorization parameter that would disarm PKCE",
+      { ...gitlabIntegration, authorizationParams: { code_challenge: "x" } },
+    ],
+    [
+      "an authorization parameter that would replace the state",
+      { ...gitlabIntegration, authorizationParams: { State: "x" } },
+    ],
+    [
+      "a non-string authorization parameter",
+      { ...gitlabIntegration, authorizationParams: { access_type: 1 } },
+    ],
   ])("refuses %s", (_case, integration) => {
     expect(() =>
       extractManifest(packageWith({ ...baseManifest, integrations: [integration] })),
@@ -161,6 +174,42 @@ describe("resolveOAuthProviderConfiguration", () => {
       configured: false,
       missing: ["VEKTOR_OAUTH_GITLAB_BASE_URL"],
     });
+  });
+});
+
+describe("buildOAuthAuthorizationUrl", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // Google hands out no refresh token without access_type=offline, so a
+  // connection made without these parameters dies an hour after it is made.
+  it("carries the manifest's authorization parameters into the redirect", () => {
+    vi.stubEnv("VEKTOR_OAUTH_GITLAB_CLIENT_ID", "id");
+    vi.stubEnv("VEKTOR_OAUTH_GITLAB_CLIENT_SECRET", "secret");
+
+    const resolved = resolveOAuthProviderConfiguration(
+      definition({
+        ...gitlabIntegration,
+        authorizationParams: { access_type: "offline", prompt: "consent" },
+      }),
+    );
+    expect(resolved.configured).toBe(true);
+    if (!resolved.configured) return;
+
+    const url = new URL(
+      buildOAuthAuthorizationUrl({
+        providerConfig: resolved.config,
+        state: "state-value",
+        codeChallenge: "challenge-value",
+        redirectUri: "https://wiki.example.com/callback",
+      }),
+    );
+
+    expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("prompt")).toBe("consent");
+    expect(url.searchParams.get("state")).toBe("state-value");
+    expect(url.searchParams.get("code_challenge")).toBe("challenge-value");
   });
 });
 

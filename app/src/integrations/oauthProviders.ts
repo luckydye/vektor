@@ -17,6 +17,8 @@ export interface OAuthProviderConfiguration {
   instanceUrl: string | null;
   /** Every proxied request is forced under this path when set. */
   apiBasePath: string | null;
+  /** Extra query parameters the manifest adds to the authorization redirect. */
+  authorizationParams: Record<string, string>;
   profile: ExtensionIntegration["profile"];
 }
 
@@ -172,6 +174,7 @@ export function resolveOAuthProviderConfiguration(
       userInfoUrl,
       instanceUrl,
       apiBasePath: integration.apiBasePath ?? null,
+      authorizationParams: integration.authorizationParams ?? {},
       profile: integration.profile,
     },
   };
@@ -206,6 +209,12 @@ export function buildOAuthAuthorizationUrl(options: {
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
   });
+
+  // Appended rather than merged in: the manifest is validated against the set
+  // above, so nothing here can overwrite `state` or the PKCE challenge.
+  for (const [name, value] of Object.entries(providerConfig.authorizationParams)) {
+    params.set(name, value);
+  }
 
   return `${providerConfig.authorizationUrl}?${params.toString()}`;
 }

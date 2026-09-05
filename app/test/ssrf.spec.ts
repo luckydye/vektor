@@ -668,6 +668,7 @@ function providerConfig(instanceUrl: string): OAuthProviderConfiguration {
     userInfoUrl: `${instanceUrl}/api/users/me`,
     instanceUrl,
     apiBasePath: null,
+    authorizationParams: {},
     profile: { accountId: ["id"] },
   };
 }
@@ -724,5 +725,46 @@ describe("buildIntegrationApiUrl", () => {
     expect(
       buildIntegrationApiUrl(youtrack, "https://youtrack.example.com/api/issues").href,
     ).toBe("https://youtrack.example.com/api/issues");
+  });
+
+  // `apiBasePath` is a confinement, not a convenience prefix: the token a
+  // provider issues for one API must not reach a sibling API on the same origin.
+  it.each([
+    "/../oauth/token",
+    "/./../../admin",
+    "/projects/../../secrets",
+    "https://gitlab.example.com/oauth/token",
+  ])("refuses %j, which escapes the provider's apiBasePath", (path) => {
+    let thrown: unknown;
+    try {
+      buildIntegrationApiUrl(gitlab, path);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown, `gitlab accepted ${JSON.stringify(path)}`).toBeInstanceOf(Response);
+    expect((thrown as Response).status).toBe(400);
+  });
+
+  it("resolves relative segments that stay inside apiBasePath", () => {
+    expect(buildIntegrationApiUrl(gitlab, "/projects/1/../2").href).toBe(
+      "https://gitlab.example.com/api/v4/projects/2",
+    );
+  });
+
+  // A provider without an instance URL is based on its userinfo origin, which is
+  // how a fixed-endpoint provider such as Google reaches its API.
+  it("bases a provider with no instance URL on its userinfo origin", () => {
+    const google: OAuthProviderConfiguration = {
+      ...providerConfig("https://accounts.google.com"),
+      id: "google",
+      instanceUrl: null,
+      userInfoUrl: "https://www.googleapis.com/oauth2/v3/userinfo",
+      apiBasePath: "/calendar/v3",
+    };
+
+    expect(buildIntegrationApiUrl(google, "/users/me/calendarList").href).toBe(
+      "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+    );
+    expect(() => buildIntegrationApiUrl(google, "/../drive/v3/files")).toThrow();
   });
 });
