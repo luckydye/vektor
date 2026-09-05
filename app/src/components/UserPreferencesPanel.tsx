@@ -36,9 +36,8 @@ type ViewTransitionDocument = Document & {
 };
 
 const tabs = [
-  { id: "appearance", label: "Appearance" },
+  { id: "general", label: "General" },
   // { id: "cosmetics", label: "Profile" },
-  { id: "notifications", label: "Notifications" },
   { id: "integrations", label: "Integrations" },
   { id: "tokens", label: "Access Tokens" },
 ] satisfies { id: string; label: TranslationKey }[];
@@ -309,7 +308,7 @@ export function UserPreferencesPanel(props: Props) {
         }}
         class="min-h-[200px] w-[620px] max-w-[calc(100vw-2rem)]"
         panels={{
-          appearance: () => (
+          general: () => (
             <>
               <section>
                 <div class="mb-3">
@@ -418,6 +417,57 @@ export function UserPreferencesPanel(props: Props) {
                   </a-popover-trigger>
                 </div>
               </section>
+
+              <section class="mt-6">
+                <div class="mb-3">
+                  <h2 class="font-semibold text-foreground text-size-medium">
+                    {t("Notifications")}
+                  </h2>
+                  <p class="mt-1 text-neutral-500 text-size-small">
+                    {t("Manage notifications for the current space.")}
+                  </p>
+                </div>
+
+                <Show when={notificationPreferenceError()}>
+                  <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
+                    {notificationPreferenceError()}
+                  </div>
+                </Show>
+
+                <Show
+                  when={currentSpace()?.id}
+                  fallback={
+                    <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
+                      {t("Open a space to manage notifications.")}
+                    </div>
+                  }
+                >
+                  <Show
+                    when={!isLoadingNotificationPreference()}
+                    fallback={
+                      <div class="rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
+                        {t("Loading...")}
+                      </div>
+                    }
+                  >
+                    <div class="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-background p-3">
+                      <div>
+                        <p class="font-medium text-foreground text-size-small">
+                          {t("Mute space notifications")}
+                        </p>
+                        <p class="mt-0.5 text-label text-neutral-500">
+                          {t("Stop email notifications from this space.")}
+                        </p>
+                      </div>
+                      <SwitchToggle
+                        value={spaceNotificationsMuted()}
+                        disabled={isUpdatingNotificationPreference()}
+                        onInput={(muted) => void muteSpaceNotifications(muted)}
+                      />
+                    </div>
+                  </Show>
+                </Show>
+              </section>
             </>
           ),
 
@@ -430,56 +480,6 @@ export function UserPreferencesPanel(props: Props) {
           //     onEquip={equipCosmetic}
           //   />
           // ),
-
-          notifications: () => (
-            <section>
-              <div class="mb-3">
-                <p class="text-neutral-500 text-size-small">
-                  {t("Manage notifications for the current space.")}
-                </p>
-              </div>
-
-              <Show when={notificationPreferenceError()}>
-                <div class="mb-3 rounded-md border border-red-200 bg-red-50 p-2.5 text-red-600 text-size-small">
-                  {notificationPreferenceError()}
-                </div>
-              </Show>
-
-              <Show
-                when={currentSpace()?.id}
-                fallback={
-                  <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
-                    {t("Open a space to manage notifications.")}
-                  </div>
-                }
-              >
-                <Show
-                  when={!isLoadingNotificationPreference()}
-                  fallback={
-                    <div class="rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
-                      {t("Loading...")}
-                    </div>
-                  }
-                >
-                  <div class="flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-background p-3">
-                    <div>
-                      <p class="font-medium text-foreground text-size-small">
-                        {t("Mute space notifications")}
-                      </p>
-                      <p class="mt-0.5 text-label text-neutral-500">
-                        {t("Stop email notifications from this space.")}
-                      </p>
-                    </div>
-                    <SwitchToggle
-                      value={spaceNotificationsMuted()}
-                      disabled={isUpdatingNotificationPreference()}
-                      onInput={(muted) => void muteSpaceNotifications(muted)}
-                    />
-                  </div>
-                </Show>
-              </Show>
-            </section>
-          ),
 
           tokens: () => (
             <AccessTokensPanel
@@ -501,10 +501,7 @@ export function UserPreferencesPanel(props: Props) {
           integrations: () => (
             <section>
               <div class="mb-4">
-                <h2 class="font-semibold text-foreground text-size-medium">
-                  {t("Integrations")}
-                </h2>
-                <p class="mt-1 text-neutral-500 text-size-small">
+                <p class="text-neutral-500 text-size-small">
                   {t("Connect tools to make them available in this space.")}
                 </p>
               </div>
@@ -523,7 +520,7 @@ export function UserPreferencesPanel(props: Props) {
               <Show
                 when={currentSpace()?.id}
                 fallback={
-                  <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
+                  <div class="flex min-h-[236px] flex-col items-center justify-center rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
                     {t("Open a space to manage integrations.")}
                   </div>
                 }
@@ -531,7 +528,7 @@ export function UserPreferencesPanel(props: Props) {
                 <Show
                   when={!isLoadingIntegrations()}
                   fallback={
-                    <div class="rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
+                    <div class="flex min-h-[236px] flex-col items-center justify-center rounded-lg border border-neutral-100 p-5 text-center text-neutral-500 text-size-small">
                       {t("Loading...")}
                     </div>
                   }
@@ -539,7 +536,7 @@ export function UserPreferencesPanel(props: Props) {
                   <Show
                     when={integrationCards().length > 0}
                     fallback={
-                      <div class="rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
+                      <div class="flex min-h-[236px] flex-col items-center justify-center rounded-lg border border-neutral-200 border-dashed p-5 text-center text-neutral-500 text-size-small">
                         {t("Install an extension that provides an integration.")}
                       </div>
                     }

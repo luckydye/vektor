@@ -704,5 +704,6 @@
   "Repository": "リポジトリ",
   "Host code with git, and browse it here.": "Git でコードをホストし、ここで閲覧できます。",
   "Search people or type an email…": "ユーザーを検索、またはメールアドレスを入力…",
-  "Invite {email}": "{email} を招待"
+  "Invite {email}": "{email} を招待",
+  "General": "一般"
 }

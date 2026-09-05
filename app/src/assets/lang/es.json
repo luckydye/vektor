@@ -704,5 +704,6 @@
   "Repository": "Repositorio",
   "Host code with git, and browse it here.": "Aloja código con git y explóralo aquí.",
   "Search people or type an email…": "Busca personas o escribe un correo…",
-  "Invite {email}": "Invitar a {email}"
+  "Invite {email}": "Invitar a {email}",
+  "General": "General"
 }

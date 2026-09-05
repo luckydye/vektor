@@ -10,9 +10,9 @@ import {
 } from "#utils/accessToken.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import "./AvatarElement.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { Button } from "./Button.tsx";
 import { Icon } from "./Icon.tsx";
-import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   tokens: PersonalAccessToken[];
@@ -101,14 +101,9 @@ export function AccessTokensPanel(props: Props) {
   return (
     <section>
       <div class="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 class="font-semibold text-foreground text-size-medium">
-            {t("Access Tokens")}
-          </h2>
-          <p class="mt-1 text-neutral-500 text-size-small">
-            {t("Tokens let the CLI and the API act as you. Treat them like passwords.")}
-          </p>
-        </div>
+        <p class="text-neutral-500 text-size-small">
+          {t("Tokens let the CLI and the API act as you. Treat them like passwords.")}
+        </p>
         <Show when={props.spaces.length > 0 && view() === "list"}>
           <button
             type="button"

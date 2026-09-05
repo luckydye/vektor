@@ -704,5 +704,6 @@
   "Repository": "저장소",
   "Host code with git, and browse it here.": "git으로 코드를 호스팅하고 여기서 살펴보세요.",
   "Search people or type an email…": "사용자 검색 또는 이메일 입력…",
-  "Invite {email}": "{email} 초대"
+  "Invite {email}": "{email} 초대",
+  "General": "일반"
 }
