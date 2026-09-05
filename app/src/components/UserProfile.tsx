@@ -8,9 +8,9 @@ import {
 } from "#utils/themePreference.ts";
 import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { Icon } from "./Icon.tsx";
 import { UserPreferencesPanel } from "./UserPreferencesPanel.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 export function UserProfile() {
   const t = useTranslation();
@@ -95,13 +95,6 @@ export function UserProfile() {
                   <Icon class="h-4 w-4" name="preferences" />
                   <span class="text-interactive">{t("Preferences")}</span>
                 </button>
-                <a
-                  href="mailto:t.havlicek@s-v.de"
-                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"
-                >
-                  <Icon class="h-4 w-4" name="send-feedback" />
-                  <span class="text-interactive">{t("Send feedback")}</span>
-                </a>
                 <a
                   href="https://github.com/luckydye/vektor"
                   class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs pr-4xs transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100 group-aria-selected:bg-primary-10"

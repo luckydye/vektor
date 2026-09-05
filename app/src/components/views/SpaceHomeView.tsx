@@ -7,8 +7,8 @@ import { SpaceHomeHeadline } from "#components/SpaceHomeHeadline.tsx";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
-import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { useUploads } from "#composeables/useUploads.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { toAbsoluteUploadUrl } from "#files/fileTypes.ts";
 
 function greetingKey(hour: number): "Good morning" | "Good afternoon" | "Good evening" {
@@ -69,10 +69,6 @@ export function SpaceHomeView() {
               }).format(now)}
               greeting={t(greetingKey(now.getHours()))}
               name={firstName(user()?.name)}
-              subtitle={t("Here’s what moved forward in {space}.").replace(
-                "{space}",
-                space().name,
-              )}
             />
 
             <div>

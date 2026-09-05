@@ -2,10 +2,15 @@ import { createMemo, For, Show } from "solid-js";
 import type { DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
-import { propertyValueToText } from "#documents/properties.ts";
+import { documentTypeIcon } from "#documents/icons.ts";
+import {
+  isHiddenDocumentPropertyKey,
+  propertyValueToText,
+} from "#documents/properties.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 import { formatDate } from "#utils/dateFormat.ts";
 import { spacePath } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
 
 interface Props {
   doc: DocumentWithProperties;
@@ -24,9 +29,8 @@ function docTitle(doc: DocumentWithProperties) {
 
 function docTags(doc: DocumentWithProperties): string[] {
   if (!doc.properties) return [];
-  const excluded = new Set(["title", "name", "headerImage"]);
   return Object.entries(doc.properties)
-    .filter(([k, v]) => !excluded.has(k) && v)
+    .filter(([k, v]) => k !== "name" && !isHiddenDocumentPropertyKey(k) && v)
     .flatMap(([, v]) => (Array.isArray(v) ? v : [propertyValueToText(v)]));
 }
 
@@ -53,13 +57,14 @@ export function DocumentTeaser(props: Props) {
         rel={props.doc.fileUrl ? "noopener noreferrer" : undefined}
         class="group block"
       >
-        <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-neutral-200">
+        <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-neutral-100">
           <Show
             when={headerImage()}
             fallback={
-              <span class="select-none font-medium text-neutral-400 text-sm">
-                {props.doc.type ? props.doc.type.toUpperCase() : "DOC"}
-              </span>
+              <Icon
+                class="h-10 w-10 text-neutral-400"
+                name={documentTypeIcon(props.doc.type)}
+              />
             }
           >
             {(url) => (

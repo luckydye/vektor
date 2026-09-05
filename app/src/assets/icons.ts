@@ -106,7 +106,6 @@ export { default as resizeHandleIcon } from "./icons/resize-handle.svg?raw";
 export { default as restoreArrowIcon } from "./icons/restore.svg?raw";
 export { default as searchIcon } from "#assets/icons/search.svg?raw";
 export { default as selectToolIcon } from "#assets/icons/select-tool.svg?raw";
-export { default as sendFeedbackIcon } from "#assets/icons/send-feedback.svg?raw";
 export { default as sendMessageIcon } from "#assets/icons/send-message.svg?raw";
 export { default as settingsIcon } from "./icons/settings.svg?raw";
 export { default as shapeCircleIcon } from "./icons/shape-circle.svg?raw";

@@ -12,8 +12,8 @@ import {
 import { normalizeTimestamp } from "#utils/datetime.ts";
 import { t } from "#utils/lang.ts";
 import "./AvatarElement.ts";
-import { Icon } from "./Icon.tsx";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { Icon } from "./Icon.tsx";
 
 interface CompactActivityBatch {
   id: string;
@@ -147,32 +147,34 @@ export function SpaceActivityFeed(props: Props) {
                   />
                 </Show>
 
-                <div class="rounded-lg border border-neutral-100 bg-neutral-10 px-3.5 py-3">
-                  <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
-                    <div class="flex min-w-0 items-center gap-3">
-                      <div class="h-10 w-10 shrink-0 rounded-full bg-neutral-200" />
+                <div class="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10">
+                  <div class="px-3.5 py-3">
+                    <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
+                      <div class="flex min-w-0 items-center gap-3">
+                        <div class="h-10 w-10 shrink-0 rounded-full bg-neutral-200" />
 
-                      <div class="min-w-0 space-y-2">
-                        <div class="flex items-center gap-2">
-                          <div class="h-4 w-20 rounded-sm bg-neutral-200" />
-                          <div class="h-4 w-16 rounded-sm bg-neutral-100" />
+                        <div class="min-w-0 space-y-2">
+                          <div class="flex items-center gap-2">
+                            <div class="h-4 w-20 rounded-sm bg-neutral-200" />
+                            <div class="h-4 w-16 rounded-sm bg-neutral-100" />
+                          </div>
+                          <div class="h-3.5 w-16 rounded-sm bg-neutral-100" />
                         </div>
-                        <div class="h-3.5 w-16 rounded-sm bg-neutral-100" />
                       </div>
-                    </div>
 
-                    <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
+                      <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
+                        <Icon
+                          class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
+                          name="document"
+                        />
+                        <div class="h-4 w-32 rounded-sm bg-neutral-100" />
+                      </div>
+
                       <Icon
-                        class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
-                        name="document"
+                        class="@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
+                        name="chevron-right-thin"
                       />
-                      <div class="h-4 w-32 rounded-sm bg-neutral-100" />
                     </div>
-
-                    <Icon
-                      class="@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400"
-                      name="chevron-right-thin"
-                    />
                   </div>
                 </div>
               </>
@@ -196,58 +198,62 @@ export function SpaceActivityFeed(props: Props) {
                   </div>
                 </Show>
 
-                <For each={getCompactActivityBatches(group.items, lang)}>
-                  {(batch) => (
-                    <a
-                      href={batch.isPermission ? undefined : getDocumentHref(batch.docId)}
-                      class="block rounded-lg border border-neutral-100 bg-neutral-10 px-3.5 py-3 transition-colors hover:bg-neutral-50"
-                    >
-                      <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
-                        <div class="flex min-w-0 items-center gap-3">
-                          <vektor-avatar
-                            size="medium"
-                            attr:user-id={group.userId ?? undefined}
-                            prop:user={getUser(group.userId)}
-                          />
+                <div class="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-100 bg-neutral-10">
+                  <For each={getCompactActivityBatches(group.items, lang)}>
+                    {(batch) => (
+                      <a
+                        href={
+                          batch.isPermission ? undefined : getDocumentHref(batch.docId)
+                        }
+                        class="block px-3.5 py-3 transition-colors hover:bg-neutral-50"
+                      >
+                        <div class="grid min-w-0 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3">
+                          <div class="flex min-w-0 items-center gap-3">
+                            <vektor-avatar
+                              size="medium"
+                              attr:user-id={group.userId ?? undefined}
+                              prop:user={getUser(group.userId)}
+                            />
 
-                          <div class="min-w-0">
-                            <div class="flex min-w-0 items-baseline gap-1 text-size-medium leading-medium">
-                              <span class="font-semibold text-neutral-900">
-                                {getUserName(group.userId)}
-                              </span>
-                              <span class="shrink-0 text-neutral-700">
-                                {batch.action}
-                              </span>
-                            </div>
-                            <div class="mt-0.5 font-medium text-neutral-500 text-size-small">
-                              {getBatchSummary(batch, lang)}
+                            <div class="min-w-0">
+                              <div class="flex min-w-0 items-baseline gap-1 text-size-medium leading-medium">
+                                <span class="font-semibold text-neutral-900">
+                                  {getUserName(group.userId)}
+                                </span>
+                                <span class="shrink-0 text-neutral-700">
+                                  {batch.action}
+                                </span>
+                              </div>
+                              <div class="mt-0.5 font-medium text-neutral-500 text-size-small">
+                                {getBatchSummary(batch, lang)}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
+                          <div class="@md:col-auto col-start-1 @md:row-auto row-start-2 flex min-w-0 items-center gap-3">
+                            <Icon
+                              class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
+                              name={batch.isPermission ? "users" : "document"}
+                            />
+                            <div class="min-w-0 truncate text-neutral-700 text-size-medium">
+                              {batch.isPermission
+                                ? t("Members")
+                                : getDocumentName(batch.docId)}
+                            </div>
+                          </div>
+
                           <Icon
-                            class="h-8 w-8 shrink-0 rounded-md bg-neutral-100 p-2 text-neutral-500"
-                            name={batch.isPermission ? "users" : "document"}
+                            class={twMerge(
+                              "@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400",
+                              batch.isPermission && "invisible",
+                            )}
+                            name="chevron-right-thin"
                           />
-                          <div class="min-w-0 truncate text-neutral-700 text-size-medium">
-                            {batch.isPermission
-                              ? t("Members")
-                              : getDocumentName(batch.docId)}
-                          </div>
                         </div>
-
-                        <Icon
-                          class={twMerge(
-                            "@md:col-auto col-start-2 @md:row-auto row-span-2 h-5 w-5 shrink-0 text-neutral-400",
-                            batch.isPermission && "invisible",
-                          )}
-                          name="chevron-right-thin"
-                        />
-                      </div>
-                    </a>
-                  )}
-                </For>
+                      </a>
+                    )}
+                  </For>
+                </div>
               </>
             )}
           </For>

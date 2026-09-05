@@ -487,7 +487,7 @@ export function DocumentPageView(props: Props) {
       class={twMerge(
         // Above the details block below it, which raises itself to z-20 for
         // its popovers and would otherwise scroll over this sticky bar.
-        "sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 px-3xs py-4 md:px-s",
+        "sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 px-3xs py-3xs md:px-s",
         !transparent && "border-neutral-50 border-b bg-neutral-10",
       )}
     >
