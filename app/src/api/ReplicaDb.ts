@@ -107,6 +107,17 @@ interface ReplicaBackend {
     index: string,
     key: IDBValidKey[],
   ): Promise<ReplicaRecord[]>;
+  /** `get`, batched: one row per key, in order, `null` where a key is unmatched. */
+  getMany(
+    store: ReplicaStore,
+    keys: IDBValidKey[][],
+  ): Promise<Array<ReplicaRecord | null>>;
+  /** `getByIndex`, batched: one row array per key, in the same order. */
+  getManyByIndex(
+    store: ReplicaStore,
+    index: string,
+    keys: IDBValidKey[][],
+  ): Promise<ReplicaRecord[][]>;
   write(writes: ReplicaWrite[]): Promise<void>;
   close(): void;
 }
@@ -156,6 +167,21 @@ class IndexedDBReplicaBackend implements ReplicaBackend {
     key: IDBValidKey[],
   ): Promise<ReplicaRecord[]> {
     return await this.database.getAllByIndex<ReplicaRecord>(store, index, key);
+  }
+
+  async getMany(
+    store: ReplicaStore,
+    keys: IDBValidKey[][],
+  ): Promise<Array<ReplicaRecord | null>> {
+    return await this.database.getMany<ReplicaRecord>(store, keys);
+  }
+
+  async getManyByIndex(
+    store: ReplicaStore,
+    index: string,
+    keys: IDBValidKey[][],
+  ): Promise<ReplicaRecord[][]> {
+    return await this.database.getManyByIndex<ReplicaRecord>(store, index, keys);
   }
 
   async write(writes: ReplicaWrite[]): Promise<void> {
@@ -211,6 +237,21 @@ class MemoryReplicaBackend implements ReplicaBackend {
         keyPath.every((part, position) => record[part] === key[position]),
       )
       .map((record) => structuredClone(record));
+  }
+
+  async getMany(
+    store: ReplicaStore,
+    keys: IDBValidKey[][],
+  ): Promise<Array<ReplicaRecord | null>> {
+    return await Promise.all(keys.map((key) => this.get(store, key)));
+  }
+
+  async getManyByIndex(
+    store: ReplicaStore,
+    index: string,
+    keys: IDBValidKey[][],
+  ): Promise<ReplicaRecord[][]> {
+    return await Promise.all(keys.map((key) => this.getByIndex(store, index, key)));
   }
 
   async write(writes: ReplicaWrite[]): Promise<void> {
@@ -303,6 +344,34 @@ export class ReplicaDb {
       return (await this.backend.getByIndex(store, index, key)) as T[];
     } catch {
       return [];
+    }
+  }
+
+  /** `get`, batched. Prefer this over a `Promise.all` of `get` calls: one
+   *  transaction for every key beats a transaction each. */
+  async getMany<T extends ReplicaRecord>(
+    store: ReplicaStore,
+    keys: IDBValidKey[][],
+  ): Promise<Array<T | null>> {
+    if (!this.backend || keys.length === 0) return [];
+    try {
+      return (await this.backend.getMany(store, keys)) as Array<T | null>;
+    } catch {
+      return keys.map(() => null);
+    }
+  }
+
+  /** `getByIndex`, batched — see `getMany`. */
+  async getManyByIndex<T extends ReplicaRecord>(
+    store: ReplicaStore,
+    index: string,
+    keys: IDBValidKey[][],
+  ): Promise<T[][]> {
+    if (!this.backend || keys.length === 0) return [];
+    try {
+      return (await this.backend.getManyByIndex(store, index, keys)) as T[][];
+    } catch {
+      return keys.map(() => []);
     }
   }
 

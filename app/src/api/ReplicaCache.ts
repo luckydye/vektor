@@ -93,25 +93,6 @@ function byId<T extends { id: string }>(records: T[]): Map<string, T> {
   return new Map(records.map((record) => [record.id, record]));
 }
 
-/**
- * Property rows grouped by the document they belong to.
- *
- * Built once per read: a space's rows are held in one flat store, and picking
- * each document's properties out of it by scanning costs one pass over every
- * property in the space, per document.
- */
-function propertiesByDocument(
-  properties: PropertyRecord[],
-): Map<string, PropertyRecord[]> {
-  const grouped = new Map<string, PropertyRecord[]>();
-  for (const property of properties) {
-    const existing = grouped.get(property.documentId);
-    if (existing) existing.push(property);
-    else grouped.set(property.documentId, [property]);
-  }
-  return grouped;
-}
-
 /** Rows in the order the server listed them, skipping ids we no longer hold. */
 function inCollectionOrder<T extends { id: string }>(
   collection: CollectionRecord | null,
@@ -321,16 +302,19 @@ export class ReplicaCache {
     // as unknown, so anything missing is a miss for the whole request.
     if (collectionRecords.some((collection) => collection === null)) return undefined;
 
-    const [documents, properties] = await this.documentRows(spaceId);
-    const grouped = propertiesByDocument(properties);
-    // Built once and shared: each category is an ordering over the same rows.
-    const all = documents.map((record) =>
-      this.toDocument(record, grouped.get(record.id) ?? []),
-    );
+    // Only these categories' own rows are fetched — one lookup shared by every
+    // slug that names the same document — never the space's full document
+    // table, which for a large space can be orders of magnitude bigger than
+    // what any of these categories actually lists.
+    const ids = [
+      ...new Set(collectionRecords.flatMap((collection) => collection?.ids ?? [])),
+    ];
+    const documentsById = await this.documentsById(spaceId, ids);
 
     const result: Record<string, DocumentWithProperties[]> = {};
     slugs.forEach((slug, index) => {
-      result[slug] = inCollectionOrder(collectionRecords[index], all) ?? [];
+      result[slug] =
+        inCollectionOrder(collectionRecords[index], [...documentsById.values()]) ?? [];
     });
     return result;
   }
@@ -792,25 +776,38 @@ export class ReplicaCache {
     };
   }
 
-  private async documentRows(
+  /**
+   * Documents and their properties for exactly these ids — one transaction per
+   * store, covering every id, rather than a scan of the whole space. A caller
+   * that wants one database's rows or one category's rows must not pay for
+   * every document the space holds to get them.
+   */
+  private async documentsById(
     spaceId: string,
-  ): Promise<[DocumentRecord[], PropertyRecord[]]> {
-    return await Promise.all([
-      this.db.getSpace<DocumentRecord>(replicaStores.document, spaceId),
-      this.db.getSpace<PropertyRecord>(replicaStores.property, spaceId),
+    ids: string[],
+  ): Promise<Map<string, DocumentWithProperties>> {
+    if (ids.length === 0) return new Map();
+
+    const keys = ids.map((id) => [spaceId, id]);
+    const [records, propertyRows] = await Promise.all([
+      this.db.getMany<DocumentRecord>(replicaStores.document, keys),
+      this.db.getManyByIndex<PropertyRecord>(replicaStores.property, "by_document", keys),
     ]);
+
+    const result = new Map<string, DocumentWithProperties>();
+    records.forEach((record, index) => {
+      if (record)
+        result.set(record.id, this.toDocument(record, propertyRows[index] ?? []));
+    });
+    return result;
   }
 
   private async documentsInCollection(
     spaceId: string,
     collection: CollectionRecord,
   ): Promise<DocumentWithProperties[] | undefined> {
-    const [documents, properties] = await this.documentRows(spaceId);
-    const grouped = propertiesByDocument(properties);
-    return inCollectionOrder(
-      collection,
-      documents.map((record) => this.toDocument(record, grouped.get(record.id) ?? [])),
-    );
+    const documentsById = await this.documentsById(spaceId, collection.ids);
+    return inCollectionOrder(collection, [...documentsById.values()]);
   }
 
   private async documentRecord(
@@ -845,15 +842,20 @@ export class ReplicaCache {
   ): Promise<ReplicaWrite[]> {
     if (documents.length === 0) return [];
 
-    const stored = byId(
-      await this.db.getSpace<DocumentRecord>(replicaStores.document, spaceId),
-    );
-    const storedProperties = propertiesByDocument(
-      await this.db.getSpace<PropertyRecord>(replicaStores.property, spaceId),
-    );
+    // Only ever looked up by the id of a document being written, so this reads
+    // exactly those rows — one transaction covering every id — rather than
+    // every document and property the space holds. A space with tens of
+    // thousands of documents must not pay for all of them on every write of a
+    // handful.
+    const keys = documents.map((document) => [spaceId, document.id]);
+    const [storedRecords, storedPropertyRows] = await Promise.all([
+      this.db.getMany<DocumentRecord>(replicaStores.document, keys),
+      this.db.getManyByIndex<PropertyRecord>(replicaStores.property, "by_document", keys),
+    ]);
+
     const writes: ReplicaWrite[] = [];
 
-    for (const document of documents) {
+    documents.forEach((document, index) => {
       const { properties, ...fields } = document;
       const next: Record<string, unknown> = { ...fields, spaceId };
       if (options.partial) delete next.content;
@@ -863,7 +865,7 @@ export class ReplicaCache {
 
       writes.push({
         store: replicaStores.document,
-        put: { ...stored.get(document.id), ...next } as DocumentRecord,
+        put: { ...storedRecords[index], ...next } as DocumentRecord,
       });
 
       for (const [key, value] of Object.entries(properties ?? {})) {
@@ -873,15 +875,15 @@ export class ReplicaCache {
         });
       }
       // A property the response no longer carries has been deleted.
-      const keys = new Set(Object.keys(properties ?? {}));
-      for (const property of storedProperties.get(document.id) ?? []) {
-        if (keys.has(property.key)) continue;
+      const propertyKeys = new Set(Object.keys(properties ?? {}));
+      for (const property of storedPropertyRows[index] ?? []) {
+        if (propertyKeys.has(property.key)) continue;
         writes.push({
           store: replicaStores.property,
           remove: [spaceId, document.id, property.key],
         });
       }
-    }
+    });
 
     return writes;
   }

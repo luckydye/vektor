@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiClient,
   type Category,
@@ -393,5 +393,86 @@ describe("optimistic rows", () => {
     });
 
     expect(await api.comments.getCached("space_1", "document_1")).toEqual([stored]);
+  });
+});
+
+describe("at scale", () => {
+  it("reads one category's documents without touching the rest of a large space", async () => {
+    const api = client();
+    // Documents that belong to a category the test never reads. Present so a
+    // regression back to a whole-space scan would have real rows to trip over.
+    const untouched = Array.from({ length: 200 }, (_, index) =>
+      makeDocument({ id: `other_${index}`, properties: { category: "other" } }),
+    );
+    const wanted = [
+      makeDocument({ id: "document_1", properties: { category: "planning" } }),
+      makeDocument({ id: "document_2", properties: { category: "planning" } }),
+    ];
+
+    globalThis.fetch = (async (input) => {
+      const url = String(input);
+      if (url.includes("grouped=true")) {
+        return Response.json({
+          documentsByCategory: { planning: wanted },
+          categorySlugs: ["planning"],
+        });
+      }
+      return Response.json(listResponse([...wanted, ...untouched]));
+    }) as typeof fetch;
+
+    await api.documents.get("space_1", { limit: 500 });
+    await api.documents.getByCategories("space_1", ["planning"]);
+
+    // biome-ignore lint/suspicious/noExplicitAny: reaching past private fields to spy on the store the fix must not scan
+    const db = (api as any).replica.db;
+    const getSpaceSpy = vi.spyOn(db, "getSpace");
+    const getManySpy = vi.spyOn(db, "getMany");
+
+    const result = await api.documents.getByCategoriesCached("space_1", ["planning"]);
+
+    expect(result?.planning.map((document) => document.id)).toEqual([
+      "document_1",
+      "document_2",
+    ]);
+    // The 200 unrelated documents are proof this reads the category's own two
+    // rows, not a scan of everything the space holds.
+    expect(
+      getSpaceSpy.mock.calls.some((call) => call[0] === "document" || call[0] === "property"),
+    ).toBe(false);
+    expect(getManySpy).toHaveBeenCalled();
+  });
+
+  it("drops a property the server stops sending, without touching another document's rows", async () => {
+    const api = client();
+    let tagStillPresent = true;
+    const untouched = makeDocument({
+      id: "document_untouched",
+      properties: { title: "Keep me", tag: "keep" },
+    });
+
+    globalThis.fetch = (async (input) => {
+      if (String(input).includes("/documents/document_1")) {
+        const properties: Record<string, string> = { title: "Original" };
+        if (tagStillPresent) properties.tag = "temp";
+        return Response.json({
+          document: makeDocument({ id: "document_1", properties }),
+        });
+      }
+      return Response.json({ document: untouched });
+    }) as typeof fetch;
+
+    await api.document.get("space_1", "document_1");
+    await api.document.get("space_1", "document_untouched");
+    tagStillPresent = false;
+    await api.document.get("space_1", "document_1");
+
+    expect((await api.document.getCached("space_1", "document_1"))?.properties).toEqual({
+      title: "Original",
+    });
+    // A regression back to a whole-space read-modify-write would have found
+    // (and could have clobbered) this row while resolving document_1's write.
+    expect((await api.document.getCached("space_1", "document_untouched"))?.properties).toEqual(
+      { title: "Keep me", tag: "keep" },
+    );
   });
 });

@@ -239,6 +239,65 @@ export class IndexedDBDatabase {
     );
   }
 
+  /**
+   * Point-get many keys in one transaction, in the order given (`null` for a
+   * missing key). One transaction for N keys is what makes this cheaper than
+   * `getAll` over the whole store for a caller that only wants a subset —
+   * IndexedDB parallelizes requests within a transaction, but a transaction
+   * per key would pay that overhead once per row instead of once per call.
+   */
+  async getMany<T>(storeName: string, keys: IDBValidKey[]): Promise<Array<T | null>> {
+    if (keys.length === 0) return [];
+    const db = await this.open();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([storeName], "readonly");
+      const store = transaction.objectStore(storeName);
+      const results = new Array<T | null>(keys.length).fill(null);
+
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve(results);
+
+      keys.forEach((key, index) => {
+        const request = store.get(key);
+        request.onsuccess = () => {
+          results[index] = (request.result as T | undefined) ?? null;
+        };
+      });
+    });
+  }
+
+  /**
+   * `getAllByIndex`, batched the same way as `getMany`: one transaction runs
+   * every key's index scan, returning each key's rows in its own sub-array.
+   */
+  async getManyByIndex<T>(
+    storeName: string,
+    indexName: string,
+    keys: IDBValidKey[],
+  ): Promise<T[][]> {
+    if (keys.length === 0) return [];
+    const db = await this.open();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([storeName], "readonly");
+      const index = transaction.objectStore(storeName).index(indexName);
+      const results: T[][] = keys.map(() => []);
+
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve(results);
+
+      keys.forEach((key, position) => {
+        const request = index.getAll(key);
+        request.onsuccess = () => {
+          results[position] = (request.result as T[] | undefined) ?? [];
+        };
+      });
+    });
+  }
+
   /** Apply every write in a single transaction, or none of them. */
   async write(writes: DatabaseWrite[]): Promise<void> {
     if (writes.length === 0) return;
