@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { type AclViewer, Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
@@ -99,24 +99,30 @@ export async function generateUniqueSlug(
   // URL can carry, see `isPlaceholderDocumentSlug`.
   const baseSlug = slugify(baseTitle) || fallbackDocumentSlug(createId("document"));
 
-  const allDocs = await many(
-    s.db.select({ id: document.id, slug: document.slug }).from(document),
-  );
+  // One targeted lookup per candidate, not every slug the space holds: this
+  // runs on every create and every title edit, so a space with tens of
+  // thousands of documents must not pay for all of them just to place one.
+  // A collision is the rare case — this only loops past the first check when
+  // the base slug is already taken.
+  const isTaken = async (candidate: string): Promise<boolean> => {
+    if (isReservedDocumentSlug(candidate)) return true;
+    const condition = excludeDocumentId
+      ? and(eq(document.slug, candidate), ne(document.id, excludeDocumentId))
+      : eq(document.slug, candidate);
+    const existing = await one(
+      s.db.select({ id: document.id }).from(document).where(condition),
+    );
+    return existing !== null;
+  };
 
-  const existingSlugs = new Set(
-    allDocs.filter((d) => d.id !== excludeDocumentId).map((d) => d.slug),
-  );
-  const isTaken = (candidate: string) =>
-    existingSlugs.has(candidate) || isReservedDocumentSlug(candidate);
-
-  if (!isTaken(baseSlug)) {
+  if (!(await isTaken(baseSlug))) {
     return baseSlug;
   }
 
   let counter = 1;
   let slug = `${baseSlug}-${counter}`;
 
-  while (isTaken(slug)) {
+  while (await isTaken(slug)) {
     counter++;
     slug = `${baseSlug}-${counter}`;
   }
@@ -1180,7 +1186,17 @@ export async function listAllDocumentsByCategories(
 
   docs = docs.filter((doc) => includedIds.has(doc.id));
 
-  const allProps = await many(s.db.select().from(property));
+  // `includedIds` is already closed under "ancestor of" (the loop above grows
+  // it upward until an id is already present), so every id the chain-walk
+  // below ever looks up is in this set — scoping here, not a scan of every
+  // property in the space, whatever its size.
+  const includedIdList = [...includedIds];
+  const allProps =
+    includedIdList.length > 0
+      ? await many(
+          s.db.select().from(property).where(inArray(property.documentId, includedIdList)),
+        )
+      : [];
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
   const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
@@ -1346,25 +1362,92 @@ export async function getDocumentChildren(
   s: SpaceStore,
   parentId: string,
   viewer: AclViewer | null,
-): Promise<DocumentWithProperties[]> {
-  let docs = await many(
-    s.db
-      .select()
-      .from(document)
-      .where(and(eq(document.parentId, parentId), nonArchivedDocumentCondition)),
-  );
+  options: { limit?: number; cursor?: string } = {},
+): Promise<{ documents: DocumentWithProperties[]; total: number; nextCursor: string | null }> {
+  const { limit, cursor } = options;
+  const baseCondition = and(eq(document.parentId, parentId), nonArchivedDocumentCondition);
 
-  // Per-document ACL filtering: a caller with access to the parent must not be
-  // able to enumerate (or read the content of) children they cannot access.
-  // A null viewer is a trusted system caller and sees everything.
+  let docs: (typeof document.$inferSelect)[];
+  let total: number;
+  let nextCursor: string | null = null;
+
   if (viewer) {
+    // Per-document ACL filtering needs every child's id before it can say which
+    // page is whose, the same tradeoff `listDocuments` makes for a resource-
+    // scoped grantee — but bounded by this one parent's children, not the
+    // space, so it stays cheap at the scale that actually matters here: a
+    // database with tens of thousands of records almost never has a
+    // resource grant scoped to less than the whole parent.
+    const allDocs = await many(
+      s.db
+        .select()
+        .from(document)
+        .where(baseCondition)
+        .orderBy(desc(document.updatedAt), desc(document.id)),
+    );
     const readable = await filterReadableResources(
       s.spaceId,
       ResourceType.DOCUMENT,
-      docs.map((doc) => doc.id),
+      allDocs.map((doc) => doc.id),
       viewer,
     );
-    docs = docs.filter((doc) => readable.has(doc.id));
+    const visible = allDocs.filter((doc) => readable.has(doc.id));
+    total = visible.length;
+
+    let start = 0;
+    if (cursor) {
+      const pos = decodeListCursor(cursor);
+      if (pos) {
+        const idx = visible.findIndex(
+          (doc) =>
+            doc.updatedAt < pos.updatedAt ||
+            (doc.updatedAt.getTime() === pos.updatedAt.getTime() && doc.id < pos.id),
+        );
+        start = idx === -1 ? visible.length : idx;
+      }
+    }
+    const pageLimit = limit ?? visible.length;
+    docs = visible.slice(start, start + pageLimit);
+    if (start + pageLimit < visible.length) {
+      const last = docs[docs.length - 1];
+      nextCursor = last ? encodeListCursor(last.updatedAt, last.id) : null;
+    }
+  } else {
+    // A null viewer is a trusted system caller: the same keyset pagination
+    // `listDocuments` uses, so a database's own row count never dictates how
+    // much a single request has to carry.
+    const pos = cursor ? decodeListCursor(cursor) : null;
+    const seekCondition = pos
+      ? and(
+          baseCondition,
+          or(
+            lt(document.updatedAt, pos.updatedAt),
+            and(sql`${document.updatedAt} = ${pos.updatedAt}`, lt(document.id, pos.id)),
+          ),
+        )
+      : baseCondition;
+
+    const fetchLimit = (limit ?? 50) + 1;
+    const rows = await many(
+      s.db
+        .select()
+        .from(document)
+        .where(seekCondition)
+        .orderBy(desc(document.updatedAt), desc(document.id))
+        .limit(fetchLimit),
+    );
+
+    if (rows.length === fetchLimit) {
+      docs = rows.slice(0, -1);
+      const last = docs[docs.length - 1];
+      nextCursor = last ? encodeListCursor(last.updatedAt, last.id) : null;
+    } else {
+      docs = rows;
+    }
+    // Exact only on an unfiltered listing: a page is a page, not a count of
+    // everything a keyset scan never has to visit. A cursor mid-walk answers
+    // with what it has seen so far, same as `listDocuments`'s own count.
+    total = docs.length + (nextCursor ? 1 : 0);
   }
 
   const childIds = docs.map((d) => d.id);
@@ -1377,7 +1460,7 @@ export async function getDocumentChildren(
 
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
-  return docs.map((doc) => ({
+  const documents = docs.map((doc) => ({
     id: doc.id,
     slug: doc.slug,
     type: doc.type,
@@ -1393,6 +1476,8 @@ export async function getDocumentChildren(
     readonly: doc.readonly,
     archived: doc.archived,
   }));
+
+  return { documents, total, nextCursor };
 }
 
 export interface BreadcrumbItem {

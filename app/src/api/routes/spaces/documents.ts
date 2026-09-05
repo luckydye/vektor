@@ -190,9 +190,13 @@ export const GET: ApiRouteHandler = (context) =>
     }
 
     if (parentIdParam) {
-      const documents = await getDocumentChildren(store, parentIdParam, viewer);
-      // Unpaginated, as above: every child is returned regardless of `limit`.
-      return jsonResponse({ documents, total: documents.length, nextCursor: null });
+      const { documents, total, nextCursor } = await getDocumentChildren(
+        store,
+        parentIdParam,
+        viewer,
+        { limit, cursor },
+      );
+      return jsonResponse({ documents, total, limit, nextCursor });
     }
 
     // Always return documents without content (content fetched separately when viewing)
