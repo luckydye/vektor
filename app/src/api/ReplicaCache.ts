@@ -63,17 +63,11 @@ interface SpaceRecord extends ReplicaRecord, Space {}
  * the difference between "empty document" and "only ever seen in a list" — the
  * latter is not a cache hit for anything that needs the body.
  */
-type DocumentFields = Omit<DocumentWithProperties, "properties" | "content"> & {
+type DocumentFields = Omit<DocumentWithProperties, "content"> & {
   content?: string;
 };
 
 interface DocumentRecord extends ReplicaRecord, DocumentFields {}
-
-interface PropertyRecord extends ReplicaRecord {
-  documentId: string;
-  key: string;
-  value: string | string[];
-}
 
 interface CategoryRecord extends ReplicaRecord, Category {}
 interface CommentRecord extends ReplicaRecord, Comment {}
@@ -283,7 +277,7 @@ export class ReplicaCache {
     callback: (documents: DocumentWithProperties[] | undefined) => void,
   ): () => void {
     return this.db.subscribe(
-      [replicaStores.document, replicaStores.property, replicaStores.collection],
+      [replicaStores.document, replicaStores.collection],
       spaceId,
       () => this.readDocuments(spaceId),
       callback,
@@ -327,7 +321,7 @@ export class ReplicaCache {
     ) => void,
   ): () => void {
     return this.db.subscribe(
-      [replicaStores.document, replicaStores.property, replicaStores.collection],
+      [replicaStores.document, replicaStores.collection],
       spaceId,
       () => this.readDocumentsByCategories(spaceId, categorySlugs),
       callback,
@@ -346,12 +340,7 @@ export class ReplicaCache {
     const record = await this.documentRecord(spaceId, documentIdOrSlug);
     if (!record || record.content === undefined) return undefined;
 
-    const properties = await this.db.getByIndex<PropertyRecord>(
-      replicaStores.property,
-      "by_document",
-      [spaceId, record.id],
-    );
-    return this.toDocument(record, properties);
+    return this.toDocument(record);
   }
 
   subscribeDocument(
@@ -360,7 +349,7 @@ export class ReplicaCache {
     callback: (document: DocumentWithProperties | undefined) => void,
   ): () => void {
     return this.db.subscribe(
-      [replicaStores.document, replicaStores.property],
+      [replicaStores.document],
       spaceId,
       () => this.readDocument(spaceId, documentIdOrSlug),
       callback,
@@ -456,23 +445,16 @@ export class ReplicaCache {
         typeof patch.document === "function"
           ? patch.document(toEntity<DocumentFields>(record))
           : patch.document;
-      const writes: ReplicaWrite[] = [
-        { store: replicaStores.document, put: { ...record, ...fields } },
-      ];
+
+      const properties = { ...(record.properties ?? {}) };
       for (const [key, value] of Object.entries(patch.properties ?? {})) {
-        writes.push(
-          value === null
-            ? {
-                store: replicaStores.property,
-                remove: [spaceId, record.id, key],
-              }
-            : {
-                store: replicaStores.property,
-                put: { spaceId, documentId: record.id, key, value },
-              },
-        );
+        if (value === null) delete properties[key];
+        else properties[key] = value;
       }
-      return writes;
+
+      return [
+        { store: replicaStores.document, put: { ...record, ...fields, properties } },
+      ];
     });
   }
 
@@ -760,27 +742,21 @@ export class ReplicaCache {
     return { store: replicaStores.space, put: { ...space, spaceId: ROOT_SPACE } };
   }
 
-  /** `properties` are this document's own rows, not the space's. */
-  private toDocument(
-    record: DocumentRecord,
-    properties: PropertyRecord[],
-  ): DocumentWithProperties {
+  private toDocument(record: DocumentRecord): DocumentWithProperties {
     const fields = toEntity<DocumentFields>(record);
     return {
       ...fields,
       // A listing reports an absent body as empty, and so do we.
       content: fields.content ?? "",
-      properties: Object.fromEntries(
-        properties.map((property) => [property.key, property.value]),
-      ),
+      properties: fields.properties ?? {},
     };
   }
 
   /**
-   * Documents and their properties for exactly these ids — one transaction per
-   * store, covering every id, rather than a scan of the whole space. A caller
-   * that wants one database's rows or one category's rows must not pay for
-   * every document the space holds to get them.
+   * Documents for exactly these ids — one transaction covering every id,
+   * rather than a scan of the whole space. A caller that wants one database's
+   * rows or one category's rows must not pay for every document the space
+   * holds to get them.
    */
   private async documentsById(
     spaceId: string,
@@ -789,15 +765,11 @@ export class ReplicaCache {
     if (ids.length === 0) return new Map();
 
     const keys = ids.map((id) => [spaceId, id]);
-    const [records, propertyRows] = await Promise.all([
-      this.db.getMany<DocumentRecord>(replicaStores.document, keys),
-      this.db.getManyByIndex<PropertyRecord>(replicaStores.property, "by_document", keys),
-    ]);
+    const records = await this.db.getMany<DocumentRecord>(replicaStores.document, keys);
 
     const result = new Map<string, DocumentWithProperties>();
-    records.forEach((record, index) => {
-      if (record)
-        result.set(record.id, this.toDocument(record, propertyRows[index] ?? []));
+    records.forEach((record) => {
+      if (record) result.set(record.id, this.toDocument(record));
     });
     return result;
   }
@@ -844,48 +816,27 @@ export class ReplicaCache {
 
     // Only ever looked up by the id of a document being written, so this reads
     // exactly those rows — one transaction covering every id — rather than
-    // every document and property the space holds. A space with tens of
-    // thousands of documents must not pay for all of them on every write of a
-    // handful.
+    // every document the space holds. A space with tens of thousands of
+    // documents must not pay for all of them on every write of a handful.
     const keys = documents.map((document) => [spaceId, document.id]);
-    const [storedRecords, storedPropertyRows] = await Promise.all([
-      this.db.getMany<DocumentRecord>(replicaStores.document, keys),
-      this.db.getManyByIndex<PropertyRecord>(replicaStores.property, "by_document", keys),
-    ]);
+    const storedRecords = await this.db.getMany<DocumentRecord>(replicaStores.document, keys);
 
-    const writes: ReplicaWrite[] = [];
-
-    documents.forEach((document, index) => {
+    return documents.map((document, index) => {
       const { properties, ...fields } = document;
-      const next: Record<string, unknown> = { ...fields, spaceId };
+      // The response carries the document's full property set, so it replaces
+      // whatever was stored rather than merging into it — a property the
+      // response no longer carries has been deleted.
+      const next: Record<string, unknown> = { ...fields, spaceId, properties: properties ?? {} };
       if (options.partial) delete next.content;
       for (const [key, value] of Object.entries(next)) {
         if (value === undefined) delete next[key];
       }
 
-      writes.push({
+      return {
         store: replicaStores.document,
         put: { ...storedRecords[index], ...next } as DocumentRecord,
-      });
-
-      for (const [key, value] of Object.entries(properties ?? {})) {
-        writes.push({
-          store: replicaStores.property,
-          put: { spaceId, documentId: document.id, key, value },
-        });
-      }
-      // A property the response no longer carries has been deleted.
-      const propertyKeys = new Set(Object.keys(properties ?? {}));
-      for (const property of storedPropertyRows[index] ?? []) {
-        if (propertyKeys.has(property.key)) continue;
-        writes.push({
-          store: replicaStores.property,
-          remove: [spaceId, document.id, property.key],
-        });
-      }
+      };
     });
-
-    return writes;
   }
 
   /**
@@ -941,18 +892,8 @@ export class ReplicaCache {
     spaceId: string,
     documentId: string,
   ): Promise<ReplicaWrite[]> {
-    const properties = await this.db.getByIndex<PropertyRecord>(
-      replicaStores.property,
-      "by_document",
-      [spaceId, documentId],
-    );
-
     return [
       { store: replicaStores.document, remove: [spaceId, documentId] },
-      ...properties.map((property) => ({
-        store: replicaStores.property,
-        remove: [spaceId, documentId, property.key],
-      })),
       ...(await this.unlistEverywhere(spaceId, documentId)),
       {
         store: replicaStores.collection,
@@ -1071,15 +1012,6 @@ export class ReplicaCache {
         if (identifier !== undefined)
           writes.push({ store, remove: [spaceId, identifier] });
       }
-    }
-    for (const record of await this.db.getSpace<PropertyRecord>(
-      replicaStores.property,
-      spaceId,
-    )) {
-      writes.push({
-        store: replicaStores.property,
-        remove: [spaceId, record.documentId, record.key],
-      });
     }
     return writes;
   }

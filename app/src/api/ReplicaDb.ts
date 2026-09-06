@@ -15,7 +15,6 @@ import { IndexedDBDatabase } from "#utils/storage.ts";
 export const replicaStores = {
   space: "space",
   document: "document",
-  property: "property",
   category: "category",
   comment: "comment",
   extension: "extension",
@@ -35,11 +34,6 @@ const REPLICA_SCHEMA: Array<{
     name: replicaStores.document,
     keyPath: ["spaceId", "id"],
     indexes: [{ name: "by_slug", keyPath: ["spaceId", "slug"] }],
-  },
-  {
-    name: replicaStores.property,
-    keyPath: ["spaceId", "documentId", "key"],
-    indexes: [{ name: "by_document", keyPath: ["spaceId", "documentId"] }],
   },
   { name: replicaStores.category, keyPath: ["spaceId", "id"] },
   {
