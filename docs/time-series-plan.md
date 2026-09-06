@@ -171,13 +171,13 @@ points on a schedule, and the write path does no counting.
 
 ## Clients
 
-Points do not enter the replica cache. `ReplicaDb`'s stores mirror entity rows a
-view reads by id; a time range of telemetry is neither, and caching it would
-mean re-deriving ranges from an object store that holds an arbitrary subset.
-Reads go through `api.series.*` on `ApiClient` and a `useSeriesPoints(seriesId,
-range)` composable following `useDatabaseRows.ts` — a query key plus a topic
-subscription that invalidates it. Series *definitions* can become a replica
-store later, when a UI needs to list them offline.
+Points do not enter the replica cache. `ReplicaDb`'s stores mirror entity rows
+a view reads by id; a time range of telemetry is neither, and caching it would
+mean answering a range out of an IndexedDB store that holds an arbitrary subset
+of it. Reads go through `api.series.*` on `ApiClient` and a
+`useSeriesPoints(seriesId, range)` composable following `useDatabaseRows.ts` — a
+query key plus a topic subscription that invalidates it. Series *definitions*
+can become a replica store later, when a UI needs to list them offline.
 
 ## Config
 
