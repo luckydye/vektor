@@ -99,35 +99,43 @@ export async function generateUniqueSlug(
   // URL can carry, see `isPlaceholderDocumentSlug`.
   const baseSlug = slugify(baseTitle) || fallbackDocumentSlug(createId("document"));
 
-  // One targeted lookup per candidate, not every slug the space holds: this
-  // runs on every create and every title edit, so a space with tens of
-  // thousands of documents must not pay for all of them just to place one.
-  // A collision is the rare case — this only loops past the first check when
-  // the base slug is already taken.
-  const isTaken = async (candidate: string): Promise<boolean> => {
-    if (isReservedDocumentSlug(candidate)) return true;
+  if (!isReservedDocumentSlug(baseSlug)) {
     const condition = excludeDocumentId
-      ? and(eq(document.slug, candidate), ne(document.id, excludeDocumentId))
-      : eq(document.slug, candidate);
-    const existing = await one(
-      s.db.select({ id: document.id }).from(document).where(condition),
-    );
-    return existing !== null;
-  };
+      ? and(eq(document.slug, baseSlug), ne(document.id, excludeDocumentId))
+      : eq(document.slug, baseSlug);
+    const existing = await one(s.db.select({ id: document.id }).from(document).where(condition));
+    if (existing === undefined) return baseSlug;
+  }
 
-  if (!(await isTaken(baseSlug))) {
-    return baseSlug;
+  // Collisions are common for placeholder titles ("Untitled" and the like),
+  // which every un-named document in the space shares: a space with
+  // thousands of them must not resolve one new slug with a round trip per
+  // already-used counter value. One `LIKE` scan collects every counter this
+  // base slug has taken, and the smallest unused one is picked in memory.
+  const prefix = `${baseSlug}-`;
+  const escapedPrefix = prefix.replace(/([%_\\])/g, "\\$1");
+  const takenCondition = and(
+    or(eq(document.slug, baseSlug), sql`${document.slug} LIKE ${`${escapedPrefix}%`} ESCAPE '\\'`),
+    excludeDocumentId ? ne(document.id, excludeDocumentId) : undefined,
+  );
+  const rows = await many(
+    s.db.select({ slug: document.slug }).from(document).where(takenCondition),
+  );
+
+  const usedCounters = new Set<number>();
+  for (const { slug } of rows) {
+    if (slug === baseSlug) continue;
+    if (!slug.startsWith(prefix)) continue;
+    const suffix = slug.slice(prefix.length);
+    if (/^\d+$/.test(suffix)) usedCounters.add(Number(suffix));
   }
 
   let counter = 1;
-  let slug = `${baseSlug}-${counter}`;
-
-  while (await isTaken(slug)) {
+  while (usedCounters.has(counter) || isReservedDocumentSlug(`${baseSlug}-${counter}`)) {
     counter++;
-    slug = `${baseSlug}-${counter}`;
   }
 
-  return slug;
+  return `${baseSlug}-${counter}`;
 }
 
 export type PropertyInit =

@@ -163,7 +163,16 @@ async function documentChangeSeq(db: SpaceDb): Promise<void> {
   ]);
 }
 
+/**
+ * `generateUniqueSlug` looks up one candidate slug at a time; without an
+ * index each lookup is a full scan of every document in the space.
+ */
+async function documentSlugIndex(db: SpaceDb): Promise<void> {
+  await exec(db, sql.raw("CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)"));
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
+  { id: 3, name: "document-slug-index", up: documentSlugIndex },
 ];

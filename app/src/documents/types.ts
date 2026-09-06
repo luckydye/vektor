@@ -72,6 +72,7 @@ const placeholderDocumentTitles: Readonly<Record<string, string>> = {
   database: "Untitled Database",
   workflow: "Untitled Workflow",
   repository: "Untitled Repository",
+  record: "Untitled Record",
 };
 
 export function placeholderDocumentTitle(type: string | null | undefined): string {
