@@ -4,19 +4,36 @@ A place for points that carry their own time and are never edited: GPS tracks,
 device telemetry, workflow and app logs. They are written by appending, read
 back as a range, and forgotten by age rather than deleted by hand.
 
-**Object storage is the source of truth.** Everything a series is — its
-declaration, its points, and which of its objects are live — lives under one
-prefix in the S3 or local-filesystem adapter behind `#files/storage.ts`. There
-is no series table, no chunk index, no migration, and nothing in SQLite to keep
-in step with the objects. Deleting the prefix deletes the series; the database
-does not have an opinion about it.
+**Object storage is the source of truth for the points.** Every point a series
+holds lives under one prefix in the S3 or local-filesystem adapter behind
+`#files/storage.ts`, in immutable objects whose key names carry what an index
+would otherwise have said. There is no chunk index and no point rows.
+
+One table describes what series exist. The line it draws:
+
+> The database may hold what a series **is**. It may never hold what a series
+> **contains**.
+
+What a series *is* — its name, kind, owning document, retention, window size,
+and the claim a compactor holds while it works — is small, mutable, relational,
+and stored nowhere else, so there is no second copy to drift from. What it
+*contains* is bulk, immutable and append-only, and stays in storage as its only
+copy.
+
+Being precise about the one dependency that remains: a read consults the row for
+two facts, the window size it needs to know which prefixes to look under and the
+document it must check access against. Neither is a point, and the first is also
+stamped into every object's header — so a lost table costs declarations and
+policy, never data, and a recovery command can rebuild it by walking the
+prefixes. The test at the end of this document does exactly that.
 
 ## What that costs and what it buys
 
 The database is very good at the thing being given up: an indexed range query.
 So a read pays for it in listings and fetches instead — one `list` per time
-window covered, then one `read` per object in it, with an in-process cache
-because every object is immutable. In exchange:
+window covered, then one `read` per object in it, both issued concurrently
+across windows, with an in-process cache because every object is immutable. In
+exchange:
 
 - Nothing can drift. A chunk index in SQLite is a second copy of a fact that
   the storage layout already states, and every crash between the two writes is
@@ -24,11 +41,19 @@ because every object is immutable. In exchange:
 - Retention is a prefix delete, not a million row deletes plus object deletes.
 - A space's purge already works: `deleteAll` removes every prefix a space stores
   under, and `purgeExpiredSpaces` calls it.
-- The feature ships without a schema migration, and can be removed the same way.
+
+A note on an optimisation that looks free and is not: naming a compacted
+window's chunk deterministically (`{window}/c.tsc.br`) would let a read fetch it
+at a known key with no listing at all. It cannot be had, because re-compacting
+that window then *overwrites* the object — which forfeits the immutability the
+decoded-object cache depends on, and opens a window in which a reader holding
+the old chunk goes looking for segments the new one has already absorbed. Unique
+chunk keys and one concurrent listing per window are the cheaper trade.
 
 The knob that makes the listing cost bearable is the **window** — points are
 partitioned into fixed time windows, so a read lists only the windows it
-overlaps, and a closed window's listing never changes again.
+overlaps, and a window that has been compacted is one object plus, in the
+ordinary case, nothing else.
 
 **This is the git subsystem's architecture, taken one step further.**
 `#git/state.ts` and `#git/publish.ts` already keep immutable packs in storage,
@@ -40,16 +65,17 @@ have said.
 ## Layout
 
 ```
-series/index/{name}.json                              the declaration
-series/data/{name}/{window}/s-{arrival}-{uuid}.tsc.br a segment  (written by an append)
-series/data/{name}/{window}/c-{watermark}.tsc.br      a chunk    (compacted from segments)
-series/data/{name}/{window}/lease                     held while a window is compacting
+series/{name}/{window}/s-{arrival}-{uuid}.tsc.br  a segment  (written by an append)
+series/{name}/{window}/c-{watermark}.tsc.br       a chunk    (compacted from segments)
 ```
 
-- `{name}` is the series' handle, e.g. `gps:vehicle-7`. It is a key segment, so
-  it is validated on declaration against a pattern like `GROUP_NAME_PATTERN` —
-  `containedKey` would refuse a traversal anyway, but a name that cannot be a
-  key should be rejected where it is chosen, not where it is used.
+- `{name}` is the series' handle, e.g. `gps:vehicle-7`, and its row's primary
+  key. It is a key segment, so it is validated on declaration against a pattern
+  like `GROUP_NAME_PATTERN` — `containedKey` would refuse a traversal anyway,
+  but a name that cannot be a key should be rejected where it is chosen, not
+  where it is used. It is also immutable: renaming a series would mean copying
+  every object it owns, which is why the row has no separate id to rename
+  around.
 - `{window}` is the zero-padded start of a fixed-size time window (an hour by
   default, declared per series). Zero-padded because both adapters list
   lexically — `list` walks a prefix and sorts, S3 returns keys in order — so
@@ -57,12 +83,12 @@ series/data/{name}/{window}/lease                     held while a window is com
 - `{arrival}` is when the server received the batch, not when the points
   happened. `{watermark}` is the greatest arrival a chunk has absorbed.
 
-Declarations live under their own prefix because neither adapter's `list`
-supports a delimiter: a listing returns every nested key, so putting
-declarations beside the data would make "what series does this space have" a
-scan of every chunk. Under `series/index/` it is one page of one listing.
+There is no declaration object and no lease object: the row is the declaration,
+and the claim is a column on it. Neither adapter's `list` supports a delimiter —
+a listing returns every nested key — so a roster kept in storage would have been
+a scan of every chunk in the space. In SQL it is one query.
 
-Both prefixes stay out of the uploads listing and the file search index for the
+The prefix stays out of the uploads listing and the file search index for the
 reason `workflowArtifactKey` documents about artifacts — and `list()` without an
 explicit prefix only walks the content-addressable uploads layout anyway.
 
@@ -83,22 +109,27 @@ costs nothing extra. Naming them explicitly, rather than inferring "everything
 at or below my watermark", is what makes a segment that becomes visible late
 safe: it is not in the set, so it is still read.
 
-**3. Compaction is single-writer, and deletes only after the new chunk is
-durable.** Take the window's `lease` with
-`putConditional(…, { ifNoneMatch: true })` — the same conditional-write
-coordination `#git/publish.ts` uses, and the interface's own documented use:
-"losing a race is the expected way for a concurrent writer to find out it has to
-re-read and try again". A lease older than its grace period, judged by `stat`'s
-`updatedAt`, may be taken over; a crash therefore parks a window for minutes,
-not forever. Then: read the current chunk and its live segments, write
-`c-{watermark}` with `ifNoneMatch`, and only then delete the superseded chunk,
-the segments it names, and the lease.
+**3. Compaction is single-writer, and never deletes.** The claim is one row
+update — `UPDATE series SET compacting_at = ? WHERE name = ? AND (compacting_at
+IS NULL OR compacting_at < ?)`, read back to confirm it is ours: the
+compare-and-swap-and-verify `claimMigrationLock` already uses, with a TTL so a
+process that dies mid-compaction parks the series for minutes rather than
+forever. A claim is coordination, not data — dropping the column loses nothing.
+Compaction then reads the window's current chunk and its live segments, writes
+`c-{watermark}` with `ifNoneMatch`, and stops.
+
+Deleting what the new chunk absorbed is the sweep's job, once those objects are
+past a grace period. That is not tidiness, it is what removes the last race in
+the design: a reader that has just listed a window would otherwise find segments
+deleted underneath it before it could fetch them, and the only repair would be
+treating a 404 mid-read as "compaction happened, start again". With a grace
+period longer than any read, a listed object is still there when the read
+reaches it.
 
 Everything a crash can leave behind reads correctly under rule 2: an abandoned
-chunk with a lower watermark loses to the live one, and segments that were about
-to be deleted are named by the winning chunk and skipped. The sweep collects
-both later. Nothing is ever acknowledged to a writer and then lost, and no point
-is ever read twice.
+chunk with a lower watermark loses to the live one, and segments the winning
+chunk names are skipped whether or not they have been collected yet. Nothing is
+ever acknowledged to a writer and then lost, and no point is ever read twice.
 
 **Late points need no special case.** A point whose event time falls in a window
 that was compacted long ago arrives with a *new* arrival stamp, becomes a
@@ -144,28 +175,66 @@ offset table, so `readStream`'s `ByteRange` can pull one column or one time
 slice without fetching the object whole, is the obvious next step and needs
 nothing else to change.
 
-## The declaration
+## The `series` table
 
-`series/index/{name}.json`, read whole and written with `putConditional` so two
-concurrent edits cannot silently overwrite each other:
+The one table, added by migration `3`. One row per stream, so it grows with
+streams and not with points.
 
-```jsonc
-{
-  "v": 1,
-  "name": "gps:vehicle-7",
-  "kind": "gps",              // picks the payload validator and the view
-  "documentId": "doc_…",      // owning document, or null for a space-level series
-  "windowSeconds": 3600,
-  "retentionDays": 90,        // null keeps everything
-  "compactAfterSegments": 20, // and/or once the window has closed
-  "createdAt": "…",
-  "createdBy": "user_…"
-}
+```ts
+export const series = sqliteTable(
+  "series",
+  {
+    /** The handle, the storage key segment, and the identity. Immutable. */
+    name: text("name").primaryKey(),
+    /** Payload shape: "gps" | "log" | "metric". Picks the validator and the view. */
+    kind: text("kind").notNull(),
+    /** Owning document. The cascade is the whole cleanup story; see below. */
+    documentId: text("document_id").references(() => document.id, {
+      onDelete: "cascade",
+    }),
+    windowSeconds: integer("window_seconds").notNull(),
+    /** Retention window in days. Null keeps every window. */
+    retentionDays: integer("retention_days"),
+    /** Segments in a window before it is compacted ahead of closing. */
+    compactAfterSegments: integer("compact_after_segments").notNull(),
+    /** A compactor's TTL'd claim on this series. Coordination, never data. */
+    compactingAt: integer("compacting_at", { mode: "timestamp_ms" }),
+    /**
+     * Advisory, so the tick finds work in one query instead of a listing per
+     * series. `lastAppendAt` moves once per append batch, not per point; a
+     * stale value costs a late compaction and never a point.
+     */
+    lastAppendAt: integer("last_append_at", { mode: "timestamp_ms" }),
+    lastCompactedAt: integer("last_compacted_at", { mode: "timestamp_ms" }),
+    /** Cache for a settings view, rebuildable by listing. Cosmetic when wrong. */
+    pointCount: integer("point_count").notNull().default(0),
+    byteCount: integer("byte_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [index("series_document_id_idx").on(t.documentId)],
+);
 ```
 
-A point for a name with no declaration is refused. That is the cardinality
-guard: without it a buggy extension mints unbounded stream names, and here that
-means unbounded prefixes.
+`name` is the primary key rather than a generated id, because the name *is* the
+prefix: an id to rename around would imply a rename, and renaming a series means
+copying every object it owns. A space has its own database, so uniqueness across
+the space costs nothing extra.
+
+Only `document_id` is indexed. The tick's query — series whose `last_append_at`
+is past their `last_compacted_at` — compares two columns and is a scan, which is
+the right call at one row per stream and the wrong one to pre-optimise.
+
+A point for a name with no row is refused. That is the cardinality guard:
+without it a buggy extension mints unbounded stream names, and here that means
+unbounded prefixes.
+
+What a lost table costs, stated plainly: the declarations, and with them
+retention and ownership — not a single point. Every object carries its own name
+and window, so a recovery command can walk the prefixes and re-declare what it
+finds with default policy. That is the price of not keeping a second copy of the
+declaration in storage, and it is the cheaper side of the trade.
 
 ## Reads
 
@@ -174,17 +243,24 @@ means unbounded prefixes.
 1. Compute the windows `[from, to]` covers — arithmetic on `windowSeconds`, not
    a listing.
 2. For each, `list` the window prefix, pick the chunk with the greatest
-   watermark, and read it plus every segment it does not name.
+   watermark, and read it plus every segment it does not name — the windows
+   fetched concurrently, since they do not depend on each other.
 3. Merge by event timestamp, filter, and page.
+
+Steps 2 and 3 read no row: the row is consulted once, before them, for
+`windowSeconds` and the access check. The merge is answered entirely out of
+storage, so the number of points a series holds has no bearing on how much
+database work a read does — which is the property the whole layout exists for.
 
 The cursor is the existing `encodeSeekCursor` with a string id — `{objectKey}:{offset}` — so a page boundary is exact wherever it falls, including
 inside an object.
 
-Caching is trivial and needs no invalidation, because every object is
-immutable: an LRU of decoded objects keyed by storage key, capped by decoded
-bytes, plus the listing of any window that has closed and been compacted. Only
-the current window's listing has to be fresh. Dropping the whole cache loses
-nothing — the same property `#git/cache.ts` calls "a cache in the strict sense".
+Objects are immutable, so an LRU of decoded objects keyed by storage key needs
+no invalidation at all; it is capped by decoded bytes. A window's *listing* is
+not immutable — a late point can add a segment to a window compacted months ago
+— so listings are cached with a short TTL, dropped locally for the window an
+append just wrote to. Dropping the whole cache loses nothing: the same property
+`#git/cache.ts` calls "a cache in the strict sense".
 
 `latestPointWithin(spaceId, name, maxWindows)` answers the live map pin and the
 "last seen" label: walk back from the current window at most `maxWindows` and
@@ -195,36 +271,58 @@ view showing where something is *now*.
 
 ## Writes
 
-`appendPoints(spaceId, name, points)` — read the declaration, validate against
-its kind, group the points by window, and write one segment per window. Bounded
-by `SERIES_MAX_BATCH`. Nothing to lock, nothing to update.
+`appendPoints(store, name, points)` — read the row, validate against its kind,
+group the points by window, and write one segment per window. Bounded by
+`SERIES_MAX_BATCH`. Nothing to lock. The only row write is `lastAppendAt`, once
+per call: a batch, not a point.
 
-`compactWindow(spaceId, name, window)` — rule 3 above.
+`compactWindow(store, name, window)` — rule 3 above, stamping `lastCompactedAt`
+and the counters as it releases the claim.
 
 `pruneSeries(spaceId, name, now)` — delete every key under the windows that
 expired since the last prune. The expired windows are computed from the clock
 and `retentionDays`, so pruning never lists a series' history; it lists and
 deletes a bounded, known set of window prefixes.
 
+`recoverSeries(store)` — walk `series/` and re-declare any name with no row,
+taking `windowSeconds` from an object's header and the rest from defaults. Not
+on any hot path: it is what the CLI runs after a database is restored from a
+backup older than its storage, and what the truncate test exercises.
+
 `sweepSeries(spaceId, name)` — modelled on `sweepOrphanedPacks`: within a
-window, delete chunks that lose to the winner and segments the winner names, and
-leases past their grace period. Skips anything whose `updatedAt` is inside the
-grace period, so an object being written right now is never mistaken for a leak.
+window, delete the chunks that lose to the winner and the segments the winner
+names. Skips anything whose `updatedAt` is inside the grace period, so neither
+an object being written right now nor one a reader is mid-fetch on is ever taken
+for a leak.
 
-## What still touches the database
+## What the table is for
 
-Two reads of tables that already exist, and no writes:
+Four jobs, none of which storage does well, and none of which is a copy of
+something storage already says:
 
-- **ACL.** A series with a `documentId` is governed by that document:
+- **Ownership.** `documentId` with `onDelete: "cascade"`. The row goes when its
+  document does, which is the entire cleanup story: no delete hook to write, no
+  sweep reconciling declarations against documents that no longer exist. The
+  objects are then collected by the sweep, which deletes the prefix of a name
+  that has no row.
+- **Access control.** A series with a `documentId` is governed by that document:
   `verifyAccess(… ResourceType.DOCUMENT …)`, which walks the `parent_id` chain,
-  so a child document inherits its parent's grants. Without one, the space's
-  own role decides. Reads need `Permission.VIEWER`, writes `Permission.EDITOR`.
-  No new `Feature` — nothing here is grantable independently of the role.
-- **Ownership cleanup.** Deleting a document deletes the prefixes of the series
-  that name it, in `deleteDocument`; the sweep is the backstop that catches a
-  crash in between by dropping declarations whose document is gone. That is a
-  one-directional check, not a mirrored row: storage asks the database a
-  question, and never the other way round.
+  so a child document inherits its parent's grants. Without one, the space's own
+  role decides. Reads need `Permission.VIEWER`, writes `Permission.EDITOR`. No
+  new `Feature` — nothing here is grantable independently of the role. As a
+  join it costs nothing; as a JSON object per request it would be a storage
+  round trip on the hot path of every read.
+- **Policy.** Retention, window size and the compaction threshold, edited in one
+  transactional `PATCH` rather than a read-etag-modify-conditional-write against
+  an object.
+- **Coordination and the work queue.** The compaction claim, and the two
+  advisory timestamps that let the tick ask "which series have appends newer
+  than their last compaction" in one query rather than listing every window of
+  every series.
+
+Nothing above is on the read path for points, and nothing above is derived from
+the objects — except the two counters, which are labelled a cache and are
+cosmetic when wrong.
 
 ## Realtime
 
@@ -276,8 +374,14 @@ non-zero:
   `compactAfterSegments` segments (on the tick's own cadence).
 - **Prune and sweep** hourly: expired windows first, then the garbage collector.
 
-Discovering what to compact is one listing of `series/index/` per space plus one
-per candidate window — bounded by the number of series, not by their history.
+Discovering what to compact is one query per space — the series whose
+`lastAppendAt` is past their `lastCompactedAt` — plus one listing per candidate
+window. An idle series costs nothing, which is the point of keeping those two
+timestamps.
+
+The sweep also deletes the prefix of any name that has no row, which is how a
+series whose owning document was deleted loses its objects: the cascade takes
+the row, and the next sweep takes the bytes.
 
 ## Clients
 
@@ -326,14 +430,15 @@ the right shape, and why it needs no new storage concept.
 
 ### Shape
 
-One series per run, declared in `createRun` beside the run document:
+One series per run, its row inserted in `createRun`'s existing transaction
+beside the run document — so a run either has both or neither:
 
 - `name`: `workflow-run:{runId}`
 - `kind`: `log`
 - `documentId`: the run document, so ACL resolves through the `parent_id` walk
   to the workflow document's grants — the same verdict the run route reaches
-  today by checking `run.documentId` — and so deleting the run deletes the
-  series, `clearRunStoreForTests` included.
+  today by checking `run.documentId` — and so deleting the run cascades the row
+  away and the next sweep takes its objects, `clearRunStoreForTests` included.
 - `windowSeconds` short, and `compactAfterSegments` low: a run is minutes, and
   a finished one should settle into a single chunk that reads in one fetch.
 - `retentionDays` from config: the first bound run logs have ever had.
@@ -389,19 +494,19 @@ still be read back.
 
 ## Order of work
 
-1. `app/src/series/format.ts` — encode, decode, deterministic keys — with its
+1. `app/src/series/format.ts` — encode, decode, key naming — with its
    round-trip test, before anything depends on it.
-2. `app/src/series/store.ts` — declarations, append, read, the decoded-object
-   cache. No compaction yet: rule 2 reads a window of pure segments correctly,
-   which is what makes it safe to land first.
-3. Compaction, prune and sweep, then their due-checks on the tick.
-4. Routes, the `SpaceChange` variant, the route-access snapshot rows, and the
+2. The `series` table and migration `3` (one `createTables` call and nothing to
+   backfill), plus the repository around it in `#db/space/series.ts`.
+3. `app/src/series/store.ts` — append, read, the decoded-object cache. No
+   compaction yet: rule 2 reads a window of pure segments correctly, which is
+   what makes it safe to land first.
+4. Compaction, prune and sweep, then their due-checks on the tick.
+5. Routes, the `SpaceChange` variant, the route-access snapshot rows, and the
    config entries.
-5. Workflow run logs, as above.
-6. `ApiClient` methods and the composable, then whatever view lands first — the
+6. Workflow run logs, as above.
+7. `ApiClient` methods and the composable, then whatever view lands first — the
    run's log panel, or a track on a map.
-
-No migration at any step. Nothing here touches `#db/schema/space.ts`.
 
 ## Integration test
 
@@ -417,13 +522,19 @@ protect is that **a range reads identically whatever state its objects are in**:
   again: it appears, and the window compacts a second time without losing it.
 - Simulate the crash windows directly, since they are the design's real risk:
   a chunk written but nothing deleted (extra chunk, undeleted segments) reads
-  identically, and the sweep then removes exactly the garbage; a held lease
-  blocks compaction until its grace period passes.
+  identically, and the sweep then removes exactly the garbage; a claim left
+  behind by a dead process blocks compaction only until its TTL passes.
 - Page a range across a boundary inside one object and across two objects.
 - Assert a point for an undeclared series is refused, and that a viewer cannot
   append.
 - Assert prune deletes the expired windows and leaves the live ones, and that
-  deleting the owning document takes the whole prefix with it.
+  deleting the owning document takes the row by cascade and the prefix on the
+  next sweep.
+- **Delete every row in `series`, run the recovery command, and assert the same
+  range reads identically.** This is the rule from the top of this document as a
+  test: the objects hold every point and enough header to re-declare the series
+  they belong to. If it ever stops passing, something has put a fact only the
+  database knows into the read path.
 
 For the run logs, `workflow.spec.ts` and `jobs.spec.ts` already assert on
 `run.logs` and keep asserting on it unchanged — that is the parity check. Two
