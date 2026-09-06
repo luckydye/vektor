@@ -4,10 +4,14 @@ import type { DocumentProperties } from "#documents/properties.ts";
 import { canonicalPropertyKey } from "#documents/properties.ts";
 import { placeholderDocumentTitle } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useInfiniteQuery, useMutation, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 import { useToast } from "./useToast.ts";
+
+/** Rows per page. A database's row count is unbounded, so listing it can
+ * never fetch everything in one request — see `getDocumentChildren`. */
+const PAGE_SIZE = 500;
 
 export interface DatabaseColumn {
   name: string;
@@ -48,20 +52,29 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
   const toast = useToast();
   const queryKey = createMemo(() => ["database_rows", spaceId(), databaseDocumentId()]);
 
-  const { data, isPending: isLoading } = useQuery({
+  const {
+    data,
+    isPending: isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey,
-    queryFn: async () => {
+    queryFn: async ({ pageParam }: { pageParam: string | undefined }) => {
       const id = spaceId();
       if (!id) throw new Error("No space ID");
       return await api.documents.get(id, {
         parentId: databaseDocumentId(),
-        limit: 500,
+        limit: PAGE_SIZE,
+        cursor: pageParam,
       });
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialPageParam: undefined,
     enabled: createMemo(() => !!spaceId() && !!databaseDocumentId()),
   });
 
-  const rows = createMemo(() => data()?.documents ?? []);
+  const rows = createMemo(() => data()?.pages.flatMap((page) => page.documents) ?? []);
 
   const [schemaStr, writeSchemaStr] = createSignal<string | undefined>(undefined);
 
@@ -205,6 +218,9 @@ export function useDatabaseRows(databaseDocumentId: Accessor<string>) {
     rows,
     derivedColumns,
     isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
     setSchemaStr,
     addRow,
     refreshRows,

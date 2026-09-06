@@ -59,6 +59,9 @@ export function DatabaseView(props: Props) {
     rows,
     derivedColumns,
     isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
     setSchemaStr,
     addRow,
     refreshRows,
@@ -280,6 +283,17 @@ export function DatabaseView(props: Props) {
   });
 
   onMount(() => setHasMounted(true));
+
+  // Fetches the next page once the loaded rows are close to scrolled past —
+  // the same "near the bottom" trigger Search.tsx uses, but against this
+  // table's own scroll bookkeeping instead of window.scrollY, since the
+  // scroller here is the table's ancestor, not necessarily the page.
+  createEffect(() => {
+    if (isFetchingNextPage() || !hasNextPage()) return;
+    const totalHeight = rows().length * rowHeight();
+    const scrolledToward = bodyOffset() + viewportHeight();
+    if (scrolledToward >= totalHeight - 500) void fetchNextPage();
+  });
 
   return (
     <>
