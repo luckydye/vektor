@@ -138,8 +138,21 @@ precedence is arrival-based rather than event-time-based.
 
 ## The chunk and segment format
 
-Both are the same thing at different sizes: a time-ordered, columnar,
-brotli-compressed JSON document.
+An object is **framed**: an eight-byte zero-padded decimal length, a plain JSON
+header, then the brotli-compressed columnar body.
+
+```
+00000412{"v":1,"name":"gps:vehicle-7",…}<brotli columnar body>
+```
+
+The frame exists so the header can be read without the body. `readStream` takes
+a `ByteRange` on both adapters, so a planner can pull the first 16 KiB of a
+candidate object — enough for the prefix and any plausible header — decide from
+its statistics whether the object can contain a matching point, and never
+transfer the body at all. A header larger than that is completed by a second
+range read using the length the prefix states; that is arithmetic, not a guess.
+
+The header:
 
 ```jsonc
 {
@@ -147,33 +160,52 @@ brotli-compressed JSON document.
   "name": "gps:vehicle-7",
   "window": 1764547200000,
   "count": 3600,
-  "t0": 1764547200000,        // first event timestamp, absolute
-  "dt": [0, 1000, 1000, 999], // deltas from the previous point
-  "labels": [0, 0, 1, 0],     // dictionary indices, omitted when unlabelled
+  "from": 1764547200000,      // first and last event timestamp in the body
+  "to": 1764550799000,
   "labelDict": ["info", "error"],
-  "columns": {                // one array per field seen, nulls where absent
-    "lat": [52.51, 52.51],
-    "lon": [13.37, 13.37]
+  "columns": {                // per column, what a planner needs to prune
+    "speed": { "type": "number", "min": 0, "max": 31.4, "nulls": 0 },
+    "message": { "type": "string", "nulls": 0 }
   },
   "subsumes": ["s-000…-a1b2"] // chunks only: the segments absorbed
 }
 ```
 
-Columnar because a chunk is decoded whole, because columns of like values are
-what makes a compressor earn its keep, and because `JSON.parse` over a handful
-of arrays is a different order of cost from parsing 50 000 small objects.
+The body:
+
+```jsonc
+{
+  "t0": 1764547200000,        // first event timestamp, absolute
+  "dt": [0, 1000, 1000, 999], // deltas from the previous point
+  "labels": [0, 0, 1, 0],     // dictionary indices, omitted when unlabelled
+  "columns": {                // one array per field seen, nulls where absent
+    "speed": [0, 4.2, 11.9],
+    "message": ["…"]
+  }
+}
+```
+
+Columnar for three reasons, and the third is the one that matters most here:
+columns of like values are what makes a compressor earn its keep; `JSON.parse`
+over a handful of arrays is a different order of cost from parsing 50 000 small
+objects; and a query touches only the columns it names. `speed > 30` is a loop
+over one numeric array, not a property lookup on every point, and a query that
+never mentions `message` never materialises it.
+
 Columns are discovered from the points rather than declared per kind: a writer
-that adds a field gets a new column, and older objects simply lack it.
-Timestamps are deltas, so a steady sample rate compresses to nearly nothing.
+that adds a field gets a new column, and older objects simply lack it — which is
+what `nulls` in the header is for.
 
 Compression is async brotli on libuv's threadpool with the quality drop for
 large payloads, copied from `compressRevisionContent` — `#db/space/revisions.ts`
-carries the comment about what synchronous zlib did to Bun's event loop.
+carries the comment about what synchronous zlib did to Bun's event loop. The
+header is left uncompressed on purpose: it is small, it is read far more often
+than the body, and compressing it would put a decompress in front of every
+pruning decision.
 
-`v` is in the document because the format will change: a binary v2 with a footer
-offset table, so `readStream`'s `ByteRange` can pull one column or one time
-slice without fetching the object whole, is the obvious next step and needs
-nothing else to change.
+`v` covers the body encoding, which is where this is expected to change: typed
+binary columns with their own offset table, so a single column can be ranged out
+of the body. The header, the frame and everything reading them stay as they are.
 
 ## The `series` table
 
@@ -238,14 +270,20 @@ declaration in storage, and it is the cheaper side of the trade.
 
 ## Reads
 
-`querySeriesPoints(spaceId, name, { from, to, label, limit, cursor })`:
+`readSeriesPoints(store, name, { from, to, where, limit, cursor })` — the raw
+points, in event order:
 
 1. Compute the windows `[from, to]` covers — arithmetic on `windowSeconds`, not
    a listing.
 2. For each, `list` the window prefix, pick the chunk with the greatest
    watermark, and read it plus every segment it does not name — the windows
    fetched concurrently, since they do not depend on each other.
-3. Merge by event timestamp, filter, and page.
+3. Merge by event timestamp, apply the same `where` predicates the aggregate
+   query uses, and page.
+
+Predicates are shared with `## Querying` deliberately: a log panel filtering to
+`level = "error"` and a chart counting errors per minute should not be able to
+disagree about what an error is.
 
 Steps 2 and 3 read no row: the row is consulted once, before them, for
 `windowSeconds` and the access check. The merge is answered entirely out of
@@ -262,12 +300,135 @@ not immutable — a late point can add a segment to a window compacted months ag
 append just wrote to. Dropping the whole cache loses nothing: the same property
 `#git/cache.ts` calls "a cache in the strict sense".
 
-`latestPointWithin(spaceId, name, maxWindows)` answers the live map pin and the
+`latestPointWithin(store, name, maxWindows)` answers the live map pin and the
 "last seen" label: walk back from the current window at most `maxWindows` and
 return the newest point found. It is bounded on purpose and its name says so —
 finding the last point of a series silent for a year would mean listing its
 whole history, and "no point in the last N windows" is the honest answer for a
 view showing where something is *now*.
+
+## Querying
+
+Two shapes of read, because they are genuinely different jobs: `points` returns
+the points, `query` returns aggregates over them. Both are answered by the same
+scan, so the machinery below is shared.
+
+### The request is a typed object, not a language
+
+```ts
+export interface SeriesQuery {
+  /** Required. The partition key: a query is always bounded in time. */
+  from: number;
+  to: number;
+  /** ANDed. A point matches when every predicate holds. */
+  where?: SeriesPredicate[];
+  /** Bucket width in ms. Omitted, the whole range is one bucket. */
+  every?: number;
+  /** One row per bucket per group. `label` is the cheap case; see below. */
+  groupBy?: "label" | { column: string };
+  /** What to compute. `count` needs no column. */
+  select: SeriesAggregate[];
+}
+
+export type SeriesPredicate =
+  | { column: string; op: "eq" | "ne" | "lt" | "lte" | "gt" | "gte"; value: number | string }
+  | { column: string; op: "in"; value: Array<number | string> }
+  | { column: string; op: "contains"; value: string }
+  | { column: string; op: "exists" };
+
+export type SeriesAggregate =
+  | { fn: "count" }
+  | { fn: "sum" | "avg" | "min" | "max" | "first" | "last"; column: string };
+```
+
+Deliberately not a query language. It is JSON, so it travels in a request body,
+in a workflow script through `apiFetch`, and into a client's query key
+unchanged; it is exhaustively validated, since every arm is a literal union; and
+it cannot grow accidental expressiveness the executor then has to honour. The
+client builds the same object the executor consumes, so the wire format is the
+internal one.
+
+Two guards, as assertions rather than clamps — a query that would not answer
+what was asked should say so:
+
+- `(to - from) / every` must not exceed `SERIES_MAX_BUCKETS`. Buckets are a
+  dense array of accumulators, so this is what stops one request allocating
+  unboundedly.
+- a `groupBy` column must not produce more than `SERIES_MAX_GROUPS` distinct
+  values in the range.
+
+### Only mergeable aggregates
+
+`count`, `sum`, `min`, `max`, `first` and `last` all combine from partial
+results; `avg` is never stored or merged, it is derived from `sum` and `count`
+at the end. That is the whole reason the set looks like this: an aggregate that
+merges can be answered from a pre-computed coarser summary, and one that does
+not have to re-read every point forever. Exact quantiles are the aggregate that
+cannot merge, which is why they are out (see Non-goals).
+
+`groupBy: "label"` is the cheap grouping, and it covers the common question —
+errors against warnings over time — in one pass, because the label dictionary is
+in the header and the label column is dictionary-encoded in the body. Grouping
+by an arbitrary column works the same way but has to read that column.
+
+### The plan, and why its cost is known before it runs
+
+1. Resolve the windows `[from, to]` covers — arithmetic on `windowSeconds`.
+2. List those windows concurrently; apply rule 2 to get the live object keys.
+3. Read each candidate's **header only**, by range read, and drop the object if
+   its `[from, to]` misses the range, or a predicate cannot hold: `speed > 30`
+   against a header whose `speed.max` is `31.4` survives, against one whose max
+   is `12` does not; `label = "error"` against a `labelDict` without it does
+   not. This is row-group pruning, and it is why the header carries statistics.
+4. Sum `count` over the survivors. **If that exceeds `SERIES_MAX_SCAN_POINTS`,
+   refuse the query** — before transferring a byte of any body, naming the
+   number it would have scanned. A query's cost is knowable in advance because
+   every candidate states its own size, which is worth more than a timeout: the
+   caller gets a number and a narrower range to retry with, not a dead request.
+5. Decode the surviving bodies, touching only the columns the query names,
+   evaluate the predicates column-wise into a mask, and fold the masked points
+   into their buckets.
+
+Steps 3 and 5 read through the same immutable-object cache as any other read, so
+a dashboard refreshing a range it has already seen does no storage I/O at all.
+
+The response says what answered it, because a query planner that silently picks
+a cheaper source is a query planner nobody can debug:
+
+```jsonc
+{
+  "rows": [{ "ts": 1764547200000, "group": "error", "count": 12, "avg": { "speed": 11.4 } }],
+  "scanned": { "objects": 3, "prunedObjects": 21, "points": 10800, "source": "chunks" }
+}
+```
+
+The executor returns rows. It does not know what a chart is, and the chart does
+not know what a chunk is.
+
+### Rollups, once this is real
+
+The scan is bounded by how many points a range holds, so a month of 1 Hz data is
+2.6M points and no amount of pruning changes that when the query has no
+predicate. The answer is to precompute: when compaction seals a window it can
+also write
+
+```
+series/{name}/{window}/r{every}-{watermark}.tsc.br
+```
+
+— the same framed format, whose points *are* buckets, carrying `count`, `sum`,
+`min`, `max`, `first` and `last` per column. A query whose `every` is a multiple
+of a rollup's granularity is then answered from rollups: same code path, far
+fewer points, and the identical number, which is exactly what "only mergeable
+aggregates" bought. `source` in the response says `rollups` when that happened.
+
+A predicate on a column cannot be answered from a rollup that is not grouped by
+it, so a filtered query reads raw chunks. That is the planner choosing a source,
+not a fallback hiding one: `scanned` reports which, and a test asserts both
+paths return the same rows.
+
+This is step 8 in the order of work, not step 1. The query API is designed for
+it now so that adding it later changes no caller.
 
 ## Writes
 
@@ -279,7 +440,7 @@ per call: a batch, not a point.
 `compactWindow(store, name, window)` — rule 3 above, stamping `lastCompactedAt`
 and the counters as it releases the claim.
 
-`pruneSeries(spaceId, name, now)` — delete every key under the windows that
+`pruneSeries(store, name, now)` — delete every key under the windows that
 expired since the last prune. The expired windows are computed from the clock
 and `retentionDays`, so pruning never lists a series' history; it lists and
 deletes a bounded, known set of window prefixes.
@@ -289,7 +450,7 @@ taking `windowSeconds` from an object's header and the rest from defaults. Not
 on any hot path: it is what the CLI runs after a database is restored from a
 backup older than its storage, and what the truncate test exercises.
 
-`sweepSeries(spaceId, name)` — modelled on `sweepOrphanedPacks`: within a
+`sweepSeries(store, name)` — modelled on `sweepOrphanedPacks`: within a
 window, delete the chunks that lose to the winner and the segments the winner
 names. Skips anything whose `updatedAt` is inside the grace period, so neither
 an object being written right now nor one a reader is mid-fetch on is ever taken
@@ -349,7 +510,15 @@ is keyed on and there is no id to look one up by:
 | `/api/v1/spaces/[spaceId]/series` | `GET`, `POST` | list / declare |
 | `/api/v1/spaces/[spaceId]/series/[name]` | `GET`, `PATCH`, `DELETE` | read / retention / remove |
 | `/api/v1/spaces/[spaceId]/series/[name]/points` | `POST` | append a batch |
-| `/api/v1/spaces/[spaceId]/series/[name]/points` | `GET` | range query (`from`, `to`, `label`, `@paginated`) |
+| `/api/v1/spaces/[spaceId]/series/[name]/points` | `GET` | the points in a range (`from`, `to`, `label`, `@paginated`) |
+| `/api/v1/spaces/[spaceId]/series/[name]/query` | `POST` | aggregates over a range, body is a `SeriesQuery` |
+
+`query` is a `POST` because its request is a structured object, not because it
+changes anything: it is idempotent and safe to retry, and it is not
+`@paginated` — a bucketed answer is bounded by `SERIES_MAX_BUCKETS`, so there is
+nothing to page. A query that would scan too much is refused with the count it
+would have scanned, which is a 400 about the request rather than a 500 about
+the server.
 
 The append route authenticates through `authenticateJobTokenOrSpaceRole`, so a
 workflow's job token and a device's space access token both reach it, and it
@@ -402,6 +571,10 @@ In `#config`, beside the existing budgets:
 - `VEKTOR_SERIES_COMPACT_AFTER_SEGMENTS` — segments in a window before it is
   compacted early; `20`.
 - `VEKTOR_SERIES_CACHE_BYTES` — decoded-object cache ceiling; `64` MiB.
+- `VEKTOR_SERIES_MAX_SCAN_POINTS` — points one query may scan after pruning
+  before it is refused; `5_000_000`.
+- `VEKTOR_SERIES_MAX_BUCKETS` — buckets one query may ask for; `10_000`.
+- `VEKTOR_SERIES_MAX_GROUPS` — distinct groups one query may return; `1_000`.
 - `VEKTOR_WORKFLOW_LOG_RETENTION_DAYS` — the window a run's log series is
   declared with; `30`.
 
@@ -494,8 +667,11 @@ still be read back.
 
 ## Order of work
 
-1. `app/src/series/format.ts` — encode, decode, key naming — with its
-   round-trip test, before anything depends on it.
+1. `app/src/series/format.ts` — the frame, the header with its statistics, the
+   columnar body, key naming — with its round-trip test, before anything
+   depends on it. The header-only read is part of this step, not an
+   afterthought: everything else is built on being able to judge an object
+   without fetching it.
 2. The `series` table and migration `3` (one `createTables` call and nothing to
    backfill), plus the repository around it in `#db/space/series.ts`.
 3. `app/src/series/store.ts` — append, read, the decoded-object cache. No
@@ -504,9 +680,15 @@ still be read back.
 4. Compaction, prune and sweep, then their due-checks on the tick.
 5. Routes, the `SpaceChange` variant, the route-access snapshot rows, and the
    config entries.
-6. Workflow run logs, as above.
-7. `ApiClient` methods and the composable, then whatever view lands first — the
-   run's log panel, or a track on a map.
+6. `app/src/series/query.ts` — predicates as column masks, the mergeable
+   aggregates, bucketing, and the planner: prune by header, refuse by count,
+   decode the rest. Pure functions over decoded objects, with the planner the
+   only part that touches storage.
+7. Workflow run logs, as above.
+8. `ApiClient` methods and the composable, then whatever view lands first — the
+   run's log panel with a level filter, or a track on a map.
+9. Rollups at compaction time, and the planner learning to prefer them. Nothing
+   above changes: that is the point of only having mergeable aggregates.
 
 ## Integration test
 
@@ -530,6 +712,25 @@ protect is that **a range reads identically whatever state its objects are in**:
 - Assert prune deletes the expired windows and leaves the live ones, and that
   deleting the owning document takes the row by cascade and the prefix on the
   next sweep.
+Then the query path, where the risk is an optimisation that changes an answer:
+
+- The same aggregate query answered with pruning enabled and with pruning
+  forced off returns identical rows. A header statistic that prunes an object it
+  should have kept is the one bug in this design that silently returns a wrong
+  number instead of failing, so this is the assertion that guards it.
+- A predicate that no object can satisfy returns empty rows having decoded no
+  body at all — `scanned.objects` is `0` and `prunedObjects` is not.
+- A query over more points than `SERIES_MAX_SCAN_POINTS` is refused before any
+  body is read, and says how many it would have scanned.
+- `groupBy: "label"` over a range spanning several objects with different label
+  dictionaries returns one row per label per bucket, including labels absent
+  from some objects.
+- Bucket boundaries: a point exactly on a boundary lands in one bucket, and a
+  range that is not a whole multiple of `every` still covers its last partial
+  bucket.
+- Once rollups land: the same query answered from rollups and from raw chunks
+  returns identical rows, and `scanned.source` distinguishes them.
+
 - **Delete every row in `series`, run the recovery command, and assert the same
   range reads identically.** This is the rule from the top of this document as a
   test: the objects hold every point and enough header to re-declare the series
@@ -544,11 +745,14 @@ process), and a run's objects are gone once its document is deleted.
 
 ## Non-goals
 
-- **No aggregation engine.** Bucketing a long range means decoding the objects
-  it covers and bucketing in JS; a chunk's `count` is what lets a read refuse a
-  range too large to answer. Pre-computed rollups are the natural next layer — a
-  rollup is just another chunk with a coarser `dt`, under a `r-` key beside the
-  `c-` one.
+- **No exact quantiles.** A median cannot be merged from partial results, so it
+  would forbid rollups for every series that wanted one and force a full scan
+  in perpetuity. If a view needs `p95`, the honest options are an approximate
+  sketch in the rollup or a bounded scan asked for explicitly — both are their
+  own design, not a flag on this one.
+- **No joins, no cross-series arithmetic, no expressions.** `select` names
+  columns, not formulas. Comparing two series is the client putting two answers
+  on one chart.
 - **No spatial queries.** The question a GPS view asks is "this series, this
   time range". A bounding box in a chunk's header is where that would start.
 - **No cross-space or cross-series reads.** A space is the boundary here as it
