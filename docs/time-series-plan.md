@@ -62,6 +62,46 @@ cache that loses nothing when deleted, and sweep objects no manifest names.
 Series need no manifest at all: the key names carry what the manifest would
 have said.
 
+## The module boundary
+
+`app/src/series/` is a module with one job and two neighbours. Above it, the API
+routes; below it, the storage adapter. It is not a shared utility and nothing
+else in the codebase reaches into it.
+
+**What it may import.** `#files/storage.ts` for the adapter, `#db/client/store.ts`
+for its own table, `#config` for its budgets, `#observability/logger.ts`. Not
+`#acl`, not `#realtime`, not `#jobs`, not `#api` — a module that knows who is
+calling it, or who wants to hear about the write, has stopped being a storage
+engine.
+
+**What may import it.** The four route modules, and one maintenance entrypoint
+the cron tick calls. That is the entire list, and it is worth writing down
+because it is the property that makes the module replaceable: the layout, the
+format and the query executor can all change without a caller noticing.
+
+**Enforced, not just documented.** `app/test/egress-call-sites.spec.ts` already
+does exactly this for server-side `fetch` — an inventory keyed by file, with a
+`why` for each entry, that fails when a new call site appears. A sibling spec
+takes the inventory of files importing `#series/`, so adding a fifth importer is
+a failing test that someone has to justify rather than a review someone has to
+catch.
+
+Two things follow from the boundary, and they are the reason to state it up
+front rather than treat it as tidiness:
+
+- **Access control lives entirely in the routes.** The module takes a
+  `SpaceStore` and a series name; it never sees a user, a token, or a
+  permission. Every caller therefore goes through the same check, because there
+  is no other way in.
+- **The module reports what changed; the route decides who hears.**
+  `appendPoints` returns `{ latestTs, count }` and emits nothing. The route
+  turns that into the `SpaceChange`. Realtime is a product decision about
+  audiences, and this module has no opinion about audiences.
+
+The `series` table is the module's own. No other repository selects from it or
+joins against it; the only reference across the line is its `document_id`
+foreign key, which points outward and is read by nothing but the cascade.
+
 ## Layout
 
 ```
@@ -496,8 +536,15 @@ cosmetic when wrong.
 mapped to `realtimeTopics.series(name)` and, when the series has one, the owning
 document's topic. Emitted once per append rather than once per point, and it
 carries counts, not data — clients refetch the range they are showing, as
-everywhere else in the sync layer. Compaction emits nothing: it moves points
-between two representations a read already merges.
+everywhere else in the sync layer.
+
+Emitted by the append **route**, from what `appendPoints` returned, for the
+reason the module boundary gives. One useful consequence: every writer produces
+the same event, so a workflow flushing log lines and a device posting positions
+light up a view through one code path rather than two.
+
+Compaction emits nothing: it moves points between two representations a read
+already merges.
 
 ## API
 
@@ -603,8 +650,12 @@ the right shape, and why it needs no new storage concept.
 
 ### Shape
 
-One series per run, its row inserted in `createRun`'s existing transaction
-beside the run document — so a run either has both or neither:
+One series per run, declared over the API — `POST /series`, which is idempotent
+by name, so a retry is harmless. It cannot be part of `createRun`'s transaction,
+because an HTTP request is not: the run document is inserted, then the series is
+declared. A run whose declare never succeeded logs nothing until the next
+attempt, and if it is deleted first the row cascades away and the sweep takes
+whatever objects existed. The declaration:
 
 - `name`: `workflow-run:{runId}`
 - `kind`: `log`
@@ -612,6 +663,8 @@ beside the run document — so a run either has both or neither:
   to the workflow document's grants — the same verdict the run route reaches
   today by checking `run.documentId` — and so deleting the run cascades the row
   away and the next sweep takes its objects, `clearRunStoreForTests` included.
+  It is also what authorises the writes: a job token scoped to the run reaches
+  the append route as an ordinary `authenticateJobTokenOrSpaceRole` caller.
 - `windowSeconds` short, and `compactAfterSegments` low: a run is minutes, and
   a finished one should settle into a single chunk that reads in one fetch.
 - `retentionDays` from config: the first bound run logs have ever had.
@@ -621,49 +674,73 @@ label. `run.error` becomes a point labelled `error` rather than a field the view
 concatenates onto the end of the array; it stays on the run document too, since
 that is what the status badge reads.
 
-### Writes are batched into segments
+### Writes go through the API, batched
 
-A segment per log line would be an object per line. So `appendRunLog` keeps
-pushing to `run.logs` — the array survives, its meaning narrows to *lines not
-yet written* — and schedules a flush that writes one segment per batch, on the
-per-run promise chain `persistNow` already uses. Flush on a line count or an
-elapsed interval, whichever comes first, and always from `finalizeRun` and
-`cancelRun` before the run leaves `activeRuns`, which is also where the run's
-final compaction is requested. Reusing the existing chain is what keeps two
-flushes for one run from interleaving; no new timer per run, and nothing that
-can spin.
+`runStore` does not import the series module. It calls the endpoints, the way
+`#jobs/runtime/capabilities.ts` already calls this instance's own API: an origin
+from `getLocalOrigin()` and a job token in `X-Job-Token`. The new call site goes
+in `egress-call-sites.spec.ts`'s inventory with its `why`, beside the two that
+are there for the same reason.
 
-Liveness moves with it: `appendRunLog` stops emitting per line, and the flush
-emits the `{ kind: "series" }` change once per batch. At a sub-second cadence
-that is the same tailing experience for a fraction of the traffic.
+That is a loopback request, and it is worth what it costs. The alternative is a
+privileged in-process path into the module that no ACL check covers — which is
+the back door every log writer would then be tempted through. This way a
+workflow's log lines are authorised, rate-limited and validated by exactly the
+same route as a device posting positions, and the module keeps one entry point.
+
+A request per log line would be absurd, so `appendRunLog` keeps pushing to
+`run.logs` — the array survives, its meaning narrows to *lines not yet sent* —
+and a flush posts the batch on the per-run promise chain `persistNow` already
+uses. Flush on a line count or an elapsed interval, whichever comes first, and
+always from `finalizeRun` and `cancelRun` before the run leaves `activeRuns`.
+Reusing the existing chain is what keeps two flushes for one run from
+interleaving; no new timer per run, and nothing that can spin.
 
 The flush interval is the durability window, and it is the one thing this
 consumer trades for not writing an object per line: a crash loses at most the
 last interval's lines, where today it loses all of them.
 
-### Reads
+Liveness comes for free: the append route emits the `{ kind: "series" }` change
+for this writer exactly as for any other, so `appendRunLog` stops emitting
+anything itself.
 
-`readRunLogs` becomes a range query over the run's series. A run that predates
-this carries `_workflowRunLogArtifactPath` and its lines are in a `logs.json`
-object, so the read is a branch on which of the two the run document records —
-stored state, not a guess — and the artifact arm is marked `@deprecated`, to be
-deleted once old runs have aged out. There is no backfill.
+### Reads move to the client
 
-`GET workflows/runs/{runId}` keeps its `logs` field for a release, filled from
-the series and marked `@deprecated` in `ApiClient`'s run detail type: it is in
-the published OpenAPI schema, and `workflow.spec.ts` and `jobs.spec.ts` assert
-on it, which makes it the parity harness for this change rather than something
-to drop on the way past. The view moves to the points route through
-`useSeriesPoints`, which also gets it paging and a level filter.
+`GET workflows/runs/{runId}` **loses** its `logs` field, and `WorkflowView`
+reads the series endpoint directly through `useSeriesPoints`.
+
+This reverses the earlier plan to keep `logs` for a release as a parity harness.
+Under the boundary it would mean the run route doing a loopback GET on every
+poll of a live run, to fill a field that is deprecated on arrival — worse than
+the thing it was avoiding, which was editing two spec files. So: the field goes,
+`workflow.spec.ts` and `jobs.spec.ts` assert the same lines against the series
+endpoint instead, and the parity check survives in the form that matters — the
+same log lines, read a different way.
+
+It is the one breaking change here: the field is in the published OpenAPI schema
+and `ApiClient`'s run detail type, and both change with it.
+
+`readRunLogs` in `#jobs/` shrinks to the deprecated path only: a run predating
+this carries `_workflowRunLogArtifactPath`, and its lines are read from that
+`logs.json` through the existing `readWorkflowArtifact`. That touches the
+storage adapter directly and never the series module, so the boundary holds, and
+it can be deleted once old runs have aged out. There is no backfill.
+
+The client side is a plain win: a level filter, paging, and a range query that
+tails a live run instead of re-fetching every line it already has.
 
 ### What comes out
 
 `writeRunLogs` and both its call sites in `workflowScript.ts`;
 `runProperty.logArtifactPath` from `runProperties()`, so new runs stop writing
-it; the `logs` array as a whole-run buffer; the `logArtifact` field in the run
-response; and `WorkflowView`'s error-line concatenation.
+it; the `logs` array as a whole-run buffer; the `logs` and `logArtifact` fields
+in the run response; and `WorkflowView`'s error-line concatenation.
 `WorkflowArtifactKind` keeps `"logs"` (deprecated) only so old artifacts can
 still be read back.
+
+What does *not* come out, and is worth noticing: nothing in `#jobs/` gains an
+import of `#series/`. The run store learns one endpoint and one token, which is
+what it already does for every other capability.
 
 ## Order of work
 
@@ -673,13 +750,19 @@ still be read back.
    afterthought: everything else is built on being able to judge an object
    without fetching it.
 2. The `series` table and migration `3` (one `createTables` call and nothing to
-   backfill), plus the repository around it in `#db/space/series.ts`.
+   backfill), with its reads and writes in `app/src/series/declarations.ts` —
+   inside the module, not in `#db/space/` beside the repositories other things
+   share. The schema definition itself stays in `#db/schema/space.ts`, because
+   that is where the migrator looks; it is the one thing about this module that
+   is declared outside it, and it points one way.
 3. `app/src/series/store.ts` — append, read, the decoded-object cache. No
    compaction yet: rule 2 reads a window of pure segments correctly, which is
    what makes it safe to land first.
 4. Compaction, prune and sweep, then their due-checks on the tick.
-5. Routes, the `SpaceChange` variant, the route-access snapshot rows, and the
-   config entries.
+5. Routes — `points` and the declaration endpoints — the `SpaceChange` variant
+   emitted from what append returns, the route-access snapshot rows, the config
+   entries, and the importer inventory spec that fixes the boundary while the
+   list of callers is still two entries long.
 6. `app/src/series/query.ts` — predicates as column masks, the mergeable
    aggregates, bucketing, and the planner: prune by header, refuse by count,
    decode the rest. Pure functions over decoded objects, with the planner the
@@ -712,6 +795,11 @@ protect is that **a range reads identically whatever state its objects are in**:
 - Assert prune deletes the expired windows and leaves the live ones, and that
   deleting the owning document takes the row by cascade and the prefix on the
   next sweep.
+The boundary gets its own spec, in the shape of `egress-call-sites.spec.ts`: an
+inventory of the files importing `#series/`, each with a `why`, failing when a
+new one appears. It is a cheap test and it is the only thing that keeps the
+module a module a year from now.
+
 Then the query path, where the risk is an optimisation that changes an answer:
 
 - The same aggregate query answered with pruning enabled and with pruning
@@ -737,11 +825,15 @@ Then the query path, where the risk is an optimisation that changes an answer:
   they belong to. If it ever stops passing, something has put a fact only the
   database knows into the read path.
 
-For the run logs, `workflow.spec.ts` and `jobs.spec.ts` already assert on
-`run.logs` and keep asserting on it unchanged — that is the parity check. Two
-cases go beyond them: lines flushed before a simulated restart are still
-readable afterwards (`resetRunStoreMemoryForTests` already simulates the fresh
-process), and a run's objects are gone once its document is deleted.
+For the run logs, `workflow.spec.ts` and `jobs.spec.ts` keep asserting on the
+same log lines, read from the series endpoint rather than the run response —
+that is the parity check, and the edit to those two files is the whole cost of
+dropping `logs`. Three cases go beyond them: lines flushed before a simulated
+restart are still readable afterwards (`resetRunStoreMemoryForTests` already
+simulates the fresh process); a run's objects are gone once its document is
+deleted; and a run whose series was never declared fails its appends without
+failing the run, since a workflow that cannot log is still a workflow that
+should finish.
 
 ## Non-goals
 
