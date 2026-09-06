@@ -4,304 +4,254 @@ A place for points that carry their own time and are never edited: GPS tracks,
 device telemetry, workflow and app logs. They are written by appending, read
 back as a range, and forgotten by age rather than deleted by hand.
 
-The points themselves live in object storage — the S3 or local-filesystem
-adapter behind `#files/storage.ts` — as immutable, compressed, columnar
-**chunks**. The space database holds only the mutable half: what series exist,
-which chunks each one has, and the short unsealed tail that has not been packed
-into a chunk yet.
+**Object storage is the source of truth.** Everything a series is — its
+declaration, its points, and which of its objects are live — lives under one
+prefix in the S3 or local-filesystem adapter behind `#files/storage.ts`. There
+is no series table, no chunk index, no migration, and nothing in SQLite to keep
+in step with the objects. Deleting the prefix deletes the series; the database
+does not have an opinion about it.
 
-## Why chunks in storage, and not rows in SQLite
+## What that costs and what it buys
 
-A row per point is the obvious design and the wrong one here. A year of one
-device at 1 Hz is 31M rows in a file that also serves documents, editor
-revisions and search; retention means deleting them a million at a time; and
-every byte sits in the backup and the vacuum of a database whose interesting
-content is four orders of magnitude smaller. Points are also the one thing in
-the product that is written once, never updated, and read in contiguous
-time order — which is exactly what an immutable object is good at holding.
+The database is very good at the thing being given up: an indexed range query.
+So a read pays for it in listings and fetches instead — one `list` per time
+window covered, then one `read` per object in it, with an in-process cache
+because every object is immutable. In exchange:
 
-**This is the git subsystem's architecture, reused.** `#git/state.ts` and
-`#git/publish.ts` already keep immutable packs in storage under a per-repository
-prefix, name the live ones from a single mutable manifest, treat the local
-directory as a cache that loses nothing when deleted, and sweep objects no
-manifest names. Series differ from it in one respect, deliberately: the manifest
-is SQLite rows rather than a `state.json` written with `putConditional`. Git can
-put its manifest in storage because a push's objects are durable before the
-manifest flips. An append cannot — a log line has to be durable the moment it
-arrives, which means the hot tail is in the database, and sealing has to move
-rows and add a chunk in one atomic step. That step is a SQLite transaction; it
-has no equivalent across two storage objects.
+- Nothing can drift. A chunk index in SQLite is a second copy of a fact that
+  the storage layout already states, and every crash between the two writes is
+  a reconciliation path to design, test and get wrong.
+- Retention is a prefix delete, not a million row deletes plus object deletes.
+- A space's purge already works: `deleteAll` removes every prefix a space stores
+  under, and `purgeExpiredSpaces` calls it.
+- The feature ships without a schema migration, and can be removed the same way.
 
-## What exists already, and why none of it is the place
+The knob that makes the listing cost bearable is the **window** — points are
+partitioned into fixed time windows, so a read lists only the windows it
+overlaps, and a closed window's listing never changes again.
 
-- **`audit_log`** has the right query shape — autoincrement id, a
-  `(ts DESC, id DESC)` index, seek cursors — and the wrong scope: `doc_id` is
-  `NOT NULL`, `event` is a closed union in `#db/space/auditLogs.ts`, and nothing
-  ever removes a row. Its cursor code is the template the unsealed tail copies.
-- **A `database` document with `record` children** already stores structured
-  rows. One point through that path costs a `document` row, a `property` row per
-  field, a `change_seq` allocation (the space's single write counter, taken
-  under SQLite's write lock), a document-tree broadcast, and a search-index
-  entry.
-- **Workflow run logs** are the closest existing thing to a chunk: an
-  in-memory array flushed to one `artifacts/workflow/{runId}/logs.json` object
-  at the end of the run (`#jobs/runStore.ts`, `#jobs/workflowArtifacts.ts`).
-  One object per run, written once, read whole. Generalising that is most of
-  this design; see the last section.
-- **Editor revisions** compress a snapshot with async brotli on libuv's
-  threadpool, with a comment in `#db/space/revisions.ts` about what synchronous
-  zlib did to Bun's event loop. Chunk encoding follows it exactly.
+**This is the git subsystem's architecture, taken one step further.**
+`#git/state.ts` and `#git/publish.ts` already keep immutable packs in storage,
+coordinate a mutable manifest with `putConditional`, treat the local copy as a
+cache that loses nothing when deleted, and sweep objects no manifest names.
+Series need no manifest at all: the key names carry what the manifest would
+have said.
 
-## The chunk format
+## Layout
 
-One chunk is one object: a time-ordered, columnar, brotli-compressed JSON
-document. Columnar because a chunk is decoded whole and because columns of like
-values are what makes a compressor earn its keep — and because
-`JSON.parse` over a handful of arrays is a different order of cost from parsing
-50 000 small objects.
+```
+series/index/{name}.json                              the declaration
+series/data/{name}/{window}/s-{arrival}-{uuid}.tsc.br a segment  (written by an append)
+series/data/{name}/{window}/c-{watermark}.tsc.br      a chunk    (compacted from segments)
+series/data/{name}/{window}/lease                     held while a window is compacting
+```
+
+- `{name}` is the series' handle, e.g. `gps:vehicle-7`. It is a key segment, so
+  it is validated on declaration against a pattern like `GROUP_NAME_PATTERN` —
+  `containedKey` would refuse a traversal anyway, but a name that cannot be a
+  key should be rejected where it is chosen, not where it is used.
+- `{window}` is the zero-padded start of a fixed-size time window (an hour by
+  default, declared per series). Zero-padded because both adapters list
+  lexically — `list` walks a prefix and sorts, S3 returns keys in order — so
+  padding is what makes lexical order equal time order.
+- `{arrival}` is when the server received the batch, not when the points
+  happened. `{watermark}` is the greatest arrival a chunk has absorbed.
+
+Declarations live under their own prefix because neither adapter's `list`
+supports a delimiter: a listing returns every nested key, so putting
+declarations beside the data would make "what series does this space have" a
+scan of every chunk. Under `series/index/` it is one page of one listing.
+
+Both prefixes stay out of the uploads listing and the file search index for the
+reason `workflowArtifactKey` documents about artifacts — and `list()` without an
+explicit prefix only walks the content-addressable uploads layout anyway.
+
+## The three rules
+
+This is the whole consistency story. It is precedence over key names and
+self-describing objects, not two copies of a fact that have to agree.
+
+**1. An append writes one new segment.** A unique key, so no conditional write,
+no read-modify-write, and no lost update: concurrent appenders cannot collide.
+A batch spanning two windows is split at the boundary, so every segment lies
+inside exactly one window.
+
+**2. A read of a window takes the chunk with the greatest watermark, plus every
+segment that chunk does not name.** A chunk carries the list of segment keys it
+absorbed, inside itself — it is fetched for its points anyway, so its header
+costs nothing extra. Naming them explicitly, rather than inferring "everything
+at or below my watermark", is what makes a segment that becomes visible late
+safe: it is not in the set, so it is still read.
+
+**3. Compaction is single-writer, and deletes only after the new chunk is
+durable.** Take the window's `lease` with
+`putConditional(…, { ifNoneMatch: true })` — the same conditional-write
+coordination `#git/publish.ts` uses, and the interface's own documented use:
+"losing a race is the expected way for a concurrent writer to find out it has to
+re-read and try again". A lease older than its grace period, judged by `stat`'s
+`updatedAt`, may be taken over; a crash therefore parks a window for minutes,
+not forever. Then: read the current chunk and its live segments, write
+`c-{watermark}` with `ifNoneMatch`, and only then delete the superseded chunk,
+the segments it names, and the lease.
+
+Everything a crash can leave behind reads correctly under rule 2: an abandoned
+chunk with a lower watermark loses to the live one, and segments that were about
+to be deleted are named by the winning chunk and skipped. The sweep collects
+both later. Nothing is ever acknowledged to a writer and then lost, and no point
+is ever read twice.
+
+**Late points need no special case.** A point whose event time falls in a window
+that was compacted long ago arrives with a *new* arrival stamp, becomes a
+segment in that window, and reopens it for compaction. That is the reason
+precedence is arrival-based rather than event-time-based.
+
+## The chunk and segment format
+
+Both are the same thing at different sizes: a time-ordered, columnar,
+brotli-compressed JSON document.
 
 ```jsonc
 {
   "v": 1,
-  "seriesId": "series_…",
-  "count": 5000,
-  "t0": 1764547200000,        // first timestamp, absolute
+  "name": "gps:vehicle-7",
+  "window": 1764547200000,
+  "count": 3600,
+  "t0": 1764547200000,        // first event timestamp, absolute
   "dt": [0, 1000, 1000, 999], // deltas from the previous point
   "labels": [0, 0, 1, 0],     // dictionary indices, omitted when unlabelled
   "labelDict": ["info", "error"],
   "columns": {                // one array per field seen, nulls where absent
-    "lat": [52.51, 52.51, …],
-    "lon": [13.37, 13.37, …]
-  }
+    "lat": [52.51, 52.51],
+    "lon": [13.37, 13.37]
+  },
+  "subsumes": ["s-000…-a1b2"] // chunks only: the segments absorbed
 }
 ```
 
-Columns are discovered from the points, not declared per kind: a writer that
-adds a field gets a new column, and older chunks simply lack it. Timestamps are
-deltas so a steady sample rate compresses to almost nothing. `v` is in the
-document because the format will change — a binary v2 with a footer offset
-table, so `readStream`'s `ByteRange` can pull one column or one time slice
-without fetching the chunk whole, is the obvious next step and needs no change
-to anything indexing it.
+Columnar because a chunk is decoded whole, because columns of like values are
+what makes a compressor earn its keep, and because `JSON.parse` over a handful
+of arrays is a different order of cost from parsing 50 000 small objects.
+Columns are discovered from the points rather than declared per kind: a writer
+that adds a field gets a new column, and older objects simply lack it.
+Timestamps are deltas, so a steady sample rate compresses to nearly nothing.
 
-Chunks are named deterministically from what they contain, under a prefix of
-their own:
+Compression is async brotli on libuv's threadpool with the quality drop for
+large payloads, copied from `compressRevisionContent` — `#db/space/revisions.ts`
+carries the comment about what synchronous zlib did to Bun's event loop.
 
-```
-series/{seriesId}/{paddedFromMs}-{lastRowId}.tsc.br
-```
+`v` is in the document because the format will change: a binary v2 with a footer
+offset table, so `readStream`'s `ByteRange` can pull one column or one time
+slice without fetching the object whole, is the obvious next step and needs
+nothing else to change.
 
-Deterministic because that is what makes sealing idempotent: a seal retried
-after a crash re-encodes the same rows, produces the same key, and
-`putConditional(…, { ifNoneMatch: true })` reports the conflict instead of
-writing twice. The `series/` prefix keeps chunks out of the uploads listing and
-the file search index, for the reason `workflowArtifactKey` documents about
-artifacts — and `list()` without a prefix only walks the content-addressable
-uploads layout anyway.
+## The declaration
 
-## Schema
+`series/index/{name}.json`, read whole and written with `putConditional` so two
+concurrent edits cannot silently overwrite each other:
 
-Three tables in `#db/schema/space.ts`, created by migration `3`. None of them
-holds a point at rest.
-
-```ts
-export const series = sqliteTable(
-  "series",
-  {
-    id: text("id").primaryKey(),
-    /** The stable handle a writer addresses, e.g. "gps:vehicle-7". */
-    name: text("name").notNull(),
-    /** Payload shape: "gps" | "log" | "metric". Picks the validator and the view. */
-    kind: text("kind").notNull(),
-    /** Owning document; the series, its chunks and its tail go with it. */
-    documentId: text("document_id").references(() => document.id, {
-      onDelete: "cascade",
-    }),
-    /** Retention window in days. Null keeps chunks until the count cap evicts them. */
-    retentionDays: integer("retention_days"),
-    /** Ceiling on sealed chunks; the sweep drops the oldest above it. */
-    maxChunks: integer("max_chunks").notNull().default(1000),
-    /** Points a chunk is sealed at, and the age that seals a slow one anyway. */
-    chunkPoints: integer("chunk_points").notNull().default(5000),
-    chunkMaxAgeSeconds: integer("chunk_max_age_seconds").notNull().default(3600),
-    /** Held by the process currently sealing this series' tail; see `sealSeries`. */
-    sealingAt: integer("sealing_at", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-    createdBy: text("created_by").notNull(),
-  },
-  (t) => [uniqueIndex("series_name_unique").on(t.name)],
-);
-
-/** One row per sealed chunk object: the index a range query is answered from. */
-export const seriesChunk = sqliteTable("series_chunk", {
-  id: text("id").primaryKey(),
-  seriesId: text("series_id")
-    .notNull()
-    .references(() => series.id, { onDelete: "cascade" }),
-  /** Storage key of the chunk object, under the space's `series/` prefix. */
-  key: text("key").notNull(),
-  /** Inclusive time span of the points inside, so overlap is one indexed range. */
-  fromTs: integer("from_ts", { mode: "timestamp_ms" }).notNull(),
-  toTs: integer("to_ts", { mode: "timestamp_ms" }).notNull(),
-  count: integer("count").notNull(),
-  /** Compressed size, so a read can refuse a range before fetching it. */
-  bytes: integer("bytes").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-});
-
-/**
- * The unsealed tail: points that have arrived and are not in a chunk yet.
- *
- * Bounded by `chunkPoints` per series rather than by retention — a row here
- * lives for seconds to an hour. This is the only table an append writes.
- */
-export const seriesTail = sqliteTable("series_tail", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  seriesId: text("series_id")
-    .notNull()
-    .references(() => series.id, { onDelete: "cascade" }),
-  /** The event's own time, from the writer — not when the server received it. */
-  ts: integer("ts", { mode: "timestamp_ms" }).notNull(),
-  /** One low-cardinality tag: a log level, an event name. */
-  label: text("label"),
-  /** The point as JSON; the columnar layout is the chunk's business, not the row's. */
-  data: text("data").notNull(),
-});
+```jsonc
+{
+  "v": 1,
+  "name": "gps:vehicle-7",
+  "kind": "gps",              // picks the payload validator and the view
+  "documentId": "doc_…",      // owning document, or null for a space-level series
+  "windowSeconds": 3600,
+  "retentionDays": 90,        // null keeps everything
+  "compactAfterSegments": 20, // and/or once the window has closed
+  "createdAt": "…",
+  "createdBy": "user_…"
+}
 ```
 
-Indexes, written as raw SQL in the migration the way the baseline writes
-`audit_log`'s, so their direction matches the queries:
+A point for a name with no declaration is refused. That is the cardinality
+guard: without it a buggy extension mints unbounded stream names, and here that
+means unbounded prefixes.
 
-```sql
-CREATE INDEX IF NOT EXISTS series_chunk_series_span_idx
-  ON series_chunk (series_id, from_ts, to_ts);
-CREATE INDEX IF NOT EXISTS series_tail_series_ts_idx
-  ON series_tail (series_id, ts, id);
-```
+## Reads
 
-Decisions worth recording, so they are not reopened by accident:
+`querySeriesPoints(spaceId, name, { from, to, label, limit, cursor })`:
 
-- **`timestamp_ms`, not `timestamp`.** Every other table stores seconds; a
-  position at 1 Hz and two log lines in the same millisecond need more.
-  `schemaUtils.getSQLiteType` already maps it to `INTEGER` affinity.
-- **The tail is a row per point, and that is fine.** It is a staging area whose
-  size is `chunkPoints × open series`, not a history. Ingest stays one indexed
-  insert, transactional with everything else a request writes.
-- **`(ts, id)` on the tail, `(from_ts, to_ts)` on the index.** Two log lines in
-  one millisecond are ordinary, so `ts` alone cannot order the tail; a range
-  query never scans points, only spans.
-- **A declaration table.** Retention, chunk sizing and the seal claim need
-  somewhere to live, and a point naming an undeclared series is refused — which
-  is what stops a buggy extension from minting unbounded stream names.
-- **`name` is unique per space**, with an optional `documentId` for ownership.
-  A series belonging to a document dies with it by the cascade; a space-level
-  one (a fleet's positions, the instance's own logs) has no document to hang
-  from. The cascade drops rows, so the sweep is what deletes the objects.
+1. Compute the windows `[from, to]` covers — arithmetic on `windowSeconds`, not
+   a listing.
+2. For each, `list` the window prefix, pick the chunk with the greatest
+   watermark, and read it plus every segment it does not name.
+3. Merge by event timestamp, filter, and page.
 
-## Sealing
+The cursor is the existing `encodeSeekCursor` with a string id — `{objectKey}:{offset}` — so a page boundary is exact wherever it falls, including
+inside an object.
 
-The one operation with an ordering that matters.
+Caching is trivial and needs no invalidation, because every object is
+immutable: an LRU of decoded objects keyed by storage key, capped by decoded
+bytes, plus the listing of any window that has closed and been compacted. Only
+the current window's listing has to be fresh. Dropping the whole cache loses
+nothing — the same property `#git/cache.ts` calls "a cache in the strict sense".
 
-1. Claim the series: `UPDATE series SET sealing_at = ? WHERE id = ? AND
-   (sealing_at IS NULL OR sealing_at < ?)`, then read `sealing_at` back and
-   proceed only if it is ours — the compare-and-swap-and-verify
-   `claimMigrationLock` uses, for the same reason, with a TTL so a process that
-   dies mid-seal does not park the series forever.
-2. Read the tail rows for the series in `(ts, id)` order.
-3. Encode them into a chunk and `putConditional(…, { ifNoneMatch: true })`. A
-   conflict means a previous attempt already uploaded this exact chunk, which is
-   success, not failure.
-4. In one transaction: insert the `series_chunk` row and delete exactly the tail
-   ids that went into it.
-5. Release the claim.
+`latestPointWithin(spaceId, name, maxWindows)` answers the live map pin and the
+"last seen" label: walk back from the current window at most `maxWindows` and
+return the newest point found. It is bounded on purpose and its name says so —
+finding the last point of a series silent for a year would mean listing its
+whole history, and "no point in the last N windows" is the honest answer for a
+view showing where something is *now*.
 
-The object is durable before any tail row is deleted, and the index row and the
-deletion commit together. A crash between 3 and 4 leaves an orphaned object and
-an intact tail, so the next seal redoes it and lands on the same key. A crash
-after 4 leaves nothing to do. Nothing is ever acknowledged to a writer and then
-lost, and no point can be in a chunk and in the tail at once.
+## Writes
 
-`sweepOrphanedChunks` handles what step 3 can strand, modelled directly on
-`sweepOrphanedPacks`: list the series prefix, delete objects no `series_chunk`
-row names and whose `updatedAt` is past a grace period, so a chunk uploading
-right now is never mistaken for a leak.
+`appendPoints(spaceId, name, points)` — read the declaration, validate against
+its kind, group the points by window, and write one segment per window. Bounded
+by `SERIES_MAX_BATCH`. Nothing to lock, nothing to update.
 
-Seals are triggered from two places: an append that pushes the tail past
-`chunkPoints` schedules one, and the cron tick seals tails older than
-`chunkMaxAgeSeconds` so a series receiving a point a minute still becomes
-readable-as-chunks eventually.
+`compactWindow(spaceId, name, window)` — rule 3 above.
 
-## Repository: `app/src/db/space/series.ts` and `app/src/series/chunks.ts`
+`pruneSeries(spaceId, name, now)` — delete every key under the windows that
+expired since the last prune. The expired windows are computed from the clock
+and `retentionDays`, so pruning never lists a series' history; it lists and
+deletes a bounded, known set of window prefixes.
 
-Split along the boundary the codebase already draws: the repository owns rows
-and takes a `SpaceStore`; the chunk module owns the format and the storage
-adapter and knows nothing about routes.
+`sweepSeries(spaceId, name)` — modelled on `sweepOrphanedPacks`: within a
+window, delete chunks that lose to the winner and segments the winner names, and
+leases past their grace period. Skips anything whose `updatedAt` is inside the
+grace period, so an object being written right now is never mistaken for a leak.
 
-`chunks.ts`:
-- `encodeChunk(points)` / `decodeChunk(buffer)` — the format above, brotli
-  compression via `promisify(brotliCompress)` at a quality that drops for large
-  payloads, exactly as `compressRevisionContent` does and for the same reason.
-- `chunkKey(seriesId, fromTs, lastRowId)` — deterministic, as above.
-- `readChunk(spaceId, key)` — through an LRU of decoded chunks. Chunks are
-  immutable, so the cache needs no invalidation and no etag check; it is capped
-  by decoded bytes, and dropping it loses nothing.
+## What still touches the database
 
-`series.ts`:
-- `createSeries`, `getSeriesByName`, `getSeries`, `listSeries(store, { documentId })`,
-  `updateSeries`, `deleteSeries` (rows cascade; the objects go on the next sweep).
-- `appendPoints(store, seriesId, points)` — one transaction, one multi-row
-  insert into the tail, bounded by `SERIES_MAX_BATCH`. Throws when the series is
-  unknown; there is no implicit create, because that is the cardinality guard.
-- `sealSeries(store, seriesId)` / `sealDueSeries(store, now)` — the five steps.
-- `querySeriesPoints(store, seriesId, { from, to, label, limit, cursor })` —
-  select overlapping chunks from `series_chunk`, decode them in order, then the
-  tail rows, filter and merge. The cursor is the existing `encodeSeekCursor`
-  with a string id: `{chunkId}:{offset}` inside a chunk, `tail:{rowId}` in the
-  tail, so a page boundary is exact wherever it falls.
-- `latestPoint(store, seriesId)` — the map pin and the "last seen" label. Reads
-  the tail first and only touches a chunk when the tail is empty.
-- `pruneSeries(store, now)` — retention: delete the objects for chunks whose
-  `toTs` is past the window, and the oldest chunks above `maxChunks`, then their
-  rows. One storage delete per chunk instead of per point, which is the whole
-  point of the layout.
+Two reads of tables that already exist, and no writes:
 
-Appends never call `nextChangeSeq` or `touchDocument`. A point is not a document
-edit: taking the space's write counter per point would serialise every writer
-behind the write lock and invalidate every document's entity tag.
+- **ACL.** A series with a `documentId` is governed by that document:
+  `verifyAccess(… ResourceType.DOCUMENT …)`, which walks the `parent_id` chain,
+  so a child document inherits its parent's grants. Without one, the space's
+  own role decides. Reads need `Permission.VIEWER`, writes `Permission.EDITOR`.
+  No new `Feature` — nothing here is grantable independently of the role.
+- **Ownership cleanup.** Deleting a document deletes the prefixes of the series
+  that name it, in `deleteDocument`; the sweep is the backstop that catches a
+  crash in between by dropping declarations whose document is gone. That is a
+  one-directional check, not a mirrored row: storage asks the database a
+  question, and never the other way round.
 
 ## Realtime
 
 `SpaceChange` gains one variant in `#realtime/changes.ts`:
 
 ```ts
-| { kind: "series"; seriesId: string; documentId: string | null; latestTs: number; count: number }
+| { kind: "series"; name: string; documentId: string | null; latestTs: number; count: number }
 ```
 
-mapped to `realtimeTopics.series(seriesId)` and, when the series has one, the
-owning document's topic. Emitted once per append call rather than once per
-point, and it carries counts, not data — clients refetch the range they are
-showing, as everywhere else in the sync layer. `store.emit` inside `tx` already
-holds the event until the commit lands. Sealing emits nothing: it moves points
-between two places that a read already merges, and a client that heard about
-them has nothing to do differently.
+mapped to `realtimeTopics.series(name)` and, when the series has one, the owning
+document's topic. Emitted once per append rather than once per point, and it
+carries counts, not data — clients refetch the range they are showing, as
+everywhere else in the sync layer. Compaction emits nothing: it moves points
+between two representations a read already merges.
 
 ## API
 
 Registered in `#api/routes.ts`, documented by the JSDoc tags the OpenAPI
-generator reads:
+generator reads. The series is addressed by name, since that is what the layout
+is keyed on and there is no id to look one up by:
 
 | Route | Methods | Role |
 | --- | --- | --- |
 | `/api/v1/spaces/[spaceId]/series` | `GET`, `POST` | list / declare |
-| `/api/v1/spaces/[spaceId]/series/[seriesId]` | `GET`, `PATCH`, `DELETE` | read / retention / remove |
-| `/api/v1/spaces/[spaceId]/series/[seriesId]/points` | `POST` | append a batch |
-| `/api/v1/spaces/[spaceId]/series/[seriesId]/points` | `GET` | range query (`from`, `to`, `label`, `@paginated`) |
-
-Access follows what the series is attached to: with a `documentId`, the verdict
-is that document's through `verifyAccess(… ResourceType.DOCUMENT …)`; without
-one, the space's. Reads need `Permission.VIEWER`, writes `Permission.EDITOR`. No
-new `Feature` — nothing here is grantable independently of the role.
+| `/api/v1/spaces/[spaceId]/series/[name]` | `GET`, `PATCH`, `DELETE` | read / retention / remove |
+| `/api/v1/spaces/[spaceId]/series/[name]/points` | `POST` | append a batch |
+| `/api/v1/spaces/[spaceId]/series/[name]/points` | `GET` | range query (`from`, `to`, `label`, `@paginated`) |
 
 The append route authenticates through `authenticateJobTokenOrSpaceRole`, so a
 workflow's job token and a device's space access token both reach it, and it
@@ -309,10 +259,9 @@ goes through the existing `apiRateLimiter`. Every new route needs its row in
 `app/test/snapshots/route-access.md`, which snapshots the access matrix for
 every registered route.
 
-Chunk objects are never served directly. They are an internal encoding, they
-hold many points at once with no per-point access control, and the URL a
-storage adapter hands out can be a redirect to the bucket — so reads go through
-the points route, which is also the only place that can merge the tail in.
+Chunks and segments are never served directly, and `redirectUrl` is never used
+for them: they hold many points at once with no per-point access control, and a
+read has to merge segments a client cannot be told to merge itself.
 
 Workflow scripts need no new capability: `apiFetch` already reaches this
 instance's API authenticated as the run.
@@ -323,35 +272,34 @@ Two more due-checks in `cronScheduler.tick()`, beside `purgeExpiredSpacesIfDue`
 and shaped like it — over `listActiveSpaceIds()`, logging counts when they are
 non-zero:
 
-- **Seal** what is older than `chunkMaxAgeSeconds` (on the tick's own cadence).
-- **Prune and sweep** hourly: `pruneSeries` for retention and the chunk cap,
-  then `sweepOrphanedChunks`.
+- **Compact** windows that have closed, or that have more than
+  `compactAfterSegments` segments (on the tick's own cadence).
+- **Prune and sweep** hourly: expired windows first, then the garbage collector.
 
-Deleting a space needs no new code: `deleteAll` already removes every prefix a
-space stores under, chunks included, and `purgeExpiredSpaces` calls it.
+Discovering what to compact is one listing of `series/index/` per space plus one
+per candidate window — bounded by the number of series, not by their history.
 
 ## Clients
 
-Points do not enter the replica cache. `ReplicaDb`'s stores mirror entity rows
-a view reads by id; a time range of telemetry is neither, and caching it would
+Points do not enter the replica cache. `ReplicaDb`'s stores mirror entity rows a
+view reads by id; a time range of telemetry is neither, and caching it would
 mean answering a range out of an IndexedDB store that holds an arbitrary subset
 of it. Reads go through `api.series.*` on `ApiClient` and a
-`useSeriesPoints(seriesId, range)` composable following `useDatabaseRows.ts` — a
-query key plus a topic subscription that invalidates it. Series *definitions*
-can become a replica store later, when a UI needs to list them offline.
+`useSeriesPoints(name, range)` composable following `useDatabaseRows.ts` — a
+query key plus a topic subscription that invalidates it.
 
 ## Config
 
 In `#config`, beside the existing budgets:
 
-- `VEKTOR_SERIES_CHUNK_POINTS` — points a chunk is sealed at; `5000` when unset.
-- `VEKTOR_SERIES_CHUNK_MAX_AGE` — seconds before a short tail is sealed anyway;
+- `VEKTOR_SERIES_WINDOW_SECONDS` — the window a new series is declared with;
   `3600` when unset.
-- `VEKTOR_SERIES_MAX_BATCH` — points one append call may carry; `1000`.
-- `VEKTOR_SERIES_MAX_CHUNKS` — the `maxChunks` a new series is declared with;
-  `1000`.
+- `VEKTOR_SERIES_MAX_BATCH` — points one append may carry; `1000`.
+- `VEKTOR_SERIES_COMPACT_AFTER_SEGMENTS` — segments in a window before it is
+  compacted early; `20`.
+- `VEKTOR_SERIES_CACHE_BYTES` — decoded-object cache ceiling; `64` MiB.
 - `VEKTOR_WORKFLOW_LOG_RETENTION_DAYS` — the window a run's log series is
-  declared with; `30` when unset.
+  declared with; `30`.
 
 ## Workflow run logs, on top of it
 
@@ -363,69 +311,65 @@ run ends. Three things follow from that, and all three are why this moves:
 - A process that dies mid-run takes the logs with it. `recoverSpace` marks the
   run failed and there is nothing to show for it — the lines that would say
   *why* it died are the ones that were never written.
-- The array is the whole run's output, held in memory until it ends and then
-  re-sent in full in every `GET workflows/runs/{runId}` response. Nothing
+- The array is the whole run's output, held in memory until the run ends and
+  then re-sent in full in every `GET workflows/runs/{runId}` response. Nothing
   bounds it: a chatty `exec` loop or a streaming agent grows it until the run
   finishes.
-- One JSON blob cannot be paged, filtered by level, or tailed. `WorkflowView`
+- One JSON object cannot be paged, filtered by level, or tailed. `WorkflowView`
   reads `detail.logs` whole and slices the last three lines for its activity
   strip.
 
-Note what it is *not*: a log line is already destined for one immutable object
-in storage. The move is not from a table to storage, it is from a bespoke
-one-object-per-run flush to the generic chunked one — which is why this consumer
-is the proof that the primitive is the right shape.
+Note what this is *not*: a log line is already destined for an immutable object
+in storage. The move is from a bespoke one-object-per-run flush to the generic
+segmented one — which is why this consumer is the proof that the primitive is
+the right shape, and why it needs no new storage concept.
 
 ### Shape
 
-One series per run, declared in `createRun`'s existing transaction — beside the
-`document` insert, not lazily on the first log line, so two concurrent appends
-cannot both try to create it:
+One series per run, declared in `createRun` beside the run document:
 
 - `name`: `workflow-run:{runId}`
 - `kind`: `log`
-- `documentId`: the run document. Cascade cleans the series, its chunk rows and
-  its tail up with the run, `clearRunStoreForTests` included, and ACL resolves
-  correctly without a special case: document permission walks the `parent_id`
-  chain (`getDocumentAncestorIds`), so the run document inherits the workflow
-  document's grants — the same verdict the run route reaches today by checking
-  `run.documentId` directly.
+- `documentId`: the run document, so ACL resolves through the `parent_id` walk
+  to the workflow document's grants — the same verdict the run route reaches
+  today by checking `run.documentId` — and so deleting the run deletes the
+  series, `clearRunStoreForTests` included.
+- `windowSeconds` short, and `compactAfterSegments` low: a run is minutes, and
+  a finished one should settle into a single chunk that reads in one fetch.
 - `retentionDays` from config: the first bound run logs have ever had.
-- `chunkPoints` lower than the default. A run's logs are read as a whole far
-  more often than a GPS track is, and a finished short run should be one chunk.
 
-A point per line: `ts` the line's own time, `data` `{ message }`, `label` the
-level. `run.error` becomes a point with `label: "error"` rather than a field the
-view concatenates onto the end of the array; it stays on the run document too,
-since that is what the status badge reads.
+A point per line: the line's own time, `{ message }`, and the level as its
+label. `run.error` becomes a point labelled `error` rather than a field the view
+concatenates onto the end of the array; it stays on the run document too, since
+that is what the status badge reads.
 
-### Writes are batched into the tail, not inserted per line
+### Writes are batched into segments
 
-An insert per log line would put every line through SQLite's write lock at
-whatever rate the script logs at. So `appendRunLog` keeps pushing to
-`run.logs` — the array survives, its meaning narrows to *lines not yet
-written* — and schedules a flush that drains it through `appendPoints` in one
-statement, on the per-run promise chain `persistNow` already uses. Flush on a
-line count or an elapsed interval, whichever comes first, and always from
-`finalizeRun` and `cancelRun` before the run leaves `activeRuns`, which is also
-where the run's final seal is requested. Reusing the existing chain is what
-keeps two flushes for one run from interleaving; no new timer per run, and
-nothing that can spin.
+A segment per log line would be an object per line. So `appendRunLog` keeps
+pushing to `run.logs` — the array survives, its meaning narrows to *lines not
+yet written* — and schedules a flush that writes one segment per batch, on the
+per-run promise chain `persistNow` already uses. Flush on a line count or an
+elapsed interval, whichever comes first, and always from `finalizeRun` and
+`cancelRun` before the run leaves `activeRuns`, which is also where the run's
+final compaction is requested. Reusing the existing chain is what keeps two
+flushes for one run from interleaving; no new timer per run, and nothing that
+can spin.
 
 Liveness moves with it: `appendRunLog` stops emitting per line, and the flush
 emits the `{ kind: "series" }` change once per batch. At a sub-second cadence
 that is the same tailing experience for a fraction of the traffic.
 
+The flush interval is the durability window, and it is the one thing this
+consumer trades for not writing an object per line: a crash loses at most the
+last interval's lines, where today it loses all of them.
+
 ### Reads
 
-`readRunLogs` becomes a range query over the run's series — chunks for a
-finished run, chunks plus tail for a live one, which the repository merges
-either way. A run that predates this carries `_workflowRunLogArtifactPath` and
-its lines are in a `logs.json` object, so the read is a branch on which of the
-two the run document records — stored state, not a guess — and the artifact arm
-is marked `@deprecated`, to be deleted once old runs have aged out. There is no
-backfill: importing artifacts would mean reaching the storage adapter from
-inside a SQL migration.
+`readRunLogs` becomes a range query over the run's series. A run that predates
+this carries `_workflowRunLogArtifactPath` and its lines are in a `logs.json`
+object, so the read is a branch on which of the two the run document records —
+stored state, not a guess — and the artifact arm is marked `@deprecated`, to be
+deleted once old runs have aged out. There is no backfill.
 
 `GET workflows/runs/{runId}` keeps its `logs` field for a release, filled from
 the series and marked `@deprecated` in `ApiClient`'s run detail type: it is in
@@ -445,58 +389,58 @@ still be read back.
 
 ## Order of work
 
-1. `chunks.ts` — format, compression, deterministic keys, the decode cache —
-   with the round-trip test, before anything depends on it.
-2. Schema and migration `3` (`createTables` plus the two `CREATE INDEX`
-   statements; nothing to backfill), then the repository: append, seal, query,
-   prune.
-3. Routes, the `SpaceChange` variant, the route-access snapshot rows, and the
+1. `app/src/series/format.ts` — encode, decode, deterministic keys — with its
+   round-trip test, before anything depends on it.
+2. `app/src/series/store.ts` — declarations, append, read, the decoded-object
+   cache. No compaction yet: rule 2 reads a window of pure segments correctly,
+   which is what makes it safe to land first.
+3. Compaction, prune and sweep, then their due-checks on the tick.
+4. Routes, the `SpaceChange` variant, the route-access snapshot rows, and the
    config entries.
-4. The tick's seal and the hourly prune and orphan sweep.
-5. Workflow run logs, as above. After the sweeps, because a log series with no
-   retention is the growth problem it is meant to fix.
+5. Workflow run logs, as above.
 6. `ApiClient` methods and the composable, then whatever view lands first — the
    run's log panel, or a track on a map.
+
+No migration at any step. Nothing here touches `#db/schema/space.ts`.
 
 ## Integration test
 
 `app/test/series.spec.ts`, at the level the repo tests at — route in, JSON out,
-with the storage adapter behind it doing real writes:
+with a real storage adapter behind it. The invariant every case exists to
+protect is that **a range reads identically whatever state its objects are in**:
 
-- Declare a series, append batches whose timestamps interleave, and read the
-  range back in order.
-- Append past `chunkPoints`, seal, and assert the same range reads identically
-  before and after — the invariant the whole design rests on, and the one thing
-  a chunk bug would break. Assert the tail is empty and one object exists.
-- Page a range query across a boundary that falls inside a chunk, and across
-  one that falls between the last chunk and the tail.
-- Seal twice over the same tail and assert one chunk object and one row, since
-  the key is deterministic and the put is conditional.
+- Declare a series, append batches whose timestamps interleave, read the range
+  back in order.
+- Read a range, compact it, read it again: identical. Then assert one chunk and
+  no segments remain.
+- Append a *late* point into an already-compacted window and read the range
+  again: it appears, and the window compacts a second time without losing it.
+- Simulate the crash windows directly, since they are the design's real risk:
+  a chunk written but nothing deleted (extra chunk, undeleted segments) reads
+  identically, and the sweep then removes exactly the garbage; a held lease
+  blocks compaction until its grace period passes.
+- Page a range across a boundary inside one object and across two objects.
 - Assert a point for an undeclared series is refused, and that a viewer cannot
   append.
-- Assert `pruneSeries` deletes the objects as well as the rows, and that
-  `sweepOrphanedChunks` removes an object no row names while leaving a fresh
-  one alone.
+- Assert prune deletes the expired windows and leaves the live ones, and that
+  deleting the owning document takes the whole prefix with it.
 
 For the run logs, `workflow.spec.ts` and `jobs.spec.ts` already assert on
 `run.logs` and keep asserting on it unchanged — that is the parity check. Two
-cases go beyond what they cover: lines written before a simulated restart are
-still readable afterwards (`resetRunStoreMemoryForTests` already simulates the
-fresh process), and a run's series, chunks and objects are gone once its
-document is deleted.
+cases go beyond them: lines flushed before a simulated restart are still
+readable afterwards (`resetRunStoreMemoryForTests` already simulates the fresh
+process), and a run's objects are gone once its document is deleted.
 
 ## Non-goals
 
-- **No aggregation engine.** Bucketing a long range means decoding the chunks it
-  covers and bucketing in JS; `series_chunk.count` and `bytes` are what let a
-  read refuse a range too large to answer. Pre-computed rollup chunks are the
-  natural next layer — a rollup is just another chunk with a coarser `dt` — and
-  the index row already has room for the flag that would distinguish one.
-- **No spatial indexing or bounding-box queries.** SQLite's R-tree is a
-  compile-time module we cannot count on under libSQL, and the question a GPS
-  view actually asks is "this series, this time range". A bounding box per chunk
-  in the index row is where that would start.
+- **No aggregation engine.** Bucketing a long range means decoding the objects
+  it covers and bucketing in JS; a chunk's `count` is what lets a read refuse a
+  range too large to answer. Pre-computed rollups are the natural next layer — a
+  rollup is just another chunk with a coarser `dt`, under a `r-` key beside the
+  `c-` one.
+- **No spatial queries.** The question a GPS view asks is "this series, this
+  time range". A bounding box in a chunk's header is where that would start.
 - **No cross-space or cross-series reads.** A space is the boundary here as it
   is everywhere else.
-- **No direct chunk URLs.** See the API section: an internal encoding with no
-  per-point access control is not something to hand a client.
+- **No direct object URLs.** See the API section.
+- **No unbounded "latest point".** See `latestPointWithin`.
