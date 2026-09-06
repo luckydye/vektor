@@ -99,43 +99,36 @@ export async function generateUniqueSlug(
   // URL can carry, see `isPlaceholderDocumentSlug`.
   const baseSlug = slugify(baseTitle) || fallbackDocumentSlug(createId("document"));
 
-  if (!isReservedDocumentSlug(baseSlug)) {
+  const isTaken = async (candidate: string): Promise<boolean> => {
+    if (isReservedDocumentSlug(candidate)) return true;
     const condition = excludeDocumentId
-      ? and(eq(document.slug, baseSlug), ne(document.id, excludeDocumentId))
-      : eq(document.slug, baseSlug);
+      ? and(eq(document.slug, candidate), ne(document.id, excludeDocumentId))
+      : eq(document.slug, candidate);
     const existing = await one(s.db.select({ id: document.id }).from(document).where(condition));
-    if (existing === undefined) return baseSlug;
-  }
+    return existing !== undefined;
+  };
+
+  if (!(await isTaken(baseSlug))) return baseSlug;
 
   // Collisions are common for placeholder titles ("Untitled" and the like),
   // which every un-named document in the space shares: a space with
-  // thousands of them must not resolve one new slug with a round trip per
-  // already-used counter value. One `LIKE` scan collects every counter this
-  // base slug has taken, and the smallest unused one is picked in memory.
-  const prefix = `${baseSlug}-`;
-  const escapedPrefix = prefix.replace(/([%_\\])/g, "\\$1");
-  const takenCondition = and(
-    or(eq(document.slug, baseSlug), sql`${document.slug} LIKE ${`${escapedPrefix}%`} ESCAPE '\\'`),
-    excludeDocumentId ? ne(document.id, excludeDocumentId) : undefined,
-  );
-  const rows = await many(
-    s.db.select({ slug: document.slug }).from(document).where(takenCondition),
-  );
-
-  const usedCounters = new Set<number>();
-  for (const { slug } of rows) {
-    if (slug === baseSlug) continue;
-    if (!slug.startsWith(prefix)) continue;
-    const suffix = slug.slice(prefix.length);
-    if (/^\d+$/.test(suffix)) usedCounters.add(Number(suffix));
+  // thousands of them must not resolve one more slug by scanning every
+  // counter already taken (one round trip each) or every slug sharing the
+  // base (one scan of the whole space). A random suffix needs one indexed
+  // lookup per attempt, and collisions within a 10-million-wide range are
+  // vanishingly rare even at tens of thousands of documents sharing a base.
+  // Digits only, like the counter it replaces, so `isPlaceholderDocumentSlug`
+  // still recognizes and strips it.
+  const RANDOM_SUFFIX_RANGE = 10_000_000;
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const candidate = `${baseSlug}-${1 + Math.floor(Math.random() * RANDOM_SUFFIX_RANGE)}`;
+    if (!(await isTaken(candidate))) return candidate;
   }
 
-  let counter = 1;
-  while (usedCounters.has(counter) || isReservedDocumentSlug(`${baseSlug}-${counter}`)) {
-    counter++;
-  }
-
-  return `${baseSlug}-${counter}`;
+  // Reached only if five random attempts in ten million all collided —
+  // astronomically unlikely. Time is unique per millisecond, so this can't.
+  return `${baseSlug}-${Date.now()}${Math.floor(Math.random() * 1000)}`;
 }
 
 export type PropertyInit =
