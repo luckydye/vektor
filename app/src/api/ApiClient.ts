@@ -706,6 +706,15 @@ export interface AIChatSessionListEntry {
  * an effect re-running, a route swapping the only subscriber — and short enough
  * that leaving a space does not hold a socket anyone would notice.
  */
+/**
+ * A children walk's page size. Large on purpose: the server loads and
+ * ACL-filters every child per request, so a smaller page multiplies that work
+ * without shortening the walk.
+ */
+const CHILDREN_PAGE_SIZE = 5_000;
+/** Guards against paging forever if the API keeps handing back a cursor. */
+const MAX_CHILDREN_PAGES = 400;
+
 const REALTIME_IDLE_GRACE_MS = 2_000;
 
 /**
@@ -1333,6 +1342,68 @@ export class ApiClient {
         await this.replica.writeDocuments(spaceId, response.documents);
       }
       return response;
+    },
+
+    /**
+     * Every child of a document, paged to the end, and cached as a list.
+     *
+     * A database's records are read this way rather than through `get`: the
+     * caller wants all of them, the walk is the only thing that knows when it
+     * has them all, and only a complete walk may be cached as the children of
+     * that document.
+     */
+    getChildren: async (
+      spaceId: string,
+      parentId: string,
+      options?: { pageSize?: number },
+    ): Promise<DocumentWithProperties[]> => {
+      const limit = options?.pageSize ?? CHILDREN_PAGE_SIZE;
+      const documents: DocumentWithProperties[] = [];
+      let cursor: string | undefined;
+
+      for (let page = 0; ; page += 1) {
+        // A listing that stops early looks exactly like a document with fewer
+        // children, so this refuses rather than caching a partial answer.
+        if (page >= MAX_CHILDREN_PAGES) {
+          throw new Error(
+            `More than ${MAX_CHILDREN_PAGES * limit} children under ${parentId}`,
+          );
+        }
+        const response = await this.apiGet<{
+          documents: DocumentWithProperties[];
+          total: number;
+          limit: number;
+          nextCursor: string | null;
+        }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, {
+          parentId,
+          limit,
+          cursor,
+        });
+        documents.push(...response.documents);
+        cursor = response.nextCursor ?? undefined;
+        if (!cursor) break;
+      }
+
+      // One transaction for the whole walk, not one per page.
+      await this.replica.writeChildren(spaceId, parentId, documents);
+      return documents;
+    },
+
+    /**
+     * A document's children as the last complete walk left them, or
+     * `undefined` when there has not been one. For painting a view before the
+     * network answers.
+     */
+    getChildrenCached: async (spaceId: string, parentId: string) => {
+      return await this.replica.readChildren(spaceId, parentId);
+    },
+
+    subscribeChildrenCached: (
+      spaceId: string,
+      parentId: string,
+      callback: (documents: DocumentWithProperties[] | undefined) => void,
+    ) => {
+      return this.replica.subscribeChildren(spaceId, parentId, callback);
     },
 
     /** The space's documents as the last listing left them. */

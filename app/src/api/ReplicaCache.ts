@@ -40,6 +40,12 @@ const collections = {
    * costs one row per category instead of one per set of expanded categories.
    */
   categoryDocuments: (slug: string) => `documents:category:${slug}`,
+  /**
+   * One document's children, in the order the server listed them. Written only
+   * by a walk that reached the end, so a half-read database is a cache miss
+   * rather than a list that silently omits records.
+   */
+  children: (parentId: string) => `documents:children:${parentId}`,
   comments: (documentId: string) => `comments:${documentId}`,
 } as const;
 
@@ -282,6 +288,56 @@ export class ReplicaCache {
       () => this.readDocuments(spaceId),
       callback,
     );
+  }
+
+  /**
+   * A document's children as the last complete listing left them, or
+   * `undefined` when there has not been one.
+   *
+   * Read through the collection, like every other list here: the store holds
+   * rows from any request that happened to return them, and a database's
+   * records are exactly the case where "the rows we happen to hold" and "the
+   * database's records" must not be confused. A record archived or deleted
+   * since is dropped by `unlistEverywhere`, so a stale list shrinks by itself.
+   */
+  async readChildren(
+    spaceId: string,
+    parentId: string,
+  ): Promise<DocumentWithProperties[] | undefined> {
+    const collection = await this.collection(spaceId, collections.children(parentId));
+    if (!collection) return undefined;
+    return await this.documentsInCollection(spaceId, collection);
+  }
+
+  subscribeChildren(
+    spaceId: string,
+    parentId: string,
+    callback: (documents: DocumentWithProperties[] | undefined) => void,
+  ): () => void {
+    return this.db.subscribe(
+      [replicaStores.document, replicaStores.collection],
+      spaceId,
+      () => this.readChildren(spaceId, parentId),
+      callback,
+    );
+  }
+
+  /** Records the result of a children walk that read every page. */
+  async writeChildren(
+    spaceId: string,
+    parentId: string,
+    documents: DocumentWithProperties[],
+  ): Promise<void> {
+    await this.db.writeRemote(async () => [
+      // A listing carries no bodies, so the rows are partial — a document view
+      // hydrated from one would otherwise render as empty.
+      ...(await this.documentWrites(spaceId, documents, { partial: true })),
+      this.collectionWrite(
+        spaceId,
+        collections.children(parentId),
+        documents.map((document) => document.id),
+      ),
+    ]);
   }
 
   async readDocumentsByCategories(

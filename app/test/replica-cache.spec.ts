@@ -476,3 +476,105 @@ describe("at scale", () => {
     );
   });
 });
+
+describe("a document's children", () => {
+  /** The list endpoint, one page of a `parentId` walk. */
+  function childrenPage(
+    documents: DocumentWithProperties[],
+    nextCursor: string | null = null,
+  ) {
+    return {
+      documents: documents.map((document) => ({ ...document, content: "" })),
+      total: documents.length,
+      limit: 5000,
+      nextCursor,
+    };
+  }
+
+  function records(ids: string[]): DocumentWithProperties[] {
+    return ids.map((id) =>
+      makeDocument({ id, type: "record", parentId: "database_1" }),
+    );
+  }
+
+  it("is a miss, not an empty list, before any walk", async () => {
+    const api = client();
+
+    // An empty answer here would paint a database that has records as empty.
+    expect(await api.documents.getChildrenCached("space_1", "database_1")).toBeUndefined();
+  });
+
+  it("serves a walked database from rows, in the server's order", async () => {
+    const api = client();
+    globalThis.fetch = (async () =>
+      Response.json(childrenPage(records(["record_2", "record_1"])))) as typeof fetch;
+
+    await api.documents.getChildren("space_1", "database_1");
+
+    const cached = await api.documents.getChildrenCached("space_1", "database_1");
+    expect(cached?.map((record) => record.id)).toEqual(["record_2", "record_1"]);
+  });
+
+  it("caches every page of a cursor walk as one list", async () => {
+    const api = client();
+    globalThis.fetch = (async (input) =>
+      Response.json(
+        String(input).includes("cursor=page_2")
+          ? childrenPage(records(["record_3"]))
+          : childrenPage(records(["record_1", "record_2"]), "page_2"),
+      )) as typeof fetch;
+
+    const walked = await api.documents.getChildren("space_1", "database_1", {
+      pageSize: 2,
+    });
+
+    expect(walked.map((record) => record.id)).toEqual([
+      "record_1",
+      "record_2",
+      "record_3",
+    ]);
+    const cached = await api.documents.getChildrenCached("space_1", "database_1");
+    expect(cached?.map((record) => record.id)).toEqual([
+      "record_1",
+      "record_2",
+      "record_3",
+    ]);
+  });
+
+  it("does not answer with children of another parent", async () => {
+    const api = client();
+    globalThis.fetch = (async () =>
+      Response.json(childrenPage(records(["record_1"])))) as typeof fetch;
+
+    await api.documents.getChildren("space_1", "database_1");
+
+    expect(await api.documents.getChildrenCached("space_1", "database_2")).toBeUndefined();
+  });
+
+  it("drops a record that has since been archived", async () => {
+    const api = client();
+    globalThis.fetch = (async (_input, init) =>
+      init?.method === "DELETE"
+        ? Response.json({ success: true })
+        : Response.json(
+            childrenPage(records(["record_1", "record_2"])),
+          )) as typeof fetch;
+
+    await api.documents.getChildren("space_1", "database_1");
+    await api.document.archive("space_1", "record_1");
+
+    const cached = await api.documents.getChildrenCached("space_1", "database_1");
+    expect(cached?.map((record) => record.id)).toEqual(["record_2"]);
+  });
+
+  it("keeps the walk's rows out of the space's own listing", async () => {
+    const api = client();
+    globalThis.fetch = (async () =>
+      Response.json(childrenPage(records(["record_1"])))) as typeof fetch;
+
+    await api.documents.getChildren("space_1", "database_1");
+
+    // The sidebar reads that listing; a database's records are not in it.
+    expect(await api.documents.getCached("space_1")).toBeUndefined();
+  });
+});
