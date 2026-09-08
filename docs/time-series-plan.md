@@ -4,6 +4,20 @@ A place for points that carry their own time and are never edited: GPS tracks,
 device telemetry, workflow and app logs. They are written by appending, read
 back as a range, and forgotten by age rather than deleted by hand.
 
+**Two layers, and keeping them apart is the design: one event stream in front,
+many series behind it.** Everything a space records is published to a single
+in-process bus as an *event*, and anything that wants some of it subscribes with
+a filter. One of those subscribers is the storage sink, which routes each event
+into the series it belongs to. So the stream is unified and the storage is not,
+and neither has to compromise for the other: a view can watch every kind of
+event at once, and a series still gets its own prefix, its own retention and its
+own compactor.
+
+Most of this document is about the storage half, because that is where the hard
+consistency problems are. The stream is one section, and it is deliberately
+small — a bus that grows features is a bus that has started making product
+decisions.
+
 **Object storage is the source of truth for the points.** Every point a series
 holds lives under one prefix in the S3 or local-filesystem adapter behind
 `#files/storage.ts`, in immutable objects whose key names carry what an index
@@ -62,29 +76,139 @@ cache that loses nothing when deleted, and sweep objects no manifest names.
 Series need no manifest at all: the key names carry what the manifest would
 have said.
 
+## The event stream
+
+A GPS fix, a workflow log line and a device reading are all the same thing on
+the way in — an event — and they only become different things when the sink
+decides which series each belongs to. `app/src/events/bus.ts` is that middle,
+and it is about a hundred lines:
+
+```ts
+export interface SpaceEvent {
+  /** Event time, not arrival: this becomes the point's timestamp. */
+  ts: number;
+  /** Which series stores it. Derived at ingest, never free-form; see below. */
+  series: string;
+  /** What it is, e.g. "workflow.log", "gps.fix", "device.telemetry". */
+  type: string;
+  /** The series' owning document, so a subscriber can be scoped to it. */
+  documentId: string | null;
+  /** The payload. Becomes the point's columns verbatim. */
+  fields: Record<string, number | string | boolean | null>;
+}
+
+export function publishEvents(spaceId: string, events: SpaceEvent[]): void;
+
+export function subscribeToEvents(
+  spaceId: string,
+  filter: SeriesPredicate[],
+  onEvents: (events: SpaceEvent[]) => void,
+): () => void;
+```
+
+`type` is a column like any other, so it is filterable, groupable and prunable
+by the same machinery as `speed` — there is no privileged dimension. A firehose
+is `subscribeToEvents(spaceId, [], …)`; every narrower use case is the same call
+with predicates.
+
+Four decisions, and they are the whole design:
+
+**The filter is `SeriesPredicate[]` — the same type the stored query uses.** A
+log panel tailing `type = "workflow.log"` and `level = "error"` and that same
+panel paging backwards through storage hand the *identical* object to two
+different executors, over one predicate evaluator. This is the reason to have a
+bus at all rather than a websocket topic per producer: a filter that means one
+thing live and another thing at rest is a bug that only appears at the seam, and
+this way there is no seam. It is also why the predicate type is defined in
+`#series/query.ts` and imported by the bus, not the other way round — the harder
+executor owns the vocabulary.
+
+**`series` is derived at ingest, never taken from the caller.** The route maps a
+`type` and its subject to a name (`workflow.log` for run `r7` is
+`workflow-run:r7`), and a name with no row is refused as it is today. That is
+where the cardinality guard lives now: without it a buggy producer mints
+unbounded series names, and here that means unbounded prefixes. A producer
+chooses what it is saying, not where it is stored.
+
+**The bus is in-process, and it is not durable.** It is the same shape as
+`#realtime/events.ts` — a `Set` of listeners, fanned out synchronously — for the
+same reason: the durable copy is somewhere else, so losing this costs a resync
+and never a fact. An event is acknowledged to its writer when the **sink has
+appended it**, not when it reached the bus, which is what keeps "the stream is
+lossy" from ever meaning "a point was lost". A subscriber that cannot keep up is
+dropped rather than allowed to block ingest, and it says so in the log.
+
+**Nothing subscribes in order to write to a second place.** The sink is the only
+subscriber that persists anything. Everything else — realtime fan-out, and
+whatever monitoring wants next — is read-only on the stream. Two writers on one
+bus is how a bus turns into an orchestrator that has to guarantee ordering
+between them, and that is a much larger design than this one.
+
+### The sink
+
+`app/src/events/sink.ts` is the only thing that turns events into points. It
+subscribes with an empty filter, groups a flush by series, and calls
+`appendPoints` once per series — so a batch spanning three series is three
+appends and a batch spanning one is one, which is the batching the storage layer
+already wants. It flushes on a point count or an elapsed interval, whichever
+comes first.
+
+The sink is where two facts that were previously spread across every producer
+now live exactly once: the flush interval is the durability window for
+*everything*, and the append is the acknowledgement. A producer that needs a
+stronger guarantee than "at most one interval" calls the append route directly
+and takes the round trip; nothing does today.
+
+### What this replaces
+
+The earlier draft of this document had each producer call the append route and
+then emit its own `SpaceChange`. That works, and it means every new kind of
+event is a new producer teaching itself the same two steps, with a second
+implementation of "which of these lines does this view want" on the client. With
+the bus there is one filter language, one place a filter is evaluated, and one
+answer to what happened in this space in the last minute.
+
+What it does **not** replace is the storage layout. Series stay separate: their
+own prefix, their own retention, their own compaction claim, their own ACL. The
+stream is unified because filtering is cheap in memory over the last few
+seconds; storage is partitioned because retention, compaction and access control
+are all per-series questions, and mixing a 1 Hz GPS track into the same objects
+as an occasional log line would make every one of them worse.
+
 ## The module boundary
 
-`app/src/series/` is a module with one job and two neighbours. Above it, the API
-routes; below it, the storage adapter. It is not a shared utility and nothing
-else in the codebase reaches into it.
+Two modules, stacked, each with one job. `app/src/events/` is the stream;
+`app/src/series/` is the storage engine. Above them, the API routes; below them,
+the storage adapter. Neither is a shared utility and nothing else in the
+codebase reaches into either.
 
-**What it may import.** `#files/storage.ts` for the adapter, `#db/client/store.ts`
-for its own table, `#config` for its budgets, `#observability/logger.ts`. Not
-`#acl`, not `#realtime`, not `#jobs`, not `#api` — a module that knows who is
-calling it, or who wants to hear about the write, has stopped being a storage
-engine.
+**What `#series/` may import.** `#files/storage.ts` for the adapter,
+`#db/client/store.ts` for its own table, `#config` for its budgets,
+`#observability/logger.ts`. Not `#acl`, not `#realtime`, not `#jobs`, not
+`#api`, and not `#events` — a module that knows who is calling it, or who wants
+to hear about the write, has stopped being a storage engine.
 
-**What may import it.** The four route modules, and one maintenance entrypoint
-the cron tick calls. That is the entire list, and it is worth writing down
-because it is the property that makes the module replaceable: the layout, the
-format and the query executor can all change without a caller noticing.
+**What may import `#series/`.** The four route modules, one maintenance
+entrypoint the cron tick calls, and the sink. That is the entire list, and it is
+worth writing down because it is the property that makes the module replaceable:
+the layout, the format and the query executor can all change without a caller
+noticing.
+
+**What `#events/` may import.** `#series/query.ts` for the predicate type and
+its evaluator, `#config`, `#observability/logger.ts`. The bus itself imports
+nothing else at all — it is a `Set` of listeners and a filter. The sink adds
+`#series/store.ts`, and that is the only place in the codebase where an event
+becomes a point.
+
+**What may import `#events/`.** The ingest route, the realtime fan-out, and the
+sink's own entrypoint. A producer publishes; it does not subscribe.
 
 **Enforced, not just documented.** `app/test/egress-call-sites.spec.ts` already
 does exactly this for server-side `fetch` — an inventory keyed by file, with a
 `why` for each entry, that fails when a new call site appears. A sibling spec
-takes the inventory of files importing `#series/`, so adding a fifth importer is
-a failing test that someone has to justify rather than a review someone has to
-catch.
+takes the inventory of files importing `#series/` and `#events/`, so a new
+importer of either is a failing test that someone has to justify rather than a
+review someone has to catch.
 
 Two things follow from the boundary, and they are the reason to state it up
 front rather than treat it as tidiness:
@@ -93,10 +217,10 @@ front rather than treat it as tidiness:
   `SpaceStore` and a series name; it never sees a user, a token, or a
   permission. Every caller therefore goes through the same check, because there
   is no other way in.
-- **The module reports what changed; the route decides who hears.**
-  `appendPoints` returns `{ latestTs, count }` and emits nothing. The route
-  turns that into the `SpaceChange`. Realtime is a product decision about
-  audiences, and this module has no opinion about audiences.
+- **The storage module reports what changed and tells nobody.**
+  `appendPoints` returns `{ latestTs, count }` and emits nothing. Audiences are
+  a product decision, and the engine has no opinion about audiences — the bus
+  is where that decision is made, once, for every kind of event.
 
 The `series` table is the module's own. No other repository selects from it or
 joins against it; the only reference across the line is its `document_id`
@@ -202,9 +326,14 @@ The header:
   "count": 3600,
   "from": 1764547200000,      // first and last event timestamp in the body
   "to": 1764550799000,
-  "labelDict": ["info", "error"],
   "columns": {                // per column, what a planner needs to prune
-    "speed": { "type": "number", "min": 0, "max": 31.4, "nulls": 0 },
+    "speed":   { "type": "number", "min": 0, "max": 31.4, "nulls": 0 },
+    // Low cardinality: the exact distinct set, so equality prunes.
+    "type":    { "type": "string", "nulls": 0, "values": ["gps.fix"] },
+    "level":   { "type": "string", "nulls": 0, "values": ["info", "error"] },
+    // Too many distinct values for a set: a bloom filter instead.
+    "traceId": { "type": "string", "nulls": 0, "bloom": "…base64…" },
+    // Neither: no equality pruning, and the planner knows it.
     "message": { "type": "string", "nulls": 0 }
   },
   "subsumes": ["s-000…-a1b2"] // chunks only: the segments absorbed
@@ -217,9 +346,10 @@ The body:
 {
   "t0": 1764547200000,        // first event timestamp, absolute
   "dt": [0, 1000, 1000, 999], // deltas from the previous point
-  "labels": [0, 0, 1, 0],     // dictionary indices, omitted when unlabelled
   "columns": {                // one array per field seen, nulls where absent
     "speed": [0, 4.2, 11.9],
+    // A column with a `values` set is dictionary-encoded: indices into it.
+    "level": [0, 0, 1, 0],
     "message": ["…"]
   }
 }
@@ -235,6 +365,32 @@ never mentions `message` never materialises it.
 Columns are discovered from the points rather than declared per kind: a writer
 that adds a field gets a new column, and older objects simply lack it — which is
 what `nulls` in the header is for.
+
+**String columns carry their own distinct set, and that is what makes filtering
+cheap.** `min`/`max` prunes a numeric predicate well and an equality predicate on
+a string not at all, so a header that said only `{"type":"string"}` would leave
+every object in the range to be decoded — the filter would be honest and the
+cost would be a full scan. Instead the writer counts distinct values per string
+column as it encodes:
+
+- at or under `SERIES_MAX_COLUMN_VALUES`, the exact set goes in the header as
+  `values`, and the column is dictionary-encoded in the body. `type = "gps.fix"`
+  and `level in ["error","warn"]` are then answered against the header, and a
+  `groupBy` on that column knows its groups before decoding anything;
+- above it, a bloom filter sized to the column's cardinality. It answers
+  "definitely absent" for `eq` and `in`, which is the direction pruning needs;
+  a false positive costs a decode and never a wrong row. This is what makes a
+  high-cardinality id — a run id, a device id, a trace id — a usable filter
+  instead of a full scan;
+- `contains`, `lt`/`gt` on strings, and anything else get neither, and the
+  planner treats the object as a candidate. That is correct and it is slow, and
+  the response's `scanned` counts say so.
+
+The exactness matters more than the speed: a `values` set that omitted a value
+the body contains would prune an object that should have been kept and return a
+quietly wrong answer. So the set is computed from the encoded points, not passed
+in by the caller, and the pruning-parity test at the end of this document is what
+guards it.
 
 Compression is async brotli on libuv's threadpool with the quality drop for
 large payloads, copied from `compressRevisionContent` — `#db/space/revisions.ts`
@@ -364,8 +520,8 @@ export interface SeriesQuery {
   where?: SeriesPredicate[];
   /** Bucket width in ms. Omitted, the whole range is one bucket. */
   every?: number;
-  /** One row per bucket per group. `label` is the cheap case; see below. */
-  groupBy?: "label" | { column: string };
+  /** One row per bucket per group. Cheap over a `values` column; see below. */
+  groupBy?: { column: string };
   /** What to compute. `count` needs no column. */
   select: SeriesAggregate[];
 }
@@ -406,10 +562,13 @@ merges can be answered from a pre-computed coarser summary, and one that does
 not have to re-read every point forever. Exact quantiles are the aggregate that
 cannot merge, which is why they are out (see Non-goals).
 
-`groupBy: "label"` is the cheap grouping, and it covers the common question —
-errors against warnings over time — in one pass, because the label dictionary is
-in the header and the label column is dictionary-encoded in the body. Grouping
-by an arbitrary column works the same way but has to read that column.
+Grouping over a column with a `values` set is the cheap case, and it covers the
+common questions — errors against warnings over time, events per `type` — in one
+pass: the groups are known from the headers before a body is decoded, so the
+accumulators are allocated once and the column is read as dictionary indices
+rather than strings. Grouping by a column without one works the same way but
+learns its groups as it decodes, which is where `SERIES_MAX_GROUPS` earns its
+keep.
 
 ### The plan, and why its cost is known before it runs
 
@@ -418,8 +577,9 @@ by an arbitrary column works the same way but has to read that column.
 3. Read each candidate's **header only**, by range read, and drop the object if
    its `[from, to]` misses the range, or a predicate cannot hold: `speed > 30`
    against a header whose `speed.max` is `31.4` survives, against one whose max
-   is `12` does not; `label = "error"` against a `labelDict` without it does
-   not. This is row-group pruning, and it is why the header carries statistics.
+   is `12` does not; `level = "error"` against a `values` set without it does
+   not, and `traceId = "…"` against a bloom that says absent does not. This is
+   row-group pruning, and it is why the header carries statistics.
 4. Sum `count` over the survivors. **If that exceeds `SERIES_MAX_SCAN_POINTS`,
    refuse the query** — before transferring a byte of any body, naming the
    number it would have scanned. A query's cost is knowable in advance because
@@ -438,9 +598,20 @@ a cheaper source is a query planner nobody can debug:
 ```jsonc
 {
   "rows": [{ "ts": 1764547200000, "group": "error", "count": 12, "avg": { "speed": 11.4 } }],
-  "scanned": { "objects": 3, "prunedObjects": 21, "points": 10800, "source": "chunks" }
+  "scanned": {
+    "objects": 3, "prunedObjects": 21, "points": 10800, "source": "chunks",
+    // Which predicates the headers could answer, and which needed a decode.
+    "prunedBy": ["type", "level"], "scannedFor": ["message"]
+  }
 }
 ```
+
+`prunedBy` and `scannedFor` are there because the difference between a filter
+that prunes and one that does not is three orders of magnitude, and it is
+invisible from the outside: a `contains` on `message` reads every body in the
+range while an `eq` on `type` reads almost none. A caller that can see which of
+its predicates did the work can move the cheap one first or narrow the range,
+rather than concluding the store is slow.
 
 The executor returns rows. It does not know what a chart is, and the chart does
 not know what a chunk is.
@@ -527,21 +698,49 @@ cosmetic when wrong.
 
 ## Realtime
 
+Realtime is a bus subscriber, and the only one besides the sink. It is not a
+producer, and no route emits a series change of its own — which is the property
+that makes a new kind of event show up in every view that wants it without
+anyone wiring it there.
+
 `SpaceChange` gains one variant in `#realtime/changes.ts`:
 
 ```ts
 | { kind: "series"; name: string; documentId: string | null; latestTs: number; count: number }
 ```
 
-mapped to `realtimeTopics.series(name)` and, when the series has one, the owning
-document's topic. Emitted once per append rather than once per point, and it
-carries counts, not data — clients refetch the range they are showing, as
-everywhere else in the sync layer.
+Two topics carry it, and the split follows the rule `subscriptions.ts` already
+enforces:
 
-Emitted by the append **route**, from what `appendPoints` returned, for the
-reason the module boundary gives. One useful consequence: every writer produces
-the same event, so a workflow flushing log lines and a device posting positions
-light up a view through one code path rather than two.
+- `realtimeTopics.series(name)` — authorized against the series' owning
+  document, the way `isDocumentRealtimeTopic` and `isWorkflowRunRealtimeTopic`
+  already resolve their topics. This is what a run's log panel or a vehicle's
+  map pin subscribes to.
+- `realtimeTopics.events` (`"space:events"`) — the firehose, joining
+  `realtimeSpaceTopics`. It carries data from anywhere in the space, so no
+  per-resource check could scope it to a document-level grantee, which is
+  exactly the reason that set exists. A space role, or nothing.
+
+**The socket carries notifications, not payloads, and that is deliberate.**
+`#realtime/events.ts` coalesces per space over a 100 ms debounce and keeps 256
+envelopes of history for reconnects — both of which work because an envelope
+says *something changed*, and neither of which survives an envelope carrying
+data: you cannot coalesce two log lines into one, and a history window of 256
+lines is a tail that silently drops. So the change carries `latestTs` and
+`count`, and the client refetches the range it is showing, as everywhere else in
+the sync layer. A live tail is a short-range query re-issued on notification,
+and it reads through the same immutable-object cache as any other.
+
+The consequence worth stating: **a subscriber's filter runs server-side on the
+bus, a client's filter runs in its query.** They are the same predicate objects
+and the same evaluator, but a websocket client is not a bus subscriber — it is
+told to look again, and looks with the filter it already has.
+
+ACL is checked when a topic is subscribed, not per event, because that is what
+the existing fan-out does and per-event checks would put an `#acl` call on the
+hot path of every event. It follows that a topic has to be scopeable to a
+resource at subscribe time, which is why the firehose topic is space-role-only
+rather than a filter the client gets to choose.
 
 Compaction emits nothing: it moves points between two representations a read
 already merges.
@@ -557,8 +756,22 @@ is keyed on and there is no id to look one up by:
 | `/api/v1/spaces/[spaceId]/series` | `GET`, `POST` | list / declare |
 | `/api/v1/spaces/[spaceId]/series/[name]` | `GET`, `PATCH`, `DELETE` | read / retention / remove |
 | `/api/v1/spaces/[spaceId]/series/[name]/points` | `POST` | append a batch |
-| `/api/v1/spaces/[spaceId]/series/[name]/points` | `GET` | the points in a range (`from`, `to`, `label`, `@paginated`) |
+| `/api/v1/spaces/[spaceId]/series/[name]/points` | `GET` | the points in a range (`from`, `to`, `where`, `@paginated`) |
 | `/api/v1/spaces/[spaceId]/series/[name]/query` | `POST` | aggregates over a range, body is a `SeriesQuery` |
+| `/api/v1/spaces/[spaceId]/events` | `POST` | publish a batch of `SpaceEvent`s |
+
+`POST /events` is the ingest edge and the route a producer actually uses: it
+validates the batch, resolves each event's `series` from its `type` and subject,
+checks `Permission.EDITOR` on each distinct series' document — once per series
+per request, not once per event — and publishes. It returns when the batch is on
+the bus, which is *not* when it is durable; a producer that needs the stronger
+answer posts to `points` instead and waits for the append. Both routes exist on
+purpose, and the difference between them is one sentence in each one's JSDoc.
+
+`POST .../points` stays as the direct, durable path, and it does not go through
+the bus — which means it emits no realtime change and reaches no subscriber. It
+is the escape hatch, not the front door, and the one place worth checking when a
+write lands in storage and nothing lights up.
 
 `query` is a `POST` because its request is a structured object, not because it
 changes anything: it is idempotent and safe to retry, and it is not
@@ -622,6 +835,14 @@ In `#config`, beside the existing budgets:
   before it is refused; `5_000_000`.
 - `VEKTOR_SERIES_MAX_BUCKETS` — buckets one query may ask for; `10_000`.
 - `VEKTOR_SERIES_MAX_GROUPS` — distinct groups one query may return; `1_000`.
+- `VEKTOR_SERIES_MAX_COLUMN_VALUES` — distinct values a string column may have
+  before its header carries a bloom filter instead of the exact set; `256`.
+- `VEKTOR_EVENTS_FLUSH_MS` — how long the sink holds events before appending,
+  and therefore the durability window for everything on the bus; `1000`.
+- `VEKTOR_EVENTS_FLUSH_POINTS` — events the sink holds before appending early;
+  `500`.
+- `VEKTOR_EVENTS_SUBSCRIBER_QUEUE` — events a slow subscriber may fall behind
+  before it is dropped; `10_000`.
 - `VEKTOR_WORKFLOW_LOG_RETENTION_DAYS` — the window a run's log series is
   declared with; `30`.
 
@@ -669,24 +890,31 @@ whatever objects existed. The declaration:
   a finished one should settle into a single chunk that reads in one fetch.
 - `retentionDays` from config: the first bound run logs have ever had.
 
-A point per line: the line's own time, `{ message }`, and the level as its
-label. `run.error` becomes a point labelled `error` rather than a field the view
-concatenates onto the end of the array; it stays on the run document too, since
-that is what the status badge reads.
+One event per line: `type` is `workflow.log`, `level` is the column that was
+going to be a label, and `message` carries the text. `run.error` becomes an
+event at `level: "error"` rather than a field the view concatenates onto the end
+of the array; it stays on the run document too, since that is what the status
+badge reads.
 
-### Writes go through the API, batched
+`runId` goes on the event as a column even though the series name already
+encodes it, and that is the one piece of deliberate redundancy here: it is what
+makes the run's lines findable in a cross-run query later, and a bloom in every
+header is what makes that query cheap. A column that is constant within an
+object costs one dictionary entry.
 
-`runStore` does not import the series module. It calls the endpoints, the way
-`#jobs/runtime/capabilities.ts` already calls this instance's own API: an origin
-from `getLocalOrigin()` and a job token in `X-Job-Token`. The new call site goes
-in `egress-call-sites.spec.ts`'s inventory with its `why`, beside the two that
-are there for the same reason.
+### Writes go to the bus, batched
+
+`runStore` does not import the series module, and it does not import the bus
+either. It posts to `/events`, the way `#jobs/runtime/capabilities.ts` already
+calls this instance's own API: an origin from `getLocalOrigin()` and a job token
+in `X-Job-Token`. The new call site goes in `egress-call-sites.spec.ts`'s
+inventory with its `why`, beside the two that are there for the same reason.
 
 That is a loopback request, and it is worth what it costs. The alternative is a
-privileged in-process path into the module that no ACL check covers — which is
-the back door every log writer would then be tempted through. This way a
-workflow's log lines are authorised, rate-limited and validated by exactly the
-same route as a device posting positions, and the module keeps one entry point.
+privileged in-process publish that no ACL check covers — which is the back door
+every log writer would then be tempted through. This way a workflow's log lines
+are authorised, rate-limited and validated by exactly the same route as a device
+posting positions.
 
 A request per log line would be absurd, so `appendRunLog` keeps pushing to
 `run.logs` — the array survives, its meaning narrows to *lines not yet sent* —
@@ -696,13 +924,15 @@ always from `finalizeRun` and `cancelRun` before the run leaves `activeRuns`.
 Reusing the existing chain is what keeps two flushes for one run from
 interleaving; no new timer per run, and nothing that can spin.
 
-The flush interval is the durability window, and it is the one thing this
-consumer trades for not writing an object per line: a crash loses at most the
-last interval's lines, where today it loses all of them.
+There are now **two** buffers between a log line and an object — the run's array
+and the sink's — and their intervals add up to the durability window. That is
+worth naming rather than discovering: a crash loses at most the sum of the two,
+where today it loses every line the run ever wrote. `finalizeRun` posts its last
+batch and the sink flushes on shutdown, so an orderly end loses nothing.
 
-Liveness comes for free: the append route emits the `{ kind: "series" }` change
-for this writer exactly as for any other, so `appendRunLog` stops emitting
-anything itself.
+Liveness comes for free: the bus produces the `{ kind: "series" }` change for
+this writer exactly as for any other, so `appendRunLog` stops emitting anything
+itself.
 
 ### Reads move to the client
 
@@ -759,19 +989,22 @@ what it already does for every other capability.
    compaction yet: rule 2 reads a window of pure segments correctly, which is
    what makes it safe to land first.
 4. Compaction, prune and sweep, then their due-checks on the tick.
-5. Routes — `points` and the declaration endpoints — the `SpaceChange` variant
-   emitted from what append returns, the route-access snapshot rows, the config
-   entries, and the importer inventory spec that fixes the boundary while the
-   list of callers is still two entries long.
-6. `app/src/series/query.ts` — predicates as column masks, the mergeable
+5. `app/src/series/query.ts` — predicates as column masks, the mergeable
    aggregates, bucketing, and the planner: prune by header, refuse by count,
    decode the rest. Pure functions over decoded objects, with the planner the
-   only part that touches storage.
-7. Workflow run logs, as above.
-8. `ApiClient` methods and the composable, then whatever view lands first — the
+   only part that touches storage. Before the bus, because the bus imports the
+   predicate type and its evaluator from here and must not grow its own.
+6. `app/src/events/` — the bus, then the sink. Small enough to land together,
+   and the sink is what makes the bus testable end to end.
+7. Routes — `/events`, `points`, and the declaration endpoints — the
+   `SpaceChange` variant published from the bus, the two realtime topics, the
+   route-access snapshot rows, the config entries, and the importer inventory
+   spec that fixes both boundaries while the list of callers is still short.
+8. Workflow run logs, as above.
+9. `ApiClient` methods and the composable, then whatever view lands first — the
    run's log panel with a level filter, or a track on a map.
-9. Rollups at compaction time, and the planner learning to prefer them. Nothing
-   above changes: that is the point of only having mergeable aggregates.
+10. Rollups at compaction time, and the planner learning to prefer them. Nothing
+    above changes: that is the point of only having mergeable aggregates.
 
 ## Integration test
 
