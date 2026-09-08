@@ -188,7 +188,7 @@ codebase reaches into either.
 `#api`, and not `#events` — a module that knows who is calling it, or who wants
 to hear about the write, has stopped being a storage engine.
 
-**What may import `#series/`.** The four route modules, one maintenance
+**What may import `#series/`.** The five route modules, one maintenance
 entrypoint the cron tick calls, and the sink. That is the entire list, and it is
 worth writing down because it is the property that makes the module replaceable:
 the layout, the format and the query executor can all change without a caller
@@ -818,8 +818,19 @@ Points do not enter the replica cache. `ReplicaDb`'s stores mirror entity rows a
 view reads by id; a time range of telemetry is neither, and caching it would
 mean answering a range out of an IndexedDB store that holds an arbitrary subset
 of it. Reads go through `api.series.*` on `ApiClient` and a
-`useSeriesPoints(name, range)` composable following `useDatabaseRows.ts` — a
-query key plus a topic subscription that invalidates it.
+`useSeriesPoints(name, { range, where })` composable following
+`useDatabaseRows.ts` — a query key plus a topic subscription that invalidates
+it.
+
+The filter is part of the query key, and it is the same `SeriesPredicate[]` the
+server evaluates, so changing a log panel's level filter is a refetch and never
+a client-side re-filter of a page that was fetched under a different one. A
+`useSeriesQuery(name, query)` beside it does the same for aggregates.
+
+Tailing is the same composable with a range whose `to` is `now`, invalidated by
+the series topic. There is no separate streaming client and no second code path
+for live data — which is what the notification-not-payload decision in Realtime
+buys, and the reason it is worth taking.
 
 ## Config
 
@@ -1029,23 +1040,55 @@ protect is that **a range reads identically whatever state its objects are in**:
   deleting the owning document takes the row by cascade and the prefix on the
   next sweep.
 The boundary gets its own spec, in the shape of `egress-call-sites.spec.ts`: an
-inventory of the files importing `#series/`, each with a `why`, failing when a
-new one appears. It is a cheap test and it is the only thing that keeps the
-module a module a year from now.
+inventory of the files importing `#series/` and `#events/`, each with a `why`,
+failing when a new one appears. It is a cheap test and it is the only thing that
+keeps the modules modules a year from now.
+
+`app/test/events.spec.ts` covers the stream, and its cases are about the seam
+rather than the storage:
+
+- **The same filter, live and at rest.** Publish a mixed batch — a GPS fix, two
+  log lines at different levels — subscribe with a predicate, then run the
+  identical predicate as a `where` against the stored range. The two sets of
+  events match. This is the assertion the whole design exists for, and it is the
+  one that fails first if the bus ever grows a filter of its own.
+- Events of several types in one publish land in their several series, each as
+  one append, and none in the wrong one.
+- An event whose `series` has no row is refused at the route, and the rest of
+  the batch is refused with it — a partially accepted batch is a worse answer
+  than a rejected one, because a producer cannot tell which half it has to
+  resend.
+- A slow subscriber past `VEKTOR_EVENTS_SUBSCRIBER_QUEUE` is dropped, the
+  publish still returns, and the sink is unaffected. The sink is asserted to be
+  undroppable.
+- Nothing is acknowledged before it is durable: a publish that returns, followed
+  by a simulated restart before the sink's flush, may lose events — and a
+  `points` append that returns, followed by the same restart, may not.
+- A viewer may subscribe to a series topic for a document it can read, may not
+  for one it cannot, and may not subscribe to `space:events` without a space
+  role.
 
 Then the query path, where the risk is an optimisation that changes an answer:
 
 - The same aggregate query answered with pruning enabled and with pruning
-  forced off returns identical rows. A header statistic that prunes an object it
-  should have kept is the one bug in this design that silently returns a wrong
-  number instead of failing, so this is the assertion that guards it.
+  forced off returns identical rows — over a body containing every column shape:
+  a numeric column, a `values` column, a bloom column, and one with neither. A
+  header statistic that prunes an object it should have kept is the one bug in
+  this design that silently returns a wrong number instead of failing, so this
+  is the assertion that guards it, and it is the reason the statistics are
+  computed from the encoded points rather than supplied.
+- A string column crossing `SERIES_MAX_COLUMN_VALUES` mid-object switches to a
+  bloom, and a query filtering on it still returns every matching point. The
+  bloom is asserted to answer "absent" for a value no object holds and never to
+  answer it for one that some object does.
 - A predicate that no object can satisfy returns empty rows having decoded no
   body at all — `scanned.objects` is `0` and `prunedObjects` is not.
 - A query over more points than `SERIES_MAX_SCAN_POINTS` is refused before any
   body is read, and says how many it would have scanned.
-- `groupBy: "label"` over a range spanning several objects with different label
-  dictionaries returns one row per label per bucket, including labels absent
-  from some objects.
+- `groupBy` over a range spanning several objects with *different* `values`
+  sets returns one row per group per bucket, including groups absent from some
+  objects — the case a per-object dictionary gets wrong if the accumulators are
+  allocated per object rather than per query.
 - Bucket boundaries: a point exactly on a boundary lands in one bucket, and a
   range that is not a whole multiple of `every` still covers its last partial
   bucket.
@@ -1081,6 +1124,16 @@ should finish.
 - **No spatial queries.** The question a GPS view asks is "this series, this
   time range". A bounding box in a chunk's header is where that would start.
 - **No cross-space or cross-series reads.** A space is the boundary here as it
-  is everywhere else.
+  is everywhere else. The *stream* is unified across series; a stored query is
+  not, and a view wanting one answer over several series issues several queries.
+  Making the executor read across prefixes is a real feature and a later one —
+  the point of the bloom columns is that it would be affordable when it comes.
+- **No replay from the bus.** It is a fan-out, not a log: it has no cursor, no
+  history and no delivery guarantee, because the durable copy is in storage and
+  a range read is how you go back. A subscriber that missed something queries
+  for it.
+- **No second writer on the bus.** The sink is the only subscriber that
+  persists. Anything else that wants to react to events reads them and writes
+  through its own API, on its own transaction.
 - **No direct object URLs.** See the API section.
 - **No unbounded "latest point".** See `latestPointWithin`.
