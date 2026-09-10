@@ -303,6 +303,25 @@ export function renderNotificationEmail(params: {
   const { notification, actorName, documentTitle, spaceName, documentUrl } = params;
   const accent = accentFor(params.brandColor);
 
+  if (notification.kind === "job_notification") {
+    const subject = headerText(`Automated report ready: ${documentTitle}`);
+    return {
+      subject,
+      text: `An automated job created “${documentTitle}” in ${spaceName}.\n\nOpen document: ${documentUrl}`,
+      html: emailHtml({
+        eyebrow: "Automated job",
+        heading: "Your report is ready",
+        message: `An automated job created a new report.`,
+        documentTitle,
+        spaceName,
+        documentUrl,
+        content: "",
+        footer: ACCESS_FOOTER,
+        accent,
+      }),
+    };
+  }
+
   if (
     notification.kind === "comment_created" ||
     notification.kind === "comment_mention"

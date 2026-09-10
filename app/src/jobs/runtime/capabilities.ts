@@ -36,6 +36,7 @@ import {
 import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
+import { enqueueJobNotificationEmail } from "#notifications/enqueue.ts";
 import type { CapabilityTable } from "./types.ts";
 
 /** Base64 envelope marking binary data across the VM boundary. */
@@ -665,6 +666,19 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       if (limit !== undefined && limit !== null) params.set("limit", String(limit));
       const response = await api(`/search?${params.toString()}`);
       return ((await response.json()) as { results: unknown }).results;
+    }) as never,
+
+    notifyInitiator: (async (documentId: unknown) => {
+      if (!initiatedByUserId) {
+        throw new Error("notifyInitiator is unavailable for a job without an initiating user");
+      }
+      const queued = await enqueueJobNotificationEmail({
+        spaceId,
+        documentId: String(documentId),
+        actorId: initiatedByUserId,
+      });
+      onLog(`queued ${queued} job notification email(s)`);
+      return queued;
     }) as never,
 
     getSecret: (async (name: unknown) => {

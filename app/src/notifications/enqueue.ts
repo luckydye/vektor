@@ -154,3 +154,31 @@ export async function enqueueCommentCreatedEmails(params: {
 
   return queued[0] + queued[1];
 }
+
+/** Queue an automated job's report for the account that started the job. */
+export async function enqueueJobNotificationEmail(params: {
+  spaceId: string;
+  documentId: string;
+  actorId: string;
+}): Promise<number> {
+  const appConfig = config();
+  const deliveryConfigured =
+    !!appConfig.EMAIL_FROM?.trim() && !!appConfig.SMTP_HOST?.trim();
+  const developmentDelivery = import.meta.env.DEV || appConfig.NODE_ENV === "test";
+  if (!deliveryConfigured && !developmentDelivery) return 0;
+
+  const store = await openSpaceStore(params.spaceId);
+  const muted = await getEmailMutedUserIds(store, [params.actorId], params.documentId);
+  if (muted.has(params.actorId)) return 0;
+
+  return insertEmailNotifications(
+    store,
+    {
+      kind: "job_notification",
+      sourceId: params.documentId,
+      documentId: params.documentId,
+      actorId: params.actorId,
+    },
+    [params.actorId],
+  );
+}

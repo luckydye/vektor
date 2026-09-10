@@ -8,7 +8,8 @@ export type EmailNotificationKind =
   | "document_published"
   | "document_mention"
   | "comment_created"
-  | "comment_mention";
+  | "comment_mention"
+  | "job_notification";
 
 export interface EmailNotificationInit {
   kind: EmailNotificationKind;
