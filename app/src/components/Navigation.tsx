@@ -137,19 +137,22 @@ export function Navigation() {
         />
       </div>
 
+      <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
+        <button
+          type="button"
+          class="button-with-icon mb-xs flex min-h-[36px] max-md:hidden w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
+          title={t("Quick Search")}
+          onClick={() => Actions.run("ui:toggle:palatte")}
+        >
+          <Icon name="search" />
+          <span class="@max-xs:hidden flex-1 truncate">{t("Quick Search")}</span>
+          <a-shortcut class="@max-xs:hidden! flex-none" data-shortcut="mod-k" />
+        </button>
+      </div>
+
       <div class="sidebar-scroll min-w-[60px] flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <nav class="@container flex flex-col gap-3xs">
           <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
-            <button
-              type="button"
-              class="button-with-icon mb-xs flex min-h-[36px] max-md:hidden w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
-              title={t("Quick Search")}
-              onClick={() => Actions.run("ui:toggle:palatte")}
-            >
-              <Icon name="search" />
-              <span class="@max-xs:hidden flex-1 truncate">{t("Quick Search")}</span>
-              <a-shortcut class="@max-xs:hidden! flex-none" data-shortcut="mod-k" />
-            </button>
             <MenuLink
               icon="home"
               text={t("Activity")}

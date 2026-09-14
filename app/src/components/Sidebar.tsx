@@ -446,7 +446,7 @@ export function Sidebar(props: Props) {
           <Icon name="collapse-sidebar" class="block h-4 w-4" />
         </button>
 
-        <div class="sidebar-panel before:backdrop-surface-blur after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
+        <div class="sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background [&>*]:relative [&>*]:z-10">
           <Navigation />
         </div>
 

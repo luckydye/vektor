@@ -57,7 +57,7 @@ function SpacesRail(props: {
         "--color-background": "var(--color-neutral-25)",
       }}
     >
-      <div class="sidebar-panel before:backdrop-surface-blur after:surface-noise relative flex h-full w-full flex-col items-center overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
+      <div class="sidebar-panel after:surface-noise relative flex h-full w-full flex-col items-center overflow-hidden rounded-lg bg-background/90 [&>*]:relative [&>*]:z-10">
         <div class="mt-4xs flex aspect-square w-[2.375rem] flex-none items-center justify-center">
           <img
             src="/favicon_dark.png"

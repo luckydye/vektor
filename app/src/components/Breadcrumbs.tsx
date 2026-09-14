@@ -45,7 +45,7 @@ export function Breadcrumbs(props: Props) {
     <Show when={showBreadcrumbs()}>
       <nav
         aria-label="Breadcrumb"
-        class="breadcrumbs hidden min-w-0 text-neutral-600 text-size-medium md:flex"
+        class="breadcrumbs hidden min-w-0 text-neutral-600 text-size-medium md:flex bg-background px-2 py-1.5 rounded-lg"
       >
         <ol
           ref={olRef}
