@@ -227,7 +227,7 @@ The core sanitizer (`app/src/utils/html.ts` `sanitizeDocumentHtml`/`sanitizeSvgM
 
 ### 5.8 Data-integrity / logic
 - **Look:** non-atomic `max(rev)+1` with an `await` gap → duplicate revision numbers under
-  concurrency; `publishedRev` can point at an open suggestion; comment DELETE authorized against a
+  concurrency; comment DELETE authorized against a
   caller-supplied `documentId` not the comment's own; content-addressed upload dedup reassigns
   another doc's attachment; category delete leaves dangling slug refs; readonly lock not enforced on
   PATCH properties/parentId/publishedRev.

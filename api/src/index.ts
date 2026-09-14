@@ -73,8 +73,6 @@ export interface Revision {
   content: string;
   checksum: string;
   parentRev: number | null;
-  /** "suggestion" for proposed edits; null for an ordinary revision. */
-  status?: string | null;
   message?: string | null;
   createdAt: string;
   createdBy: string;

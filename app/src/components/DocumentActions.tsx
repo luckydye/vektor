@@ -8,16 +8,20 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import "@atrium-ui/elements/popover";
 import { canEdit } from "#acl/permissions.ts";
 import { api } from "#api/client.ts";
+import { useQueryClient } from "#composeables/query.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
-import { useDocumentContext } from "#composeables/useDocument.ts";
+import { useDocument, useDocumentContext } from "#composeables/useDocument.ts";
 import { setCancelCount, setEditing, useEditor } from "#composeables/useEditor.ts";
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
+import { useProperties } from "#composeables/useProperties.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { propertyValueToScalar } from "#documents/properties.ts";
+import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { Button } from "./Button.tsx";
@@ -30,7 +34,6 @@ import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
-import { useTranslation } from "#composeables/useTranslation.ts";
 
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
@@ -82,15 +85,24 @@ export function DocumentActions(props: Props) {
     removeHeaderImage,
     dialogOpen,
   } = useHeaderImage();
-  const { editing, saveStatus, saveError, hasChanges } = useEditor();
+  const { editing, saveStatus, saveError } = useEditor();
   const { documentContext, canUseDocumentEditor, hasPublishedVersion } =
     useDocumentContext();
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   const userCanEdit = createMemo(() => documentContext().userCanEdit);
   const userCanManageDocument = createMemo(() => canEdit(currentSpace()?.userRole));
   const documentId = createMemo(() => documentContext().documentId);
   const documentType = createMemo(() => documentContext().documentType);
+
+  const { document } = useDocument(documentId);
+  const { deleteProperty } = useProperties();
+  const isTemplate = createMemo(
+    () =>
+      propertyValueToScalar(document()?.properties?.[templatePropertyKey]) ===
+      templatePropertyValue,
+  );
 
   const [isDuplicating, setIsDuplicating] = createSignal(false);
   const [showShareDialog, setShowShareDialog] = createSignal(false);
@@ -98,7 +110,6 @@ export function DocumentActions(props: Props) {
   const [emailPreferenceLoaded, setEmailPreferenceLoaded] = createSignal(false);
   const isSaving = createMemo(() => saveStatus() === "saving");
   const publishDisabled = createMemo(() => isSaving());
-  const suggestionSaveDisabled = createMemo(() => isSaving() || !hasChanges());
   const isNewDocument = createMemo(() => !documentId());
   const showCancel = createMemo(() => !isNewDocument() && hasPublishedVersion());
 
@@ -205,20 +216,6 @@ export function DocumentActions(props: Props) {
     setEditing(false);
     setCancelCount((count) => count + 1);
     if (!documentId()) window.history.back();
-  }
-
-  async function saveAsSuggestion(e: MouseEvent) {
-    const action = Actions.get("document:save:suggestion");
-    if (!action) return;
-    await action.run();
-    (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
-  }
-
-  async function publishAsTemplate(e: MouseEvent) {
-    const action = Actions.get("document:save:template");
-    if (!action) return;
-    await action.run();
-    (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
   }
 
   function handleContextMenuMousedown(event: MouseEvent) {
@@ -333,6 +330,25 @@ export function DocumentActions(props: Props) {
         } finally {
           setIsDuplicating(false);
         }
+      },
+    });
+  });
+
+  createEffect(() => {
+    const currentDocumentId = documentId();
+    if (!currentDocumentId || !userCanEdit() || !isTemplate()) return;
+
+    registerScopedAction("document:remove-template", {
+      title: t("Remove from templates"),
+      icon: () => "delete-entry",
+      description: t("Stop offering this document when creating a new one"),
+      group: "document",
+      order: 46,
+      run: async () => {
+        await deleteProperty(currentDocumentId, templatePropertyKey);
+        // The picker caches its list, and the whole point is that this document
+        // leaves it.
+        queryClient.invalidateQueries({ queryKey: ["wiki_templates", currentSpaceId()] });
       },
     });
   });
@@ -455,11 +471,7 @@ export function DocumentActions(props: Props) {
       </Show>
 
       <Show when={canUseDocumentEditor() && !editing()}>
-        <button
-          type="button"
-          class="button-outline max-md:hidden"
-          onClick={startEditing}
-        >
+        <button type="button" class="button-outline max-md:hidden" onClick={startEditing}>
           <Icon name="edit-document" />
           <span>{t("Edit")}</span>
         </button>
@@ -490,72 +502,12 @@ export function DocumentActions(props: Props) {
                 {saveError()?.message ?? t("Publishing failed")}
               </p>
             </Show>
-            <div class="button-primary-base button-with-icon items-stretch overflow-hidden">
-              <button
-                type="button"
-                class="button-primary-pointer inline-flex items-center justify-center px-3xs"
-                disabled={publishDisabled()}
-                onClick={(e) => void publishDocument(e)}
-              >
-                <Icon name="publish" />
-                <span>
-                  {isSaving()
-                    ? t("Saving…")
-                    : isNewDocument()
-                      ? t("Create")
-                      : t("Publish")}
-                </span>
-              </button>
-              <Show when={!isNewDocument()}>
-                <a-popover-trigger class="group flex items-stretch">
-                  <button
-                    slot="trigger"
-                    type="button"
-                    class="button-primary-pointer flex items-center justify-center border-primary-300 border-l px-4xs"
-                    disabled={isSaving()}
-                    aria-label={t("Publish options")}
-                  >
-                    <Icon name="chevron-down" />
-                  </button>
-                  <a-popover class="group" placements="bottom-end">
-                    <div class="mt-2 w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
-                      <div
-                        class="flex w-[220px] flex-col gap-[4px] rounded-lg border border-neutral-100 bg-background p-[4px]"
-                        style={{ "box-shadow": "-2px 2px 24px 0px rgba(0, 0, 0, 0.1)" }}
-                      >
-                        <button
-                          type="button"
-                          class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
-                          disabled={suggestionSaveDisabled()}
-                          onClick={(e) => void saveAsSuggestion(e)}
-                        >
-                          <div class="font-medium text-size-small">
-                            {t("Save as suggestion")}
-                          </div>
-                          <div class="text-neutral-500 text-size-small">
-                            {t("Create an open suggestion instead of publishing")}
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          class="w-full rounded-md px-3xs py-[8px] text-left transition-colors hover:bg-primary-10"
-                          disabled={isSaving()}
-                          onClick={(e) => void publishAsTemplate(e)}
-                        >
-                          <div class="font-medium text-size-small">
-                            {t("Publish as template")}
-                          </div>
-                          <div class="text-neutral-500 text-size-small">
-                            {t("Publish and offer this document when creating a new one")}
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  </a-popover>
-                </a-popover-trigger>
-              </Show>
-            </div>
+            <Button disabled={publishDisabled()} onClick={(e) => void publishDocument(e)}>
+              <Icon name="publish" />
+              <span>
+                {isSaving() ? t("Saving…") : isNewDocument() ? t("Create") : t("Publish")}
+              </span>
+            </Button>
           </div>
 
           <Show when={showCancel()}>

@@ -23,7 +23,6 @@ vi.mock("#composeables/useProperties.ts", () => ({
 }));
 
 const documentPut = vi.fn();
-const revisionPost = vi.fn();
 const propertyPatch = vi.fn();
 
 vi.mock("#api/client.ts", () => ({
@@ -33,7 +32,6 @@ vi.mock("#api/client.ts", () => ({
       getCached: async () => undefined,
       subscribeCached: () => () => {},
       put: (...args: unknown[]) => documentPut(...args),
-      post: (...args: unknown[]) => revisionPost(...args),
     },
   },
 }));
@@ -54,14 +52,13 @@ beforeEach(() => {
   clearToasts();
   // The doubles are module-level, so history leaks between tests otherwise.
   documentPut.mockReset().mockResolvedValue({ document: {} });
-  revisionPost.mockReset().mockResolvedValue({ rev: 2 });
   propertyPatch.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(clearToasts);
 
 /** Drive one save through a real `useEditor`, then report what it left behind. */
-async function save(mode: "revision" | "suggestion" | "template") {
+async function save(mode: "revision" | "template") {
   const { useEditor, setEditing } = await import("#composeables/useEditor.ts");
   let result = { status: "", error: undefined as string | undefined, editing: false };
 
@@ -101,16 +98,6 @@ describe("save failures in the editor", () => {
     expect(result.editing).toBe(true);
     expect(messages("error")).toEqual(["API request failed: 403 Forbidden"]);
     expect(messages("success")).toEqual([]);
-  });
-
-  it("reports a refused suggestion", async () => {
-    revisionPost.mockRejectedValue(new Error("Forbidden"));
-
-    const result = await save("suggestion");
-
-    expect(result.status).toBe("error");
-    expect(result.error).toBe("Forbidden");
-    expect(messages("error")).toEqual(["Forbidden"]);
   });
 
   it("reports a template marker that could not be written, and does not publish", async () => {

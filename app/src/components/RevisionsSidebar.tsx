@@ -23,9 +23,9 @@ import "@atrium-ui/elements/popover";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Icon } from "./Icon.tsx";
-import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 interface Props {
   documentId: string;
@@ -41,7 +41,6 @@ export function RevisionsSidebar(props: Props) {
   const lang = useLocale();
 
   const {
-    revisions,
     getRevision,
     publishRevision,
     fetchHistory,
@@ -80,8 +79,6 @@ export function RevisionsSidebar(props: Props) {
     ),
   );
 
-  const revisionsByNumber = createMemo(() => new Map(revisions().map((r) => [r.rev, r])));
-
   function getUser(userId?: string | null) {
     return findMemberUser(members(), userId);
   }
@@ -92,17 +89,6 @@ export function RevisionsSidebar(props: Props) {
 
   function isPublishedEntry(entry: AuditLog): boolean {
     return !!entry.revisionId && entry.revisionId === publishedRev();
-  }
-
-  function isSuggestionEntry(entry: AuditLog): boolean {
-    if (!entry.revisionId) return false;
-    const revision = revisionsByNumber().get(entry.revisionId);
-    return revision != null && revision.status !== null;
-  }
-
-  function revisionStatusOf(entry: AuditLog): string | null {
-    if (!entry.revisionId) return null;
-    return revisionsByNumber().get(entry.revisionId)?.status ?? null;
   }
 
   function primaryRevisionEntry(items: AuditLog[]): AuditLog | undefined {
@@ -146,11 +132,7 @@ export function RevisionsSidebar(props: Props) {
 
     dispatchWindowEvent(
       new CustomEvent("revision:view", {
-        detail: {
-          revision: revisionId,
-          content: revision.content,
-          isSuggestion: revision.status !== null,
-        },
+        detail: { revision: revisionId, content: revision.content },
         bubbles: true,
         composed: true,
       }),
@@ -166,7 +148,7 @@ export function RevisionsSidebar(props: Props) {
 
     dispatchWindowEvent(
       new CustomEvent("revision:diff", {
-        detail: { revision: revisionId, base, isSuggestion: revision.status !== null },
+        detail: { revision: revisionId, base },
         bubbles: true,
         composed: true,
       }),
@@ -391,12 +373,7 @@ export function RevisionsSidebar(props: Props) {
                                   <Icon class="h-4 w-4 flex-none" name="copy" />
                                   Copy Link
                                 </button>
-                                <Show
-                                  when={
-                                    !isPublishedEntry(primary) &&
-                                    !isSuggestionEntry(primary)
-                                  }
-                                >
+                                <Show when={!isPublishedEntry(primary)}>
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -418,18 +395,7 @@ export function RevisionsSidebar(props: Props) {
                     );
                   }}
                   entryActions={(entry) => (
-                    <Show
-                      when={isPublishedEntry(entry)}
-                      fallback={
-                        <Show when={isSuggestionEntry(entry)}>
-                          <span class="shrink-0 self-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-px font-medium text-amber-600 text-size-extra-small uppercase tracking-wide">
-                            {revisionStatusOf(entry) === "applied"
-                              ? "Applied"
-                              : "Suggestion"}
-                          </span>
-                        </Show>
-                      }
-                    >
+                    <Show when={isPublishedEntry(entry)}>
                       <span class="shrink-0 self-center rounded-sm border border-blue-200 bg-blue-50 px-1.5 py-px font-medium text-blue-600 text-size-extra-small uppercase tracking-wide">
                         Published
                       </span>

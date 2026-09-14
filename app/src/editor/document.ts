@@ -29,7 +29,6 @@ import {
   imageFilesFromDataTransfer,
   insertImageFilesAt,
 } from "./extensions/ImageUpload.ts";
-import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
 import { MentionSuggestions } from "./extensions/MentionSuggestions.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
 import {
@@ -196,10 +195,6 @@ function createEditor(
     window.removeEventListener("resize", syncDragHandlePosition, true);
   };
 
-  const isInlineSuggestionElement = (target: EventTarget | null) => {
-    return target instanceof HTMLElement && target.closest(".wiki-inline-suggestion");
-  };
-
   const ensureBlockDropIndicator = () => {
     if (blockDropIndicator) return blockDropIndicator;
 
@@ -291,21 +286,7 @@ function createEditor(
     indicator.style.opacity = "1";
   };
 
-  const handleEditorMouseMove = (event: MouseEvent) => {
-    if (!isInlineSuggestionElement(event.target)) {
-      return;
-    }
-
-    editor.commands.setMeta("hideDragHandle", true);
-    hideBlockDropIndicator();
-  };
-
   const handleEditorDragOver = (event: DragEvent) => {
-    if (isInlineSuggestionElement(event.target)) {
-      hideBlockDropIndicator();
-      return;
-    }
-
     if (dragHasFiles(event.dataTransfer)) {
       event.preventDefault();
       if (event.dataTransfer) {
@@ -317,7 +298,6 @@ function createEditor(
   };
 
   const cleanupBlockDropIndicator = () => {
-    editor?.view?.dom?.removeEventListener("mousemove", handleEditorMouseMove);
     editor?.view?.dom?.removeEventListener("dragover", handleEditorDragOver);
     editor?.view?.dom?.removeEventListener("drop", hideBlockDropIndicator);
     window.removeEventListener("dragend", hideBlockDropIndicator, true);
@@ -367,7 +347,6 @@ function createEditor(
         computePositionConfig: {
           strategy: "fixed",
         },
-        isDraggableBlock: (block) => !block.matches(".wiki-inline-suggestion"),
         render: () => {
           const element = document.createElement("div");
           element.classList.add("custom-drag-handle");
@@ -412,7 +391,6 @@ function createEditor(
         class: "wiki-dropcursor",
       }),
       ExtensionSuggestions,
-      InlineSuggestions,
 
       Collaboration.configure({
         document: ydoc,
@@ -420,7 +398,6 @@ function createEditor(
     ],
   });
 
-  editor.view.dom.addEventListener("mousemove", handleEditorMouseMove);
   editor.view.dom.addEventListener("mousemove", handleTrackedPointerMove, {
     passive: true,
   });

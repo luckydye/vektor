@@ -399,7 +399,6 @@ try {
         snapshot,
         checksum: checksumOf(html),
         parentRev: rev.parent_rev,
-        status: null, // a normal save, not a suggestion
         message: rev.message,
         createdAt: at(rev.created_at),
         createdBy: rev.created_by,

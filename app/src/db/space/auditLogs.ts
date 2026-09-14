@@ -7,14 +7,12 @@ import { type AuditLog, auditLog, document } from "#db/schema/space.ts";
 /**
  * Every event kind the audit log records.
  *
- * `save` is an edit to the current revision; `suggest` is one parked as a
- * non-current revision awaiting review.
+ * `save` is an edit to the current revision.
  */
 export type AuditEvent =
   | "view"
   | "comment"
   | "save"
-  | "suggest"
   | "publish"
   | "unpublish"
   | "restore"
@@ -31,7 +29,6 @@ export type AuditEvent =
 export const DOCUMENT_CONTRIBUTION_AUDIT_EVENTS: AuditEvent[] = [
   "create",
   "save",
-  "suggest",
   "restore",
   "publish",
 ];
@@ -68,10 +65,8 @@ export interface AuditDetails {
   resourceType?: string;
   /** ACL events: resource the permission applies to (feature name for features). */
   resourceId?: string;
-  /** Revision number this save/suggestion was based on. */
+  /** Revision number this save was based on. */
   parentRev?: number | null;
-  /** Suggestion status at the time of the "suggest" event. */
-  status?: "open" | "applied" | "dismissed" | null;
 }
 
 export interface CreateAuditLogParams {

@@ -109,7 +109,7 @@ export function Navigation() {
 
   return (
     <div class="z-1 flex h-full flex-col">
-      <div class="sticky top-0 z-10 flex-none rounded-t-md px-3xs @max-xs:px-5xs pt-4xs pb-5xs">
+      <div class="sticky top-0 z-10 flex-none rounded-t-md px-4xs @max-xs:px-4xs pt-4xs pb-5xs">
         <CreateSpaceDialog
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}

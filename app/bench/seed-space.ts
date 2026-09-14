@@ -482,7 +482,6 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
       slug: string;
       rev: number;
       html: string;
-      status: "open" | null;
       parentRev: number | null;
       createdAt: Date;
       createdBy: string;
@@ -581,7 +580,6 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
             rev === revisions
               ? content
               : generateHtml(rng, plan.title, intBetween(rng, 2, 7)),
-          status: null,
           parentRev: rev === 1 ? null : rev - 1,
           createdAt: revisionAt,
           createdBy: revisionBy,
@@ -596,7 +594,6 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
           details: JSON.stringify({
             message: "Revision created",
             parentRev: rev === 1 ? null : rev - 1,
-            status: null,
           }),
           createdAt: revisionAt,
         });
@@ -608,39 +605,6 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
             event: "publish",
             details: JSON.stringify({ message: `Published revision ${rev}` }),
             createdAt: revisionAt,
-          });
-        }
-      }
-
-      // Open suggestions sit past the head revision without moving currentRev,
-      // exactly as createRevision leaves them.
-      if (rng() < 0.03) {
-        const suggestions = intBetween(rng, 1, 2);
-        for (let i = 1; i <= suggestions; i++) {
-          const suggestionBy = pick(rng, authorIds);
-          revisionPlans.push({
-            documentId: id,
-            slug: plan.slug,
-            rev: revisions + i,
-            html: generateHtml(rng, `${plan.title} (suggestion ${i})`, 2),
-            status: "open",
-            parentRev: revisions,
-            createdAt: updatedAt,
-            createdBy: suggestionBy,
-          });
-
-          if (!options.audit) continue;
-          auditRows.push({
-            docId: id,
-            revisionId: revisions + i,
-            userId: suggestionBy,
-            event: "suggest",
-            details: JSON.stringify({
-              message: "Suggestion created",
-              parentRev: revisions,
-              status: "open",
-            }),
-            createdAt: updatedAt,
           });
         }
       }
@@ -657,8 +621,7 @@ export async function seedSpace(options: SeedOptions): Promise<SeedResult> {
         snapshot: await compressHtml(plan.html),
         checksum: checksum(plan.html),
         parentRev: plan.parentRev,
-        status: plan.status,
-        message: plan.status === "open" ? "Suggested edit" : null,
+        message: null,
         createdAt: plan.createdAt,
         createdBy: plan.createdBy,
       }),

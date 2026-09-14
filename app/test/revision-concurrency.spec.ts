@@ -74,16 +74,12 @@ async function createDocument(title: string): Promise<string> {
 }
 
 /** Fires `count` saves without awaiting any of them in between. */
-function concurrentSaves(
-  id: string,
-  count: number,
-  mode: "revision" | "suggestion" = "revision",
-): Promise<Response[]> {
+function concurrentSaves(id: string, count: number): Promise<Response[]> {
   return Promise.all(
     Array.from({ length: count }, (_, index) =>
       apiRequest(documentPath(id), {
         method: "POST",
-        body: JSON.stringify({ html: `<p>save ${index}</p>`, mode }),
+        body: JSON.stringify({ html: `<p>save ${index}</p>` }),
       }),
     ),
   );
@@ -165,7 +161,7 @@ describe("concurrent saves of one document", () => {
 
     const firstSave = await apiRequest(documentPath(id), {
       method: "POST",
-      body: JSON.stringify({ html: "<p>base body</p>", mode: "revision" }),
+      body: JSON.stringify({ html: "<p>base body</p>" }),
     });
     expect(firstSave.status).toBe(200);
     const rev = (await firstSave.json()).revision.rev as number;
@@ -196,7 +192,7 @@ describe("concurrent saves of one document", () => {
 
     const firstSave = await apiRequest(documentPath(id), {
       method: "POST",
-      body: JSON.stringify({ html: "<p>published body</p>", mode: "revision" }),
+      body: JSON.stringify({ html: "<p>published body</p>" }),
     });
     expect(firstSave.status).toBe(200);
     const publishedRev = (await firstSave.json()).revision.rev;
@@ -208,30 +204,6 @@ describe("concurrent saves of one document", () => {
     expect(new Set(revs).size).toBe(revs.length);
     expect(await revisionContent(id, publishedRev)).toContain("published body");
     expect((await documentMeta(id)).publishedRev).toBe(publishedRev);
-  });
-
-  it("keeps every concurrent suggestion, each at its own number", async () => {
-    const id = await createDocument("Racing suggestions");
-
-    const firstSave = await apiRequest(documentPath(id), {
-      method: "POST",
-      body: JSON.stringify({ html: "<p>base body</p>", mode: "revision" }),
-    });
-    expect(firstSave.status).toBe(200);
-
-    // Suggestions are never overwritten in place, so all ten must survive as
-    // ten distinct revisions with the content each one proposed.
-    const responses = await concurrentSaves(id, 10, "suggestion");
-    const suggested = await Promise.all(
-      responses.map(async (response) => {
-        expect(response.status).toBe(200);
-        return (await response.json()).revision.rev as number;
-      }),
-    );
-
-    expect(new Set(suggested).size).toBe(10);
-    const contents = await Promise.all(suggested.map((rev) => revisionContent(id, rev)));
-    expect(new Set(contents).size).toBe(10);
   });
 });
 

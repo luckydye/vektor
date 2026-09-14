@@ -33,8 +33,7 @@ const apiRequest = createSessionApiRequest(BASE_URL);
 const REV1_CONTENT = "<p>rev1 PRE-PUBLICATION-SECRET credential-abc</p>";
 const REV2_CONTENT = "<p>rev2 PUBLISHED public-ok</p>";
 const REV3_CONTENT = "<p>rev3 UNPUBLISHED-SECRET merger-price-9999</p>";
-const SUGGESTION_CONTENT = "<p>SUGGESTION-SECRET rejected-counteroffer</p>";
-const SECRETS = ["PRE-PUBLICATION-SECRET", "UNPUBLISHED-SECRET", "SUGGESTION-SECRET"];
+const SECRETS = ["PRE-PUBLICATION-SECRET", "UNPUBLISHED-SECRET"];
 
 let serverProcess: TestServerProcess;
 let ownerToken: string;
@@ -53,10 +52,6 @@ let documentId: string;
 let publishedRev: number;
 let oldRev: number;
 let draftRev: number;
-
-/** A second document: a suggestion a later publish left *below* the pointer. */
-let suggestionDocumentId: string;
-let suggestionRev: number;
 
 /** A workflow run — a type this route refuses whole, by any parameter. */
 let workflowRunDocumentId: string;
@@ -90,17 +85,13 @@ async function grant(body: Record<string, unknown>): Promise<void> {
   }
 }
 
-async function saveRevision(
-  html: string,
-  id = documentId,
-  mode: "revision" | "suggestion" = "revision",
-): Promise<number> {
+async function saveRevision(html: string, id = documentId): Promise<number> {
   const response = await apiRequest(pathFor(id), ownerToken, {
     method: "POST",
-    body: JSON.stringify({ html, mode }),
+    body: JSON.stringify({ html }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to save ${mode} (${response.status})`);
+    throw new Error(`Failed to save revision (${response.status})`);
   }
   return (await response.json()).revision.rev;
 }
@@ -214,22 +205,6 @@ beforeAll(async () => {
   await publish(publishedRev);
   draftRev = await saveRevision(REV3_CONTENT);
   expect([oldRev, publishedRev, draftRev]).toEqual([1, 2, 3]);
-
-  suggestionDocumentId = await createDocument({
-    content: REV1_CONTENT,
-    properties: { title: "Suggestion Boundary Document" },
-  });
-  const suggestionBaseRev = await saveRevision(REV1_CONTENT, suggestionDocumentId);
-  await publish(suggestionBaseRev, suggestionDocumentId);
-  suggestionRev = await saveRevision(
-    SUGGESTION_CONTENT,
-    suggestionDocumentId,
-    "suggestion",
-  );
-  // Publishing past the suggestion is what used to release it.
-  const laterRev = await saveRevision(REV2_CONTENT, suggestionDocumentId);
-  await publish(laterRev, suggestionDocumentId);
-  expect(suggestionRev).toBeLessThan(laterRev);
 
   workflowRunDocumentId = await createDocument({
     content: REV2_CONTENT,
@@ -447,8 +422,6 @@ describe("revision metadata on the published snapshot", () => {
     expect(revision.message).toBeUndefined();
     expect(revision.checksum).toBeUndefined();
     expect(revision.parentRev).toBeUndefined();
-    // Stated, not withheld: clients read `!== null` as "is a suggestion".
-    expect(revision.status).toBeNull();
   });
 
   it("is served to a caller who holds it", async () => {
@@ -461,28 +434,6 @@ describe("revision metadata on the published snapshot", () => {
     const { revision } = await response.json();
     expect(revision.content).toBe(REV2_CONTENT);
     expect(revision.createdBy).toBeTruthy();
-  });
-});
-
-/** A suggestion is history too — the feature is what gates it, not its status. */
-describe("a suggestion left below the publish pointer", () => {
-  it("is readable with the history feature", async () => {
-    const response = await apiRequest(
-      pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
-      historyViewerToken,
-    );
-
-    expect(response.status).toBe(200);
-    expect((await response.json()).revision.content).toBe(SUGGESTION_CONTENT);
-  });
-
-  it("is refused without it", async () => {
-    await expectRefused(
-      await apiRequest(
-        pathFor(suggestionDocumentId, `?rev=${suggestionRev}`),
-        viewerToken,
-      ),
-    );
   });
 });
 

@@ -253,7 +253,7 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET | `/spaces/:spaceId/documents/:documentId/contributors` | Users who have edited the document |
 | GET | `/spaces/:spaceId/documents/:documentId/diff` | Unified/inline diff between a revision and its base |
 | POST | `/spaces/:spaceId/documents/:documentId/edit` | Apply structured partial edit operations (live-merge aware) |
-| GET/POST/PATCH | `/spaces/:spaceId/documents/:documentId/revisions` | List revisions / restore a revision / update suggestion status |
+| GET/POST | `/spaces/:spaceId/documents/:documentId/revisions` | List revisions / restore a revision |
 | GET/POST | `/spaces/:spaceId/extensions` | List extensions / upload (install or update) an extension package |
 | GET/PATCH/DELETE | `/spaces/:spaceId/extensions/:extensionId` | Read / enable-disable / delete an extension |
 | GET | `/spaces/:spaceId/extensions/:extensionId/package` | Download the raw extension ZIP |
@@ -2378,30 +2378,24 @@ curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
 
 ### `POST /spaces/:spaceId/documents/:documentId`
 
-Creates a revision, or a suggestion against one.
+Creates a revision.
 
-- **Auth**: session (`requireUser`) + `viewer` on the document, then per mode —
-  `editor` for a full revision, the `comment` feature on this document for
-  `mode: "suggestion"`. Authorized before the content is validated, so a refused caller
-  gets that verdict rather than a critique of their payload.
+- **Auth**: session (`requireUser`) + `editor` on the document. Authorized before the
+  content is validated, so a refused caller gets that verdict rather than a critique of
+  their payload.
 - **Body**: JSON — `html` (string, required), `contentType?` (defaults to
-  `text/html`), `message?` (string), `mode?` (`"revision"` | `"suggestion"`,
-  default revision). Or an HTML/Markdown raw body, which can only ever be a full
-  revision. Other raw content types are treated as HTML.
-- **Behavior**: readonly documents reject with `403`. `mode: "suggestion"` creates a
-  pending-status suggestion revision instead of a normal one, based on the published
-  revision or else the latest saved one; a document with neither is a `400`. Input is
-  normalized and sanitized as HTML, except serialized document content, which is stored
-  unchanged.
-- **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, status,
-  message, createdAt, createdBy } }`.
+  `text/html`), `message?` (string). Or an HTML/Markdown raw body; other raw content
+  types are treated as HTML.
+- **Behavior**: readonly documents reject with `403`. Input is normalized and sanitized
+  as HTML, except serialized document content, which is stored unchanged.
+- **Returns**: `200 { revision: { id, documentId, rev, checksum, parentRev, message,
+  createdAt, createdBy } }`.
 
 ```bash
 curl -sS -b "$COOKIE" -H "Content-Type: application/json" \
   -d '{
         "html": "<h1>Launch plan</h1><p>Ship on the 23rd.</p>",
-        "message": "Push the date back a day",
-        "mode": "suggestion"
+        "message": "Push the date back a day"
       }' \
   "$VEKTOR/spaces/$SPACE/documents/doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31"
 ```
@@ -2414,7 +2408,6 @@ curl -sS -b "$COOKIE" -H "Content-Type: application/json" \
     "rev": 14,
     "checksum": "6f1b9c0e…",
     "parentRev": 13,
-    "status": "open",
     "message": "Push the date back a day",
     "createdAt": "2026-08-17T10:15:00.000Z",
     "createdBy": "Lm4pQ8rT2vX6zB0dF3hJ7kN9sW1yA5cE"
@@ -2520,9 +2513,8 @@ curl -sS -b "$COOKIE" \
 
 - **Auth**: session / access token / job token / public; `viewer` on the document, plus
   the `?rev=` revision rule above for both sides of the comparison.
-- **Query**: `rev` (int ≥1, required), `base?` (int ≥1 — defaults to the revision this
-  one was meant to change: its parent for a suggestion, else the document's published
-  revision), `format` (`"html"` for an inline `<ins>`/`<del>` redline; default a unified
+- **Query**: `rev` (int ≥1, required), `base?` (int ≥1 — defaults to the document's
+  published revision), `format` (`"html"` for an inline `<ins>`/`<del>` redline; default a unified
   diff patch via the `diff` package). Serialized document types use an escaped source
   patch instead of an HTML redline.
 - **Returns**: `200` `text/plain` unified patch, or `text/html` for the rendered diff.
@@ -2627,37 +2619,9 @@ curl -sS -b "$COOKIE" -H "Content-Type: application/json" \
     "rev": 15,
     "checksum": "0ab72f5d…",
     "parentRev": 14,
-    "status": null,
     "message": "Roll back the date change",
     "createdAt": "2026-08-17T10:30:00.000Z",
     "createdBy": "KJ8vQ2mNpR4tL6wX9yZ1aB3cD5eF7gH0"
-  }
-}
-```
-
-### `PATCH /spaces/:spaceId/documents/:documentId/revisions`
-
-Updates a suggestion's status.
-
-- **Auth**: session; `editor` on the document.
-- **Query**: `rev` (int ≥1, required).
-- **Body**: `{ status: "open" | "applied" | "dismissed" }`. The target revision must
-  be a suggestion (non-null `status`) — else `400`.
-- **Returns**: `200 { revision }`. `404` if the revision is missing.
-
-```bash
-curl -sS -X PATCH -b "$COOKIE" -H "Content-Type: application/json" \
-  -d '{ "status": "applied" }' \
-  "$VEKTOR/spaces/$SPACE/documents/doc_c58a1d70-3e42-4b9f-8a16-2f7d0c9b5e31/revisions?rev=14"
-```
-
-```json
-{
-  "revision": {
-    "id": "rev_b70c25e1-4a8f-4d93-8b26-51f7c0a9de34",
-    "rev": 14,
-    "status": "applied",
-    "parentRev": 13
   }
 }
 ```

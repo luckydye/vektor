@@ -6,6 +6,7 @@ import {
   on,
   onCleanup,
 } from "solid-js";
+import { propertyValueToScalar } from "#documents/properties.ts";
 import { templatePropertyKey, templatePropertyValue } from "#documents/templates.ts";
 import { supportsDocumentEditor } from "#documents/types.ts";
 import { CollaborationJoinAbandoned } from "#editor/collaboration.ts";
@@ -15,7 +16,6 @@ import { useQueryClient } from "./query.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useProperties } from "./useProperties.ts";
-import { useRevisions } from "./useRevisions.ts";
 import { useToast } from "./useToast.ts";
 
 /**
@@ -23,7 +23,7 @@ import { useToast } from "./useToast.ts";
  * publish that also marks the document as one the new-document picker offers
  * as a starting point.
  */
-export type SaveMode = "revision" | "suggestion" | "template";
+export type SaveMode = "revision" | "template";
 
 /** Whether the user has an active editing session on the current document. */
 export const [editing, setEditing] = createSignal(false);
@@ -90,7 +90,6 @@ type EditorState = {
 
 type DocumentEditor = EditorState & {
   canMountEditor: Accessor<boolean>;
-  suggestionSavedCount: Accessor<number>;
   finishEditing: (mode: SaveMode) => Promise<void>;
   startEditorSession: () => Promise<void>;
   stopEditorSession: () => void;
@@ -123,20 +122,25 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     onSessionStarted,
   } = options;
 
-  const [suggestionSavedCount, setSuggestionSavedCount] = createSignal(0);
   const canMountEditor = createMemo(
     () => !readonly() && supportsDocumentEditor(documentType()),
   );
   const {
+    document,
     saveStatus: documentSaveStatus,
     saveError: documentSaveError,
     saveDocument,
   } = useDocument(documentId, documentType);
-  const { saveRevision, error: revisionError } = useRevisions(documentId);
+  const isTemplate = createMemo(
+    () =>
+      propertyValueToScalar(document()?.properties?.[templatePropertyKey]) ===
+      templatePropertyValue,
+  );
   const { updateProperty } = useProperties();
   const queryClient = useQueryClient();
   const toast = useToast();
 
+  const [sessionOpen, setSessionOpen] = createSignal(false);
   let editorSession = 0;
   // Which document the running session belongs to, so the two effects below can
   // tell "the session has to move" from "it is already where it belongs".
@@ -183,25 +187,15 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     }
 
     try {
-      if (mode === "suggestion") {
-        // `saveRevision` keeps its failure to itself and answers null, so the
-        // message has to be picked up from the composable's own error signal.
-        if (!(await saveRevision(content, "Suggested changes", "suggestion"))) {
-          throw new Error(revisionError() ?? "Could not save the suggestion");
-        }
-      } else {
-        // Marked before the publish, so a marker that cannot be written
-        // leaves the document as it was rather than published without it.
-        if (mode === "template") await markAsTemplate();
-        if (!(await saveDocument(content, { publish: true }))) {
-          // Also swallowed, but `useDocument` has raised the toast already —
-          // record it so the editor keeps showing that nothing was published.
-          setSaveStatus("error");
-          setSaveError(
-            new Error(documentSaveError() ?? "Could not publish the document"),
-          );
-          return;
-        }
+      // Marked before the publish, so a marker that cannot be written
+      // leaves the document as it was rather than published without it.
+      if (mode === "template") await markAsTemplate();
+      if (!(await saveDocument(content, { publish: true }))) {
+        // Swallowed by `useDocument`, which has raised the toast already —
+        // record it so the editor keeps showing that nothing was published.
+        setSaveStatus("error");
+        setSaveError(new Error(documentSaveError() ?? "Could not publish the document"));
+        return;
       }
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
@@ -220,8 +214,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       }
     }, 2000);
 
-    if (mode === "suggestion") setSuggestionSavedCount((count) => count + 1);
-    else if (mode === "template") toast.success("Published as template");
+    if (mode === "template") toast.success("Published as template");
     else toast.success("Document published");
   }
 
@@ -232,29 +225,32 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       group: "edit",
       run: async () => finishEditing("revision"),
     });
-
-    Actions.register("document:save:suggestion", {
-      title: "Save as suggestion",
-      description: "Create an open suggestion instead of publishing",
-      group: "edit",
-      run: async () => finishEditing("suggestion"),
-    });
-
-    if (documentId()) {
-      Actions.register("document:save:template", {
-        title: "Publish as template",
-        description: "Publish and offer this document as a starting point for new ones",
-        group: "edit",
-        run: async () => finishEditing("template"),
-      });
-    }
+    setSessionOpen(true);
   }
 
   function unregisterSaveActions() {
     Actions.unregister("document:save:publish");
-    Actions.unregister("document:save:suggestion");
-    Actions.unregister("document:save:template");
+    setSessionOpen(false);
   }
+
+  /**
+   * Offered while editing a saved document that is not already a template —
+   * one that is has nothing to publish as one, and the context menu offers
+   * `document:remove-template` beside it instead.
+   */
+  createEffect(() => {
+    if (!sessionOpen() || !documentId() || isTemplate()) return;
+
+    Actions.register("document:save:template", {
+      title: "Publish as template",
+      icon: () => "new-document",
+      description: "Publish and offer this document as a starting point for new ones",
+      group: "document",
+      order: 45,
+      run: async () => finishEditing("template"),
+    });
+    onCleanup(() => Actions.unregister("document:save:template"));
+  });
 
   async function startEditorSession() {
     // A document switch flushes the `editing` and `documentId` effects back to
@@ -346,7 +342,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     resetEditingState,
     shouldMountEditor,
     canMountEditor,
-    suggestionSavedCount,
     finishEditing,
     startEditorSession,
     stopEditorSession,

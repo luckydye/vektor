@@ -4,10 +4,9 @@ import {
   authenticateJobTokenOrSpaceRole,
   authenticateRequest,
   verifyAccess,
-  verifyFeatureAccess,
   verifyRevisionAccess,
 } from "#acl/guards.ts";
-import { Feature, Permission, ResourceType } from "#acl/permissions.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
 import {
   documentEtag,
   expectedSeqs,
@@ -52,7 +51,6 @@ import { getUploadImageAspectRatio } from "#db/space/files.ts";
 import { patchDocumentProperties } from "#db/space/properties.ts";
 import {
   createRevision,
-  createSuggestion,
   getRevisionContent,
   getRevisionMetadata,
   resolvePublishedDocumentContent,
@@ -408,11 +406,9 @@ export const GET: ApiRouteHandler = (context) =>
         jsonResponse(
           {
             // Without history access, the snapshot and nothing describing it.
-            // `status` is stated rather than withheld: a published revision is by
-            // definition not a suggestion, and clients branch on it.
             revision: access.metadata
               ? { ...metadata, content }
-              : { rev: metadata.rev, content, status: null },
+              : { rev: metadata.rev, content },
           },
           200,
           { ETag: revEtag, "Cache-Control": PRIVATE_REVALIDATE },
@@ -886,32 +882,6 @@ export const DELETE: ApiRouteHandler = (context) =>
   }, "Failed to delete document");
 
 /**
- * Authorize a write to a document's revision history. A full revision is a
- * document write like any other here, so `EDITOR`; a suggestion changes nothing
- * until an editor applies it, so it takes `Feature.COMMENT` instead (audit 014).
- */
-async function verifyRevisionWrite(
-  spaceId: string,
-  documentId: string,
-  userId: string,
-  mode: "revision" | "suggestion",
-): Promise<void> {
-  if (mode === "suggestion") {
-    // Scoped to the document, or a document-scoped editor would be refused the
-    // weaker action while the full save below succeeds.
-    await verifyFeatureAccess(spaceId, Feature.COMMENT, userId, documentId);
-    return;
-  }
-
-  await verifyAccess(
-    spaceId,
-    { type: ResourceType.DOCUMENT, id: documentId },
-    userId,
-    Permission.EDITOR,
-  );
-}
-
-/**
  * Publish the document's current draft
  *
  * @tag Documents
@@ -925,13 +895,11 @@ export const POST: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const documentId = requireParam(context.var.params, "documentId");
 
-    // Not redundant with the suggestion gate below: COMMENT is granted per
-    // space, so this is what confines a suggester to documents they can read.
     await verifyAccess(
       spaceId,
       { type: ResourceType.DOCUMENT, id: documentId },
       user.id,
-      Permission.VIEWER,
+      Permission.EDITOR,
     );
 
     const store = await openSpaceStore(spaceId);
@@ -946,35 +914,19 @@ export const POST: ApiRouteHandler = (context) =>
 
     const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     const isJson = contentType === "application/json";
-    // A non-JSON body carries content and nothing else, so it can only ever be
-    // a full revision.
     const body = isJson
       ? await parseJsonBody<{
           html?: unknown;
           contentType?: unknown;
           message?: unknown;
-          mode?: unknown;
         }>(context.req.raw)
-      : { mode: "revision" as const };
+      : {};
 
-    // `null` and scalars parse as valid JSON, and reading `mode` off them throws
-    // a 500 on what is a malformed request.
+    // `null` and scalars parse as valid JSON, and reading the payload off them
+    // throws a 500 on what is a malformed request.
     if (typeof body !== "object" || body === null) {
       throw badRequestResponse("JSON body must be an object");
     }
-
-    if (
-      body.mode !== undefined &&
-      body.mode !== "revision" &&
-      body.mode !== "suggestion"
-    ) {
-      throw badRequestResponse('Mode must be "revision" or "suggestion"');
-    }
-    const mode = body.mode ?? "revision";
-
-    // Before the content is validated, so a refused caller gets that verdict
-    // rather than a critique of their payload. Only `mode` is read first.
-    await verifyRevisionWrite(spaceId, documentId, user.id, mode);
 
     let revisionContent: string;
     let message: string | undefined;
@@ -1005,20 +957,9 @@ export const POST: ApiRouteHandler = (context) =>
         : prepareDocumentContent(rawContent, contentType);
     }
 
-    const revision =
-      mode === "suggestion"
-        ? await createSuggestion(store, documentId, revisionContent, user.id, message)
-        : await createRevision(store, documentId, revisionContent, user.id, {
-            message,
-          });
-
-    if (!revision) {
-      // Only createSuggestion answers null: no revision to base one on, or the
-      // document went away since the check above.
-      throw badRequestResponse(
-        "Cannot suggest changes to a document with no saved revision",
-      );
-    }
+    const revision = await createRevision(store, documentId, revisionContent, user.id, {
+      message,
+    });
 
     return jsonResponse({
       revision: {
@@ -1027,7 +968,6 @@ export const POST: ApiRouteHandler = (context) =>
         rev: revision.rev,
         checksum: revision.checksum,
         parentRev: revision.parentRev,
-        status: revision.status,
         message: revision.message,
         createdAt: revision.createdAt,
         createdBy: revision.createdBy,

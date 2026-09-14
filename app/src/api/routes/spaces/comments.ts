@@ -123,7 +123,7 @@ export const POST: ApiRouteHandler = (context) =>
 
     // Verify user has commenting feature access. Scoped to the document, or a
     // document/tree/category-scoped editor would be refused on a document they
-    // may edit outright — same reasoning as the suggestion gate in document.ts.
+    // may edit outright.
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id, documentId);
 
     if (!content || typeof content !== "string") {

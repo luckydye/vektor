@@ -9,7 +9,7 @@ import {
 
 /**
  * HTML string helpers shared by every hand-built markup path: escaping for
- * interpolation into templates, pretty-printing for diff/suggestion views,
+ * interpolation into templates, pretty-printing for diff views,
  * re-serializing parsed nodes, and sanitizing untrusted document HTML down to
  * an allow-listed subset before it is rendered as a preview.
  */

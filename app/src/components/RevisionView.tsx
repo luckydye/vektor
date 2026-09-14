@@ -35,7 +35,6 @@ export function RevisionView(props: Props) {
   const [viewingRevision, setViewingRevision] = createSignal(false);
   const [revisionNumber, setRevisionNumber] = createSignal<number | null>(null);
   const [revisionContent, setRevisionContent] = createSignal("");
-  const [viewingSuggestion, setViewingSuggestion] = createSignal(false);
   const [showingDiff, setShowingDiff] = createSignal(false);
   const [diffContent, setDiffContent] = createSignal("");
   const [diffBaseNumber, setDiffBaseNumber] = createSignal<number | null>(null);
@@ -79,7 +78,6 @@ export function RevisionView(props: Props) {
     setViewingRevision(false);
     setRevisionNumber(null);
     setRevisionContent("");
-    setViewingSuggestion(false);
     setShowingDiff(false);
     setDiffContent("");
     setDiffBaseNumber(null);
@@ -102,7 +100,6 @@ export function RevisionView(props: Props) {
     setViewingRevision(true);
     setRevisionNumber(detail.revision);
     setRevisionContent(detail.content);
-    setViewingSuggestion(Boolean(detail.isSuggestion));
     setShowingDiff(false);
     setDiffContent("");
     setDiffBaseNumber(null);
@@ -147,7 +144,6 @@ export function RevisionView(props: Props) {
       setViewingRevision(true);
       setRevisionNumber(detail.revision);
       setRevisionContent("");
-      setViewingSuggestion(Boolean(detail.isSuggestion));
 
       if (baseRev !== null) {
         const query = new URLSearchParams(location.search);
@@ -184,8 +180,7 @@ export function RevisionView(props: Props) {
               <Icon class="h-5 w-5 shrink-0 text-amber-600" name="activity" />
               <div class="min-w-0">
                 <p class="font-semibold text-amber-900 text-size-medium">
-                  {showingDiff() ? "Comparing" : "Viewing"}{" "}
-                  {viewingSuggestion() ? "Suggestion" : "Revision"} {revisionNumber()}
+                  {showingDiff() ? "Comparing" : "Viewing"} Revision {revisionNumber()}
                   <Show when={showingDiff() && diffBaseNumber() !== null}>
                     {` with Revision ${diffBaseNumber()}`}
                   </Show>
@@ -211,9 +206,6 @@ export function RevisionView(props: Props) {
                           </span>
                         </span>
                       </Show>
-                    </Match>
-                    <Match when={viewingSuggestion()}>
-                      This suggestion is read-only until it is applied.
                     </Match>
                   </Switch>
                 </p>
@@ -241,9 +233,7 @@ export function RevisionView(props: Props) {
               <AppView html={revisionContent()} />
             </div>
           </Match>
-          <Match
-            when={isSerializedDocumentType(props.documentType) && !showingDiff()}
-          >
+          <Match when={isSerializedDocumentType(props.documentType) && !showingDiff()}>
             <pre class="overflow-auto whitespace-pre-wrap p-m font-mono text-size-small">
               {revisionContent()}
             </pre>

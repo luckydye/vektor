@@ -130,10 +130,6 @@ export const SCHEMAS: Record<string, JsonSchema> = {
       content: { type: "string" },
       checksum: { type: "string" },
       parentRev: { type: ["integer", "null"] },
-      status: {
-        type: ["string", "null"],
-        description: "`suggestion` for a proposed edit; null for an ordinary revision.",
-      },
       message: { type: ["string", "null"] },
       createdAt: timestamp,
       createdBy: { type: "string" },

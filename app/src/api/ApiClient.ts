@@ -146,7 +146,6 @@ export interface Revision {
   slug: string;
   checksum: string;
   parentRev: number | null;
-  status: "open" | "applied" | "dismissed" | null;
   message: string | null;
   createdAt: Date | string;
   createdBy: string;
@@ -154,10 +153,10 @@ export interface Revision {
 
 /**
  * A revision read back with its content. Everything describing the revision is
- * withheld from a caller without VIEW_HISTORY, so only these three are certain.
+ * withheld from a caller without VIEW_HISTORY, so only these two are certain.
  */
 export type RevisionWithContent = Partial<Revision> &
-  Pick<Revision, "rev" | "status"> & { content: string };
+  Pick<Revision, "rev"> & { content: string };
 
 export interface RevisionMetadata {
   id: string;
@@ -166,13 +165,10 @@ export interface RevisionMetadata {
   slug: string;
   checksum: string;
   parentRev: number | null;
-  status: "open" | "applied" | "dismissed" | null;
   message: string | null;
   createdAt: Date | string;
   createdBy: string;
 }
-
-export type RevisionSuggestionStatus = "open" | "applied" | "dismissed";
 
 export interface Category {
   id: string;
@@ -521,7 +517,6 @@ export type AuditEvent =
   | "view"
   | "comment"
   | "save"
-  | "suggest"
   | "publish"
   | "unpublish"
   | "restore"
@@ -1693,7 +1688,7 @@ export class ApiClient {
     post: async (
       spaceId: string,
       documentId: string,
-      body: { html: string; message?: string; mode?: "revision" | "suggestion" },
+      body: { html: string; message?: string },
     ) => {
       const response = await this.apiPost<{ revision: Revision }>(
         this.baseUrl,
@@ -1711,19 +1706,6 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/documents/${documentId}/revisions`,
       );
       return response.revisions;
-    },
-    patch: async (
-      spaceId: string,
-      documentId: string,
-      rev: number,
-      body: { status: RevisionSuggestionStatus },
-    ) => {
-      const response = await this.apiPatch<{ revision: RevisionMetadata }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/revisions?rev=${rev}`,
-        body,
-      );
-      return response.revision;
     },
   };
 

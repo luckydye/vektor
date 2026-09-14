@@ -24,7 +24,6 @@ import {
   setHasChanges,
   useEditor,
 } from "#composeables/useEditor.ts";
-import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
@@ -42,13 +41,13 @@ import {
   unregisterFormattingActions,
 } from "#editor/formattingActions.ts";
 import { renderDocumentReadShadowHtml } from "#editor/readView.ts";
-import { extensions } from "#extensions/manager.ts";
-import { realtimeTopics } from "#realtime/protocol.ts";
 import {
   SPREADSHEET_SELECTION_EVENT,
-  setSpreadsheetPresenceProfiles,
   type SpreadsheetSelectionEventDetail,
+  setSpreadsheetPresenceProfiles,
 } from "#editor/spreadsheet/documentPresence.ts";
+import { extensions } from "#extensions/manager.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { Actions } from "#utils/actions.ts";
 import { CommentBubble, type CommentBubbleHandle } from "./CommentBubble.tsx";
 import { CommentOverlays } from "./CommentOverlays.tsx";
@@ -161,13 +160,7 @@ export function DocumentContent(props: Props) {
   });
   provideCollaboration(collaboration);
 
-  const {
-    editing,
-    cancelCount,
-    shouldMountEditor,
-    canMountEditor,
-    suggestionSavedCount,
-  } = useEditor({
+  const { editing, cancelCount, shouldMountEditor, canMountEditor } = useEditor({
     spaceId: props.spaceId,
     documentId,
     documentType,
@@ -176,14 +169,6 @@ export function DocumentContent(props: Props) {
     collaboration,
     onSessionStarted: handleEditSessionStarted,
   });
-
-  const { handleInlineSuggestionAccept, handleInlineSuggestionDecline } =
-    useInlineSuggestions({
-      spaceId: currentSpaceId,
-      documentId,
-      isEditing: editing,
-      editor,
-    });
 
   function currentPresenceState(): DocumentPresenceState {
     const activeEditor = editor();
@@ -246,10 +231,7 @@ export function DocumentContent(props: Props) {
       ) {
         activeSpreadsheetSelection = null;
       }
-      setSpreadsheetPresenceProfiles(
-        nextEditor,
-        collaboration.presenceProfiles(),
-      );
+      setSpreadsheetPresenceProfiles(nextEditor, collaboration.presenceProfiles());
       collaboration.updatePresence(currentPresenceState());
     };
 
@@ -311,26 +293,15 @@ export function DocumentContent(props: Props) {
     ),
   );
 
-  createEffect(
-    on(
-      suggestionSavedCount,
-      () => {
-        refreshDocument();
-      },
-      { defer: true },
-    ),
-  );
-
   createEffect(() => {
     const profiles = collaboration.presenceProfiles();
     const activeEditor = editor();
     if (activeEditor) setSpreadsheetPresenceProfiles(activeEditor, profiles);
 
-    const editorProfiles = profiles
-      .filter(
-        (profile): profile is CollaborationPresenceProfile<DocumentPresenceState> =>
-          profile.state?.kind === "editor",
-      );
+    const editorProfiles = profiles.filter(
+      (profile): profile is CollaborationPresenceProfile<DocumentPresenceState> =>
+        profile.state?.kind === "editor",
+    );
     documentViewEl()?.setPresenceProfiles?.(editorProfiles);
   });
 
@@ -387,10 +358,7 @@ export function DocumentContent(props: Props) {
     onCleanup(() => {
       view.removeEventListener("editor-ready", handleEditorReady);
       view.removeEventListener("editor-destroyed", handleEditorDestroyed);
-      view.removeEventListener(
-        SPREADSHEET_SELECTION_EVENT,
-        handleSpreadsheetSelection,
-      );
+      view.removeEventListener(SPREADSHEET_SELECTION_EVENT, handleSpreadsheetSelection);
     });
   });
 
@@ -478,8 +446,6 @@ export function DocumentContent(props: Props) {
     extensions.setActiveCollaboration(collaboration.ydoc());
     extensions.setActiveDocumentId(documentId() ?? null);
 
-    window.addEventListener("inline-suggestion:accept", handleInlineSuggestionAccept);
-    window.addEventListener("inline-suggestion:decline", handleInlineSuggestionDecline);
     window.addEventListener("visibilitychange", handleVisibilityChange);
 
     maybeStartAutoEditMode();
@@ -494,11 +460,6 @@ export function DocumentContent(props: Props) {
     unregisterEditorActions();
     unregisterToolbarActions();
     setActiveEditor(null);
-    window.removeEventListener("inline-suggestion:accept", handleInlineSuggestionAccept);
-    window.removeEventListener(
-      "inline-suggestion:decline",
-      handleInlineSuggestionDecline,
-    );
     window.removeEventListener("visibilitychange", handleVisibilityChange);
   });
 

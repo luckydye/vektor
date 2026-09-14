@@ -5,7 +5,7 @@ import {
   brotliDecompressSync,
   constants as zlibConstants,
 } from "node:zlib";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { many, one } from "#db/client/query.ts";
 import type { SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -22,22 +22,17 @@ export interface Revision {
   snapshot: Buffer;
   checksum: string;
   parentRev: number | null;
-  status: "open" | "applied" | "dismissed" | null;
   message: string | null;
   createdAt: Date;
   createdBy: string;
 }
 
-export type RevisionKind = "save" | "checkpoint" | "suggestion" | "restore";
+export type RevisionKind = "save" | "checkpoint" | "restore";
 
 export interface CreateRevisionOptions {
   message?: string;
   parentRev?: number | null;
   kind?: RevisionKind;
-}
-
-function statusForKind(kind: RevisionKind): Revision["status"] {
-  return kind === "suggestion" ? "open" : null;
 }
 
 function coalescesWithPrevious(kind: RevisionKind): boolean {
@@ -120,7 +115,6 @@ interface RevisionRow {
   checksum: string;
   /** Null follows the document's highest revision, whichever that is on insert. */
   parentRev: number | null;
-  status: Revision["status"];
   message: string | null;
   createdAt: Date;
   createdBy: string;
@@ -166,7 +160,6 @@ export async function createRevision(
 ): Promise<Revision> {
   const checksum = calculateChecksum(content);
   const kind = options.kind ?? "save";
-  const status = statusForKind(kind);
   const parentRev = options.parentRev ?? null;
 
   const lastRevision = await one(
@@ -182,7 +175,6 @@ export async function createRevision(
   if (
     lastRevision &&
     lastRevision.checksum === checksum &&
-    (lastRevision.status ?? null) === status &&
     (lastRevision.parentRev ?? null) === parentRev
   ) {
     return { ...rowToRevisionMetadata(lastRevision), snapshot: lastRevision.snapshot };
@@ -202,13 +194,7 @@ export async function createRevision(
 
   // Overwrite the last revision in place if it's a regular save within the 3-hour window,
   // but never overwrite the published revision — that would silently change published content.
-  if (
-    lastRevision &&
-    lastIsRecent &&
-    !lastIsPublished &&
-    coalescesWithPrevious(kind) &&
-    (lastRevision.status ?? null) === null
-  ) {
+  if (lastRevision && lastIsRecent && !lastIsPublished && coalescesWithPrevious(kind)) {
     const compressed = await compressRevisionContent(content);
     const updatedMessage = options.message ?? lastRevision.message;
     await s.db
@@ -245,34 +231,28 @@ export async function createRevision(
     snapshot: compressed,
     checksum,
     parentRev,
-    status,
     message: options.message || null,
     createdAt: now,
     createdBy: userId,
   });
 
-  if (kind !== "suggestion") {
-    // Never backwards: a save that landed while this one compressed has already
-    // moved the pointer past the revision written here.
-    //
-    // Unconditional: the caller asked for a revision of the content it supplied.
-    await touchDocument(s, documentId, {
-      currentRev: sql`max(${document.currentRev}, ${created.rev})`,
-    });
-  }
+  // Never backwards: a save that landed while this one compressed has already
+  // moved the pointer past the revision written here.
+  //
+  // Unconditional: the caller asked for a revision of the content it supplied.
+  await touchDocument(s, documentId, {
+    currentRev: sql`max(${document.currentRev}, ${created.rev})`,
+  });
 
   await createAuditLog(s, {
     spaceId: s.spaceId,
     docId: documentId,
     revisionId: created.rev,
     userId,
-    event: kind === "suggestion" ? "suggest" : "save",
+    event: "save",
     details: {
-      message:
-        options.message ||
-        (kind === "suggestion" ? "Suggestion created" : "Revision created"),
+      message: options.message || "Revision created",
       parentRev: created.parentRev,
-      status,
     },
   });
 
@@ -284,7 +264,6 @@ export async function createRevision(
     snapshot: compressed,
     checksum,
     parentRev: created.parentRev,
-    status,
     message: options.message || null,
     createdAt: now,
     createdBy: userId,
@@ -301,7 +280,6 @@ function rowToRevisionMetadata(
     slug: r.slug,
     checksum: r.checksum,
     parentRev: r.parentRev,
-    status: (r.status as Revision["status"] | null) ?? null,
     message: r.message,
     createdAt: new Date(r.createdAt),
     createdBy: r.createdBy,
@@ -406,7 +384,6 @@ export async function getRevisionMetadata(
         slug: revision.slug,
         checksum: revision.checksum,
         parentRev: revision.parentRev,
-        status: revision.status,
         message: revision.message,
         createdAt: revision.createdAt,
         createdBy: revision.createdBy,
@@ -422,20 +399,6 @@ export async function getRevisionMetadata(
   return rowToRevisionMetadata(revisionRecord);
 }
 
-export async function updateRevisionStatus(
-  s: SpaceStore,
-  documentId: string,
-  rev: number,
-  status: NonNullable<Revision["status"]>,
-): Promise<Omit<Revision, "snapshot"> | null> {
-  await s.db
-    .update(revision)
-    .set({ status })
-    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)));
-
-  return getRevisionMetadata(s, documentId, rev);
-}
-
 export async function listRevisionMetadata(
   s: SpaceStore,
   documentId: string,
@@ -449,7 +412,6 @@ export async function listRevisionMetadata(
         slug: revision.slug,
         checksum: revision.checksum,
         parentRev: revision.parentRev,
-        status: revision.status,
         message: revision.message,
         createdAt: revision.createdAt,
         createdBy: revision.createdBy,
@@ -460,52 +422,4 @@ export async function listRevisionMetadata(
   );
 
   return revisions.map(rowToRevisionMetadata);
-}
-
-/**
- * A revision proposed rather than saved: `status: "open"`, based on the newest
- * ordinary revision — what the suggester was looking at. Returns `null` when
- * there is no document or no revision to base it on, which the caller reports.
- */
-export async function createSuggestion(
-  s: SpaceStore,
-  documentId: string,
-  content: string,
-  userId: string,
-  message?: string,
-): Promise<Revision | null> {
-  const doc = await one(
-    s.db
-      .select({ publishedRev: document.publishedRev })
-      .from(document)
-      .where(eq(document.id, documentId)),
-  );
-
-  if (!doc) {
-    return null;
-  }
-
-  // Never another suggestion: proposals are made against the document's own
-  // line of revisions.
-  const latestSaved = await one(
-    s.db
-      .select({ rev: revision.rev })
-      .from(revision)
-      .where(and(eq(revision.documentId, documentId), isNull(revision.status)))
-      .orderBy(desc(revision.rev))
-      .limit(1),
-  );
-
-  // Drafts saved after publication are what the suggester sees, so the newest
-  // wins. Revisions start at 1, so 0 means there is nothing to suggest against.
-  const parentRev = Math.max(doc.publishedRev ?? 0, latestSaved?.rev ?? 0);
-  if (parentRev === 0) {
-    return null;
-  }
-
-  return createRevision(s, documentId, content, userId, {
-    message,
-    kind: "suggestion",
-    parentRev,
-  });
 }

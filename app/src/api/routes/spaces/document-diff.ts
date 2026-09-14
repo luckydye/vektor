@@ -34,8 +34,7 @@ async function getRevision(rev: number, spaceId: string, id: string) {
  * Diff a revision against its parent
  *
  * Returns a patch between two revisions: `rev` against `base`, defaulting to
- * the revision this one was meant to change (its parent for a suggestion, the
- * published revision otherwise). The resolved base comes back in
+ * the published revision. The resolved base comes back in
  * `X-Diff-Base-Rev` so a caller that took the default can name both sides of
  * the comparison — the viewer puts them in its URL.
  *
@@ -74,18 +73,7 @@ export const GET: ApiRouteHandler = (context) =>
     if (!document) {
       throw notFoundResponse("Document");
     }
-    const revisionMetadata = await getRevisionMetadata(store, id, rev);
-    if (!revisionMetadata) {
-      throw notFoundResponse("Revision");
-    }
-
-    let compareBaseRev = requestedBaseRev;
-    if (compareBaseRev === null) {
-      compareBaseRev =
-        revisionMetadata.status !== null
-          ? revisionMetadata.parentRev
-          : document.publishedRev;
-    }
+    const compareBaseRev = requestedBaseRev ?? document.publishedRev;
     if (!compareBaseRev) {
       throw badRequestResponse("Document has no comparable base revision");
     }
