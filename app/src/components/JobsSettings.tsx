@@ -1,14 +1,12 @@
 import { useNavigate } from "@solidjs/router";
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
-import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
+import { api, type WorkflowSchedule } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
-import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
-import { PagerCursor } from "./PagerCursor.tsx";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
 type WorkflowRunRow = WorkflowRunsPage["runs"][number];
@@ -16,12 +14,6 @@ type WorkflowRunRow = WorkflowRunsPage["runs"][number];
 interface AvailableWorkflow {
   id: string;
   title: string;
-}
-
-interface AvailableJob {
-  id: string;
-  name: string;
-  extensionName: string;
 }
 
 const WORKFLOW_RUNS_PAGE_SIZE = 25;
@@ -43,16 +35,6 @@ function statusClasses(status: string): string {
   }
 }
 
-function formatDuration(run: JobRun): string {
-  if (!run.startedAt) return "—";
-  const end = run.finishedAt ? new Date(run.finishedAt).getTime() : Date.now();
-  const ms = end - new Date(run.startedAt).getTime();
-  if (ms < 0) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
-}
-
 export function JobsSettings() {
   const lang = useLocale();
   const { currentSpace, currentSpaceId } = useSpace();
@@ -70,7 +52,6 @@ export function JobsSettings() {
   const [availableWorkflows, setAvailableWorkflows] = createSignal<AvailableWorkflow[]>(
     [],
   );
-  const [availableJobs, setAvailableJobs] = createSignal<AvailableJob[]>([]);
 
   const {
     data: workflowRunsData,
@@ -96,29 +77,6 @@ export function JobsSettings() {
     () => workflowRunsData()?.pages.flatMap((page) => page.runs) ?? [],
   );
 
-  const {
-    items: runs,
-    isLoading: isLoadingRuns,
-    isFetching: isFetchingRuns,
-    error: runsQueryError,
-    hasPrevPage: runsHasPrevPage,
-    hasNextPage: runsHasNextPage,
-    nextPage: runsNextPage,
-    prevPage: runsPrevPage,
-    refresh: refreshRuns,
-  } = useCursorPagedList({
-    queryKey: createMemo(() => ["job_runs", currentSpace()?.id]),
-    fetcher: ({ limit, cursor }) =>
-      api.jobs.listRuns(currentSpace()?.id ?? "", { limit, cursor }).then((r) => ({
-        items: r.runs,
-        nextCursor: r.nextCursor,
-      })),
-    enabled: createMemo(() => !!currentSpace()?.id),
-    pageSize: 25,
-  });
-
-  const [expandedRunId, setExpandedRunId] = createSignal<string | null>(null);
-
   function workflowName(documentId: string): string {
     return availableWorkflows().find((w) => w.id === documentId)?.title ?? documentId;
   }
@@ -127,31 +85,6 @@ export function JobsSettings() {
     navigate(
       `/doc/${run.documentSlug ?? run.documentId}?run=${encodeURIComponent(run.runId)}`,
     );
-  }
-
-  function jobName(jobId: string): string {
-    return availableJobs().find((j) => j.id === jobId)?.name ?? jobId;
-  }
-
-  async function loadAvailableJobs() {
-    const spaceId = currentSpace()?.id;
-    if (!spaceId) return;
-    try {
-      const { extensions } = await api.extensions.get(spaceId);
-      setAvailableJobs(
-        extensions.flatMap(
-          (ext) =>
-            ext.jobs?.map((job) => ({
-              id: job.id,
-              name: job.name,
-              extensionName: ext.name,
-            })) ?? [],
-        ),
-      );
-    } catch (error) {
-      console.error("Failed to load available jobs", error);
-      setAvailableJobs([]);
-    }
   }
 
   async function loadAvailableWorkflows() {
@@ -249,7 +182,6 @@ export function JobsSettings() {
   }
 
   function loadAll() {
-    void loadAvailableJobs();
     void loadAvailableWorkflows();
     void loadSchedules();
   }
@@ -569,117 +501,6 @@ export function JobsSettings() {
             </button>
           </div>
         </Show>
-      </div>
-
-      <div class="mt-8 border-neutral-100 border-t pt-6">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="font-semibold text-neutral-900 text-size-medium">
-            Recent Extension Job Runs
-          </h2>
-          <button
-            type="button"
-            onClick={() => refreshRuns()}
-            disabled={isLoadingRuns()}
-            class="font-medium text-blue-600 text-size-small hover:text-blue-800 disabled:opacity-50"
-          >
-            {isLoadingRuns() ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-
-        <Show when={runsQueryError()}>
-          <div class="mb-3 rounded-sm border border-red-200 bg-red-50 p-2 text-red-600 text-size-medium">
-            {runsQueryError()?.message ?? "Failed to load job runs"}
-          </div>
-        </Show>
-
-        <Show when={isLoadingRuns() && runs().length === 0}>
-          <div class="py-6 text-center text-neutral-500 text-size-medium">
-            Loading runs...
-          </div>
-        </Show>
-        <Show when={!isLoadingRuns() && runs().length === 0}>
-          <div class="py-6 text-center text-neutral-500 text-size-medium">
-            No job runs yet
-          </div>
-        </Show>
-        <Show when={runs().length > 0}>
-          <div class="overflow-x-auto rounded-md border border-neutral-100">
-            <table class="min-w-full text-size-medium">
-              <thead class="bg-neutral-50">
-                <tr>
-                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                    Status
-                  </th>
-                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                    Job
-                  </th>
-                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                    Trigger
-                  </th>
-                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                    Started
-                  </th>
-                  <th class="px-4 py-2.5 text-left font-medium text-neutral-500 text-size-small uppercase tracking-wide">
-                    Duration
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-neutral-100">
-                <For each={runs()}>
-                  {(run) => (
-                    <>
-                      <tr
-                        class="hover:bg-neutral-50"
-                        classList={{ "cursor-pointer": !!run.error }}
-                        onClick={() => {
-                          if (!run.error) return;
-                          setExpandedRunId(expandedRunId() === run.id ? null : run.id);
-                        }}
-                      >
-                        <td class="whitespace-nowrap px-4 py-2.5">
-                          <span
-                            class={`rounded-sm px-1.5 py-0.5 text-size-small ${statusClasses(run.status)}`}
-                          >
-                            {run.status}
-                          </span>
-                        </td>
-                        <td class="px-4 py-2.5 font-medium text-neutral-900">
-                          {jobName(run.jobId)}
-                        </td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                          {run.trigger}
-                        </td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                          {formatDateTime(run.startedAt ?? run.queuedAt, lang)}
-                        </td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-neutral-500">
-                          {formatDuration(run)}
-                        </td>
-                      </tr>
-                      <Show when={expandedRunId() === run.id && run.error}>
-                        <tr>
-                          <td colspan="5" class="bg-red-50 px-4 py-2.5">
-                            <p class="break-all font-mono text-red-700 text-size-small">
-                              {run.error}
-                            </p>
-                          </td>
-                        </tr>
-                      </Show>
-                    </>
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </div>
-        </Show>
-        <PagerCursor
-          class="mt-3 pt-3"
-          hasPrevPage={runsHasPrevPage()}
-          hasNextPage={runsHasNextPage()}
-          disabled={isFetchingRuns()}
-          onPrev={runsPrevPage}
-          onNext={runsNextPage}
-        />
       </div>
     </div>
   );

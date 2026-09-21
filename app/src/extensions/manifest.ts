@@ -19,7 +19,7 @@ export interface ExtensionRoute {
 }
 
 export interface JobIOField {
-  type: "string" | "number" | "boolean" | "object" | "file";
+  type: "string" | "number" | "boolean" | "object" | "file" | "blob";
   required?: boolean;
 }
 

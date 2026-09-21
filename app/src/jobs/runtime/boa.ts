@@ -9,6 +9,7 @@
  */
 
 import { getNativeExec } from "#exec/native.ts";
+import { persistOutputBlobs } from "#jobs/outputBlobs.ts";
 import type { VmEvent } from "#native/exec/index.d.ts";
 import { createCapabilities } from "./capabilities.ts";
 import { PRELUDE } from "./prelude.ts";
@@ -43,11 +44,15 @@ export function createBoaRuntime(): JobRuntime {
         onLog: context.onLog,
         signal: context.signal,
         extra: {
-          output: ((outputs: unknown) => {
-            declaredOutputs =
+          // Blobs are stored while the VM is still alive, so the job learns
+          // here if its bytes were rejected rather than after it has finished.
+          output: (async (outputs: unknown) => {
+            declaredOutputs = await persistOutputBlobs(
+              context.spaceId,
               typeof outputs === "object" && outputs !== null && !Array.isArray(outputs)
                 ? (outputs as Record<string, unknown>)
-                : {};
+                : {},
+            );
             return null;
           }) as never,
           ...context.extraCapabilities,
@@ -116,7 +121,11 @@ export function createBoaRuntime(): JobRuntime {
                   !Array.isArray(returned)
                     ? (returned as Record<string, unknown>)
                     : {};
-                finish(() => resolve(declaredOutputs ?? fromReturn));
+                finish(() =>
+                  resolve(
+                    declaredOutputs ?? persistOutputBlobs(context.spaceId, fromReturn),
+                  ),
+                );
                 return;
               }
 

@@ -1,7 +1,6 @@
 import { listActiveSpaceIds } from "#db/auth/spaceIndex.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import type { WorkflowSchedule } from "#db/schema/space.ts";
-import { failStaleJobRuns } from "#db/space/jobRuns.ts";
 import { purgeExpiredSpaces } from "#db/space/spaces.ts";
 import {
   claimDueWorkflowSchedules,
@@ -32,11 +31,7 @@ let tickInProgress = false;
 export function startCronScheduler(): void {
   if (tickTimer) return;
 
-  const startedAt = new Date();
-
-  // Runs left queued/running by a previous process are dead — mark them
-  // failed so the history doesn't show phantom in-flight jobs.
-  void cleanupStaleRuns(startedAt).then(() => tick());
+  void tick();
 
   tickTimer = setInterval(() => void tick(), TICK_INTERVAL_MS);
   tickTimer.unref?.();
@@ -47,18 +42,6 @@ export function stopCronScheduler(): void {
   if (tickTimer) {
     clearInterval(tickTimer);
     tickTimer = null;
-  }
-}
-
-async function cleanupStaleRuns(cutoff: Date): Promise<void> {
-  for (const spaceId of await listActiveSpaceIds()) {
-    const count = await failStaleJobRuns(await openSpaceStore(spaceId), cutoff);
-    if (count > 0) {
-      appLogger.warn("Marked stale job runs as failed after restart", {
-        spaceId,
-        count,
-      });
-    }
   }
 }
 

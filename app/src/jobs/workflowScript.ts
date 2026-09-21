@@ -144,9 +144,7 @@ export async function executeWorkflowScript(
       {
         signal: controller.signal,
         initiatedByUserId: run.initiatedByUserId,
-        jobType: "workflow_script_job",
         jobId: workflowJobId,
-        trigger: "workflow",
       },
     );
 
@@ -154,7 +152,7 @@ export async function executeWorkflowScript(
     const unwrapped: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(outputs ?? {})) {
       const typed = value as { type?: string; url?: string; value?: unknown };
-      if (typed.type === "file") unwrapped[key] = typed.url;
+      if (typed.type === "file" || typed.type === "blob") unwrapped[key] = typed.url;
       else if (typed.type === "text") unwrapped[key] = typed.value;
       else unwrapped[key] = value;
     }

@@ -211,29 +211,6 @@ export interface WorkflowSchedule {
   createdBy: string;
 }
 
-export type JobRunTrigger = "cron" | "manual" | "workflow";
-
-export type JobRunStatus =
-  | "queued"
-  | "running"
-  | "success"
-  | "failed"
-  | "cancelled"
-  | "timeout";
-
-export interface JobRun {
-  id: string;
-  scheduleId: string | null;
-  jobId: string;
-  trigger: JobRunTrigger;
-  status: JobRunStatus;
-  error: string | null;
-  queuedAt: Date | string;
-  startedAt: Date | string | null;
-  finishedAt: Date | string | null;
-  initiatedBy: string | null;
-}
-
 export type WorkflowRunState =
   | "pending"
   | "running"
@@ -2677,18 +2654,6 @@ export class ApiClient {
         body: JSON.stringify({ jobId, inputs, stream: true }),
         signal,
       });
-    },
-
-    /** Job execution history, newest first. */
-    listRuns: async (
-      spaceId: string,
-      options?: { jobId?: string; scheduleId?: string; limit?: number; cursor?: string },
-    ) => {
-      return this.apiGet<{
-        runs: JobRun[];
-        limit: number;
-        nextCursor: string | null;
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/jobs/runs`, options);
     },
   };
 

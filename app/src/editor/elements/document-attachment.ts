@@ -102,7 +102,7 @@ function setDocumentViewHtml(
     });
 }
 
-// Job values may use { type: "text", value } or { type: "file", url } envelopes.
+// Job values may use { type: "text", value } or { type: "file" | "blob", url } envelopes.
 function unwrapOutputValue(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (value && typeof value === "object") {
@@ -110,7 +110,10 @@ function unwrapOutputValue(value: unknown): string | null {
     if (record.type === "text" && typeof record.value === "string") {
       return record.value;
     }
-    if (record.type === "file" && typeof record.url === "string") {
+    if (
+      (record.type === "file" || record.type === "blob") &&
+      typeof record.url === "string"
+    ) {
       return record.url;
     }
   }

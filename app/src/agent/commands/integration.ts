@@ -44,7 +44,7 @@ export function integrationCommand(
         { args, provider: command.providerId },
         spaceId,
         undefined,
-        { initiatedByUserId: userId, jobType: "agent_command", jobId: command.jobId },
+        { initiatedByUserId: userId, jobId: command.jobId },
       );
 
       const exitCodeRaw = textOutput(outputs, "exitCode");

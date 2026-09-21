@@ -204,21 +204,27 @@ export class JobCache {
     return join(cacheRoot(), scope, name);
   }
 
-  async get(key: string): Promise<{ hit: boolean; value: unknown }> {
+  /**
+   * The stored payload, decompressed, or null when the entry is missing or
+   * expired. Reading is what marks an entry recently used.
+   */
+  async read(
+    key: string,
+  ): Promise<{ payload: Buffer; kind: EntryHeader["kind"] } | null> {
     const path = this.path(key);
     const file = await readFile(path).catch(() => null);
-    if (!file) return { hit: false, value: null };
+    if (!file) return null;
 
     const parsed = parseHeader(file);
     if (!parsed) {
       await this.delete(key);
-      return { hit: false, value: null };
+      return null;
     }
 
     const { header } = parsed;
     if (header.expiresAt !== null && header.expiresAt <= Date.now()) {
       await this.delete(key);
-      return { hit: false, value: null };
+      return null;
     }
 
     let payload = parsed.payload;
@@ -226,30 +232,21 @@ export class JobCache {
       if (header.gzip) payload = gunzipSync(payload);
     } catch {
       await this.delete(key);
-      return { hit: false, value: null };
+      return null;
     }
 
-    // The read is what makes an entry recently used; eviction reads mtime.
+    // Eviction orders by mtime, so a hit has to move the entry to the front.
     const now = new Date();
     await utimes(path, now, now).catch(() => {});
-
-    if (header.kind === "b") {
-      return { hit: true, value: { [BYTES_KEY]: payload.toString("base64") } };
-    }
-    try {
-      return { hit: true, value: JSON.parse(payload.toString("utf8")) };
-    } catch {
-      await this.delete(key);
-      return { hit: false, value: null };
-    }
+    return { payload, kind: header.kind };
   }
 
-  async set(key: string, value: unknown, ttlMs?: number): Promise<void> {
-    const bytes = isBytesEnvelope(value);
-    const raw = bytes
-      ? Buffer.from(value[BYTES_KEY], "base64")
-      : Buffer.from(JSON.stringify(value ?? null), "utf8");
-
+  async write(
+    key: string,
+    raw: Buffer,
+    kind: EntryHeader["kind"],
+    ttlMs?: number,
+  ): Promise<void> {
     let payload = raw;
     let gzip = false;
     if (raw.byteLength >= MIN_COMPRESSIBLE_BYTES && !looksCompressed(raw)) {
@@ -262,7 +259,7 @@ export class JobCache {
 
     const header: EntryHeader = {
       expiresAt: ttlMs && ttlMs > 0 ? Date.now() + ttlMs : null,
-      kind: bytes ? "b" : "j",
+      kind,
       gzip,
     };
     const file = Buffer.concat([
@@ -279,6 +276,57 @@ export class JobCache {
     await rename(staging, path);
 
     schedulePrune(file.byteLength);
+  }
+
+  /** Bytes as the host holds them; the guest path goes through {@link get}. */
+  async readBytes(key: string): Promise<Buffer | null> {
+    const entry = await this.read(key);
+    return entry && entry.kind === "b" ? entry.payload : null;
+  }
+
+  writeBytes(key: string, bytes: Buffer, ttlMs?: number): Promise<void> {
+    return this.write(key, bytes, "b", ttlMs);
+  }
+
+  async readJson<T>(key: string): Promise<T | null> {
+    const entry = await this.read(key);
+    if (entry?.kind !== "j") return null;
+    try {
+      return JSON.parse(entry.payload.toString("utf8")) as T;
+    } catch {
+      await this.delete(key);
+      return null;
+    }
+  }
+
+  writeJson(key: string, value: unknown, ttlMs?: number): Promise<void> {
+    return this.write(
+      key,
+      Buffer.from(JSON.stringify(value ?? null), "utf8"),
+      "j",
+      ttlMs,
+    );
+  }
+
+  /** The guest-facing read: a bytes entry comes back as its envelope. */
+  async get(key: string): Promise<{ hit: boolean; value: unknown }> {
+    const entry = await this.read(key);
+    if (!entry) return { hit: false, value: null };
+    if (entry.kind === "b") {
+      return { hit: true, value: { [BYTES_KEY]: entry.payload.toString("base64") } };
+    }
+    try {
+      return { hit: true, value: JSON.parse(entry.payload.toString("utf8")) };
+    } catch {
+      await this.delete(key);
+      return { hit: false, value: null };
+    }
+  }
+
+  set(key: string, value: unknown, ttlMs?: number): Promise<void> {
+    return isBytesEnvelope(value)
+      ? this.writeBytes(key, Buffer.from(value[BYTES_KEY], "base64"), ttlMs)
+      : this.writeJson(key, value, ttlMs);
   }
 
   async delete(key: string): Promise<void> {

@@ -12,7 +12,7 @@ import { type QueryKey, queryHash } from "./queryCore.ts";
 export interface CursorPagedListOptions<T> {
   /**
    * Base query key used for cache namespacing.
-   * Pagination params are appended automatically, so keys like `["job_runs",
+   * Pagination params are appended automatically, so keys like `["audit_logs",
    * spaceId]` or `() => ["search", spaceId(), query()]` work correctly.
    */
   queryKey: MaybeAccessor<QueryKey>;

@@ -98,7 +98,6 @@ export const POST: ApiRouteHandler = (context) =>
                 {
                   signal: context.req.raw.signal,
                   initiatedByUserId,
-                  jobType: "single_job",
                   jobId,
                 },
               );
@@ -132,7 +131,6 @@ export const POST: ApiRouteHandler = (context) =>
         (msg) => logs.push(msg),
         {
           initiatedByUserId,
-          jobType: "single_job",
           jobId,
         },
       );

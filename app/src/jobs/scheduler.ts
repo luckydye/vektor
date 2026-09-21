@@ -1,23 +1,15 @@
-import { openSpaceStore } from "#db/client/store.ts";
 import { extractFile } from "#db/space/extensions.ts";
-import {
-  classifyJobError,
-  type JobRunTrigger,
-  recordJobRunFinished,
-  recordJobRunQueued,
-  recordJobRunStarted,
-} from "#db/space/jobRuns.ts";
 import { getJobRuntime } from "./runtime/index.ts";
 import type { CapabilityTable } from "./runtime/types.ts";
 
 /**
  * Queue an extension job and run it in the job runtime.
  *
- * What is left here is bookkeeping: a concurrency gate, the `job_run` rows, and
- * unpacking the entry file from the extension zip. Execution, isolation and the
- * capability surface all belong to the runtime, which runs guest code on its own
- * thread — so this function no longer writes temp files, spawns workers, or
- * generates wrapper source.
+ * What is left here is bookkeeping: a concurrency gate, the in-process counters
+ * behind `/metrics`, and unpacking the entry file from the extension zip. Job
+ * runs are ephemeral — only full workflow runs are persisted. Execution,
+ * isolation and the capability surface all belong to the runtime, which runs
+ * guest code on its own thread.
  *
  * The job's return value is its outputs:
  *
@@ -48,19 +40,6 @@ export function getJobQueueStats(): {
     succeededTotal: jobsSucceededTotal,
     failedTotal: jobsFailedTotal,
   };
-}
-
-async function finishJobRun(
-  spaceId: string,
-  executionId: string,
-  result: Parameters<typeof recordJobRunFinished>[2],
-): Promise<void> {
-  if (result.status === "success") {
-    jobsSucceededTotal += 1;
-  } else {
-    jobsFailedTotal += 1;
-  }
-  await recordJobRunFinished(await openSpaceStore(spaceId), executionId, result);
 }
 
 function releaseJobSlot(): void {
@@ -109,12 +88,7 @@ export async function runJob(
     timeoutMs?: number;
     signal?: AbortSignal;
     initiatedByUserId?: string | null;
-    jobType?: string;
     jobId?: string;
-    /** How this run was initiated; persisted to the job_run table. */
-    trigger?: JobRunTrigger;
-    /** Historical: workflow_schedule id, set when cron scheduling still fired extension jobs directly. */
-    scheduleId?: string | null;
     /** Capabilities granted on top of the standard table (workflows add runJob). */
     extraCapabilities?: CapabilityTable;
   },
@@ -124,21 +98,11 @@ export async function runJob(
     signal,
     initiatedByUserId,
     jobId: logicalJobId,
-    trigger = "manual",
-    scheduleId,
     extraCapabilities,
   } = options ?? {};
 
   const executionId = crypto.randomUUID();
   jobsQueuedTotal += 1;
-  const store = await openSpaceStore(spaceId);
-  await recordJobRunQueued(store, {
-    id: executionId,
-    scheduleId: scheduleId ?? null,
-    jobId: logicalJobId ?? entryPath,
-    trigger,
-    initiatedBy: initiatedByUserId ?? null,
-  });
 
   const fileBuffer = extractFile(zipBuffer, entryPath);
   try {
@@ -147,13 +111,9 @@ export async function runJob(
 
     await acquireJobSlot(signal);
   } catch (error) {
-    await finishJobRun(spaceId, executionId, {
-      status: classifyJobError(error),
-      error: error instanceof Error ? error.message : String(error),
-    });
+    jobsFailedTotal += 1;
     throw error;
   }
-  await recordJobRunStarted(store, executionId);
 
   try {
     const outputs = await getJobRuntime().execute(fileBuffer.toString("utf8"), {
@@ -166,13 +126,10 @@ export async function runJob(
       timeoutMs,
       extraCapabilities,
     });
-    await finishJobRun(spaceId, executionId, { status: "success" });
+    jobsSucceededTotal += 1;
     return outputs;
   } catch (error) {
-    await finishJobRun(spaceId, executionId, {
-      status: classifyJobError(error),
-      error: error instanceof Error ? error.message : String(error),
-    });
+    jobsFailedTotal += 1;
     throw error;
   } finally {
     releaseJobSlot();

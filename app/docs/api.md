@@ -239,7 +239,6 @@ registered in `src/api/routes.ts`, exporting one function per HTTP method.
 | GET | `/spaces/:spaceId/integrations/:provider/callback` | OAuth redirect callback (browser) |
 | POST | `/spaces/:spaceId/integrations/:provider/proxy` | Proxy an authenticated request to the integration's API |
 | POST | `/spaces/:spaceId/jobs/run` | Run a single extension job (sync or SSE stream) |
-| GET | `/spaces/:spaceId/jobs/runs` | List job execution history |
 | GET/POST | `/spaces/:spaceId/workflows/runs` | Get/list workflow runs / start (or resume) a workflow run |
 | GET/POST/DELETE | `/spaces/:spaceId/workflows/runs/:runId` | Read a run / cancel it (POST or DELETE) |
 | GET/POST | `/spaces/:spaceId/workflows/schedules` | List / create cron schedules for workflow documents |
@@ -1696,40 +1695,6 @@ data: {"type":"log","message":"Fetched 14 issues"}
 data: {"type":"output","outputs":{"issues":14}}
 
 data: [DONE]
-```
-
-### `GET /spaces/:spaceId/jobs/runs`
-
-- **Auth**: session; `viewer` on the space.
-- **Query**: `jobId?`, `scheduleId?`, `limit`/`cursor?` (default 50/max 500).
-- **Behavior**: lists all recorded job executions — manual, workflow-node, and
-  cron-scheduled runs. Cursor-paginated at the DB level, keyset on
-  `(queuedAt, id)`.
-- **Returns**: `200 { runs, limit, nextCursor }`.
-
-```bash
-curl -sS -b "$COOKIE" "$VEKTOR/spaces/$SPACE/jobs/runs?jobId=release-notes&limit=1"
-```
-
-```json
-{
-  "runs": [
-    {
-      "id": "run_2c9d47b8-61fa-4e07-9c8d-3b5a1e6f0d94",
-      "scheduleId": null,
-      "jobId": "release-notes",
-      "trigger": "single_job",
-      "status": "succeeded",
-      "error": null,
-      "queuedAt": "2026-08-17T08:00:00.000Z",
-      "startedAt": "2026-08-17T08:00:01.000Z",
-      "finishedAt": "2026-08-17T08:00:09.000Z",
-      "initiatedBy": "KJ8vQ2mNpR4tL6wX9yZ1aB3cD5eF7gH0"
-    }
-  ],
-  "limit": 1,
-  "nextCursor": "eyJ0IjoxNzU1NDI4NDAwMDAwLCJpZCI6InJ1bl8yYzlkNDdiOC02MWZhLTRlMDctOWM4ZC0zYjVhMWU2ZjBkOTQifQ"
-}
 ```
 
 ## Workflows — runs

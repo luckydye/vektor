@@ -78,7 +78,6 @@ async function baseline(db: SpaceDb): Promise<void> {
     spaceSchema.emailNotificationOutbox,
     spaceSchema.aiChatSession,
     spaceSchema.workflowSchedule,
-    spaceSchema.jobRun,
     spaceSchema.spaceSecret,
     spaceSchema.oauthIntegration,
     spaceSchema.oauthIntegrationState,
@@ -96,7 +95,6 @@ async function baseline(db: SpaceDb): Promise<void> {
     "CREATE UNIQUE INDEX IF NOT EXISTS email_notification_outbox_event_recipient_unique ON email_notification_outbox (kind, source_id, recipient_user_id)",
     "CREATE INDEX IF NOT EXISTS email_notification_outbox_due_idx ON email_notification_outbox (status, available_at)",
     "CREATE INDEX IF NOT EXISTS workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
-    "CREATE INDEX IF NOT EXISTS job_run_queued_at_idx ON job_run (queued_at)",
   ]);
 
   await renameColumnIfNeeded(db, spaceSchema.acl.secret, "token");
@@ -171,8 +169,17 @@ async function documentSlugIndex(db: SpaceDb): Promise<void> {
   await exec(db, sql.raw("CREATE INDEX IF NOT EXISTS document_slug_idx ON document (slug)"));
 }
 
+/**
+ * Extension job runs are ephemeral — only full workflow runs are logged — so
+ * the table and its history go away.
+ */
+async function dropJobRuns(db: SpaceDb): Promise<void> {
+  await run(db, ["DROP INDEX IF EXISTS job_run_queued_at_idx", "DROP TABLE IF EXISTS job_run"]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
   { id: 3, name: "document-slug-index", up: documentSlugIndex },
+  { id: 4, name: "drop-job-runs", up: dropJobRuns },
 ];

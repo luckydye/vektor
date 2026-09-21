@@ -722,6 +722,25 @@ await output({
 Throwing fails the job; the message lands in the run log. Ambient types for
 every global are in `extensions/job-runtime.d.ts`.
 
+### Binary results
+
+An output of `{ type: "blob", bytes }` is stored by the host and reaches the
+caller as `{ type: "blob", url, mimeType, size }` — the bytes travel as bytes,
+so a view can put the URL straight in an `<img src>` and let the browser cache
+it. Use it for derived, disposable binaries (thumbnails, previews, conversions);
+`uploadArtifact` remains the way to produce a real, permanent space upload.
+
+```ts
+await output({
+  thumbnail: { type: "blob", bytes: thumb, mimeType: "image/webp", name: "thumb.webp" },
+});
+```
+
+Blobs live in the job cache, so they expire (24 h) and can be evicted early — a
+URL is a handout, not storage. The fetch route requires viewer access to the
+space and refuses ids belonging to another one; types that could execute
+same-origin (HTML, SVG) are served as downloads, never inline.
+
 ### What a job can do
 
 There is no `require`, no `node:*` module, no filesystem and no network beyond
