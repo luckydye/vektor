@@ -28,9 +28,10 @@ export interface VektorLoaderOptions {
    */
   revision?: VektorLoaderRevision;
   /**
-   * How remote image URLs inside Vektor HTML should be handled.
+   * How remote media URLs inside Vektor HTML should be handled.
    *
-   * - "download" preserves the original loader behavior by caching <img> assets in public/vektor-assets.
+   * - "download" caches the assets of <img>, <video>, <audio> and <source>
+   *   tags in public/vektor-assets.
    * - "remote" leaves URLs untouched so the built site serves assets from Vektor.
    */
   assetMode?: VektorLoaderAssetMode;
@@ -123,19 +124,29 @@ function matchesPropertyFilters(
   });
 }
 
+/** Extensions guessed from a content type when the URL carries none. */
+const CONTENT_TYPE_EXT: [needle: string, ext: string][] = [
+  ["png", ".png"],
+  ["gif", ".gif"],
+  ["webp", ".webp"],
+  ["svg", ".svg"],
+  ["mp4", ".mp4"],
+  ["quicktime", ".mov"],
+  ["webm", ".webm"],
+  ["ogg", ".ogv"],
+  ["mpeg", ".mp3"],
+  ["wav", ".wav"],
+];
+
 function contentExt(url: string, contentType: string): string {
-  return (
-    extname(new URL(url).pathname) ||
-    (contentType.includes("png")
-      ? ".png"
-      : contentType.includes("gif")
-        ? ".gif"
-        : contentType.includes("webp")
-          ? ".webp"
-          : contentType.includes("svg")
-            ? ".svg"
-            : ".jpg")
-  );
+  const fromUrl = extname(new URL(url).pathname);
+  if (fromUrl) return fromUrl;
+  const match = CONTENT_TYPE_EXT.find(([needle]) => contentType.includes(needle));
+  if (match) return match[1];
+  // A static host picks the served MIME type from the extension, so media has
+  // to keep one; fall back to the content subtype before assuming an image.
+  const subtype = /^(?:video|audio)\/([a-z0-9.+-]+)/i.exec(contentType)?.[1];
+  return subtype ? `.${subtype.replace(/[.+].*$/, "")}` : ".jpg";
 }
 
 const RASTER = [".jpg", ".jpeg", ".png", ".webp", ".tiff"];
@@ -171,7 +182,7 @@ function parseSrcset(value: string): { url: string; descriptor: string }[] {
     });
 }
 
-async function downloadImage(
+async function downloadAsset(
   src: string,
   client: VektorClient,
   assetsDir: string,
@@ -220,22 +231,24 @@ async function downloadImage(
   }
 }
 
-const IMG_TAG = /<img\b[^>]*>/gi;
-const IMG_ATTR = /\b(src|srcset)\s*=\s*(["'])([^"']*)\2/gi;
+// <source> covers both <picture> and <video>/<audio> fallbacks, and <video>
+// carries its still frame in `poster`.
+const MEDIA_TAG = /<(?:img|video|audio|source)\b[^>]*>/gi;
+const MEDIA_ATTR = /\b(src|srcset|poster)\s*=\s*(["'])([^"']*)\2/gi;
 
-async function rewriteImages(
+async function rewriteMedia(
   html: string,
   client: VektorClient,
   assetsDir: string,
   urlCache: Map<string, string>,
   gate: Semaphore,
 ): Promise<string> {
-  // Collect candidate URLs from src/srcset on <img> tags only.
+  // Collect candidate URLs from the media attributes of media tags only.
   const srcs = new Set<string>();
-  for (const [tag] of html.matchAll(IMG_TAG)) {
-    for (const [, name, , value] of tag.matchAll(IMG_ATTR)) {
+  for (const [tag] of html.matchAll(MEDIA_TAG)) {
+    for (const [, name, , value] of tag.matchAll(MEDIA_ATTR)) {
       const urls =
-        name.toLowerCase() === "src" ? [value] : parseSrcset(value).map((c) => c.url);
+        name.toLowerCase() === "srcset" ? parseSrcset(value).map((c) => c.url) : [value];
       for (const url of urls) {
         if (url && !url.startsWith("data:")) srcs.add(url);
       }
@@ -245,15 +258,15 @@ async function rewriteImages(
   const rewrites = new Map<string, string>();
   await Promise.all(
     [...srcs].map(async (src) => {
-      const result = await downloadImage(src, client, assetsDir, urlCache, gate);
+      const result = await downloadAsset(src, client, assetsDir, urlCache, gate);
       if (result) rewrites.set(src, result.publicPath);
     }),
   );
 
-  // Rewrite only within <img> tags, leaving other elements' src untouched.
-  return html.replace(IMG_TAG, (tag) =>
-    tag.replace(IMG_ATTR, (match, name: string, quote: string, value: string) => {
-      if (name.toLowerCase() === "src") {
+  // Rewrite only within media tags, leaving other elements' src untouched.
+  return html.replace(MEDIA_TAG, (tag) =>
+    tag.replace(MEDIA_ATTR, (match, name: string, quote: string, value: string) => {
+      if (name.toLowerCase() !== "srcset") {
         const local = rewrites.get(value);
         return local ? `${name}=${quote}${local}${quote}` : match;
       }
@@ -279,7 +292,7 @@ export function vektorLoader(
       const assetsDir = join(fileURLToPath(config.publicDir), "vektor-assets");
       if (options.assetMode === "download") mkdirSync(assetsDir, { recursive: true });
 
-      // Funnels every network fetch (documents + images) through one cap so a
+      // Funnels every network fetch (documents + assets) through one cap so a
       // large space can't open hundreds of simultaneous connections.
       const gate = new Semaphore(12);
       const urlCache = new Map<string, string>(JSON.parse(meta.get("urlCache") ?? "[]"));
@@ -368,10 +381,10 @@ export function vektorLoader(
             options.assetMode === "download"
               ? await Promise.all([
                   content
-                    ? rewriteImages(content, client, assetsDir, urlCache, gate)
+                    ? rewriteMedia(content, client, assetsDir, urlCache, gate)
                     : null,
                   rawHeaderImage
-                    ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate)
+                    ? downloadAsset(rawHeaderImage, client, assetsDir, urlCache, gate)
                     : null,
                   Promise.all(
                     options.assetProperties.map(async (key) => {
@@ -379,7 +392,7 @@ export function vektorLoader(
                       if (!container) return null;
                       const downloadIfAbsolute = async (url: string) => {
                         if (!isAbsoluteUrl(url)) return url;
-                        const result = await downloadImage(
+                        const result = await downloadAsset(
                           url,
                           client,
                           assetsDir,
@@ -419,7 +432,7 @@ export function vektorLoader(
           store.set({
             id: slug,
             digest: generateDigest({
-              v: 13,
+              v: 14,
               id: doc.id,
               updatedAt: full.updatedAt,
               currentRev: full.currentRev,
