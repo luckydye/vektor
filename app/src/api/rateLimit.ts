@@ -98,8 +98,16 @@ const ROUTE_RULES: readonly RouteRule[] = [
     instance: true,
     boundsJobs: true,
   },
-  // Arbitrary user-defined execution.
-  { pattern: "/api/v1/spaces/[spaceId]/jobs/run", max: 30, windowMs: MINUTE },
+  // Arbitrary user-defined execution. The tight ceiling is for a caller the
+  // server did not resolve; a signed-in one gets room for a view that runs a
+  // job per item it shows — an extension rendering a grid of thumbnails issues
+  // a burst no person clicking could, and is not abuse.
+  {
+    pattern: "/api/v1/spaces/[spaceId]/jobs/run",
+    max: 30,
+    authenticatedMax: 300,
+    windowMs: MINUTE,
+  },
   {
     pattern: "/api/v1/spaces/[spaceId]/workflows/runs",
     methods: ["POST"],
