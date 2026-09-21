@@ -24,6 +24,7 @@ import {
   listAllDocumentsByCategories,
   listArchivedDocuments,
   listDocuments,
+  listPinnedDocuments,
   type PropertyInit,
 } from "#db/space/documents.ts";
 import { insertUniqueProperty } from "#db/space/properties.ts";
@@ -86,12 +87,14 @@ function parseDocumentTimestamp(value: unknown, field: string): Date | undefined
  * @query parentId List the children of this document instead of the space.
  * @query includeFiles:boolean Append the space's uploaded files as `file` entries.
  * @query archived:boolean List the archived (soft-deleted) documents instead. Takes `editor`.
+ * @query pinned:boolean List only the pinned documents instead.
  * @response #/components/schemas/DocumentPage
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const archived = new URL(context.req.url).searchParams.get("archived") === "true";
+    const pinned = new URL(context.req.url).searchParams.get("pinned") === "true";
 
     // Resource-scoped grantees browse here too: a user shared into a single
     // category or document tree has no space-wide role, and the sidebar reads
@@ -137,6 +140,11 @@ export const GET: ApiRouteHandler = (context) =>
         cursor,
       });
       return jsonResponse({ documents, limit, nextCursor });
+    }
+
+    if (pinned) {
+      const documents = await listPinnedDocuments(store, viewer);
+      return jsonResponse({ documents, total: documents.length, nextCursor: null });
     }
 
     if (categorySlugs.length > 0) {

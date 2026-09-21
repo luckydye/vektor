@@ -50,6 +50,7 @@ const APP_OWNED_PROPERTY_KEYS = [
   "headerImage",
   "eventStart",
   "eventEnd",
+  "pinned",
 ];
 
 const appOwnedPropertyKeys = new Map(
@@ -82,6 +83,7 @@ export const HIDDEN_DOCUMENT_PROPERTY_KEYS = [
   "gridtype",
   "parentid",
   "headerimage",
+  "pinned",
 ];
 
 export function isHiddenDocumentPropertyKey(key: string): boolean {

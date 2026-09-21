@@ -116,7 +116,9 @@ export function DocumentTreeItem(props: Props) {
                 : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200"
             }`}
           >
-            <span>{documentTitle(props.doc, lang)}</span>
+            <span class="overflow-hidden text-ellipsis whitespace-nowrap">
+              {documentTitle(props.doc, lang)}
+            </span>
             <Show when={props.doc.mentionCount && props.doc.mentionCount > 0}>
               <span class="ml-2 min-w-[1.25rem] rounded-full bg-primary-600 px-1.5 text-center font-medium text-size-extra-small text-white leading-[1.25rem]">
                 {props.doc.mentionCount}

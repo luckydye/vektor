@@ -1430,6 +1430,19 @@ export class ApiClient {
       return response;
     },
 
+    /**
+     * The space's pinned documents. Not written to the replica cache — pin
+     * lists are small, so a plain fetch plus realtime refetch is enough.
+     */
+    getPinned: async (spaceId: string) => {
+      const response = await this.apiGet<{ documents: DocumentWithProperties[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents`,
+        { pinned: true },
+      );
+      return response.documents;
+    },
+
     /** Documents grouped by category slug, including descendants of each category. */
     getByCategories: async (spaceId: string, categorySlugs: string[]) => {
       const response = await this.apiGet<{

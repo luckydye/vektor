@@ -31,6 +31,7 @@ import { Dialog } from "./Dialog.tsx";
 import { DialogFooter } from "./DialogFooter.tsx";
 import { DocumentTreeItem } from "./DocumentTreeItem.tsx";
 import { Icon } from "./Icon.tsx";
+import { PINNED_CATEGORY_ID } from "./PinnedDocuments.tsx";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 
 export interface DocumentTreeHandle {
@@ -396,6 +397,9 @@ export function DocumentTree(props: Props) {
     const space = currentSpace();
     if (!space) throw new Error(t("No space selected"));
 
+    // Handled by PinnedDocuments' own listener.
+    if (newCategoryId === PINNED_CATEGORY_ID) return;
+
     const targetCategory = categories().find((c) => c.id === newCategoryId);
     if (!targetCategory) throw new Error(t("Target category not found"));
 
@@ -403,6 +407,10 @@ export function DocumentTree(props: Props) {
 
     await api.document.patch(space.id, documentId, {
       properties: { category: { value: targetCategory.slug } },
+    });
+
+    await api.document.patch(space.id, documentId, {
+      properties: { pinned: null },
     });
   }
 

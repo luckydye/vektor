@@ -155,6 +155,7 @@ export function SpaceApp(props: Props) {
       import("#editor/elements/category-target.ts"),
       import("#editor/elements/page-target.ts"),
       import("#editor/elements/shortcut.ts"),
+      import("#editor/elements/tooltip-layer.ts"),
     ]).catch(console.error);
 
   const registerDocumentElements = () =>

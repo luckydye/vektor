@@ -1039,6 +1039,42 @@ export async function listArchivedDocuments(
 }
 
 /**
+ * The pinned documents in a space — those carrying `properties.pinned === "true"`.
+ * Small and manually curated, so unlike `listArchivedDocuments` this has no
+ * pagination; it's read in full every time.
+ */
+export async function listPinnedDocuments(
+  s: SpaceStore,
+  viewer: AclViewer | null,
+): Promise<DocumentWithProperties[]> {
+  const pinnedRows = await many(
+    s.db
+      .select({ documentId: property.documentId })
+      .from(property)
+      .where(and(eq(property.key, "pinned"), eq(property.value, "true"))),
+  );
+  if (pinnedRows.length === 0) return [];
+
+  const byId = await getDocumentsByIds(
+    s,
+    pinnedRows.map((row) => row.documentId),
+  );
+  let docs = [...byId.values()].filter((doc) => !doc.archived);
+
+  if (viewer) {
+    const readable = await filterReadableResources(
+      s.spaceId,
+      ResourceType.DOCUMENT,
+      docs.map((doc) => doc.id),
+      viewer,
+    );
+    docs = docs.filter((doc) => readable.has(doc.id));
+  }
+
+  return docs.map((doc) => ({ ...doc, content: "" }));
+}
+
+/**
  * Cache for mention counts
  * Key format: `${documentId}:${publishedRev}:${userEmail}`
  */

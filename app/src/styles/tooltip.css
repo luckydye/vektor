@@ -15,16 +15,15 @@
   --tooltip-text: #111827;
 }
 
-[data-tooltip] {
-  position: relative;
-}
-
-[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 9px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
+/*
+ * One fixed bubble on `document.body`, driven by `#editor/elements/tooltip-layer.ts`.
+ * A pseudo-element on the trigger cannot be used: the sidebar nests three
+ * overflow clips, which cut the bubble off at the rail's edge.
+ */
+.tooltip-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
   padding: 5px 9px;
   border-radius: 7px;
   background: var(--tooltip-bg);
@@ -39,87 +38,26 @@
   transition:
     opacity 0.12s ease,
     transform 0.12s ease;
-  z-index: 100;
+  z-index: 1000;
 }
 
-[data-tooltip]::before {
-  content: "";
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  border: 5px solid transparent;
-  border-top-color: var(--tooltip-bg);
-  pointer-events: none;
-  opacity: 0;
-  transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
-  z-index: 100;
-}
-
-[data-tooltip]:hover::after,
-[data-tooltip]:hover::before {
+.tooltip-layer[data-open] {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
 }
 
-/* Bottom */
-[data-tooltip][data-tooltip-pos="bottom"]::after {
-  bottom: auto;
-  top: calc(100% + 9px);
-  transform: translateX(-50%) translateY(-4px);
+.tooltip-layer[data-placement="top"] {
+  transform: translateY(4px);
 }
-[data-tooltip][data-tooltip-pos="bottom"]::before {
-  bottom: auto;
-  top: calc(100% + 4px);
-  border-top-color: transparent;
-  border-bottom-color: var(--tooltip-bg);
-  transform: translateX(-50%) translateY(-4px);
+.tooltip-layer[data-placement="bottom"] {
+  transform: translateY(-4px);
 }
-[data-tooltip][data-tooltip-pos="bottom"]:hover::after,
-[data-tooltip][data-tooltip-pos="bottom"]:hover::before {
-  transform: translateX(-50%) translateY(0);
+.tooltip-layer[data-placement="left"] {
+  transform: translateX(4px);
+}
+.tooltip-layer[data-placement="right"] {
+  transform: translateX(-4px);
 }
 
-/* Left */
-[data-tooltip][data-tooltip-pos="left"]::after {
-  bottom: auto;
-  top: 50%;
-  left: auto;
-  right: calc(100% + 9px);
-  transform: translateY(-50%) translateX(4px);
-}
-[data-tooltip][data-tooltip-pos="left"]::before {
-  bottom: auto;
-  top: 50%;
-  left: auto;
-  right: calc(100% + 4px);
-  border-top-color: transparent;
-  border-left-color: var(--tooltip-bg);
-  transform: translateY(-50%) translateX(4px);
-}
-[data-tooltip][data-tooltip-pos="left"]:hover::after,
-[data-tooltip][data-tooltip-pos="left"]:hover::before {
-  transform: translateY(-50%) translateX(0);
-}
-
-/* Right */
-[data-tooltip][data-tooltip-pos="right"]::after {
-  bottom: auto;
-  top: 50%;
-  left: calc(100% + 9px);
-  transform: translateY(-50%) translateX(-4px);
-}
-[data-tooltip][data-tooltip-pos="right"]::before {
-  bottom: auto;
-  top: 50%;
-  left: calc(100% + 4px);
-  border-top-color: transparent;
-  border-right-color: var(--tooltip-bg);
-  transform: translateY(-50%) translateX(-4px);
-}
-[data-tooltip][data-tooltip-pos="right"]:hover::after,
-[data-tooltip][data-tooltip-pos="right"]:hover::before {
-  transform: translateY(-50%) translateX(0);
+.tooltip-layer[data-open] {
+  transform: translate(0, 0);
 }

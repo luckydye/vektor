@@ -13,6 +13,7 @@ import { CreateSpaceDialog } from "./CreateSpaceDialog.tsx";
 import { DocumentTree, type DocumentTreeHandle } from "./DocumentTree.tsx";
 import { Icon } from "./Icon.tsx";
 import { MenuLink } from "./MenuLink.tsx";
+import { PinnedDocuments } from "./PinnedDocuments.tsx";
 import { SpaceSelector } from "./SpaceSelector.tsx";
 import { UserProfile } from "./UserProfile.tsx";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -109,7 +110,7 @@ export function Navigation() {
 
   return (
     <div class="z-1 flex h-full flex-col">
-      <div class="sticky top-0 z-10 flex-none rounded-t-md px-4xs @max-xs:px-4xs pt-4xs pb-5xs">
+      <div class="sticky top-0 z-10 flex-none rounded-t-md px-4xs @max-xs:px-5xs pt-4xs pb-5xs">
         <CreateSpaceDialog
           show={showCreateDialog()}
           onUpdateShow={setShowCreateDialog}
@@ -140,7 +141,7 @@ export function Navigation() {
       <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
         <button
           type="button"
-          class="button-with-icon mb-xs flex min-h-[36px] max-md:hidden w-full cursor-pointer items-center @max-xs:justify-center rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
+          class="button-with-icon mb-xs flex min-h-[36px] max-md:hidden w-full cursor-pointer items-center @max-xs:justify-start rounded-lg border border-neutral-400/25 bg-neutral-25 px-3xs text-left text-neutral-500 text-size-normal transition-colors hover:bg-primary-50 hover:transition-none active:bg-primary-100"
           title={t("Quick Search")}
           onClick={() => Actions.run("ui:toggle:palatte")}
         >
@@ -185,9 +186,11 @@ export function Navigation() {
             </div>
           </Show>
 
-          <div class="@max-xs:hidden px-5xs pt-2xs pb-s">
-            <div class="mx-2xs border-neutral-400/25 border-b"></div>
+          <div class="flex flex-none flex-col gap-0.5 px-3xs @max-xs:px-3xs pt-3xs">
+            <PinnedDocuments />
+          </div>
 
+          <div class="@max-xs:hidden px-5xs pb-s">
             {/* The hint gives the lone Done button something to belong to, and says
                 what the mode is for — nothing else on screen does. */}
             <div class="mb-1 flex min-h-[20px] items-center justify-between gap-3xs px-3xs">

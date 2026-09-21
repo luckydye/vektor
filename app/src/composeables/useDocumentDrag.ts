@@ -36,7 +36,11 @@ export function useDocumentDrag() {
     window.addEventListener("document-drag-end", handleDragEnd);
   });
 
+  // `onMount`'s body never runs during SSR, but Solid still runs `onCleanup`
+  // callbacks when the server render disposes its node tree — so this must not
+  // assume the mount above ever happened, and must not touch `window`.
   onCleanup(() => {
+    if (typeof window === "undefined") return;
     subscribers -= 1;
     if (subscribers > 0) return;
     window.removeEventListener("document-drag-start", handleDragStart);
