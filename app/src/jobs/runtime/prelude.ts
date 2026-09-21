@@ -194,6 +194,14 @@ export const PRELUDE = String.raw`
   // btoa/atob are provided by the engine, not here: they are platform primitives
   // Boa lacks, not capabilities. See native/exec/src/platform.rs.
   g.hash = (algorithm, data) => call("hash", algorithm, data);
+  g.hmac = (algorithm, key, data, encoding) => call("hmac", algorithm, key, data, encoding);
+
+  // Host-side because the addon that does it is native; a guest-JS resize of a
+  // photo costs minutes in the interpreter.
+  g.image = {
+    metadata: (bytes) => call("imageMetadata", bytes),
+    transform: (bytes, options) => call("imageTransform", bytes, options),
+  };
 
   // ── a process stub ─────────────────────────────────────────────────────────
   // Bundled npm code routinely reads process.env.NODE_ENV. The env is empty on

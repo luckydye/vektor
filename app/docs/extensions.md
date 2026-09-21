@@ -737,7 +737,8 @@ to add one is to add it to the host's capability table — not to import it.
 | `fetch` | The public internet. Loopback and private ranges are refused |
 | `apiFetch` | This instance's own API, authenticated as the run |
 | `agentPrompt` | One ACP agent turn, with progress streamed to the log |
-| `zip`, `spreadsheet`, `hash` | Archive, spreadsheet and digest helpers, run natively |
+| `zip`, `spreadsheet`, `hash`, `hmac` | Archive, spreadsheet and digest helpers, run natively |
+| `image` | Decode, resize and re-encode images, run natively |
 | `scratch`, `exec` | A private directory, and the allowlisted conversion tools |
 | `jobCache` | Disk cache, isolated per job id |
 | `sleep`, `setTimeout` | Timers |
@@ -745,6 +746,24 @@ to add one is to add it to the host's capability table — not to import it.
 Prefer the native helpers over bundling a library: `spreadsheet.toRows()` reads
 XLSX and CSV, while `zip.read()` handles archives, without shipping a large
 JavaScript parser to be run by an interpreter.
+
+`hmac` returns bytes unless asked for `"hex"`, so a derived key can be fed
+straight into the next call — which is what request signing schemes such as AWS
+SigV4 need:
+
+```ts
+let key: string | Uint8Array = `AWS4${secret}`;
+for (const part of [date, region, "s3", "aws4_request"]) key = await hmac("sha256", key, part);
+const signature = await hmac("sha256", key, stringToSign, "hex");
+```
+
+`image` is the same native addon that produces upload thumbnails: it decodes
+png, jpeg, webp and gif, fits the result inside the given box without enlarging
+it, and re-encodes as webp, jpeg or png.
+
+```ts
+const thumbnail = await image.transform(bytes, { width: 320, format: "webp" });
+```
 
 `exec` accepts only `pandoc`, `htmlq` and `rsvg-convert` — never a path — and
 runs without a shell, with the scratch directory as the working directory. Arguments are

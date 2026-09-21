@@ -18,7 +18,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
@@ -26,6 +26,8 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import { config, getLocalOrigin } from "#config";
 import { isSerializedDocumentType } from "#documents/types.ts";
+import { getNativeImage } from "#files/native.ts";
+import { applyTransform } from "#files/transforms.ts";
 import { createJobToken } from "#jobs/jobToken.ts";
 import {
   isPrivateOrBlockedIp,
@@ -57,6 +59,9 @@ const EXEC_TIMEOUT_MS = 5 * 60 * 1000;
  * that does not ship buys nothing and would admit it the day it does.
  */
 const EXEC_ALLOWLIST = new Set(["htmlq", "pandoc", "rsvg-convert"]);
+
+/** Encoders the image addon ships; an unknown name would keep the input format silently. */
+const IMAGE_OUTPUT_FORMATS = new Set(["webp", "jpeg", "png"]);
 
 export interface CapabilityContext {
   spaceId: string;
@@ -459,6 +464,47 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
       createHash(String(algorithm ?? "sha256"))
         .update(asBuffer(data))
         .digest("hex")) as never,
+
+    /**
+     * Keyed digest, bytes by default so the caller can chain one result into the
+     * next key — AWS SigV4 derives its signing key that way, and a hex string
+     * would have to be decoded at every step.
+     */
+    hmac: ((algorithm: unknown, key: unknown, data: unknown, encoding: unknown) => {
+      const digest = createHmac(String(algorithm ?? "sha256"), asBuffer(key))
+        .update(asBuffer(data))
+        .digest();
+      return String(encoding ?? "bytes") === "hex" ? digest.toString("hex") : toBytes(digest);
+    }) as never,
+
+    imageMetadata: (async (bytes: unknown) => {
+      const native = await getNativeImage();
+      if (!native) throw new Error("image.metadata: the image addon is unavailable");
+      return native.metadata(asBuffer(bytes));
+    }) as never,
+
+    /**
+     * Decode, fit inside the given box without enlarging, re-encode. Shares the
+     * addon and the no-upscale rule with the upload transform path.
+     */
+    imageTransform: (async (bytes: unknown, rawOptions: unknown) => {
+      const options = asRecord(rawOptions);
+      const input = asBuffer(bytes);
+      checkPayloadSize(input.byteLength, "image input");
+      const format = options.format ? String(options.format) : null;
+      if (format !== null && !IMAGE_OUTPUT_FORMATS.has(format)) {
+        throw new Error(`image.transform: "${format}" is not an output format`);
+      }
+      const quality = Math.min(100, Math.max(1, Number(options.quality) || 80));
+      const out = await applyTransform(input, {
+        w: Math.max(0, Math.floor(Number(options.width) || 0)),
+        h: Math.max(0, Math.floor(Number(options.height) || 0)),
+        format: format as "webp" | "jpeg" | "png" | null,
+        quality,
+      });
+      if (!out) throw new Error("image.transform: the input could not be transformed");
+      return toBytes(out);
+    }) as never,
 
     zipRead: ((bytes: unknown) => {
       const archive = unzipSync(new Uint8Array(asBuffer(bytes)));
