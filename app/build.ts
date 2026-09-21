@@ -268,12 +268,23 @@ if (!executablePath) {
 
 console.log(`[compile] ${executablePath}`);
 
+if (process.platform === "darwin") {
+  // Bun's compiled binaries embedding native addons/assets can end up with an
+  // ad-hoc signature the kernel considers invalid, which makes macOS silently
+  // SIGKILL the process on launch. Re-sign before running or shipping it.
+  const codesign = Bun.spawnSync(["codesign", "--sign", "-", "--force", executablePath], {
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+  if (codesign.exitCode !== 0) {
+    throw new Error(`Failed to codesign compiled executable (exit ${codesign.exitCode})`);
+  }
+}
+
 const nativeSelfTest = Bun.spawnSync([executablePath, "__native-self-test"], {
   cwd: appDir,
   stdio: ["ignore", "inherit", "inherit"],
 });
 if (nativeSelfTest.exitCode !== 0) {
-  await rm(executablePath, { force: true });
   throw new Error(
     `Compiled executable failed native addon self-test (exit ${nativeSelfTest.exitCode})`,
   );
