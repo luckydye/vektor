@@ -38,6 +38,7 @@ import {
 import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
+import { JobCache } from "./jobCache.ts";
 import { enqueueJobNotificationEmail } from "#notifications/enqueue.ts";
 import type { CapabilityTable } from "./types.ts";
 
@@ -271,53 +272,6 @@ class Scratch {
     const root = this.root;
     this.root = null;
     await rm(root, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Disk cache
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface CacheEntry {
-  value: unknown;
-  expiresAt: number | null;
-}
-
-/** Cache scoped to one job id, persisted under the system temp directory. */
-class JobCache {
-  constructor(private readonly jobId: string) {}
-
-  private path(key: string): string {
-    const scope = createHash("sha256").update(this.jobId).digest("hex").slice(0, 16);
-    const name = createHash("sha256").update(String(key)).digest("hex");
-    return join(tmpdir(), `vektor-job-cache-${scope}`, `${name}.json`);
-  }
-
-  async get(key: string): Promise<{ hit: boolean; value: unknown }> {
-    try {
-      const entry = JSON.parse(await readFile(this.path(key), "utf8")) as CacheEntry;
-      if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
-        await this.delete(key);
-        return { hit: false, value: null };
-      }
-      return { hit: true, value: entry.value };
-    } catch {
-      return { hit: false, value: null };
-    }
-  }
-
-  async set(key: string, value: unknown, ttlMs?: number): Promise<void> {
-    const file = this.path(key);
-    const entry: CacheEntry = {
-      value,
-      expiresAt: ttlMs && ttlMs > 0 ? Date.now() + ttlMs : null,
-    };
-    await mkdir(join(file, ".."), { recursive: true });
-    await writeFile(file, JSON.stringify(entry), "utf8");
-  }
-
-  async delete(key: string): Promise<void> {
-    await rm(this.path(key), { force: true }).catch(() => {});
   }
 }
 

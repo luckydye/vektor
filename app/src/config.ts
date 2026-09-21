@@ -218,6 +218,12 @@ export function config() {
        * owner aim the server at any internal host, with viewers reading the reply.
        */
       JOB_FETCH_ALLOW_PRIVATE: process.env.VEKTOR_JOB_FETCH_ALLOW_PRIVATE,
+      /**
+       * Disk budget in bytes for `jobCache`, 512 MB by default. Entries live
+       * under DATA_DIR and the least recently read ones are evicted once the
+       * cache is over budget, so this is the only bound on what jobs cache.
+       */
+      JOB_CACHE_MAX_BYTES: process.env.VEKTOR_JOB_CACHE_MAX_BYTES,
 
       /**
        * OpenTelemetry log export (OTLP/HTTP, JSON encoding). Logs keep going to

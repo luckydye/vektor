@@ -793,9 +793,23 @@ declare const jobCache: {
 };
 ```
 
-- Cache files are persisted under the system temp directory.
-- Cache scope is isolated per job id.
+- Entries live under `DATA_DIR/job-cache`, isolated per job id.
+- A `Uint8Array` is stored as the blob it is — no base64, no JSON envelope — and
+  compressed unless it is already a compressed format (png, jpeg, webp, gzip,
+  zip). Anything else is stored as compressed JSON.
+- The cache is held under a disk budget (`VEKTOR_JOB_CACHE_MAX_BYTES`, 512 MB by
+  default): expired entries go first, then the least recently read ones. A job
+  still has to choose sensible TTLs, but it cannot fill the disk.
 - Use `remember(...)` for cache-then-compute behavior.
+
+```ts
+const key = `thumb:${etag}`;
+const thumbnail = await jobCache.remember(
+  key,
+  async () => image.transform(await downloadObject(key), { width: 320, format: "webp" }),
+  { ttlMs: 7 * 24 * 60 * 60 * 1000 },
+);
+```
 
 ### Testing jobs
 
