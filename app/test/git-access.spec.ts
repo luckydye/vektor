@@ -92,6 +92,15 @@ async function mintToken(
   return (await response.json()).token;
 }
 
+/** Repositories are off unless the space turns them on. */
+async function enableRepositories(): Promise<void> {
+  const response = await apiRequest(`/api/v1/spaces/${spaceId}`, owner.token, {
+    method: "PATCH",
+    body: JSON.stringify({ preferences: { repositoryCreationEnabled: "true" } }),
+  });
+  if (!response.ok) throw new Error(`Failed to enable repositories: ${response.status}`);
+}
+
 async function createRepositoryDocument(
   title: string,
 ): Promise<{ slug: string; id: string }> {
@@ -160,6 +169,7 @@ beforeAll(async () => {
   await grantSpaceRole(editor.userId, "editor");
   await grantSpaceRole(viewer.userId, "viewer");
 
+  await enableRepositories();
   const repository = await createRepositoryDocument("Piano");
   repoSlug = repository.slug;
   repoDocumentId = repository.id;

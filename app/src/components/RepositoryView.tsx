@@ -15,11 +15,9 @@ import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { ensureLanguage, highlightToHtml, normalizeLanguage } from "#editor/prism.ts";
-import { type GraphRow, layoutGraph } from "#git/graph.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { Icon } from "./Icon.tsx";
-import { Tab, Tabs } from "./Tabs.tsx";
 
 interface Props {
   documentId: string;
@@ -123,60 +121,6 @@ function TreeSkeleton() {
         )}
       </For>
     </div>
-  );
-}
-
-/** The views this document offers, in the order their tabs appear. */
-const TABS = [
-  { id: "files", label: "Files", icon: "file" },
-  { id: "history", label: "History", icon: "activity" },
-] as const;
-
-/** Lane pitch and row height, shared by the layout and the drawing. */
-const LANE = 14;
-const ROW = 34;
-
-function laneX(lane: number): number {
-  return lane * LANE + LANE / 2;
-}
-
-/**
- * One row of the commit graph.
- *
- * Every edge is drawn as a full-height curve from the lane it enters at to the
- * lane it leaves at, so a straight lane is a straight line and a branch or a
- * merge bends once. The dot marks the commit's own lane.
- */
-function GraphCell(props: { row: GraphRow }) {
-  return (
-    <svg
-      class="shrink-0 text-neutral-400"
-      width={props.row.width * LANE}
-      height={ROW}
-      aria-hidden="true"
-    >
-      <For each={props.row.edges}>
-        {(edge) => (
-          <path
-            d={
-              edge.from === edge.to
-                ? `M ${laneX(edge.from)} 0 V ${ROW}`
-                : `M ${laneX(edge.from)} 0 C ${laneX(edge.from)} ${ROW / 2}, ${laneX(edge.to)} ${ROW / 2}, ${laneX(edge.to)} ${ROW}`
-            }
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          />
-        )}
-      </For>
-      <circle
-        cx={laneX(props.row.lane)}
-        cy={ROW / 2}
-        r="4"
-        class="fill-primary-400 stroke-background"
-        stroke-width="2"
-      />
-    </svg>
   );
 }
 
@@ -294,12 +238,6 @@ export function RepositoryView(props: Props) {
   // Open by default, and closed on a narrow window — decided in `onMount`
   // rather than at first render, so the server and the client agree on what
   // they drew.
-  const [tab, setTab] = createSignal<(typeof TABS)[number]["id"]>("files");
-
-  function onTabSelected(index: number) {
-    const selected = TABS[index];
-    if (selected) setTab(selected.id);
-  }
   const [treeOpen, setTreeOpen] = createSignal(true);
   const [copyState, setCopyState] = createSignal<"idle" | "copied" | "failed">("idle");
 
@@ -393,19 +331,6 @@ export function RepositoryView(props: Props) {
     });
   });
 
-  const history = useQuery({
-    queryKey: () => ["git", props.spaceId, props.documentId, "log", repo().branch],
-    queryFn: () => api.git.log(props.spaceId, props.documentId, repo().branch, 100),
-    // Only asked for once the tab is open: a log is a separate walk of the
-    // history, and the files view never needs it.
-    enabled: () => !isServer && repo().branch !== "" && tab() === "history",
-  });
-
-  const graph = createMemo(() => {
-    const commits = history.data()?.commits ?? [];
-    return { commits, rows: layoutGraph(commits) };
-  });
-
   /**
    * The bytes of the open file, straight from the API.
    *
@@ -478,14 +403,17 @@ export function RepositoryView(props: Props) {
       {/* Clear of the properties above, and clear of the tabs below: this line
           belongs to neither. */}
       <div class="mt-4xs mb-2xs flex flex-col gap-2">
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-2 text-neutral-500 text-size-small">
-          <span class="rounded-md bg-neutral-500/10 px-1.5 py-0.5 text-size-extra-small">
+        {/* Sized against the database view's tab bar: the same 36px row and
+            label type, so a document's header reads at one scale whatever it
+            holds. */}
+        <div class="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-2 text-label text-neutral-500">
+          <span class="flex h-8 items-center rounded-md bg-neutral-500/10 px-2.5">
             {overview.data()?.branch ?? "main"}
           </span>
           <Show when={overview.data()?.head}>
             {(head) => (
               <>
-                <code class="rounded-md bg-neutral-500/10 px-1.5 py-0.5 font-mono">
+                <code class="flex h-8 items-center rounded-md bg-neutral-500/10 px-2.5 font-mono">
                   {head().shortOid}
                 </code>
                 <span class="truncate text-foreground">{head().subject}</span>
@@ -499,7 +427,7 @@ export function RepositoryView(props: Props) {
               two focusable boxes gives two borders and two focus rings. */}
           <button
             type="button"
-            class="group ml-auto flex min-w-0 items-center gap-2 rounded-md border border-neutral-500/15 py-1 pr-2 pl-2.5 transition-colors hover:bg-neutral-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            class="group ml-auto flex h-9 min-w-0 items-center gap-2 rounded-md border border-neutral-500/15 pr-2.5 pl-3 transition-colors hover:bg-neutral-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             title={
               copyState() === "failed"
                 ? "Could not copy — select the URL and copy it"
@@ -508,7 +436,7 @@ export function RepositoryView(props: Props) {
             aria-label="Copy clone URL"
             onClick={copyCloneUrl}
           >
-            <code class="min-w-0 max-w-[22rem] truncate font-mono text-neutral-500 text-size-small">
+            <code class="min-w-0 max-w-[22rem] truncate font-mono text-label text-neutral-500">
               {cloneUrl()}
             </code>
             {/* A fixed box: these icons have different intrinsic sizes, and
@@ -542,22 +470,9 @@ export function RepositoryView(props: Props) {
           </div>
         }
       >
-        {/* The app's own tabs element, so selection, keyboard handling and the
-            pill styling are the ones used everywhere else. */}
-        <Tabs class="mb-4xs" onSelect={onTabSelected}>
-          <For each={TABS}>
-            {(view, index) => (
-              <Tab selected={index() === 0} icon={view.icon}>
-                {view.label}
-              </Tab>
-            )}
-          </For>
-        </Tabs>
-
         <div
           ref={panes}
           class="flex items-stretch overflow-hidden rounded-lg border border-neutral-500/15"
-          classList={{ hidden: tab() !== "files" }}
           style={{ height: panesHeight() }}
         >
           <Show when={treeOpen()}>
@@ -656,10 +571,7 @@ export function RepositoryView(props: Props) {
                       {(html) => (
                         // Sanitized by `renderMessageMarkdown`: a README is
                         // untrusted content from whoever pushed it.
-                        <div
-                          class="markdown-content readme-content"
-                          innerHTML={html()}
-                        />
+                        <div class="markdown-content readme-content" innerHTML={html()} />
                       )}
                     </Show>
                   </Show>
@@ -668,36 +580,6 @@ export function RepositoryView(props: Props) {
             </Show>
           </div>
         </div>
-
-        <Show when={tab() === "history"}>
-          <div
-            class="overflow-auto rounded-lg border border-neutral-500/15"
-            style={{ height: panesHeight() }}
-          >
-            <For
-              each={graph().commits}
-              fallback={
-                <p class="px-3 py-16 text-center text-neutral-500 text-size-small">
-                  Loading history…
-                </p>
-              }
-            >
-              {(commit, index) => (
-                <div class="flex items-center gap-3 border-neutral-500/10 border-b px-3 text-size-small last:border-b-0 hover:bg-neutral-500/5">
-                  <GraphCell row={graph().rows[index()]} />
-                  <code class="shrink-0 font-mono text-neutral-500">
-                    {commit.shortOid}
-                  </code>
-                  <span class="min-w-0 flex-1 truncate">{commit.subject}</span>
-                  <span class="shrink-0 text-neutral-500">{commit.author}</span>
-                  <span class="shrink-0 text-neutral-400">
-                    {formatDateTime(commit.authoredAt, locale)}
-                  </span>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
       </Show>
     </div>
   );

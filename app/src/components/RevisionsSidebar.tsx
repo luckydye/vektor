@@ -16,6 +16,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { normalizeTimestamp } from "#utils/datetime.ts";
 import { registerScopedAction } from "#utils/scopedAction.ts";
 import { findMemberUser, userDisplayName } from "#utils/userDisplay.ts";
+import { CommitHistory } from "./CommitHistory.tsx";
 import { DockedPanel } from "./DockedPanel.tsx";
 import { DocumentActivityFeed } from "./DocumentActivityFeed.tsx";
 import { PagerCursor } from "./PagerCursor.tsx";
@@ -24,11 +25,13 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useSync } from "#composeables/useSync.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { repositoryDocumentType } from "#documents/types.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { Icon } from "./Icon.tsx";
 
 interface Props {
   documentId: string;
+  documentType: string;
 }
 
 function dispatchWindowEvent(event: Event) {
@@ -71,6 +74,13 @@ export function RevisionsSidebar(props: Props) {
   const { toggle: toggleWindow, windows } = useDockedWindows();
   const isOpen = createMemo(() => windows().get("revisions")?.open ?? false);
 
+  /**
+   * A repository keeps its history in git, and the audit log of the document
+   * wrapping it says nothing a reader wants. The panel shows the commit log
+   * instead, which is the same history the repository view used to tab to.
+   */
+  const isRepository = createMemo(() => props.documentType === repositoryDocumentType);
+
   const sortedEntries = createMemo(() =>
     [...auditLogs()].sort(
       (a, b) =>
@@ -112,6 +122,7 @@ export function RevisionsSidebar(props: Props) {
   }
 
   async function refresh() {
+    if (isRepository()) return;
     await Promise.all([fetchAuditLogs(), fetchPublishedRev(), fetchHistory()]);
   }
 
@@ -264,6 +275,7 @@ export function RevisionsSidebar(props: Props) {
     (scopes) => {
       if (!scopes.includes(realtimeTopics.document(props.documentId))) return;
 
+      if (isRepository()) return;
       if (isOpen()) void refresh();
       else void fetchPublishedRev();
     },
@@ -272,149 +284,162 @@ export function RevisionsSidebar(props: Props) {
   return (
     <DockedPanel
       id="revisions"
-      title="Document Activity"
+      title={isRepository() ? "Repository History" : "Document Activity"}
       defaultSide="right"
       defaultWidth={420}
     >
       <div class="relative flex h-full flex-col">
-        <Show when={auditError()}>
-          <div class="mx-4 mt-4 rounded-sm border border-red-200 bg-red-50 p-3 text-red-700 text-size-medium">
-            {auditError()}
-          </div>
+        <Show when={isRepository() && currentSpaceId()}>
+          {(spaceId) => (
+            <div class="flex-1 overflow-y-auto" data-scroll-container>
+              <CommitHistory spaceId={spaceId()} documentId={props.documentId} />
+            </div>
+          )}
         </Show>
 
-        <Show
-          when={
-            !((isLoadingHistory() || isLoadingAudit()) && sortedEntries().length === 0)
-          }
-          fallback={
-            <div class="flex flex-1 items-center justify-center">
-              <div class="text-center">
-                <Icon
-                  class="mx-auto mb-2 h-8 w-8 animate-spin text-neutral-400"
-                  name="refresh"
-                />
-                <p class="text-neutral-600 text-size-medium">Loading history...</p>
-              </div>
+        <Show when={!isRepository()}>
+          <Show when={auditError()}>
+            <div class="mx-4 mt-4 rounded-sm border border-red-200 bg-red-50 p-3 text-red-700 text-size-medium">
+              {auditError()}
             </div>
-          }
-        >
+          </Show>
+
           <Show
-            when={sortedEntries().length > 0}
+            when={
+              !((isLoadingHistory() || isLoadingAudit()) && sortedEntries().length === 0)
+            }
             fallback={
               <div class="flex flex-1 items-center justify-center">
-                <div class="px-4 text-center">
-                  <Icon class="mx-auto mb-3 h-12 w-12 text-neutral-300" name="activity" />
-                  <p class="font-medium text-neutral-600">No activity yet</p>
-                  <p class="mt-1 text-neutral-500 text-size-medium">
-                    Activity will appear here as you work
-                  </p>
+                <div class="text-center">
+                  <Icon
+                    class="mx-auto mb-2 h-8 w-8 animate-spin text-neutral-400"
+                    name="refresh"
+                  />
+                  <p class="text-neutral-600 text-size-medium">Loading history...</p>
                 </div>
               </div>
             }
           >
-            <div class="flex-1 overflow-y-auto" data-scroll-container>
-              <div class="px-2 py-2">
-                <DocumentActivityFeed
-                  entries={sortedEntries()}
-                  getUserName={getUserName}
-                  getUser={getUser}
-                  headerActions={(items) => {
-                    const primary = primaryRevisionEntry(items);
-                    if (!primary) return null;
-                    return (
-                      <div class="shrink-0">
-                        <a-popover-trigger showdelay="0" hidedelay="100">
-                          <button
-                            type="button"
-                            slot="trigger"
-                            class="inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors hover:bg-neutral-200"
-                            title="Revision actions"
-                          >
-                            <Icon
-                              class="h-[18px] w-[12px] text-neutral-500"
-                              name="context-menu-more"
-                            />
-                          </button>
+            <Show
+              when={sortedEntries().length > 0}
+              fallback={
+                <div class="flex flex-1 items-center justify-center">
+                  <div class="px-4 text-center">
+                    <Icon
+                      class="mx-auto mb-3 h-12 w-12 text-neutral-300"
+                      name="activity"
+                    />
+                    <p class="font-medium text-neutral-600">No activity yet</p>
+                    <p class="mt-1 text-neutral-500 text-size-medium">
+                      Activity will appear here as you work
+                    </p>
+                  </div>
+                </div>
+              }
+            >
+              <div class="flex-1 overflow-y-auto" data-scroll-container>
+                <div class="px-2 py-2">
+                  <DocumentActivityFeed
+                    entries={sortedEntries()}
+                    getUserName={getUserName}
+                    getUser={getUser}
+                    headerActions={(items) => {
+                      const primary = primaryRevisionEntry(items);
+                      if (!primary) return null;
+                      return (
+                        <div class="shrink-0">
+                          <a-popover-trigger showdelay="0" hidedelay="100">
+                            <button
+                              type="button"
+                              slot="trigger"
+                              class="inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors hover:bg-neutral-200"
+                              title="Revision actions"
+                            >
+                              <Icon
+                                class="h-[18px] w-[12px] text-neutral-500"
+                                name="context-menu-more"
+                              />
+                            </button>
 
-                          <a-popover class="group" placements="bottom-end">
-                            <div class="revision-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                              <div class="revision-context-panel min-w-[224px] origin-top-right scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    exitPopover(e);
-                                    void viewRevision(primary.revisionId);
-                                  }}
-                                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
-                                >
-                                  <Icon class="h-4 w-4 flex-none" name="eye" />
-                                  View Revision
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    exitPopover(e);
-                                    void showRevisionDiff(primary.revisionId);
-                                  }}
-                                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
-                                >
-                                  <Icon class="h-4 w-4 flex-none" name="paste" />
-                                  Show Diff
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    exitPopover(e);
-                                    copyRevisionLink(primary.revisionId);
-                                  }}
-                                  class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
-                                >
-                                  <Icon class="h-4 w-4 flex-none" name="copy" />
-                                  Copy Link
-                                </button>
-                                <Show when={!isPublishedEntry(primary)}>
+                            <a-popover class="group" placements="bottom-end">
+                              <div class="revision-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+                                <div class="revision-context-panel min-w-[224px] origin-top-right scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       exitPopover(e);
-                                      void publishRevisionAction(primary.revisionId);
+                                      void viewRevision(primary.revisionId);
                                     }}
-                                    class={`flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50`}
-                                    disabled={isPublishing()}
+                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
                                   >
-                                    <Icon class="h-4 w-4 flex-none" name="publish" />
-                                    Publish Revision
+                                    <Icon class="h-4 w-4 flex-none" name="eye" />
+                                    View Revision
                                   </button>
-                                </Show>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      exitPopover(e);
+                                      void showRevisionDiff(primary.revisionId);
+                                    }}
+                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                                  >
+                                    <Icon class="h-4 w-4 flex-none" name="paste" />
+                                    Show Diff
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      exitPopover(e);
+                                      copyRevisionLink(primary.revisionId);
+                                    }}
+                                    class="flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100"
+                                  >
+                                    <Icon class="h-4 w-4 flex-none" name="copy" />
+                                    Copy Link
+                                  </button>
+                                  <Show when={!isPublishedEntry(primary)}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        exitPopover(e);
+                                        void publishRevisionAction(primary.revisionId);
+                                      }}
+                                      class={`flex w-full items-center gap-2.5 rounded-md px-3xs py-5xs text-left text-neutral-900 text-size-normal transition-colors hover:bg-primary-50 active:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50`}
+                                      disabled={isPublishing()}
+                                    >
+                                      <Icon class="h-4 w-4 flex-none" name="publish" />
+                                      Publish Revision
+                                    </button>
+                                  </Show>
+                                </div>
                               </div>
-                            </div>
-                          </a-popover>
-                        </a-popover-trigger>
-                      </div>
-                    );
-                  }}
-                  entryActions={(entry) => (
-                    <Show when={isPublishedEntry(entry)}>
-                      <span class="shrink-0 self-center rounded-sm border border-blue-200 bg-blue-50 px-1.5 py-px font-medium text-blue-600 text-size-extra-small uppercase tracking-wide">
-                        Published
-                      </span>
-                    </Show>
-                  )}
-                />
+                            </a-popover>
+                          </a-popover-trigger>
+                        </div>
+                      );
+                    }}
+                    entryActions={(entry) => (
+                      <Show when={isPublishedEntry(entry)}>
+                        <span class="shrink-0 self-center rounded-sm border border-blue-200 bg-blue-50 px-1.5 py-px font-medium text-blue-600 text-size-extra-small uppercase tracking-wide">
+                          Published
+                        </span>
+                      </Show>
+                    )}
+                  />
+                </div>
               </div>
-            </div>
+            </Show>
           </Show>
-        </Show>
 
-        <PagerCursor
-          class="shrink-0 px-3 py-2"
-          hasPrevPage={hasPrevAuditPage()}
-          hasNextPage={hasNextAuditPage()}
-          disabled={isFetchingAudit()}
-          onPrev={prevAuditPage}
-          onNext={nextAuditPage}
-        />
+          <PagerCursor
+            class="shrink-0 px-3 py-2"
+            hasPrevPage={hasPrevAuditPage()}
+            hasNextPage={hasNextAuditPage()}
+            disabled={isFetchingAudit()}
+            onPrev={prevAuditPage}
+            onNext={nextAuditPage}
+          />
+        </Show>
       </div>
     </DockedPanel>
   );

@@ -524,7 +524,10 @@ export function DocumentPageView(props: Props) {
         >
           {titleRow()}
         </inset-view>
-        <inset-view id="document-properties" class="mb-xl block px-3xs md:px-s print:px-0">
+        <inset-view
+          id="document-properties"
+          class="mb-xl block px-3xs md:px-s print:px-0"
+        >
           {documentPropertiesBlock(layout)}
         </inset-view>
       </div>
@@ -757,7 +760,7 @@ export function DocumentPageView(props: Props) {
       <Show when={hasMounted() && !isDraft() && doc()}>
         {(document) => (
           <Portal>
-            <RevisionsSidebar documentId={document().id} />
+            <RevisionsSidebar documentId={document().id} documentType={documentType()} />
           </Portal>
         )}
       </Show>
