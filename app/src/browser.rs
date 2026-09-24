@@ -1,11 +1,11 @@
-use std::rc::Rc;
+use std::{path::PathBuf, rc::Rc};
 
 use futures::{StreamExt, channel::mpsc};
 use gpui::{
     Context, FocusHandle, IntoElement, KeyDownEvent, MouseButton, Render, SharedString, Window,
     actions, canvas, div, prelude::*, rgb,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::{Origin, Url};
 use wry::http::Request;
@@ -17,7 +17,7 @@ use wry::{
 use crate::{
     Paste,
     find_bar::FindBar,
-    mounts::{MountConfig, Mounts, is_plain_name, mountpoint},
+    mounts::{MountConfig, Mounts, is_plain_name, load, mountpoint, support_dir, write},
     palette::Palette,
     tab_bar::{TabBar, TabLabel},
 };
@@ -190,6 +190,17 @@ pub enum PageMessage {
     },
 }
 
+/// The open tabs, restored on the next launch.
+#[derive(Serialize, Deserialize, Default)]
+pub struct Session {
+    pub tabs: Vec<String>,
+    pub active: usize,
+}
+
+pub fn session_path() -> PathBuf {
+    support_dir().join("session.json")
+}
+
 pub struct FindState {
     pub query: String,
     pub result: Option<SharedString>,
@@ -252,6 +263,18 @@ impl Browser {
         .detach();
         cx.observe_global::<Mounts>(|this, cx| this.broadcast_mounts(cx))
             .detach();
+        // Quitting keeps the window alive until here; closing it drops the browser first.
+        cx.on_app_quit(|this, _| {
+            this.save_session();
+            async {}
+        })
+        .detach();
+        let this = cx.weak_entity();
+        window.on_window_should_close(cx, move |_, cx| {
+            this.update(cx, |this, _| this.save_session())
+                .expect("browser outlives its window");
+            true
+        });
 
         let mut browser = Self {
             origin: Url::parse(&url).expect("VEKTOR_URL is not a URL").origin(),
@@ -264,8 +287,35 @@ impl Browser {
             find_focus: cx.focus_handle(),
             sign_in_verifier: None,
         };
-        browser.open_tab(&url, window, cx);
+        // Tabs saved against another `VEKTOR_URL` are not restored.
+        let session: Session = load(session_path());
+        let mut active = 0;
+        for (index, tab) in session.tabs.iter().enumerate() {
+            if is_internal(&browser.origin, tab) {
+                if index == session.active {
+                    active = browser.tabs.len();
+                }
+                browser.open_tab(tab, window, cx);
+            }
+        }
+        if browser.tabs.is_empty() {
+            browser.open_tab(&url, window, cx);
+        } else {
+            browser.activate(active, cx);
+        }
         browser
+    }
+
+    pub fn save_session(&self) {
+        let session = Session {
+            tabs: self
+                .tabs
+                .iter()
+                .map(|tab| tab.webview.url().expect("failed to read webview url"))
+                .collect(),
+            active: self.active,
+        };
+        write(session_path(), &session);
     }
 
     pub fn open_tab(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -350,10 +400,23 @@ impl Browser {
     pub fn close(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.tabs.remove(index);
         if self.tabs.is_empty() {
+            self.save_session();
             window.remove_window();
             return;
         }
         self.activate(self.active.min(self.tabs.len() - 1), cx);
+    }
+
+    pub fn move_tab(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        let active = self.tabs[self.active].id;
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = self
+            .tabs
+            .iter()
+            .position(|tab| tab.id == active)
+            .expect("active tab vanished while moving");
+        cx.notify();
     }
 
     pub fn set_title(&mut self, id: u64, title: String, cx: &mut Context<Self>) {
@@ -668,6 +731,10 @@ impl Render for Browser {
                     move |index, window, cx| {
                         entity.update(cx, |this, cx| this.close(index, window, cx))
                     }
+                }),
+                on_move: Rc::new({
+                    let entity = entity.clone();
+                    move |from, to, _, cx| entity.update(cx, |this, cx| this.move_tab(from, to, cx))
                 }),
                 on_new: Rc::new({
                     let entity = entity.clone();

@@ -113,7 +113,7 @@ pub struct Mounts {
 
 impl Global for Mounts {}
 
-fn support_dir() -> PathBuf {
+pub fn support_dir() -> PathBuf {
     PathBuf::from(std::env::var("HOME").expect("HOME is not set"))
         .join("Library/Application Support/Vektor")
 }
@@ -140,7 +140,7 @@ pub fn is_plain_name(value: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn load<T: serde::de::DeserializeOwned + Default>(path: PathBuf) -> T {
+pub fn load<T: serde::de::DeserializeOwned + Default>(path: PathBuf) -> T {
     match std::fs::read(&path) {
         Ok(bytes) => serde_json::from_slice(&bytes)
             .unwrap_or_else(|e| panic!("{} is corrupt: {e}", path.display())),
@@ -149,7 +149,7 @@ fn load<T: serde::de::DeserializeOwned + Default>(path: PathBuf) -> T {
     }
 }
 
-fn write(path: PathBuf, value: &impl Serialize) {
+pub fn write(path: PathBuf, value: &impl Serialize) {
     std::fs::create_dir_all(support_dir()).expect("could not create the support directory");
     std::fs::write(
         &path,
