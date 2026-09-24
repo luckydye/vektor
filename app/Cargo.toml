@@ -21,4 +21,4 @@ serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 url = "2"
-wry = "0.57"
+wry = { version = "0.57", features = ["devtools"] }
