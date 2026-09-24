@@ -13,10 +13,10 @@ code path before filing. Never file a bug you have not reproduced or traced to s
 
 Self-hosted, multi-tenant collaborative docs platform.
 
-- **Runtime/stack:** Bun; Hono API under `app/src/api/routes/`; better-auth; Drizzle ORM over
-  **per-space SQLite files** (`data/spaces/space_*.db`); Yjs realtime (`app/src/realtime/`);
+- **Runtime/stack:** Bun; Hono API under `server/src/api/routes/`; better-auth; Drizzle ORM over
+  **per-space SQLite files** (`data/spaces/space_*.db`); Yjs realtime (`server/src/realtime/`);
   Tiptap/ProseMirror + CodeMirror editor (client); Astro + Vue + Solid; Rust native modules
-  (`app/native/` — image, exec, embedding); jobs/workflow runtime (`app/src/jobs/`).
+  (`server/native/` — image, exec, embedding); jobs/workflow runtime (`server/src/jobs/`).
 - **Tenancy:** each space has its own SQLite DB. Cross-space isolation is largely structural
   (a doc id from space B does not resolve in space A's DB). ACL is per-space.
 - **Run modes:** `vektor serve --no-auth` (everyone is one LOCAL super-user) and
@@ -38,14 +38,14 @@ Most "leak" false positives come from not knowing this. Establish it empirically
 it everywhere.
 
 - **Roles:** `viewer < editor < owner` at space scope.
-- **Grants only ADD.** `getDocumentPermission` (`app/src/acl/store.ts`) returns the **strongest**
+- **Grants only ADD.** `getDocumentPermission` (`server/src/acl/store.ts`) returns the **strongest**
   of a document's direct / document_tree / category / **space** grants. Consequences:
   - A space member with role R holds **≥ R on every non-archived document**. So "endpoint X shows
     a space member data about other documents in the same space" is **NOT** a leak — they can read
     those docs anyway. Do not file it.
   - There is **no per-document "deny"** (`action` is only `grant`/`revoke`). You cannot restrict a
     document *below* a member's space role.
-- **THE key divergence — archived documents.** `requiredRoleForDocument` (`app/src/acl/guards.ts`)
+- **THE key divergence — archived documents.** `requiredRoleForDocument` (`server/src/acl/guards.ts`)
   raises the required role to **EDITOR** for archived docs. So a plain **viewer is denied archived
   documents**. Any endpoint that exposes archived-doc data (content, title, attachments, run
   artifacts, breadcrumb ancestor titles) to a viewer **is a real bug** — this is the single most
@@ -74,8 +74,8 @@ hours of false positives.
 
 ## 3. Environment setup
 
-The binary is `app/vektor` (build with `mise exec -- task compile` from repo root; run `bun i` at
-root and in `app/` first if Astro/tsconfig errors). Copy it into isolated run dirs so each server
+The binary is `server/vektor` (build with `mise exec -- task compile` from repo root; run `bun i` at
+root and in `server/` first if Astro/tsconfig errors). Copy it into isolated run dirs so each server
 has its own data.
 
 ### Two servers, two purposes
@@ -83,8 +83,8 @@ has its own data.
 ```bash
 SP=<scratch>            # a writable scratch dir
 mkdir -p $SP/noauth_run $SP/auth_run
-cp app/vektor $SP/noauth_run/vektor
-cp app/vektor $SP/auth_run/vektor
+cp server/vektor $SP/noauth_run/vektor
+cp server/vektor $SP/auth_run/vektor
 
 # no-auth: everyone is a super-user. Use for VALIDATION / 500s / injection / DoS / native / SSRF.
 # (Authorization bugs are INVISIBLE here — everyone is owner.)
@@ -123,7 +123,7 @@ private-parent + shared-child; and at least one archived document.** This exerci
 ### Shell tips (this environment)
 
 - Use `bun` for JSON in shell: `curl ... | mise exec -- bun -e 'const d=await Bun.stdin.json(); ...'`.
-- `fflate` (for building test zips) only resolves when run from `app/` (`cd app && bun -e ...`).
+- `fflate` (for building test zips) only resolves when run from `server/` (`cd server && bun -e ...`).
 - To kill a server: it appears in `pgrep -af` as `./vektor serve --no-auth --port 8080`
   (match on `serve --no-auth` or `serve --port 8080`, or kill by PID). `pkill -f` on the run-dir
   path often misses it.
@@ -160,7 +160,7 @@ Ordered roughly by yield. For each: the pattern, where to look, and how to trigg
 The maintainer's own recurring bug. An endpoint returns per-document or feature-gated data but
 checks only a **space role** (`verifySpaceRole`/`authenticateSpaceAccess`) or omits the
 `documentId`/feature.
-- **Look:** every handler in `app/src/api/routes/spaces/`. Grep each for its guard. Flag any that
+- **Look:** every handler in `server/src/api/routes/spaces/`. Grep each for its guard. Flag any that
   return document-specific or history/audit data behind only a space-role or a
   `verifyFeatureAccess(...)` **without** `documentId`.
 - **Trigger:** the archived-doc case (viewer denied the doc directly but the endpoint serves its
@@ -196,7 +196,7 @@ multi-tenant process.
 - **Found:** #124, #125, #145, #170.
 
 ### 5.5 XSS / markup injection sinks that bypass the sanitizer
-The core sanitizer (`app/src/utils/html.ts` `sanitizeDocumentHtml`/`sanitizeSvgMarkup`/
+The core sanitizer (`server/src/utils/html.ts` `sanitizeDocumentHtml`/`sanitizeSvgMarkup`/
 `sanitizeVektorDocumentPreviewHtml`) is **robust** — don't re-fuzz it. Bugs are in sinks that
 **don't route through it**, or attributes it keeps unvalidated (`data-*`, SVG paint attrs).
 - **Look:** grep the client for `innerHTML`, `v-html`, `dangerouslySetInnerHTML`,

@@ -33,28 +33,28 @@ jobs:
       - name: Install dependencies
         run: |
           bun i
-          cd app && bun i
+          cd server && bun i
 
       - name: Build native image addon
-        working-directory: app/native/image
+        working-directory: server/native/image
         run: |
           bun i
           bun run build
 
       - name: Build native JavaScript runtime
-        working-directory: app/native/exec
+        working-directory: server/native/exec
         run: |
           bun i
           bun run build
 
       - name: Build native embedding runtime
-        working-directory: app/native/embedding
+        working-directory: server/native/embedding
         run: |
           bun i
           bun run build
 
       - name: Build Astro assets + compile binary
-        working-directory: app
+        working-directory: server
         run: |
           bunx --bun astro build
           bun run ./build.ts
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: app/${{ matrix.artifact }}
+          path: server/${{ matrix.artifact }}
           if-no-files-found: error
 
   release:

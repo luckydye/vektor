@@ -9,14 +9,14 @@ tasks:
   setup:
     cmds:
       - bun i
-      - cd app && bun i
+      - cd server && bun i
       - task: native:image
       - task: native:exec
       - task: native:embedding
 
   native:image:
     desc: Build the native image addon (Rust → .node) for the host platform.
-    dir: ./app/native/image
+    dir: ./server/native/image
     sources:
       - Cargo.toml
       - Cargo.lock
@@ -30,7 +30,7 @@ tasks:
 
   native:exec:
     desc: Build the native JavaScript runtime (Rust → .node) for the host platform.
-    dir: ./app/native/exec
+    dir: ./server/native/exec
     sources:
       - Cargo.toml
       - Cargo.lock
@@ -44,7 +44,7 @@ tasks:
 
   native:embedding:
     desc: Build the native local embedding runtime (Rust → .node) for the host platform.
-    dir: ./app/native/embedding
+    dir: ./server/native/embedding
     sources:
       - Cargo.toml
       - Cargo.lock
@@ -61,7 +61,7 @@ tasks:
 
   dev:
     deps: [setup]
-    dir: ./app
+    dir: ./server
     aliases: [d]
     dotenv:
       - ../.env
@@ -78,7 +78,7 @@ tasks:
 
   preview:
     deps: [setup]
-    dir: ./app
+    dir: ./server
     dotenv:
       - ../.env.preview
     env:
@@ -89,14 +89,14 @@ tasks:
       
   build:
     deps: [setup]
-    dir: ./app
+    dir: ./server
     dotenv:
       - ../.env
     cmds:
       - bunx --bun astro build
 
   compile:
-    dir: ./app
+    dir: ./server
     desc: Compile full app with server into a single executable using bun.
     deps: [native:image, native:exec, native:embedding]
     dotenv:
@@ -106,7 +106,7 @@ tasks:
       - bun run ./build.ts
 
   start:
-    dir: ./app
+    dir: ./server
     desc: Start the compiled binary with the current runtime environment.
     dotenv:
       - ../.env
@@ -123,7 +123,7 @@ tasks:
 
   check:tsc:
     internal: true
-    dir: ./app
+    dir: ./server
     cmds:
       - |
         TSC_OUT=$(../node_modules/.bin/tsc --noEmit --pretty false 2>&1 | awk '
@@ -135,13 +135,13 @@ tasks:
         [ -z "$TSC_OUT" ]
 
   check:biome:
-    dir: ./app
+    dir: ./server
     cmds:
       - echo "== biome =="
       - bunx biome check --diagnostic-level=error {{.CLI_ARGS}}
 
   test:
-    dir: ./app
+    dir: ./server
     dotenv:
       - ../.env
     env:
@@ -183,7 +183,7 @@ tasks:
 
   test:s3:
     desc: The S3 storage suite against the RustFS started by `task s3:up`.
-    dir: ./app
+    dir: ./server
     env:
       NODE_ENV: test
       VEKTOR_TEST_S3_ENDPOINT: http://127.0.0.1:9010
@@ -195,7 +195,7 @@ tasks:
 
   test:frontend:
     desc: Frontend component suite (Vitest + happy-dom). No server needed.
-    dir: ./app
+    dir: ./server
     cmds:
       # `--bun` matters: without it bunx starts vitest on Node, and the server
       # project loses the Bun global it needs to spawn the app.
@@ -203,7 +203,7 @@ tasks:
 
   test:wiki-roles:
     desc: Independent acceptance suite for SV_Wiki-Testfaelle_Rollen_2026-08-fk.pptx.
-    dir: ./app
+    dir: ./server
     dotenv:
       - ../.env
     env:
@@ -217,7 +217,7 @@ tasks:
       Browser tests (Playwright). Builds the client, boots a disposable
       in-memory server, seeds it, and drives a real browser. Covers what
       happy-dom cannot — the canvas custom element above all.
-    dir: ./app
+    dir: ./server
     cmds:
       - bun ./test/e2e/run.ts {{.CLI_ARGS}}
 
@@ -227,7 +227,7 @@ tasks:
       client, boots a disposable in-memory server, seeds a space and drives the
       real sidebar. Run it after the document tree changes appearance. Needs
       ffmpeg.
-    dir: ./app
+    dir: ./server
     cmds:
       - bun ./scripts/record-onboarding.ts {{.CLI_ARGS}}
 
@@ -253,14 +253,14 @@ tasks:
         fi
 
         next_version="$(bun -e '
-          const packageJson = await Bun.file("app/package.json").json();
+          const packageJson = await Bun.file("server/package.json").json();
           const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(packageJson.version);
           if (!match) throw new Error(`Expected a stable semantic version, received ${packageJson.version}`);
           console.log(`${match[1]}.${match[2]}.${Number(match[3]) + 1}`);
         ')"
-        (cd app && bun pm pkg set version="$next_version")
+        (cd server && bun pm pkg set version="$next_version")
 
-        git add app/package.json
+        git add server/package.json
         git commit -m "release: $tag"
         git tag "$tag"
         git push origin HEAD "$tag"

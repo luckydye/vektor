@@ -8,7 +8,7 @@
 - **Database:** Drizzle ORM (SQLite)
 - **Native modules:** Rust → `.node` via napi-rs (image processing, JS runtime)
 - **Linter/formatter:** Biome and Typescript
-- **Package manager:** Bun (monorepo: `app/` workspace)
+- **Package manager:** Bun (monorepo: `server/` workspace)
 
 ## General Guidelines
 
