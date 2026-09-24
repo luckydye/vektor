@@ -9,6 +9,7 @@ import {
 } from "#api/client.ts";
 import { useCanvasCursorColor } from "#composeables/useCanvasCursorColor.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
+import { useDesktopMounts } from "#composeables/useDesktopMounts.ts";
 import { usePersonalAccessTokens } from "#composeables/usePersonalAccessTokens.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -488,7 +489,24 @@ export function UserPreferencesPanel(props: Props) {
           // ),
 
           desktop: () => (
-            <Show when={app}>{(app) => <DesktopAppPreferences app={app()} />}</Show>
+            <Show when={app}>
+              {(app) => {
+                const desktopMounts = useDesktopMounts();
+                return (
+                  <DesktopAppPreferences
+                    app={app()}
+                    spaces={tokenSpaces()}
+                    currentSpaceId={currentSpaceId()}
+                    mounts={desktopMounts.mounts()}
+                    error={desktopMounts.error()}
+                    onMount={desktopMounts.mount}
+                    onAuthorize={(mount) => void desktopMounts.authorize(mount)}
+                    onUnmount={desktopMounts.unmount}
+                    onReveal={desktopMounts.reveal}
+                  />
+                );
+              }}
+            </Show>
           ),
 
           tokens: () => (

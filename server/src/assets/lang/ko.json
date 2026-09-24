@@ -704,5 +704,18 @@
   "Desktop App": "데스크톱 앱",
   "Settings for the Vektor app on this device.": "이 기기의 Vektor 앱 설정입니다.",
   "Version": "버전",
-  "More desktop options are coming soon.": "더 많은 데스크톱 옵션이 곧 추가됩니다."
+  "More desktop options are coming soon.": "더 많은 데스크톱 옵션이 곧 추가됩니다.",
+  "Mounted spaces": "마운트된 스페이스",
+  "Show a space's files as a folder in Finder, grouped by document.": "스페이스의 파일을 문서별로 묶어 Finder 폴더로 표시합니다.",
+  "No spaces to mount.": "마운트할 스페이스가 없습니다.",
+  "Editable": "편집 가능",
+  "Mount": "마운트",
+  "Mounting…": "마운트 중…",
+  "Unmounting…": "마운트 해제 중…",
+  "Show in Finder": "Finder에서 보기",
+  "The app needs an access token for this space.": "이 스페이스에 대한 액세스 토큰이 필요합니다.",
+  "Create token and mount": "토큰 만들고 마운트",
+  "Retry with a new token": "새 토큰으로 다시 시도",
+  "Read-only": "읽기 전용",
+  "Unmount": "마운트 해제"
 }

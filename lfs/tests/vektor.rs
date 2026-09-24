@@ -243,6 +243,7 @@ async fn open(port: u16, dir: &tempdir::Dir, writable: bool) -> Arc<dyn FileSyst
         &format!("vektor+http://127.0.0.1:{port}/test"),
         dir.path(),
         writable,
+        None,
     )
     .await
     .unwrap()

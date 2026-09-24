@@ -704,5 +704,18 @@
   "Desktop App": "Desktop App",
   "Settings for the Vektor app on this device.": "Settings for the Vektor app on this device.",
   "Version": "Version",
-  "More desktop options are coming soon.": "More desktop options are coming soon."
+  "More desktop options are coming soon.": "More desktop options are coming soon.",
+  "Mounted spaces": "Mounted spaces",
+  "Show a space's files as a folder in Finder, grouped by document.": "Show a space's files as a folder in Finder, grouped by document.",
+  "No spaces to mount.": "No spaces to mount.",
+  "Editable": "Editable",
+  "Mount": "Mount",
+  "Mounting…": "Mounting…",
+  "Unmounting…": "Unmounting…",
+  "Show in Finder": "Show in Finder",
+  "The app needs an access token for this space.": "The app needs an access token for this space.",
+  "Create token and mount": "Create token and mount",
+  "Retry with a new token": "Retry with a new token",
+  "Read-only": "Read-only",
+  "Unmount": "Unmount"
 }

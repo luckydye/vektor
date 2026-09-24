@@ -182,13 +182,13 @@ impl VektorSpace {
     /// sending a bearer token in clear text is not something to infer from a
     /// hostname.
     ///
-    /// The token comes from `VEKTOR_ACCESS_TOKEN`, the same variable vektor's
-    /// own CLI reads. On macOS a service can instead set
-    /// `VEKTOR_KEYCHAIN_SERVICE` to a generic-password item name.
+    /// `token` is sent as a bearer token; `None` only works against a server
+    /// running with `--no-auth`. The CLI finds one with [`access_token`].
     pub async fn open(
         location: &str,
         state_dir: &Path,
         writable: bool,
+        token: Option<String>,
     ) -> Result<Arc<VektorSpace>> {
         let cache_dir = state_dir.join("blocks");
         let scratch_dir = state_dir.join("scratch");
@@ -231,7 +231,7 @@ impl VektorSpace {
             location: format!("vektor://{authority}/{space}"),
             // Resolved below, once there is a client to ask with.
             space_id: Mutex::new(space),
-            token: access_token(),
+            token,
             owner: super::owner_of(state_dir),
             cache_dir,
             scratch_dir,
@@ -895,7 +895,9 @@ impl VektorSpace {
     }
 }
 
-fn access_token() -> Option<String> {
+/// `VEKTOR_ACCESS_TOKEN`, the same variable vektor's own CLI reads. On macOS a
+/// service can instead set `VEKTOR_KEYCHAIN_SERVICE` to a generic-password item name.
+pub fn access_token() -> Option<String> {
     if let Some(token) = std::env::var("VEKTOR_ACCESS_TOKEN")
         .ok()
         .filter(|token| !token.is_empty())

@@ -83,16 +83,14 @@ pub fn mount(target: &MountTarget, mountpoint: &Path) -> Result<()> {
     run(&mut cmd, "mount")
 }
 
-pub fn unmount(mountpoint: &Path) -> Result<()> {
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = Command::new("umount");
-        c.arg("-f").arg(mountpoint);
-        c
-    } else {
-        let mut c = Command::new("umount");
-        c.arg(mountpoint);
-        c
-    };
+/// `force` detaches even while files are open, which is what a server about to
+/// exit needs: a hard NFS mount left without its server hangs every access.
+pub fn unmount(mountpoint: &Path, force: bool) -> Result<()> {
+    let mut cmd = Command::new("umount");
+    if force || cfg!(target_os = "windows") {
+        cmd.arg("-f");
+    }
+    cmd.arg(mountpoint);
     run(&mut cmd, "umount")
 }
 

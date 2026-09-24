@@ -1,5 +1,7 @@
 mod browser;
 mod find_bar;
+mod keychain;
+mod mounts;
 mod palette;
 mod tab_bar;
 
@@ -131,6 +133,7 @@ fn main() {
                 window_min_size: Some(size(px(480.), px(320.))),
                 ..Default::default()
             };
+            mounts::init(&url::Url::parse(&url).expect("VEKTOR_URL is not a URL"), cx);
             cx.open_window(options, |window, cx| {
                 cx.new(|cx| Browser::new(url, window, cx))
             })

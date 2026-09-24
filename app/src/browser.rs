@@ -5,6 +5,7 @@ use gpui::{
     Context, FocusHandle, IntoElement, KeyDownEvent, MouseButton, Render, SharedString, Window,
     actions, canvas, div, prelude::*, rgb,
 };
+use serde::Deserialize;
 use url::{Origin, Url};
 use wry::http::Request;
 use wry::{
@@ -15,6 +16,7 @@ use wry::{
 use crate::{
     Paste,
     find_bar::FindBar,
+    mounts::{MountConfig, Mounts, is_plain_name, mountpoint},
     palette::Palette,
     tab_bar::{TabBar, TabLabel},
 };
@@ -120,7 +122,7 @@ const CHROME_COLOR_SCRIPT: &str = r##"
     const color = `${r},${g},${b}`;
     if (color !== last) {
       last = color;
-      window.ipc.postMessage(`chrome-color:${color}`);
+      window.ipc.postMessage(JSON.stringify({ type: "chromeColor", color: [r, g, b] }));
     }
   };
   // Keeps sampling briefly after each change so fades (e.g. dialog backdrops) are followed.
@@ -148,17 +150,41 @@ pub enum TabEvent {
     OpenExternal(String),
     LeftOrigin(u64, String),
     FindResult(u64, String),
-    ChromeColor(u64, u32),
+    Page(u64, PageMessage),
 }
 
-/// Parses `chrome-color:r,g,b`; the page is untrusted, so anything else is dropped.
-pub fn parse_chrome_color(message: &str) -> Option<u32> {
-    let mut channels = message.strip_prefix("chrome-color:")?.split(',');
-    let mut color = 0;
-    for _ in 0..3 {
-        color = color << 8 | channels.next()?.parse::<u8>().ok()? as u32;
-    }
-    channels.next().is_none().then_some(color)
+/// Messages a page sends with `window.ipc.postMessage(JSON.stringify(message))`.
+#[derive(Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum PageMessage {
+    ChromeColor {
+        color: [u8; 3],
+    },
+    /// Asks for a `vektor-app:mounts` event with the current mounts.
+    MountsRequest,
+    Mount {
+        space_id: String,
+        space_slug: String,
+        writable: bool,
+        /// A freshly minted access token, when the app reported it has none for the space.
+        token: Option<String>,
+        /// The id of `token`, so the token can be revoked when the mount is removed.
+        token_id: Option<String>,
+    },
+    /// The web UI deleted a token listed in the payload's `revoke`.
+    TokenRevoked {
+        token_id: String,
+    },
+    Unmount {
+        space_id: String,
+    },
+    RevealMount {
+        space_id: String,
+    },
 }
 
 pub struct FindState {
@@ -211,7 +237,7 @@ impl Browser {
                     TabEvent::OpenExternal(url) => open_external(&url, cx),
                     TabEvent::LeftOrigin(id, url) => this.return_to_origin(id, &url, cx),
                     TabEvent::FindResult(id, result) => this.set_find_result(id, &result, cx),
-                    TabEvent::ChromeColor(id, color) => this.set_chrome(id, color, cx),
+                    TabEvent::Page(id, message) => this.handle_page_message(id, message, cx),
                 });
                 if updated.is_err() {
                     break;
@@ -219,6 +245,8 @@ impl Browser {
             }
         })
         .detach();
+        cx.observe_global::<Mounts>(|this, cx| this.broadcast_mounts(cx))
+            .detach();
 
         let mut browser = Self {
             origin: Url::parse(&url).expect("VEKTOR_URL is not a URL").origin(),
@@ -259,8 +287,9 @@ impl Browser {
                 if !is_internal(&ipc_origin, &request.uri().to_string()) {
                     return;
                 }
-                if let Some(color) = parse_chrome_color(request.body()) {
-                    let _ = ipc.unbounded_send(TabEvent::ChromeColor(id, color));
+                // The page is untrusted: anything that does not parse is dropped.
+                if let Ok(message) = serde_json::from_str(request.body()) {
+                    let _ = ipc.unbounded_send(TabEvent::Page(id, message));
                 }
             })
             .with_document_title_changed_handler(move |title| {
@@ -326,6 +355,77 @@ impl Browser {
         if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == id) {
             tab.title = title.into();
             cx.notify();
+        }
+    }
+
+    pub fn handle_page_message(&mut self, id: u64, message: PageMessage, cx: &mut Context<Self>) {
+        match message {
+            PageMessage::ChromeColor { color: [r, g, b] } => {
+                self.set_chrome(id, u32::from_be_bytes([0, r, g, b]), cx)
+            }
+            PageMessage::MountsRequest => self.broadcast_mounts_to(id, cx),
+            PageMessage::Mount {
+                space_id,
+                space_slug,
+                writable,
+                token,
+                token_id,
+            } => {
+                let token_id_ok = token_id.as_deref().is_none_or(is_plain_name);
+                if !is_plain_name(&space_id)
+                    || !is_plain_name(&space_slug)
+                    || !token_id_ok
+                    || token.is_some() != token_id.is_some()
+                {
+                    return;
+                }
+                cx.update_global::<Mounts, _>(|mounts, _| {
+                    let config = MountConfig {
+                        origin: mounts.origin.clone(),
+                        space_id,
+                        space_slug,
+                        writable,
+                        token_id,
+                    };
+                    mounts.mount(config, token);
+                });
+            }
+            PageMessage::TokenRevoked { token_id } => {
+                cx.update_global::<Mounts, _>(|mounts, _| mounts.revoked(&token_id))
+            }
+            PageMessage::Unmount { space_id } => {
+                cx.update_global::<Mounts, _>(|mounts, _| mounts.unmount(&space_id))
+            }
+            PageMessage::RevealMount { space_id } => {
+                if let Some(entry) = cx.global::<Mounts>().entries.get(&space_id) {
+                    cx.reveal_path(&mountpoint(&entry.config));
+                }
+            }
+        }
+    }
+
+    pub fn mounts_script(&self, cx: &Context<Self>) -> String {
+        let states = serde_json::to_string(&cx.global::<Mounts>().payload())
+            .expect("mount states serialize");
+        format!(
+            "window.dispatchEvent(new CustomEvent('vektor-app:mounts', {{ detail: {states} }}))"
+        )
+    }
+
+    pub fn broadcast_mounts(&self, cx: &Context<Self>) {
+        let script = self.mounts_script(cx);
+        for tab in &self.tabs {
+            tab.webview
+                .evaluate_script(&script)
+                .expect("failed to send mounts to page");
+        }
+    }
+
+    pub fn broadcast_mounts_to(&self, id: u64, cx: &Context<Self>) {
+        if let Some(tab) = self.tabs.iter().find(|tab| tab.id == id) {
+            tab.webview
+                .evaluate_script(&self.mounts_script(cx))
+                .expect("failed to send mounts to page");
         }
     }
 

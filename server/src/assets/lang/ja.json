@@ -704,5 +704,18 @@
   "Desktop App": "デスクトップアプリ",
   "Settings for the Vektor app on this device.": "このデバイスの Vektor アプリの設定。",
   "Version": "バージョン",
-  "More desktop options are coming soon.": "デスクトップ向けのオプションは近日追加予定です。"
+  "More desktop options are coming soon.": "デスクトップ向けのオプションは近日追加予定です。",
+  "Mounted spaces": "マウント済みのスペース",
+  "Show a space's files as a folder in Finder, grouped by document.": "スペースのファイルをドキュメントごとにまとめて Finder のフォルダとして表示します。",
+  "No spaces to mount.": "マウントできるスペースがありません。",
+  "Editable": "編集可能",
+  "Mount": "マウント",
+  "Mounting…": "マウント中…",
+  "Unmounting…": "マウント解除中…",
+  "Show in Finder": "Finder で表示",
+  "The app needs an access token for this space.": "このスペースにはアクセストークンが必要です。",
+  "Create token and mount": "トークンを作成してマウント",
+  "Retry with a new token": "新しいトークンで再試行",
+  "Read-only": "読み取り専用",
+  "Unmount": "マウント解除"
 }

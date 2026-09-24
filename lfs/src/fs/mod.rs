@@ -649,6 +649,17 @@ pub fn volume_name(url: &str) -> String {
     }
 }
 
+/// One state directory per backend URL under `root`, so several volumes can be
+/// served from the same machine without sharing a WAL.
+///
+/// Named for the volume with a hash suffix, so the directory says which volume
+/// it belongs to while two volumes of the same name in different buckets still
+/// get their own.
+pub fn state_dir(root: &std::path::Path, backend: &str) -> std::path::PathBuf {
+    let tag = &blake3::hash(backend.as_bytes()).to_hex()[..8];
+    root.join(format!("{}-{tag}", volume_name(backend)))
+}
+
 /// Deterministically turn a canonical backend identity into a nonzero NFS
 /// filesystem id. Tokens and other credentials must never be part of the
 /// input; callers use only display/backend URLs and resolved remote ids.

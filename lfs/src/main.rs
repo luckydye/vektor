@@ -5,8 +5,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use lfs::client::local::{spawn_idle_flusher, LocalMount};
 use lfs::client::mount::{self, MountTarget};
-use lfs::fs::{passthrough::Passthrough, vektor::VektorSpace, FileSystem, Volume};
+use lfs::fs::vektor::{access_token, VektorSpace};
+use lfs::fs::{passthrough::Passthrough, FileSystem, Volume};
 use lfs::server::smb::Credentials;
 use lfs::{server, Result};
 
@@ -133,7 +135,7 @@ async fn main() -> Result<()> {
                     .state
                     .clone()
                     .unwrap_or_else(|| default_state_dir(&backend));
-                let fs = VektorSpace::open(&backend, &state, writable).await?;
+                let fs = VektorSpace::open(&backend, &state, writable, access_token()).await?;
                 println!(
                     "serving a vektor space's uploads ({})",
                     if writable { "read-write" } else { "read-only" }
@@ -247,43 +249,23 @@ async fn main() -> Result<()> {
                         .state
                         .clone()
                         .unwrap_or_else(|| default_state_dir(&target));
-                    (VektorSpace::open(&target, &state, writable).await?, None)
+                    (VektorSpace::open(&target, &state, writable, access_token()).await?, None)
                 } else {
                     let v = open(&target, cli.state.as_deref()).await?;
                     let flusher = v.spawn_flusher(Duration::from_secs(30));
                     (v, Some(flusher))
                 };
                 let _flusher = flusher;
-                // Same reason as the `serve` path: a file written once and then
-                // left alone has no later write to ride along with, and would
-                // sit in scratch until unmount.
-                let _idle = spawn_idle_flusher(&volume);
-                let export = volume.name().to_string();
-                let addr = format!("127.0.0.1:{port}");
-                let (bound, run) = server::serve(Arc::clone(&volume), &addr, &export).await?;
-                let server = tokio::spawn(run);
-
-                let t = MountTarget {
-                    host: "127.0.0.1".into(),
-                    port: bound,
-                    export: format!("/{export}"),
-                    read_only: !volume.writable(),
-                };
-                mount::mount(&t, &mountpoint)?;
-                println!("mounted {} at {}", volume.location(), mountpoint.display());
+                let mut local = LocalMount::start(volume, &mountpoint, port).await?;
+                println!("mounted {} at {}", local.volume.location(), mountpoint.display());
                 println!("press ctrl-c to unmount");
 
                 tokio::select! {
-                    _ = server => {}
+                    _ = &mut local.server => {}
                     _ = shutdown_signal() => {}
                 }
-                let _ = mount::unmount(&mountpoint);
-                if volume.writable() {
-                    // `sync`, not `maybe_checkpoint`: a write from the last
-                    // moment before shutdown is still inside its idle window,
-                    // and has already been acknowledged to the client.
-                    volume.sync().await?;
-                }
+                let _ = local.unmount(false).await;
+                local.shutdown().await?;
                 println!("unmounted");
                 Ok(())
             } else {
@@ -295,7 +277,7 @@ async fn main() -> Result<()> {
         }
 
         Command::Unmount { mountpoint } => {
-            mount::unmount(&mountpoint)?;
+            mount::unmount(&mountpoint, false)?;
             println!("unmounted {}", mountpoint.display());
             Ok(())
         }
@@ -353,47 +335,12 @@ async fn open(backend: &str, state: Option<&std::path::Path>) -> Result<Arc<Volu
     Volume::open(backend, &dir).await
 }
 
-/// One state directory per backend URL, so several volumes can be served from
-/// the same machine without sharing a WAL.
-///
 /// Hidden, because a WAL and a chunk cache are this program's business rather
-/// than the user's. Named for the volume with a hash suffix, so the directory
-/// says which volume it belongs to while two volumes of the same name in
-/// different buckets still get their own.
-/// Upload buffered writes once they go quiet.
-///
-/// A filesystem that buffers acknowledges a write before its bytes leave the
-/// machine, and only flushes them after an idle period. Nothing else drives
-/// that: a checkpoint runs after each write, but a file written once and then
-/// left alone is still inside its idle window at that point, so without a
-/// timer it would sit in scratch until the process exits.
-///
-/// `None` when the mount is read-only, where there is nothing to flush.
-fn spawn_idle_flusher(volume: &Arc<dyn FileSystem>) -> Option<tokio::task::JoinHandle<()>> {
-    if !volume.writable() {
-        return None;
-    }
-    let fs = Arc::clone(volume);
-    Some(tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(Duration::from_secs(1));
-        loop {
-            ticker.tick().await;
-            if let Err(e) = fs.maybe_checkpoint().await {
-                tracing::error!("background flush failed: {e}");
-            }
-        }
-    }))
-}
-
+/// than the user's.
 fn default_state_dir(backend: &str) -> PathBuf {
-    let tag = &blake3::hash(backend.as_bytes()).to_hex()[..8];
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir());
-    home.join(".lfs").join(format!("{}-{tag}", volume_name_of(backend)))
-}
-
-fn volume_name_of(backend: &str) -> String {
-    lfs::fs::volume_name(backend)
+    lfs::fs::state_dir(&home.join(".lfs"), backend)
 }
