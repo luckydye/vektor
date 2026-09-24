@@ -4,6 +4,11 @@ import LandingLayout from "#layouts/LandingLayout.astro";
 import { t } from "#utils/lang.ts";
 
 const lang = Astro.preferredLocale || "en";
+// Resolved against this page, so only a path on this origin survives as a destination.
+const next = Astro.url.searchParams.get("next");
+const nextUrl = next ? new URL(next, Astro.url) : null;
+const callbackURL =
+  nextUrl && nextUrl.origin === Astro.url.origin ? nextUrl.pathname + nextUrl.search : "/";
 const features = [
   {
     label: t("Real-time collaboration across your whole team", lang),
@@ -137,7 +142,7 @@ const features = [
           >
         </div>
 
-        <Login client:load lang={lang} />
+        <Login client:load lang={lang} callbackURL={callbackURL} />
       </div>
     </div>
   </div>

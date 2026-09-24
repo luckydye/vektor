@@ -75,6 +75,7 @@ export function isReservedDocumentSlug(slug: string): boolean {
 export const reservedSpaceSlugs: readonly string[] = [
   // src/pages/
   "404",
+  "desktop-login",
   "docs",
   "login",
   "new",

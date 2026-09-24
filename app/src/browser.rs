@@ -6,6 +6,7 @@ use gpui::{
     actions, canvas, div, prelude::*, rgb,
 };
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use url::{Origin, Url};
 use wry::http::Request;
 use wry::{
@@ -175,6 +176,8 @@ pub enum PageMessage {
         /// The id of `token`, so the token can be revoked when the mount is removed.
         token_id: Option<String>,
     },
+    /// The login page wants OAuth, which only works in the system browser.
+    BrowserSignIn,
     /// The web UI deleted a token listed in the payload's `revoke`.
     TokenRevoked {
         token_id: String,
@@ -224,6 +227,8 @@ pub struct Browser {
     /// Open while the find bar is shown.
     pub find: Option<FindState>,
     pub find_focus: FocusHandle,
+    /// Secret of the browser sign-in in progress; only its hash ever leaves the app.
+    pub sign_in_verifier: Option<String>,
 }
 
 impl Browser {
@@ -257,6 +262,7 @@ impl Browser {
             url: url.clone(),
             find: None,
             find_focus: cx.focus_handle(),
+            sign_in_verifier: None,
         };
         browser.open_tab(&url, window, cx);
         browser
@@ -390,6 +396,7 @@ impl Browser {
                     mounts.mount(config, token);
                 });
             }
+            PageMessage::BrowserSignIn => self.start_browser_sign_in(cx),
             PageMessage::TokenRevoked { token_id } => {
                 cx.update_global::<Mounts, _>(|mounts, _| mounts.revoked(&token_id))
             }
@@ -402,6 +409,48 @@ impl Browser {
                 }
             }
         }
+    }
+
+    /// The server's `desktopAuth` plugin holds the other half of this exchange.
+    pub fn start_browser_sign_in(&mut self, cx: &mut Context<Self>) {
+        let verifier = hex::encode(rand::random::<[u8; 32]>());
+        let challenge = hex::encode(Sha256::digest(verifier.as_bytes()));
+        self.sign_in_verifier = Some(verifier);
+        let mut url = Url::parse(&self.url).expect("VEKTOR_URL is not a URL");
+        url.set_path("/desktop-login");
+        url.set_query(Some(&format!("challenge={challenge}")));
+        open_external(url.as_str(), cx);
+    }
+
+    /// `vektor-desktop://auth?code=…` from the browser. Links this app did not ask for find no
+    /// verifier and are ignored.
+    pub fn complete_sign_in(&mut self, link: &str, cx: &mut Context<Self>) {
+        let Ok(link) = Url::parse(link) else {
+            return;
+        };
+        let Some(code) = link
+            .query_pairs()
+            .find(|(key, _)| key == "code")
+            .map(|(_, code)| code.into_owned())
+        else {
+            return;
+        };
+        if link.scheme() != "vektor-desktop" || link.host_str() != Some("auth") {
+            return;
+        }
+        let Some(verifier) = self.sign_in_verifier.take() else {
+            return;
+        };
+        let mut url = Url::parse(&self.url).expect("VEKTOR_URL is not a URL");
+        url.set_path("/api/auth/desktop-handoff/complete");
+        url.query_pairs_mut()
+            .append_pair("code", &code)
+            .append_pair("verifier", &verifier);
+        self.tabs[self.active]
+            .webview
+            .load_url(url.as_str())
+            .expect("failed to load sign-in");
+        cx.activate(true);
     }
 
     pub fn mounts_script(&self, cx: &Context<Self>) -> String {

@@ -717,5 +717,9 @@
   "Create token and mount": "Create token and mount",
   "Retry with a new token": "Retry with a new token",
   "Read-only": "Read-only",
-  "Unmount": "Unmount"
+  "Unmount": "Unmount",
+  "Continue signing in in your browser.": "Continue signing in in your browser.",
+  "Sign in to the Vektor app": "Sign in to the Vektor app",
+  "Open the Vektor app": "Open the Vektor app",
+  "You can close this tab and return to the app.": "You can close this tab and return to the app."
 }

@@ -86,6 +86,9 @@ tasks:
       - cp Info.plist target/debug/Vektor.app/Contents/
       - cp assets/AppIcon.icns target/debug/Vektor.app/Contents/Resources/
       - cp target/debug/vektor-app target/debug/Vektor.app/Contents/MacOS/
+      # Launch Services caches a bundle's icon; a newer mtime plus re-registering refreshes it.
+      - touch target/debug/Vektor.app
+      - /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f target/debug/Vektor.app
       - ./target/debug/Vektor.app/Contents/MacOS/vektor-app
 
   preview:

@@ -1,0 +1,28 @@
+---
+import { DesktopLogin } from "#components/DesktopLogin.tsx";
+import LandingLayout from "#layouts/LandingLayout.astro";
+
+// Opened in the system browser by the desktop app, with the SHA-256 of a secret only the app holds.
+const lang = Astro.preferredLocale || "en";
+const challenge = Astro.url.searchParams.get("challenge") ?? "";
+if (!/^[0-9a-f]{64}$/.test(challenge)) {
+  return new Response("Invalid sign-in link", { status: 400 });
+}
+if (!Astro.locals.session || !Astro.locals.user) {
+  return Astro.redirect(
+    `/login?next=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`,
+  );
+}
+---
+
+<LandingLayout title="Vektor" lang={lang}>
+  <div class="flex min-h-screen items-center justify-center px-8 py-16">
+    <DesktopLogin
+      client:load
+      lang={lang}
+      challenge={challenge}
+      name={Astro.locals.user.name}
+      email={Astro.locals.user.email}
+    />
+  </div>
+</LandingLayout>

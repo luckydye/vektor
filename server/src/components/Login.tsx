@@ -2,12 +2,15 @@ import { createSignal, Show } from "solid-js";
 import { authClient } from "#composeables/auth-client.ts";
 import { config } from "#config";
 import { type TranslationKey, t } from "#utils/lang.ts";
+import { nativeApp, postToNativeApp } from "#utils/nativeApp.ts";
 import { Button } from "./Button.tsx";
 import { FormField } from "./FormField.tsx";
 import { Input } from "./Input.tsx";
 
 interface Props {
   lang: string;
+  /** Same-origin path to land on after signing in. */
+  callbackURL?: string;
 }
 
 export function Login(props: Props) {
@@ -24,17 +27,31 @@ export function Login(props: Props) {
   const [isSignUp, setIsSignUp] = createSignal(false);
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(false);
+  const [signingInInBrowser, setSigningInInBrowser] = createSignal(false);
+  const callbackURL = props.callbackURL ?? "/";
+
+  /**
+   * OAuth cannot run in the desktop app's webview (Google refuses embedded
+   * browsers), so the app signs in through the system browser instead.
+   */
+  function signInWithBrowser(): boolean {
+    if (!nativeApp()) return false;
+    postToNativeApp({ type: "browserSignIn" });
+    setSigningInInBrowser(true);
+    return true;
+  }
 
   async function onOAuthLogin() {
+    if (signInWithBrowser()) return;
     if (!conf.OAUTH_PROVIDER_ID) {
       throw new Error("OAUTH_PROVIDER_ID is not configured");
     }
 
     await authClient.signIn.oauth2({
       providerId: conf.OAUTH_PROVIDER_ID,
-      callbackURL: "/",
+      callbackURL,
       errorCallbackURL: "/error",
-      newUserCallbackURL: "/",
+      newUserCallbackURL: callbackURL,
       disableRedirect: false,
       scopes: ["email", "profile", "openid"],
       requestSignUp: false,
@@ -42,11 +59,12 @@ export function Login(props: Props) {
   }
 
   async function onGoogleLogin() {
+    if (signInWithBrowser()) return;
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/",
+      callbackURL,
       errorCallbackURL: "/error",
-      newUserCallbackURL: "/",
+      newUserCallbackURL: callbackURL,
     });
   }
 
@@ -83,16 +101,16 @@ export function Login(props: Props) {
           throw new Error(data.message || translate("Sign up failed"));
         }
 
-        window.location.href = "/";
+        window.location.href = callbackURL;
       } else {
         const result = await authClient.signIn.email({
           email: email(),
           password: password(),
-          callbackURL: "/",
+          callbackURL,
         });
 
         if (!result.error) {
-          window.location.href = "/";
+          window.location.href = callbackURL;
         } else {
           throw new Error(result.error.message || translate("Sign in failed"));
         }
@@ -234,6 +252,12 @@ export function Login(props: Props) {
           onClick={() => void onOAuthLogin()}
           disabled={loading()}
         />
+      </Show>
+
+      <Show when={signingInInBrowser()}>
+        <p class="text-center text-neutral-500 text-size-medium">
+          {translate("Continue signing in in your browser.")}
+        </p>
       </Show>
 
       <Show when={!showPasswordLogin && !showSsoLogin && !showGoogleLogin}>

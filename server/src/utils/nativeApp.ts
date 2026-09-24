@@ -40,6 +40,8 @@ export type NativeAppMessage =
       tokenId?: string;
     }
   | { type: "tokenRevoked"; tokenId: string }
+  /** Sign in through the system browser; the app then loads the resulting session itself. */
+  | { type: "browserSignIn" }
   | { type: "unmount"; spaceId: string }
   | { type: "revealMount"; spaceId: string };
 

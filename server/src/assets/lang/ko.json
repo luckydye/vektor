@@ -717,5 +717,9 @@
   "Create token and mount": "토큰 만들고 마운트",
   "Retry with a new token": "새 토큰으로 다시 시도",
   "Read-only": "읽기 전용",
-  "Unmount": "마운트 해제"
+  "Unmount": "마운트 해제",
+  "Continue signing in in your browser.": "브라우저에서 로그인을 계속하세요.",
+  "Sign in to the Vektor app": "Vektor 앱에 로그인",
+  "Open the Vektor app": "Vektor 앱 열기",
+  "You can close this tab and return to the app.": "이 탭을 닫고 앱으로 돌아가세요."
 }
