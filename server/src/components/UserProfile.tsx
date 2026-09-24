@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
+import { isNoAuthMode } from "#config";
 import { authClient } from "#composeables/auth-client.ts";
 import { useCosmetics } from "#composeables/useCosmetics.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
@@ -34,16 +35,18 @@ export function UserProfile() {
       ? "w-[620px] max-w-[calc(100vw-2rem)]"
       : "w-[300px] max-w-[calc(100vw-2rem)]";
 
+  // The client reports a failed sign-out as a value, not a throw; reloading
+  // regardless would look like signing out silently did nothing.
   async function handleLogout(event: MouseEvent) {
-    try {
-      await authClient.signOut();
-      (event.target as Element | null)?.dispatchEvent(
-        new CustomEvent("exit", { bubbles: true }),
-      );
-      window.location.reload();
-    } catch (error) {
-      console.error("Logout failed:", error);
+    const { error } = await authClient.signOut();
+    if (error) {
+      alert(`${t("Sign out failed")}: ${error.message ?? error.statusText}`);
+      return;
     }
+    (event.target as Element | null)?.dispatchEvent(
+      new CustomEvent("exit", { bubbles: true }),
+    );
+    window.location.reload();
   }
 
   onMount(() => {
@@ -102,6 +105,8 @@ export function UserProfile() {
                   <Icon class="h-4 w-4" name="source-code" />
                   <span class="text-interactive">{t("Source")}</span>
                 </a>
+                {/* No-auth mode signs every request in as the local user, so there is no session to end. */}
+                <Show when={!isNoAuthMode()}>
                 <button
                   type="button"
                   onClick={handleLogout}
@@ -110,6 +115,7 @@ export function UserProfile() {
                   <Icon class="h-4 w-4" name="sign-out" />
                   <span class="text-interactive">{t("Sign Out")}</span>
                 </button>
+                </Show>
               </div>
             </Show>
 

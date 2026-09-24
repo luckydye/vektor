@@ -721,5 +721,6 @@
   "Continue signing in in your browser.": "ブラウザでサインインを続けてください。",
   "Sign in to the Vektor app": "Vektor アプリにサインイン",
   "Open the Vektor app": "Vektor アプリを開く",
-  "You can close this tab and return to the app.": "このタブを閉じてアプリに戻ってください。"
+  "You can close this tab and return to the app.": "このタブを閉じてアプリに戻ってください。",
+  "Sign out failed": "サインアウトに失敗しました"
 }

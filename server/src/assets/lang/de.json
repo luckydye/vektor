@@ -721,5 +721,6 @@
   "Continue signing in in your browser.": "Melde dich im Browser weiter an.",
   "Sign in to the Vektor app": "Bei der Vektor-App anmelden",
   "Open the Vektor app": "Vektor-App öffnen",
-  "You can close this tab and return to the app.": "Du kannst diesen Tab schließen und zur App zurückkehren."
+  "You can close this tab and return to the app.": "Du kannst diesen Tab schließen und zur App zurückkehren.",
+  "Sign out failed": "Abmelden fehlgeschlagen"
 }

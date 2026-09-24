@@ -721,5 +721,6 @@
   "Continue signing in in your browser.": "Continúa el inicio de sesión en tu navegador.",
   "Sign in to the Vektor app": "Iniciar sesión en la app de Vektor",
   "Open the Vektor app": "Abrir la app de Vektor",
-  "You can close this tab and return to the app.": "Puedes cerrar esta pestaña y volver a la app."
+  "You can close this tab and return to the app.": "Puedes cerrar esta pestaña y volver a la app.",
+  "Sign out failed": "No se pudo cerrar la sesión"
 }
