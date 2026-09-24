@@ -1,0 +1,15 @@
+[package]
+name = "vektor-app"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vektor-app"
+path = "src/main.rs"
+
+[dependencies]
+futures = "0.3"
+# Compiles shaders at launch, so building needs no Metal toolchain.
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+url = "2"
+wry = "0.57"

@@ -15,6 +15,7 @@ import { useTranslation } from "#composeables/useTranslation.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
 import type { TranslationKey } from "#utils/lang.ts";
+import { nativeApp } from "#utils/nativeApp.ts";
 import {
   applyThemePreference,
   getStoredThemePreference,
@@ -23,6 +24,7 @@ import {
 } from "#utils/themePreference.ts";
 import { AccessTokensPanel } from "./AccessTokensPanel.tsx";
 import { CosmeticsPanel } from "./CosmeticsPanel.tsx";
+import { DesktopAppPreferences } from "./DesktopAppPreferences.tsx";
 import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
@@ -41,6 +43,10 @@ const tabs = [
   { id: "integrations", label: "Integrations" },
   { id: "tokens", label: "Access Tokens" },
 ] satisfies { id: string; label: TranslationKey }[];
+
+// Only the desktop app announces itself, so the tab is absent in a browser.
+const app = nativeApp();
+const visibleTabs = app ? [...tabs, { id: "desktop", label: "Desktop App" as const }] : tabs;
 
 const themeOptions: {
   value: ThemePreference;
@@ -302,7 +308,7 @@ export function UserPreferencesPanel(props: Props) {
       </div>
 
       <SettingsLayout
-        tabs={tabs.map((tab) => ({ ...tab, label: t(tab.label) }))}
+        tabs={visibleTabs.map((tab) => ({ ...tab, label: t(tab.label) }))}
         onTabChange={(id) => {
           if (id === "tokens") void accessTokens.load();
         }}
@@ -480,6 +486,10 @@ export function UserPreferencesPanel(props: Props) {
           //     onEquip={equipCosmetic}
           //   />
           // ),
+
+          desktop: () => (
+            <Show when={app}>{(app) => <DesktopAppPreferences app={app()} />}</Show>
+          ),
 
           tokens: () => (
             <AccessTokensPanel

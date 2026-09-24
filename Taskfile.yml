@@ -76,6 +76,18 @@ tasks:
       - defer: rm ../dev.log
       - bun --watch ./src/server.ts 2>&1 | tee ../dev.log
 
+  app:
+    desc: Run the native desktop app against VEKTOR_URL (defaults to the dev server).
+    dir: ./app
+    cmds:
+      - cargo build
+      # macOS only shows the icon and name for a binary launched from inside a bundle.
+      - mkdir -p target/debug/Vektor.app/Contents/MacOS target/debug/Vektor.app/Contents/Resources
+      - cp Info.plist target/debug/Vektor.app/Contents/
+      - cp assets/AppIcon.icns target/debug/Vektor.app/Contents/Resources/
+      - cp target/debug/vektor-app target/debug/Vektor.app/Contents/MacOS/
+      - ./target/debug/Vektor.app/Contents/MacOS/vektor-app
+
   preview:
     deps: [setup]
     dir: ./server

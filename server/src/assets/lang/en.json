@@ -700,5 +700,9 @@
   "Host code with git, and browse it here.": "Host code with git, and browse it here.",
   "Search people or type an email…": "Search people or type an email…",
   "Invite {email}": "Invite {email}",
-  "General": "General"
+  "General": "General",
+  "Desktop App": "Desktop App",
+  "Settings for the Vektor app on this device.": "Settings for the Vektor app on this device.",
+  "Version": "Version",
+  "More desktop options are coming soon.": "More desktop options are coming soon."
 }

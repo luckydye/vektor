@@ -700,5 +700,9 @@
   "Host code with git, and browse it here.": "git으로 코드를 호스팅하고 여기서 살펴보세요.",
   "Search people or type an email…": "사용자 검색 또는 이메일 입력…",
   "Invite {email}": "{email} 초대",
-  "General": "일반"
+  "General": "일반",
+  "Desktop App": "데스크톱 앱",
+  "Settings for the Vektor app on this device.": "이 기기의 Vektor 앱 설정입니다.",
+  "Version": "버전",
+  "More desktop options are coming soon.": "더 많은 데스크톱 옵션이 곧 추가됩니다."
 }
