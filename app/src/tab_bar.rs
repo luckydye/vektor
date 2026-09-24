@@ -5,7 +5,7 @@ use gpui::{
     div, prelude::*, px, rgba, svg,
 };
 
-use crate::palette::Palette;
+use crate::{palette::Palette, titlebar};
 
 pub struct TabLabel {
     pub title: SharedString,
@@ -120,7 +120,7 @@ impl RenderOnce for TabBar {
                 if event.click_count == 2 {
                     window.titlebar_double_click();
                 } else {
-                    window.start_window_move();
+                    titlebar::drag_window(window);
                 }
             })
             .child(div().flex().min_w_0().p(px(2.)).children(tabs))

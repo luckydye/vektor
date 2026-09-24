@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use url::{Origin, Url};
 use wry::http::Request;
 use wry::{
-    NewWindowResponse, PageLoadEvent, Rect, WebView, WebViewBuilder,
+    NewWindowResponse, PageLoadEvent, Rect, WebView, WebViewBuilder, WebViewExtMacOS,
     dpi::{LogicalPosition, LogicalSize},
 };
 
@@ -223,6 +223,8 @@ pub struct Tab {
     pub id: u64,
     pub title: SharedString,
     pub webview: Rc<WebView>,
+    /// The URL the tab was opened with, which it reports until its first load commits.
+    pub url: String,
     /// Colour of the page's top edge, which the chrome takes on while this tab is active.
     pub chrome: u32,
 }
@@ -311,7 +313,14 @@ impl Browser {
             tabs: self
                 .tabs
                 .iter()
-                .map(|tab| tab.webview.url().expect("failed to read webview url"))
+                // wry's `url()` panics on the nil URL of a tab whose first load failed.
+                .map(|tab| match unsafe { tab.webview.webview().URL() } {
+                    Some(url) => url
+                        .absoluteString()
+                        .expect("webview URL has no string")
+                        .to_string(),
+                    None => tab.url.clone(),
+                })
                 .collect(),
             active: self.active,
         };
@@ -372,6 +381,7 @@ impl Browser {
 
         self.tabs.push(Tab {
             id,
+            url: url.into(),
             title: "Vektor".into(),
             webview: Rc::new(webview),
             chrome: 0xffffff,

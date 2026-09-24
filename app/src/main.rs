@@ -4,6 +4,7 @@ mod keychain;
 mod mounts;
 mod palette;
 mod tab_bar;
+mod titlebar;
 
 use browser::{
     Browser, CloseTab, DismissFind, Find, FindNext, FindPrevious, NewTab, NextTab, PreviousTab,
@@ -140,6 +141,7 @@ fn main() {
                 traffic_light_position: Some(point(px(18.), px(18.))),
             }),
             window_min_size: Some(size(px(480.), px(320.))),
+            is_movable: false,
             ..Default::default()
         };
         mounts::init(&url::Url::parse(&url).expect("VEKTOR_URL is not a URL"), cx);
