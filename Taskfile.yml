@@ -79,6 +79,8 @@ tasks:
   app:
     desc: Run the native desktop app against VEKTOR_URL (defaults to the dev server).
     dir: ./app
+    env:
+      VEKTOR_URL: '{{.VEKTOR_URL | default "http://127.0.0.1:4321"}}'
     cmds:
       - cargo build
       # macOS only shows the icon and name for a binary launched from inside a bundle.

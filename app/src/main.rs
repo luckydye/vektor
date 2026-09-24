@@ -45,7 +45,8 @@ impl AssetSource for Assets {
 }
 
 fn main() {
-    let url = std::env::var("VEKTOR_URL").unwrap_or_else(|_| "http://127.0.0.1:4321".into());
+    // Baked in at build time, so a plain `cargo build` targets production.
+    let url = option_env!("VEKTOR_URL").unwrap_or("https://app.vektorapp.org").to_string();
 
     // The browser hands a sign-in back through `vektor-desktop://`, which macOS delivers here,
     // outside any window; the links are relayed to the browser once it exists.
