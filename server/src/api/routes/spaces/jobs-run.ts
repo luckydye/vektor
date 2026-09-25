@@ -82,10 +82,24 @@ export const POST: ApiRouteHandler = (context) =>
 
       if (body.stream) {
         const encoder = new TextEncoder();
+        const abortController = new AbortController();
+        const signal = AbortSignal.any([
+          context.req.raw.signal,
+          abortController.signal,
+        ]);
+        let closed = false;
         const stream = new ReadableStream({
           async start(controller) {
             const send = (data: unknown) => {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+              if (closed) return;
+              const payload = typeof data === "string" ? data : JSON.stringify(data);
+              try {
+                controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+              } catch (error) {
+                // Native VM callbacks can outlive the HTTP connection.
+                closed = true;
+                abortController.abort(error);
+              }
             };
 
             try {
@@ -96,7 +110,7 @@ export const POST: ApiRouteHandler = (context) =>
                 spaceId,
                 (message) => send({ type: "log", message }),
                 {
-                  signal: context.req.raw.signal,
+                  signal,
                   initiatedByUserId,
                   jobId,
                 },
@@ -107,8 +121,15 @@ export const POST: ApiRouteHandler = (context) =>
               send({ type: "error", error });
             }
 
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            controller.close();
+            send("[DONE]");
+            if (!closed) {
+              closed = true;
+              controller.close();
+            }
+          },
+          cancel(reason) {
+            closed = true;
+            abortController.abort(reason);
           },
         });
 
