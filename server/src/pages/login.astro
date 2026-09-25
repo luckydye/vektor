@@ -9,6 +9,7 @@ const next = Astro.url.searchParams.get("next");
 const nextUrl = next ? new URL(next, Astro.url) : null;
 const callbackURL =
   nextUrl && nextUrl.origin === Astro.url.origin ? nextUrl.pathname + nextUrl.search : "/";
+const loginHint = Astro.url.searchParams.get("login_hint") ?? undefined;
 const features = [
   {
     label: t("Real-time collaboration across your whole team", lang),
@@ -142,7 +143,7 @@ const features = [
           >
         </div>
 
-        <Login client:load lang={lang} callbackURL={callbackURL} />
+        <Login client:load lang={lang} callbackURL={callbackURL} loginHint={loginHint} />
       </div>
     </div>
   </div>

@@ -173,6 +173,11 @@ export function config() {
       OAUTH_TOKEN_URL: process.env.OAUTH_TOKEN_URL,
       OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
+      /**
+       * Comma-separated origins of the Vektor instances this one federates with.
+       * Both sides must list each other: users of a peer sign in here, and ours there.
+       */
+      PEERS: process.env.VEKTOR_PEERS,
       /** Seconds a group claim may age before the next re-read. 0 is off. */
       OAUTH_GROUP_SYNC_INTERVAL: process.env.OAUTH_GROUP_SYNC_INTERVAL,
       /**
@@ -263,6 +268,7 @@ export function config() {
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
+    PEERS_ENABLED: publicEnv.VEKTOR_PEERS_ENABLED,
     GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
     MARKETPLACE_ENABLED: publicEnv.VEKTOR_MARKETPLACE_ENABLED,
@@ -330,6 +336,7 @@ export function getPublicEnv(): App.PublicEnv {
     VEKTOR_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
+    VEKTOR_PEERS_ENABLED: appConfig.PEERS?.trim() ? "1" : undefined,
     // Never expose the client secret; only a boolean flag reaches the browser.
     GOOGLE_AUTH_ENABLED:
       appConfig.GOOGLE_CLIENT_ID?.trim() && appConfig.GOOGLE_CLIENT_SECRET?.trim()

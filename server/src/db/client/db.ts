@@ -5,6 +5,7 @@ import {
   reconcileLocalSpaceIndex,
   spaceDatabaseCredentials,
 } from "#db/auth/spaceIndex.ts";
+import { federationOf, syncPeerClients } from "#peerFederation";
 import {
   closeDatabase,
   createDatabase,
@@ -84,6 +85,7 @@ export function initializeDatabases(): Promise<void> {
   if (!globalThis.__vektor_database_initialization) {
     globalThis.__vektor_database_initialization = (async () => {
       await prepareAuthDb(getAuthDb());
+      await syncPeerClients(getAuthDb(), federationOf(config()));
       await reconcileLocalSpaceIndex();
     })();
   }

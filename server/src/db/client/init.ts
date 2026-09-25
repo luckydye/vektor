@@ -22,6 +22,15 @@ export async function prepareAuthDb(authDb: Database) {
   await exec(authDb, sql.raw(accountSQL));
   await exec(authDb, sql.raw(verificationSQL));
   await exec(authDb, sql.raw(spaceIndexSQL));
+  for (const table of [
+    authSchema.jwks,
+    authSchema.oauthClient,
+    authSchema.oauthRefreshToken,
+    authSchema.oauthAccessToken,
+    authSchema.oauthConsent,
+  ]) {
+    await exec(authDb, sql.raw(generateCreateTableSQL(table)));
+  }
   await renameColumnIfNeeded(authDb, authSchema.spaceIndex.location, "database_url");
   await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenCiphertext);
   await addColumnIfMissing(authDb, authSchema.spaceIndex.authTokenIv);

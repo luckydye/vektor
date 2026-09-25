@@ -196,6 +196,8 @@
   "Already have an account? Sign in": "¿Ya tienes una cuenta? Inicia sesión",
   "Need an account? Sign up": "¿Necesitas una cuenta? Regístrate",
   "Or": "O",
+  "Continue": "Continuar",
+  "Continue on": "Continuar en",
   "Continue with Google": "Continuar con Google",
   "Continue with SSO": "Continuar con SSO",
   "No login method configured.": "No hay ningún método de inicio de sesión configurado.",

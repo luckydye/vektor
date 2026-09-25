@@ -1,8 +1,10 @@
+import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { createAuthClient } from "better-auth/client";
 import { genericOAuthClient } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
-  plugins: [genericOAuthClient()],
+  // Carries a peer's pending authorize request through sign-in on this instance.
+  plugins: [genericOAuthClient(), oauthProviderClient()],
 });
 
 // Shared promise so all callers reuse a single session fetch per page load.

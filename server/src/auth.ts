@@ -4,10 +4,11 @@ import { genericOAuth } from "better-auth/plugins";
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { NO_GROUPS, sanitizeOAuthGroups } from "#acl/oauthGroups.ts";
 import { config, isHttpsSite } from "./config.ts";
-import { desktopAuth } from "./desktopAuth.ts";
 import type { Database } from "./db/client/connection.ts";
 import { getAuthDb } from "./db/client/db.ts";
 import * as schema from "./db/schema/auth.ts";
+import { desktopAuth } from "./desktopAuth.ts";
+import { federationOf, federationPlugins, peerOAuthConfigs } from "./peerFederation.ts";
 
 type AppConfig = ReturnType<typeof config>;
 
@@ -84,6 +85,7 @@ function getOAuthConfig(appConfig: AppConfig): GenericOAuthConfig[] {
  */
 export function createAuth(appConfig: AppConfig, authDb: Database) {
   const googleConfig = getGoogleConfig(appConfig);
+  const federation = federationOf(appConfig);
 
   return betterAuth({
     baseURL: appConfig.SITE_URL || "http://localhost:8080",
@@ -125,6 +127,7 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
         "/sign-up/email": { window: 60, max: 5 },
         "/forget-password": { window: 60, max: 3 },
         "/desktop-handoff/complete": { window: 60, max: 10 },
+        "/federation/resolve": { window: 60, max: 10 },
       },
     },
 
@@ -162,9 +165,13 @@ export function createAuth(appConfig: AppConfig, authDb: Database) {
 
     plugins: [
       genericOAuth({
-        config: getOAuthConfig(appConfig),
+        config: [
+          ...getOAuthConfig(appConfig),
+          ...(federation ? peerOAuthConfigs(federation) : []),
+        ],
       }),
       desktopAuth(),
+      ...(federation ? federationPlugins(federation) : []),
     ],
   });
 }

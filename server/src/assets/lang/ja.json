@@ -196,6 +196,8 @@
   "Already have an account? Sign in": "アカウントをお持ちですか？ サインイン",
   "Need an account? Sign up": "アカウントが必要ですか？ 登録",
   "Or": "または",
+  "Continue": "続行",
+  "Continue on": "で続行",
   "Continue with Google": "Googleで続行",
   "Continue with SSO": "SSOで続行",
   "No login method configured.": "ログイン方法が設定されていません。",

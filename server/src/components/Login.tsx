@@ -1,5 +1,10 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { authClient } from "#composeables/auth-client.ts";
+import {
+  type LoginTarget,
+  resolveLoginTarget,
+  signInWithPeer,
+} from "#composeables/peer-login.ts";
 import { config } from "#config";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { nativeApp, postToNativeApp } from "#utils/nativeApp.ts";
@@ -11,7 +16,11 @@ interface Props {
   lang: string;
   /** Same-origin path to land on after signing in. */
   callbackURL?: string;
+  /** Email a peer's authorize request suggested, to prefill the form with. */
+  loginHint?: string;
 }
+
+type PeerChoice = Extract<LoginTarget, { kind: "peers" }>["peers"][number];
 
 export function Login(props: Props) {
   const translate = (key: TranslationKey) => t(key, props.lang);
@@ -20,8 +29,12 @@ export function Login(props: Props) {
   const showPasswordLogin = conf.AUTH_LOGIN !== "false";
   const showSsoLogin = !!conf.OAUTH_PROVIDER_ID;
   const showGoogleLogin = conf.GOOGLE_AUTH_ENABLED === "1";
+  const peersEnabled = conf.PEERS_ENABLED === "1";
 
-  const [email, setEmail] = createSignal("");
+  const [email, setEmail] = createSignal(props.loginHint ?? "");
+  // With peers, the email is resolved first: the password prompt is only for accounts that live here.
+  const [emailResolved, setEmailResolved] = createSignal(!peersEnabled);
+  const [peerChoices, setPeerChoices] = createSignal<PeerChoice[]>([]);
   const [password, setPassword] = createSignal("");
   const [name, setName] = createSignal("");
   const [isSignUp, setIsSignUp] = createSignal(false);
@@ -68,7 +81,48 @@ export function Login(props: Props) {
     });
   }
 
+  function onEmailInput(value: string) {
+    setEmail(value);
+    setEmailResolved(!peersEnabled);
+    setPeerChoices([]);
+  }
+
+  async function onPeerLogin(providerId: string) {
+    if (signInWithBrowser()) return;
+    await signInWithPeer(providerId, email(), callbackURL);
+  }
+
+  async function onResolveEmail() {
+    if (!email()) {
+      setError(translate("Email and password are required, mate!"));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const target = await resolveLoginTarget(email());
+      if (target.kind === "local") {
+        setEmailResolved(true);
+      } else if (target.peers.length === 1) {
+        await onPeerLogin(target.peers[0].providerId);
+      } else {
+        setPeerChoices(target.peers);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : translate("Authentication failed, mate!"),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function onEmailLogin() {
+    if (!isSignUp() && !emailResolved()) {
+      await onResolveEmail();
+      return;
+    }
+
     if (!email() || !password()) {
       setError(translate("Email and password are required, mate!"));
       return;
@@ -109,11 +163,12 @@ export function Login(props: Props) {
           callbackURL,
         });
 
-        if (!result.error) {
-          window.location.href = callbackURL;
-        } else {
+        if (result.error) {
           throw new Error(result.error.message || translate("Sign in failed"));
         }
+        // A redirecting answer is navigated by the auth client, and may be a
+        // peer's callback when this sign-in resumes its authorize request.
+        if (!result.data.redirect) window.location.href = callbackURL;
       }
     } catch (err) {
       setError(
@@ -174,22 +229,36 @@ export function Login(props: Props) {
           <FormField label={translate("Email")}>
             <Input
               value={email()}
-              onInput={setEmail}
+              onInput={onEmailInput}
               placeholder={translate("your.email@example.com")}
               type="email"
               disabled={loading()}
             />
           </FormField>
 
-          <FormField label={translate("Password")}>
-            <Input
-              value={password()}
-              onInput={setPassword}
-              placeholder="••••••••"
-              type="password"
-              disabled={loading()}
-            />
-          </FormField>
+          <Show when={isSignUp() || emailResolved()}>
+            <FormField label={translate("Password")}>
+              <Input
+                value={password()}
+                onInput={setPassword}
+                placeholder="••••••••"
+                type="password"
+                disabled={loading()}
+              />
+            </FormField>
+          </Show>
+
+          <For each={peerChoices()}>
+            {(peer) => (
+              <Button
+                variant="secondary"
+                text={`${translate("Continue on")} ${peer.host}`}
+                class="w-full justify-center px-6 py-3 text-base"
+                onClick={() => void onPeerLogin(peer.providerId)}
+                disabled={loading()}
+              />
+            )}
+          </For>
 
           <Show when={error()}>
             <div class="rounded-sm bg-red-50 p-2 text-red-600 text-size-medium">
@@ -203,7 +272,9 @@ export function Login(props: Props) {
                 ? translate("Loading...")
                 : isSignUp()
                   ? translate("Sign Up")
-                  : translate("Sign In")
+                  : emailResolved()
+                    ? translate("Sign In")
+                    : translate("Continue")
             }
             class="w-full justify-center px-6 py-3 text-base"
             type="submit"
