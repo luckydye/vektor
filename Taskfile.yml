@@ -136,7 +136,24 @@ tasks:
 
   check:
     desc: Typecheck the project.
-    deps: [check:tsc, check:biome]
+    deps: [check:tsc, check:biome, check:host]
+
+  host:build:
+    desc: Compile the direct QEMU host CLI for the current platform.
+    dir: ./hypervisor
+    cmds:
+      - bun run build
+
+  check:host:
+    dir: ./hypervisor
+    cmds:
+      - ../node_modules/.bin/tsc --noEmit --pretty false
+      - bunx biome check --diagnostic-level=error src test build.ts
+
+  test:host:
+    dir: ./hypervisor
+    cmds:
+      - bun test test
 
   check:tsc:
     internal: true

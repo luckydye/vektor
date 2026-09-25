@@ -24,6 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/luckydye/vektor/main/install.sh | s
 
 This downloads the latest binary from [GitHub Releases](https://github.com/luckydye/vektor/releases/latest) and installs it to `/usr/local/bin/vektor`.
 
+For managed hosting with one isolated VM per customer on a dedicated server, see
+the [Vektor host CLI](hypervisor/README.md).
+
 To install to a custom directory:
 
 ```sh

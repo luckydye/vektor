@@ -5,6 +5,7 @@
 		"typescript": "^7.0.2"
 	},
 	"workspaces": [
-		"server"
+		"server",
+		"hypervisor"
 	]
 }
