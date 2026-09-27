@@ -1,0 +1,725 @@
+import { Bash } from "just-bash";
+import {
+  callTool as callVektorTool,
+  listTools as listVektorTools,
+  type VektorMcpConfig,
+} from "#agent/tools.ts";
+import { callAnthropic } from "#api/provider/anthropic.ts";
+import { callOllama } from "#api/provider/ollama.ts";
+import {
+  callOpenAICompatible,
+  callOpenAIResponses,
+} from "#api/provider/openaiCompatible.ts";
+import type { AIProvider, ChatMessage } from "#api/provider/types.ts";
+import { openSpaceStore } from "#db/client/store.ts";
+import { getAIProvider } from "#db/space/aiConfig.ts";
+import {
+  estimateModelInput,
+  estimateTokens,
+  reserveAITokens,
+} from "#db/space/aiUsage.ts";
+import { curlCommand } from "./commands/curl.ts";
+import { extensionCommand } from "./commands/extension.ts";
+import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
+import { integrationCommand } from "./commands/integration.ts";
+import { jsExecCommand } from "./commands/jsExec.ts";
+import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: "text" };
+import { getRecipe, queryRecipes } from "./commands/recipes.ts";
+import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
+import { uploadCommand } from "./commands/upload.ts";
+import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
+import {
+  getIntegrationAgentSurface,
+  type IntegrationAgentCommand,
+} from "./integrations.ts";
+
+export type AgentResult = {
+  content: string;
+  stopReason: string;
+  shellSnapshot?: string | null;
+};
+
+export type AgentShellBootstrap = {
+  cwd?: string;
+  env?: Record<string, string>;
+  /** Shell commands contributed by the connected integrations' extensions. */
+  integrationCommands?: IntegrationAgentCommand[];
+  /** Whose credentials a contributed command's job runs under. */
+  userId?: string | null;
+};
+
+export type AgentEvent =
+  | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
+  | { type: "status"; text: string }
+  | {
+      type: "tool_call";
+      toolCallId: string;
+      toolName: string;
+      toolArguments: string;
+    }
+  | {
+      type: "tool_result";
+      toolCallId: string;
+      toolName: string;
+      content: string;
+      isError: boolean;
+    };
+
+function buildCoreAgentSystemPrompt(
+  documentId?: string,
+  integrationInstructions?: string[],
+  userProfile?: string,
+  documentType?: string | null,
+  documentReadonly?: boolean,
+) {
+  const lines = integrationInstructions ?? [];
+  const integrationLines =
+    lines.length > 0
+      ? `\n## Integrations\n${lines.map((line) => `- ${line}\n`).join("")}`
+      : "";
+  return `${systemPromptRaw}${integrationLines}${documentEditingSection(documentId, documentType, documentReadonly)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+}
+
+/** Maps a document type to the recipe that best explains how to edit it. */
+function recipeForDocumentType(documentType?: string | null): string {
+  if (documentType === "canvas") return "canvas";
+  if (documentType === "app") return "app-doc";
+  return "edit-text";
+}
+
+/**
+ * When a document is in context, inline the editing playbook directly instead
+ * of making the model discover it via \`recipes\`. Small models skip the lookup
+ * step, so the most common task gets its instructions up front. The inlined
+ * recipe is chosen by document type (canvas / app / html).
+ */
+function documentEditingSection(
+  documentId?: string,
+  documentType?: string | null,
+  documentReadonly?: boolean,
+): string {
+  if (!documentId) return "";
+
+  if (documentReadonly) {
+    const typeDescription = documentType ? ` (type "${documentType}")` : "";
+    return `
+## Current document
+- The current document is read-only${typeDescription} and cannot be edited.
+  If the user asks to change it, explain that it is read-only.`;
+  }
+
+  const recipeName = recipeForDocumentType(documentType);
+  const recipe = getRecipe(recipeName);
+  const mutationInstructions =
+    documentType === "app"
+      ? `- To change it, read the complete source and use \`write_document\` with documentId \`${documentId}\` and the complete revised HTML. NEVER use \`edit_document\` for app documents because partial HTML edits remove script elements.`
+      : `- To change it, ALWAYS use \`edit_document\` with documentId \`${documentId}\`. NEVER edit document content with
+  sed, perl, python, js-exec, or by piping through grep/awk — those corrupt unicode (emoji,
+  umlauts) and bypass collaborative editing. There is no temp-file step.`;
+
+  return `
+## Editing the current document
+- "this document" / "the page" = document ID \`${documentId}\`. Read it first with \`get_current_document\`.
+${mutationInstructions}
+${
+  recipe
+    ? `- Playbook (\`recipes\` tool, name: "${recipeName}"):\n${recipe.body
+        .split("\n")
+        .map((l) => `  ${l}`)
+        .join("\n")}`
+    : ""
+}`;
+}
+
+export async function callModel(options: {
+  spaceId: string;
+  provider: AIProvider;
+  messages: ChatMessage[];
+  tools: unknown[];
+  signal?: AbortSignal;
+  onText?: (text: string) => void | Promise<void>;
+  onThinking?: (text: string) => void | Promise<void>;
+}): Promise<{ message: ChatMessage; finishReason: string }> {
+  const inputTokens = estimateModelInput(options.messages, options.tools);
+  const settle = await reserveAITokens(
+    await openSpaceStore(options.spaceId),
+    inputTokens,
+  );
+  let output = "";
+  let thinking = "";
+  const trackedOptions = {
+    ...options,
+    onText: async (text: string) => {
+      output += text;
+      await options.onText?.(text);
+    },
+    onThinking: async (text: string) => {
+      thinking += text;
+      await options.onThinking?.(text);
+    },
+  };
+  try {
+    const result = await callModelProvider(trackedOptions);
+    await settle(
+      inputTokens +
+        estimateTokens(result.message) +
+        (result.message.thinking ? 0 : estimateTokens(thinking)),
+    );
+    return result;
+  } catch (error) {
+    await settle(
+      output || thinking ? inputTokens + estimateTokens(output + thinking) : 0,
+    );
+    throw error;
+  }
+}
+
+async function callModelProvider(
+  options: Parameters<typeof callModel>[0],
+): ReturnType<typeof callModel> {
+  const provider = options.provider;
+  if (
+    provider.provider === "anthropic" ||
+    (provider.provider === "opencode-zen" && isOpenCodeZenClaudeModel(provider.model))
+  ) {
+    return callAnthropic({ ...options, provider });
+  }
+  if (provider.provider === "ollama") {
+    return callOllama({ ...options, provider });
+  }
+  if (provider.provider === "opencode-zen" && isOpenCodeZenGPTModel(provider.model)) {
+    return callOpenAIResponses({ ...options, provider });
+  }
+  if (
+    provider.provider === "opencode-zen" &&
+    isOpenCodeZenTextOnlyModel(provider.model)
+  ) {
+    const hasImages = options.messages.some((message) => message.images?.length);
+    if (hasImages) {
+      throw new Error(`${provider.model} does not support image input.`);
+    }
+  }
+  return callOpenAICompatible({ ...options, provider });
+}
+
+/** Zen serves Claude models from its Anthropic-compatible `/messages` endpoint. */
+export function isOpenCodeZenClaudeModel(model: string): boolean {
+  return model.toLowerCase().startsWith("claude-");
+}
+
+/** Zen exposes GPT models through `/responses`, unlike its chat-completions models. */
+export function isOpenCodeZenGPTModel(model: string): boolean {
+  return model.toLowerCase().startsWith("gpt-");
+}
+
+/** Zen's GLM 5 series accepts text only; image blocks would be rejected upstream. */
+export function isOpenCodeZenTextOnlyModel(model: string): boolean {
+  return model.toLowerCase().startsWith("glm-");
+}
+
+async function listFiles(
+  bash: Bash,
+  requestedPath: string,
+  recursive: boolean,
+): Promise<string> {
+  const rootPath = bash.fs.resolvePath(bash.getCwd(), requestedPath);
+  const rootStat = await bash.fs.lstat(rootPath);
+  if (!rootStat.isDirectory) {
+    throw new Error(`list_files path is not a directory: ${requestedPath}`);
+  }
+
+  const entriesAt = async (directoryPath: string) => {
+    const names = await bash.fs.readdir(directoryPath);
+    return names.sort((left, right) => left.localeCompare(right));
+  };
+  const describeEntry = async (directoryPath: string, name: string) => {
+    const entryPath = bash.fs.resolvePath(directoryPath, name);
+    const stat = await bash.fs.lstat(entryPath);
+    if (stat.isDirectory) return { entryPath, label: `${name}/`, isDirectory: true };
+    if (stat.isSymbolicLink) {
+      return {
+        entryPath,
+        label: `${name} -> ${await bash.fs.readlink(entryPath)}`,
+        isDirectory: false,
+      };
+    }
+    return { entryPath, label: name, isDirectory: false };
+  };
+
+  const rootEntries = await entriesAt(rootPath);
+  if (!recursive) {
+    if (rootEntries.length === 0) return "(empty directory)";
+    const labels = await Promise.all(
+      rootEntries.map(async (name) => (await describeEntry(rootPath, name)).label),
+    );
+    return labels.join("\n");
+  }
+
+  const rootLabel =
+    requestedPath === "."
+      ? "."
+      : requestedPath.endsWith("/")
+        ? requestedPath
+        : `${requestedPath}/`;
+  const lines = [rootLabel];
+  const walk = async (directoryPath: string, prefix: string): Promise<void> => {
+    const names = await entriesAt(directoryPath);
+    for (const [index, name] of names.entries()) {
+      const isLast = index === names.length - 1;
+      const entry = await describeEntry(directoryPath, name);
+      lines.push(`${prefix}${isLast ? "└── " : "├── "}${entry.label}`);
+      if (entry.isDirectory) {
+        await walk(entry.entryPath, `${prefix}${isLast ? "    " : "│   "}`);
+      }
+    }
+  };
+  await walk(rootPath, "");
+  return lines.join("\n");
+}
+
+type AgentDocumentContext = {
+  type: string | null;
+  readonly: boolean;
+};
+
+/** Best-effort lookup of document metadata used to tailor the system prompt. */
+async function fetchDocumentContext(
+  apiUrl: string,
+  spaceId: string,
+  documentId: string,
+  jobToken: string,
+): Promise<AgentDocumentContext | null> {
+  try {
+    const res = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/documents/${encodeURIComponent(documentId)}`,
+      { headers: { "X-Job-Token": jobToken } },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      document?: { type?: string | null; readonly?: boolean };
+    };
+    if (!data.document) return null;
+    return {
+      type: data.document.type ?? null,
+      readonly: data.document.readonly === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function runAgentPrompt(options: {
+  messages: ChatMessage[];
+  apiUrl: string;
+  spaceId: string;
+  documentId?: string;
+  documentType?: string | null;
+  documentReadonly?: boolean;
+  connectedProviders?: string[];
+  userProfile?: string;
+  /** Whose credentials a contributed integration command runs under. */
+  userId?: string | null;
+  jobToken: string;
+  bash?: Bash;
+  signal?: AbortSignal;
+  onChunk?: (chunk: string) => void | Promise<void>;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  /** Test seam for deterministic provider responses. */
+  modelCaller?: typeof callModel;
+  /** Test seam that avoids reading provider configuration. */
+  provider?: AIProvider;
+}): Promise<AgentResult> {
+  const {
+    messages,
+    spaceId,
+    documentId,
+    connectedProviders,
+    userProfile,
+    jobToken,
+    bash: providedBash,
+    apiUrl,
+    signal,
+    onChunk,
+    onEvent,
+  } = options;
+
+  const provider = options.provider ?? getAIProvider();
+  const modelCaller = options.modelCaller ?? callModel;
+
+  // Resolve document metadata so the system prompt can inline the right
+  // editing playbook and avoid suggesting mutations for locked documents.
+  // A failed lookup falls back to the caller-provided context.
+  let documentType = options.documentType;
+  let documentReadonly = options.documentReadonly;
+  if (documentId && (documentType === undefined || documentReadonly === undefined)) {
+    const documentContext = await fetchDocumentContext(
+      apiUrl,
+      spaceId,
+      documentId,
+      jobToken,
+    );
+    if (documentType === undefined) {
+      documentType = documentContext?.type;
+    }
+    if (documentReadonly === undefined) {
+      documentReadonly = documentContext?.readonly;
+    }
+  }
+
+  const mcpConfig: VektorMcpConfig = {
+    apiUrl,
+    spaceId,
+    jobToken,
+    documentId,
+    connectedProviders,
+  };
+  const integrationSurface = await getIntegrationAgentSurface(
+    spaceId,
+    connectedProviders ?? [],
+  );
+  const bash =
+    providedBash ??
+    createAgentShell(
+      { current: mcpConfig },
+      { integrationCommands: integrationSurface.commands, userId: options.userId },
+    );
+  const vektorTools = await listVektorTools(mcpConfig);
+  const vektorToolNames = new Set(vektorTools.map((tool) => tool.name));
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "bash",
+        description: "Execute bash in isolated in-memory environment.",
+        parameters: {
+          type: "object",
+          properties: { command: { type: "string" } },
+          required: ["command"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "list_files",
+        description:
+          "List entries in a directory in the isolated in-memory filesystem. Set recursive to true to return a complete file tree. Use this instead of ls or find.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description:
+                'Directory path, absolute or relative to the current directory. Defaults to ".".',
+              default: ".",
+            },
+            recursive: {
+              type: "boolean",
+              description: "List the complete nested tree instead of immediate entries.",
+              default: false,
+            },
+          },
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "read_file",
+        description:
+          "Read a UTF-8 text file from the isolated in-memory filesystem. Use this instead of cat.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "File path, absolute or relative to the current directory.",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "write_file",
+        description:
+          "Write UTF-8 text directly to the isolated in-memory filesystem. Use this instead of shell redirection, printf, or cat. Overwrites by default; set mode to append only when preserving existing content is required.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "File path, absolute or relative to the current directory.",
+            },
+            content: {
+              type: "string",
+              description: "Exact text to write; no shell escaping is needed.",
+            },
+            mode: {
+              type: "string",
+              enum: ["overwrite", "append"],
+              description: "Whether to replace the file or append to it.",
+              default: "overwrite",
+            },
+          },
+          required: ["path", "content"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "recipes",
+        description:
+          "List, search, or fetch a step-by-step playbook for a common task (editing " +
+          "documents, canvases, workflows, uploads, etc). Call with no arguments to list " +
+          "all recipes.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: 'Exact recipe name to fetch, e.g. "canvas".',
+            },
+            search: {
+              type: "string",
+              description: "Search terms to find a recipe by keyword.",
+            },
+          },
+        },
+      },
+    },
+    ...vektorTools.map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+      },
+    })),
+  ];
+
+  const agentMessages: ChatMessage[] = [
+    {
+      role: "system",
+      content: buildCoreAgentSystemPrompt(
+        documentId,
+        integrationSurface.instructions,
+        userProfile,
+        documentType,
+        documentReadonly,
+      ),
+    },
+    ...messages,
+  ];
+  const allChunks: string[] = [];
+  let emptyResponseRetries = 0;
+  const maxEmptyResponseRetries = 2;
+
+  while (true) {
+    const { message, finishReason } = await modelCaller({
+      spaceId,
+      provider,
+      messages: agentMessages,
+      tools,
+      signal,
+      onText: async (text) => {
+        allChunks.push(text);
+        await onEvent?.({ type: "text", text });
+        await onChunk?.(text);
+      },
+      onThinking: async (text) => {
+        await onEvent?.({ type: "thinking", text });
+      },
+    });
+
+    agentMessages.push(message);
+
+    if (!message.tool_calls?.length) {
+      if (!message.content?.trim()) {
+        if (emptyResponseRetries >= maxEmptyResponseRetries) {
+          throw new Error(
+            `The model returned an empty response ${maxEmptyResponseRetries + 1} times.`,
+          );
+        }
+        emptyResponseRetries += 1;
+        await onEvent?.({
+          type: "status",
+          text: "Model planned an action but emitted no tool call; retrying.",
+        });
+        agentMessages.push({
+          role: "user",
+          content:
+            "Continue the requested task now. Use the available structured tools for Vektor and filesystem work, and bash for commands; do not only describe or plan the action. Otherwise provide a visible answer.",
+        });
+        continue;
+      }
+      return { content: allChunks.join(""), stopReason: finishReason };
+    }
+
+    emptyResponseRetries = 0;
+
+    for (const toolCall of message.tool_calls) {
+      await onEvent?.({
+        type: "tool_call",
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        toolArguments: toolCall.function.arguments,
+      });
+
+      let result: unknown;
+      let isError = false;
+      try {
+        const args = JSON.parse(toolCall.function.arguments || "{}") as unknown;
+        const record = (args && typeof args === "object" ? args : {}) as Record<
+          string,
+          unknown
+        >;
+
+        if (toolCall.function.name === "bash") {
+          const command = record.command;
+          if (typeof command !== "string" || !command.trim()) {
+            throw new Error('bash requires a non-empty "command".');
+          }
+          const res = await bash.exec(command);
+          const stdout = res.stdout.trim();
+          const stderr = res.stderr.trim();
+          const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
+            .filter(Boolean)
+            .join("\n");
+          if (res.exitCode !== 0) {
+            result =
+              output ||
+              `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
+          } else {
+            result = output || "(no output)";
+          }
+          isError = res.exitCode !== 0;
+        } else if (toolCall.function.name === "list_files") {
+          const path = record.path ?? ".";
+          const recursive = record.recursive ?? false;
+          if (typeof path !== "string" || !path.trim()) {
+            throw new Error('list_files "path" must be a non-empty string.');
+          }
+          if (typeof recursive !== "boolean") {
+            throw new Error('list_files "recursive" must be a boolean.');
+          }
+          result = await listFiles(bash, path, recursive);
+        } else if (toolCall.function.name === "read_file") {
+          const path = record.path;
+          if (typeof path !== "string" || !path.trim()) {
+            throw new Error('read_file requires a non-empty "path".');
+          }
+          const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
+          result = await bash.fs.readFile(resolvedPath, "utf8");
+        } else if (toolCall.function.name === "write_file") {
+          const path = record.path;
+          const content = record.content;
+          const mode = record.mode ?? "overwrite";
+          if (typeof path !== "string" || !path.trim()) {
+            throw new Error('write_file requires a non-empty "path".');
+          }
+          if (typeof content !== "string") {
+            throw new Error('write_file requires string "content".');
+          }
+          if (mode !== "overwrite" && mode !== "append") {
+            throw new Error('write_file "mode" must be "overwrite" or "append".');
+          }
+          const resolvedPath = bash.fs.resolvePath(bash.getCwd(), path);
+          if (mode === "append") {
+            await bash.fs.appendFile(resolvedPath, content, "utf8");
+          } else {
+            await bash.fs.writeFile(resolvedPath, content, "utf8");
+          }
+          result = `${mode === "append" ? "Appended" : "Wrote"} ${Buffer.byteLength(content, "utf8")} bytes to ${resolvedPath}.`;
+        } else if (toolCall.function.name === "recipes") {
+          const name = record.name;
+          const search = record.search;
+          if (name !== undefined && typeof name !== "string") {
+            throw new Error('recipes "name" must be a string.');
+          }
+          if (search !== undefined && typeof search !== "string") {
+            throw new Error('recipes "search" must be a string.');
+          }
+          result = queryRecipes({ name, search });
+        } else if (vektorToolNames.has(toolCall.function.name)) {
+          result = await callVektorTool(mcpConfig, toolCall.function.name, record);
+        } else {
+          throw new Error(
+            `Unknown tool "${toolCall.function.name}". Use the bash tool for shell commands.`,
+          );
+        }
+      } catch (error) {
+        isError = true;
+        result = error instanceof Error ? error.message : String(error);
+      }
+
+      const content =
+        typeof result === "string" ? result : JSON.stringify(result, null, 2);
+
+      // Full content goes to the client for display.
+      await onEvent?.({
+        type: "tool_result",
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        content,
+        isError,
+      });
+
+      // Truncate before adding to the LLM context window. Preserve the tail so
+      // structured responses keep pagination metadata such as nextCursor.
+      const MAX_TOOL_RESULT_CHARS =
+        toolCall.function.name === "list_documents" ? 30_000 : 6_000;
+      const TOOL_RESULT_TAIL_CHARS = Math.min(2_000, MAX_TOOL_RESULT_CHARS / 3);
+      const modelContent =
+        content.length > MAX_TOOL_RESULT_CHARS
+          ? [
+              content.slice(0, MAX_TOOL_RESULT_CHARS - TOOL_RESULT_TAIL_CHARS),
+              "",
+              `[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} middle characters not shown. For structured tools, narrow the query or request a smaller page and continue with nextCursor from the response tail. For bash output, rerun the command with output redirected to a file.]`,
+              "",
+              content.slice(-TOOL_RESULT_TAIL_CHARS),
+            ].join("\n")
+          : content;
+
+      agentMessages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        content: modelContent,
+      });
+    }
+  }
+}
+
+export function createAgentShell(
+  mcpConfigRef: { current: VektorMcpConfig },
+  bootstrap?: AgentShellBootstrap,
+): Bash {
+  return new Bash({
+    cwd: bootstrap?.cwd,
+    env: bootstrap?.env,
+    network: { dangerouslyAllowFullInternetAccess: true },
+    customCommands: [
+      zipCommand,
+      zipinfoCommand,
+      unzipCommand,
+      htmlToCsvCommand,
+      htmlTableToCsvCommand,
+      uploadCommand(mcpConfigRef),
+      ...(bootstrap?.integrationCommands ?? []).map((command) =>
+        integrationCommand(
+          command,
+          mcpConfigRef.current.spaceId,
+          bootstrap?.userId ?? null,
+        ),
+      ),
+      extensionCommand(mcpConfigRef),
+      curlCommand,
+      jsExecCommand,
+      ...runtimeStubCommands,
+    ],
+  });
+}

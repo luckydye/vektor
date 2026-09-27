@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: |
+          staging="lfs-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/${{ matrix.target }}/release/lfs" "$staging/"
+          cp README.md "$staging/" 2>/dev/null || true
+          tar czf "$staging.tar.gz" "$staging"
+          echo "ASSET=$staging.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = "lfs-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/lfs.exe" $staging
+          if (Test-Path README.md) { Copy-Item README.md $staging }
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+          "ASSET=$staging.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          draft: false

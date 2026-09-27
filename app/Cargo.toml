@@ -1,0 +1,24 @@
+[package]
+name = "vektor-app"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vektor-app"
+path = "src/main.rs"
+
+[dependencies]
+futures = "0.3"
+# Compiles shaders at launch, so building needs no Metal toolchain.
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+hex = "0.4"
+lfs = { path = "../lfs" }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSEvent", "NSResponder", "NSView", "NSWindow"] }
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+url = "2"
+wry = { version = "0.57", features = ["devtools"] }

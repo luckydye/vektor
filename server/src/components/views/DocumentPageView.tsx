@@ -1,0 +1,769 @@
+import { useLocation, useNavigate } from "@solidjs/router";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  type JSX,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
+import { Dynamic, Portal } from "solid-js/web";
+import { twMerge } from "tailwind-merge";
+import { canEdit } from "#acl/permissions.ts";
+import { api } from "#api/client.ts";
+import { BottomBanner } from "#components/BottomBanner.tsx";
+import { Breadcrumbs } from "#components/Breadcrumbs.tsx";
+import { DocumentActions } from "#components/DocumentActions.tsx";
+import { DocumentBody } from "#components/DocumentBody.tsx";
+import { DocumentContent } from "#components/DocumentContent.tsx";
+import { DocumentExtensionViews } from "#components/DocumentExtensionViews.tsx";
+import { DocumentProperties } from "#components/DocumentProperties.tsx";
+import { HeaderImage } from "#components/HeaderImage.tsx";
+import { Icon } from "#components/Icon.tsx";
+import { NewDocumentPicker } from "#components/NewDocumentPicker.tsx";
+import { RestoreButton } from "#components/RestoreButton.tsx";
+import { RevisionsSidebar } from "#components/RevisionsSidebar.tsx";
+import { RevisionView } from "#components/RevisionView.tsx";
+import { TitleEditor } from "#components/TitleEditor.tsx";
+import { useQuery } from "#composeables/query.ts";
+import { useDocumentContext } from "#composeables/useDocument.ts";
+import { editing, resetEditingState } from "#composeables/useEditor.ts";
+import { useExtensions } from "#composeables/useExtensions.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
+import { usePersistedState } from "#composeables/usePersistedState.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
+import { useToast } from "#composeables/useToast.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { optionalPropertyValueToText } from "#documents/properties.ts";
+import { placeholderDocumentTitle, repositoryDocumentType } from "#documents/types.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import { formatRelativeTime } from "#utils/dateFormat.ts";
+import {
+  isRepositoryCreationEnabled,
+  isWorkflowCreationEnabled,
+} from "#utils/spacePreferences.ts";
+import { spacePath } from "#utils/utils.ts";
+
+interface Props {
+  documentSlug?: string;
+  draftType?: string;
+  draftCategory?: string;
+  draftTitle?: string;
+  draftParent?: string;
+  ssrNow?: number;
+}
+
+const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
+  database: {
+    title: placeholderDocumentTitle("database"),
+    content: "",
+  },
+  repository: {
+    title: placeholderDocumentTitle("repository"),
+    // A repository's contents live in git, so the document carries none.
+    content: "",
+  },
+  canvas: {
+    title: placeholderDocumentTitle("canvas"),
+    content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
+  },
+  workflow: {
+    title: placeholderDocumentTitle("workflow"),
+    content: [
+      "// Workflow script.",
+      "// `await runJob(extensionId, jobId, inputs)` runs an extension job and",
+      "// resolves with its outputs. The value you return becomes the run result.",
+      "",
+    ].join("\n"),
+  },
+};
+
+export function DocumentPageView(props: Props) {
+  const lang = useLocale();
+  const t = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [now, setNow] = createSignal(props.ssrNow ?? Date.now());
+
+  const { currentSpace } = useSpace();
+  const { extensions } = useExtensions();
+  const toast = useToast();
+  const { canUseDocumentEditor, setDocumentContext, resetDocumentContext } =
+    useDocumentContext();
+
+  const isDraft = createMemo(() => !props.documentSlug);
+  const draftTypeParam = createMemo(() => props.draftType ?? "");
+  const showPicker = createMemo(() => isDraft() && !draftTypeParam());
+  const draftCategory = createMemo(() =>
+    isDraft() ? props.draftCategory || undefined : undefined,
+  );
+  const draftTitle = createMemo(() =>
+    isDraft() ? props.draftTitle?.trim() || undefined : undefined,
+  );
+  const draftParent = createMemo(() =>
+    isDraft() ? props.draftParent || undefined : undefined,
+  );
+
+  const docQuery = useQuery({
+    queryKey: createMemo(() => [
+      "wiki_document_slug",
+      currentSpace()?.id,
+      props.documentSlug,
+    ]),
+    queryFn: async () => {
+      const spaceId = currentSpace()?.id;
+      if (!spaceId || !props.documentSlug) return null;
+      return await api.document.get(spaceId, props.documentSlug);
+    },
+    initialData: async () => {
+      const spaceId = currentSpace()?.id;
+      if (!spaceId || !props.documentSlug) return undefined;
+      return await api.document.getCached(spaceId, props.documentSlug);
+    },
+    subscribe: (callback) => {
+      const spaceId = currentSpace()?.id;
+      if (!spaceId || !props.documentSlug) return () => {};
+      return api.document.subscribeCached(spaceId, props.documentSlug, callback);
+    },
+    enabled: createMemo(() => !isDraft() && !!currentSpace()?.id && !!props.documentSlug),
+  });
+
+  const doc = createMemo(() => docQuery.data());
+  const [realtimeAccess, setRealtimeAccess] = createSignal<"edit" | "view" | "none">();
+
+  createEffect(
+    on(
+      () => doc()?.id,
+      () => setRealtimeAccess(undefined),
+      { defer: true },
+    ),
+  );
+
+  const breadcrumbsQuery = useQuery({
+    queryKey: createMemo(() => ["document_breadcrumbs", currentSpace()?.id, doc()?.id]),
+    queryFn: async () => {
+      const spaceId = currentSpace()?.id;
+      const docId = doc()?.id;
+      if (!spaceId || !docId) return [];
+      return await api.documentBreadcrumbs.get(spaceId, docId);
+    },
+    enabled: createMemo(() => !isDraft() && !!currentSpace()?.id && !!doc()?.id),
+  });
+
+  // A move changes the trail of every document under it, not just the one that
+  // moved, so any tree change refetches rather than only a matching id.
+  useSync(
+    createMemo(() => currentSpace()?.id ?? null),
+    [realtimeTopics.documentTree],
+    () => void breadcrumbsQuery.refetch(),
+  );
+
+  const categoriesQuery = useQuery({
+    queryKey: createMemo(() => ["categories", currentSpace()?.id]),
+    queryFn: async () => {
+      const spaceId = currentSpace()?.id;
+      if (!spaceId) return [];
+      return (await api.categories.get(spaceId)).categories;
+    },
+    enabled: createMemo(() => !isDraft() && !!currentSpace()?.id),
+  });
+
+  const titleDragUrl = createMemo(() => {
+    const slug = doc()?.slug;
+    return slug ? spacePath(currentSpace()?.slug, `/doc/${slug}`) : undefined;
+  });
+
+  createEffect(() => {
+    const d = doc();
+    if (!d || props.documentSlug === d.slug) return;
+    const fullPath = `${location.pathname}${location.search}${location.hash}`;
+    navigate(fullPath.replace(`/doc/${props.documentSlug}`, `/doc/${d.slug}`), {
+      replace: true,
+      resolve: false,
+    });
+  });
+
+  const allBreadcrumbs = createMemo(() => breadcrumbsQuery.data() ?? []);
+  const parentBreadcrumbs = createMemo(() => allBreadcrumbs().slice(0, -1));
+
+  const docCategory = createMemo(() => {
+    const categories = categoriesQuery.data();
+    if (!categories) return null;
+    for (const crumb of allBreadcrumbs()) {
+      if (crumb.categorySlug) {
+        return categories.find((c) => c.slug === crumb.categorySlug) ?? null;
+      }
+    }
+    return null;
+  });
+
+  const documentType = createMemo(() =>
+    isDraft() ? draftTypeParam() || "document" : (doc()?.type ?? "document"),
+  );
+
+  const isCanvas = createMemo(() => documentType() === "canvas");
+  const isApp = createMemo(() => documentType() === "app");
+  const isWorkflow = createMemo(() => documentType() === "workflow");
+  const isDatabase = createMemo(() => documentType() === "database");
+  const isRecord = createMemo(() => documentType() === "record");
+  const isRegularDocument = createMemo(() => documentType() === "document");
+  const isFullHeightView = createMemo(() => isDatabase() || isWorkflow());
+  const isPaddedDocument = createMemo(
+    () => !isCanvas() && !isApp() && !isWorkflow() && !isDatabase(),
+  );
+
+  const documentRightViews = createMemo(
+    () => {
+      if (isDraft() || documentType() !== "document") return [];
+
+      return extensions().flatMap((extension) =>
+        (extension.routes || [])
+          .filter((route) => route.placements?.includes("document"))
+          .map((route) => ({ extensionId: extension.id, route })),
+      );
+    },
+    undefined,
+    {
+      equals: (a, b) =>
+        a.length === b.length &&
+        a.every(
+          (view, index) =>
+            view.extensionId === b[index]?.extensionId &&
+            view.route.path === b[index]?.route.path,
+        ),
+    },
+  );
+
+  const userCanEdit = createMemo(() => {
+    const access = realtimeAccess();
+    return (
+      access === "edit" || (access === undefined && canEdit(currentSpace()?.userRole))
+    );
+  });
+
+  const isReadonly = createMemo(() =>
+    isDraft()
+      ? false
+      : !!(
+          doc()?.readonly ||
+          doc()?.archived ||
+          isCanvas() ||
+          isApp() ||
+          isWorkflow() ||
+          isDatabase()
+        ),
+  );
+
+  const title = createMemo(() =>
+    isDraft()
+      ? (draftTitle() ?? placeholderDocumentTitle(documentType()))
+      : (doc()?.properties?.title as string) || placeholderDocumentTitle("document"),
+  );
+
+  const headerImageSrc = createMemo(() =>
+    optionalPropertyValueToText(doc()?.properties?.headerImage),
+  );
+  const headerImageAspectRatio = createMemo(() => doc()?.headerImageAspectRatio ?? null);
+  const isPortraitHeader = createMemo(() => {
+    const ratio = headerImageAspectRatio();
+    return !isDraft() && !!headerImageSrc() && ratio !== null && ratio < 1;
+  });
+
+  const defaultLayout = createMemo(() =>
+    documentType() === "document" ? "document" : "full",
+  );
+  const effectiveLayout = createMemo(() =>
+    isDraft() ? defaultLayout() : doc()?.properties?.layout || defaultLayout(),
+  );
+
+  const updatedAtStr = createMemo(() => {
+    const updatedAt = doc()?.updatedAt;
+    return updatedAt ? formatRelativeTime(updatedAt, lang, { now: now() }) : "";
+  });
+
+  const [redirecting, setRedirecting] = createSignal(false);
+  const [hasMounted, setHasMounted] = createSignal(false);
+  const { value: tableOfContentsVisible, commit: setTableOfContentsVisible } =
+    usePersistedState<boolean>({
+      key: "document-table-of-contents-visible",
+      fallback: true,
+    });
+  const { value: documentDetailsVisible, commit: setDocumentDetailsVisible } =
+    usePersistedState<boolean>({
+      key: "document-details-visible",
+      fallback: true,
+    });
+  const hasDocumentAside = () =>
+    (hasMounted() && isRegularDocument() && tableOfContentsVisible()) ||
+    documentRightViews().length > 0;
+
+  async function maybeAutoCreateDraft() {
+    if (!hasMounted()) return;
+    if (!isDraft()) return;
+    if (redirecting()) return;
+    const autoCreate = AUTO_CREATE_TYPES[documentType()];
+    const space = currentSpace();
+    if (!autoCreate || !space) return;
+    if (documentType() === "workflow" && !isWorkflowCreationEnabled(space.preferences)) {
+      navigate("/new", { replace: true });
+      return;
+    }
+    if (
+      documentType() === repositoryDocumentType &&
+      !isRepositoryCreationEnabled(space.preferences)
+    ) {
+      navigate("/new", { replace: true });
+      return;
+    }
+    if (!userCanEdit()) {
+      navigate("/");
+      return;
+    }
+    setRedirecting(true);
+    try {
+      const newDoc = await api.documents.post(space.id, {
+        type: documentType(),
+        content: autoCreate.content,
+        ...(draftParent() ? { parentId: draftParent() } : {}),
+        properties: {
+          title: draftTitle() ?? autoCreate.title,
+          ...(draftCategory() ? { category: draftCategory() } : {}),
+        },
+      });
+      navigate(`/doc/${newDoc.slug}`);
+    } catch (error) {
+      setRedirecting(false);
+      throw error;
+    }
+  }
+
+  onMount(() => {
+    setHasMounted(true);
+    setNow(Date.now());
+
+    const unsubscribeAccessChanges = api.subscribeToRealtimeAccessChanges((change) => {
+      const currentDocument = doc();
+      if (
+        change.spaceId !== currentSpace()?.id ||
+        change.scope !== "document" ||
+        change.resourceId !== currentDocument?.id ||
+        change.access === "refresh"
+      ) {
+        return;
+      }
+
+      setRealtimeAccess(change.access);
+      if (change.access === "edit") {
+        toast.show("You can edit this document again.", "info");
+        return;
+      }
+
+      resetEditingState();
+      if (change.access === "view") {
+        toast.show("Your access to this document changed to view only.", "info");
+        return;
+      }
+
+      toast.show("Your access to this document was revoked.", "error", 10_000);
+      navigate("/", { replace: true });
+    });
+
+    onCleanup(unsubscribeAccessChanges);
+  });
+
+  createEffect(() => {
+    void [isDraft(), documentType(), currentSpace(), userCanEdit(), draftCategory()];
+    void maybeAutoCreateDraft().catch((error) => {
+      console.error("Failed to create draft document", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create the document",
+      );
+    });
+  });
+
+  onCleanup(() => {
+    resetEditingState();
+    resetDocumentContext();
+  });
+
+  usePageTitle(title);
+
+  createEffect(() => {
+    setDocumentContext({
+      documentId: doc()?.id,
+      documentType: documentType(),
+      readonly: isReadonly(),
+      publishedVersion: doc()?.publishedRev ?? null,
+      userCanEdit: userCanEdit(),
+    });
+    if (!canUseDocumentEditor() && editing()) resetEditingState();
+  });
+
+  const initialProperties = () =>
+    isDraft()
+      ? draftCategory()
+        ? { category: draftCategory() }
+        : {}
+      : { ...doc()?.properties, parentId: doc()?.parentId };
+
+  const titleRow = (): JSX.Element => (
+    <div class="flex w-full items-start justify-between">
+      <Dynamic
+        component={isDraft() ? "div" : "page-target"}
+        class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
+        attr:data-document-id={doc()?.id}
+        attr:data-document-type={doc()?.type ?? undefined}
+        attr:data-space-id={currentSpace()?.id}
+        attr:data-document-url={titleDragUrl()}
+      >
+        <TitleEditor
+          initialEditMode={isDraft()}
+          title={title()}
+          documentId={doc()?.id}
+          spaceId={currentSpace()?.id as string}
+          canEdit={userCanEdit()}
+        />
+      </Dynamic>
+    </div>
+  );
+
+  const documentPropertiesBlock = (layout?: "labeled"): JSX.Element => (
+    <DocumentProperties
+      documentId={doc()?.id}
+      documentType={documentType()}
+      layout={layout}
+      readonly={!userCanEdit()}
+      initialProperties={initialProperties()}
+      initialCategory={null}
+    />
+  );
+
+  const documentDetailsToggle = (): JSX.Element => (
+    <button
+      type="button"
+      aria-label={
+        documentDetailsVisible() ? t("Hide document details") : t("Show document details")
+      }
+      aria-pressed={documentDetailsVisible()}
+      title={
+        documentDetailsVisible() ? t("Hide document details") : t("Show document details")
+      }
+      class={twMerge(
+        "pointer-events-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline-2 focus-visible:outline-primary-500 focus-visible:outline-offset-2",
+      )}
+      onClick={() => setDocumentDetailsVisible(!documentDetailsVisible())}
+    >
+      <Icon
+        name="chevron-down"
+        class={twMerge(
+          "h-4 w-4 transition-transform duration-150 ease-out",
+          documentDetailsVisible() && "rotate-180",
+        )}
+      />
+    </button>
+  );
+
+  const breadcrumbs = (): JSX.Element => (
+    <div class="flex min-w-0 items-center gap-1">
+      <Show when={!isDraft()}>
+        <Breadcrumbs
+          category={docCategory()}
+          parents={parentBreadcrumbs()}
+          currentTitle={title()}
+          documentId={doc()?.id}
+          spaceId={currentSpace()?.id}
+          canEdit={userCanEdit()}
+        />
+      </Show>
+      {documentDetailsToggle()}
+    </div>
+  );
+
+  const documentToolbar = (transparent = false): JSX.Element => (
+    <div
+      class={twMerge(
+        // Above the details block below it, which raises itself to z-20 for
+        // its popovers and would otherwise scroll over this sticky bar.
+        "sticky top-0 z-30 flex min-h-7 shrink-0 flex-row items-center justify-between gap-6 py-3xs page-spacing",
+        !transparent && "border-neutral-50 border-b bg-neutral-10",
+      )}
+    >
+      <Show
+        when={isWorkflow()}
+        fallback={<div class="min-w-0 flex-1">{breadcrumbs()}</div>}
+      >
+        <div class="flex min-w-0 flex-1 items-center gap-1">
+          <div id="workflow-breadcrumb-slot" class="min-w-0 flex-1" />
+          {documentDetailsToggle()}
+        </div>
+      </Show>
+      {documentActions()}
+    </div>
+  );
+
+  const documentDetails = (layout?: "labeled", transparent = false): JSX.Element => (
+    <Show when={documentDetailsVisible()}>
+      <div
+        class={twMerge(
+          // The enter transition's transform makes this a stacking context, so
+          // property popovers need the wrapper itself above the body below it.
+          "document-details-enter relative z-20 flex min-w-0 shrink-0 flex-col",
+          // Growing is for the row layout beside a portrait header; in a
+          // full-height view it would stretch the header over the content.
+          layout === "labeled" && "flex-1",
+        )}
+      >
+        <inset-view
+          class={twMerge(
+            "flex flex-row justify-between gap-6 page-spacing py-3xs md:gap-4",
+            !transparent && "bg-neutral-10",
+          )}
+        >
+          {titleRow()}
+        </inset-view>
+        <inset-view
+          id="document-properties"
+          class="mb-xl block page-spacing"
+        >
+          {documentPropertiesBlock(layout)}
+        </inset-view>
+      </div>
+    </Show>
+  );
+
+  const documentActions = (): JSX.Element => (
+    <DocumentActions
+      title={title()}
+      headerImage={headerImageSrc()}
+      tableOfContentsVisible={tableOfContentsVisible()}
+      onToggleTableOfContents={
+        isRegularDocument()
+          ? () => setTableOfContentsVisible(!tableOfContentsVisible())
+          : undefined
+      }
+    />
+  );
+
+  const documentAside = (): JSX.Element => (
+    <DocumentExtensionViews
+      views={documentRightViews()}
+      documentId={doc()?.id ?? null}
+      fullWidth={effectiveLayout() === "full"}
+      onHideTableOfContents={() => setTableOfContentsVisible(false)}
+      spaceId={currentSpace()?.id as string}
+      tableOfContents={hasMounted() && isRegularDocument() && tableOfContentsVisible()}
+    />
+  );
+
+  return (
+    <>
+      <Show
+        when={currentSpace() && (isDraft() ? !redirecting() : doc())}
+        fallback={
+          <Show when={!isDraft()}>
+            <Show
+              when={!docQuery.isLoading()}
+              fallback={
+                <div class="flex h-64 items-center justify-center text-neutral-400">
+                  Loading…
+                </div>
+              }
+            >
+              <div class="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-neutral-500">
+                <p class="font-semibold text-2xl text-neutral-800">404</p>
+                <p>Document not found.</p>
+                <a
+                  href={`/${currentSpace()?.slug ?? ""}/`}
+                  class="text-sm underline hover:text-neutral-800"
+                >
+                  Back to space
+                </a>
+              </div>
+            </Show>
+          </Show>
+        }
+      >
+        {/* A full-height view owns the viewport and scrolls inside itself, so
+            the page must not grow past it. */}
+        <div
+          class={twMerge(
+            isFullHeightView() && "flex h-[100dvh] flex-col overflow-hidden",
+          )}
+        >
+          <inset-view
+            class={twMerge(
+              "block min-h-0 flex-1",
+              isFullHeightView() && "flex flex-col",
+              !isCanvas() && "md:mr-(--inset-right) md:ml-(--inset-left)",
+            )}
+          >
+            <div
+              class={twMerge(
+                "relative mx-auto h-full w-full",
+                isFullHeightView() && "flex min-h-0 flex-1 flex-col",
+                isDatabase() || isRecord() || effectiveLayout() === "full"
+                  ? "max-w-full"
+                  : "max-w-(--document-width)",
+              )}
+            >
+              <div
+                data-type={documentType()}
+                data-updated-at={doc()?.updatedAt as string | undefined}
+                data-created-at={doc()?.createdAt as string | undefined}
+                data-layout={effectiveLayout()}
+                class={twMerge(
+                  "relative flex h-full w-full min-w-0 max-w-full flex-col",
+                  isFullHeightView() && "min-h-0 flex-1",
+                  effectiveLayout() !== "full" &&
+                    "min-[1920px]:left-[-80px] print:left-0",
+                )}
+              >
+                <Show when={doc()?.archived}>
+                  <BottomBanner class="archived-banner">
+                    <div class="pointer-events-auto flex w-full flex-col gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-5 py-4 shadow-large sm:flex-row sm:items-center sm:justify-between">
+                      <div class="min-w-0">
+                        <p class="font-semibold text-size-medium text-yellow-900">
+                          ⚠️ This document is archived
+                        </p>
+                        <p class="my-0! text-size-small text-yellow-700">
+                          This document has been archived and is no longer actively
+                          maintained.
+                        </p>
+                      </div>
+                      <RestoreButton documentId={doc()?.id as string} />
+                    </div>
+                  </BottomBanner>
+                </Show>
+
+                <Show when={isCanvas()}>
+                  <div class="pointer-events-none absolute top-0 right-0 left-0 z-20 block md:right-(--inset-right) md:left-(--inset-left)">
+                    {documentToolbar(true)}
+                    {documentDetails(undefined, true)}
+                  </div>
+                </Show>
+
+                <Show when={!isCanvas() && isPortraitHeader()}>
+                  {documentToolbar()}
+
+                  <div class="mb-4 flex flex-col gap-xl px-xs md:flex-row md:items-start md:px-xl print:px-0">
+                    <HeaderImage
+                      class="w-full max-w-[320px] shrink-0"
+                      orientation="portrait"
+                      aspectRatio={headerImageAspectRatio()}
+                      documentId={doc()?.id as string}
+                      initialSrc={headerImageSrc()}
+                    />
+
+                    {documentDetails("labeled")}
+                  </div>
+                </Show>
+
+                <Show when={!isCanvas() && !isPortraitHeader()}>
+                  <Show when={!isDraft() && !isWorkflow()}>
+                    <HeaderImage
+                      class="mt-4"
+                      documentId={doc()?.id as string}
+                      initialSrc={optionalPropertyValueToText(
+                        doc()?.properties?.headerImage,
+                      )}
+                    />
+                  </Show>
+
+                  {documentToolbar()}
+                  {documentDetails()}
+                </Show>
+
+                <div
+                  class={twMerge(
+                    isFullHeightView() && "flex min-h-0 flex-1 flex-col",
+                    hasDocumentAside() &&
+                      effectiveLayout() === "full" &&
+                      "xl:grid xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start xl:gap-6",
+                  )}
+                >
+                  <div
+                    class={twMerge(
+                      "min-w-0",
+                      // Every document type ends on the same gap, footer or not.
+                      !isCanvas() && "pb-2xs",
+                      // Collapsed details take their own bottom margin with
+                      // them, leaving the body flush against the toolbar.
+                      isRegularDocument() && !documentDetailsVisible() && "pt-2xs",
+                      isFullHeightView() && "flex min-h-0 flex-1 flex-col",
+                    )}
+                  >
+                    <div
+                      class={twMerge(
+                        "h-full max-w-none overflow-x-auto text-neutral-700",
+                        isFullHeightView()
+                          ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                          : "h-full overflow-x-auto",
+                        isPaddedDocument() && "page-spacing",
+                      )}
+                    >
+                      <Show
+                        when={!isDraft()}
+                        fallback={
+                          <>
+                            <DocumentContent
+                              spaceId={currentSpace()?.id as string}
+                              documentType={documentType()}
+                            />
+                            <Show when={showPicker()}>
+                              <NewDocumentPicker />
+                            </Show>
+                          </>
+                        }
+                      >
+                        <RevisionView
+                          documentId={doc()?.id as string}
+                          documentType={documentType()}
+                          spaceId={currentSpace()?.id as string}
+                        />
+
+                        <DocumentBody
+                          content={doc()?.content ?? ""}
+                          documentId={doc()?.id as string}
+                          documentType={documentType()}
+                          extensions={extensions()}
+                          properties={doc()?.properties ?? {}}
+                          readonly={isReadonly()}
+                          spaceId={currentSpace()?.id as string}
+                        />
+                      </Show>
+                    </div>
+
+                    <Show when={!isDraft() && !editing() && isRegularDocument()}>
+                      <inset-view class="mt-2xs flex items-center justify-end page-spacing">
+                        <Show when={doc()?.updatedAt}>
+                          <div class="flex flex-wrap items-center gap-2 text-neutral-500 text-size-medium">
+                            <Show when={hasMounted() && updatedAtStr()}>
+                              <span>Updated {updatedAtStr()}</span>
+                            </Show>
+                          </div>
+                        </Show>
+                      </inset-view>
+                    </Show>
+                  </div>
+                  <Show when={effectiveLayout() === "full"}>{documentAside()}</Show>
+                </div>
+              </div>
+              <Show when={effectiveLayout() !== "full"}>{documentAside()}</Show>
+            </div>
+          </inset-view>
+        </div>
+      </Show>
+
+      <Show when={hasMounted() && !isDraft() && doc()}>
+        {(document) => (
+          <Portal>
+            <RevisionsSidebar documentId={document().id} documentType={documentType()} />
+          </Portal>
+        )}
+      </Show>
+    </>
+  );
+}

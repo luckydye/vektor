@@ -25,7 +25,7 @@ WORKDIR /app
 
 # The binary is compiled natively before the image build so Rust, ONNX Runtime,
 # Astro, and Bun compilation can use the CI/local build cache.
-COPY app/vektor /app/vektor
+COPY server/vektor /app/vektor
 
 RUN mkdir -p /app/data
 

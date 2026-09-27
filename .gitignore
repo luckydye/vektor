@@ -9,7 +9,7 @@ env
 # ...but the rule above is for secret files, and must not swallow source that
 # merely says "credentials" in its name — a silently untracked module fails as
 # "Cannot find module" on the next clone, not at the commit that dropped it.
-!app/src/**/*credentials*
+!server/src/**/*credentials*
 
 .claude
 .zed
@@ -36,11 +36,11 @@ api-example
 *.log
 
 # Downloaded at native-embedding build time and compiled into the addon.
-/app/native/embedding/models/
+/server/native/embedding/models/
 
 # Generated platform-specific native embedding addon and its loader.
-/app/src/search/native/
+/server/src/search/native/
 
-/app/test
+/server/test
 
 feature-showcase

@@ -1,0 +1,192 @@
+import "@atrium-ui/elements/expandable";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { twMerge } from "tailwind-merge";
+import type { DocumentWithProperties } from "#api/ApiClient.ts";
+import { useDocumentDrag } from "#composeables/useDocumentDrag.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { propertyValueIncludes, propertyValueToScalar } from "#documents/properties.ts";
+import { documentTitle } from "#documents/title.ts";
+import { allowsChildDocumentType } from "#documents/types.ts";
+import { spacePath } from "#utils/utils.ts";
+import { Icon } from "./Icon.tsx";
+
+interface Props {
+  doc: DocumentWithProperties;
+  allDocs: DocumentWithProperties[];
+  activeDocId?: string | null;
+  expandedItems: Set<string>;
+  onToggle?: (id: string) => void;
+}
+
+export function DocumentTreeItem(props: Props) {
+  const t = useTranslation();
+  const lang = useLocale();
+
+  const { currentSpace } = useSpace();
+  const { draggedDocument } = useDocumentDrag();
+
+  const isInvalidDropTarget = createMemo(() => {
+    const dragged = draggedDocument();
+    if (!dragged || dragged.id === props.doc.id) return false;
+    return !allowsChildDocumentType(props.doc.type, dragged.type);
+  });
+
+  const children = createMemo(() => {
+    const docCategory = props.doc.properties.category || props.doc.properties.collection;
+    const docCategorySlug = propertyValueToScalar(docCategory);
+
+    return props.allDocs.filter((d) => {
+      if (d.parentId !== props.doc.id) return false;
+
+      const childCategory = d.properties.category || d.properties.collection;
+
+      return (
+        !childCategory ||
+        !docCategorySlug ||
+        propertyValueIncludes(childCategory, docCategorySlug)
+      );
+    });
+  });
+
+  const hasChildren = createMemo(() => children().length > 0);
+  const isExpanded = createMemo(() => props.expandedItems.has(props.doc.id));
+  const isActive = createMemo(() => props.activeDocId === props.doc.slug);
+
+  const isLocked = createMemo(() => !!props.doc.locked);
+
+  const [wasExpanded, setWasExpanded] = createSignal(isExpanded());
+  createEffect(() => {
+    if (isExpanded()) setWasExpanded(true);
+  });
+
+  function getDocumentUrl(docSlug: string) {
+    return spacePath(currentSpace()?.slug, `/doc/${docSlug}`);
+  }
+
+  function toggle() {
+    return (
+      <Show when={hasChildren()} fallback={<div class="w-4 flex-none" />}>
+        <button
+          type="button"
+          onClick={() => props.onToggle?.(props.doc.id)}
+          class="rounded-sm p-0.5 hover:bg-neutral-300 active:bg-neutral-200"
+          aria-label={isExpanded() ? t("Collapse") : t("Expand")}
+          aria-expanded={isExpanded()}
+        >
+          <Icon
+            class={twMerge(
+              "h-3 w-3 text-neutral transition-transform",
+              isExpanded() && "rotate-90",
+            )}
+            name="chevron-right-thin"
+          />
+        </button>
+      </Show>
+    );
+  }
+
+  function row() {
+    return (
+      <div
+        class="flex items-center gap-1 transition-opacity"
+        classList={{ "opacity-40": isInvalidDropTarget() }}
+      >
+        {toggle()}
+
+        <Show
+          when={!isLocked()}
+          fallback={
+            <div
+              class="flex flex-1 items-center gap-1.5 overflow-hidden rounded-sm px-1.5 py-1 text-neutral-400 text-size-normal"
+              title={t("You don't have access to this page")}
+            >
+              <Icon class="h-3 w-3 flex-none" name="lock-element" />
+              <span class="overflow-hidden text-ellipsis whitespace-nowrap">
+                {documentTitle(props.doc, lang)}
+              </span>
+            </div>
+          }
+        >
+          <a
+            href={getDocumentUrl(props.doc.slug)}
+            class={`flex flex-1 items-center justify-between text-ellipsis whitespace-nowrap rounded-sm px-1.5 py-1 text-size-normal ${
+              isActive()
+                ? "bg-primary-200 text-neutral-700"
+                : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 active:bg-neutral-200"
+            }`}
+          >
+            <span class="overflow-hidden text-ellipsis whitespace-nowrap">
+              {documentTitle(props.doc, lang)}
+            </span>
+            <Show when={props.doc.mentionCount && props.doc.mentionCount > 0}>
+              <span class="ml-2 min-w-[1.25rem] rounded-full bg-primary-600 px-1.5 text-center font-medium text-size-extra-small text-white leading-[1.25rem]">
+                {props.doc.mentionCount}
+              </span>
+            </Show>
+          </a>
+        </Show>
+      </div>
+    );
+  }
+
+  function childTree() {
+    return (
+      <Show when={hasChildren()}>
+        <a-expandable
+          attr:opened={isExpanded() ? "" : undefined}
+          class="[--transition-speed:100ms]"
+        >
+          <div class="mt-1 ml-2 space-y-1">
+            <Show when={wasExpanded()}>
+              <For each={children()}>
+                {(child, index) => (
+                  <div class="relative">
+                    <Show
+                      when={index() < children().length - 1}
+                      fallback={
+                        <div class="absolute top-0 left-0 h-[0.975rem] w-[0.52rem] border-neutral-400 border-b border-l" />
+                      }
+                    >
+                      <div class="absolute top-0 bottom-[-0.25rem] left-0 w-0 border-neutral-400 border-l" />
+                    </Show>
+                    <DocumentTreeItem
+                      doc={child}
+                      allDocs={props.allDocs}
+                      activeDocId={props.activeDocId}
+                      expandedItems={props.expandedItems}
+                      onToggle={props.onToggle}
+                    />
+                  </div>
+                )}
+              </For>
+            </Show>
+          </div>
+        </a-expandable>
+      </Show>
+    );
+  }
+
+  return (
+    <Show
+      when={!isLocked()}
+      fallback={
+        <div class="block pl-[0.535rem]">
+          {row()}
+          {childTree()}
+        </div>
+      }
+    >
+      <page-target
+        attr:data-document-id={props.doc.id}
+        attr:data-document-type={props.doc.type ?? undefined}
+        attr:data-space-id={currentSpace()?.id}
+        attr:data-document-url={getDocumentUrl(props.doc.slug)}
+        class="block pl-[0.535rem] [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
+      >
+        {row()}
+        {childTree()}
+      </page-target>
+    </Show>
+  );
+}

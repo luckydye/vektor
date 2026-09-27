@@ -1,0 +1,976 @@
+import { eq } from "drizzle-orm";
+import {
+  authenticateDocumentAccess,
+  authenticateJobTokenOrSpaceRole,
+  authenticateRequest,
+  verifyAccess,
+  verifyRevisionAccess,
+} from "#acl/guards.ts";
+import { Permission, ResourceType } from "#acl/permissions.ts";
+import {
+  documentEtag,
+  expectedSeqs,
+  matchesWeak,
+  notModified,
+  PRIVATE_REVALIDATE,
+  preconditionFailed,
+  revisionEtag,
+} from "#api/conditional.ts";
+import {
+  badRequestResponse,
+  forbiddenResponse,
+  jsonResponse,
+  notFoundResponse,
+  parseJsonBody,
+  parseQueryInt,
+  requireParam,
+  requireUser,
+  successResponse,
+  unauthorizedResponse,
+  withApiErrorHandling,
+} from "#api/http.ts";
+import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
+import { one } from "#db/client/query.ts";
+import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
+import { document as documentTable } from "#db/schema/space.ts";
+import { createAuditLog } from "#db/space/auditLogs.ts";
+import { touchDocument } from "#db/space/changeSeq.ts";
+import {
+  archiveDocument,
+  type DocumentMeta,
+  deleteDocument,
+  getDocument,
+  getDocumentBySlug,
+  getDocumentContent,
+  InvalidDocumentParentError,
+  restoreDocument,
+  setDocumentParent,
+  updateDocument,
+} from "#db/space/documents.ts";
+import { getUploadImageAspectRatio } from "#db/space/files.ts";
+import { patchDocumentProperties } from "#db/space/properties.ts";
+import {
+  createRevision,
+  getRevisionContent,
+  getRevisionMetadata,
+  resolvePublishedDocumentContent,
+} from "#db/space/revisions.ts";
+import { getSpace, getSpaceBySlug } from "#db/space/spaces.ts";
+import { getMimeType, prepareDocumentContent } from "#documents/content.ts";
+import {
+  type DocumentPropertyPatch,
+  InvalidDocumentPropertyPatchError,
+  ReservedDocumentPropertyKeyError,
+} from "#documents/properties.ts";
+import {
+  documentIsReadonly,
+  isSerializedDocumentType,
+  workflowRunDocumentType,
+} from "#documents/types.ts";
+import { parseJobToken } from "#jobs/jobToken.ts";
+import { enqueueDocumentPublishedEmails } from "#notifications/enqueue.ts";
+import { appLogger } from "#observability/logger.ts";
+import { sendSyncEvent } from "#realtime/events.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import {
+  getLiveDocumentContent,
+  persistYRoomDraft,
+  replaceLiveDocumentContent,
+  roomKey,
+  setYRoomWriteBlocked,
+} from "#realtime/yjsRooms.ts";
+import { htmlToMarkdown } from "#utils/markdown.ts";
+
+type DocumentPatchBody = {
+  properties?: DocumentPropertyPatch;
+  parentId?: string | null;
+  publishedRev?: number | null;
+  readonly?: boolean;
+};
+
+const documentPatchFields = new Set<keyof DocumentPatchBody>([
+  "properties",
+  "parentId",
+  "publishedRev",
+  "readonly",
+]);
+
+function parseDocumentPatchBody(value: unknown): DocumentPatchBody {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw badRequestResponse("Document patch body must be an object");
+  }
+
+  const keys = Object.keys(value);
+  const unknownFields = keys.filter(
+    (key) => !documentPatchFields.has(key as keyof DocumentPatchBody),
+  );
+  if (unknownFields.includes("restore")) {
+    throw badRequestResponse(
+      "restore cannot be patched; use PUT to restore an archived document",
+    );
+  }
+  if (unknownFields.includes("archived")) {
+    throw badRequestResponse(
+      "archived cannot be patched; use DELETE to archive a document",
+    );
+  }
+  if (unknownFields.length > 0) {
+    throw badRequestResponse(
+      `Unknown document patch field${unknownFields.length === 1 ? "" : "s"}: ${unknownFields.join(", ")}`,
+    );
+  }
+  if (keys.length !== 1) {
+    throw badRequestResponse(
+      "Document patch must contain exactly one of properties, parentId, publishedRev, or readonly",
+    );
+  }
+
+  return value as DocumentPatchBody;
+}
+
+/**
+ * One step of a `PATCH`, and the condition the next step should carry.
+ *
+ * Each branch writes through the counter, so a body naming two of them has the
+ * first write move the sequence out from under the second — `next` is how the
+ * caller's condition follows along.
+ */
+type PatchStep = { ok: true; next: number[] | undefined } | { ok: false };
+
+/** `undefined` for no condition, so an absent header writes unconditionally. */
+function requestedCondition(context: ApiContext): number[] | undefined {
+  const header = context.req.raw.headers.get("if-match");
+  if (!header) return undefined;
+  const seqs = expectedSeqs(header);
+  return seqs === "any" ? undefined : seqs;
+}
+
+async function conflictResponse(store: SpaceStore, id: string): Promise<Response> {
+  const current = await getDocument(store, id);
+  if (!current) throw notFoundResponse("Document");
+  return preconditionFailed(current, documentEtag(current.changeSeq));
+}
+
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, If-Match, If-None-Match");
+  // Hidden from a cross-origin caller unless named here.
+  headers.set("Access-Control-Expose-Headers", "ETag");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function handlePublishedRevisionPatch(
+  store: SpaceStore,
+  documentId: string,
+  userId: string,
+  publishedRev: number | null,
+  expected?: number[],
+): Promise<PatchStep> {
+  const { spaceId } = store;
+  const revToPublish = publishedRev === null ? null : publishedRev;
+
+  const existing = await one(
+    store.db
+      .select({ publishedRev: documentTable.publishedRev, type: documentTable.type })
+      .from(documentTable)
+      .where(eq(documentTable.id, documentId)),
+  );
+  if (existing?.publishedRev === revToPublish) {
+    return { ok: true, next: expected };
+  }
+
+  const revisionContent =
+    revToPublish === null
+      ? null
+      : await getRevisionContent(store, documentId, revToPublish);
+  if (revToPublish !== null && revisionContent === null) {
+    throw notFoundResponse("Revision");
+  }
+
+  const published = await store.tx(async (tx) => {
+    // Publishing changes which body a plain read returns.
+    const first = await touchDocument(
+      tx,
+      documentId,
+      { publishedRev: revToPublish },
+      expected,
+    );
+    if (!first.ok) return null;
+    let changeSeq = first.changeSeq;
+
+    const entry = await createAuditLog(tx, {
+      spaceId,
+      docId: documentId,
+      revisionId: revToPublish || undefined,
+      userId,
+      event: revToPublish === null ? "unpublish" : "publish",
+      details: {
+        message:
+          revToPublish === null
+            ? "Document unpublished"
+            : `Published revision ${revToPublish}`,
+      },
+    });
+
+    if (revisionContent !== null) {
+      // Publishing a revision also loads it into the draft, so the editor
+      // reflects the revision that is now published. Conditioned on the write
+      // above, not the caller's condition, which that write already consumed.
+      const second = await touchDocument(tx, documentId, { content: revisionContent }, [
+        changeSeq,
+      ]);
+      if (!second.ok) return null;
+      changeSeq = second.changeSeq;
+    }
+
+    return { entry, changeSeq };
+  });
+
+  if (!published) return { ok: false };
+  const { entry: auditEntry, changeSeq } = published;
+
+  if (revToPublish === null) {
+    return { ok: true, next: [changeSeq] };
+  }
+
+  if (revisionContent === null) throw notFoundResponse("Revision");
+
+  // An open room outranks the stored content for every reader and persists
+  // itself back over this write, so the draft only really changes once the live
+  // document does.
+  replaceLiveDocumentContent(spaceId, documentId, existing?.type, revisionContent);
+
+  try {
+    await enqueueDocumentPublishedEmails({
+      spaceId,
+      documentId,
+      publicationId: auditEntry.id,
+      revision: revToPublish,
+      previousPublishedRevision: existing?.publishedRev ?? null,
+      documentType: existing?.type,
+      publishedContent: revisionContent,
+      actorId: userId,
+    });
+  } catch (error) {
+    appLogger.error("Failed to enqueue document publication emails", {
+      error,
+      spaceId,
+      documentId,
+      revision: revToPublish,
+    });
+  }
+
+  return { ok: true, next: [changeSeq] };
+}
+
+async function handleReadonlyPatch(
+  store: SpaceStore,
+  documentId: string,
+  userId: string,
+  readonly: boolean,
+  expected?: number[],
+): Promise<PatchStep> {
+  const { spaceId } = store;
+  if (typeof readonly !== "boolean") {
+    throw badRequestResponse("Readonly must be a boolean");
+  }
+
+  const previousWriteBlock = readonly
+    ? setYRoomWriteBlocked(spaceId, documentId, true)
+    : false;
+
+  try {
+    if (readonly) await persistYRoomDraft(roomKey(spaceId, documentId));
+
+    const written = await store.tx(async (tx) => {
+      const result = await touchDocument(tx, documentId, { readonly }, expected);
+      if (!result.ok) return result;
+
+      await createAuditLog(tx, {
+        spaceId,
+        docId: documentId,
+        userId,
+        event: readonly ? "lock" : "unlock",
+        details: {
+          message: readonly ? "Document set to readonly" : "Document readonly removed",
+        },
+      });
+      return result;
+    });
+
+    // A refused condition unwinds the write block the same way a throw does.
+    if (!written.ok) {
+      if (readonly) setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+      return { ok: false };
+    }
+
+    if (!readonly) setYRoomWriteBlocked(spaceId, documentId, false);
+    return { ok: true, next: [written.changeSeq] };
+  } catch (error) {
+    if (readonly) {
+      setYRoomWriteBlocked(spaceId, documentId, previousWriteBlock);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Read one document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @query draft:boolean Read the current draft instead of the published revision. Requires editor permission.
+ * @response #/components/schemas/DocumentResponse
+ */
+export const GET: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const rawSpaceId = requireParam(context.var.params, "spaceId");
+    const rawId = requireParam(context.var.params, "documentId");
+    const revParam = new URL(context.req.url).searchParams.get("rev");
+    const draft = new URL(context.req.url).searchParams.get("draft") === "true";
+    // live=true returns the draft content as currently held in the document's
+    // collaboration room (if open), so partial edits reference the same state.
+    const live = new URL(context.req.url).searchParams.get("live") === "true";
+
+    const space = (await getSpace(rawSpaceId)) ?? (await getSpaceBySlug(rawSpaceId));
+    if (!space) {
+      throw notFoundResponse("Space");
+    }
+    const spaceId = space.id;
+    const store = await openSpaceStore(spaceId);
+
+    // Resolve slug → ID: try by ID first, fall back to slug so client-side
+    // routing and cross-host callers can pass URL slugs directly.
+    let id = rawId;
+    const preCheck = await getDocument(store, rawId);
+    if (!preCheck) {
+      const bySlug = await getDocumentBySlug(store, rawId);
+      if (bySlug) id = bySlug.id;
+    }
+
+    // Draft/live content is unpublished, so it requires editor; the published
+    // view only requires viewer.
+    const requiredRole = draft || live ? Permission.EDITOR : Permission.VIEWER;
+
+    // `aclUserId` is carried past the gate for the revision guard: `null` is
+    // the trusted system caller, `""` public. See verifyRevisionAccess.
+    const { aclUserId } = await authenticateDocumentAccess(
+      context.var.credentials,
+      spaceId,
+      id,
+      requiredRole,
+    );
+
+    const meta = await getDocument(store, id);
+    if (!meta) {
+      throw notFoundResponse("Document");
+    }
+    // Hidden by any parameter, or `?rev=N` serves the body this refuses.
+    if (meta.type === workflowRunDocumentType) {
+      throw notFoundResponse("Document");
+    }
+
+    if (revParam) {
+      const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
+
+      // History, which the viewer gate above does not cover. Authorized before
+      // the load, so a refusal cannot distinguish a missing revision.
+      const access = await verifyRevisionAccess(spaceId, id, aclUserId, [rev]);
+
+      const metadata = await getRevisionMetadata(store, id, rev);
+      if (!metadata) {
+        throw notFoundResponse("Revision");
+      }
+
+      const content = await getRevisionContent(store, id, rev);
+      if (content === null) {
+        throw notFoundResponse("Revision");
+      }
+
+      // Tagged from the revision; still revalidating, since the body varies
+      // with history access.
+      const revEtag = revisionEtag(rev);
+      const revIfNoneMatch = context.req.raw.headers.get("if-none-match");
+      if (revIfNoneMatch && matchesWeak(revIfNoneMatch, revEtag)) {
+        return withCors(notModified(revEtag));
+      }
+
+      return withCors(
+        jsonResponse(
+          {
+            // Without history access, the snapshot and nothing describing it.
+            revision: access.metadata
+              ? { ...metadata, content }
+              : { rev: metadata.rev, content },
+          },
+          200,
+          { ETag: revEtag, "Cache-Control": PRIVATE_REVALIDATE },
+        ),
+      );
+    }
+
+    // Only the canonical read is tagged; `?draft` and `?live` are different
+    // representations of one URL, and `?live` is not the stored row.
+    const etag = draft || live ? null : documentEtag(meta.changeSeq);
+    const ifNoneMatch = context.req.raw.headers.get("if-none-match");
+    if (etag && ifNoneMatch && matchesWeak(ifNoneMatch, etag)) {
+      return withCors(notModified(etag, "Accept"));
+    }
+
+    // getDocument is metadata-only; this route returns the body, so load it
+    // explicitly (from the live room when there is one, else the stored column).
+    let document: DocumentMeta & { content: string };
+    if (live) {
+      document = {
+        ...meta,
+        content: getLiveDocumentContent(
+          spaceId,
+          id,
+          meta.type,
+          (await getDocumentContent(store, id)) ?? "",
+        ),
+      };
+    } else if (!draft && meta.publishedRev !== null) {
+      document = await resolvePublishedDocumentContent(store, {
+        ...meta,
+        content: (await getDocumentContent(store, id)) ?? "",
+      });
+    } else {
+      document = {
+        ...meta,
+        content: (await getDocumentContent(store, id)) ?? "",
+      };
+    }
+
+    const accept = context.req.raw.headers.get("Accept") ?? "";
+    if (accept.includes("text/markdown") || accept.includes("text/plain")) {
+      const serialized = isSerializedDocumentType(document.type);
+      return withCors(
+        new Response(
+          serialized ? (document.content ?? "") : htmlToMarkdown(document.content ?? ""),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": serialized
+                ? "text/plain; charset=utf-8"
+                : "text/markdown; charset=utf-8",
+              ...(etag
+                ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
+                : {}),
+            },
+          },
+        ),
+      );
+    }
+
+    const headerImageAspectRatio = await getUploadImageAspectRatio(
+      spaceId,
+      document.properties.headerImage,
+    );
+
+    return withCors(
+      jsonResponse(
+        {
+          document: { ...document, headerImageAspectRatio },
+          space: {
+            id: space.id,
+            slug: space.slug,
+            name: space.name,
+          },
+        },
+        200,
+        etag
+          ? { ETag: etag, Vary: "Accept", "Cache-Control": PRIVATE_REVALIDATE }
+          : undefined,
+      ),
+    );
+  }, "Failed to get document");
+
+/**
+ * Replace a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @body
+ */
+export const PUT: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
+
+    const store = await openSpaceStore(spaceId);
+    const existingDoc = await getDocument(store, id);
+    if (!existingDoc) {
+      throw notFoundResponse("Document");
+    }
+
+    const publish = new URL(context.req.url).searchParams.get("publish") === "true";
+    const expected = requestedCondition(context);
+    let userId: string | undefined;
+
+    const jobToken = context.req.raw.headers.get("X-Job-Token");
+    if (jobToken) {
+      const parsed = parseJobToken(jobToken, spaceId);
+      if (!parsed) {
+        throw unauthorizedResponse();
+      }
+      // Scope the token to the initiating user; user-less system tokens stay
+      // trusted. Either way carry the id forward for authorship/restore.
+      if (parsed.userId) {
+        await verifyAccess(
+          spaceId,
+          { type: ResourceType.DOCUMENT, id: id },
+          parsed.userId,
+          Permission.EDITOR,
+        );
+      }
+      userId = parsed.userId ?? undefined;
+    } else {
+      // Authenticate with either user session or access token
+      const auth = await authenticateRequest(context.var.credentials, spaceId);
+      if (auth.type === "token") {
+        await verifyAccess(
+          spaceId,
+          { type: ResourceType.DOCUMENT, id: id },
+          auth.token.tokenId,
+          Permission.EDITOR,
+        );
+        userId = auth.token.tokenId;
+      } else {
+        await verifyAccess(
+          spaceId,
+          { type: ResourceType.DOCUMENT, id: id },
+          auth.user.id,
+          Permission.EDITOR,
+        );
+        userId = auth.user.id;
+      }
+    }
+
+    const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
+    let content: string;
+
+    if (contentType === "application/json") {
+      const body = await parseJsonBody(context.req.raw);
+      const { content: jsonContent, restore } = body as {
+        content?: unknown;
+        restore?: unknown;
+      };
+
+      if (restore !== undefined) {
+        if (typeof restore !== "boolean") {
+          throw badRequestResponse("Restore must be a boolean");
+        }
+
+        if (!restore) {
+          throw badRequestResponse("Restore must be true when provided");
+        }
+
+        if (jsonContent !== undefined) {
+          throw badRequestResponse("Cannot combine restore with content update");
+        }
+
+        if (!userId) {
+          throw forbiddenResponse("Invalid restore request");
+        }
+
+        const restored = await restoreDocument(store, id, userId, expected);
+        if (!restored.ok) return conflictResponse(store, id);
+
+        sendSyncEvent(
+          spaceId,
+          realtimeTopics.categoryDocuments,
+          realtimeTopics.documentTree,
+        );
+        return jsonResponse({ success: true }, 200, {
+          ETag: documentEtag(restored.changeSeq),
+        });
+      }
+
+      if (documentIsReadonly(existingDoc)) {
+        throw forbiddenResponse("Cannot update readonly document");
+      }
+
+      if (typeof jsonContent !== "string") {
+        throw badRequestResponse("Content is required and must be a string");
+      }
+
+      content = isSerializedDocumentType(existingDoc.type)
+        ? jsonContent
+        : prepareDocumentContent(jsonContent, null);
+    } else {
+      if (documentIsReadonly(existingDoc)) {
+        throw forbiddenResponse("Cannot update readonly document");
+      }
+
+      const rawContent = await context.req.raw.text();
+      content = isSerializedDocumentType(existingDoc.type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
+    }
+
+    const written = await updateDocument(store, id, content, existingDoc.type, expected);
+    if (!written.ok) {
+      if (written.reason === "missing") throw notFoundResponse("Document");
+      return conflictResponse(store, id);
+    }
+    let document = written.document;
+
+    replaceLiveDocumentContent(spaceId, id, existingDoc.type, content);
+
+    // Revisions are representation-agnostic snapshots. Collaborative draft
+    // persistence remains revisionless; an explicit replacement does not.
+    if (userId) {
+      const revision = await createRevision(store, id, content, userId, {
+        message: "Document updated",
+      });
+      if (publish === true) {
+        await handlePublishedRevisionPatch(store, id, userId, revision.rev);
+      }
+
+      // updateDocument returned before the revision pointers changed. Return
+      // their final canonical values so clients do not cache stale history.
+      const savedDocument = await getDocument(store, id);
+      if (!savedDocument) {
+        throw notFoundResponse("Document");
+      }
+      document = savedDocument;
+    }
+
+    // Omit `content` from the response. Echoing the (potentially tens-of-MB)
+    // document back doubles the serialization cost of every save and blocks the
+    // event loop while `JSON.stringify` runs. The client already holds the
+    // content it just sent, so it only needs the canonical metadata (revs,
+    // timestamps) to reconcile its optimistic state.
+    const { content: _omittedContent, ...documentMetadata } = document;
+    // So the next conditional write needs no read back.
+    return jsonResponse({ document: documentMetadata }, 200, {
+      ETag: documentEtag(document.changeSeq),
+    });
+  }, "Failed to update document");
+
+/**
+ * Update parts of a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @body
+ */
+export const PATCH: ApiRouteHandler = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const spaceId = requireParam(context.var.params, "spaceId");
+      const id = requireParam(context.var.params, "documentId");
+      const store = await openSpaceStore(spaceId);
+      const existingDoc = await getDocument(store, id);
+      if (!existingDoc) {
+        throw notFoundResponse("Document");
+      }
+
+      const auth = await authenticateJobTokenOrSpaceRole(
+        context.var.credentials,
+        spaceId,
+        Permission.EDITOR,
+        {
+          type: ResourceType.DOCUMENT,
+          id,
+        },
+      );
+      const userId = auth.type === "user" ? auth.user.id : auth.userId;
+      if (!userId) {
+        throw forbiddenResponse("Job token is missing user context");
+      }
+
+      const body = parseDocumentPatchBody(await parseJsonBody<unknown>(context.req.raw));
+      const { properties, parentId, publishedRev, readonly } = body;
+      const expected = requestedCondition(context);
+
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        userId,
+        Permission.EDITOR,
+      );
+
+      if (properties !== undefined) {
+        if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
+          throw badRequestResponse("Properties must be an object");
+        }
+
+        const payload = await patchDocumentProperties(
+          store,
+          id,
+          properties,
+          userId,
+          expected,
+        );
+        if (payload.conflict) return conflictResponse(store, id);
+
+        const { changeSeq, conflict: _conflict, ...result } = payload;
+        return jsonResponse(
+          result,
+          200,
+          changeSeq === undefined ? undefined : { ETag: documentEtag(changeSeq) },
+        );
+      }
+
+      // Each branch carries the condition into its own write and hands back the
+      // sequence it produced, so a body naming two of them conditions the
+      // second on the first rather than on what the request arrived with.
+      let condition = expected;
+
+      if (parentId !== undefined) {
+        if (parentId !== null && typeof parentId !== "string") {
+          throw badRequestResponse("Parent ID must be a string or null");
+        }
+
+        if (parentId) {
+          // EDITOR on the parent, not read access: document ACLs inherit down
+          // the tree, so this splices the document into grants it did not have.
+          await verifyAccess(
+            spaceId,
+            { type: ResourceType.DOCUMENT, id: parentId },
+            userId,
+            Permission.EDITOR,
+          );
+        }
+
+        const parentChange = await setDocumentParent(
+          store,
+          id,
+          parentId,
+          condition,
+        ).catch((error) => {
+          if (error instanceof InvalidDocumentParentError) {
+            throw badRequestResponse(error.message);
+          }
+          throw error;
+        });
+        if (!parentChange) return conflictResponse(store, id);
+        condition = [parentChange.changeSeq];
+
+        const parentChangeData = {
+          kind: "document_parent_changed",
+          documentId: id,
+          previousParentId: parentChange.previousParentId,
+          parentId: parentChange.parentId,
+        };
+
+        sendSyncEvent(
+          spaceId,
+          {
+            topic: realtimeTopics.documentTree,
+            data: parentChangeData,
+          },
+          {
+            topic: realtimeTopics.categoryDocuments,
+            data: parentChangeData,
+          },
+          {
+            topic: realtimeTopics.document(id),
+            data: parentChangeData,
+          },
+        );
+      }
+
+      if (publishedRev !== undefined) {
+        if (publishedRev !== null && typeof publishedRev !== "number") {
+          throw badRequestResponse("Published revision must be a number or null");
+        }
+
+        const step = await handlePublishedRevisionPatch(
+          store,
+          id,
+          userId,
+          publishedRev,
+          condition,
+        );
+        if (!step.ok) return conflictResponse(store, id);
+        condition = step.next;
+      }
+
+      if (readonly !== undefined) {
+        const step = await handleReadonlyPatch(store, id, userId, readonly, condition);
+        if (!step.ok) return conflictResponse(store, id);
+        condition = step.next;
+      }
+
+      const patched = await getDocument(store, id);
+      return jsonResponse(
+        { success: true },
+        200,
+        patched ? { ETag: documentEtag(patched.changeSeq) } : undefined,
+      );
+    },
+    {
+      fallbackMessage: "Failed to patch document",
+      onError(error) {
+        if (
+          error instanceof InvalidDocumentPropertyPatchError ||
+          error instanceof ReservedDocumentPropertyKeyError
+        ) {
+          return badRequestResponse(error.message);
+        }
+      },
+    },
+  );
+
+/**
+ * Archive or delete a document
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ */
+export const DELETE: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
+    const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
+    const auth = await authenticateJobTokenOrSpaceRole(
+      context.var.credentials,
+      spaceId,
+      Permission.EDITOR,
+      {
+        type: ResourceType.DOCUMENT,
+        id,
+      },
+    );
+    const userId = auth.type === "user" ? auth.user.id : auth.userId;
+    if (!userId) {
+      throw forbiddenResponse("Job token is missing user context");
+    }
+
+    const store = await openSpaceStore(spaceId);
+    const expected = requestedCondition(context);
+    // No resource, so no state to have failed a condition.
+    if (expected && !(await getDocument(store, id))) {
+      throw notFoundResponse("Document");
+    }
+
+    if (permanent) {
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        userId,
+        Permission.OWNER,
+      );
+      if (!(await deleteDocument(store, id, userId, expected))) {
+        return conflictResponse(store, id);
+      }
+    } else {
+      await verifyAccess(
+        spaceId,
+        { type: ResourceType.DOCUMENT, id: id },
+        userId,
+        Permission.EDITOR,
+      );
+      const archived = await archiveDocument(store, id, userId, expected);
+      if (!archived.ok) return conflictResponse(store, id);
+    }
+
+    return successResponse();
+  }, "Failed to delete document");
+
+/**
+ * Publish the document's current draft
+ *
+ * @tag Documents
+ * @jobToken
+ * @param documentId Document id or slug.
+ * @body?
+ */
+export const POST: ApiRouteHandler = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
+
+    await verifyAccess(
+      spaceId,
+      { type: ResourceType.DOCUMENT, id: documentId },
+      user.id,
+      Permission.EDITOR,
+    );
+
+    const store = await openSpaceStore(spaceId);
+    const document = await getDocument(store, documentId);
+    if (!document) {
+      throw badRequestResponse("Document not found");
+    }
+
+    if (documentIsReadonly(document)) {
+      throw forbiddenResponse("Cannot save readonly document");
+    }
+
+    const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
+    const isJson = contentType === "application/json";
+    const body = isJson
+      ? await parseJsonBody<{
+          html?: unknown;
+          contentType?: unknown;
+          message?: unknown;
+        }>(context.req.raw)
+      : {};
+
+    // `null` and scalars parse as valid JSON, and reading the payload off them
+    // throws a 500 on what is a malformed request.
+    if (typeof body !== "object" || body === null) {
+      throw badRequestResponse("JSON body must be an object");
+    }
+
+    let revisionContent: string;
+    let message: string | undefined;
+
+    if (isJson) {
+      if (!body.html || typeof body.html !== "string") {
+        throw badRequestResponse("Revision content is required and must be a string");
+      }
+
+      if (body.contentType !== undefined && typeof body.contentType !== "string") {
+        throw badRequestResponse("Content type must be a string");
+      }
+      revisionContent = isSerializedDocumentType(document.type)
+        ? body.html
+        : prepareDocumentContent(
+            body.html,
+            typeof body.contentType === "string" ? body.contentType : "text/html",
+          );
+      message = typeof body.message === "string" ? body.message : undefined;
+    } else {
+      const rawContent = await context.req.raw.text();
+      if (!rawContent) {
+        throw badRequestResponse("Content is required and must be a string");
+      }
+
+      revisionContent = isSerializedDocumentType(document.type)
+        ? rawContent
+        : prepareDocumentContent(rawContent, contentType);
+    }
+
+    const revision = await createRevision(store, documentId, revisionContent, user.id, {
+      message,
+    });
+
+    return jsonResponse({
+      revision: {
+        id: revision.id,
+        documentId: revision.documentId,
+        rev: revision.rev,
+        checksum: revision.checksum,
+        parentRev: revision.parentRev,
+        message: revision.message,
+        createdAt: revision.createdAt,
+        createdBy: revision.createdBy,
+      },
+    });
+  }, "Failed to create revision");

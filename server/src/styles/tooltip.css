@@ -1,0 +1,63 @@
+:root {
+  --tooltip-bg: #111827;
+  --tooltip-text: #f9fafb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --tooltip-bg: #e5e7eb;
+    --tooltip-text: #111827;
+  }
+}
+
+:root[data-theme="dark"] {
+  --tooltip-bg: #e5e7eb;
+  --tooltip-text: #111827;
+}
+
+/*
+ * One fixed bubble on `document.body`, driven by `#editor/elements/tooltip-layer.ts`.
+ * A pseudo-element on the trigger cannot be used: the sidebar nests three
+ * overflow clips, which cut the bubble off at the rail's edge.
+ */
+.tooltip-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  z-index: 1000;
+}
+
+.tooltip-layer[data-open] {
+  opacity: 1;
+}
+
+.tooltip-layer[data-placement="top"] {
+  transform: translateY(4px);
+}
+.tooltip-layer[data-placement="bottom"] {
+  transform: translateY(-4px);
+}
+.tooltip-layer[data-placement="left"] {
+  transform: translateX(4px);
+}
+.tooltip-layer[data-placement="right"] {
+  transform: translateX(-4px);
+}
+
+.tooltip-layer[data-open] {
+  transform: translate(0, 0);
+}

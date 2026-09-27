@@ -1,0 +1,410 @@
+@import "./mentions.css";
+@import "./tables.css";
+@import "./lists.css";
+@import "./layout.css";
+@import "./tiptap.css";
+@import "./code.css";
+
+@reference "../../styles/index.css";
+
+/* Resets */
+
+[contenteditable] {
+  outline: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* Heading styling */
+/* Only h1-h4 are enabled (see Heading.configure({ levels: [1, 2, 3, 4] }) in
+   editor/extensions.ts) — h5/h6 never appear in editor content. */
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--color-neutral-900);
+}
+
+h1:first-child,
+h2:first-child,
+h3:first-child,
+h4:first-child {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 3.625rem;
+  letter-spacing: -0.125rem;
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+h2 {
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 2.375rem;
+  letter-spacing: -0.125rem;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.75rem;
+  letter-spacing: normal;
+  margin-top: 1.5rem;
+  margin-bottom: 0.375rem;
+}
+
+h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 1.25rem;
+  margin-bottom: 0.375rem;
+}
+
+/* paragraph */
+
+p {
+  margin-bottom: 1rem;
+  /* 1lh = one line box, same height the ProseMirror trailing <br> produces
+     in edit mode, so empty paragraphs don't jump when toggling modes */
+  min-height: 1lh;
+}
+
+p:not(:first-child) {
+  margin-top: 1rem;
+}
+
+/* Highlight */
+mark {
+  @apply bg-transparent rounded-sm text-inherit;
+}
+
+a[href] {
+  @apply underline text-blue-500;
+}
+
+/* Plain links to a document (pasted rather than picked with @) get the same
+   treatment as a document-mention. Only reachable inside document content, so
+   this stays out of the shared mention stylesheet. */
+a[href*="/doc/"] {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 0.375rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  color: var(--color-primary-700);
+  cursor: default;
+}
+
+a[href*="/doc/"]:hover {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-200);
+}
+
+ticket-link {
+  @apply text-blue-600 underline cursor-pointer;
+}
+
+ticket-link:hover {
+  @apply text-blue-800;
+}
+
+hr {
+  color: var(--color-neutral-100);
+}
+
+mark {
+  background: yellow;
+}
+
+/* Browsers apply break-word wrapping to editable content. Declare it on both
+   render roots so long text (notably URLs in tables) keeps the same layout
+   in read and edit mode. */
+.tiptap .ProseMirror,
+[part="content"] {
+  overflow-wrap: break-word;
+  tab-size: 4;
+}
+
+/* Preserve literal tabs and runs of spaces (and still wrap long lines) so a
+   Tab keypress renders as real indentation instead of collapsing to a single
+   space. ProseMirror is designed to run with pre-wrap, and it emits no
+   whitespace text nodes between top-level blocks, so the root can be pre-wrap. */
+.tiptap .ProseMirror {
+  white-space: pre-wrap;
+}
+
+/* Read mode is different: the serialized HTML joins top-level blocks with
+   newlines (see normalizeHtmlContent/toCleanHtml in realtime/yjsRooms.ts). If the
+   container were pre-wrap, those inter-block newlines would render as line
+   boxes wedged between adjacent blocks and stop their vertical margins from
+   collapsing — so read mode showed larger gaps than the editor until
+   hydration. Keep the container at `normal` (whitespace-only text nodes between
+   blocks collapse away, restoring margin collapsing) and re-apply pre-wrap to
+   the text blocks themselves so tabs and space runs inside them survive. */
+[part="content"] {
+  white-space: normal;
+}
+
+[part="content"] :where(p, h1, h2, h3, h4, li, blockquote, pre, td, th) {
+  white-space: pre-wrap;
+}
+
+:host {
+  display: block;
+  /* Containing block for the presence overlay. */
+  position: relative;
+}
+
+.tiptap.ProseMirror > *:not(table):not(.spreadsheet-table-wrapper),
+[part="content"] > *:not(table) {
+  max-width: 1600px;
+}
+
+button {
+  appearance: none;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ProseMirror inserts these separators beside inline atom nodes. Keep them
+   inline so the document-level image layout rule above does not add a blank
+   line in edit mode. */
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+}
+
+.comment-anchor {
+  background-color: rgba(255, 213, 0, 0.3);
+  border-radius: 2px;
+}
+
+/* Inline revision diff redline: added text is highlighted green, removed text
+   is struck through in red. Applied to the <ins>/<del> markers produced by
+   inlineHtmlDiff so a diff reads like the document itself. */
+ins.diff-ins {
+  text-decoration: none;
+  color: #15803d;
+  background-color: rgba(34, 197, 94, 0.16);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+del.diff-del {
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.6);
+  color: #b91c1c;
+  background-color: rgba(239, 68, 68, 0.12);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Void/embedded elements (images, rules) that were added or removed. They have
+   no text to strike or highlight, so mark the element itself: a green outline
+   for additions, a dimmed red outline for removals. */
+ins.diff-ins-media,
+del.diff-del-media {
+  display: inline-block;
+  text-decoration: none;
+  background-color: transparent;
+  border-radius: 4px;
+  padding: 2px;
+}
+
+ins.diff-ins-media {
+  outline: 2px solid rgba(21, 128, 61, 0.6);
+}
+
+del.diff-del-media {
+  outline: 2px solid rgba(185, 28, 28, 0.6);
+  opacity: 0.55;
+}
+
+/* An <hr> has no intrinsic width, so a shrink-to-fit inline-block marker would
+   collapse to nothing and hide the change. Let a marker wrapping a rule span
+   the row so the added/removed divider stays visible. */
+ins.diff-ins-media:has(> hr),
+del.diff-del-media:has(> hr) {
+  display: block;
+}
+
+img[data-display="full"] {
+  width: 100% !important;
+  max-width: 100%;
+}
+
+img[width] {
+  height: auto;
+}
+
+/* Image and video wrapper styles */
+.image-wrapper,
+.video-wrapper {
+  display: block;
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  user-select: none;
+}
+
+.image-wrapper img {
+  display: block;
+  pointer-events: none;
+}
+
+/* Selected media outline: on the wrapper, which is fit-content around the
+   media, so it does not depend on the child element type. */
+.image-wrapper.ProseMirror-selectednode,
+.video-wrapper.ProseMirror-selectednode {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Resize handle: the same corner bracket as the canvas resize control, kept
+   inside the element bounds so it never overlaps neighbouring content. */
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
+  cursor: nwse-resize;
+  z-index: 10;
+  color: white;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.45));
+}
+
+.resize-handle::after {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 16px;
+  height: 16px;
+  border-right: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  border-bottom-right-radius: 4px;
+  content: "";
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  color: var(--color-primary, #3b82f6);
+}
+
+/* Positioned relative to the host (not the viewport) so carets stay correct
+   inside transformed containers like the scaled canvas world, and track the
+   content when it scrolls or the camera moves. */
+.document-presence-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.document-presence-selection {
+  position: absolute;
+  border-radius: 2px;
+}
+
+.document-presence-caret {
+  position: absolute;
+  width: 0;
+  border-left: 1px solid #0d0d0d;
+  border-right: 1px solid #0d0d0d;
+}
+
+.document-presence-label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  border-radius: var(--radius-sm) var(--radius-sm) var(--radius-sm) 0;
+  color: #0d0d0d;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: normal;
+  padding: 0.1rem 0.3rem;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* HTML Block styles */
+html-block {
+  display: block;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  white-space: normal;
+}
+
+code {
+  background-color: var(--color-neutral-100);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Monaco, Inconsolata, "Liberation Mono",
+    "Courier New", monospace;
+}
+
+pre {
+  background-color: var(--color-neutral-100);
+  color: var(--color-forground);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+pre code {
+  color: var(--color-forground);
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+blockquote {
+  border-left: 4px solid #d1d5db;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #4b5563;
+}
+
+date-picker {
+  display: inline-flex;
+  padding: 0 0.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-neutral-50);
+}
