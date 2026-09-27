@@ -446,7 +446,10 @@ export function Sidebar(props: Props) {
           <Icon name="collapse-sidebar" class="block h-4 w-4" />
         </button>
 
-        <div class="sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background [&>*]:relative [&>*]:z-10">
+        <div class={twMerge(
+          "sidebar-panel after:surface-noise relative flex h-full w-full flex-col overflow-hidden rounded-lg bg-background *:relative *:z-10 transition-shadow border border-neutral-50",
+          (isDrawerDragging() || isMobileOpen()) && "shadow-2xl"
+        )}>
           <Navigation />
         </div>
 

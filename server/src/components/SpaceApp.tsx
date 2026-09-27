@@ -252,7 +252,7 @@ export function SpaceApp(props: Props) {
             transform:
               mobileSidebarOffset() === 0
                 ? undefined
-                : `translateX(${mobileSidebarOffset()}px)`,
+                : `translateX(${mobileSidebarOffset() / 6}px)`,
             "will-change": mobileSidebarOffset() === 0 ? undefined : "transform",
             transition: isMobileSidebarDragging() ? "none" : undefined,
           }}
