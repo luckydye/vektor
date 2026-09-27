@@ -35,6 +35,8 @@
 | `/api/v1/chat/completions` | POST | 400 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/marketplace/extensions` | GET | 401 | 200 | 200 | 200 | 200 | caller-scoped — the configured store catalogue; no space data |
 | `/api/v1/marketplace/extensions/[extensionId]` | GET | 401 | 404 | 404 | 404 | 404 | caller-scoped — one store listing; no space data |
+| `/api/v1/openapi.json` | GET | 200 | 200 | 200 | 200 | 200 | public — the instance's own API description: routes, never data — read before a client has credentials |
+| `/api/v1/openapi.json` | OPTIONS | 204 | 204 | 204 | 204 | 204 | public — the instance's own API description: routes, never data — read before a client has credentials |
 | `/api/v1/proxy-media` | GET | 401 | 400 | 400 | 400 | 400 |  |
 | `/api/v1/search` | GET | 200 | 200 | 200 | 200 | 200 | caller-scoped — searches only the spaces the caller can read; empty without a session |
 | `/api/v1/spaces` | GET | 200 | 200 | 200 | 200 | 200 | caller-scoped — lists only spaces the caller belongs to |
@@ -91,6 +93,7 @@
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/callback` | GET | 401 | 403 | 302 | 302 | 302 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/connect` | POST | 401 | 403 | 400 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/integrations/[provider]/proxy` | POST | 401 | 403 | 400 | 400 | 400 |  |
+| `/api/v1/spaces/[spaceId]/jobs/blobs/[blobId]` | GET | 401 | 403 | 404 | 404 | 404 | no fixture for blobId |
 | `/api/v1/spaces/[spaceId]/jobs/run` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/members` | GET | 401 | 403 | 200 | 200 | 200 |  |
 | `/api/v1/spaces/[spaceId]/notification-preference` | GET | 401 | 403 | 200 | 200 | 200 |  |
@@ -107,9 +110,16 @@
 | `/api/v1/spaces/[spaceId]/secrets/[name]` | GET | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/secrets/[name]` | HEAD | 401 | 403 | 403 | 403 | 404 |  |
 | `/api/v1/spaces/[spaceId]/secrets/[name]` | PUT | 401 | 403 | 403 | 403 | 400 |  |
-| `/api/v1/spaces/[spaceId]/settings/ai-provider` | DELETE | 401 | 403 | 403 | 403 | 200 |  |
-| `/api/v1/spaces/[spaceId]/settings/ai-provider` | GET | 401 | 403 | 403 | 200 | 200 |  |
-| `/api/v1/spaces/[spaceId]/settings/ai-provider` | PUT | 401 | 403 | 403 | 403 | 400 |  |
+| `/api/v1/spaces/[spaceId]/series` | GET | 401 | 403 | 200 | 200 | 200 |  |
+| `/api/v1/spaces/[spaceId]/series` | POST | 401 | 403 | 403 | 201 | 201 |  |
+| `/api/v1/spaces/[spaceId]/series/[name]` | DELETE | 401 | 403 | 403 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/series/[name]` | GET | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/series/[name]` | PATCH | 401 | 403 | 403 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/series/[name]/points` | GET | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/series/[name]/points` | POST | 401 | 403 | 403 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/series/[name]/query` | POST | 401 | 403 | 404 | 404 | 404 |  |
+| `/api/v1/spaces/[spaceId]/settings/ai-limit` | GET | 401 | 403 | 403 | 403 | 200 |  |
+| `/api/v1/spaces/[spaceId]/settings/ai-limit` | PUT | 401 | 403 | 403 | 403 | 400 |  |
 | `/api/v1/spaces/[spaceId]/shares` | GET | 401 | 403 | 403 | 403 | 200 |  |
 | `/api/v1/spaces/[spaceId]/shares` | POST | 401 | 403 | 403 | 400 | 400 |  |
 | `/api/v1/spaces/[spaceId]/shares/[linkId]` | DELETE | 401 | 403 | 403 | 404 | 404 | no fixture for linkId |

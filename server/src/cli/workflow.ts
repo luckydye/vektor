@@ -13,12 +13,14 @@
  *   vektor workflow abc123 --json
  */
 
+import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 import { resolveConfig } from "./resolve.ts";
 
 type RunResponse = {
+  runId: string;
+  createdAt: string;
   status: string;
   error: string | null;
-  logs: string[];
   resultArtifact: { key: string; url: string } | null;
 };
 
@@ -153,7 +155,12 @@ export async function commandLogs(runId: string): Promise<void> {
     `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
   )) as RunResponse;
 
-  for (const line of run.logs) {
+  const lines = await readWorkflowRunLogLines(
+    (path) => apiFetch(host, token, path),
+    spaceId,
+    run,
+  );
+  for (const line of lines) {
     process.stdout.write(`${line}\n`);
   }
 }
@@ -196,7 +203,12 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
     )) as RunResponse;
 
     if (!json) {
-      const newLogs = run.logs.slice(logCursor);
+      const lines = await readWorkflowRunLogLines(
+        (path) => apiFetch(host, token, path),
+        spaceId,
+        run,
+      );
+      const newLogs = lines.slice(logCursor);
       for (const line of newLogs) {
         process.stderr.write(`${line}\n`);
       }

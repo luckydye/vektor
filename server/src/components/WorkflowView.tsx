@@ -14,6 +14,7 @@ import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { useCursorPagedList } from "#composeables/useCursorPagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useSeriesPoints } from "#composeables/useSeries.ts";
 import { useLocale } from "#composeables/useTranslation.ts";
 import { useViewTransitionList } from "#composeables/useViewTransitionList.ts";
 import { propertyValueToText } from "#documents/properties.ts";
@@ -22,6 +23,7 @@ import { formatDateTime } from "#utils/dateFormat.ts";
 import { isSafeUrlValue, sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { spacePath } from "#utils/utils.ts";
 import { viewTransitionName } from "#utils/viewTransition.ts";
+import { workflowRunSeriesName } from "#utils/workflowRunLogs.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import "@atrium-ui/elements/tabs";
 import { DataTable } from "./DataTable.tsx";
@@ -130,6 +132,21 @@ export function WorkflowView(props: Props) {
     unknown
   > | null>(null);
   const [selectedRunError, setSelectedRunError] = createSignal<string | null>(null);
+  const runLogs = useSeriesPoints({
+    spaceId: () => props.spaceId,
+    name: () => {
+      const runId = selectedRunDetail()?.runId;
+      return runId ? workflowRunSeriesName(runId) : null;
+    },
+    // A run's series starts with the run, and reads are clipped to what it holds.
+    from: () => 0,
+  });
+  const logLines = createMemo(() =>
+    runLogs.points().map((point) => ({
+      line: String(point.fields.message),
+      isError: point.fields.level === "error",
+    })),
+  );
   let unsubscribeRuns: (() => void) | null = null;
   let unsubscribeRun: (() => void) | null = null;
   const foreignRunIds = new Set<string>();
@@ -498,12 +515,14 @@ export function WorkflowView(props: Props) {
 
   const activeRunPhase = createMemo(() => {
     if (selectedRunDetail()?.status === "pending") return "Getting things ready";
-    if ((selectedRunDetail()?.logs.length ?? 0) === 0) return "Starting your workflow";
+    if (logLines().length === 0) return "Starting your workflow";
     return "Working through the steps";
   });
 
   const recentActivity = createMemo(() => {
-    const logs = selectedRunDetail()?.logs.filter(Boolean) ?? [];
+    const logs = logLines()
+      .map(({ line }) => line)
+      .filter(Boolean);
     const firstVisibleLog = Math.max(0, logs.length - 3);
     return logs.slice(firstVisibleLog).map((message, index) => ({
       id: `${selectedRunId()}-${firstVisibleLog + index}`,
@@ -521,7 +540,7 @@ export function WorkflowView(props: Props) {
     const detail = selectedRunDetail();
     if (!detail) return [];
     return [
-      ...detail.logs.map((line) => ({ line, isError: false })),
+      ...logLines(),
       ...(detail.error ? [{ line: detail.error, isError: true }] : []),
     ];
   });
@@ -662,7 +681,7 @@ export function WorkflowView(props: Props) {
                                 Recent activity
                               </span>
                               <span class="text-neutral-400 text-size-extra-small">
-                                {selectedRunDetail()?.logs.length} updates
+                                {logLines().length} updates
                               </span>
                             </div>
                             <div class="space-y-1.5">

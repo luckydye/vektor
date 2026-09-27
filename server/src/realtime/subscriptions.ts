@@ -6,7 +6,9 @@
 import type { WebSocket } from "ws";
 import { isAccessDenied, verifyAccess } from "#acl/guards.ts";
 import { Permission, ResourceType } from "#acl/permissions.ts";
+import { openSpaceStore } from "#db/client/store.ts";
 import { appLogger } from "#observability/logger.ts";
+import { getSeries } from "#series/catalog.ts";
 import {
   catchUpSince,
   headSyncSeq,
@@ -16,6 +18,7 @@ import {
 import { type RealtimeEventEnvelope, subscribeToSyncEvents } from "./events.ts";
 import {
   isDocumentRealtimeTopic,
+  isSeriesRealtimeTopic,
   isWorkflowRunRealtimeTopic,
   type RealtimeSubscribePayload,
   realtimeTopics,
@@ -37,6 +40,7 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.documents,
   realtimeTopics.extensions,
   realtimeTopics.properties,
+  realtimeTopics.spaceEvents,
   realtimeTopics.workflowRuns,
 ]);
 
@@ -181,17 +185,17 @@ export class TopicSubscriptions {
     }
 
     if (isDocumentRealtimeTopic(topic)) {
-      try {
-        await verifyAccess(
-          this.spaceId,
-          { type: ResourceType.DOCUMENT, id: topic.slice("document:".length) },
-          this.userId,
-          Permission.VIEWER,
-        );
-      } catch (error) {
-        return isAccessDenied(error) ? "denied" : "unknown";
-      }
-      return "allowed";
+      return this.documentAccess(topic.slice("document:".length));
+    }
+
+    // A series owned by a document follows its ACL; one that is not, or does
+    // not exist yet, is space-wide.
+    if (isSeriesRealtimeTopic(topic)) {
+      const store = await openSpaceStore(this.spaceId);
+      const series = await getSeries(store, topic.slice("series:".length));
+      return series?.documentId
+        ? this.documentAccess(series.documentId)
+        : await hasSpaceRole();
     }
 
     // Pure change signals — the run data is fetched via ACL-checked endpoints —
@@ -201,6 +205,20 @@ export class TopicSubscriptions {
     }
 
     return "denied";
+  }
+
+  private async documentAccess(documentId: string): Promise<TopicAccess> {
+    try {
+      await verifyAccess(
+        this.spaceId,
+        { type: ResourceType.DOCUMENT, id: documentId },
+        this.userId,
+        Permission.VIEWER,
+      );
+    } catch (error) {
+      return isAccessDenied(error) ? "denied" : "unknown";
+    }
+    return "allowed";
   }
 
   /**

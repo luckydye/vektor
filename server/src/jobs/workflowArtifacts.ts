@@ -1,6 +1,6 @@
 import { getFileStorage } from "#files/storage.ts";
 
-export type WorkflowArtifactKind = "result" | "logs" | "resume";
+export type WorkflowArtifactKind = "result" | "resume";
 
 export type WorkflowArtifact = {
   key: string;

@@ -79,9 +79,10 @@ gets the header without the body.
   `compactAfterSegments`, `compactingAt` (claim), `oldestWindow` (where prune
   starts), `pointCount`/`byteCount` (cosmetic), `createdAt`, `updatedAt`,
   `createdBy`.
-- `series_dirty_window(seriesId, window, segments)`: append writes the segment,
-  then increments; compaction subtracts the count it read before listing and
-  deletes the row at zero.
+- `series_dirty_window(seriesId, window, segments, collectAt)`: append writes
+  the segment, then increments; compaction subtracts the count it read before
+  listing and sets `collectAt` to the new chunk's `compactedAt` + grace; the
+  row goes once both are settled.
 
 A name with no row is refused (cardinality guard). Deleting a series or its
 document removes the row, then lists and deletes `series/{id}/`. Nothing deletes
@@ -185,11 +186,11 @@ on a crash and is unbounded.
 
 - Series `workflow-run:{runId}`, `kind: log`, owned by the run document.
 - One event per line: `type: workflow.log`, `level`, `message`, `runId`.
-- `runStore` posts batches to the append route via loopback with its job token
-  (flushed by count/interval on the `persistNow` chain and on finalize/cancel).
+- `runStore` hands batches to `ingestPoints` (flushed by count/interval on the
+  `persistNow` chain and on finalize/cancel).
 - The run response drops `logs` (breaking), and `WorkflowView` uses
   `useSeriesPoints`.
-- Old runs are read via a `@deprecated` `logs.json` path. No backfill.
+- Old runs' `logs.json` is no longer read. No backfill.
 
 ## Order of work
 

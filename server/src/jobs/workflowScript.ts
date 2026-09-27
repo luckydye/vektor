@@ -2,12 +2,12 @@ import { openSpaceStore } from "#db/client/store.ts";
 import { getExtension, getExtensionPackage } from "#db/space/extensions.ts";
 import {
   appendRunLog,
+  drainRunLogs,
   finalizeRun,
   getRun,
   setRunAbort,
   setRunError,
   setRunStatus,
-  writeRunLogs,
   writeRunResult,
 } from "./runStore.ts";
 import { getJobRuntime } from "./runtime/index.ts";
@@ -65,8 +65,8 @@ export async function executeWorkflowScript(
   // Nested jobs report to the workflow log directly, rather than through the
   // parent VM. Forward that activity to the parent so its inactivity deadline
   // reflects progress anywhere in the workflow tree.
-  const appendWorkflowLog = (message: string): void => {
-    appendRunLog(runId, message);
+  const appendWorkflowLog = (message: string, level?: "info" | "error"): void => {
+    appendRunLog(runId, message, level);
     touchWorkflowVm?.();
   };
 
@@ -177,17 +177,16 @@ export async function executeWorkflowScript(
 
     await writeRunResult(runId, output);
     await persistResumeState();
-    await writeRunLogs(runId);
     await finalizeRun(runId);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    appendWorkflowLog(error);
+    appendWorkflowLog(error, "error");
+    await drainRunLogs(runId);
     setRunError(runId, error);
     setRunStatus(runId, "failed");
     // Persist whatever completed so a retry can resume past these steps. This
     // also covers cancellation, which reaches us as an abort error.
     await persistResumeState();
-    await writeRunLogs(runId);
     await finalizeRun(runId);
   }
 }

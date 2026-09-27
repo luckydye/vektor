@@ -70,6 +70,8 @@
     "#pages/*": "./src/pages/*",
     "#realtime/*": "./src/realtime/*",
     "#search/*": "./src/search/*",
+    "#series/*": "./src/series/*",
+    "#events/*": "./src/events/*",
     "#files/*": "./src/files/*",
     "#git/*": "./src/git/*",
     "#styles/*": "./src/styles/*",

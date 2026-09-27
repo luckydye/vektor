@@ -137,6 +137,7 @@ const ROUTE_BODY: Record<string, (fixture: Fixture) => unknown> = {
     userId: "matrix-missing-user",
     action: "grant",
   }),
+  "/api/v1/spaces/[spaceId]/series": () => ({ name: "matrix-series", kind: "metric" }),
   "/api/v1/spaces/[spaceId]/integrations/[provider]/proxy": () => ({
     path: "/api/v4/user",
   }),

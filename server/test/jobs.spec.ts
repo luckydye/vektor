@@ -20,6 +20,7 @@
 
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 import { writeXlsx } from "#utils/xlsx.ts";
 import { createZipBuffer } from "#utils/zip.ts";
 import {
@@ -96,6 +97,8 @@ async function upload(name: string, bytes: Uint8Array, type: string): Promise<st
 }
 
 type RunState = {
+  runId: string;
+  createdAt: string;
   status: string;
   error: string | null;
   logs: string[];
@@ -140,7 +143,9 @@ async function runScript(
     const run = await apiJson<RunState>(
       `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
     );
-    if (run.status !== "pending" && run.status !== "running") return run;
+    if (run.status !== "pending" && run.status !== "running") {
+      return { ...run, logs: await readWorkflowRunLogLines(apiJson, spaceId, run) };
+    }
     await Bun.sleep(150);
   }
   throw new Error("workflow run did not settle within 60s");
@@ -159,7 +164,11 @@ beforeAll(async () => {
 
   const space = await apiJson<{ space: { id: string } }>("/api/v1/spaces", {
     method: "POST",
-    body: JSON.stringify({ name: "Job Runtime Tests", slug: "job-runtime" }),
+    body: JSON.stringify({
+      name: "Job Runtime Tests",
+      slug: "job-runtime",
+      preferences: { workflowCreationEnabled: "true" },
+    }),
   });
   spaceId = space.space.id;
 
@@ -472,7 +481,12 @@ describe("job runtime: failure modes", () => {
     );
 
     expect(run.status).toBe("cancelled");
-    expect(run.logs.join("\n")).toContain("cleanup ran");
+    // Cancelling answers at once; the unwinding script's lines land after.
+    await expect
+      .poll(async () => (await readWorkflowRunLogLines(apiJson, spaceId, run)).join("\n"), {
+        timeout: 10_000,
+      })
+      .toContain("cleanup ran");
   }, 60_000);
 
   it("keeps serving requests while a script burns CPU on its own thread", async () => {

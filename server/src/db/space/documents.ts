@@ -40,6 +40,7 @@ import {
 } from "#files/imageDimensions.ts";
 import { getFileStorage, listAllFiles } from "#files/storage.ts";
 import { deleteRepositoryObjects } from "#git/repos.ts";
+import { deleteDocumentSeriesObjects, seriesIdsForDocument } from "#series/catalog.ts";
 import { appLogger } from "#observability/logger.ts";
 import { scheduleDocumentSearchRefresh } from "#search/indexing.ts";
 import { isReservedDocumentSlug, slugify } from "#utils/slug.ts";
@@ -601,6 +602,8 @@ export async function deleteDocument(
     s.db.select({ type: document.type }).from(document).where(eq(document.id, id)),
   );
   const wasRepository = existing?.type === repositoryDocumentType;
+  // Their rows cascade with the document; the objects have to be named first.
+  const seriesIds = await seriesIdsForDocument(s, id);
 
   const storedFiles = await s.tx(async (tx) => {
     // Read before the delete: `file.document_id` cascades and
@@ -647,6 +650,7 @@ export async function deleteDocument(
 
   if (storedFiles === null) return false;
 
+  await deleteDocumentSeriesObjects(s.spaceId, seriesIds);
   const storage = getFileStorage();
   if (wasRepository) {
     await deleteRepositoryObjects(storage, s.spaceId, id).catch((error) => {

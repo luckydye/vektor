@@ -14,6 +14,10 @@ export const realtimeTopics = {
   workflowRuns: "space:workflow-runs",
   /** A specific workflow run changed (detail view) */
   workflowRun: (runId: string) => `workflow-run:${runId}`,
+  /** Points were appended to a series; carries no points, only that it changed. */
+  series: (name: string) => `series:${name}`,
+  /** Any series in the space was appended to. */
+  spaceEvents: "space:events",
 } as const;
 
 /** Application close codes for an authorization refusal. */
@@ -159,6 +163,10 @@ export function extensionIdFromPresenceRoom(room: string): string | null {
 
 export function isDocumentRealtimeTopic(topic: string): topic is `document:${string}` {
   return topic.startsWith("document:") && topic.length > "document:".length;
+}
+
+export function isSeriesRealtimeTopic(topic: string): topic is `series:${string}` {
+  return topic.startsWith("series:") && topic.length > "series:".length;
 }
 
 export function isWorkflowRunRealtimeTopic(

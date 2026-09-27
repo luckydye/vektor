@@ -113,6 +113,33 @@ export function config() {
        */
       SPACE_RETENTION_DAYS: process.env.VEKTOR_SPACE_RETENTION_DAYS,
 
+      /** Default window length of a new series, in seconds (`3600`). */
+      SERIES_WINDOW_SECONDS: process.env.VEKTOR_SERIES_WINDOW_SECONDS,
+      /** Points one append may carry (`1000`). */
+      SERIES_MAX_BATCH: process.env.VEKTOR_SERIES_MAX_BATCH,
+      /** Default segments per window before it is compacted early (`20`). */
+      SERIES_COMPACT_AFTER_SEGMENTS: process.env.VEKTOR_SERIES_COMPACT_AFTER_SEGMENTS,
+      /** How far ahead of the server clock a point may be (`300`). */
+      SERIES_MAX_FUTURE_SECONDS: process.env.VEKTOR_SERIES_MAX_FUTURE_SECONDS,
+      /** Bytes of decoded series objects kept in memory (`67108864`). */
+      SERIES_CACHE_BYTES: process.env.VEKTOR_SERIES_CACHE_BYTES,
+      /** Points a query may scan after pruning (`5000000`). */
+      SERIES_MAX_SCAN_POINTS: process.env.VEKTOR_SERIES_MAX_SCAN_POINTS,
+      /** Time buckets one query may return (`10000`). */
+      SERIES_MAX_BUCKETS: process.env.VEKTOR_SERIES_MAX_BUCKETS,
+      /** Distinct `groupBy` values one query may return (`1000`). */
+      SERIES_MAX_GROUPS: process.env.VEKTOR_SERIES_MAX_GROUPS,
+      /** Distinct strings a column keeps as an exact set before a bloom filter (`256`). */
+      SERIES_MAX_COLUMN_VALUES: process.env.VEKTOR_SERIES_MAX_COLUMN_VALUES,
+      /** Events buffered per bus subscriber before it is dropped (`10000`). */
+      EVENTS_SUBSCRIBER_QUEUE: process.env.VEKTOR_EVENTS_SUBSCRIBER_QUEUE,
+      /** Workflow log lines are flushed to their series at least this often (`1000`). */
+      WORKFLOW_LOG_FLUSH_MS: process.env.VEKTOR_WORKFLOW_LOG_FLUSH_MS,
+      /** …or once this many lines are pending (`500`). */
+      WORKFLOW_LOG_FLUSH_LINES: process.env.VEKTOR_WORKFLOW_LOG_FLUSH_LINES,
+      /** Days a workflow run's log series is kept (`30`). */
+      WORKFLOW_LOG_RETENTION_DAYS: process.env.VEKTOR_WORKFLOW_LOG_RETENTION_DAYS,
+
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */
@@ -391,6 +418,20 @@ export function marketplaceOrigin(): string | null {
   } catch {
     return null;
   }
+}
+
+/** A positive integer setting, `defaultValue` when unset; anything else throws. */
+export function positiveIntSetting(
+  name: string,
+  raw: string | undefined,
+  defaultValue: number,
+): number {
+  if (raw === undefined || raw.trim() === "") return defaultValue;
+  const value = Number(raw.trim());
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, got "${raw}"`);
+  }
+  return value;
 }
 
 export function getLocalOrigin(): string {

@@ -54,6 +54,10 @@ import * as search from "./routes/spaces/search.ts";
 import * as searchRebuild from "./routes/spaces/search-rebuild.ts";
 import * as secret from "./routes/spaces/secret.ts";
 import * as secrets from "./routes/spaces/secrets.ts";
+import * as series from "./routes/spaces/series.ts";
+import * as seriesIndex from "./routes/spaces/series-index.ts";
+import * as seriesPoints from "./routes/spaces/series-points.ts";
+import * as seriesQuery from "./routes/spaces/series-query.ts";
 import * as settingsAiLimit from "./routes/spaces/settings-ai-limit.ts";
 import * as shareLink from "./routes/spaces/share-link.ts";
 import * as shareLinks from "./routes/spaces/share-links.ts";
@@ -209,6 +213,11 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/secrets", module: secrets },
   { pattern: "/api/v1/spaces/[spaceId]/secrets/[name]", module: secret },
+
+  { pattern: "/api/v1/spaces/[spaceId]/series", module: seriesIndex },
+  { pattern: "/api/v1/spaces/[spaceId]/series/[name]", module: series },
+  { pattern: "/api/v1/spaces/[spaceId]/series/[name]/points", module: seriesPoints },
+  { pattern: "/api/v1/spaces/[spaceId]/series/[name]/query", module: seriesQuery },
 
   {
     pattern: "/api/v1/spaces/[spaceId]/settings/ai-limit",

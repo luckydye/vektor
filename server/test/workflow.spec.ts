@@ -15,6 +15,7 @@
 
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
 import {
   createApiRequest,
   testBaseUrl,
@@ -80,6 +81,8 @@ async function apiJson<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 type RunState = {
+  runId: string;
+  createdAt: string;
   status: string;
   error: string | null;
   logs: string[];
@@ -115,7 +118,8 @@ async function pollRunUntilDone(
     }
 
     if (run.status !== "pending" && run.status !== "running") {
-      return run;
+      const logs = await readWorkflowRunLogLines(apiJson, space, run);
+      return { ...run, logs };
     }
     await Bun.sleep(pollMs);
   }

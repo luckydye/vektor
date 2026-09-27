@@ -5,6 +5,8 @@
  * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
  */
 
+import { readWorkflowRunLogLines } from "#utils/workflowRunLogs.ts";
+
 type McpTool = {
   name: string;
   description: string;
@@ -667,11 +669,17 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         config,
         `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
       )) as {
+        runId: string;
+        createdAt: string;
         status: string;
-        logs: string[];
         error: string | null;
       };
-      return { status: run.status, error: run.error, logs: run.logs };
+      const logs = await readWorkflowRunLogLines(
+        (path) => apiRequest(config, path),
+        config.spaceId,
+        run,
+      );
+      return { status: run.status, error: run.error, logs };
     }
     case "list_workflow_runs": {
       const documentId = expectString(args, "documentId", { optional: true });

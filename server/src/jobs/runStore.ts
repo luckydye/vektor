@@ -1,4 +1,5 @@
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { config, positiveIntSetting } from "#config";
 import { many } from "#db/client/query.ts";
 import { openSpaceStore, type SpaceStore } from "#db/client/store.ts";
 import { createId } from "#db/ids.ts";
@@ -11,10 +12,13 @@ import {
   getDocument,
 } from "#db/space/documents.ts";
 import { workflowRunDocumentType } from "#documents/types.ts";
+import { ingestPoints } from "#events/events.ts";
 import { appLogger } from "#observability/logger.ts";
 import { sendSyncEvent } from "#realtime/events.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { readWorkflowArtifact, writeWorkflowArtifact } from "./workflowArtifacts.ts";
+import { declareSeries } from "#series/catalog.ts";
+import { workflowRunSeriesName } from "#utils/workflowRunLogs.ts";
+import { writeWorkflowArtifact } from "./workflowArtifacts.ts";
 
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
@@ -27,13 +31,10 @@ export type RunState = {
   sourceExtensionId: string | null;
   runtimeInputs: Record<string, unknown>;
   resultArtifactPath: string | null;
-  logArtifactPath: string | null;
   error: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date;
-  /** Logs are held only while the workflow is executing, then written as an artifact. */
-  logs: string[];
   abort?: () => void;
 };
 
@@ -57,7 +58,6 @@ const runProperty = {
   sourceExtensionId: "_workflowRunSourceExtensionId",
   runtimeInputs: "_workflowRunRuntimeInputs",
   resultArtifactPath: "_workflowRunResultArtifactPath",
-  logArtifactPath: "_workflowRunLogArtifactPath",
   error: "_workflowRunError",
   startedAt: "_workflowRunStartedAt",
   completedAt: "_workflowRunCompletedAt",
@@ -168,12 +168,10 @@ function deserializeRun(
     sourceExtensionId: propertyValue(properties, runProperty.sourceExtensionId) || null,
     runtimeInputs: parseInputs(propertyValue(properties, runProperty.runtimeInputs)),
     resultArtifactPath: propertyValue(properties, runProperty.resultArtifactPath) || null,
-    logArtifactPath: propertyValue(properties, runProperty.logArtifactPath) || null,
     error: propertyValue(properties, runProperty.error) || null,
     startedAt: parseDate(propertyValue(properties, runProperty.startedAt)),
     completedAt: parseDate(propertyValue(properties, runProperty.completedAt)),
     createdAt: doc.createdAt,
-    logs: [],
   };
 }
 
@@ -200,11 +198,6 @@ function runProperties(
     {
       key: runProperty.resultArtifactPath,
       value: nullableProperty(run.resultArtifactPath),
-      type: "artifact-key",
-    },
-    {
-      key: runProperty.logArtifactPath,
-      value: nullableProperty(run.logArtifactPath),
       type: "artifact-key",
     },
     { key: runProperty.error, value: nullableProperty(run.error), type: "text" },
@@ -274,16 +267,68 @@ function trackWrite(write: Promise<void>): void {
   void write.finally(() => pendingWrites.delete(write));
 }
 
-function persistNow(runId: string, run: RunState): void {
+/** Run `work` after every write already queued for the run. */
+function enqueueWrite(runId: string, work: () => Promise<void>): void {
   const previous = writeChains.get(runId) ?? Promise.resolve();
-  const write = previous.then(async () =>
-    persistRunToDocument(await openSpaceStore(run.spaceId), runId, run),
-  );
+  const write = previous.then(work);
   writeChains.set(runId, write);
   const tracked = write.finally(() => {
     if (writeChains.get(runId) === write) writeChains.delete(runId);
   });
   trackWrite(tracked);
+}
+
+function persistNow(runId: string, run: RunState): void {
+  enqueueWrite(runId, async () =>
+    persistRunToDocument(await openSpaceStore(run.spaceId), runId, run),
+  );
+}
+
+type RunLogPoint = {
+  ts: number;
+  type: "workflow.log";
+  fields: { level: "info" | "error"; message: string; runId: string };
+};
+
+const pendingLogs = new Map<string, RunLogPoint[]>();
+const logFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function logFlushLines(): number {
+  return positiveIntSetting(
+    "VEKTOR_WORKFLOW_LOG_FLUSH_LINES",
+    config().WORKFLOW_LOG_FLUSH_LINES,
+    500,
+  );
+}
+
+async function writeRunLogLines(
+  spaceId: string,
+  runId: string,
+  lines: RunLogPoint[],
+): Promise<void> {
+  const store = await openSpaceStore(spaceId);
+  const batch = logFlushLines();
+  for (let start = 0; start < lines.length; start += batch) {
+    await ingestPoints(
+      store,
+      workflowRunSeriesName(runId),
+      lines.slice(start, start + batch),
+    );
+  }
+}
+
+/** Queue whatever lines are pending behind the run's other writes. */
+function flushRunLogs(runId: string, run: RunState): void {
+  clearTimeout(logFlushTimers.get(runId));
+  logFlushTimers.delete(runId);
+  const lines = pendingLogs.get(runId);
+  if (!lines) return;
+  pendingLogs.delete(runId);
+  enqueueWrite(runId, () =>
+    writeRunLogLines(run.spaceId, runId, lines).catch((error) => {
+      appLogger.warn("Failed to write workflow run logs", { runId, error });
+    }),
+  );
 }
 
 function emitRunChanged(runId: string, run: RunState): void {
@@ -432,12 +477,10 @@ export async function createRun(
     sourceExtensionId,
     runtimeInputs: summarizeRecord(runtimeInputs),
     resultArtifactPath: null,
-    logArtifactPath: null,
     error: null,
     startedAt: null,
     completedAt: null,
     createdAt: now,
-    logs: [],
   };
   await store.tx(async (tx) => {
     await assertDocumentCanParent(tx, documentId, workflowRunDocumentType);
@@ -457,6 +500,17 @@ export async function createRun(
       createdBy,
     });
     await writeRunToDocument(tx, runId, run);
+    await declareSeries(tx, {
+      name: workflowRunSeriesName(runId),
+      kind: "log",
+      documentId: runId,
+      retentionDays: positiveIntSetting(
+        "VEKTOR_WORKFLOW_LOG_RETENTION_DAYS",
+        config().WORKFLOW_LOG_RETENTION_DAYS,
+        30,
+      ),
+      createdBy,
+    });
   });
   activeRuns.set(runId, run);
   emitRunChanged(runId, run);
@@ -493,11 +547,34 @@ export function setRunError(runId: string, error: string): void {
   emitRunChanged(runId, run);
 }
 
-export function appendRunLog(runId: string, message: string): void {
+/** Buffer a log line; lines reach the run's series by count, by interval, and on finish. */
+export function appendRunLog(
+  runId: string,
+  message: string,
+  level: "info" | "error" = "info",
+): void {
   const run = activeRuns.get(runId);
   if (!run) return;
-  run.logs.push(summarizeString(message));
-  emitRunChanged(runId, run);
+  const lines = pendingLogs.get(runId) ?? [];
+  lines.push({
+    ts: Date.now(),
+    type: "workflow.log",
+    fields: { level, message: summarizeString(message), runId },
+  });
+  pendingLogs.set(runId, lines);
+  if (lines.length >= logFlushLines()) {
+    flushRunLogs(runId, run);
+  } else if (!logFlushTimers.has(runId)) {
+    const flushMs = positiveIntSetting(
+      "VEKTOR_WORKFLOW_LOG_FLUSH_MS",
+      config().WORKFLOW_LOG_FLUSH_MS,
+      1000,
+    );
+    logFlushTimers.set(
+      runId,
+      setTimeout(() => flushRunLogs(runId, run), flushMs),
+    );
+  }
 }
 
 export async function writeRunResult(
@@ -512,20 +589,22 @@ export async function writeRunResult(
   emitRunChanged(runId, run);
 }
 
-export async function writeRunLogs(runId: string): Promise<void> {
+/** Wait until every buffered log line is in the run's series. */
+export async function drainRunLogs(runId: string): Promise<void> {
   const run = activeRuns.get(runId);
-  if (!run || run.logs.length === 0) return;
-  const artifact = await writeWorkflowArtifact(run.spaceId, runId, "logs", run.logs);
-  run.logArtifactPath = artifact.key;
-  persistNow(runId, run);
-  emitRunChanged(runId, run);
+  if (!run) return;
+  flushRunLogs(runId, run);
+  await writeChains.get(runId);
 }
 
 export async function finalizeRun(runId: string): Promise<void> {
   const run = activeRuns.get(runId);
   if (!run) return;
+  // Before the terminal status shows, so a reader that sees it sees every line.
+  await drainRunLogs(runId);
   if (run.status === "pending" || run.status === "running") run.status = "completed";
   run.completedAt ??= new Date();
+  flushRunLogs(runId, run);
   persistNow(runId, run);
   emitRunChanged(runId, run);
   await writeChains.get(runId);
@@ -551,7 +630,7 @@ export async function cancelRun(runId: string): Promise<void> {
 
   // Nothing is executing this run (it never started), so nobody else will
   // finish it.
-  await writeRunLogs(runId);
+  flushRunLogs(runId, run);
   await writeChains.get(runId);
   activeRuns.delete(runId);
 }
@@ -620,17 +699,6 @@ export async function getLatestRunIdForDoc(
   return latestId;
 }
 
-export async function readRunLogs(run: RunState): Promise<string[]> {
-  if (run.logs.length > 0) return run.logs;
-  if (run.logArtifactPath) {
-    const logs = await readWorkflowArtifact<unknown>(run.spaceId, run.logArtifactPath);
-    return Array.isArray(logs)
-      ? logs.filter((line): line is string => typeof line === "string")
-      : [];
-  }
-  return [];
-}
-
 /** Drain writes so tests can observe the document store deterministically. */
 export async function flushRunStoreForTests(): Promise<void> {
   await Promise.all([...pendingWrites]);
@@ -639,6 +707,9 @@ export async function flushRunStoreForTests(): Promise<void> {
 /** Drop in-memory state, simulating a fresh process (documents are untouched). */
 export function resetRunStoreMemoryForTests(): void {
   activeRuns.clear();
+  for (const timer of logFlushTimers.values()) clearTimeout(timer);
+  logFlushTimers.clear();
+  pendingLogs.clear();
   recoveredSpaces.clear();
   recoveryPromises.clear();
   writeChains.clear();

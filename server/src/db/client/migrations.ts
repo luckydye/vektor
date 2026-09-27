@@ -192,10 +192,19 @@ async function aiWeeklyUsage(db: SpaceDb): Promise<void> {
   ]);
 }
 
+async function timeSeries(db: SpaceDb): Promise<void> {
+  await createTables(db, [spaceSchema.series, spaceSchema.seriesDirtyWindow]);
+  await run(db, [
+    "CREATE UNIQUE INDEX IF NOT EXISTS series_name_unique ON series (name)",
+    "CREATE INDEX IF NOT EXISTS series_document_id_idx ON series (document_id)",
+  ]);
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
   { id: 3, name: "document-slug-index", up: documentSlugIndex },
   { id: 4, name: "drop-job-runs", up: dropJobRuns },
   { id: 5, name: "ai-weekly-usage", up: aiWeeklyUsage },
+  { id: 6, name: "time-series", up: timeSeries },
 ];

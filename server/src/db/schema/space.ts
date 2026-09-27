@@ -384,3 +384,56 @@ export const file = sqliteTable("file", {
   /** Text extracted from the file for search */
   extractedText: text("extracted_text"),
 });
+
+/**
+ * What a time series is, never what it contains: points live only as objects
+ * under `series/{id}/` in file storage (see `#series/store.ts`).
+ */
+export const series = sqliteTable(
+  "series",
+  {
+    /** UUID, never reused; it names the storage prefix. */
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull(),
+    documentId: text("document_id").references(() => document.id, {
+      onDelete: "cascade",
+    }),
+    /** Immutable: every stored key is laid out in windows of this length. */
+    windowSeconds: integer("window_seconds").notNull(),
+    /** Null keeps points forever. */
+    retentionDays: integer("retention_days"),
+    compactAfterSegments: integer("compact_after_segments").notNull(),
+    /** The compaction claim, in ms; expires after `SERIES_CLAIM_TTL_MS`. */
+    compactingAt: integer("compacting_at"),
+    /** The earliest window that may still hold objects, where pruning starts. */
+    oldestWindow: integer("oldest_window"),
+    /** Cosmetic totals of what was appended, not of what is stored. */
+    pointCount: integer("point_count").notNull().default(0),
+    byteCount: integer("byte_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [uniqueIndex("series_name_unique").on(t.name)],
+);
+
+export type SeriesRow = typeof series.$inferSelect;
+
+/**
+ * Windows waiting for compaction or for their superseded objects to be
+ * collected. `segments` counts appends not yet absorbed by a chunk.
+ */
+export const seriesDirtyWindow = sqliteTable(
+  "series_dirty_window",
+  {
+    seriesId: text("series_id")
+      .notNull()
+      .references(() => series.id, { onDelete: "cascade" }),
+    window: integer("window").notNull(),
+    segments: integer("segments").notNull().default(0),
+    /** When the objects the newest chunk superseded may be deleted, in ms. */
+    collectAt: integer("collect_at"),
+  },
+  (t) => [primaryKey({ columns: [t.seriesId, t.window] })],
+);

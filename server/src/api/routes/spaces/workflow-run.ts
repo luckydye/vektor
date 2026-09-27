@@ -16,7 +16,6 @@ import {
   cancelRun,
   ensureSpaceRecovered,
   getRunForRead,
-  readRunLogs,
 } from "#jobs/runStore.ts";
 import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
 
@@ -26,7 +25,8 @@ import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
  * GET /api/v1/spaces/:spaceId/workflows/runs/:runId
  * Returns the current state of a script workflow run. The result itself is a
  * JSON artifact; a hidden child document holds only its storage key and run
- * metadata in private properties.
+ * metadata in private properties. Log lines are the `workflow-run:{runId}`
+ * series.
  *
  * @tag Workflows
  * @jobToken
@@ -56,8 +56,6 @@ export const GET: ApiRouteHandler = (context) =>
       );
       if (!readable.has(run.documentId)) return notFoundResponse("Run");
     }
-    const logs = await readRunLogs(run);
-
     return jsonResponse({
       runId,
       documentId: run.documentId,
@@ -68,17 +66,10 @@ export const GET: ApiRouteHandler = (context) =>
       sourceExtensionId: run.sourceExtensionId,
       runtimeInputs: run.runtimeInputs,
       error: run.error,
-      logs,
       resultArtifact: run.resultArtifactPath
         ? {
             key: run.resultArtifactPath,
             url: workflowArtifactUrl(spaceId, run.resultArtifactPath),
-          }
-        : null,
-      logArtifact: run.logArtifactPath
-        ? {
-            key: run.logArtifactPath,
-            url: workflowArtifactUrl(spaceId, run.logArtifactPath),
           }
         : null,
     });

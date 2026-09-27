@@ -60,6 +60,7 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   Permissions: "Roles, feature grants and what the caller may do.",
   Search: "Full-text and property search.",
   Secrets: "Write-only values a space's jobs and integrations read.",
+  Series: "Time series: append points, read ranges and aggregate them.",
   Sharing: "Public and link-based access to documents.",
   Spaces: "The top-level containers everything else belongs to.",
   Users: "Accounts and profiles.",

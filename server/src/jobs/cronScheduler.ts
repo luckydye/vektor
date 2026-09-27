@@ -7,6 +7,7 @@ import {
   parseWorkflowScheduleInputs,
 } from "#db/space/workflowSchedules.ts";
 import { appLogger } from "#observability/logger.ts";
+import { maintainSpaceSeries } from "#series/maintenance.ts";
 import { getLatestRunIdForDoc, getRunForRead } from "./runStore.ts";
 import { startWorkflowRun } from "./workflowRuns.ts";
 
@@ -60,6 +61,7 @@ async function tick(): Promise<void> {
           // prevents concurrent runs of the same workflow document.
           void runScheduledWorkflow(store, schedule);
         }
+        await maintainSpaceSeries(store, now);
       } catch (error) {
         appLogger.error("Cron tick failed for space", { spaceId, error });
       }

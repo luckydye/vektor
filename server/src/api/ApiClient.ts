@@ -1,6 +1,9 @@
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector, Doc as YDoc } from "yjs";
 import type { PublicUserAppearance } from "#cosmetics/types.ts";
 import type { DocumentProperties } from "#documents/properties.ts";
+import type { SeriesPoint } from "#series/format.ts";
+import type { SeriesPredicate } from "#series/predicates.ts";
+import type { SeriesQuery, SeriesQueryResult } from "#series/query.ts";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -233,11 +236,23 @@ export interface WorkflowRunStatus {
   sourceExtensionId?: string | null;
   runtimeInputs?: Record<string, unknown>;
   error: string | null;
-  logs: string[];
   /** The script return value, serialized as a JSON artifact. */
   resultArtifact: WorkflowArtifact | null;
-  /** Completed logs, serialized as a JSON artifact. */
-  logArtifact: WorkflowArtifact | null;
+}
+
+export interface SeriesInfo {
+  id: string;
+  name: string;
+  kind: "gps" | "log" | "metric";
+  documentId: string | null;
+  windowSeconds: number;
+  retentionDays: number | null;
+  compactAfterSegments: number;
+  pointCount: number;
+  byteCount: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
 }
 
 export interface ExtensionRouteMenuItem {
@@ -1789,6 +1804,41 @@ export class ApiClient {
       );
       return response.properties;
     },
+  };
+
+  series = {
+    list: (spaceId: string) =>
+      this.apiGet<{ series: SeriesInfo[] }>(this.baseUrl, `/api/v1/spaces/${spaceId}/series`),
+
+    get: (spaceId: string, name: string) =>
+      this.apiGet<{ series: SeriesInfo; latestPoint: SeriesPoint | null }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/series/${encodeURIComponent(name)}`,
+      ),
+
+    points: (
+      spaceId: string,
+      name: string,
+      query: {
+        from: number;
+        to: number;
+        where?: SeriesPredicate[];
+        limit?: number;
+        cursor?: string;
+      },
+    ) =>
+      this.apiGet<{ points: SeriesPoint[]; limit: number; nextCursor: string | null }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/series/${encodeURIComponent(name)}/points`,
+        { ...query, where: query.where ? JSON.stringify(query.where) : undefined },
+      ),
+
+    query: (spaceId: string, name: string, query: SeriesQuery) =>
+      this.apiPost<SeriesQueryResult>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/series/${encodeURIComponent(name)}/query`,
+        query,
+      ),
   };
 
   auditLogs = {
