@@ -122,6 +122,7 @@ export const property = sqliteTable(
     uniqueIndex("property_document_id_key_unique").on(t.documentId, t.key),
     // Reverse lookup: which document claims this key and value.
     index("property_key_value_idx").on(t.key, t.value),
+    index("property_key_type_idx").on(t.key, t.type),
   ],
 );
 

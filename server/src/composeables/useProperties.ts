@@ -5,15 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 
-export interface PropertyInfo {
-  name: string;
-  type: string | null;
-  values: string[];
-}
-
 export function useProperties() {
   const { currentSpaceId: spaceId } = useSpace();
-  const queryClient = useQueryClient();
 
   const {
     data: propertiesData,
@@ -34,22 +27,28 @@ export function useProperties() {
 
   const properties = createMemo(() => propertiesData() || []);
 
-  const getPropertyKeys = createMemo(() => {
-    return properties().map((p) => p.name);
+  // TODO: syncs are not scopped to documents,
+  // one prop updates will send a sync event to all users anywhere in the space
+  useSync(spaceId, [realtimeTopics.properties], (keys) => {
+    if (keys.includes(realtimeTopics.properties)) refresh();
   });
 
-  const getProperty = (name: string): PropertyInfo | undefined => {
-    return properties().find((p) => p.name === name);
+  // The chip filters these in place, so it takes as many as one request allows.
+  const listValues = async (name: string): Promise<string[]> => {
+    const spaceIdValue = spaceId();
+    if (!spaceIdValue) {
+      throw new Error("No space ID");
+    }
+    return (await api.properties.values(spaceIdValue, name, { limit: 500 })).values;
   };
 
-  const getValuesForProperty = (name: string): string[] => {
-    const property = getProperty(name);
-    return property?.values || [];
-  };
+  return { properties, isLoading, error, refresh, listValues };
+}
 
-  const hasProperty = (name: string): boolean => {
-    return properties().some((p) => p.name === name);
-  };
+/** Property writes, without subscribing to the space-wide key listing. */
+export function usePropertyMutations() {
+  const { currentSpaceId: spaceId } = useSpace();
+  const queryClient = useQueryClient();
 
   const updatePropertyMutation = useMutation({
     mutationFn: async (params: {
@@ -110,22 +109,5 @@ export function useProperties() {
     await deletePropertyMutation.mutateAsync({ documentId, name });
   }
 
-  // TODO: syncs are not scopped to documents,
-  // one prop updates will send a sync event to all users anywhere in the space
-  useSync(spaceId, [realtimeTopics.properties], (keys) => {
-    if (keys.includes(realtimeTopics.properties)) refresh();
-  });
-
-  return {
-    properties,
-    isLoading,
-    error,
-    refresh,
-    getPropertyKeys,
-    getProperty,
-    getValuesForProperty,
-    hasProperty,
-    updateProperty,
-    deleteProperty,
-  };
+  return { updateProperty, deleteProperty };
 }

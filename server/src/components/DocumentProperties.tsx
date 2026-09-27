@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useMembers } from "#composeables/useMembers.ts";
-import { useProperties } from "#composeables/useProperties.ts";
+import { usePropertyMutations, useProperties } from "#composeables/useProperties.ts";
 import type { Property } from "#documents/properties.ts";
 import {
   canonicalPropertyKey,
@@ -52,7 +52,8 @@ export function DocumentProperties(props: Props) {
 
   const { categories } = useCategories();
   const { document } = useDocument(() => props.documentId);
-  const { updateProperty, deleteProperty, properties: spaceProperties } = useProperties();
+  const { properties: spaceProperties, listValues } = useProperties();
+  const { updateProperty, deleteProperty } = usePropertyMutations();
   const { members } = useMembers();
 
   const documentProperties = createMemo(
@@ -269,17 +270,11 @@ export function DocumentProperties(props: Props) {
         });
     }
 
-    return (
-      spaceProperties()
-        ?.find(
-          (sp) => canonicalPropertyKey(sp.name) === canonicalPropertyKey(property.name),
-        )
-        ?.values?.map((value) => ({
-          id: value,
-          label: value,
-          icon: "generic-property",
-        })) || []
-    );
+    return (await listValues(property.name)).map((value) => ({
+      id: value,
+      label: value,
+      icon: "generic-property",
+    }));
   };
 
   const properties = createMemo((): Property[] => {

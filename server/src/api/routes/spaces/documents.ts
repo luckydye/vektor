@@ -166,9 +166,7 @@ export const GET: ApiRouteHandler = (context) =>
           ([slug, docs]) =>
             [
               slug,
-              docs.filter(
-                (doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam),
-              ),
+              docs.filter((doc) => !typeParam || doc.type === typeParam),
             ] as const,
         ),
       );

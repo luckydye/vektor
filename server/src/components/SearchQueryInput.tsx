@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { canonicalPropertyKey } from "#documents/properties.ts";
 import {
   formatFilterTerm,
@@ -10,13 +10,14 @@ import {
 /** A property in the space, as the filter completions read it. */
 export interface QueryProperty {
   name: string;
-  values: string[];
 }
 
 interface Props {
   value: string;
   segments: QuerySegment[];
   properties: QueryProperty[];
+  /** The values of `key` starting with `prefix`, at most `limit` of them. */
+  loadValues: (key: string, prefix: string, limit: number) => Promise<string[]>;
   placeholder?: string;
   onInput: (value: string) => void;
   onEnter?: () => void;
@@ -78,6 +79,30 @@ export function SearchQueryInput(props: Props) {
     focused() ? termAtCaret(props.value, caret()) : null,
   );
 
+  const valueQuery = createMemo(
+    () => {
+      const current = term();
+      if (dismissed() || !current || current.key === null) return undefined;
+      const property = props.properties.find(
+        (candidate) =>
+          canonicalPropertyKey(candidate.name) === canonicalPropertyKey(current.key ?? ""),
+      );
+      return property ? { key: property.name, prefix: current.typed } : undefined;
+    },
+    undefined,
+    { equals: (a, b) => a?.key === b?.key && a?.prefix === b?.prefix },
+  );
+  // A plain signal rather than a resource: a resource would suspend the field mid-keystroke.
+  const [values, setValues] = createSignal<{ key: string; values: string[] }>();
+  createEffect(
+    on(valueQuery, (query) => {
+      if (!query) return;
+      props.loadValues(query.key, query.prefix, MAX_COMPLETIONS).then((loaded) => {
+        if (valueQuery() === query) setValues({ key: query.key, values: loaded });
+      });
+    }),
+  );
+
   const completions = createMemo<Completion[]>(() => {
     const current = term();
     if (dismissed() || !current) return [];
@@ -93,17 +118,14 @@ export function SearchQueryInput(props: Props) {
         .map((property) => ({ term: `${property.name}:`, key: property.name }));
     }
 
-    const property = props.properties.find(
-      (candidate) =>
-        canonicalPropertyKey(candidate.name) === canonicalPropertyKey(current.key ?? ""),
-    );
-    if (!property) return [];
-    return property.values
+    const query = valueQuery();
+    const loaded = values();
+    if (!query || loaded?.key !== query.key) return [];
+    return loaded.values
       .filter((value) => value.toLowerCase().startsWith(typed))
-      .slice(0, MAX_COMPLETIONS)
       .map((value) => ({
-        term: formatFilterTerm(property.name, value),
-        key: property.name,
+        term: formatFilterTerm(query.key, value),
+        key: query.key,
         value,
       }));
   });

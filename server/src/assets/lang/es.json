@@ -452,7 +452,7 @@
   "Remove filter": "Quitar filtro",
   "Properties": "Propiedades",
   "any value": "cualquier valor",
-  "+{count} more": "+{count} más",
+  "More values…": "Más valores…",
   "Access Tokens": "Tokens de acceso",
   "Tokens let the CLI and the API act as you. Treat them like passwords.": "Los tokens permiten que la CLI y la API actúen en tu nombre. Trátalos como contraseñas.",
   "Copy your token now — it is never shown again.": "Copia tu token ahora: no volverá a mostrarse.",

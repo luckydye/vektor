@@ -81,10 +81,15 @@ export function SearchFilters(props: Props) {
     queryFn: () => api.properties.get(props.spaceId),
   });
 
-  const typeValues = createMemo(
-    () =>
-      availableProperties()?.find((p) => p.name === DOCUMENT_TYPE_FILTER_KEY)?.values ??
-      [],
+  const { data: typeValueList } = useQuery({
+    queryKey: createMemo(() => ["property_values", props.spaceId, DOCUMENT_TYPE_FILTER_KEY]),
+    queryFn: () => api.properties.values(props.spaceId, DOCUMENT_TYPE_FILTER_KEY),
+  });
+  const typeValues = createMemo(() => typeValueList()?.values ?? []);
+
+  // Fetched when a property is first expanded; the menu shows a sample, not every value.
+  const [propertyValues, setPropertyValues] = createSignal(
+    new Map<string, { values: string[]; hasMore: boolean }>(),
   );
 
   const filterableProperties = createMemo(
@@ -126,6 +131,12 @@ export function SearchFilters(props: Props) {
     if (next.has(name)) next.delete(name);
     else next.add(name);
     setExpandedProperties(next);
+
+    if (next.has(name) && !propertyValues().has(name)) {
+      api.properties.values(props.spaceId, name, { limit: 20 }).then((result) => {
+        setPropertyValues((current) => new Map(current).set(name, result));
+      });
+    }
   };
 
   return (
@@ -270,7 +281,7 @@ export function SearchFilters(props: Props) {
 
                         <Show when={expandedProperties().has(prop.name)}>
                           <div class="mt-0.5 mb-1 ml-5 flex flex-col gap-0.5">
-                            <For each={prop.values.slice(0, 20)}>
+                            <For each={propertyValues().get(prop.name)?.values ?? []}>
                               {(val) => (
                                 <button
                                   type="button"
@@ -302,12 +313,9 @@ export function SearchFilters(props: Props) {
                             >
                               {t("any value")}
                             </button>
-                            <Show when={prop.values.length > 20}>
+                            <Show when={propertyValues().get(prop.name)?.hasMore}>
                               <span class="px-2 text-neutral-400 text-size-extra-small">
-                                {t("+{count} more").replace(
-                                  "{count}",
-                                  String(prop.values.length - 20),
-                                )}
+                                {t("More values…")}
                               </span>
                             </Show>
                           </div>

@@ -200,6 +200,14 @@ async function timeSeries(db: SpaceDb): Promise<void> {
   ]);
 }
 
+/** Lets the space-wide key listing read each key's type from the index alone. */
+async function propertyKeyTypeIndex(db: SpaceDb): Promise<void> {
+  await exec(
+    db,
+    sql.raw("CREATE INDEX IF NOT EXISTS property_key_type_idx ON property (key, type)"),
+  );
+}
+
 export const spaceMigrations: Migration[] = [
   { id: 1, name: "baseline", up: baseline },
   { id: 2, name: "document-change-seq", up: documentChangeSeq },
@@ -207,4 +215,5 @@ export const spaceMigrations: Migration[] = [
   { id: 4, name: "drop-job-runs", up: dropJobRuns },
   { id: 5, name: "ai-weekly-usage", up: aiWeeklyUsage },
   { id: 6, name: "time-series", up: timeSeries },
+  { id: 7, name: "property-key-type-index", up: propertyKeyTypeIndex },
 ];

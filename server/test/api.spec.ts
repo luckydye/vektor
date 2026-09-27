@@ -978,15 +978,12 @@ describe("API Tests - Document Properties", () => {
     const docData = await docResponse.json();
     expect(docData.document.properties.tags).toEqual(["draft", "review"]);
 
-    const propertiesResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/properties`,
+    const valuesResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/properties/values?key=tags`,
     );
-    const propertiesData = await propertiesResponse.json();
-    const tagsProperty = propertiesData.properties.find(
-      (property: { name: string }) => property.name === "tags",
-    );
-    expect(tagsProperty.values).toContain("draft");
-    expect(tagsProperty.values).toContain("review");
+    const { values } = await valuesResponse.json();
+    expect(values).toContain("draft");
+    expect(values).toContain("review");
   });
 
   it("should delete a document property", async () => {

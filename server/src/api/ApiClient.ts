@@ -570,7 +570,6 @@ export interface AuditLog {
 export interface PropertyInfo {
   name: string;
   type: string | null;
-  values: string[];
 }
 
 export type DocumentPropertyPatchValue =
@@ -1804,6 +1803,13 @@ export class ApiClient {
       );
       return response.properties;
     },
+
+    values: (spaceId: string, key: string, options: { prefix?: string; limit?: number } = {}) =>
+      this.apiGet<{ values: string[]; hasMore: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/properties/values`,
+        { key, ...options },
+      ),
   };
 
   series = {

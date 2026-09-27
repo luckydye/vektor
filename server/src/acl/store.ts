@@ -1511,10 +1511,13 @@ async function resolveReadableResources(
       }
     }
 
-    const docRows = await many(
-      db.select({ id: document.id, parentId: document.parentId }).from(document),
-    );
-    parentById = new Map(docRows.map((row) => [row.id, row.parentId]));
+    // Only a tree grant is inherited by walking up, so without one the walk is skipped.
+    if (treeBestLevel.size > 0) {
+      const docRows = await many(
+        db.select({ id: document.id, parentId: document.parentId }).from(document),
+      );
+      parentById = new Map(docRows.map((row) => [row.id, row.parentId]));
+    }
 
     const categoryRows = await many(
       db

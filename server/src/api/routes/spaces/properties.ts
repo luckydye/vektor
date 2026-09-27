@@ -3,10 +3,10 @@ import { Permission } from "#acl/permissions.ts";
 import { jsonResponse, requireParam, withApiErrorHandling } from "#api/http.ts";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { openSpaceStore } from "#db/client/store.ts";
-import { getAllPropertiesWithValues } from "#db/space/properties.ts";
+import { listSpaceProperties } from "#db/space/properties.ts";
 
 /**
- * List the document property keys used in a space, with their values
+ * List the document property keys used in a space, with their types
  *
  * @tag Documents
  */
@@ -16,7 +16,7 @@ export const GET: ApiRouteHandler = (context) =>
     await authenticateSpaceAccess(context.var.credentials, spaceId, Permission.VIEWER);
 
     const store = await openSpaceStore(spaceId);
-    const properties = await getAllPropertiesWithValues(store);
+    const properties = await listSpaceProperties(store);
 
     return jsonResponse({ properties });
   }, "Failed to list space properties");

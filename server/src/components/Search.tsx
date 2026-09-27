@@ -121,11 +121,20 @@ export function Search(props: Props) {
       .filter((property) => canonicalPropertyKey(property.name) !== "title")
       .map((property) =>
         property.name === DOCUMENT_TYPE_FILTER_KEY
-          ? { name: "type", values: property.values }
-          : { name: property.name, values: property.values },
+          ? { name: "type" }
+          : { name: property.name },
       )
       .filter((property) => !property.name.startsWith("_")),
   );
+
+  const loadCompletionValues = async (key: string, prefix: string, limit: number) =>
+    (
+      await api.properties.values(
+        props.spaceId,
+        key === "type" ? DOCUMENT_TYPE_FILTER_KEY : key,
+        { prefix, limit },
+      )
+    ).values;
 
   const [committedQuery, setCommittedQuery] = createSignal("");
   const [committedFilters, setCommittedFilters] = createSignal<PropertyFilter[]>([]);
@@ -589,6 +598,7 @@ export function Search(props: Props) {
               value={searchQuery()}
               segments={parsedQuery().segments}
               properties={completionProperties()}
+              loadValues={loadCompletionValues}
               placeholder={t("Find anything…")}
               onInput={setSearchQuery}
               onEnter={handleSearch}

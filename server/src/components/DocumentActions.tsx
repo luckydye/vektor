@@ -15,7 +15,7 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useDocument, useDocumentContext } from "#composeables/useDocument.ts";
 import { setCancelCount, setEditing, useEditor } from "#composeables/useEditor.ts";
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
-import { useProperties } from "#composeables/useProperties.ts";
+import { usePropertyMutations } from "#composeables/useProperties.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
 import { useTranslation } from "#composeables/useTranslation.ts";
@@ -97,7 +97,7 @@ export function DocumentActions(props: Props) {
   const documentType = createMemo(() => documentContext().documentType);
 
   const { document } = useDocument(documentId);
-  const { deleteProperty } = useProperties();
+  const { deleteProperty } = usePropertyMutations();
   const isTemplate = createMemo(
     () =>
       propertyValueToScalar(document()?.properties?.[templatePropertyKey]) ===

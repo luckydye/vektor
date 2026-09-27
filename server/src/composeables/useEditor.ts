@@ -15,7 +15,7 @@ import { Actions } from "#utils/actions.ts";
 import { useQueryClient } from "./query.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
-import { useProperties } from "./useProperties.ts";
+import { usePropertyMutations } from "./useProperties.ts";
 import { useToast } from "./useToast.ts";
 
 /**
@@ -136,7 +136,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       propertyValueToScalar(document()?.properties?.[templatePropertyKey]) ===
       templatePropertyValue,
   );
-  const { updateProperty } = useProperties();
+  const { updateProperty } = usePropertyMutations();
   const queryClient = useQueryClient();
   const toast = useToast();
 

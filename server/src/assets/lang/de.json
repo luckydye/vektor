@@ -448,7 +448,7 @@
   "Remove filter": "Filter entfernen",
   "Properties": "Eigenschaften",
   "any value": "beliebiger Wert",
-  "+{count} more": "+{count} weitere",
+  "More values…": "Weitere Werte…",
   "Access Tokens": "Zugriffstokens",
   "Tokens let the CLI and the API act as you. Treat them like passwords.": "Tokens erlauben CLI und API, in deinem Namen zu handeln. Behandle sie wie Passwörter.",
   "Copy your token now — it is never shown again.": "Kopiere das Token jetzt – es wird nie wieder angezeigt.",

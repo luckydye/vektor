@@ -50,6 +50,7 @@ import * as spaceNotificationPreference from "./routes/spaces/notification-prefe
 import * as permissions from "./routes/spaces/permissions.ts";
 import * as permissionsMe from "./routes/spaces/permissions-me.ts";
 import * as properties from "./routes/spaces/properties.ts";
+import * as propertyValues from "./routes/spaces/property-values.ts";
 import * as search from "./routes/spaces/search.ts";
 import * as searchRebuild from "./routes/spaces/search-rebuild.ts";
 import * as secret from "./routes/spaces/secret.ts";
@@ -123,6 +124,7 @@ export const apiRoutes: ApiRoute[] = [
     module: spaceNotificationPreference,
   },
   { pattern: "/api/v1/spaces/[spaceId]/properties", module: properties },
+  { pattern: "/api/v1/spaces/[spaceId]/properties/values", module: propertyValues },
 
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]", module: accessToken },

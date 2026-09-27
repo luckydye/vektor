@@ -53,52 +53,42 @@ const ALLOWED_COLLIDING_KEYS = ["toString", "hasOwnProperty", "valueOf"] as cons
 describe("aggregateStoredProperties", () => {
   it.each(PROTOTYPE_KEYS)("aggregates a property named %s instead of throwing", (key) => {
     const properties = aggregateStoredProperties([
-      { key, value: "alpha", type: "select" },
-      { key, value: "beta", type: null },
-      { key: "title", value: "A document", type: null },
+      { key, type: "select", count: 2 },
+      { key: "title", type: null, count: 1 },
     ]);
 
     const entry = properties.find((property) => property.name === key);
     expect(entry).toBeDefined();
-    expect(entry?.values).toEqual(["alpha", "beta"]);
-    // The type is taken from the first row that carries one.
     expect(entry?.type).toBe("select");
   });
 
   it("aggregates every colliding key in one pass", () => {
     const properties = aggregateStoredProperties(
-      PROTOTYPE_KEYS.map((key) => ({ key, value: `value-of-${key}`, type: null })),
+      PROTOTYPE_KEYS.map((key) => ({ key, type: null, count: 1 })),
     );
 
     expect(properties.map((property) => property.name).sort()).toEqual(
       [...PROTOTYPE_KEYS].sort(),
     );
-    for (const key of PROTOTYPE_KEYS) {
-      const entry = properties.find((property) => property.name === key);
-      expect(entry?.values).toEqual([`value-of-${key}`]);
-    }
   });
 
-  it("dedupes and sorts values, and unpacks multi-value rows", () => {
+  it("takes the type from the first spelling that carries one", () => {
     const properties = aggregateStoredProperties([
-      { key: "toString", value: JSON.stringify(["review", "draft"]), type: null },
-      { key: "toString", value: "draft", type: "multi-select" },
-      { key: "toString", value: "", type: null },
+      { key: "toString", type: null, count: 2 },
+      { key: "ToString", type: "multi-select", count: 1 },
     ]);
 
     expect(properties).toHaveLength(1);
-    expect(properties[0].values).toEqual(["draft", "review"]);
+    expect(properties[0].name).toBe("toString");
     expect(properties[0].type).toBe("multi-select");
   });
 
   it("keeps a `__proto__` key as an ordinary entry rather than a prototype", () => {
     const properties = aggregateStoredProperties([
-      { key: "__proto__", value: "not-a-prototype", type: null },
+      { key: "__proto__", type: null, count: 1 },
     ]);
 
-    expect(properties).toHaveLength(1);
-    expect(properties[0].name).toBe("__proto__");
-    expect(properties[0].values).toEqual(["not-a-prototype"]);
+    expect(properties).toEqual([{ name: "__proto__", type: null }]);
   });
 
   it("returns nothing for no rows", () => {
@@ -277,10 +267,18 @@ async function createDocument(properties: Record<string, unknown>): Promise<Resp
   });
 }
 
-async function listProperties(): Promise<{ name: string; values: string[] }[]> {
+async function listProperties(): Promise<{ name: string; type: string | null }[]> {
   const response = await apiRequest(`/api/v1/spaces/${spaceId}/properties`);
   expect(response.status).toBe(200);
   return (await response.json()).properties;
+}
+
+async function listPropertyValues(key: string): Promise<string[]> {
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/properties/values?key=${encodeURIComponent(key)}`,
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()).values;
 }
 
 describe("reserved property keys are refused", () => {
@@ -367,7 +365,7 @@ describe("colliding property keys survive the space-wide listing", () => {
     for (const key of ALLOWED_COLLIDING_KEYS) {
       const entry = listed.find((property) => property.name === key);
       expect(entry, `expected ${key} in the property listing`).toBeDefined();
-      expect(entry?.values).toContain(`value-of-${key}`);
+      expect(await listPropertyValues(key)).toContain(`value-of-${key}`);
     }
   });
 
@@ -402,9 +400,8 @@ describe("colliding property keys survive the space-wide listing", () => {
     expect(created.status).toBe(201);
 
     const listed = await listProperties();
-    expect(listed.find((property) => property.name === "status")?.values).toContain(
-      "published",
-    );
+    expect(listed.some((property) => property.name === "status")).toBe(true);
+    expect(await listPropertyValues("status")).toContain("published");
     // The virtual document-type entry is always present.
     expect(listed.some((property) => property.name === DOCUMENT_TYPE_FILTER_KEY)).toBe(
       true,
@@ -425,11 +422,11 @@ describe("colliding property keys survive the space-wide listing", () => {
     );
     expect(deleted.status).toBe(200);
 
-    // Permanent deletion purges the stored property rows; the listing must not
+    // Permanent deletion purges the stored property rows; the values must not
     // expose any remnant of the deleted document.
-    const listed = await listProperties();
-    const valueOfEntry = listed.find((property) => property.name === "valueOf");
-    expect(valueOfEntry?.values ?? []).not.toContain("only-on-the-doomed-document");
+    expect(await listPropertyValues("valueOf")).not.toContain(
+      "only-on-the-doomed-document",
+    );
   });
 
   it("drops an archived document's properties too", async () => {
@@ -446,9 +443,9 @@ describe("colliding property keys survive the space-wide listing", () => {
     );
     expect(archived.status).toBe(200);
 
-    const listed = await listProperties();
-    const toStringEntry = listed.find((property) => property.name === "toString");
-    expect(toStringEntry?.values ?? []).not.toContain("only-on-the-archived-document");
+    expect(await listPropertyValues("toString")).not.toContain(
+      "only-on-the-archived-document",
+    );
   });
 });
 
@@ -494,10 +491,9 @@ describe("a property named type is an ordinary property", () => {
         property.name !== DOCUMENT_TYPE_FILTER_KEY &&
         property.name.toLowerCase() === "type",
     );
-    expect(entry?.values).toContain("invoice");
-    expect(
-      listed.find((property) => property.name === DOCUMENT_TYPE_FILTER_KEY)?.values,
-    ).toContain("document");
+    expect(entry).toBeDefined();
+    expect(await listPropertyValues("type")).toContain("invoice");
+    expect(await listPropertyValues(DOCUMENT_TYPE_FILTER_KEY)).toContain("document");
   });
 
   it("filters on the property, not on the document type", async () => {

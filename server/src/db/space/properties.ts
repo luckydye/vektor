@@ -14,6 +14,7 @@ import {
   parseStoredPropertyValue,
   propertyValueToText,
   type SpaceProperty,
+  type StoredPropertyKeyRow,
   serializePropertyValue,
 } from "#documents/properties.ts";
 import { isPlaceholderDocumentSlug } from "#documents/types.ts";
@@ -264,37 +265,85 @@ export async function patchDocumentProperties(
   return result;
 }
 
-export async function getAllPropertiesWithValues(
-  s: SpaceStore,
-): Promise<SpaceProperty[]> {
-  // Joining to document hides orphaned rows left by permanent deletes and keeps
-  // archived properties consistent with the virtual type values below.
-  const allProperties = await many(
-    s.db
-      .select({ key: property.key, value: property.value, type: property.type })
-      .from(property)
-      .innerJoin(document, eq(property.documentId, document.id))
-      .where(nonArchivedDocumentCondition),
+/**
+ * The property keys used in a space, with their types. A key only archived
+ * documents hold is left out; spellings are weighed over every stored row.
+ */
+export async function listSpaceProperties(s: SpaceStore): Promise<SpaceProperty[]> {
+  const rows = await many<StoredPropertyKeyRow>(
+    s.db,
+    sql`
+      SELECT k.key AS key, k.count AS count,
+        (SELECT min(t.type) FROM ${property} t WHERE t.key = k.key AND t.type IS NOT NULL) AS type
+      FROM (SELECT key, count(*) AS count FROM ${property} GROUP BY key) k
+      WHERE EXISTS (
+        SELECT 1 FROM ${property} p JOIN ${document} ON ${document.id} = p.document_id
+        WHERE p.key = k.key AND ${nonArchivedDocumentCondition}
+      )
+    `,
   );
-
-  const docTypes = await many(
-    s.db
-      .selectDistinct({ type: document.type })
-      .from(document)
-      .where(nonArchivedDocumentCondition),
-  );
-  const typeValues = docTypes
-    .map((row) => row.type || "document")
-    .filter((value, index, values) => values.indexOf(value) === index)
-    .sort();
-
-  if (!typeValues.includes("file")) {
-    typeValues.push("file");
-    typeValues.sort();
-  }
 
   return [
-    { name: DOCUMENT_TYPE_FILTER_KEY, type: "select", values: typeValues },
-    ...aggregateStoredProperties(allProperties),
+    { name: DOCUMENT_TYPE_FILTER_KEY, type: "select" },
+    ...aggregateStoredProperties(rows),
   ].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The distinct values non-archived documents hold for one property key, in
+ * every spelling of it, with multi-value rows unpacked. `prefix` matches case-insensitively.
+ */
+export async function listPropertyValues(
+  s: SpaceStore,
+  key: string,
+  options: { prefix: string; limit: number },
+): Promise<{ values: string[]; hasMore: boolean }> {
+  const canonical = canonicalPropertyKey(key);
+  const prefix = options.prefix.toLowerCase();
+  const page = (values: string[]) => ({
+    values: values.slice(0, options.limit),
+    hasMore: values.length > options.limit,
+  });
+
+  if (canonical === DOCUMENT_TYPE_FILTER_KEY) {
+    const rows = await many(
+      s.db
+        .selectDistinct({ type: document.type })
+        .from(document)
+        .where(nonArchivedDocumentCondition),
+    );
+    const types = new Set(["file", ...rows.map((row) => row.type || "document")]);
+    return page([...types].filter((type) => type.toLowerCase().startsWith(prefix)).sort());
+  }
+
+  const spellings = (
+    await many<{ key: string }>(s.db, sql`SELECT DISTINCT key FROM ${property}`)
+  )
+    .map((row) => row.key)
+    .filter((spelling) => canonicalPropertyKey(spelling) === canonical);
+  if (spellings.length === 0) return { values: [], hasMore: false };
+
+  const keys = sql.join(
+    spellings.map((spelling) => sql`${spelling}`),
+    sql`, `,
+  );
+  const isArray = sql`(p.value LIKE '[%' AND json_valid(p.value) AND json_type(p.value) = 'array')`;
+  const rows = await many<{ value: string }>(
+    s.db,
+    sql`
+      SELECT value FROM (
+        SELECT p.value AS value FROM ${property} p
+        JOIN ${document} ON ${document.id} = p.document_id
+        WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND NOT ${isArray}
+        UNION
+        SELECT CAST(j.value AS TEXT) FROM ${property} p
+        JOIN ${document} ON ${document.id} = p.document_id, json_each(p.value) j
+        WHERE p.key IN (${keys}) AND ${nonArchivedDocumentCondition} AND ${isArray}
+      )
+      WHERE value <> '' AND substr(lower(value), 1, ${prefix.length}) = ${prefix}
+      ORDER BY value
+      LIMIT ${options.limit + 1}
+    `,
+  );
+  return page(rows.map((row) => row.value));
 }

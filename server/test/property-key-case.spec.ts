@@ -43,21 +43,20 @@ describe("storedPropertyKey", () => {
 });
 
 describe("aggregateStoredProperties over mixed spellings", () => {
-  it("lists one entry and pools the values of both spellings", () => {
+  it("lists one entry for both spellings", () => {
     const properties = aggregateStoredProperties([
-      { key: "date", value: "2026-01-01", type: "date" },
-      { key: "Date", value: "2026-02-02", type: null },
+      { key: "date", type: "date", count: 1 },
+      { key: "Date", type: null, count: 1 },
     ]);
 
     expect(properties).toHaveLength(1);
-    expect(properties[0].values).toEqual(["2026-01-01", "2026-02-02"]);
+    expect(properties[0].type).toBe("date");
   });
 
   it("shows the spelling used by the most documents", () => {
     const properties = aggregateStoredProperties([
-      { key: "Date", value: "a", type: null },
-      { key: "date", value: "b", type: null },
-      { key: "date", value: "c", type: null },
+      { key: "Date", type: null, count: 1 },
+      { key: "date", type: null, count: 2 },
     ]);
 
     expect(properties[0].name).toBe("date");
@@ -65,8 +64,8 @@ describe("aggregateStoredProperties over mixed spellings", () => {
 
   it("breaks a tie the same way on every read", () => {
     const rows = [
-      { key: "Date", value: "a", type: null },
-      { key: "date", value: "b", type: null },
+      { key: "Date", type: null, count: 1 },
+      { key: "date", type: null, count: 1 },
     ];
 
     const first = aggregateStoredProperties(rows)[0].name;
@@ -75,8 +74,8 @@ describe("aggregateStoredProperties over mixed spellings", () => {
 
   it("keeps genuinely different keys apart", () => {
     const properties = aggregateStoredProperties([
-      { key: "date", value: "a", type: null },
-      { key: "dueDate", value: "b", type: null },
+      { key: "date", type: null, count: 1 },
+      { key: "dueDate", type: null, count: 1 },
     ]);
 
     expect(properties.map((property) => property.name).sort()).toEqual([
@@ -186,10 +185,18 @@ async function documentProperties(documentId: string): Promise<Record<string, un
   return (await response.json()).document.properties;
 }
 
-async function listProperties(): Promise<{ name: string; values: string[] }[]> {
+async function listProperties(): Promise<{ name: string; type: string | null }[]> {
   const response = await apiRequest(`/api/v1/spaces/${spaceId}/properties`);
   expect(response.status).toBe(200);
   return (await response.json()).properties;
+}
+
+async function listPropertyValues(key: string): Promise<string[]> {
+  const response = await apiRequest(
+    `/api/v1/spaces/${spaceId}/properties/values?key=${encodeURIComponent(key)}`,
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()).values;
 }
 
 describe("a document holds one property per key, whatever the case", () => {
@@ -290,7 +297,7 @@ describe("the space-wide listing folds spellings together", () => {
     );
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].values).toEqual(["north", "south"]);
+    expect(await listPropertyValues("REGION")).toEqual(["north", "south"]);
   });
 });
 

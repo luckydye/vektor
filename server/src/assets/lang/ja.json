@@ -452,7 +452,7 @@
   "Remove filter": "フィルターを削除",
   "Properties": "プロパティ",
   "any value": "任意の値",
-  "+{count} more": "+他{count}件",
+  "More values…": "その他の値…",
   "Access Tokens": "アクセストークン",
   "Tokens let the CLI and the API act as you. Treat them like passwords.": "トークンを使うとCLIとAPIがあなたとして動作します。パスワードと同様に扱ってください。",
   "Copy your token now — it is never shown again.": "トークンは二度と表示されません。今すぐコピーしてください。",

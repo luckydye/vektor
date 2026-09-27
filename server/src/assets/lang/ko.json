@@ -452,7 +452,7 @@
   "Remove filter": "필터 제거",
   "Properties": "속성",
   "any value": "모든 값",
-  "+{count} more": "외 {count}개",
+  "More values…": "더 많은 값…",
   "Access Tokens": "액세스 토큰",
   "Tokens let the CLI and the API act as you. Treat them like passwords.": "토큰을 사용하면 CLI와 API가 사용자를 대신해 작업합니다. 비밀번호처럼 취급하세요.",
   "Copy your token now — it is never shown again.": "지금 토큰을 복사하세요. 다시 표시되지 않습니다.",

@@ -1,5 +1,5 @@
 import { createMemo, createSignal } from "solid-js";
-import { useProperties } from "./useProperties.ts";
+import { usePropertyMutations } from "./useProperties.ts";
 import { useSpace } from "./useSpace.ts";
 import { useUploads } from "./useUploads.ts";
 
@@ -24,7 +24,7 @@ export const [uploadingDocumentId, setUploadingDocumentId] = createSignal<string
 
 export function useHeaderImage() {
   const { currentSpaceId } = useSpace();
-  const { updateProperty } = useProperties();
+  const { updateProperty } = usePropertyMutations();
   const { uploadFile } = useUploads();
 
   const isUploading = createMemo(() => uploadingDocumentId() !== null);

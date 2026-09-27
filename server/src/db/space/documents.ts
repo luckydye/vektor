@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, type SQL, sql } from "drizzle-orm";
 import { type AclViewer, Permission, ResourceType } from "#acl/permissions.ts";
 import { filterReadableResources, revokePermission } from "#acl/store.ts";
 import { many, one } from "#db/client/query.ts";
@@ -764,6 +764,57 @@ export function decodeListCursor(cursor: string): { updatedAt: Date; id: string 
   return { updatedAt: new Date(pos.t), id: pos.id as string };
 }
 
+/**
+ * One page of the documents matching `condition` that `viewer` may read, newest
+ * first. Only ids and timestamps are read for the whole set; `total` counts it.
+ */
+async function readableDocumentPage(
+  s: SpaceStore,
+  condition: SQL | undefined,
+  viewer: AclViewer,
+  options: { limit?: number; cursor?: string },
+): Promise<{ ids: string[]; total: number; nextCursor: string | null }> {
+  const all = await many(
+    s.db
+      .select({ id: document.id, updatedAt: document.updatedAt })
+      .from(document)
+      .where(condition)
+      .orderBy(desc(document.updatedAt), desc(document.id)),
+  );
+  const readable = await filterReadableResources(
+    s.spaceId,
+    ResourceType.DOCUMENT,
+    all.map((doc) => doc.id),
+    viewer,
+  );
+  const visible = all.filter((doc) => readable.has(doc.id));
+
+  let start = 0;
+  const pos = options.cursor ? decodeListCursor(options.cursor) : null;
+  if (pos) {
+    const idx = visible.findIndex(
+      (doc) =>
+        doc.updatedAt < pos.updatedAt ||
+        (doc.updatedAt.getTime() === pos.updatedAt.getTime() && doc.id < pos.id),
+    );
+    start = idx === -1 ? visible.length : idx;
+  }
+  const pageLimit = options.limit ?? visible.length;
+  const page = visible.slice(start, start + pageLimit);
+  const last = page[page.length - 1];
+  const nextCursor =
+    start + pageLimit < visible.length && last
+      ? encodeListCursor(last.updatedAt, last.id)
+      : null;
+  return { ids: page.map((doc) => doc.id), total: visible.length, nextCursor };
+}
+
+/** Rows for `ids`, in the order of `ids`. */
+function inIdOrder<T extends { id: string }>(ids: string[], rows: T[]): T[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids.map((id) => byId.get(id)).filter((row): row is T => row !== undefined);
+}
+
 export async function listDocuments(
   s: SpaceStore,
   options: {
@@ -828,42 +879,17 @@ export async function listDocuments(
   let nextCursor: string | null = null;
 
   if (viewer) {
-    // ACL filtering requires fetching all docs before paginating.
-    const allDocs = await many(
-      s.db
-        .select(selectFields)
-        .from(document)
-        .where(baseCondition)
-        .orderBy(desc(document.updatedAt), desc(document.id)),
-    );
-    const readable = await filterReadableResources(
-      s.spaceId,
-      ResourceType.DOCUMENT,
-      allDocs.map((d) => d.id),
-      viewer,
-    );
-    const visible = allDocs.filter((d) => readable.has(d.id));
-    total = visible.length;
-
-    let start = 0;
-    if (cursor) {
-      const pos = decodeListCursor(cursor);
-      if (pos) {
-        const idx = visible.findIndex(
-          (d) =>
-            d.updatedAt < pos.updatedAt ||
-            (d.updatedAt.getTime() === pos.updatedAt.getTime() && d.id < pos.id),
-        );
-        start = idx === -1 ? visible.length : idx;
-      }
-    }
-    const pageLimit = limit ?? visible.length;
-    const page = visible.slice(start, start + pageLimit) as DocRow[];
-    if (start + pageLimit < visible.length) {
-      const last = page[page.length - 1];
-      nextCursor = last ? encodeListCursor(last.updatedAt, last.id) : null;
-    }
-    docs = page;
+    const page = await readableDocumentPage(s, baseCondition, viewer, { limit, cursor });
+    total = page.total;
+    nextCursor = page.nextCursor;
+    docs = page.ids.length
+      ? inIdOrder(
+          page.ids,
+          (await many(
+            s.db.select(selectFields).from(document).where(inArray(document.id, page.ids)),
+          )) as DocRow[],
+        )
+      : [];
   } else {
     // Keyset pagination: no cursor = first page (no seek condition).
     const pos = cursor ? decodeListCursor(cursor) : null;
@@ -1160,7 +1186,7 @@ async function countMentionsForUser(
 
 /**
  * List documents for multiple categories in one pass.
- * For each category slug, includes documents directly in that category plus all descendants.
+ * For each category slug, includes documents directly in that category plus all descendants, except records.
  *
  * Returns a `Map`, not a `Record`: the slugs come straight off the query string,
  * and `result["__proto__"] = docs` on an object literal reassigns the prototype
@@ -1179,39 +1205,25 @@ export async function listAllDocumentsByCategories(
     return new Map();
   }
 
-  let docs = await many(
+  // The tree is walked on ids alone; full rows are read only for what is returned.
+  const nodes = await many(
     s.db
-      .select({
-        id: document.id,
-        createdAt: document.createdAt,
-        updatedAt: document.updatedAt,
-        parentId: document.parentId,
-        publishedRev: document.publishedRev,
-        slug: document.slug,
-        type: document.type,
-        currentRev: document.currentRev,
-        changeSeq: document.changeSeq,
-        createdBy: document.createdBy,
-        readonly: document.readonly,
-        archived: document.archived,
-      })
+      .select({ id: document.id, parentId: document.parentId, type: document.type })
       .from(document)
-      .where(nonArchivedDocumentCondition)
-      .orderBy(desc(document.updatedAt), desc(document.id)),
+      .where(nonArchivedDocumentCondition),
   );
-
   const parentByIdAll = new Map<string, string | null>(
-    docs.map((doc) => [doc.id, doc.parentId || null]),
+    nodes.map((node) => [node.id, node.parentId || null]),
   );
 
   const readableIds = viewer
     ? await filterReadableResources(
         s.spaceId,
         ResourceType.DOCUMENT,
-        docs.map((doc) => doc.id),
+        nodes.map((node) => node.id),
         viewer,
       )
-    : new Set<string>(docs.map((doc) => doc.id));
+    : new Set<string>(nodes.map((node) => node.id));
 
   const includedIds = new Set<string>(readableIds);
   for (const id of readableIds) {
@@ -1221,26 +1233,92 @@ export async function listAllDocumentsByCategories(
       parentId = parentByIdAll.get(parentId);
     }
   }
-  const lockedIds = new Set<string>(
-    [...includedIds].filter((id) => !readableIds.has(id)),
+
+  const slugsByDocId = new Map<string, string[]>();
+  const tagRows = await many(
+    s.db
+      .select({ documentId: property.documentId, value: property.value })
+      .from(property)
+      .where(inArray(property.key, ["category", "collection"])),
   );
+  for (const row of tagRows) {
+    if (!includedIds.has(row.documentId)) continue;
+    const parsed = parseStoredPropertyValue(row.value);
+    const slugs = (Array.isArray(parsed) ? parsed : [parsed]).filter((slug) =>
+      uniqueSlugs.includes(slug),
+    );
+    if (slugs.length === 0) continue;
+    slugsByDocId.set(row.documentId, [...(slugsByDocId.get(row.documentId) ?? []), ...slugs]);
+  }
 
-  docs = docs.filter((doc) => includedIds.has(doc.id));
+  const docIdsBySlug = new Map<string, Set<string>>();
+  for (const slug of uniqueSlugs) {
+    docIdsBySlug.set(slug, new Set<string>());
+  }
 
-  // `includedIds` is already closed under "ancestor of" (the loop above grows
-  // it upward until an id is already present), so every id the chain-walk
-  // below ever looks up is in this set — scoping here, not a scan of every
-  // property in the space, whatever its size.
-  const includedIdList = [...includedIds];
-  const allProps =
-    includedIdList.length > 0
+  // A document shows under every category tagged on itself or any ancestor, and
+  // brings its whole ancestor chain into that bucket so the tree can nest it.
+  for (const node of nodes) {
+    if (!includedIds.has(node.id)) continue;
+    const chain: string[] = [];
+    for (let id: string | null | undefined = node.id; id; id = parentByIdAll.get(id)) {
+      chain.push(id);
+    }
+
+    const slugs = new Set(chain.flatMap((id) => slugsByDocId.get(id) ?? []));
+    for (const slug of slugs) {
+      const bucket = docIdsBySlug.get(slug);
+      if (bucket) for (const id of chain) bucket.add(id);
+    }
+  }
+
+  // Records are listed by their database, never in the category tree.
+  const recordIds = new Set(
+    nodes.filter((node) => node.type === "record").map((node) => node.id),
+  );
+  const resultIds = new Set<string>();
+  for (const ids of docIdsBySlug.values()) {
+    for (const id of ids) {
+      // An archived parent can sit in a chain; only live documents are listed.
+      if (parentByIdAll.has(id) && includedIds.has(id) && !recordIds.has(id)) {
+        resultIds.add(id);
+      }
+    }
+  }
+  const resultIdList = [...resultIds];
+
+  const docs =
+    resultIdList.length > 0
       ? await many(
-          s.db.select().from(property).where(inArray(property.documentId, includedIdList)),
+          s.db
+            .select({
+              id: document.id,
+              createdAt: document.createdAt,
+              updatedAt: document.updatedAt,
+              parentId: document.parentId,
+              publishedRev: document.publishedRev,
+              slug: document.slug,
+              type: document.type,
+              currentRev: document.currentRev,
+              changeSeq: document.changeSeq,
+              createdBy: document.createdBy,
+              readonly: document.readonly,
+              archived: document.archived,
+            })
+            .from(document)
+            .where(inArray(document.id, resultIdList))
+            .orderBy(desc(document.updatedAt), desc(document.id)),
+        )
+      : [];
+  const allProps =
+    resultIdList.length > 0
+      ? await many(
+          s.db.select().from(property).where(inArray(property.documentId, resultIdList)),
         )
       : [];
   const propsByDocId = toDocumentPropertiesByDocument(allProps);
 
-  const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
+  const results: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
     slug: doc.slug,
     type: doc.type || "document",
@@ -1255,52 +1333,18 @@ export async function listAllDocumentsByCategories(
     parentId: doc.parentId || null,
     readonly: doc.readonly,
     archived: doc.archived,
-    locked: lockedIds.has(doc.id),
+    locked: !readableIds.has(doc.id),
   }));
-
-  const docIdsBySlug = new Map<string, Set<string>>();
-  for (const slug of uniqueSlugs) {
-    docIdsBySlug.set(slug, new Set<string>());
-  }
-
-  // A document shows under every category tagged on itself or any ancestor, and
-  // brings its whole ancestor chain into that bucket so the tree can nest it.
-  for (const doc of typeFilteredResults) {
-    const chain: string[] = [];
-    for (let id: string | null | undefined = doc.id; id; id = parentByIdAll.get(id)) {
-      chain.push(id);
-    }
-
-    const slugs = new Set<string>();
-    for (const id of chain) {
-      const props = propsByDocId.get(id);
-      for (const value of [props?.category, props?.collection]) {
-        for (const slug of Array.isArray(value) ? value : value ? [value] : []) {
-          if (docIdsBySlug.has(slug)) slugs.add(slug);
-        }
-      }
-    }
-
-    for (const slug of slugs) {
-      const bucket = docIdsBySlug.get(slug);
-      if (bucket) for (const id of chain) bucket.add(id);
-    }
-  }
 
   const mentionCountByDocId = new Map<string, number>();
   if (userEmail) {
-    const docIds = new Set<string>();
-    for (const ids of docIdsBySlug.values()) {
-      for (const id of ids) {
-        docIds.add(id);
-      }
-    }
-
     await Promise.all(
-      Array.from(docIds).map(async (docId) => {
-        const count = await countMentionsForUser(s, docId, userEmail);
-        mentionCountByDocId.set(docId, count);
-      }),
+      results
+        .filter((doc) => !doc.locked)
+        .map(async (doc) => {
+          const count = await countMentionsForUser(s, doc.id, userEmail);
+          mentionCountByDocId.set(doc.id, count);
+        }),
     );
   }
 
@@ -1308,7 +1352,7 @@ export async function listAllDocumentsByCategories(
 
   for (const slug of uniqueSlugs) {
     const ids = docIdsBySlug.get(slug) || new Set<string>();
-    const bucket = typeFilteredResults
+    const bucket = results
       .filter((doc) => ids.has(doc.id))
       .map((doc) => {
         const base = doc.locked
@@ -1413,46 +1457,15 @@ export async function getDocumentChildren(
   let nextCursor: string | null = null;
 
   if (viewer) {
-    // Per-document ACL filtering needs every child's id before it can say which
-    // page is whose, the same tradeoff `listDocuments` makes for a resource-
-    // scoped grantee — but bounded by this one parent's children, not the
-    // space, so it stays cheap at the scale that actually matters here: a
-    // database with tens of thousands of records almost never has a
-    // resource grant scoped to less than the whole parent.
-    const allDocs = await many(
-      s.db
-        .select()
-        .from(document)
-        .where(baseCondition)
-        .orderBy(desc(document.updatedAt), desc(document.id)),
-    );
-    const readable = await filterReadableResources(
-      s.spaceId,
-      ResourceType.DOCUMENT,
-      allDocs.map((doc) => doc.id),
-      viewer,
-    );
-    const visible = allDocs.filter((doc) => readable.has(doc.id));
-    total = visible.length;
-
-    let start = 0;
-    if (cursor) {
-      const pos = decodeListCursor(cursor);
-      if (pos) {
-        const idx = visible.findIndex(
-          (doc) =>
-            doc.updatedAt < pos.updatedAt ||
-            (doc.updatedAt.getTime() === pos.updatedAt.getTime() && doc.id < pos.id),
-        );
-        start = idx === -1 ? visible.length : idx;
-      }
-    }
-    const pageLimit = limit ?? visible.length;
-    docs = visible.slice(start, start + pageLimit);
-    if (start + pageLimit < visible.length) {
-      const last = docs[docs.length - 1];
-      nextCursor = last ? encodeListCursor(last.updatedAt, last.id) : null;
-    }
+    const page = await readableDocumentPage(s, baseCondition, viewer, { limit, cursor });
+    total = page.total;
+    nextCursor = page.nextCursor;
+    docs = page.ids.length
+      ? inIdOrder(
+          page.ids,
+          await many(s.db.select().from(document).where(inArray(document.id, page.ids))),
+        )
+      : [];
   } else {
     // A null viewer is a trusted system caller: the same keyset pagination
     // `listDocuments` uses, so a database's own row count never dictates how

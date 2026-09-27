@@ -138,6 +138,8 @@ export function assertWritableDocumentPropertyKey(key: string): void {
 }
 
 export function parseStoredPropertyValue(value: string): DocumentPropertyValue {
+  // Only an array is unpacked, so anything else skips the (throwing) parse.
+  if (!value.startsWith("[")) return value;
   try {
     const parsed = JSON.parse(value);
     if (Array.isArray(parsed)) {
@@ -341,62 +343,42 @@ export interface Property {
   value?: DocumentPropertyValue;
 }
 
-/** A property key known space-wide, with the values already used for it. */
+/** A property key known space-wide. Its values are listed per key on demand. */
 export interface SpaceProperty {
   name: string;
   type: string | null;
-  values: string[];
 }
 
-/** A stored property row, reduced to what the space-wide listing reads. */
-export interface StoredPropertyRow {
+/** One stored spelling of a property key, with how many rows use it. */
+export interface StoredPropertyKeyRow {
   key: string;
-  value: string;
   type: string | null;
+  count: number;
 }
 
 /**
- * Fold property rows into one entry per key, carrying the distinct values seen.
- *
- * Keyed on a `Map`, and pure and exported so that is testable without a
- * database. Property keys are user-controlled, and on a plain object
- * `byKey["constructor"]` resolves to the inherited `Object` constructor: the
- * truthiness guard below would treat it as an existing entry, skip the
- * initializer, and then call `.values.add` on `Object`. A single document
- * property named `constructor`, `__proto__`, `toString`, `hasOwnProperty` or
- * `valueOf` used to 500 the space-wide property listing — and with it the
- * property panel, the filters and the database-view columns — for every user in
- * the space.
+ * Fold stored key spellings into one entry per canonical key, named by the
+ * spelling most rows use. Keyed on a `Map` because keys are user-controlled and
+ * a plain object would resolve `constructor` or `__proto__` to inherited members.
  */
-export function aggregateStoredProperties(rows: StoredPropertyRow[]): SpaceProperty[] {
-  const byKey = new Map<
-    string,
-    { spellings: Map<string, number>; type: string | null; values: Set<string> }
-  >();
+export function aggregateStoredProperties(rows: StoredPropertyKeyRow[]): SpaceProperty[] {
+  const byKey = new Map<string, { spellings: Map<string, number>; type: string | null }>();
 
   for (const row of rows) {
     const canonical = canonicalPropertyKey(row.key);
     let entry = byKey.get(canonical);
     if (!entry) {
-      entry = { spellings: new Map(), type: row.type || null, values: new Set<string>() };
+      entry = { spellings: new Map(), type: row.type || null };
       byKey.set(canonical, entry);
     }
 
-    entry.spellings.set(row.key, (entry.spellings.get(row.key) ?? 0) + 1);
-
-    const parsed = parseStoredPropertyValue(row.value);
-    for (const value of Array.isArray(parsed) ? parsed : [parsed]) {
-      if (!value) continue;
-      entry.values.add(value);
-    }
-
+    entry.spellings.set(row.key, (entry.spellings.get(row.key) ?? 0) + row.count);
     if (row.type && !entry.type) entry.type = row.type;
   }
 
   return Array.from(byKey, ([, data]) => ({
     name: prevailingSpelling(data.spellings),
     type: data.type,
-    values: Array.from(data.values).sort(),
   }));
 }
 
