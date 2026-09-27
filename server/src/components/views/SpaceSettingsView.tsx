@@ -13,7 +13,7 @@ export function SpaceSettingsView() {
 
   return (
     <Show when={currentSpace()}>
-      <inset-view class="block h-full px-xs pt-xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:px-m lg:pb-8 print:px-0">
+      <inset-view class="block h-full p-4xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">
         <Show when={isOwner()} fallback={<NoAccess />}>
           <SpaceSettings />
         </Show>

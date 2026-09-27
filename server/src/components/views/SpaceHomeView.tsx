@@ -60,7 +60,7 @@ export function SpaceHomeView() {
           class="relative flex h-full min-h-screen flex-col overflow-x-hidden"
           onSelect={(file) => void uploadDroppedFile(file)}
         >
-          <inset-view class="block h-full space-y-12 px-xs pt-m pb-20 md:mr-(--inset-right) md:ml-(--inset-left) lg:px-xl lg:pb-8 print:px-0">
+          <inset-view class="block h-full space-y-12 p-2xs pb-20 md:mr-(--inset-right) md:ml-(--inset-left) print:px-0">
             <SpaceHomeHeadline
               date={new Intl.DateTimeFormat(locale, {
                 weekday: "long",

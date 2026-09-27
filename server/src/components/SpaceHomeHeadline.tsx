@@ -6,7 +6,7 @@ interface Props {
 
 export function SpaceHomeHeadline(props: Props) {
   return (
-    <header class="pt-4xs md:pt-s">
+    <header class="pt-4xs">
       <p class="mb-3 font-semibold text-primary-600 text-size-small uppercase tracking-[0.12em] dark:text-primary-300">
         {props.date}
       </p>
