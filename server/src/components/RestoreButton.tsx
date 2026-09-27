@@ -1,6 +1,8 @@
 import { createSignal } from "solid-js";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 interface Props {
   documentId: string;
@@ -11,11 +13,11 @@ export function RestoreButton(props: Props) {
   const { currentSpaceId } = useSpace();
 
   async function handleRestore() {
-    if (!confirm("Are you sure you want to restore this document?")) return;
+    if (!(await confirmDialog("Are you sure you want to restore this document?"))) return;
 
     const spaceId = currentSpaceId();
     if (!spaceId) {
-      alert("No space selected");
+      useToast().error("No space selected");
       return;
     }
 
@@ -24,7 +26,7 @@ export function RestoreButton(props: Props) {
       await api.document.restore(spaceId, props.documentId);
       window.location.reload();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to restore document");
+      useToast().error(err instanceof Error ? err.message : "Failed to restore document");
     } finally {
       setIsLoading(false);
     }

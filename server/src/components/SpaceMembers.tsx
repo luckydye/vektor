@@ -32,6 +32,8 @@ import { FilterSelect, type FilterSelectOption } from "./FilterSelect.tsx";
 import "./AvatarElement.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { Icon } from "./Icon.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 /** Scope select values that carry the id of the resource a grant lands on. */
 const CATEGORY_SCOPE_PREFIX = "category:";
@@ -177,7 +179,12 @@ export function SpaceMembers() {
   async function handleRevokeToken(tokenId: string) {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
-    if (!confirm("Revoke this token? Anything using it stops working immediately."))
+    if (
+      !(await confirmDialog(
+        "Revoke this token? Anything using it stops working immediately.",
+        { tone: "danger" },
+      ))
+    )
       return;
     setError(null);
     try {
@@ -191,7 +198,8 @@ export function SpaceMembers() {
   async function handleDeleteToken(tokenId: string) {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
-    if (!confirm("Delete this token and its access?")) return;
+    if (!(await confirmDialog("Delete this token and its access?", { tone: "danger" })))
+      return;
     setError(null);
     try {
       await api.accessTokens.delete(spaceId, tokenId);
@@ -576,7 +584,7 @@ export function SpaceMembers() {
       });
       await fetchPermissions();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update role");
+      useToast().error(err instanceof Error ? err.message : "Failed to update role");
     } finally {
       setUpdatingMember(null);
     }
@@ -590,7 +598,12 @@ export function SpaceMembers() {
     const memberType = perm.permission.userId ? "user" : "group";
     const isGroup = memberType === "group";
 
-    if (!confirm(`Are you sure you want to remove this ${memberType}?`)) return;
+    if (
+      !(await confirmDialog(`Are you sure you want to remove this ${memberType}?`, {
+        tone: "danger",
+      }))
+    )
+      return;
 
     setRemovingMember(memberId ?? null);
 
@@ -608,7 +621,7 @@ export function SpaceMembers() {
       });
       await fetchPermissions();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove member");
+      useToast().error(err instanceof Error ? err.message : "Failed to remove member");
     } finally {
       setRemovingMember(null);
     }

@@ -8,6 +8,7 @@ import { propertyValueToText } from "#documents/properties.ts";
 import { formatDateTime } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
 type WorkflowRunRow = WorkflowRunsPage["runs"][number];
@@ -172,7 +173,12 @@ export function JobsSettings() {
   async function handleDeleteSchedule(scheduleId: string) {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
-    if (!confirm("Delete this schedule? Run history is preserved.")) return;
+    if (
+      !(await confirmDialog("Delete this schedule? Run history is preserved.", {
+        tone: "danger",
+      }))
+    )
+      return;
     setScheduleError(null);
     try {
       await api.workflows.deleteSchedule(spaceId, scheduleId);

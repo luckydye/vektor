@@ -10,6 +10,7 @@ import { browserLang, createTranslator } from "#utils/lang.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 import { handleVideoUpload } from "./VideoUpload.ts";
+import { promptDialog } from "#composeables/useDialogs.ts";
 
 const t = createTranslator(browserLang());
 
@@ -30,7 +31,7 @@ type ColumnLayoutCommandChain = {
 };
 
 async function createDocumentAndInsertMention(editor: Editor, spaceId: string) {
-  const title = window.prompt(t("New document title:"))?.trim();
+  const title = (await promptDialog(t("New document title:")))?.trim();
   if (!title) return;
 
   const doc = await api.documents.post(spaceId, {

@@ -28,6 +28,7 @@ import { PagerCursor } from "./PagerCursor.tsx";
 import { SearchFilters } from "./SearchFilters.tsx";
 import { type QueryProperty, SearchQueryInput } from "./SearchQueryInput.tsx";
 import { SpaceLogo } from "./SpaceLogo.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 interface Props {
   spaceId: string;
@@ -507,7 +508,7 @@ export function Search(props: Props) {
               .replace("{documents}", documents)
               .replace("{files}", files);
 
-    if (!confirm(confirmation)) return;
+    if (!(await confirmDialog(confirmation, { tone: "danger" }))) return;
 
     setBatchProgress({ done: 0, total: ids.length });
     const advance = () =>

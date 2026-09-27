@@ -5,6 +5,7 @@ import { useLocale } from "#composeables/useTranslation.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Button } from "./Button.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
+import { confirmDialog, promptDialog } from "#composeables/useDialogs.ts";
 
 export function SpaceSecretsSettings() {
   const lang = useLocale();
@@ -88,7 +89,7 @@ export function SpaceSecretsSettings() {
   async function handleRotateSecret(name: string) {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
-    const newValue = window.prompt(`Enter new value for ${name}`);
+    const newValue = await promptDialog(`Enter new value for ${name}`);
     if (!newValue) return;
 
     const meta = secrets().find((s) => s.name === name);
@@ -107,7 +108,7 @@ export function SpaceSecretsSettings() {
   async function handleDeleteSecret(name: string) {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
-    if (!confirm(`Delete secret '${name}'?`)) return;
+    if (!(await confirmDialog(`Delete secret '${name}'?`, { tone: "danger" }))) return;
 
     try {
       await api.secrets.delete(spaceId, name);

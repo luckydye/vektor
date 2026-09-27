@@ -4,6 +4,7 @@ import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import { iconMarkup } from "#components/Icon.tsx";
 import { browserLang, createTranslator } from "#utils/lang.ts";
+import { promptDialog } from "#composeables/useDialogs.ts";
 
 const t = createTranslator(browserLang());
 
@@ -627,12 +628,12 @@ if (
         this.update();
       }
 
-      private setLink() {
+      private async setLink() {
         const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const previousUrl = editor.getAttributes("link").href;
-        const url = window.prompt(t("Enter URL:"), previousUrl);
+        const url = await promptDialog(t("Enter URL:"), previousUrl);
         if (url === null) return;
         if (url === "") {
           editor.chain().focus().extendMarkRange("link").unsetLink().run();

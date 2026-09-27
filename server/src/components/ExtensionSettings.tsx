@@ -5,6 +5,7 @@ import { config } from "#config";
 import { formatDate } from "#utils/dateFormat.ts";
 import { AddExtensionDialog } from "./AddExtensionDialog.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 const AVATAR_COLORS = [
   "#e11d48",
@@ -68,7 +69,12 @@ export function ExtensionSettings() {
   }
 
   async function handleDelete(extensionId: string) {
-    if (!confirm("Are you sure you want to delete this extension?")) return;
+    if (
+      !(await confirmDialog("Are you sure you want to delete this extension?", {
+        tone: "danger",
+      }))
+    )
+      return;
     await deleteExtension(extensionId);
   }
 

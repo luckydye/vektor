@@ -12,6 +12,7 @@ import "@atrium-ui/elements/popover";
 import { useTranslation } from "#composeables/useTranslation.ts";
 import { Icon } from "./Icon.tsx";
 import { UserPreferencesPanel } from "./UserPreferencesPanel.tsx";
+import { useToast } from "#composeables/useToast.ts";
 
 export function UserProfile() {
   const t = useTranslation();
@@ -40,7 +41,7 @@ export function UserProfile() {
   async function handleLogout(event: MouseEvent) {
     const { error } = await authClient.signOut();
     if (error) {
-      alert(`${t("Sign out failed")}: ${error.message ?? error.statusText}`);
+      useToast().error(`${t("Sign out failed")}: ${error.message ?? error.statusText}`);
       return;
     }
     (event.target as Element | null)?.dispatchEvent(

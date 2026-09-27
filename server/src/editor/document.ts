@@ -41,6 +41,7 @@ import {
   type EditorContext,
 } from "./extensions.ts";
 import { highlightStaticCodeBlocks } from "./prism.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
 
@@ -613,7 +614,7 @@ export class DocumentView extends HTMLElement {
       );
 
     if (!insertedImages && !insertedVideos && !insertedAttachments) {
-      alert("Upload is not available in this editor.");
+      useToast().error("Upload is not available in this editor.");
     }
   };
 

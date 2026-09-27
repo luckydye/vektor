@@ -2,6 +2,7 @@ import type { Editor } from "@tiptap/core";
 import { Actions } from "#utils/actions.ts";
 import { createTranslator } from "#utils/lang.ts";
 import { canIndent, canOutdent, indentEditor, outdentEditor } from "./indent.ts";
+import { promptDialog } from "#composeables/useDialogs.ts";
 
 /**
  * Register all formatting actions
@@ -310,7 +311,7 @@ export function registerFormattingActions(getEditor: () => Editor, lang: string)
       if (!isEditorAvailable()) return;
       const editor = getEditor();
       const previousUrl = editor.getAttributes("link").href;
-      const url = window.prompt("Enter URL:", previousUrl);
+      const url = await promptDialog(t("Enter URL:"), previousUrl);
 
       if (url === null) {
         return;

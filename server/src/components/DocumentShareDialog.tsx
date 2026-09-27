@@ -11,6 +11,8 @@ import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./Icon.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
 import "./AvatarElement.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 interface Props {
   show: boolean;
@@ -256,7 +258,12 @@ export function DocumentShareDialog(props: Props) {
 
   async function revokeLink(link: ShareLink) {
     const spaceId = currentSpaceId();
-    if (!spaceId || !confirm(t("Revoke this link? Anyone holding it loses access."))) {
+    if (
+      !spaceId ||
+      !(await confirmDialog(t("Revoke this link? Anyone holding it loses access."), {
+        tone: "danger",
+      }))
+    ) {
       return;
     }
     try {
@@ -309,7 +316,12 @@ export function DocumentShareDialog(props: Props) {
     const spaceId = currentSpaceId();
     const grants = directGrants(entry);
     if (!spaceId || grants.length === 0) return;
-    if (!confirm(t("Remove this person's document access?"))) return;
+    if (
+      !(await confirmDialog(t("Remove this person's document access?"), {
+        tone: "danger",
+      }))
+    )
+      return;
     try {
       for (const grant of grants) {
         await api.permissions.revoke(spaceId, {
@@ -322,7 +334,7 @@ export function DocumentShareDialog(props: Props) {
       }
       await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : t("Failed to remove"));
+      useToast().error(err instanceof Error ? err.message : t("Failed to remove"));
     }
   }
 

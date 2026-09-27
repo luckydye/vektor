@@ -6,6 +6,7 @@ import { reportUploadFailure, useUploads } from "#composeables/useUploads.ts";
 import { isVideoFile } from "#files/fileTypes.ts";
 import { ResizableNodeView } from "./resizable.ts";
 import { nodeFromSpec } from "./specSchema.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 export interface VideoUploadOptions {
   spaceId: string;
@@ -244,7 +245,7 @@ export async function handleVideoUpload(
   documentId?: string,
 ): Promise<void> {
   if (!spaceId) {
-    alert("Video upload is not available in this editor.");
+    useToast().error("Video upload is not available in this editor.");
     return;
   }
 
@@ -258,7 +259,7 @@ export async function handleVideoUpload(
     if (!file) return;
 
     if (!isVideoFile(file)) {
-      alert("Please select a video file");
+      useToast().error("Please select a video file");
       return;
     }
 

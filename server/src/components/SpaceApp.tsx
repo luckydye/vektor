@@ -35,6 +35,7 @@ import { DockedWindowLayout } from "./DockedWindowLayout.tsx";
 import { DocumentOrganizationTour } from "./DocumentOrganizationTour.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
+import { DialogHost } from "./DialogHost.tsx";
 import { DocumentPageView } from "./views/DocumentPageView.tsx";
 import { ExtensionRouteView } from "./views/ExtensionRouteView.tsx";
 import { NotFoundView } from "./views/NotFoundView.tsx";
@@ -310,6 +311,7 @@ export function SpaceApp(props: Props) {
         />
         <CalDAVSetupDialog />
         <ToastContainer />
+        <DialogHost />
         <AIChatPanel documentId={documentContext[0]().documentId ?? ""} />
         <CommandPalatte />
       </Show>

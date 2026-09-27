@@ -4,6 +4,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
 import { reportUploadFailure, useUploads } from "#composeables/useUploads.ts";
 import { nodeFromSpec } from "./specSchema.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 export interface FileAttachmentOptions {
   spaceId: string;
@@ -339,7 +340,7 @@ export async function handleFileAttachmentUpload(
   documentId?: string,
 ): Promise<void> {
   if (!spaceId) {
-    alert("File upload is not available in this editor.");
+    useToast().error("File upload is not available in this editor.");
     return;
   }
 

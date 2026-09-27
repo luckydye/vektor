@@ -30,6 +30,7 @@ import { Icon } from "./Icon.tsx";
 import { SettingsLayout } from "./SettingsLayout.tsx";
 import { SettingsSection } from "./SettingsSection.tsx";
 import { SwitchToggle } from "./SwitchToggle.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 interface Props {
   onClose?: () => void;
@@ -215,14 +216,20 @@ export function UserPreferencesPanel(props: Props) {
     }
   };
 
-  const revokeToken = (tokenId: string) => {
-    if (!confirm(t("Revoke this token? Anything using it stops working immediately.")))
+  const revokeToken = async (tokenId: string) => {
+    if (
+      !(await confirmDialog(
+        t("Revoke this token? Anything using it stops working immediately."),
+        { tone: "danger" },
+      ))
+    )
       return;
     void accessTokens.revoke(tokenId);
   };
 
-  const deleteToken = (tokenId: string) => {
-    if (!confirm(t("Delete this token permanently?"))) return;
+  const deleteToken = async (tokenId: string) => {
+    if (!(await confirmDialog(t("Delete this token permanently?"), { tone: "danger" })))
+      return;
     void accessTokens.remove(tokenId);
   };
 
@@ -248,7 +255,12 @@ export function UserPreferencesPanel(props: Props) {
   const handleDisconnectIntegration = async (provider: OAuthIntegrationProvider) => {
     const spaceId = currentSpace()?.id;
     if (!spaceId) return;
-    if (!confirm(t("Disconnect {provider}?").replace("{provider}", provider))) return;
+    if (
+      !(await confirmDialog(t("Disconnect {provider}?").replace("{provider}", provider), {
+        tone: "danger",
+      }))
+    )
+      return;
     setDisconnectingProvider(provider);
     setIntegrationsError(null);
     setIntegrationsMessage(null);

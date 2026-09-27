@@ -3,6 +3,8 @@ import { api } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
 import { DocumentGroupedList } from "./DocumentGroupedList.tsx";
 import { Icon } from "./Icon.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 interface Props {
   spaceId: string;
@@ -30,38 +32,44 @@ export function ArchivedDocuments(props: Props) {
       await api.document.restore(props.spaceId, documentId);
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to restore document");
+      useToast().error(err instanceof Error ? err.message : "Failed to restore document");
     }
   }
 
   async function handleDelete(documentId: string) {
-    if (!confirm("Permanently delete this document? This cannot be undone.")) return;
+    if (
+      !(await confirmDialog("Permanently delete this document? This cannot be undone.", {
+        tone: "danger",
+      }))
+    )
+      return;
     try {
       await api.document.delete(props.spaceId, documentId);
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete document");
+      useToast().error(err instanceof Error ? err.message : "Failed to delete document");
     }
   }
 
   async function handleBatchRestore(ids: Set<string>, deselectAll: () => void) {
     const count = ids.size;
-    if (!confirm(`Restore ${count} document${count !== 1 ? "s" : ""}?`)) return;
+    if (!(await confirmDialog(`Restore ${count} document${count !== 1 ? "s" : ""}?`))) return;
     try {
       for (const id of ids) await api.document.restore(props.spaceId, id);
       deselectAll();
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to restore documents");
+      useToast().error(err instanceof Error ? err.message : "Failed to restore documents");
     }
   }
 
   async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
     const count = ids.size;
     if (
-      !confirm(
+      !(await confirmDialog(
         `Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`,
-      )
+        { tone: "danger" },
+      ))
     )
       return;
     try {
@@ -69,7 +77,7 @@ export function ArchivedDocuments(props: Props) {
       deselectAll();
       refetch();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete documents");
+      useToast().error(err instanceof Error ? err.message : "Failed to delete documents");
     }
   }
 

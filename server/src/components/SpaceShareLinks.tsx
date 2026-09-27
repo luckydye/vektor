@@ -5,6 +5,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
 import { formatAbsoluteDate } from "#utils/dateFormat.ts";
 import { Icon } from "./Icon.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 type ShareLinkStatus = "active" | "expired" | "revoked";
 
@@ -77,7 +78,12 @@ export function SpaceShareLinks() {
 
   async function revokeLink(link: ShareLink) {
     const spaceId = currentSpaceId();
-    if (!spaceId || !confirm(t("Revoke this link? Anyone holding it loses access."))) {
+    if (
+      !spaceId ||
+      !(await confirmDialog(t("Revoke this link? Anyone holding it loses access."), {
+        tone: "danger",
+      }))
+    ) {
       return;
     }
 

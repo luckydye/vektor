@@ -2,6 +2,7 @@ import { createMemo, createSignal } from "solid-js";
 import { usePropertyMutations } from "./useProperties.ts";
 import { useSpace } from "./useSpace.ts";
 import { useUploads } from "./useUploads.ts";
+import { confirmDialog } from "./useDialogs.ts";
 
 const HEADER_IMAGE_PROPERTY = "headerImage";
 
@@ -65,7 +66,8 @@ export function useHeaderImage() {
   async function removeHeaderImage(documentId: string) {
     const spaceId = currentSpaceId();
     if (!spaceId) return;
-    if (!confirm("Remove the header image from this document?")) return;
+    if (!(await confirmDialog("Remove the header image from this document?", { tone: "danger" })))
+      return;
     await saveHeaderImage(documentId, "");
   }
 

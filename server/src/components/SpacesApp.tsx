@@ -19,6 +19,7 @@ import { DeleteSpaceDialog } from "./DeleteSpaceDialog.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { type OverviewSpace, SpacesOverview } from "./SpacesOverview.tsx";
 import { ToastContainer } from "./ToastContainer.tsx";
+import { DialogHost } from "./DialogHost.tsx";
 import { UserProfile } from "./UserProfile.tsx";
 import { UsersOverview } from "./UsersOverview.tsx";
 
@@ -284,6 +285,7 @@ function SpacesShell(props: { initialTab?: SpacesTab }) {
         />
       </Show>
       <ToastContainer />
+      <DialogHost />
     </div>
   );
 }

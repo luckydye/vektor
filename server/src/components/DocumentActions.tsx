@@ -34,6 +34,7 @@ import type { IconName } from "./Icon.tsx";
 import { Icon } from "./Icon.tsx";
 import { WorkflowEditorOverlay } from "./WorkflowEditorOverlay.tsx";
 import { WorkflowRunButton } from "./WorkflowRunButton.tsx";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
@@ -363,7 +364,12 @@ export function DocumentActions(props: Props) {
       group: "document:danger",
       order: 20,
       run: async () => {
-        if (!confirm(t("Are you sure you want to archive this document?"))) return;
+        if (
+          !(await confirmDialog(t("Are you sure you want to archive this document?"), {
+            tone: "danger",
+          }))
+        )
+          return;
 
         const spaceId = currentSpaceId();
         if (!spaceId) throw new Error("No space selected");
@@ -389,7 +395,12 @@ export function DocumentActions(props: Props) {
       group: "document:danger",
       order: 30,
       run: async () => {
-        if (!confirm(t("Are you sure you want to unpublish this document?"))) return;
+        if (
+          !(await confirmDialog(t("Are you sure you want to unpublish this document?"), {
+            tone: "danger",
+          }))
+        )
+          return;
 
         const spaceId = currentSpaceId();
         if (!spaceId) throw new Error("No space selected");

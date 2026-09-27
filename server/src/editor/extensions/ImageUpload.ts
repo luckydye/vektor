@@ -6,6 +6,7 @@ import { reportUploadFailure, useUploads } from "#composeables/useUploads.ts";
 import { isImageFile } from "#files/fileTypes.ts";
 import { ResizableNodeView } from "./resizable.ts";
 import { nodeFromSpec } from "./specSchema.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 export interface ImageUploadOptions {
   spaceId: string;
@@ -308,7 +309,7 @@ export async function handleImageUpload(
   documentId?: string,
 ): Promise<void> {
   if (!spaceId) {
-    alert("Image upload is not available in this editor.");
+    useToast().error("Image upload is not available in this editor.");
     return;
   }
 
@@ -322,7 +323,7 @@ export async function handleImageUpload(
     if (!file) return;
 
     if (!isImageFile(file)) {
-      alert("Please select an image file");
+      useToast().error("Please select an image file");
       return;
     }
 

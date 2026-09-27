@@ -11,6 +11,7 @@ import { Icon } from "./Icon.tsx";
 import { IconButton } from "./IconButton.tsx";
 import { MessageInput } from "./MessageInput.tsx";
 import { useLocale, useTranslation } from "#composeables/useTranslation.ts";
+import { confirmDialog } from "#composeables/useDialogs.ts";
 
 export interface Comment {
   id: string;
@@ -71,8 +72,12 @@ export function CommentThread(props: Props) {
     setNewCommentContent("");
   }
 
-  function handleDeleteComment(commentId: string) {
-    if (confirm(t("Are you sure you want to delete this comment?"))) {
+  async function handleDeleteComment(commentId: string) {
+    if (
+      await confirmDialog(t("Are you sure you want to delete this comment?"), {
+        tone: "danger",
+      })
+    ) {
       props.onDelete?.(commentId);
     }
   }

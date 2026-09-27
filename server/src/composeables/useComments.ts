@@ -4,6 +4,7 @@ import { api } from "#api/client.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery } from "./query.ts";
 import { useSync } from "./useSync.ts";
+import { useToast } from "./useToast.ts";
 
 /**
  * Comment references come in three shapes:
@@ -135,7 +136,7 @@ export function useComments(options: {
     },
     onError: (error) => {
       console.error("Error posting comment:", error);
-      alert("Could not post comment. Please try again.");
+      useToast().error("Could not post comment. Please try again.");
     },
   });
 
@@ -150,7 +151,7 @@ export function useComments(options: {
     },
     onError: (error) => {
       console.error("Error deleting comment:", error);
-      alert("Could not delete comment. Please try again.");
+      useToast().error("Could not delete comment. Please try again.");
     },
   });
 
