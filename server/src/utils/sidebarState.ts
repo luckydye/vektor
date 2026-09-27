@@ -1,6 +1,6 @@
 export const SIDEBAR_WIDTH_KEY = "sidebar-width";
 export const DEFAULT_SIDEBAR_WIDTH = 280;
-export const MIN_SIDEBAR_WIDTH = 76;
+export const MIN_SIDEBAR_WIDTH = 80;
 export const MAX_SIDEBAR_WIDTH = 500;
 
 export function parseSidebarWidth(
